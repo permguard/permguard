@@ -37,6 +37,9 @@ mod version;
 mod workspace_out;
 
 pub mod check;
+/// A service account's credential material, read as `iam credentials create` reads it: the calls
+/// Permguard Admin makes (18-identities § 9).
+pub mod credentials;
 pub mod decisions;
 pub mod engine;
 pub mod events;

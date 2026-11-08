@@ -108,6 +108,13 @@ run_profile() {
         step "${profile}: identity providers, roles and local users"
         dc run --rm lab assert "${profile}" identity || failed "an identity assertion failed"
     fi
+    if [ "${profile}" = multi-data-plane ]; then
+        step "${profile}: decisions by the IAM Host's tokens (WP-12.6)"
+        dc run --rm lab assert "${profile}" tokens || failed "a token assertion failed"
+        step "${profile}: the Control Plane stopped, the members decide on what they hold"
+        dc stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
+        dc run --rm lab assert "${profile}" offline || failed "a member stopped deciding without its IAM Host"
+    fi
     if [ "${profile}" = temporal-replicas ]; then
         step "${profile}: failover, the first replica stopped"
         dc stop temporal-a >/dev/null 2>&1

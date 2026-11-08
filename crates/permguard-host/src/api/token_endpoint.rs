@@ -356,6 +356,41 @@ fn decode_part(part: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&URL_SAFE_NO_PAD.decode(part).ok()?).ok()
 }
 
+/// Who a request is counted as, before anything is hashed or verified, so a failing guess spends
+/// its budget as a success does: a client by the name it claims; an exchange by its subject token,
+/// digested, so each session or provider token has its own budget and one person never spends
+/// everyone's. The digest's first eight bytes name it, never the token.
+fn claimed_by(request: &TokenRequest, proof: &ClientProof) -> String {
+    proof
+        .basic
+        .as_ref()
+        .map(|(id, _)| id.clone())
+        .or_else(|| request.client_id.clone())
+        .or_else(|| {
+            request
+                .client_assertion
+                .as_deref()
+                .and_then(|jwt| jwt.split('.').nth(1))
+                .and_then(decode_part)
+                .and_then(|claims| claims.get("sub")?.as_str().map(str::to_owned))
+        })
+        .unwrap_or_else(|| {
+            let digest = ring::digest::digest(
+                &ring::digest::SHA256,
+                request
+                    .subject_token
+                    .as_deref()
+                    .unwrap_or_default()
+                    .as_bytes(),
+            );
+            let prefix: String = digest.as_ref()[..8]
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            format!("exchange:{prefix}")
+        })
+}
+
 impl HostApi {
     /// `POST /iam/v1/token`: authenticates the client or the exchanged subject, checks what is
     /// asked against what the subject may do now, and issues one token of one family.
@@ -374,22 +409,7 @@ impl HostApi {
                 .limiter
                 .admit(format!("source:{source}"), SOURCE_REQUESTS_PER_MINUTE, now)?;
         }
-        // A client is counted by the name it claims, before anything is hashed or verified: a
-        // failing guess spends its client's budget as a success does.
-        let claimed = proof
-            .basic
-            .as_ref()
-            .map(|(id, _)| id.clone())
-            .or_else(|| request.client_id.clone())
-            .or_else(|| {
-                request
-                    .client_assertion
-                    .as_deref()
-                    .and_then(|jwt| jwt.split('.').nth(1))
-                    .and_then(decode_part)
-                    .and_then(|claims| claims.get("sub")?.as_str().map(str::to_owned))
-            })
-            .unwrap_or_else(|| "exchange".to_owned());
+        let claimed = claimed_by(request, proof);
         tokens
             .limiter
             .admit(format!("client:{claimed}"), CLIENT_REQUESTS_PER_MINUTE, now)?;
@@ -1202,6 +1222,34 @@ mod tests {
         ] {
             assert_eq!((refusal.error(), refusal.status()), (error, status));
         }
+    }
+
+    #[test]
+    fn an_exchange_is_counted_by_its_subject_token_and_never_names_it() {
+        let exchange = |token: &str| TokenRequest {
+            grant_type: TOKEN_EXCHANGE.to_owned(),
+            subject_token: Some(token.to_owned()),
+            ..TokenRequest::default()
+        };
+        let none = ClientProof::default();
+        let alice = claimed_by(&exchange("pgs_alice-session"), &none);
+        let bob = claimed_by(&exchange("pgs_bob-session"), &none);
+        assert_ne!(alice, bob, "each session its own budget");
+        assert_eq!(alice, claimed_by(&exchange("pgs_alice-session"), &none));
+        assert!(alice.starts_with("exchange:") && alice.len() == "exchange:".len() + 16);
+        assert!(
+            !alice.contains("alice"),
+            "the key never names the token: {alice}"
+        );
+        let client = TokenRequest {
+            client_id: Some("billing".to_owned()),
+            ..exchange("pgs_alice-session")
+        };
+        assert_eq!(
+            claimed_by(&client, &none),
+            "billing",
+            "a client by its name"
+        );
     }
 
     #[test]

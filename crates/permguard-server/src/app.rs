@@ -2686,7 +2686,7 @@ impl App {
                 permguard_core::lifecycle::HOST,
                 permguard_host::setup::RECOVERY_CAPABILITY,
                 format!(
-                    "a recovery was started offline at {at}: {}; acknowledge it (`permguard host recovery acknowledge`)",
+                    "a recovery was started offline at {at}: {}; acknowledge it (`permguard iam recovery acknowledge`)",
                     recovery.reason
                 ),
             );

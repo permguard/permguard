@@ -220,16 +220,26 @@ data_planes_of() {
 # `host`), which is what a lab's test authority is.
 grant_operator() {
     local host="$1" principal
+    case "${host}" in
+    control-plane | all-in-one) ;;
+    *)
+        # A member holds no grants a credential reaches (WP-12.4): the operator's certificate is
+        # its bootstrap principal, holding its per-Host operations, and its decisions are made by
+        # the IAM Host's tokens (`token_for`).
+        log "${host}: a member; the operator acts there as its bootstrap principal"
+        return
+        ;;
+    esac
     principal="cert:sha256:$(cat "${pki}/operator.fp")"
     local endpoint
     endpoint="$(host_endpoint "${host}")"
     # The backup operations and the key bundle are the restore drill's (`scripts/drill-restore.sh`).
-    pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
+    pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
         --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read,lifecycle.read \
         --selector host >/dev/null
     case "${host}" in
     control-plane | all-in-one)
-        pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
+        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
             --operations catalog.read,catalog.write,policy.push \
             --selector "plane/control/*" >/dev/null
         ;;
@@ -237,16 +247,59 @@ grant_operator() {
     case "${host}" in
     control-plane)
         # What the coordinator holds of the members' streams.
-        pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
+        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
             --operations streams.read --selector "plane/data/*" >/dev/null
         ;;
-    *)
-        pg --host-endpoint "${endpoint}" host grants issue --principal "${principal}" \
+    all-in-one)
+        # The all-in-one is the IAM Host: its grants decide, a token or not.
+        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
             --operations decision.evaluate,event.submit,streams.read \
             --selector "plane/data/*" >/dev/null
         ;;
     esac
     log "${host}: the operator's grants are issued"
+}
+
+# The lab's service account on the IAM Host (TA-5): what its samples and checks decide as on a
+# member, by tokens the command line obtains with its secret (TC-7).
+lab_client() {
+    local endpoint
+    endpoint="$(host_endpoint control-plane)"
+    pg --host-endpoint "${endpoint}" iam service-accounts create lab-client --owner lab \
+        --description "the lab's samples and checks" >/dev/null
+    pg --host-endpoint "${endpoint}" iam grants issue --principal sa:lab-client \
+        --operations decision.evaluate,event.submit --selector "plane/data/*" >/dev/null
+    rm -f "${state}/lab-client.secret"
+    pg --host-endpoint "${endpoint}" iam credentials create lab-client \
+        --secret-out "${state}/lab-client.secret" >/dev/null
+    log "the lab's service account lab-client: decision.evaluate and event.submit on plane/data/*"
+}
+
+# The member id the coordinator gave `host`: what a token addressed to it names.
+member_id_of() {
+    pg --host-endpoint "$(host_endpoint "$1")" host members list |
+        jq -er '[.members[] | select(.role == "member" and .status == "active") | .member_id] | first'
+}
+
+# A token of lab-client addressed to `host`, obtained at the IAM Host and kept for half an hour:
+# prints its file.
+token_for() {
+    local host="$1" dir="${state}/tokens" file member
+    file="${dir}/${host}.jwt"
+    if [ -f "${file}" ] && [ -z "$(find "${file}" -mmin +30)" ]; then
+        echo "${file}"
+        return
+    fi
+    mkdir -p "${dir}"
+    chmod 0700 "${dir}"
+    rm -f "${file}"
+    member="$(member_id_of "${host}")" || fail "${host}: no active membership names its member id"
+    pg --iam-endpoint "$(host_endpoint control-plane)" --client-id lab-client \
+        --client-secret-file "${state}/lab-client.secret" iam token \
+        --scope "decision.evaluate event.submit" --audience "member:${member}" \
+        --target "plane/data/*" --out "${file}" >/dev/null ||
+        fail "${host}: the IAM Host issued lab-client no token"
+    echo "${file}"
 }
 
 zone_id() {
@@ -414,6 +467,7 @@ cmd_enroll() {
     for entry in $(data_planes_of "${profile}"); do
         enroll_data_plane "${coordinator}" "${entry%%:*}" "${entry##*:}" "${temporal}"
     done
+    once lab-client lab_client
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -423,8 +477,14 @@ cmd_enroll() {
 # A decision from `host` on `zone/ledger` for one of the `basics` example's requests: the CLI's
 # answer, whatever it is. A refusal is an answer too, so its status is not this function's.
 decide() {
-    local host="$1" zone="$2" ledger="$3" request="$4"
-    pg --data-endpoint "$(data_endpoint "${host}")" check --ignore-workspace \
+    local host="$1" zone="$2" ledger="$3" request="$4" token="${5:-}" bearer=()
+    # A member decides by the IAM Host's tokens: lab-client's, addressed to it, unless the caller
+    # names another (`none` for no token at all).
+    if [ -z "${token}" ] && [ "${host}" != all-in-one ]; then
+        token="$(token_for "${host}")"
+    fi
+    [ -n "${token}" ] && [ "${token}" != none ] && bearer=(--token-file "${token}")
+    pg ${bearer[@]+"${bearer[@]}"} --data-endpoint "$(data_endpoint "${host}")" check --ignore-workspace \
         -f "${examples}/basics/requests/${request}" --zone "${zone}" --ledger "${ledger}" 2>&1 || true
 }
 
@@ -440,9 +500,9 @@ wait_serving() {
 }
 
 # `host` answers `request` on `zone/ledger` with `expected` (true or false); prints the decision's id.
-expect_decision() {
-    local host="$1" zone="$2" ledger="$3" request="$4" expected="$5" answer
-    answer="$(decide "${host}" "${zone}" "${ledger}" "${request}")"
+expect_decision() { # host, zone, ledger, request, expected, [token file]
+    local host="$1" zone="$2" ledger="$3" request="$4" expected="$5" token="${6:-}" answer
+    answer="$(decide "${host}" "${zone}" "${ledger}" "${request}" "${token}")"
     jq -e --argjson expected "${expected}" '.evaluated == true and .decision == $expected' \
         >/dev/null <<<"${answer}" ||
         fail "${host}: ${zone}/${ledger} ${request} is not ${expected}: ${answer}"
@@ -474,7 +534,14 @@ cmd_assert() {
         *) drill_restore "${phase}" ;;
         esac
         ;;
-    multi-data-plane) assert_multi_data_plane ;;
+    multi-data-plane)
+        case "${phase}" in
+        "") assert_multi_data_plane ;;
+        tokens) assert_tokens ;;
+        offline) assert_tokens_offline ;;
+        *) fail "no multi-data-plane phase ${phase}" ;;
+        esac
+        ;;
     multi-group) assert_multi_group ;;
     temporal-replicas) assert_temporal "${phase}" ;;
     *) fail "no profile ${profile}" ;;
@@ -597,10 +664,10 @@ assert_all_in_one_identity() {
 
     # Both providers' keys fetched by the Host, off any request.
     deadline=$((SECONDS + 120))
-    until pg --host-endpoint "${host_api}" host providers list |
+    until pg --host-endpoint "${host_api}" iam providers list |
         jq -e '[.providers[] | select(.state == "fresh")] | length == 2' >/dev/null 2>&1; do
         [ "${SECONDS}" -lt "${deadline}" ] ||
-            fail "the providers' keys were not fetched: $(pg --host-endpoint "${host_api}" host providers list)"
+            fail "the providers' keys were not fetched: $(pg --host-endpoint "${host_api}" iam providers list)"
         sleep 2
     done
     log "both providers' keys are fetched and fresh"
@@ -620,27 +687,27 @@ assert_all_in_one_identity() {
     log "a forged token is refused 401 with the Bearer challenge"
 
     # A role of every subject of `ops`: alice is admitted, bob of the other realm is not.
-    pg --host-endpoint "${host_api}" host roles create lab-readers --description "read the lab catalog" >/dev/null
-    pg --host-endpoint "${host_api}" host roles members add lab-readers --issuer ops >/dev/null
-    pg --host-endpoint "${host_api}" host roles grant lab-readers --operations catalog.read \
+    pg --host-endpoint "${host_api}" iam roles create lab-readers --description "read the lab catalog" >/dev/null
+    pg --host-endpoint "${host_api}" iam roles members add lab-readers --issuer ops >/dev/null
+    pg --host-endpoint "${host_api}" iam roles grant lab-readers --operations catalog.read \
         --selector "plane/control/*" >/dev/null
     expect_admitted "${alice}" alice
     expect_forbidden "${bob}" bob
     log "a role of every ops subject admits alice, and not bob of partners"
 
     # bob's verified email is a local user's: under link: email he acts as that user and its roles.
-    pg --host-endpoint "${host_api}" host users create bob --email bob@partners.example >/dev/null
-    pg --host-endpoint "${host_api}" host roles members add lab-readers --local bob >/dev/null
+    pg --host-endpoint "${host_api}" iam users create bob --email bob@partners.example >/dev/null
+    pg --host-endpoint "${host_api}" iam roles members add lab-readers --local bob >/dev/null
     expect_admitted "${bob}" "bob, as the local user bob"
-    pg --host-endpoint "${host_api}" host users disable bob >/dev/null
+    pg --host-endpoint "${host_api}" iam users disable bob >/dev/null
     expect_forbidden_or_refused "${bob}" "bob, disabled"
-    pg --host-endpoint "${host_api}" host users enable bob >/dev/null
+    pg --host-endpoint "${host_api}" iam users enable bob >/dev/null
     log "a verified email signs in as its local user, and a disabled user's tokens are refused"
 
     # A local user with a password: signed in on the Server Host surface, then admitted by its role.
     printf '%s' lab-carol-password-0003 |
-        pg --host-endpoint "${host_api}" host users create carol --password-stdin >/dev/null
-    pg --host-endpoint "${host_api}" host roles members add lab-readers --local carol >/dev/null
+        pg --host-endpoint "${host_api}" iam users create carol --password-stdin >/dev/null
+    pg --host-endpoint "${host_api}" iam roles members add lab-readers --local carol >/dev/null
     carol="${HOME}/carol.session"
     printf '%s' lab-carol-password-0003 |
         permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
@@ -1001,6 +1068,65 @@ assert_multi_data_plane() {
     log "${a} shipped and was acknowledged through ${recorded_a}; ${b}'s stream is untouched: ${after}"
 }
 
+# The `jti` of the token in `file`: its payload's, read without verifying, which the IAM Host
+# lists and revokes by.
+jti_of() {
+    cut -d. -f2 "$1" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' |
+        base64 -d 2>/dev/null | jq -er '.jti'
+}
+
+# WP-12.6: a member decides by its IAM Host's tokens, and by nothing else.
+assert_tokens() {
+    step "tokens: a token decides on the member it is addressed to, and on no other"
+    local a b answer
+    # Fresh tokens: the offline phase decides on b's after the Control Plane stops.
+    rm -f "${state}/tokens/data-plane-a.jwt" "${state}/tokens/data-plane-b.jwt"
+    a="$(token_for data-plane-a)"
+    b="$(token_for data-plane-b)"
+    expect_decision data-plane-a acme main permit.json true >/dev/null
+    expect_decision data-plane-b acme main permit.json true >/dev/null
+    answer="$(decide data-plane-b acme main permit.json "${a}")"
+    grep -q "unauthenticated" <<<"${answer}" ||
+        fail "data-plane-b decided on a token addressed to data-plane-a: ${answer}"
+    log "data-plane-a's token decides there and is refused on data-plane-b"
+
+    step "tokens: the operator's certificate administers a member, never decides there"
+    answer="$(decide data-plane-a acme main permit.json none)"
+    grep -Eq 'forbidden|permission_denied|unauthenticated' <<<"${answer}" ||
+        fail "data-plane-a did not refuse a decision to the operator's certificate: ${answer}"
+    pg --host-endpoint "$(host_endpoint data-plane-a)" host status |
+        jq -e '.degraded | any(.capability == "bootstrap")' >/dev/null ||
+        fail "data-plane-a does not report its bootstrap principal's use"
+    log "the operator, data-plane-a's bootstrap, is refused a decision; its use there is reported degraded: bootstrap"
+
+    step "tokens: a revoked token is refused once the member holds the list that says so"
+    local jti started=${SECONDS}
+    jti="$(jti_of "${a}")"
+    pg --host-endpoint "$(host_endpoint control-plane)" iam tokens revoke "${jti}" >/dev/null
+    while :; do
+        answer="$(decide data-plane-a acme main permit.json "${a}")"
+        grep -q "unauthenticated" <<<"${answer}" && break
+        [ $((SECONDS - started)) -lt 240 ] ||
+            fail "data-plane-a still decides on the token revoked ${jti}: ${answer}"
+        sleep 5
+    done
+    rm -f "${a}"
+    log "data-plane-a refuses ${jti} $((SECONDS - started))s after its revocation"
+    expect_decision data-plane-a acme main permit.json true >/dev/null
+    log "and decides again on a new token"
+}
+
+# WP-12.6: with the Control Plane stopped, a member still decides by the tokens and lists it holds.
+assert_tokens_offline() {
+    step "tokens: the Control Plane stopped, a member decides on what it holds"
+    local token="${state}/tokens/data-plane-b.jwt"
+    [ -f "${token}" ] || fail "no token for data-plane-b was kept before the Control Plane stopped"
+    ! (: <"/dev/tcp/control-plane/5444") 2>/dev/null ||
+        fail "the Control Plane still answers: the members' decisions prove nothing offline"
+    expect_decision data-plane-b acme main permit.json true "${token}" >/dev/null
+    log "data-plane-b decides on lab-client's token and its held status list, its IAM Host stopped"
+}
+
 assert_multi_group() {
     step "multi-group: each group serves its zone, and only it"
     wait_serving data-plane-acme acme main
@@ -1047,7 +1173,13 @@ as_user() { # user, fixture, id
 }
 
 submit_document() { # host; the document on standard input
-    curl -sS --cacert "${pki}/ca.crt" --cert "${pki}/operator.crt" --key "${pki}/operator.key" \
+    # A member takes an occurrence by the IAM Host's tokens: lab-client's, addressed to it.
+    # The header is read from a file only the lab reads, so the token is never in an argument list.
+    local token header
+    token="$(token_for "$1")"
+    header="${token}.header"
+    (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
+    curl -sS --cacert "${pki}/ca.crt" -H "@${header}" \
         -X POST "$(data_endpoint "$1")/temporal/v1alpha1/events" \
         -H 'content-type: application/json' --data-binary @-
 }

@@ -247,6 +247,8 @@ mod tests {
             client_key_file: None,
             iam_endpoint: None,
             iam_tls_ca_file: None,
+            iam_tls_cert_file: None,
+            iam_tls_key_file: None,
             tls_ca_file: None,
             tls_cert_file: None,
             tls_key_file: None,

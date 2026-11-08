@@ -1527,6 +1527,400 @@ fn the_iam_commands_manage_an_account_and_its_client_obtains_a_token() {
     );
 }
 
+/// `2-security/7` Access tokens: `iam token` with no client exchanges the person's session, the
+/// one `--token-file` holds, at the IAM Host (RFC 8693): the token is the person's, within the
+/// person's grants; a bearer that is no session is exchanged for nothing.
+#[test]
+fn iam_token_without_a_client_exchanges_the_persons_session() {
+    let dir = scratch("iam-exchange");
+    let pki = pki(&dir);
+    let (address, signin) = host_listener_signing_in(&dir, &pki);
+    let private = |path: &Path, text: &str| {
+        std::fs::write(path, text).expect("writes");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .expect("private");
+        }
+    };
+    let admin_token = dir.join("admin-token");
+    private(&admin_token, ADMIN);
+    let https = format!("https://localhost:{}", address.port());
+    let ca = pki.authority.to_str().expect("a UTF-8 path").to_owned();
+    let admin = admin_token.to_str().expect("a UTF-8 path").to_owned();
+    let as_admin = |args: &[&str]| -> Value {
+        let mut full = vec![
+            "-o",
+            "json",
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+        ];
+        full.extend_from_slice(args);
+        let output = cli(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        serde_json::from_slice(&output.stdout).expect("the CLI answers JSON")
+    };
+    // carol, with a password given on standard input, as `iam users create` reads it.
+    {
+        use std::io::Write as _;
+        let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("PERMGUARD_") {
+                command.env_remove(name);
+            }
+        }
+        let mut child = command
+            .current_dir(&dir)
+            .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+            .args([
+                "--host-endpoint",
+                &https,
+                "--tls-ca-file",
+                &ca,
+                "--token-file",
+                &admin,
+                "iam",
+                "users",
+                "create",
+                "carol",
+                "--password-stdin",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the CLI runs");
+        child
+            .stdin
+            .take()
+            .expect("its stdin")
+            .write_all(b"carol-password-0001")
+            .expect("the password is written");
+        let output = child.wait_with_output().expect("the CLI ends");
+        assert!(output.status.success(), "{output:?}");
+    }
+    as_admin(&[
+        "iam",
+        "grants",
+        "issue",
+        "--principal",
+        "user:carol",
+        "--operations",
+        "decision.evaluate",
+        "--selector",
+        "plane/data/*",
+    ]);
+    let (session, _) = signin
+        .sign_in("carol", "carol-password-0001", None, None)
+        .expect("carol signs in");
+    let session_file = dir.join("carol.session");
+    private(&session_file, &session);
+    let host_id = as_admin(&["host", "identity", "show"])["host_id"]
+        .as_str()
+        .expect("the host id")
+        .to_owned();
+    let audience = format!("member:{host_id}");
+    let exchange = |bearer: &Path, out: &Path| {
+        cli(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "--host-endpoint",
+                &https,
+                "--tls-ca-file",
+                &ca,
+                "--token-file",
+                bearer.to_str().expect("a UTF-8 path"),
+                "iam",
+                "token",
+                "--scope",
+                "decision.evaluate",
+                "--audience",
+                &audience,
+                "--target",
+                "plane/data/*",
+                "--out",
+                out.to_str().expect("a UTF-8 path"),
+            ],
+        )
+    };
+
+    let out = dir.join("carol.token");
+    let exchanged = exchange(&session_file, &out);
+    assert!(exchanged.status.success(), "{exchanged:?}");
+    let token = std::fs::read_to_string(&out).expect("the token is written");
+    use base64::Engine as _;
+    let claims: Value = serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(token.split('.').nth(1).expect("a payload"))
+            .expect("base64url"),
+    )
+    .expect("JSON claims");
+    assert_eq!(
+        claims["sub"], "user:carol",
+        "the person's own token: {claims}"
+    );
+    assert_eq!(claims["permguard_family"], "application", "{claims}");
+    assert_eq!(claims["aud"], serde_json::json!([audience]), "{claims}");
+    // Traced, the exchange names neither the session nor the token.
+    let traced_out = dir.join("traced.token");
+    let traced = cli(
+        &dir,
+        &[
+            "-v",
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            session_file.to_str().expect("a UTF-8 path"),
+            "iam",
+            "token",
+            "--scope",
+            "decision.evaluate",
+            "--audience",
+            &audience,
+            "--target",
+            "plane/data/*",
+            "--out",
+            traced_out.to_str().expect("a UTF-8 path"),
+        ],
+    );
+    assert!(traced.status.success(), "{traced:?}");
+    let traced_token = std::fs::read_to_string(&traced_out).expect("written");
+    for shown in [&traced.stdout, &traced.stderr] {
+        let shown = String::from_utf8_lossy(shown);
+        assert!(
+            !shown.contains(&session) && !shown.contains(&traced_token),
+            "{shown}"
+        );
+    }
+    for shown in [&exchanged.stdout, &exchanged.stderr] {
+        let shown = String::from_utf8_lossy(shown);
+        assert!(
+            !shown.contains(&token) && !shown.contains(&session),
+            "{shown}"
+        );
+    }
+
+    // A flag wins over the configuration: an IAM endpoint configured for a client never receives
+    // the session meant for the Host the command names.
+    let set = cli(
+        &dir,
+        &[
+            "config",
+            "set",
+            "auth.client.iam_endpoint",
+            "https://localhost:1",
+        ],
+    );
+    assert!(set.status.success(), "{set:?}");
+    let flagged = dir.join("flagged.token");
+    let named = exchange(&session_file, &flagged);
+    assert!(named.status.success(), "{named:?}");
+    assert!(flagged.exists());
+
+    // A bearer that is no session of the IAM Host is exchanged for nothing.
+    let never = dir.join("never.token");
+    let refused = exchange(&admin_token, &never);
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(!never.exists(), "nothing is written for a refused exchange");
+    // Signed out, the session is exchanged for nothing either.
+    assert!(signin.sign_out(&session));
+    let after = dir.join("after.token");
+    assert!(!exchange(&session_file, &after).status.success());
+    assert!(!after.exists());
+}
+
+/// `2-security/7` Access tokens: a client proving itself by a secret reaches an IAM Host whose
+/// listener requires mutual TLS, over the configured client certificate, the planes' or the IAM
+/// Host's own; without one it is refused before the secret is sent.
+#[test]
+fn a_secret_client_reaches_an_iam_host_behind_mutual_tls() {
+    let dir = scratch("iam-mutual");
+    let pki = pki(&dir);
+    let (address, mutual, _) = host_listeners(&dir, &pki);
+    let private = |path: &Path, text: &str| {
+        std::fs::write(path, text).expect("writes");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .expect("private");
+        }
+    };
+    let admin_token = dir.join("admin-token");
+    private(&admin_token, ADMIN);
+    let client_key = dir.join("client.key");
+    private(&client_key, &pki.client_key_pem);
+    let https = format!("https://localhost:{}", address.port());
+    let iam = format!("https://localhost:{}", mutual.port());
+    let ca = pki.authority.to_str().expect("a UTF-8 path").to_owned();
+    let admin = admin_token.to_str().expect("a UTF-8 path").to_owned();
+    let certificate = pki
+        .client_certificate
+        .to_str()
+        .expect("a UTF-8 path")
+        .to_owned();
+    let key = client_key.to_str().expect("a UTF-8 path").to_owned();
+    for args in [
+        vec![
+            "iam",
+            "service-accounts",
+            "create",
+            "billing",
+            "--owner",
+            "payments",
+        ],
+        vec![
+            "iam",
+            "grants",
+            "issue",
+            "--principal",
+            "sa:billing",
+            "--operations",
+            "decision.evaluate",
+            "--selector",
+            "plane/data/*",
+        ],
+    ] {
+        let mut full = vec![
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+        ];
+        full.extend_from_slice(&args);
+        let output = cli(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+    }
+    let secret = dir.join("billing.secret");
+    let secret_path = secret.to_str().expect("a UTF-8 path").to_owned();
+    let created = cli(
+        &dir,
+        &[
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+            "iam",
+            "credentials",
+            "create",
+            "billing",
+            "--secret-out",
+            &secret_path,
+        ],
+    );
+    assert!(created.status.success(), "{created:?}");
+    let identity = cli(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+            "host",
+            "identity",
+            "show",
+        ],
+    );
+    let host_id: Value = serde_json::from_slice(&identity.stdout).expect("JSON");
+    let audience = format!(
+        "member:{}",
+        host_id["host_id"].as_str().expect("the host id")
+    );
+    let token = |certificate: &[&str], out: &str| {
+        let out = dir.join(out);
+        let mut full = vec![
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &iam,
+            "--client-id",
+            "billing",
+            "--client-secret-file",
+            &secret_path,
+        ];
+        full.extend_from_slice(certificate);
+        let tail = [
+            "iam",
+            "token",
+            "--scope",
+            "decision.evaluate",
+            "--audience",
+            &audience,
+            "--target",
+            "plane/data/*",
+            "--out",
+            out.to_str().expect("a UTF-8 path"),
+        ];
+        full.extend_from_slice(&tail);
+        (cli(&dir, &full), out)
+    };
+
+    // Without a certificate, the handshake is refused and nothing is written.
+    let (refused, out) = token(&[], "none.token");
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("client certificate"),
+        "{refused:?}"
+    );
+    assert!(!out.exists());
+    // The planes' certificate is presented beside the secret.
+    let (planes, out) = token(
+        &["--tls-cert-file", &certificate, "--tls-key-file", &key],
+        "planes.token",
+    );
+    assert!(planes.status.success(), "{planes:?}");
+    assert_eq!(
+        std::fs::read_to_string(&out)
+            .expect("written")
+            .split('.')
+            .count(),
+        3
+    );
+    // Or the IAM Host's own, with no planes' certificate at all.
+    let (own, out) = token(
+        &[
+            "--iam-tls-cert-file",
+            &certificate,
+            "--iam-tls-key-file",
+            &key,
+        ],
+        "own.token",
+    );
+    assert!(own.status.success(), "{own:?}");
+    assert_eq!(
+        std::fs::read_to_string(&out)
+            .expect("written")
+            .split('.')
+            .count(),
+        3
+    );
+    // A certificate without its key is a usage error, before anything is sent.
+    let (half, out) = token(&["--iam-tls-cert-file", &certificate], "half.token");
+    assert!(!half.status.success(), "{half:?}");
+    assert!(
+        String::from_utf8_lossy(&half.stderr).contains("needs its key"),
+        "{half:?}"
+    );
+    assert!(!out.exists());
+}
+
 /// TC-7: a command that reaches a Data Plane, with a client configured and no `--token-file`,
 /// obtains the client's token at the IAM Host and sends it as its bearer; the next command reuses
 /// the token kept in the user's private cache instead of asking for another.
@@ -1891,6 +2285,29 @@ impl permguard_core::authz::Authenticator for Bearers {
 /// A Host API over its own volume, its one administrator holding every operation, served on a
 /// TLS listener with [`Bearers`].
 fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
+    host_listener_signing_in(dir, pki).0
+}
+
+/// The Host listener of [`host_listener`], and the password sign-in its token endpoint exchanges
+/// sessions of (RFC 8693).
+fn host_listener_signing_in(
+    dir: &Path,
+    pki: &Pki,
+) -> (SocketAddr, Arc<permguard_host::authz::signin::SignIn>) {
+    let (address, _, signin) = host_listeners(dir, pki);
+    (address, signin)
+}
+
+/// The same Host API on two listeners: the first over TLS, the second requiring a client
+/// certificate of the test authority, as an IAM Host behind mutual TLS does.
+fn host_listeners(
+    dir: &Path,
+    pki: &Pki,
+) -> (
+    SocketAddr,
+    SocketAddr,
+    Arc<permguard_host::authz::signin::SignIn>,
+) {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::authz::{Principal, Resource, Selector, operations};
     use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
@@ -1938,6 +2355,31 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay");
     let (directory, _) =
         permguard_host::authz::directory::Directory::open(&volume).expect("the directory");
+    let signin_time = Arc::new(permguard_host::time::TimeGuard::system(
+        std::time::Duration::from_secs(30),
+    ));
+    let signin = Arc::new(permguard_host::authz::signin::SignIn::new(
+        Arc::clone(&directory),
+        Arc::new(permguard_host::authz::sessions::Sessions::new(
+            std::time::Duration::from_secs(3_600),
+            std::time::Duration::from_secs(600),
+            Arc::clone(&signin_time),
+        )),
+        Arc::clone(&mutations),
+        permguard_host::authz::lockout::Lockout::new(
+            3,
+            std::time::Duration::from_secs(900),
+            std::time::Duration::from_secs(900),
+            Arc::clone(&signin_time),
+        ),
+        permguard_host::authz::signin::Policy {
+            min_length: 12,
+            mfa: permguard_host::authz::signin::Mfa::Off,
+        },
+        None,
+        "Permguard test",
+        signin_time,
+    ));
     // The access tokens, as the IAM Host composes them (WP-11.4): its own `iam.tokens` ring, and
     // its Data Plane a local member so a token can be addressed to it.
     let time = Arc::new(permguard_host::time::TimeGuard::system(
@@ -2008,7 +2450,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
         })
         .with_identities(permguard_host::api::directory::Identities {
             directory,
-            signin: None,
+            signin: Some(Arc::clone(&signin)),
             providers: Vec::new(),
             exchange_provider_tokens: false,
             min_length: 12,
@@ -2019,6 +2461,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
     );
     std::mem::forget(volume);
     let settings = TlsSettings::new(&pki.certificate, &pki.key);
+    let mutual = TlsSettings::new(&pki.certificate, &pki.key).with_client_ca(&pki.authority);
     let (bound, address) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -2030,7 +2473,10 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             let surface = permguard_transport::Surface::listener(
                 "host-api",
                 "127.0.0.1:0",
-                permguard_server::host_api::routes(api, permguard_core::Disclosure::Full),
+                permguard_server::host_api::routes(
+                    Arc::clone(&api),
+                    permguard_core::Disclosure::Full,
+                ),
             )
             .tls(Some(&settings))
             .authenticator(Some(Arc::new(Bearers)))
@@ -2038,12 +2484,26 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             .start()
             .await
             .expect("the Host listener binds");
-            bound.send(surface.address()).expect("the test waits");
+            let mutual = permguard_transport::Surface::listener(
+                "host-api-mutual",
+                "127.0.0.1:0",
+                permguard_server::host_api::routes(api, permguard_core::Disclosure::Full),
+            )
+            .tls(Some(&mutual))
+            .authenticator(Some(Arc::new(Bearers)))
+            .client_authentication([permguard_server::host_api::http::TOKEN_PATH.to_owned()])
+            .start()
+            .await
+            .expect("the mutual Host listener binds");
+            bound
+                .send((surface.address(), mutual.address()))
+                .expect("the test waits");
             std::future::pending::<()>().await;
-            drop(surface);
+            drop((surface, mutual));
         });
     });
-    address.recv().expect("the Host listener started")
+    let (address, mutual) = address.recv().expect("the Host listeners started");
+    (address, mutual, signin)
 }
 
 /// TC-1: a decision read asked to verify, whose records no inclusion path accounts for, ran and

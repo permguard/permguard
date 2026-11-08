@@ -186,7 +186,7 @@ groups:
   - name: permguard-identity
     rules:
       # The Host also reports `degraded: oidc`, naming each provider; the metrics carry no provider
-      # label, so `permguard host providers list` says which one.
+      # label, so `permguard iam providers list` says which one.
       - alert: PermguardIdentityProviderKeysNotFresh
         expr: max by (component) (permguard_oidc_providers_not_fresh) > 0
         for: 5m

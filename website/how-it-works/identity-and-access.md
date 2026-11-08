@@ -82,7 +82,7 @@ Register an application for the API Permguard is, and set its manifest's `reques
     clients: ["<cli-application-id>"]   # optional: only this client's tokens
 ```
 
-Entra's access tokens carry no `email_verified`, so link users explicitly: `permguard host users link alice --user entra:<object-id>`.
+Entra's access tokens carry no `email_verified`, so link users explicitly: `permguard iam users link alice --user entra:<object-id>`.
 Each tenant is a provider of its own: multi-tenant issuer templates are not supported.
 
 ### Okta
@@ -156,7 +156,7 @@ host:
 | second factor | TOTP, sealed under the Host-local root `factor_key` names; `required` is mandatory under the `regulated` profile |
 
 ```sh
-printf '%s' "$PASSWORD" | permguard host users create paperino --email paperino@hotmail.com --password-stdin
+printf '%s' "$PASSWORD" | permguard iam users create paperino --email paperino@hotmail.com --password-stdin
 permguard login https://pg.example.com:5443 --user paperino      # the password is read with echo off
 permguard factor https://pg.example.com:5443 begin                # then: confirm --code 123456
 ```
@@ -184,7 +184,7 @@ When every administrator is lost, recovery is explicit and recorded, and deletes
 ```sh
 permguard --volume /var/lib/permguard host recovery start --reason "every administrator left"   # server stopped
 # start the server, then setup with the new code, then:
-permguard host recovery acknowledge
+permguard iam recovery acknowledge
 ```
 
 The Host stays `degraded: recovery` until an administrator acknowledges it.
@@ -195,10 +195,10 @@ The Host stays `degraded: recovery` until an administrator acknowledges it.
 A role is a set of grants the Host holds for `role:<name>`; its members act with them.
 
 ```sh
-permguard host roles create operators --description "run the Host"
-permguard host roles members add operators --user entra:0042-abcd
-permguard host roles members add readers --issuer okta          # every subject of a provider
-permguard host roles grant operators --operations authz.admin --selector host
+permguard iam roles create operators --description "run the Host"
+permguard iam roles members add operators --user entra:0042-abcd
+permguard iam roles members add readers --issuer okta          # every subject of a provider
+permguard iam roles grant operators --operations authz.admin --selector host
 ```
 
 Several Hosts are kept alike with one file:
@@ -216,8 +216,8 @@ roles:
 ```
 
 ```sh
-permguard host roles apply plan -f roles.yml --out roles.plan   # every change, removals included
-permguard host roles apply run --confirm-file roles.plan        # refused if the Host moved since
+permguard iam roles apply plan -f roles.yml --out roles.plan   # every change, removals included
+permguard iam roles apply run --confirm-file roles.plan        # refused if the Host moved since
 ```
 
 The plan widens before it narrows, a role the file does not name is left alone, and applying the same file again changes nothing.
@@ -235,8 +235,8 @@ A refused token is answered `401` with `WWW-Authenticate: Bearer realm="permguar
 
 | Signal                                          | Meaning                                                                      |
 | ----------------------------------------------- | ---------------------------------------------------------------------------- |
-| `permguard host providers list`                 | each provider's key source, keys, last fetch, last failure and state         |
-| `permguard host providers refresh <name>`       | fetch now                                                                    |
+| `permguard iam providers list`                  | each provider's key source, keys, last fetch, last failure and state         |
+| `permguard iam providers refresh <name>`        | fetch now                                                                    |
 | Host status `degraded: oidc`                    | a provider's keys are older than twice `refresh`, or missing after a failure |
 | `permguard_oidc_keys_oldest_age_seconds`        | the oldest key set held                                                      |
 | `permguard_oidc_providers_not_fresh`            | how many providers are behind                                                |

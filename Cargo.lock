@@ -2416,6 +2416,7 @@ dependencies = [
  "rcgen",
  "ring",
  "rustix",
+ "rustls",
  "serde",
  "serde_json",
  "serde_norway",

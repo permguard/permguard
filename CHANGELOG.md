@@ -88,6 +88,13 @@ is cut.
   A command line acting as a service account (`--client-id` with `--client-secret-file`, `--client-key-file` or its client certificate, and `--iam-endpoint`, or `auth.client.*` in the configuration) obtains its application token at the IAM Host's token endpoint; `iam token --out` writes one to a private file, and `check` uses one when no `--token-file` is given, kept under `~/.permguard/tokens/` and reused until a minute before it expires.
   The IAM Host's connection is its own (`--iam-tls-ca-file`, `auth.client.tls_ca_file`; never a Data Plane's `--tls-server-name`), no proof is sent over `--tls-skip-verify`, a signed assertion is addressed to the token endpoint the IAM Host publishes, and a token a Data Plane refuses is dropped from the cache.
   `permguard_control_client::token_source::TokenSource` offers a program the same: a secret, a signed RFC 7523 assertion or a certificate, the token held in memory and obtained again before it expires; no token, secret or assertion is ever printed, traced or logged.
+  The IAM Host's connection presents the configured client certificate whatever the proof, so an IAM Host whose listener requires mutual TLS is reached with a secret or a key too, and an `administration` token is bound to that certificate (RFC 8705); `--iam-tls-cert-file` and `--iam-tls-key-file` (`auth.client.tls_cert_file`, `tls_key_file`) give it a certificate of its own when its client authority is not the planes'.
+
+- **A person obtains their own access token: `iam token` exchanges the session.**
+  With no client configured, `iam token` exchanges the session `permguard login` wrote to `--token-file` at the IAM Host (RFC 8693, `urn:ietf:params:oauth:grant-type:token-exchange`): an `administration` token for one member's per-Host operations, or an `application` token, within the person's grants.
+  The session goes to `--iam-endpoint`, else `--host-endpoint`, else `auth.client.iam_endpoint`, else `host.endpoint`: a flag always wins over the configuration.
+  `TokenSource` takes the same proof, `Proof::Session`, for a program such as Permguard Admin.
+  The token endpoint counts an exchange by a digest of its subject token, so each session has its own 60 requests a minute instead of every person sharing one.
 
 ### Changed
 

@@ -15,7 +15,7 @@
 //! | reported    | every 15 s: `degraded: oidc` on the Host naming each provider not fresh, and the metrics below |
 //!
 //! The metrics carry no provider label (P10: an operator-chosen name is not a closed vocabulary);
-//! which provider is behind is in the degraded reason and in `permguard host providers list`.
+//! which provider is behind is in the degraded reason and in `permguard iam providers list`.
 
 use std::sync::Arc;
 use std::time::Duration;

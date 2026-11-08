@@ -4,14 +4,16 @@
 //! Access tokens for a client (iteration 02, TC-7, `2-security/7` Access tokens): a service
 //! account's application token, obtained at the IAM Host's token endpoint by its secret, a signed
 //! assertion or its TLS client certificate, held while it serves and obtained again a minute before
-//! it expires. Nothing here prints, traces or logs a token, a secret or an assertion: `Debug` of
-//! every type that holds one masks it.
+//! it expires; or a person's, their session exchanged for it (RFC 8693). Nothing here prints,
+//! traces or logs a token, a session, a secret or an assertion: `Debug` of every type that holds
+//! one masks it.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use permguard_host::api::token_endpoint::{ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, TOKEN_EXCHANGE};
 
 use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
@@ -38,6 +40,9 @@ pub enum Proof {
     Key(Credential),
     /// The TLS client certificate the options carry: a `tls_client_auth` binding.
     Certificate,
+    /// A person's password session or provider token, exchanged for the person's own token
+    /// (RFC 8693): the subject of the exchange, with no client of its own.
+    Session(Credential),
 }
 
 impl std::fmt::Debug for Proof {
@@ -46,6 +51,7 @@ impl std::fmt::Debug for Proof {
             Self::Secret(_) => "Secret(********)",
             Self::Key(_) => "Key(********)",
             Self::Certificate => "Certificate",
+            Self::Session(_) => "Session(********)",
         })
     }
 }
@@ -139,8 +145,10 @@ fn form(value: &str) -> String {
 
 impl TokenSource {
     /// A source for `client_id` at the IAM Host `endpoint` (`https://`), proving itself by `proof`,
-    /// asking for `asked`. The TLS options name the authority the IAM Host is checked against and,
-    /// for [`Proof::Certificate`], the client certificate; a bearer they carry is never sent here.
+    /// asking for `asked`. The TLS options name the authority the IAM Host is checked against and
+    /// the client certificate the connection presents, whatever the proof: the proof itself for
+    /// [`Proof::Certificate`], the connection's beside any other; a bearer they carry is never sent
+    /// here, a session being sent only as [`Proof::Session`]'s subject token.
     pub fn new(
         endpoint: Endpoint,
         client_id: &str,
@@ -154,7 +162,7 @@ impl TokenSource {
                 "a token is obtained only over TLS: the IAM Host's endpoint is https://",
             ));
         }
-        if client_id.trim().is_empty() {
+        if client_id.trim().is_empty() && !matches!(proof, Proof::Session(_)) {
             return Err(usage("a client names its service account"));
         }
         if asked.scope.trim().is_empty() || asked.audience.is_empty() {
@@ -217,8 +225,13 @@ impl TokenSource {
     }
 
     fn obtain(&self) -> Result<Issued, Failure> {
+        let grant_type = match self.proof {
+            Proof::Session(_) => TOKEN_EXCHANGE,
+            _ => CLIENT_CREDENTIALS,
+        };
         let mut body = format!(
-            "grant_type=client_credentials&scope={}",
+            "grant_type={}&scope={}",
+            form(grant_type),
             form(&self.asked.scope)
         );
         for audience in &self.asked.audience {
@@ -250,6 +263,15 @@ impl TokenSource {
             }
             Proof::Certificate => {
                 body.push_str(&format!("&client_id={}", form(&self.client_id)));
+            }
+            Proof::Session(session) => {
+                let session = std::str::from_utf8(session.expose())
+                    .map_err(|_| usage("the session is not text"))?;
+                body.push_str(&format!(
+                    "&subject_token={}&subject_token_type={}",
+                    form(session.trim()),
+                    form(ACCESS_TOKEN_TYPE)
+                ));
             }
         }
         let answered = client

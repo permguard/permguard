@@ -7,6 +7,8 @@
 //! The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by the
 //! client and what it asked for, and reused until a minute before it expires. Nothing here traces
 //! a secret, a key or a token: the trace names the client and the expiry.
+//!
+//! A person's token is the person's session exchanged at the IAM Host (RFC 8693): [`exchange`].
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -35,6 +37,96 @@ pub fn source(
     source_with(globals, &store, asked, trace)
 }
 
+/// A person's own token for `asked`: the session `--token-file` holds, exchanged at the IAM Host
+/// (RFC 8693), when there is one. The session goes where it was opened, a flag always winning over
+/// the configuration: `--iam-endpoint`, else the `iam` command's own Host, `--host-endpoint`, else
+/// `auth.client.iam_endpoint`, else `host.endpoint`. Reached as the command's Host, its connection
+/// is the Host's, unchanged; reached as the IAM Host, it is the IAM Host's.
+pub fn exchange(
+    globals: &Globals,
+    asked: Asked,
+    trace: &Trace,
+) -> Result<Option<TokenSource>, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let as_iam = globals.iam_endpoint.clone().or_else(|| {
+        globals
+            .host_endpoint
+            .is_none()
+            .then(|| iam_endpoint(globals, &store))
+            .flatten()
+    });
+    let (endpoint, mut tls) = match as_iam {
+        Some(endpoint) => (endpoint, iam_tls(globals, &store, trace)?),
+        None => (
+            crate::session::resolve_endpoint_url(
+                "host.endpoint",
+                globals.host_endpoint.as_deref(),
+                &store,
+                trace,
+            )?,
+            crate::target::tls(globals, &store, trace)?,
+        ),
+    };
+    let Some(session) = tls.token.take() else {
+        return Ok(None);
+    };
+    let endpoint = Endpoint::parse(&endpoint)
+        .map_err(|error| Failure::usage(format!("the IAM Host's endpoint: {error}")))?;
+    trace.say(format!(
+        "the session is exchanged for the person's token at {endpoint}"
+    ));
+    TokenSource::new(endpoint, "", Proof::Session(session), asked, tls, TIMEOUT)
+        .map(Some)
+        .map_err(|failure| Failure::from_client(&failure))
+}
+
+/// The IAM Host's own connection: never the Data Plane's server name, and its own authority when
+/// one is stated. A client certificate is presented whatever the proof: a listener requiring mutual
+/// TLS admits a secret, a key or a session only over it, and an administration token is bound to it
+/// (RFC 8705); beside another proof it is the connection's, never the proof. It is the IAM Host's
+/// own, `auth.client.tls_cert_file` and its key, when stated, and the planes' otherwise.
+fn iam_tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
+    let mut tls = crate::target::tls(globals, store, trace)?;
+    tls.server_name = None;
+    let path = |flag: &Option<PathBuf>, key: &str| match flag {
+        Some(flag) if flag.is_absolute() => Some(flag.clone()),
+        Some(flag) => Some(globals.workdir.join(flag)),
+        None => crate::target::configured(key, store, globals),
+    };
+    if let Some(authority) = path(&globals.iam_tls_ca_file, "auth.client.tls_ca_file") {
+        tls.ca_file = Some(authority);
+    }
+    match (
+        path(&globals.iam_tls_cert_file, "auth.client.tls_cert_file"),
+        path(&globals.iam_tls_key_file, "auth.client.tls_key_file"),
+    ) {
+        (Some(certificate), Some(key)) => {
+            trace.say(format!(
+                "the IAM Host's connection presents {}",
+                certificate.display()
+            ));
+            tls.cert_file = Some(certificate);
+            tls.key_file = Some(key);
+            tls.key_pem = None;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(Failure::usage(
+                "the IAM Host's client certificate needs its key: --iam-tls-cert-file and \
+                 --iam-tls-key-file together, or auth.client.tls_cert_file and tls_key_file",
+            ));
+        }
+    }
+    Ok(tls)
+}
+
+/// The IAM Host a client names: `--iam-endpoint` or `auth.client.iam_endpoint`.
+fn iam_endpoint(globals: &Globals, store: &Store) -> Option<String> {
+    globals.iam_endpoint.clone().or_else(|| {
+        crate::target::setting_value("auth.client.iam_endpoint", store).map(|(value, _)| value)
+    })
+}
+
 fn source_with(
     globals: &Globals,
     store: &Store,
@@ -60,14 +152,8 @@ fn source_with(
     };
     let secret_file = path(&globals.client_secret_file, "auth.client.secret_file");
     let key_file = path(&globals.client_key_file, "auth.client.key_file");
-    // The IAM Host's own connection: never the Data Plane's server name, its own authority when
-    // one is stated, and a client certificate only when the certificate is the proof.
-    let mut tls = crate::target::tls(globals, store, trace)?;
+    let mut tls = iam_tls(globals, store, trace)?;
     tls.token = None;
-    tls.server_name = None;
-    if let Some(authority) = path(&globals.iam_tls_ca_file, "auth.client.tls_ca_file") {
-        tls.ca_file = Some(authority);
-    }
     let proof = match (secret_file, key_file) {
         (Some(_), Some(_)) => {
             return Err(Failure::usage(
@@ -86,22 +172,12 @@ fn source_with(
             )));
         }
     };
-    if !matches!(proof, Proof::Certificate) {
-        tls.cert_file = None;
-        tls.key_file = None;
-        tls.key_pem = None;
-    }
-    let endpoint = match &globals.iam_endpoint {
-        Some(flag) => flag.clone(),
-        None => crate::target::setting_value("auth.client.iam_endpoint", store)
-            .map(|(value, _)| value)
-            .ok_or_else(|| {
-                Failure::usage(
-                    "the client obtains its tokens at the IAM Host: --iam-endpoint or \
-                     auth.client.iam_endpoint",
-                )
-            })?,
-    };
+    let endpoint = iam_endpoint(globals, store).ok_or_else(|| {
+        Failure::usage(
+            "the client obtains its tokens at the IAM Host: --iam-endpoint or \
+             auth.client.iam_endpoint",
+        )
+    })?;
     let endpoint = Endpoint::parse(&endpoint)
         .map_err(|error| Failure::usage(format!("--iam-endpoint: {error}")))?;
     trace.say(format!(

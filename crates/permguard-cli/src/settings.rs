@@ -218,6 +218,22 @@ pub const SETTINGS: &[Setting] = &[
         write: |file, value| file.auth.client.tls_ca_file = value,
     },
     Setting {
+        key: "auth.client.tls_cert_file",
+        description: "The client certificate the IAM Host's connection presents, when not the planes'",
+        env: "PERMGUARD_IAM_TLS_CERT_FILE",
+        default: "",
+        read: |file| file.auth.client.tls_cert_file.as_deref(),
+        write: |file, value| file.auth.client.tls_cert_file = value,
+    },
+    Setting {
+        key: "auth.client.tls_key_file",
+        description: "The private key of auth.client.tls_cert_file",
+        env: "PERMGUARD_IAM_TLS_KEY_FILE",
+        default: "",
+        read: |file| file.auth.client.tls_key_file.as_deref(),
+        write: |file, value| file.auth.client.tls_key_file = value,
+    },
+    Setting {
         key: "auth.client.scope",
         description: "The operations a Data Plane command's token asks for",
         env: "PERMGUARD_CLIENT_SCOPE",
@@ -399,6 +415,10 @@ struct ClientSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     tls_ca_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    tls_cert_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tls_key_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     audience: Option<String>,
@@ -413,6 +433,8 @@ impl ClientSection {
             && self.key_file.is_none()
             && self.iam_endpoint.is_none()
             && self.tls_ca_file.is_none()
+            && self.tls_cert_file.is_none()
+            && self.tls_key_file.is_none()
             && self.scope.is_none()
             && self.audience.is_none()
             && self.target.is_none()

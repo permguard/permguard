@@ -9,8 +9,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use permguard_host::api::directory::Plain;
 use permguard_host::api::service_accounts::{
     CreateCredential, CreateServiceAccount, UpdateServiceAccount,
@@ -127,78 +125,20 @@ fn service_accounts(
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// A public key file as the IAM Host takes it: an Ed25519 or P-256 JWK, or the same key in a
-/// PEM `PUBLIC KEY` (SubjectPublicKeyInfo).
+/// A public key file as the IAM Host takes it: [`crate::credentials::public_key`].
 fn public_key_of(path: &Path) -> Result<BTreeMap<String, String>, Failure> {
-    use rustls::pki_types::pem::PemObject as _;
-
-    let read = |why: String| Failure::usage(format!("--public-key {}: {why}", path.display()));
-    let bytes = std::fs::read(path).map_err(|error| read(error.to_string()))?;
-    if bytes.len() > 64 * 1024 {
-        return Err(read("larger than a public key".to_owned()));
-    }
-    if let Ok(jwk) = serde_json::from_slice::<BTreeMap<String, serde_json::Value>>(&bytes) {
-        // The public members only: a JWK carrying `d` is a private key, refused.
-        if jwk.contains_key("d") {
-            return Err(read(
-                "is a private key: give the public key, the private one never leaves its holder"
-                    .to_owned(),
-            ));
-        }
-        return Ok(jwk
-            .into_iter()
-            .filter(|(name, _)| matches!(name.as_str(), "kty" | "crv" | "x" | "y"))
-            .filter_map(|(name, value)| value.as_str().map(|text| (name, text.to_owned())))
-            .collect());
-    }
-    let der = rustls::pki_types::SubjectPublicKeyInfoDer::from_pem_slice(&bytes)
-        .map_err(|_| read("is neither a JWK nor a PEM public key".to_owned()))?;
-    let der = der.as_ref();
-    // The two encodings RFC 8410 and RFC 5480 give, their fixed prefixes before the key.
-    const ED25519: &[u8] = &[
-        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-    ];
-    const P256: &[u8] = &[
-        0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08,
-        0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
-    ];
-    if let Some(key) = der.strip_prefix(ED25519).filter(|key| key.len() == 32) {
-        return Ok(BTreeMap::from([
-            ("kty".to_owned(), "OKP".to_owned()),
-            ("crv".to_owned(), "Ed25519".to_owned()),
-            ("x".to_owned(), URL_SAFE_NO_PAD.encode(key)),
-        ]));
-    }
-    if let Some(point) = der
-        .strip_prefix(P256)
-        .filter(|point| point.len() == 65 && point[0] == 0x04)
-    {
-        return Ok(BTreeMap::from([
-            ("kty".to_owned(), "EC".to_owned()),
-            ("crv".to_owned(), "P-256".to_owned()),
-            ("x".to_owned(), URL_SAFE_NO_PAD.encode(&point[1..33])),
-            ("y".to_owned(), URL_SAFE_NO_PAD.encode(&point[33..])),
-        ]));
-    }
-    Err(read(
-        "is neither an Ed25519 nor a P-256 public key".to_owned(),
-    ))
+    let bytes = std::fs::read(path)
+        .map_err(|error| Failure::usage(format!("--public-key {}: {error}", path.display())))?;
+    crate::credentials::public_key(&bytes)
+        .map_err(|why| Failure::usage(format!("--public-key {}: {why}", path.display())))
 }
 
-/// The `spki:sha256:` binding of a PEM certificate's public key, as the IAM Host matches a
-/// connection's certificate.
+/// A certificate binding: [`crate::credentials::certificate_binding`].
 fn spki_binding(path: &Path) -> Result<String, Failure> {
-    use rustls::pki_types::pem::PemObject as _;
-
-    let read = |why: &str| Failure::usage(format!("--certificate {}: {why}", path.display()));
-    let certificate = rustls::pki_types::CertificateDer::from_pem_file(path)
-        .map_err(|_| read("is not a PEM certificate"))?;
-    let identity = permguard_transport::identity_of(&certificate)
-        .ok_or_else(|| read("does not parse as an X.509 certificate"))?;
-    let digest = identity
-        .spki_sha256()
-        .ok_or_else(|| read("carries no public key"))?;
-    Ok(format!("spki:sha256:{digest}"))
+    let bytes = std::fs::read(path)
+        .map_err(|error| Failure::usage(format!("--certificate {}: {error}", path.display())))?;
+    crate::credentials::certificate_binding(&bytes)
+        .map_err(|why| Failure::usage(format!("--certificate {}: {why}", path.display())))
 }
 
 fn credentials(
@@ -326,12 +266,18 @@ fn token(
         audience,
         target,
     };
-    let source = crate::client_token::source(globals, asked, trace)?.ok_or_else(|| {
-        Failure::usage(
-            "no client is configured: --client-id with --client-secret-file, \
-                 --client-key-file or a certificate, and --iam-endpoint",
-        )
-    })?;
+    // A configured client's token, or else the person's: the session --token-file holds,
+    // exchanged at the IAM Host.
+    let source = match crate::client_token::source(globals, asked.clone(), trace)? {
+        Some(source) => source,
+        None => crate::client_token::exchange(globals, asked, trace)?.ok_or_else(|| {
+            Failure::usage(
+                "no client is configured and no session is held: --client-id with \
+                 --client-secret-file, --client-key-file or a certificate, and --iam-endpoint; \
+                 or a session from `permguard login` in --token-file",
+            )
+        })?,
+    };
     let issued = source
         .token()
         .map_err(|failure| Failure::from_client(&failure))?;

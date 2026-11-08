@@ -294,6 +294,15 @@ pub struct Globals {
     #[arg(long, global = true, value_name = "FILE")]
     pub iam_tls_ca_file: Option<PathBuf>,
 
+    /// The client certificate the IAM Host's connection presents, when it is not the planes'
+    /// [env: PERMGUARD_IAM_TLS_CERT_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub iam_tls_cert_file: Option<PathBuf>,
+
+    /// The private key of `--iam-tls-cert-file` [env: PERMGUARD_IAM_TLS_KEY_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub iam_tls_key_file: Option<PathBuf>,
+
     /// Certificate authority the endpoint's certificate is checked against (PEM).
     #[arg(
         long,
@@ -3015,7 +3024,7 @@ pub enum RolesAction {
     },
 }
 
-/// `permguard host recovery …`.
+/// `permguard iam recovery …`.
 #[derive(Debug, Subcommand)]
 pub enum RecoveryAction {
     /// The recovery waiting to be acknowledged, if any.
@@ -3073,9 +3082,10 @@ pub enum IamAction {
         #[command(subcommand)]
         action: TokensAction,
     },
-    /// Obtain an access token as the configured client and write it to a file.
+    /// Obtain an access token and write it to a file: the configured client's, or else the
+    /// person's, the session `--token-file` holds exchanged at the IAM Host.
     #[command(
-        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token"
+        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard --token-file ./alice.session iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token"
     )]
     Token {
         /// The operations, space or comma separated.
@@ -3346,7 +3356,7 @@ pub enum RoleMembersAction {
     },
 }
 
-/// `permguard host users …`.
+/// `permguard iam users …`.
 #[derive(Debug, Subcommand)]
 pub enum UsersAction {
     /// List the local users.
@@ -3487,7 +3497,7 @@ pub enum ProvidersAction {
     },
 }
 
-/// `permguard host grants …`: online administration, plus offline recovery bootstrap.
+/// `permguard iam grants …`, online; the offline recovery is `host grants bootstrap`.
 #[derive(Debug, Subcommand)]
 pub enum GrantsAction {
     /// Issue a grant through the Host listener.
