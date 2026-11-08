@@ -152,14 +152,31 @@ impl Authorization {
 
     /// Every subject whose grants `principal` acts with: itself, its roles, the roles of its
     /// issuer, and last the reserved `anonymous`, whose grants are public to everybody.
+    ///
+    /// A system role is never one of them (`2-security/8` Roles and elevation): it holds no
+    /// grants, and acts only through a token elevated to it, so a grant a role of its name held
+    /// before it became the IAM Host's is never counted.
     fn subjects_of(&self, principal: &Principal) -> Vec<Principal> {
         let mut subjects = vec![principal.clone()];
-        if let Some(directory) = &self.directory {
-            let issuer = issuer_of(principal.as_str());
-            subjects.extend(directory.subjects(principal.as_str(), issuer.as_deref()));
-        }
+        subjects.extend(self.roles_of(principal).into_iter().filter(|role| {
+            role.as_str()
+                .strip_prefix(directory::ROLE_PREFIX)
+                .is_none_or(|name| !directory::is_system_role(name))
+        }));
         subjects.push(Principal::anonymous());
         subjects
+    }
+
+    /// Every role `principal` is a member of, directly or through its provider's issuer, system
+    /// roles included.
+    fn roles_of(&self, principal: &Principal) -> Vec<Principal> {
+        self.directory
+            .as_ref()
+            .map(|directory| {
+                let issuer = issuer_of(principal.as_str());
+                directory.subjects(principal.as_str(), issuer.as_deref())
+            })
+            .unwrap_or_default()
     }
 
     /// Decides an access token's bearer by the token's grant alone: a member, whose grants are
@@ -186,9 +203,21 @@ impl Authorization {
         if !allowed(grant) {
             return Err(actor.without_grant());
         }
-        Ok(self
-            .tokens_alone
-            .then(|| context.authorization_principal().clone()))
+        let principal = context.authorization_principal();
+        if self.tokens_alone {
+            return Ok(Some(principal.clone()));
+        }
+        // `2-security/8` Roles and elevation: a system role holds no grants, so on the IAM Host,
+        // whose own Data Plane an all-in-one serves, a token elevated to one decides alone, as on
+        // a member, while its subject is one of the role's members now. Its scope and targets
+        // are what the IAM Host issued for the role, and it is checked against them above.
+        if let Some(role) = grant.role.as_deref()
+            && directory::is_system_role(role)
+            && self.holds_role(principal, role)
+        {
+            return Ok(Some(principal.clone()));
+        }
+        Ok(None)
     }
 
     /// The member's bootstrap principal (WP-12.4): on a member, where the token decides alone,
@@ -322,7 +351,7 @@ impl Authorization {
     /// issuer: whom an elevation to it is open to (`2-security/8` Roles and elevation).
     pub fn holds_role(&self, principal: &Principal, role: &str) -> bool {
         let wanted = directory::role_principal(role);
-        self.token_subjects_of(principal)
+        self.roles_of(principal)
             .iter()
             .any(|subject| subject.as_str() == wanted)
     }
@@ -440,6 +469,123 @@ mod tests {
             Credential::SanUri,
             None,
         ))
+    }
+
+    /// `2-security/8` Roles and elevation: on the IAM Host, whose own Data Plane an all-in-one
+    /// serves, a token elevated to a system role decides alone, within its scope and targets and
+    /// while its subject holds the role; any other token is decided by the grants too.
+    #[test]
+    fn a_token_elevated_to_a_system_role_decides_alone_on_the_iam_host() {
+        use crate::operations::mutation::Applying;
+        use crate::storage::volume::Volume;
+        use directory::{Change, Directory};
+        use permguard_core::authz::{TokenGrant, families};
+
+        let root = std::env::temp_dir().join(format!("pg-authz-elevated-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("grants");
+        let (directory, _) = Directory::open(&volume).expect("directory");
+        let mut op = 0;
+        let mut change = |change: Change| {
+            op += 1;
+            directory
+                .apply(&Applying::for_tests(op), change, "admin", 1, None)
+                .expect("applied");
+        };
+        for name in ["dp.01a1bc76-7028-717c-8b19-c470f894a0dd", "readers"] {
+            change(Change::CreateRole {
+                name: name.to_owned(),
+                description: String::new(),
+            });
+            change(Change::AddMember {
+                role: name.to_owned(),
+                member: "spiffe://acme/billing".to_owned(),
+            });
+        }
+        let iam_host =
+            Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory));
+        let token = |principal: &str, role: Option<&str>| {
+            Actor::Authenticated(ActorContext::of_token(
+                Principal::new(principal).expect("a principal"),
+                TokenGrant {
+                    family: families::APPLICATION.to_owned(),
+                    scope: std::iter::once(operations::DECISION_EVALUATE.to_owned()).collect(),
+                    targets: vec![Selector::parse("plane/data/*").expect("a selector")],
+                    jti: "j".to_owned(),
+                    list_uri: "u".to_owned(),
+                    list_iat: 1,
+                    list_digest: [0; 32],
+                    authority: None,
+                    role: role.map(str::to_owned),
+                },
+            ))
+        };
+        let ledger = Resource::ledger("data", "z1", "l1");
+        let elevated = token(
+            "spiffe://acme/billing",
+            Some("dp.01a1bc76-7028-717c-8b19-c470f894a0dd"),
+        );
+        assert_eq!(
+            iam_host
+                .authorize_by(&elevated, operations::DECISION_EVALUATE, &ledger)
+                .expect("the system role's token decides")
+                .as_str(),
+            "spiffe://acme/billing"
+        );
+        // Within the token only: another operation, a resource outside its targets.
+        assert!(
+            iam_host
+                .authorize(&elevated, operations::EVENT_SUBMIT, &ledger)
+                .is_err()
+        );
+        assert!(
+            iam_host
+                .authorize(
+                    &elevated,
+                    operations::DECISION_EVALUATE,
+                    &Resource::ledger("control", "z1", "l1")
+                )
+                .is_err()
+        );
+        // Not a member of the role, an operator's role with no grant, no role: the grants decide,
+        // and there are none.
+        for (who, actor) in [
+            (
+                "a stranger",
+                token(
+                    "spiffe://acme/other",
+                    Some("dp.01a1bc76-7028-717c-8b19-c470f894a0dd"),
+                ),
+            ),
+            (
+                "an operator's role",
+                token("spiffe://acme/billing", Some("readers")),
+            ),
+            ("no role", token("spiffe://acme/billing", None)),
+        ] {
+            assert!(
+                iam_host
+                    .authorize(&actor, operations::DECISION_EVALUATE, &ledger)
+                    .is_err(),
+                "{who}"
+            );
+        }
+        // Once the subject leaves the role, at once.
+        change(Change::RemoveMember {
+            role: "dp.01a1bc76-7028-717c-8b19-c470f894a0dd".to_owned(),
+            member: "spiffe://acme/billing".to_owned(),
+        });
+        assert!(
+            iam_host
+                .authorize(&elevated, operations::DECISION_EVALUATE, &ledger)
+                .is_err()
+        );
     }
 
     #[test]
@@ -754,6 +900,7 @@ mod tests {
                 list_iat: 1,
                 list_digest: [0; 32],
                 authority: None,
+                role: None,
             },
         ));
         let stranger = by(

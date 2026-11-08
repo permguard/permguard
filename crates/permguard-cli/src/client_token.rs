@@ -6,8 +6,8 @@
 //! token endpoint; a command that reaches a Data Plane sends it when no `--token-file` is given.
 //! The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by the
 //! client and what it asked for, the role it elevates to among it, and reused until a minute
-//! before it expires. Nothing here traces
-//! a secret, a key or a token: the trace names the client and the expiry.
+//! before it expires. Nothing here traces a secret, a key or a token: the trace names the client
+//! and the expiry.
 //!
 //! A person's token is the person's session exchanged at the IAM Host (RFC 8693): [`exchange`].
 

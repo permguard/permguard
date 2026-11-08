@@ -626,15 +626,20 @@ impl HostApi {
             name: name.to_owned(),
         };
         let principal = role_principal(name);
-        self.change_directory(
-            actor,
-            &(name, &delete),
-            &delete.request_id,
-            delete.expected_revision,
-            change,
-            |_| self.holds_no_grants(&principal),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(name, &delete),
+                &delete.request_id,
+                delete.expected_revision,
+                change,
+                |_| self.holds_no_grants(&principal),
+            )
+            .await?;
+        // The tokens issued under the role are `INVALID` at once, never at the next sync: a role
+        // made again under the same name never brings them back (`2-security/8`).
+        self.apply_token_statuses(&principal)?;
+        Ok(changed)
     }
 
     pub async fn add_member(
@@ -643,6 +648,18 @@ impl HostApi {
         role: &str,
         member: Member,
     ) -> Result<Changed, Refusal> {
+        // A system role's members are people and programs, each by name: a user, a provider's
+        // subject or a service account, never a whole provider or a certificate.
+        if super::elevation::is_system_role(role) && !is_assignable(&member.member) {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!(
+                    "`{role}` is a system role: its members are users, provider subjects \
+                     (oidc:<issuer>#<subject>) and service accounts, one by one"
+                ),
+            ));
+        }
         let change = Change::AddMember {
             role: role.to_owned(),
             member: member.member.clone(),
@@ -668,15 +685,20 @@ impl HostApi {
             role: role.to_owned(),
             member: member.member.clone(),
         };
-        self.change_directory(
-            actor,
-            &(role, "remove", &member),
-            &member.request_id,
-            member.expected_revision,
-            change,
-            |_| Ok(()),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(role, "remove", &member),
+                &member.request_id,
+                member.expected_revision,
+                change,
+                |_| Ok(()),
+            )
+            .await?;
+        // What the member obtained under the role is `INVALID` at once: added back, it obtains
+        // new tokens, never its old ones again (`2-security/8`).
+        self.apply_token_statuses(&member.member)?;
+        Ok(changed)
     }
 
     /// Authorizes before a password is looked at: a caller without the grant learns nothing of
@@ -915,4 +937,14 @@ pub fn is_active(summary: &UserSummary) -> bool {
 /// What [`KeyState`] reads as on the wire.
 pub fn key_state(state: KeyState) -> &'static str {
     state.as_str()
+}
+
+/// Whether `member` may be assigned a system role: a user, a provider's subject or a service
+/// account, one principal each, never an issuer standing for every subject nor a certificate.
+fn is_assignable(member: &str) -> bool {
+    member.starts_with(crate::authz::directory::USER_PREFIX)
+        || member.starts_with(crate::authz::directory::SERVICE_ACCOUNT_PREFIX)
+        || member
+            .strip_prefix("oidc:")
+            .is_some_and(|subject| subject.contains('#'))
 }

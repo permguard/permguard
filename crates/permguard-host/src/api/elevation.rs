@@ -28,7 +28,7 @@ use crate::identity::record::uuid_text;
 use crate::operations::journal::Initiator;
 
 pub use crate::authz::directory::{
-    DATA_PLANES_ROLE, MEMBER_ROLE_PREFIX, is_system_role, member_role,
+    DATA_PLANES_ROLE, MEMBER_ROLE_PREFIX, is_member_role, is_system_role, member_role,
 };
 /// What a system role's token targets when the request names none: the whole of a member's
 /// data plane, which only the member it is addressed to serves.
@@ -141,61 +141,91 @@ impl HostApi {
         })
     }
 
-    /// The system roles brought to the live members after a membership changed: what it made and
-    /// ended is logged; a failure is logged and left to the next token sync, which reconciles
-    /// again.
+    /// The system roles brought to the live members after a membership changed, and the tokens
+    /// of a role it ended `INVALID` at once: what it made and ended is logged; a failure is
+    /// logged and left to the next token sync, which reconciles again.
     pub fn member_roles_follow(&self) {
-        match self.reconcile_member_roles() {
-            Ok((made, ended)) if made.is_empty() && ended.is_empty() => {}
-            Ok((made, ended)) => tracing::info!(
-                event.name = "iam.member_roles",
-                component = super::COMPONENT,
-                made = made.join(" "),
-                ended = ended.join(" "),
-                "the members' roles follow the live members"
-            ),
-            Err(error) => tracing::warn!(
+        if self.reconcile_member_roles_logged()
+            && let Err(refusal) = self.apply_token_statuses(SYSTEM)
+        {
+            tracing::warn!(
                 event.name = "iam.member_roles_unreconciled",
                 component = super::COMPONENT,
-                error = %error,
-                "the members' roles could not follow the live members; the next token sync retries"
-            ),
+                error = ?refusal,
+                "the tokens of an ended member role could not follow; the next token sync retries"
+            );
+        }
+    }
+
+    /// [`Self::reconcile_member_roles`], logged: whether it ended a role.
+    pub(super) fn reconcile_member_roles_logged(&self) -> bool {
+        match self.reconcile_member_roles() {
+            Ok((made, ended)) if made.is_empty() && ended.is_empty() => false,
+            Ok((made, ended)) => {
+                tracing::info!(
+                    event.name = "iam.member_roles",
+                    component = super::COMPONENT,
+                    made = made.join(" "),
+                    ended = ended.join(" "),
+                    "the members' roles follow the live members"
+                );
+                !ended.is_empty()
+            }
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "iam.member_roles_unreconciled",
+                    component = super::COMPONENT,
+                    error = %error,
+                    "the members' roles could not follow the live members; the next token sync retries"
+                );
+                // Something may have been ended before the failure: the statuses follow anyway.
+                true
+            }
         }
     }
 
     /// Aligns the system roles with the live members: `dp.<member_id>` for each, `data-planes`
-    /// once there is one, and a member role whose member is gone ended. Idempotent, so it runs
-    /// after every approval and end and at every token sync, and a crash between a membership's
-    /// change and its role's leaves nothing behind. Answers the roles it made and ended.
+    /// once there is one, and a member role whose member is gone ended. Idempotent and one at a
+    /// time, so it runs after every approval and end and at every token sync, and a crash between
+    /// a membership's change and its role's leaves nothing behind. Ends come before makes, and
+    /// one role's failure never keeps the others from following. Answers the roles it made and
+    /// ended, or the first failure once every role was tried.
     pub fn reconcile_member_roles(&self) -> Result<(Vec<String>, Vec<String>), String> {
         let (Some(identities), Some(mutations)) =
             (self.identities.as_ref(), self.mutations.as_ref())
         else {
             return Ok((Vec::new(), Vec::new()));
         };
-        let mut live: BTreeMap<String, String> = self
-            .memberships
-            .as_ref()
-            .map(|service| service.store.live_members())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(record, _)| (member_role(&uuid_text(&record.member_id)), record.name))
-            .collect();
-        // A Server that runs both Planes is a member of itself.
-        if let Some(tokens) = self.tokens.as_deref() {
-            let local = tokens.local_member();
-            if tokens.is_local_member(&local)
-                && let Some(member_id) = local.strip_prefix("member:")
-            {
-                live.insert(member_role(member_id), "this Host".to_owned());
+        let _one = self
+            .reconciling
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let live = || -> BTreeMap<String, String> {
+            let mut live: BTreeMap<String, String> = self
+                .memberships
+                .as_ref()
+                .map(|service| service.store.live_members())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(record, _)| (member_role(&uuid_text(&record.member_id)), record.name))
+                .collect();
+            // A Server that runs both Planes is a member of itself.
+            if let Some(tokens) = self.tokens.as_deref() {
+                let local = tokens.local_member();
+                if tokens.is_local_member(&local)
+                    && let Some(member_id) = local.strip_prefix("member:")
+                {
+                    live.insert(member_role(member_id), "this Host".to_owned());
+                }
             }
-        }
+            live
+        };
         let held: BTreeSet<String> = identities
             .directory
             .roles()
             .into_iter()
             .map(|role| role.name)
-            .filter(|name| name.starts_with(MEMBER_ROLE_PREFIX))
+            .filter(|name| is_member_role(name))
             .collect();
         let now = self.time.now_secs();
         let apply = |change: Change| {
@@ -211,29 +241,65 @@ impl HostApi {
             .map(|_| ())
             .map_err(|error| error.to_string())
         };
-        let mut made = Vec::new();
-        if !live.is_empty() && identities.directory.role(DATA_PLANES_ROLE).is_none() {
-            apply(Change::CreateRole {
-                name: DATA_PLANES_ROLE.to_owned(),
-                description: "decide on every data plane, by elevation".to_owned(),
-            })?;
-            made.push(DATA_PLANES_ROLE.to_owned());
-        }
-        for (name, member) in &live {
-            if !held.contains(name) {
-                apply(Change::CreateRole {
-                    name: name.clone(),
-                    description: format!("decide on the data plane of {member}, by elevation"),
-                })?;
-                made.push(name.clone());
+        let mut failed = None;
+        // Ends first, each read against the live members again: a member approved since the
+        // first read keeps its role.
+        let mut ended = Vec::new();
+        let gone: Vec<String> = {
+            let first = live();
+            held.iter()
+                .filter(|name| !first.contains_key(*name))
+                .cloned()
+                .collect()
+        };
+        let now_live = live();
+        for name in gone.into_iter().filter(|name| !now_live.contains_key(name)) {
+            match apply(Change::DeleteRole { name: name.clone() }) {
+                Ok(()) => ended.push(name),
+                Err(error) => {
+                    failed.get_or_insert(format!("ending {name}: {error}"));
+                }
             }
         }
-        let mut ended = Vec::new();
-        for name in held.iter().filter(|name| !live.contains_key(*name)) {
-            apply(Change::DeleteRole { name: name.clone() })?;
-            ended.push(name.clone());
+        let mut made = Vec::new();
+        if !now_live.is_empty() && identities.directory.role(DATA_PLANES_ROLE).is_none() {
+            match apply(Change::CreateRole {
+                name: DATA_PLANES_ROLE.to_owned(),
+                description: "decide on every data plane, by elevation".to_owned(),
+            }) {
+                Ok(()) => made.push(DATA_PLANES_ROLE.to_owned()),
+                Err(error) => {
+                    failed.get_or_insert(format!("making {DATA_PLANES_ROLE}: {error}"));
+                }
+            }
         }
-        Ok((made, ended))
+        for (name, member) in &now_live {
+            if held.contains(name) {
+                continue;
+            }
+            match apply(Change::CreateRole {
+                name: name.clone(),
+                description: format!("decide on the data plane of {member}, by elevation"),
+            }) {
+                Ok(()) => made.push(name.clone()),
+                Err(error) => {
+                    failed.get_or_insert(format!("making {name}: {error}"));
+                }
+            }
+        }
+        match failed {
+            Some(error) if made.is_empty() && ended.is_empty() => Err(error),
+            Some(error) => {
+                tracing::warn!(
+                    event.name = "iam.member_roles_unreconciled",
+                    component = super::COMPONENT,
+                    error = %error,
+                    "some members' roles could not follow the live members; the next token sync retries"
+                );
+                Ok((made, ended))
+            }
+            None => Ok((made, ended)),
+        }
     }
 }
 
@@ -250,5 +316,9 @@ mod tests {
         assert!(is_system_role(DATA_PLANES_ROLE));
         assert!(!is_system_role("billing-readers"));
         assert!(!is_system_role("data-planes-extra"));
+        // An operator's role named `dp.` and anything but a member id stays the operator's.
+        assert!(!is_system_role("dp.billing"));
+        assert!(!is_system_role("dp.01A1BC76-7028-717C-8B19-C470F894A0DD"));
+        assert!(!is_system_role(&format!("{}x", member_role(id))));
     }
 }

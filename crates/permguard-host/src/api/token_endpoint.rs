@@ -747,7 +747,24 @@ impl HostApi {
             let _ = tokens
                 .registry
                 .set_status(None, |token| token.jti == jti, decided, "iam", now);
-            return Err(client_failed());
+            // Said as what failed: the role no longer held, the client's credential, or the
+            // subject token of an exchange, which has no client (RFC 8693 §2.2.2).
+            let without_role = crate::authz::tokens::IssuedToken {
+                role: None,
+                ..issued.clone()
+            };
+            let role_alone = issued.role.is_some()
+                && super::tokens::status_from_directory(&identities.directory, &without_role)
+                    .is_none_or(|status| status == crate::authz::tokens::status::VALID);
+            return Err(if role_alone {
+                TokenRefusal::InvalidScope(
+                    "the subject may not elevate to the role the scope names".to_owned(),
+                )
+            } else if subject.account.is_some() {
+                client_failed()
+            } else {
+                TokenRefusal::InvalidRequest("the subject token is not valid".to_owned())
+            });
         }
         let access_token = sign(tokens, &issued, &targets, bound.as_deref(), now)?;
         self.record_issued(&issued, &targets);

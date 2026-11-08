@@ -3951,7 +3951,7 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
         Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
     )
     .await;
-    approved_pair(&coordinator, &member).await;
+    let membership = approved_pair(&coordinator, &member).await;
     let (record, _) = coordinator
         .members
         .live_members()
@@ -3988,7 +3988,7 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
             CreateRole {
                 request_id: "made".to_owned(),
                 expected_revision: None,
-                name: "dp.someone".to_owned(),
+                name: "dp.01a1bc76-7028-717c-8b19-c470f894a0dd".to_owned(),
                 description: String::new(),
             },
         )
@@ -4061,6 +4061,29 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
         expected_revision: None,
         member: "sa:billing".to_owned(),
     };
+    // A system role's members are users, provider subjects and service accounts, one by one:
+    // never a whole provider, never a certificate.
+    for (id, member) in [
+        ("issuer", "oidc:https://login.example"),
+        ("certificate", "spiffe://acme/billing"),
+    ] {
+        let refused = api
+            .add_member(
+                &admin(),
+                &own_role,
+                Member {
+                    request_id: id.to_owned(),
+                    expected_revision: None,
+                    member: member.to_owned(),
+                },
+            )
+            .await
+            .expect_err("not assignable to a system role");
+        assert!(
+            format!("{refused:?}").contains("system role"),
+            "{member}: {refused:?}"
+        );
+    }
     api.add_member(&admin(), &own_role, assign("assign"))
         .await
         .expect("assigned");
@@ -4200,8 +4223,31 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
         "invalid_scope",
         "an operator's role names its operations"
     );
+    // D20: a service account administers by its own grants alone, never through a role.
+    assert_eq!(
+        error(&asking("role:readers identity.read", &[&audience], &[])),
+        "invalid_scope"
+    );
 
-    // Out of the role: its tokens are invalid at the next sync; the others stay valid.
+    // Every data plane: addressed as asked, so an audience is named; its whole data plane.
+    api.add_member(&admin(), DATA_PLANES_ROLE, assign("assign-every"))
+        .await
+        .expect("assigned");
+    let every = format!("role:{DATA_PLANES_ROLE}");
+    assert_eq!(error(&asking(&every, &[], &[])), "invalid_target");
+    let everywhere = api
+        .issue_token(&asking(&every, &[&audience], &[]), &basic)
+        .expect("elevated to every data plane");
+    let claims = jws_part(&everywhere.access_token, 1);
+    assert_eq!(claims["roles"], serde_json::json!([DATA_PLANES_ROLE]));
+    assert_eq!(claims["aud"], serde_json::json!([audience.clone()]));
+    assert_eq!(
+        claims["permguard_target"],
+        serde_json::json!(["plane/data/*"])
+    );
+
+    // Out of the role: its tokens are invalid at once, and stay so when it is added back; the
+    // others stay valid.
     let status_of = |token: &str| {
         let jti = jws_part(token, 1)["jti"].as_str().expect("jti").to_owned();
         api.token_list(&admin())
@@ -4215,11 +4261,62 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
     api.remove_member(&admin(), &own_role, assign("unassign"))
         .await
         .expect("removed");
-    api.sync_token_statuses("test").expect("synced");
     assert_eq!(status_of(&issued.access_token), "invalid");
     assert_eq!(status_of(&narrowed.access_token), "invalid");
     assert_eq!(status_of(&held.access_token), "valid");
+    assert_eq!(status_of(&everywhere.access_token), "valid");
     assert_eq!(error(&asking(&elevate, &[], &[])), "invalid_scope");
+    api.add_member(&admin(), &own_role, assign("assign-again"))
+        .await
+        .expect("assigned again");
+    api.sync_token_statuses("test").expect("synced");
+    assert_eq!(
+        status_of(&issued.access_token),
+        "invalid",
+        "added back, it obtains new tokens, never its old ones again"
+    );
+
+    // The member's last membership ends: its role ends with it, and the tokens issued under it
+    // are invalid at once.
+    let again = api
+        .issue_token(&asking(&elevate, &[], &[]), &basic)
+        .expect("elevated again");
+    let held_membership = api.member(&admin(), &membership).expect("the membership");
+    let planned = api
+        .plan_member_revoke(
+            &admin(),
+            &membership,
+            permguard_host::api::members::PlanMemberRevoke {
+                request_id: "plan-end".to_owned(),
+                reason: "decommissioned".to_owned(),
+                expected_revision: Some(held_membership.revision),
+            },
+        )
+        .await
+        .expect("planned");
+    api.run_member_revoke(
+        &admin(),
+        &membership,
+        permguard_host::api::members::RunMemberRevoke {
+            request_id: "run-end".to_owned(),
+            receipt: planned.receipt,
+        },
+    )
+    .await
+    .expect("revoked");
+    let roles: Vec<String> = api
+        .roles(&admin())
+        .expect("roles")
+        .roles
+        .into_iter()
+        .map(|role| role.name)
+        .collect();
+    assert!(!roles.contains(&own_role), "{roles:?}");
+    assert!(
+        roles.iter().any(|name| name == DATA_PLANES_ROLE),
+        "every data plane's role stays: {roles:?}"
+    );
+    assert_eq!(status_of(&again.access_token), "invalid");
 }
 
 /// WP-12.1: an IAM Host offers `token.status` in every invitation and keeps it in the membership

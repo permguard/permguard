@@ -360,6 +360,15 @@ pub fn verify(
             return Err(refused(8, "bound to another certificate"));
         }
     }
+    // The role the subject elevated to (RFC 9068 §2.2.3.1): the IAM Host names one at most, by
+    // its name; anything else is read as none, so the grants decide, never the role.
+    let role = match claims.get("roles").and_then(serde_json::Value::as_array) {
+        Some(roles) if roles.len() == 1 => roles[0]
+            .as_str()
+            .filter(|name| crate::authz::directory::is_role_name(name))
+            .map(str::to_owned),
+        _ => None,
+    };
     // What step 9 decides with: an application token only on ledgers its coordinator's.
     Ok(Verified {
         subject,
@@ -372,6 +381,7 @@ pub fn verify(
             list_iat: list.iat,
             list_digest: list.digest,
             authority: anchor.authority.clone(),
+            role,
         },
     })
 }
@@ -689,6 +699,19 @@ mod tests {
             (NOW - 10, [7; 32])
         );
         assert_eq!(verified.grant.authority.as_deref(), Some(AUTHORITY));
+        assert_eq!(verified.grant.role, None, "issued without a role");
+        // The role it was elevated to, one by its name; anything else is read as none.
+        for (roles, held) in [
+            (json!(["dp.m1"]), Some("dp.m1")),
+            (json!(["dp.m1", "data-planes"]), None),
+            (json!("dp.m1"), None),
+            (json!(["Not A Role"]), None),
+        ] {
+            let token = sign(&pair, header(), claims(json!({ "roles": roles })));
+            let verified =
+                verify(&token, &[anchor(&pair)], &lists(NOW + 60), None, NOW).expect("verified");
+            assert_eq!(verified.grant.role.as_deref(), held, "{roles}");
+        }
         // A group of the member addresses it too.
         let token = sign(&pair, header(), claims(json!({"aud": ["group:eu"]})));
         verify(&token, &[anchor(&pair)], &lists(NOW + 60), None, NOW).expect("addressed");

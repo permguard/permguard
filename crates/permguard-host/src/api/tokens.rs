@@ -416,7 +416,9 @@ fn view(tokens: &Tokens, token: &IssuedToken) -> TokenView {
 /// under a role is `INVALID` once the role is ended or its subject no longer one of its members.
 pub fn status_from_directory(directory: &Directory, token: &IssuedToken) -> Option<u8> {
     if let Some(role) = token.role.as_deref() {
-        let name = role.strip_prefix(crate::authz::directory::ROLE_PREFIX)?;
+        let Some(name) = role.strip_prefix(crate::authz::directory::ROLE_PREFIX) else {
+            return Some(status::INVALID);
+        };
         let issuer = crate::authz::issuer_of(&token.subject);
         let held = directory.role(name).is_some()
             && directory
@@ -470,15 +472,24 @@ impl HostApi {
         })
     }
 
-    /// Brings every live token of a service account to the status the directory decides. An
-    /// `INVALID` token stays so. Answers how many changed.
+    /// Brings the system roles to the live members, then every live token to the status the
+    /// directory decides. An `INVALID` token stays so. Answers how many changed.
     pub fn sync_token_statuses(&self, by: &str) -> Result<usize, Refusal> {
+        if self.tokens.is_none() || self.identities.is_none() {
+            return Ok(0);
+        }
+        // The system roles first, so a member gone ends its role and its tokens in this pass.
+        self.reconcile_member_roles_logged();
+        self.apply_token_statuses(by)
+    }
+
+    /// Brings every live token to the status the directory decides now, the system roles as
+    /// they are. An `INVALID` token stays so. Answers how many changed.
+    pub fn apply_token_statuses(&self, by: &str) -> Result<usize, Refusal> {
         let (Some(tokens), Some(identities)) = (self.tokens.as_deref(), self.identities.as_ref())
         else {
             return Ok(0);
         };
-        // The system roles first, so a member gone ends its role and its tokens in this pass.
-        self.member_roles_follow();
         let now = self.time.now_secs();
         let directory = &identities.directory;
         let mut changed = 0;

@@ -189,10 +189,22 @@ pub fn member_role(member_id: &str) -> String {
     format!("{MEMBER_ROLE_PREFIX}{member_id}")
 }
 
+/// Whether `name` is a member's role: `dp.` and a `member_id` in its canonical text, 8-4-4-4-12
+/// lowercase hex. A role an operator named `dp.` and anything else is the operator's own.
+pub fn is_member_role(name: &str) -> bool {
+    name.strip_prefix(MEMBER_ROLE_PREFIX).is_some_and(|id| {
+        id.len() == 36
+            && id.bytes().enumerate().all(|(at, byte)| match at {
+                8 | 13 | 18 | 23 => byte == b'-',
+                _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+            })
+    })
+}
+
 /// Whether `name` is a role the IAM Host keeps itself: an operator assigns it, never makes,
 /// describes or deletes it, and it is never a grant's principal.
 pub fn is_system_role(name: &str) -> bool {
-    name == DATA_PLANES_ROLE || name.starts_with(MEMBER_ROLE_PREFIX)
+    name == DATA_PLANES_ROLE || is_member_role(name)
 }
 
 /// `user:<name>`.

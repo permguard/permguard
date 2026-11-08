@@ -251,7 +251,7 @@ pub const SETTINGS: &[Setting] = &[
     },
     Setting {
         key: "auth.client.role",
-        description: "The role a Data Plane command's token elevates to; a member's role names the audience itself",
+        description: "The role a Data Plane command's token elevates to, narrowed to auth.client.scope; a member's role names the audience itself",
         env: "PERMGUARD_CLIENT_ROLE",
         default: "",
         read: |file| file.auth.client.role.as_deref(),

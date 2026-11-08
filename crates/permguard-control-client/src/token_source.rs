@@ -656,7 +656,8 @@ mod tests {
         );
     }
 
-    /// What a source refuses before it sends anything, and what it never shows.
+    /// RFC 8693 §2.2.1: only an access token is taken from an answer; an IAM Host from before
+    /// 0.1.25 names no type.
     #[test]
     fn only_an_access_token_is_taken_from_an_answer() {
         let answer = |issued: serde_json::Value| {
@@ -674,6 +675,7 @@ mod tests {
         assert!(!answer(serde_json::json!(7)));
     }
 
+    /// What a source refuses before it sends anything, and what it never shows.
     #[test]
     fn a_source_refuses_the_clear_an_empty_ask_and_shows_no_secret() {
         let clear = TokenSource::new(

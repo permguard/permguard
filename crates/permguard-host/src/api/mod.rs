@@ -294,6 +294,9 @@ pub struct HostApi {
     iam_host: bool,
     /// The IAM Host's tokens and status lists (WP-11.5), given once the server opened them.
     tokens: Option<Arc<tokens::Tokens>>,
+    /// One reconcile of the system roles at a time (`2-security/8` Roles and elevation): an
+    /// approval's and the periodic sync's never read the live members and the roles apart.
+    reconciling: std::sync::Mutex<()>,
     /// The status lists this Host holds as a member (WP-12.1).
     held_lists: Option<Arc<crate::membership::token_status::HeldLists>>,
 }
@@ -339,6 +342,7 @@ impl HostApi {
             iam_host: false,
             tokens: None,
             held_lists: None,
+            reconciling: std::sync::Mutex::new(()),
         }
     }
 
