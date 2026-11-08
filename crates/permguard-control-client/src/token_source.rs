@@ -13,7 +13,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use permguard_host::api::token_endpoint::{ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, TOKEN_EXCHANGE};
+use permguard_host::api::token_endpoint::{
+    ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, JWT_TOKEN_TYPE, TOKEN_EXCHANGE,
+};
 
 use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
@@ -41,7 +43,8 @@ pub enum Proof {
     /// The TLS client certificate the options carry: a `tls_client_auth` binding.
     Certificate,
     /// A person's password session or provider token, exchanged for the person's own token
-    /// (RFC 8693): the subject of the exchange, with no client of its own.
+    /// (RFC 8693): the subject of the exchange, with no client of its own, stated as an access
+    /// token when it is a session and as a JWT otherwise (§3).
     Session(Credential),
 }
 
@@ -270,7 +273,7 @@ impl TokenSource {
                 body.push_str(&format!(
                     "&subject_token={}&subject_token_type={}",
                     form(session.trim()),
-                    form(ACCESS_TOKEN_TYPE)
+                    form(subject_token_type(session))
                 ));
             }
         }
@@ -458,6 +461,20 @@ impl Signer {
     }
 }
 
+/// RFC 8693 §3: what the subject of an exchange is. A password session, which the IAM Host issued
+/// itself, is an access token; anything else is a provider's token, a JWT, which the IAM Host
+/// verifies as the sign-in does and never takes as one of its own.
+fn subject_token_type(subject: &str) -> &'static str {
+    if subject
+        .trim()
+        .starts_with(permguard_host::authz::sessions::TOKEN_PREFIX)
+    {
+        ACCESS_TOKEN_TYPE
+    } else {
+        JWT_TOKEN_TYPE
+    }
+}
+
 /// RFC 8693 §2.2.1: an exchange names what it issued, and only an access token is used as one. An
 /// IAM Host from before 0.1.25 does not name it; one that names another type is never sent on as
 /// a bearer.
@@ -539,6 +556,18 @@ mod tests {
         );
         assert_eq!(claims["aud"], "https://iam.example:5444/iam/v1/token");
         assert!(claims["exp"].as_u64() > claims["iat"].as_u64());
+    }
+
+    /// A password session is exchanged as the access token the IAM Host issued; a provider's
+    /// token as a JWT, which RFC 8693 §3 names it (an IAM Host refuses it as an access token).
+    #[test]
+    fn a_subject_token_states_its_own_type() {
+        assert_eq!(subject_token_type("pgs_abc"), ACCESS_TOKEN_TYPE);
+        assert_eq!(subject_token_type(" pgs_abc\n"), ACCESS_TOKEN_TYPE);
+        assert_eq!(
+            subject_token_type("eyJhbGciOiJFUzI1NiJ9.e30.c2ln"),
+            JWT_TOKEN_TYPE
+        );
     }
 
     /// What a source refuses before it sends anything, and what it never shows.
