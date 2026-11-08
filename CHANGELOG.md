@@ -28,7 +28,8 @@ is cut.
 - **Every member Host has its own role, `dp.<member_id>`, and `data-planes` decides on all of them.**
   The IAM Host makes a member's role when its first membership is approved and ends it with its last, reconciled with the live members at every approval, every end and every token sync; a Host that joins again is a new member with a new role.
   Elevated, a member's role is addressed to its member alone, `plane/data/*` unless the request narrows it, with `decision.evaluate` and `event.submit`; `data-planes` gives the same on the members or groups asked.
-  The system roles hold no grants: an operator assigns users and service accounts to them (`iam roles members add`) and never makes, describes or deletes them, which `/iam/v1/roles` refuses.
+  The system roles hold no grants: an operator assigns users and service accounts to them (`iam roles members add`, or a roles file's members) and never makes, describes, deletes or grants to them, which `/iam/v1/roles` and `/iam/v1/grants` refuse.
+  A role an operator made before this release named `data-planes` or `dp.…` is taken as the IAM Host's own: revoke its grants and rename it before upgrading.
   The token journal records the role under a new label, 18, in `contracts/cbor/tokens.json`.
 
 - **The command line and the client library elevate: `iam token --role` and `auth.client.role`.**
