@@ -11,7 +11,8 @@
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
 #   permguard-lab assert <profile> [phase]  what the profile must prove; the all-in-one's phases
-#                                           are `rotation` and `identity`
+#                                           are `rotation` and `identity`, the multi-data-plane's
+#                                           `tokens`, `latency`, `rotation` and `offline`
 #
 # A lab is an isolated test authority, and only a lab does what this script does: it issues every
 # certificate, grants its operator on every volume before the Host starts, and approves the exact
@@ -625,6 +626,7 @@ cmd_assert() {
         "") assert_multi_data_plane ;;
         tokens) assert_tokens ;;
         latency) assert_latency ;;
+        rotation) assert_tokens_rotation ;;
         offline) assert_tokens_offline ;;
         *) fail "no multi-data-plane phase ${phase}" ;;
         esac
@@ -740,7 +742,8 @@ kc_rotate() { # realm
 
 # The `kid` a token's header names.
 kid_of() {
-    cut -d. -f1 <<<"$1" | tr '_-' '/+' | base64 -d 2>/dev/null | jq -r '.kid' 2>/dev/null || true
+    cut -d. -f1 <<<"$1" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' |
+        base64 -d 2>/dev/null | jq -r '.kid' 2>/dev/null || true
 }
 
 assert_all_in_one_identity() {
@@ -1236,6 +1239,45 @@ assert_latency() {
     log "${count} decisions on data-plane-a with lab-client's token, decision log required: p50 ${p50} ms, p99 ${p99} ms; objective p99 ${objective} ms"
     awk -v p="${p99}" -v o="${objective}" 'BEGIN { exit !(p <= o) }' ||
         fail "p99 ${p99} ms passes the ${objective} ms objective"
+}
+
+# WP-12.6: the IAM Host rotates `iam.tokens`. Its new key is published ahead, five minutes in the
+# lab, and signs only once every member received the manifest pinning it, which the coordinator's
+# re-pin pass revises within a minute; a member keeps the replaced set as retiring, so a token
+# signed before the rotation still decides.
+assert_tokens_rotation() {
+    step "rotation: the IAM Host rotates iam.tokens, its members follow"
+    local before after epoch kid_before kid_after started
+    rm -f "${state}/tokens/data-plane-a.jwt" "${state}/tokens/data-plane-b.jwt"
+    before="${state}/tokens/before-rotation.jwt"
+    cp "$(token_for data-plane-a)" "${before}"
+    rm -f "${state}/tokens/data-plane-a.jwt"
+    kid_before="$(kid_of "$(cat "${before}")")"
+    [ -n "${kid_before}" ] && [ "${kid_before}" != null ] || fail "lab-client's token names no kid"
+    epoch="$(ring_epoch control-plane iam.tokens)"
+    # Rotating a ring is `keys.admin`, which the operator holds only for this phase's sake.
+    pg --host-endpoint "$(host_endpoint control-plane)" iam grants issue \
+        --principal "cert:sha256:$(cat "${pki}/operator.fp")" --operations keys.admin \
+        --selector host >/dev/null || fail "the operator was not granted keys.admin on the IAM Host"
+    pg --host-endpoint "$(host_endpoint control-plane)" host keys rotate iam.tokens \
+        --expected-epoch "${epoch}" >/dev/null || fail "the IAM Host did not rotate iam.tokens"
+    started=${SECONDS}
+    while :; do
+        after="$(token_for data-plane-a)"
+        kid_after="$(kid_of "$(cat "${after}")")"
+        [ "${kid_after}" != "${kid_before}" ] && break
+        rm -f "${after}"
+        [ $((SECONDS - started)) -lt 600 ] ||
+            fail "iam.tokens still signs under ${kid_before} $((SECONDS - started))s after its rotation"
+        sleep 10
+    done
+    log "iam.tokens went from epoch ${epoch} to $(ring_epoch control-plane iam.tokens): its new key signs $((SECONDS - started))s after the rotation"
+    expect_decision data-plane-a acme main permit.json true "${after}" >/dev/null
+    expect_decision data-plane-b acme main permit.json true >/dev/null
+    log "a token signed under the new key decides on data-plane-a and data-plane-b"
+    expect_decision data-plane-a acme main permit.json true "${before}" >/dev/null
+    rm -f "${before}"
+    log "the token signed under the retiring key still decides on data-plane-a"
 }
 
 # WP-12.6: with the Control Plane stopped, a member still decides by the tokens and lists it holds.
