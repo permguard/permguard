@@ -69,9 +69,9 @@ pub enum Error {
     Connect { address: String, source: io::Error },
     /// The connection was established and then failed.
     Transport { source: io::Error },
-    /// The endpoint closed the connection before the request was sent, and said nothing more:
-    /// over TLS, what a listener that requires a client certificate does when none is presented
-    /// and its alert is lost with the connection.
+    /// The endpoint closed the connection before answering, and said nothing more: over TLS, what
+    /// a listener that requires a client certificate does when none is presented and its alert is
+    /// lost with the connection.
     Closed {
         address: String,
         tls: bool,
@@ -142,15 +142,15 @@ impl fmt::Display for Error {
                 source,
             } => write!(
                 f,
-                "`{address}` closed the connection before the request was sent ({source}): a \
-                 listener that requires a client certificate does so when none is presented — \
-                 pass --tls-cert-file and --tls-key-file if it does"
+                "`{address}` closed the connection before answering ({source}): a listener that \
+                 requires a client certificate does so when none is presented — pass \
+                 --tls-cert-file and --tls-key-file if it does"
             ),
             Self::Closed {
                 address, source, ..
             } => write!(
                 f,
-                "`{address}` closed the connection before the request was sent: {source}"
+                "`{address}` closed the connection before answering: {source}"
             ),
             Self::PlaintextToTls { endpoint } => write!(
                 f,
@@ -332,7 +332,7 @@ impl Client {
         stream
             .take(crate::MAX_RESPONSE_BYTES + 1)
             .read_to_end(&mut response)
-            .map_err(|source| transport_error(&address, self.timeout, source))?;
+            .map_err(|source| read_error(&address, self.timeout, endpoint.is_tls(), source))?;
 
         if response.len() as u64 > crate::MAX_RESPONSE_BYTES {
             return Err(Error::Malformed {
@@ -411,7 +411,7 @@ impl Client {
         stream
             .take(crate::MAX_RESPONSE_BYTES + 1)
             .read_to_end(&mut response)
-            .map_err(|source| transport_error(&address, self.timeout, source))?;
+            .map_err(|source| read_error(&address, self.timeout, endpoint.is_tls(), source))?;
         if response.len() as u64 > crate::MAX_RESPONSE_BYTES {
             return Err(Error::Malformed {
                 endpoint: endpoint.to_string(),
@@ -533,6 +533,13 @@ fn handshake_error(address: &str, timeout: Duration, error: io::Error) -> Error 
             after: timeout,
         };
     }
+    if closed(&error) {
+        return Error::Closed {
+            address: address.to_owned(),
+            tls: true,
+            source: error,
+        };
+    }
 
     Error::Handshake {
         address: address.to_owned(),
@@ -581,6 +588,30 @@ fn transport_error(address: &str, timeout: Duration, source: io::Error) -> Error
     Error::Transport { source }
 }
 
+/// Whether the endpoint closed the connection under this process's feet.
+fn closed(source: &io::Error) -> bool {
+    matches!(
+        source.kind(),
+        io::ErrorKind::BrokenPipe
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
+    )
+}
+
+/// A response that could not be read. Under TLS a write buffers the request and the read sends
+/// it, so a listener that refused a missing client certificate and closed can fail the read on
+/// that send, before its alert is read: a connection closed before answering is said so.
+fn read_error(address: &str, timeout: Duration, tls: bool, source: io::Error) -> Error {
+    if closed(&source) {
+        return Error::Closed {
+            address: address.to_owned(),
+            tls,
+            source,
+        };
+    }
+    transport_error(address, timeout, source)
+}
+
 /// Writes a request, or says why it could not be.
 ///
 /// Under TLS 1.3 a server that refuses the client's certificate sends its alert and closes, which
@@ -598,12 +629,7 @@ fn send(
         Ok(()) => return Ok(()),
         Err(source) => source,
     };
-    if !matches!(
-        source.kind(),
-        io::ErrorKind::BrokenPipe
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::ConnectionAborted
-    ) {
+    if !closed(&source) {
         return Err(transport_error(address, timeout, source));
     }
     if let Err(read) = stream.read(&mut [0u8; 1]) {
@@ -820,5 +846,25 @@ mod tests {
             error.reason(),
             permguard_core::codes::client::TRANSPORT_FAILED
         );
+    }
+
+    /// The request buffered by TLS and sent by the read: the close is met there, and said the same.
+    #[test]
+    fn a_read_on_a_tls_connection_closed_before_answering_points_at_the_client_certificate() {
+        let error = read_error(
+            "iam:5444",
+            Duration::from_secs(1),
+            true,
+            io::Error::from(io::ErrorKind::BrokenPipe),
+        );
+        assert!(matches!(error, Error::Closed { tls: true, .. }), "{error}");
+        assert!(error.to_string().contains("client certificate"), "{error}");
+        let plain = read_error(
+            "iam:5444",
+            Duration::from_secs(1),
+            false,
+            io::Error::from(io::ErrorKind::ConnectionReset),
+        );
+        assert!(!plain.to_string().contains("client certificate"), "{plain}");
     }
 }
