@@ -112,6 +112,32 @@ fn decision_record_digests_match_the_vectors() {
     }
 }
 
+/// WP-12.5: a decision whose caller acted by an access token names the status list version the
+/// token was found `VALID` in, digested as a member of version 1, and reads back.
+#[test]
+fn a_decision_names_its_tokens_status_list_version() {
+    let vectors = vectors();
+    let vector = &vectors["decision_record_token_status"];
+    let read: record::Record =
+        serde_json::from_value(vector["record"].clone()).expect("a decision record");
+    assert_eq!(
+        record::digest_of(&vector["record"]).expect("digested"),
+        text(vector, "digest")
+    );
+    let record::Body::Decision(decision) = &read.body else {
+        panic!("a decision");
+    };
+    let status = decision.token_status.as_ref().expect("the list version");
+    assert_eq!(status.iat, 1_800_000_000);
+    assert!(status.digest.starts_with("sha256:"));
+    // What is read is what was digested: rendered back, the same digest.
+    assert_eq!(
+        read.digest().expect("digested"),
+        text(vector, "digest"),
+        "the member survives a round trip"
+    );
+}
+
 #[test]
 fn todays_decision_batch_is_reproduced_byte_for_byte_and_verifies() {
     let vectors = vectors();

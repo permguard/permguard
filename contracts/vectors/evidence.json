@@ -444,6 +444,118 @@
     "canonical": "{\"api\":\"events\",\"concrete_resource\":\"zone-a/ledger-1\",\"expires_at\":1800086400,\"filter_digest\":\"sha256:c97c3ba96feed61ff7065003747c71e27ebb7b6fa652a5a7309030958a85af5d\",\"frontier\":{\"covered\":{\"data-plane-7f3a\":3},\"v\":1},\"issued_key_id\":\"b2b68b13c57b775d\",\"positions\":{\"data-plane-7f3a\":{\"offset\":2,\"segment\":1}},\"version\":2}",
     "token": "v2.eyJhcGkiOiJldmVudHMiLCJjb25jcmV0ZV9yZXNvdXJjZSI6InpvbmUtYS9sZWRnZXItMSIsImV4cGlyZXNfYXQiOjE4MDAwODY0MDAsImZpbHRlcl9kaWdlc3QiOiJzaGEyNTY6Yzk3YzNiYTk2ZmVlZDYxZmY3MDY1MDAzNzQ3YzcxZTI3ZWJiN2I2ZmE2NTJhNWE3MzA5MDMwOTU4YTg1YWY1ZCIsImZyb250aWVyIjp7ImNvdmVyZWQiOnsiZGF0YS1wbGFuZS03ZjNhIjozfSwidiI6MX0sImlzc3VlZF9rZXlfaWQiOiJiMmI2OGIxM2M1N2I3NzVkIiwicG9zaXRpb25zIjp7ImRhdGEtcGxhbmUtN2YzYSI6eyJvZmZzZXQiOjIsInNlZ21lbnQiOjF9fSwidmVyc2lvbiI6Mn0.Gf_xR1xRXCbEE5oHwGVqQ1a0peIo6-zWtl3VuogaXNU"
   },
+  "decision_record_token_status": {
+    "name": "a decision whose caller acted by an access token",
+    "record": {
+      "v": 1,
+      "stream": {
+        "id": "data-plane-7f3a",
+        "instance": "01931f2c"
+      },
+      "seq": 3,
+      "prev": "sha256:94233d455159781748b0d650ff016d812b2e7695a826a18f6ecd87555d615922",
+      "kind": "decision",
+      "id": "decision-0002",
+      "at": "2026-10-05T10:00:01Z",
+      "pdp": {
+        "version": "0.1.0"
+      },
+      "store": {
+        "zone": "zone-a",
+        "ledger": "ledger-1",
+        "profile": "default",
+        "counter": 3,
+        "commit": "sha256:9505cacb7c710ed17125fcc6cb3669e8ddca6c8cd8af6a31f6b3cd64604c3098"
+      },
+      "subject": {
+        "type": "User",
+        "id": "v1:5c2e"
+      },
+      "resource": {
+        "type": "Document",
+        "id": "budget"
+      },
+      "action": {
+        "name": "read"
+      },
+      "inputs": {
+        "context": "hmac-sha256:v1:abababababababababababababababababababababababababababababababab",
+        "external": []
+      },
+      "decision": true,
+      "policies": [
+        "policy-1"
+      ],
+      "reason": {
+        "code": "permit"
+      },
+      "latency_us": 321,
+      "actor": {
+        "type": "Actor",
+        "id": "v1:9a1f"
+      },
+      "token_status": {
+        "uri": "https://iam.example/iam/v1/status-lists/0198f2aa-0000-7000-8000-000000000003",
+        "iat": 1800000000,
+        "digest": "sha256:c1559352e18229e439fabfbfb3a9abf8c5bf8eebd454a1e58806c59de40d03c5"
+      }
+    },
+    "digest": "sha256:a4b7ab673bf911bb493efd89688412c0c34a4bf56727bc17e211b045edbe57f3"
+  },
+  "event_record_token_status": {
+    "name": "an occurrence whose submitter acted by an access token",
+    "record": {
+      "v": 1,
+      "record_type": "permguard.event.record.v1",
+      "stream": {
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "data-plane-7f3a",
+          "instance": "01931f2c"
+        },
+        "zone": "zone-a",
+        "ledger": "ledger-1"
+      },
+      "seq": 1,
+      "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "event_type": "permguard.dogwood.event.v1",
+      "event_id": "evt-0001",
+      "occurrence_digest": "sha256:a608b8c9fef47d7319e3b378349931417659109005a83fcd5e900358e64a97ec",
+      "kind": "request",
+      "profile": "default",
+      "policy_partitions": [
+        "main"
+      ],
+      "commit": "sha256:9505cacb7c710ed17125fcc6cb3669e8ddca6c8cd8af6a31f6b3cd64604c3098",
+      "history_key": {
+        "pins": [
+          "subject.id"
+        ],
+        "values": [
+          "\"alice\""
+        ],
+        "digest": "sha256:ac5d7f7a91594826b35a07c15eddaa45f279197b9fa67a8c3eee096ef9caa442"
+      },
+      "occurred_at": "2026-10-05T09:59:00Z",
+      "observed_at": "2026-10-05T10:00:00Z",
+      "event": {
+        "id": "evt-0001",
+        "kind": "request",
+        "subject": {
+          "id": "alice",
+          "type": "User"
+        },
+        "occurred_at": "2026-10-05T09:59:00Z"
+      },
+      "source": "sa:billing",
+      "token_status": {
+        "uri": "https://iam.example/iam/v1/status-lists/0198f2aa-0000-7000-8000-000000000003",
+        "iat": 1800000000,
+        "digest": "sha256:c1559352e18229e439fabfbfb3a9abf8c5bf8eebd454a1e58806c59de40d03c5"
+      }
+    },
+    "digest": "sha256:0a7a9c54c4ef8c05da8ea45d134824336bb2134df87b00782de5c4dae74a0a67"
+  },
   "key_set_digest": {
     "name": "frozen by WP-0.4; the vectors live with the rest of the cryptographic profile",
     "file": "crates/permguard-objects/tests/vectors/crypto.json",

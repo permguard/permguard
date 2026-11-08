@@ -3493,6 +3493,7 @@ mod host_log {
             actor: None,
             question: None,
             descriptors: Default::default(),
+            token_status: None,
         }
     }
 
@@ -4030,6 +4031,18 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
             },
             acting("spiffe://acme/pep"),
         ),
+        // WP-12.5: a caller that acted by an access token.
+        (
+            asserting("mallory"),
+            Asker {
+                token_status: Some(permguard_core::authz::TokenStatusRef {
+                    uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                    iat: 1_800_000_000,
+                    digest: format!("sha256:{}", "ab".repeat(32)),
+                }),
+                ..acting("sa:billing")
+            },
+        ),
     ] {
         decider
             .decide_signed(&request, None, None, asker)
@@ -4050,9 +4063,10 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
         unauthenticated,
         other_subject,
         narrow,
+        tokened,
     ] = records.as_slice()
     else {
-        panic!("six decisions, six records: {records:?}");
+        panic!("seven decisions, seven records: {records:?}");
     };
     let digest = |language: &str| {
         permguard_languages::descriptor::descriptor_digest(language).expect("carried")
@@ -4119,6 +4133,28 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
         narrow["question"], pep["question"],
         "the same evaluation of another profile is another question"
     );
+    // The status list version the token was checked against, beside the actor; never the token,
+    // and nothing for a caller that presented none.
+    assert_eq!(
+        tokened["token_status"],
+        json!({
+            "uri": "https://iam.example/iam/v1/status-lists/l",
+            "iat": 1_800_000_000_u64,
+            "digest": format!("sha256:{}", "ab".repeat(32)),
+        }),
+        "{tokened}"
+    );
+    assert_eq!(tokened["actor"]["type"], json!("Actor"), "{tokened}");
+    for record in [
+        pep,
+        other_pep,
+        other_assertion,
+        unauthenticated,
+        other_subject,
+        narrow,
+    ] {
+        assert!(record.get("token_status").is_none(), "{record}");
+    }
 }
 
 /// WP-7.5c, IFACE-04: the transport hands on the principal it authorized the request as on every
@@ -4162,6 +4198,35 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
         )
         .expect("handed on");
         assert_eq!(handed.actor, None, "no rule maps it: no actor");
+        assert_eq!(handed.token_status, None);
+        // WP-12.5: an access token's bearer is handed on with the list version it was checked
+        // against; any other caller with none.
+        let tokened = Actor::Authenticated(ActorContext::of_token(
+            Principal::new("sa:billing").expect("a principal"),
+            permguard_core::authz::TokenGrant {
+                family: permguard_core::authz::families::APPLICATION.to_owned(),
+                scope: std::collections::BTreeSet::new(),
+                targets: Vec::new(),
+                jti: "j".to_owned(),
+                list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                list_iat: 7,
+                list_digest: [0xab; 32],
+                authority: None,
+            },
+        ));
+        let handed = asker(&tokened, request, None).expect("handed on");
+        assert_eq!(handed.actor.as_deref(), Some("sa:billing"));
+        let status = handed.token_status.expect("the list version");
+        assert_eq!(
+            (status.uri.as_str(), status.iat, status.digest.as_str()),
+            (
+                "https://iam.example/iam/v1/status-lists/l",
+                7,
+                format!("sha256:{}", "ab".repeat(32)).as_str()
+            )
+        );
+        let handed = asker(&authenticated, request, None).expect("handed on");
+        assert_eq!(handed.token_status, None);
     }
 }
 
@@ -4951,6 +5016,7 @@ mod signed_response {
                     audience: Some(AUDIENCE.to_owned()),
                     request_digest: None,
                     actor: None,
+                    token_status: None,
                 },
             )
             .await

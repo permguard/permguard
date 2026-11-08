@@ -745,6 +745,11 @@ mod openapi {
                 "app".to_owned(),
                 format!("sha256:{}", "d".repeat(64)),
             )])),
+            token_status: Some(permguard_core::authz::TokenStatusRef {
+                uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                iat: 1_800_000_000,
+                digest: format!("sha256:{}", "ab".repeat(32)),
+            }),
         }));
         let decision_minimal = Body::Decision(Box::new(DecisionBody {
             id: "id-3".to_owned(),
@@ -773,6 +778,7 @@ mod openapi {
             actor: None,
             question: None,
             descriptors: None,
+            token_status: None,
         }));
         let marker_minimal = Body::Marker(Box::new(MarkerBody {
             predecessor: Some(Predecessor {

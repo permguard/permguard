@@ -98,6 +98,7 @@ pub fn asker(
     if request.request_nonce.is_none() {
         return Ok(super::decide::Asker {
             actor: acting,
+            token_status: actor.token_status(),
             ..super::decide::Asker::default()
         });
     }
@@ -114,6 +115,7 @@ pub fn asker(
     }
     Ok(super::decide::Asker {
         actor: acting,
+        token_status: actor.token_status(),
         ..super::decide::Asker::of(audience, request)
     })
 }

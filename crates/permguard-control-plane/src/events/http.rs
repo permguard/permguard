@@ -965,6 +965,11 @@ mod openapi {
                 event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
                 event_id: format!("evt-{seq}"),
                 source: None,
+                token_status: Some(permguard_core::authz::TokenStatusRef {
+                    uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                    iat: 1_800_000_000,
+                    digest: format!("sha256:{}", "ab".repeat(32)),
+                }),
                 occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
                 kind: "request".to_owned(),
                 profile: "temporal".to_owned(),

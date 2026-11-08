@@ -88,6 +88,8 @@ pub struct Decided<'a> {
     pub question: Option<Value>,
     /// Each partition of the profile and its runtime's descriptor digest.
     pub descriptors: std::collections::BTreeMap<String, String>,
+    /// The status list version the caller's access token was checked against (WP-12.5).
+    pub token_status: Option<permguard_core::authz::TokenStatusRef>,
 }
 
 /// What writing one record established.
@@ -244,6 +246,7 @@ pub fn decision_body(epoch: &Epoch, commitment: &Commitment, decided: &Decided<'
             decided.question.as_ref(),
         ),
         descriptors: (!decided.descriptors.is_empty()).then(|| decided.descriptors.clone()),
+        token_status: decided.token_status.clone(),
     }))
 }
 

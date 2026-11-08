@@ -78,6 +78,10 @@ is cut.
   Every Host API call an access token allows is recorded in the access trail as `host.authz.token`, with the token's `jti`, family and operation.
   A Host running neither Plane keeps its own sign-in and first administrator, and decides a token caller within its own grants too, as the IAM Host does.
 
+- **Decision and event records name the status list version a token was checked against.**
+  A decision or an occurrence whose caller acted by an access token carries `token_status`: the `uri`, `iat` and `sha256:` digest of the status list the token was found `VALID` in, never the token.
+  It is a member of record version 1, absent for any other caller, so every record written before digests as it always did; `contracts/vectors/evidence.json` gains one vector of each.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

@@ -176,6 +176,7 @@ fn occurrence(id: u64, source: &str) -> Record {
         event_type: "permguard.dogwood.event.v1".to_owned(),
         event_id: format!("e-{id}"),
         source: Some(source.to_owned()),
+        token_status: None,
         occurrence_digest: permguard_events::occurrence_digest_of(&event).expect("a digest"),
         kind: "response".to_owned(),
         profile: "temporal".to_owned(),

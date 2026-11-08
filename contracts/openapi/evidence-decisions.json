@@ -922,6 +922,10 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "token_status": {
+            "$ref": "#/components/schemas/TokenStatusRef",
+            "description": "The status list version the caller's access token was found `VALID` in, when it acted by one (WP-12.5). Added to version 1 as a member: a record without it was written before it existed, or for a caller that presented no access token."
           }
         },
         "required": [
@@ -1593,6 +1597,33 @@
           "from"
         ],
         "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "TokenStatusRef": {
+        "type": "object",
+        "description": "The status list version an access token was found `VALID` in (iteration 02, WP-12.5): the list, never the token.",
+        "required": [
+          "uri",
+          "iat",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "The list's `uri`, the token's `status.status_list.uri`."
+          },
+          "iat": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The list token's `iat`."
+          },
+          "digest": {
+            "type": "string",
+            "description": "`sha256:` and the 64 lowercase hex characters of the SHA-256 of the list token's bytes."
+          }
+        },
         "x-grpc-message": null,
         "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
       }

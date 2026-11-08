@@ -342,6 +342,11 @@ pub struct DecisionBody {
     /// Each partition of the profile, with the descriptor digest of the runtime that evaluated it.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub descriptors: Option<std::collections::BTreeMap<String, String>>,
+    /// The status list version the caller's access token was found `VALID` in, when it acted by
+    /// one (iteration 02, WP-12.5): the list, never the token. Added to version 1 as a member,
+    /// like `outcome`: a record written before carries none and digests as it always did.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub token_status: Option<permguard_core::authz::TokenStatusRef>,
 }
 
 /// The occurrence a temporal decision was made about, and where it sits.

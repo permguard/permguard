@@ -111,6 +111,7 @@ fn record(id: &str) -> Record {
         event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
         event_id: id.to_owned(),
         source: Some(SOURCE.to_owned()),
+        token_status: None,
         occurrence_digest: permguard_events::occurrence_digest_of(&event).expect("it digests"),
         kind: "response".to_owned(),
         profile: "temporal".to_owned(),

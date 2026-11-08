@@ -170,6 +170,11 @@ pub struct Record {
     /// identify an occurrence by `event_id` alone.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source: Option<String>,
+    /// The status list version the submitter's access token was found `VALID` in, when it acted
+    /// by one (iteration 02, WP-12.5): the list, never the token. Absent from the records written
+    /// before it existed, which digest as they always did.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub token_status: Option<permguard_core::authz::TokenStatusRef>,
     /// The digest of the occurrence exactly as the caller sent it, before this plane added
     /// anything. What makes the same client retry reaching two data planes recognisable as one
     /// logical occurrence rather than two.
@@ -290,6 +295,14 @@ pub fn validate(value: &Value) -> Result<Record, RecordError> {
         if held.trim().is_empty() {
             return Err(RecordError::new(format!("`{name}` must not be empty")));
         }
+    }
+    // The list version a token was checked against names a list and its exact bytes (WP-12.5).
+    if let Some(status) = &record.token_status
+        && (status.uri.trim().is_empty() || !is_sha256(&status.digest))
+    {
+        return Err(RecordError::new(
+            "`token_status` names a list `uri` and the `sha256:` digest of its token",
+        ));
     }
     if record.seq == 0 {
         return Err(RecordError::new("an event record sequence starts at one"));
@@ -487,6 +500,7 @@ mod tests {
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: "01J8Z9".to_owned(),
             source: None,
+            token_status: None,
             occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),

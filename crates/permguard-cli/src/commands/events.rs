@@ -660,6 +660,7 @@ mod host_verify {
                     event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
                     event_id: format!("e-{seq}"),
                     source: Some("anonymous".to_owned()),
+                    token_status: None,
                     occurrence_digest: permguard_events::occurrence_digest_of(&event)
                         .expect("a digest"),
                     kind: "response".to_owned(),

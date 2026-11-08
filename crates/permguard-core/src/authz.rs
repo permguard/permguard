@@ -526,6 +526,45 @@ pub struct TokenGrant {
     pub authority: Option<String>,
 }
 
+/// The status list version an access token was found `VALID` in, as a decision or event record
+/// names it (iteration 02, WP-12.5): never the token.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TokenStatusRef {
+    /// The list's `uri`, the token's `status.status_list.uri`.
+    pub uri: String,
+    /// The list token's `iat`.
+    pub iat: u64,
+    /// `sha256:` and the hex SHA-256 of the list token's bytes.
+    pub digest: String,
+}
+
+impl TokenGrant {
+    /// The status list version this token was checked against.
+    pub fn status_ref(&self) -> TokenStatusRef {
+        TokenStatusRef {
+            uri: self.list_uri.clone(),
+            iat: self.list_iat,
+            digest: format!(
+                "sha256:{}",
+                self.list_digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            ),
+        }
+    }
+}
+
+impl Actor {
+    /// The status list version the actor's access token was checked against, when it acted by one.
+    pub fn token_status(&self) -> Option<TokenStatusRef> {
+        match self {
+            Self::Authenticated(context) => context.token().map(TokenGrant::status_ref),
+            _ => None,
+        }
+    }
+}
+
 /// The families of an access token (`2-security/8` Families).
 pub mod families {
     /// Evaluation and event submission, on a member's Data Plane tree.

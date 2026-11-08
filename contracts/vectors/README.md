@@ -5,18 +5,20 @@
 
 `evidence.json` freezes today's evidence, stream and statement formats: the bytes a deployed Permguard writes and reads.
 
-| Section           | Artifact                                                            | Reproduced by                      |
-| ----------------- | ------------------------------------------------------------------- | ---------------------------------- |
-| `decision_record` | decision record digest under `permguard.decision.v1\n`              | `permguard-decisions`              |
-| `decision_batch`  | today's decision batch: flattened JWS, protected `{alg, kid}`       | `permguard-decisions`              |
-| `input_tag`       | keyed input tag under `permguard.input.v1\n`                        | `permguard-decisions`              |
-| `event_digests`   | event record, occurrence and history digests                        | `permguard-events`                 |
-| `event_batch`     | today's event batch: compact JWS, protected `{alg, typ, kid}`       | `permguard-events`                 |
-| `merkle`          | RFC 6962 batch roots                                                | `permguard-decisions`, `-stream`   |
-| `cursor_v1`       | today's cursor and its filter digest                                | `permguard-stream`                 |
-| `cursor_v2`       | the version 2 cursor: prefix, payload, MAC, key id and expiry       | `permguard-stream`                 |
-| `pseudonym`       | today's audit pseudonym                                             | `permguard-std`                    |
-| `key_set_digest`  | a pointer to the WP-0.4 vectors in `permguard-objects`              | `permguard-objects`                |
+| Section                        | Artifact                                                           | Reproduced by                    |
+| ------------------------------ | ------------------------------------------------------------------ | -------------------------------- |
+| `decision_record`              | decision record digest under `permguard.decision.v1\n`             | `permguard-decisions`            |
+| `decision_batch`               | today's decision batch: flattened JWS, protected `{alg, kid}`      | `permguard-decisions`            |
+| `input_tag`                    | keyed input tag under `permguard.input.v1\n`                       | `permguard-decisions`            |
+| `event_digests`                | event record, occurrence and history digests                       | `permguard-events`               |
+| `event_batch`                  | today's event batch: compact JWS, protected `{alg, typ, kid}`      | `permguard-events`               |
+| `decision_record_token_status` | a decision record naming its token's status list version (WP-12.5) | `permguard-decisions`            |
+| `event_record_token_status`    | an event record naming its token's status list version (WP-12.5)   | `permguard-events`               |
+| `merkle`                       | RFC 6962 batch roots                                               | `permguard-decisions`, `-stream` |
+| `cursor_v1`                    | today's cursor and its filter digest                               | `permguard-stream`               |
+| `cursor_v2`                    | the version 2 cursor: prefix, payload, MAC, key id and expiry      | `permguard-stream`               |
+| `pseudonym`                    | today's audit pseudonym                                            | `permguard-std`                  |
+| `key_set_digest`               | a pointer to the WP-0.4 vectors in `permguard-objects`             | `permguard-objects`              |
 
 `identity.json` freezes the Host identity's records (WP-2.2): the identity document at epochs 1 and 2, the succession between them, `INIT`, its external witness and `BOOT`.
 `identity.py` computes them under the owner decisions of 2026-10-08, with the RFC 8032 section 7.1 test 1 and test 2 keys for the two epochs; `crates/permguard-host/tests/identity_vectors.rs` reproduces them.

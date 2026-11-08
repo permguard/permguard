@@ -95,6 +95,32 @@ impl permguard_core::keys::PublicSet for VectorKey {
         )])
     }
 }
+/// WP-12.5: an occurrence whose submitter acted by an access token names the status list version
+/// the token was found `VALID` in; the record validates and digests as the vector says.
+#[test]
+fn an_event_names_its_tokens_status_list_version() {
+    let vectors = vectors();
+    let vector = &vectors["event_record_token_status"];
+    assert_eq!(
+        record::digest_of(&vector["record"]).expect("digested"),
+        text(vector, "digest")
+    );
+    let read = record::validate(&vector["record"]).expect("a valid event record");
+    let status = read.token_status.as_ref().expect("the list version");
+    assert_eq!(status.iat, 1_800_000_000);
+    assert_eq!(read.source.as_deref(), Some("sa:billing"));
+    // What is read is what was digested: rendered back, the same digest.
+    assert_eq!(
+        record::digest_of(&serde_json::to_value(&read).expect("rendered")).expect("digested"),
+        text(vector, "digest"),
+        "the member survives a round trip"
+    );
+    // A member that names no list, or no digest of one, does not validate.
+    let mut broken = vector["record"].clone();
+    broken["token_status"]["digest"] = serde_json::json!("x");
+    assert!(record::validate(&broken).is_err());
+}
+
 #[test]
 fn event_digests_match_the_vectors() {
     let vectors = vectors();

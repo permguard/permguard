@@ -197,8 +197,9 @@ pub async fn evaluate(
             let (source, authorized) =
                 crate::temporal::gate(services.authorization, actor, submitter.root(), &wire)
                     .map_err(Refused::Denied)?;
+            let token_status = actor.token_status();
             submitter
-                .submit(&wire, &source, authorized.as_ref())
+                .submit(&wire, &source, token_status.as_ref(), authorized.as_ref())
                 .await
                 .map(|answered| Answer::Temporal(Box::new(answered)))
                 .map_err(Refused::Failed)

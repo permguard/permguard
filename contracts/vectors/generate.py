@@ -204,6 +204,25 @@ out["cursor_v2"] = {"name": "the version 2 cursor: the payload's RFC 8785 form, 
                     "payload": payload_v2, "canonical": p2.decode(),
                     "token": "v2." + b64(p2) + "." + b64(mac2)}
 
+# ---- token status (iteration 02, WP-12.5) ----------------------------------------------------------
+# A caller that acted by an access token: the record names the status list version the token was
+# found VALID in, never the token. A member of version 1, digested like any other.
+token_status = {"uri": "https://iam.example/iam/v1/status-lists/0198f2aa-0000-7000-8000-000000000003",
+                "iat": 1800000000, "digest": "sha256:" + hashlib.sha256(b"status list token").hexdigest()}
+ts_decision = {k: v for k, v in dec_records[1].items() if k != "retained_by_newer_producer"}
+ts_decision.update({"seq": 3, "prev": dec_digests[1], "id": "decision-0002",
+                    "actor": {"type": "Actor", "id": "v1:9a1f"}, "token_status": token_status})
+out["decision_record_token_status"] = {
+    "name": "a decision whose caller acted by an access token",
+    "record": ts_decision, "digest": domain_digest(DEC_DOMAIN, ts_decision),
+}
+ts_event = dict(ev_records[0])
+ts_event.update({"source": "sa:billing", "token_status": token_status})
+out["event_record_token_status"] = {
+    "name": "an occurrence whose submitter acted by an access token",
+    "record": ts_event, "digest": domain_digest(EV_REC, ts_event),
+}
+
 # ---- head statement -------------------------------------------------------------------------------
 # The target statement and its vectors are notp.py's (WP-7.1); today's six-field statement is retired.
 

@@ -546,6 +546,7 @@ mod event_versions {
             event_type: event_type.to_owned(),
             event_id: "evt-1".to_owned(),
             source: None,
+            token_status: None,
             occurrence_digest: occurrence_digest_of(&event).expect("it digests"),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),

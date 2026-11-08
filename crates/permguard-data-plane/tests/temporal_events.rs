@@ -3434,6 +3434,94 @@ async fn the_receipt_names_the_records_place_on_its_run_after_a_rollover() {
     );
 }
 
+/// WP-12.5: an occurrence whose submitter acted by an access token is recorded with the status
+/// list version the token was checked against, beside its source, and so is its decision; a retry
+/// under a refreshed list is the same occurrence, which keeps the first list.
+#[tokio::test]
+async fn an_occurrence_names_its_submitters_token_status() {
+    let plane = plane_built(
+        "token-status",
+        blocking(),
+        Metrics::none(),
+        true,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+    );
+    let request: permguard_languages::temporal::SubmitRequest = serde_json::from_value(submission(
+        0,
+        "Drupe::Action::Login",
+        "request",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    ))
+    .expect("a submission");
+    let status = permguard_core::authz::TokenStatusRef {
+        uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+        iat: 1_800_000_000,
+        digest: format!("sha256:{}", "cd".repeat(32)),
+    };
+    plane
+        .submitter
+        .submit(
+            &request,
+            "sa:billing",
+            Some(&status),
+            Some(&(ZONE_ID.to_owned(), LEDGER_ID.to_owned())),
+        )
+        .await
+        .expect("recorded");
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0]["source"], json!("sa:billing"));
+    assert_eq!(
+        held[0]["token_status"],
+        json!({
+            "uri": "https://iam.example/iam/v1/status-lists/l",
+            "iat": 1_800_000_000_u64,
+            "digest": format!("sha256:{}", "cd".repeat(32)),
+        }),
+        "{}",
+        held[0]
+    );
+    // Its decision names the same list version.
+    let decided = decision_records(&plane.decisions);
+    let decision = decided
+        .iter()
+        .find(|record| record["kind"] == json!("decision"))
+        .expect("the decision is recorded");
+    assert_eq!(
+        decision["token_status"], held[0]["token_status"],
+        "{decision}"
+    );
+
+    // The same occurrence again, the token checked against a fresher list: answered as the one
+    // it is, the record keeping the list it was first checked against.
+    let fresher = permguard_core::authz::TokenStatusRef {
+        iat: 1_800_000_060,
+        ..status.clone()
+    };
+    plane
+        .submitter
+        .submit(
+            &request,
+            "sa:billing",
+            Some(&fresher),
+            Some(&(ZONE_ID.to_owned(), LEDGER_ID.to_owned())),
+        )
+        .await
+        .expect("a retry is answered, never a conflict");
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the stream reads back");
+    assert_eq!(held.len(), 1, "one occurrence");
+    assert_eq!(held[0]["token_status"]["iat"], json!(1_800_000_000_u64));
+}
+
 /// WP-6.2a: a store the names resolve to that is not the one the gate authorized is refused,
 /// and nothing is recorded.
 #[tokio::test]
@@ -3452,6 +3540,7 @@ async fn a_store_changed_since_it_was_authorized_is_refused() {
         .submit(
             &request,
             "anonymous",
+            None,
             Some(&("another-zone".to_owned(), "another-ledger".to_owned())),
         )
         .await
@@ -3475,6 +3564,7 @@ async fn a_store_changed_since_it_was_authorized_is_refused() {
         .submit(
             &request,
             "anonymous",
+            None,
             Some(&(ZONE_ID.to_owned(), LEDGER_ID.to_owned())),
         )
         .await
@@ -4031,7 +4121,7 @@ async fn an_occurrence_another_origin_recorded_otherwise_is_not_decided_and_surv
         let plane = Plane { submitter, ..plane };
         plane
             .submitter
-            .submit(&login_request(1), SOURCE, None)
+            .submit(&login_request(1), SOURCE, None, None)
             .await
             .expect("decided");
 
@@ -4056,7 +4146,7 @@ async fn an_occurrence_another_origin_recorded_otherwise_is_not_decided_and_surv
         )];
         let refused = plane
             .submitter
-            .submit(&login_request(2), SOURCE, None)
+            .submit(&login_request(2), SOURCE, None, None)
             .await
             .expect_err("a quarantined occurrence is not decided");
         assert_eq!(refused.code(), "history_conflicted", "{tag}: {refused:?}");
@@ -4089,7 +4179,7 @@ async fn an_occurrence_another_origin_recorded_otherwise_is_not_decided_and_surv
         let plane = Plane { submitter, ..plane };
         let answered = plane
             .submitter
-            .submit(&login_request(3), SOURCE, None)
+            .submit(&login_request(3), SOURCE, None, None)
             .await;
         match mode {
             permguard_core::config::Consistency::SharedBounded => {
@@ -4150,7 +4240,7 @@ async fn a_conflict_only_the_window_shows_still_refuses_a_bounded_decision() {
     let plane = Plane { submitter, ..plane };
     plane
         .submitter
-        .submit(&login_request(1), SOURCE, None)
+        .submit(&login_request(1), SOURCE, None, None)
         .await
         .expect("decided");
 
@@ -4176,7 +4266,7 @@ async fn a_conflict_only_the_window_shows_still_refuses_a_bounded_decision() {
 
     let refused = plane
         .submitter
-        .submit(&login_request(2), SOURCE, None)
+        .submit(&login_request(2), SOURCE, None, None)
         .await
         .expect_err("a conflicted window is not decided");
     assert_eq!(refused.code(), "history_conflicted", "{refused:?}");

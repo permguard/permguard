@@ -121,6 +121,7 @@ fn body(seq: u64) -> Body {
         actor: None,
         question: None,
         descriptors: None,
+        token_status: None,
     }))
 }
 

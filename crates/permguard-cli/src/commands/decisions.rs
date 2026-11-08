@@ -739,6 +739,7 @@ mod host_verify {
                         actor: None,
                         question: None,
                         descriptors: None,
+                        token_status: None,
                     }))
                 };
                 let value = Record {

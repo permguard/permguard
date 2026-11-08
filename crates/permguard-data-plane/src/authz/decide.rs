@@ -458,6 +458,9 @@ pub struct TemporalDecision<'a> {
     /// The principal the submission authenticated as (IFACE-04): the source the occurrence is
     /// recorded under, never a value of the payload.
     pub actor: Option<&'a str>,
+    /// The status list version its access token was checked against, when it acted by one
+    /// (WP-12.5).
+    pub token_status: Option<&'a permguard_core::authz::TokenStatusRef>,
 }
 
 /// The half of a decider that loading needs.
@@ -967,6 +970,7 @@ impl Decider {
         // Who asked, as the transport authenticated them: the record's actor (IFACE-04), kept
         // apart from the request's `principal`, which is only what the caller asserted.
         let actor = asker.actor.clone();
+        let token_status = asker.token_status.clone();
         // Shared, never copied. The plan below runs on a blocking thread and needs the request to
         // outlive this frame; cloning it copied every evaluation's subject, resource and context
         // a second time, on top of the entity stores the contract already shares.
@@ -1262,6 +1266,7 @@ impl Decider {
                 &evaluated,
                 trace.as_ref(),
                 actor.as_deref(),
+                token_status.as_ref(),
                 started,
             )
             .await?;
@@ -1631,6 +1636,9 @@ pub struct Asker {
     /// included: what the decision record names as its actor (IFACE-04), whether or not a
     /// signature is asked for. `None` where no transport authenticated the request.
     pub actor: Option<String>,
+    /// The status list version the actor's access token was checked against, when it acted by
+    /// one: what the decision record names beside the actor (WP-12.5).
+    pub token_status: Option<permguard_core::authz::TokenStatusRef>,
 }
 
 impl Asker {
@@ -1642,6 +1650,7 @@ impl Asker {
             audience,
             request_digest: permguard_languages::attestation::request_digest(request).ok(),
             actor: None,
+            token_status: None,
         }
     }
 }
@@ -1712,6 +1721,7 @@ struct OwnedDecided {
     actor: Option<(String, String)>,
     question: serde_json::Value,
     descriptors: std::collections::BTreeMap<String, String>,
+    token_status: Option<permguard_core::authz::TokenStatusRef>,
 }
 
 /// The compiled-cache key of one partition (IFACE-03): its ledger, its commit, its name, the
@@ -1925,6 +1935,7 @@ impl OwnedDecided {
             actor: self.actor.clone(),
             question: Some(self.question.clone()),
             descriptors: self.descriptors.clone(),
+            token_status: self.token_status.clone(),
         }
     }
 }
@@ -1950,6 +1961,7 @@ impl Decider {
         evaluated: &[Evaluated],
         trace: Option<&TraceContext>,
         actor: Option<&str>,
+        token_status: Option<&permguard_core::authz::TokenStatusRef>,
         started: Instant,
     ) -> Result<Vec<Evidence>, ApiError> {
         let Some(journal) = &self.journal else {
@@ -2071,6 +2083,7 @@ impl Decider {
                     resolved.principal.as_deref(),
                 ),
                 descriptors: descriptors.clone(),
+                token_status: token_status.cloned(),
             };
 
             evidence.push(self.write(Arc::clone(journal), decided).await?);
@@ -2153,6 +2166,7 @@ impl Decider {
                 "event": at.context,
             }),
             descriptors: descriptors_of(at.head, at.profile),
+            token_status: at.token_status.cloned(),
         };
         let Some(journal) = &self.journal else {
             return Ok(());

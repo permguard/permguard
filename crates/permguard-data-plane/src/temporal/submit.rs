@@ -444,12 +444,18 @@ impl Submitter {
         self: &Arc<Self>,
         request: &SubmitRequest,
         source: &str,
+        token_status: Option<&permguard_core::authz::TokenStatusRef>,
         authorized: Option<&(String, String)>,
     ) -> Result<SubmitResponse, ApiError> {
         let started = Instant::now();
         // The decision path (TS-4), as for a stateless decision.
-        let answered =
-            permguard_core::egress::decision(self.answer(request, source, authorized)).await;
+        let answered = permguard_core::egress::decision(self.answer(
+            request,
+            source,
+            token_status,
+            authorized,
+        ))
+        .await;
         self.metrics.observe(
             &measure::SUBMISSION_SECONDS,
             &[],
@@ -463,6 +469,7 @@ impl Submitter {
         self: &Arc<Self>,
         request: &SubmitRequest,
         source: &str,
+        token_status: Option<&permguard_core::authz::TokenStatusRef>,
         authorized: Option<&(String, String)>,
     ) -> Result<SubmitResponse, ApiError> {
         // The plane's own clock on this submission, which the decision record carries: how long
@@ -586,6 +593,7 @@ impl Submitter {
                 occurrence_kind.clone(),
                 event,
                 source.to_owned(),
+                token_status.cloned(),
             );
             self.blocking
                 .run(&[], move || {
@@ -599,10 +607,20 @@ impl Submitter {
                         kind,
                         event,
                         source,
+                        token_status,
                     ) = staging;
 
                     this.stage(
-                        loaded, event_type, zone, ledger, profile, occurrence, kind, event, source,
+                        loaded,
+                        event_type,
+                        zone,
+                        ledger,
+                        profile,
+                        occurrence,
+                        kind,
+                        event,
+                        source,
+                        token_status,
                     )
                 })
                 .await
@@ -693,6 +711,10 @@ impl Submitter {
                     quarantined: (history.quarantined > 0).then_some(history.quarantined),
                 },
                 actor: Some(source),
+                // The list this submission's token was checked against: a decision made again
+                // for an occurrence a crash left undecided names the retry's list, while the
+                // occurrence keeps the first submission's (WP-12.5).
+                token_status,
             })
             .await?;
 
@@ -758,6 +780,7 @@ impl Submitter {
         occurrence_kind: String,
         event: serde_json::Value,
         source: String,
+        token_status: Option<permguard_core::authz::TokenStatusRef>,
     ) -> Result<Staged, ApiError> {
         let addressed = self.addressed(&loaded, &profile)?;
         // Every engine charges its warm histories to this plane's budget, under this zone, before
@@ -878,6 +901,7 @@ impl Submitter {
             event_type: event_type.clone(),
             event_id: occurrence.event_id.clone(),
             source: Some(source.clone()),
+            token_status,
             occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Validation,

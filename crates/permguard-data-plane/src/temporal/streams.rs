@@ -1483,6 +1483,7 @@ mod tests {
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: format!("e-{id}"),
             source: None,
+            token_status: None,
             occurrence_digest: permguard_events::occurrence_digest_of(&event).expect("a digest"),
             kind: "response".to_owned(),
             profile: "temporal".to_owned(),
