@@ -324,6 +324,11 @@ impl TokenSource {
         ) else {
             return Err(refused("the token endpoint answered no access token"));
         };
+        if !issues_an_access_token(&parsed) {
+            return Err(refused(
+                "the token endpoint issued something other than an access token",
+            ));
+        }
         Ok(Issued {
             token: Credential::new(token.as_bytes().to_vec()),
             expires_at: now().saturating_add(expires_in),
@@ -453,6 +458,15 @@ impl Signer {
     }
 }
 
+/// RFC 8693 §2.2.1: an exchange names what it issued, and only an access token is used as one. An
+/// IAM Host from before 0.1.25 does not name it; one that names another type is never sent on as
+/// a bearer.
+fn issues_an_access_token(answer: &serde_json::Value) -> bool {
+    answer
+        .get("issued_token_type")
+        .is_none_or(|issued| issued.as_str() == Some(ACCESS_TOKEN_TYPE))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -528,6 +542,23 @@ mod tests {
     }
 
     /// What a source refuses before it sends anything, and what it never shows.
+    #[test]
+    fn only_an_access_token_is_taken_from_an_answer() {
+        let answer = |issued: serde_json::Value| {
+            let mut answer = serde_json::json!({"access_token": "t", "expires_in": 60});
+            if !issued.is_null() {
+                answer["issued_token_type"] = issued;
+            }
+            issues_an_access_token(&answer)
+        };
+        assert!(answer(serde_json::Value::Null), "an IAM Host before 0.1.25");
+        assert!(answer(serde_json::json!(ACCESS_TOKEN_TYPE)));
+        assert!(!answer(serde_json::json!(
+            "urn:ietf:params:oauth:token-type:jwt"
+        )));
+        assert!(!answer(serde_json::json!(7)));
+    }
+
     #[test]
     fn a_source_refuses_the_clear_an_empty_ask_and_shows_no_secret() {
         let clear = TokenSource::new(

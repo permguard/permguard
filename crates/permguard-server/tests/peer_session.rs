@@ -3869,6 +3869,43 @@ async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
             .error(),
         "invalid_request"
     );
+    // RFC 8693 §3 and §2.2.2: a session of another IAM Host, or a provider's token where no
+    // provider is served, is not acceptable: `invalid_request`, never `invalid_grant`.
+    for (token, kind) in [
+        (
+            "pgs_anything",
+            "urn:ietf:params:oauth:token-type:access_token",
+        ),
+        ("eyJ.provider.token", "urn:ietf:params:oauth:token-type:jwt"),
+        (
+            "eyJ.provider.token",
+            "urn:ietf:params:oauth:token-type:id_token",
+        ),
+    ] {
+        let typed = TokenRequest {
+            subject_token: Some(token.to_owned()),
+            subject_token_type: Some(kind.to_owned()),
+            ..untyped.clone()
+        };
+        assert_eq!(
+            api.issue_token(&typed, &ClientProof::default())
+                .expect_err("not acceptable")
+                .error(),
+            "invalid_request",
+            "{kind}"
+        );
+    }
+    // A provider's token is never read as this IAM Host's own access token, nor the reverse.
+    let saml = TokenRequest {
+        subject_token_type: Some("urn:ietf:params:oauth:token-type:saml2".to_owned()),
+        ..untyped.clone()
+    };
+    assert_eq!(
+        api.issue_token(&saml, &ClientProof::default())
+            .expect_err("unserved type")
+            .error(),
+        "invalid_request"
+    );
     // Every token issued and every request refused is in the security trail; never a secret.
     let actions = security_actions(&coordinator);
     assert!(

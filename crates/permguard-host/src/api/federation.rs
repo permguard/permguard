@@ -15,8 +15,8 @@ use permguard_core::authz::Principal;
 
 use super::HostApi;
 use super::token_endpoint::{
-    ACCESS_TOKEN_TYPE, ClientProof, JWT_BEARER, MAX_ASSERTION_BYTES, MAX_ASSERTION_LIFETIME,
-    TokenRefusal, TokenRequest,
+    ACCESS_TOKEN_TYPE, ClientProof, ID_TOKEN_TYPE, JWT_BEARER, JWT_TOKEN_TYPE, MAX_ASSERTION_BYTES,
+    MAX_ASSERTION_LIFETIME, TokenRefusal, TokenRequest,
 };
 use super::tokens::Tokens;
 use crate::authz::credentials;
@@ -301,17 +301,26 @@ impl HostApi {
             .subject_token
             .as_deref()
             .ok_or_else(|| TokenRefusal::InvalidRequest("no subject_token".to_owned()))?;
-        // RFC 8693 §2.1: the type is stated, and the only one served is an access token, which a
-        // password session and a provider's token both are.
-        if request.subject_token_type.as_deref() != Some(ACCESS_TOKEN_TYPE) {
-            return Err(TokenRefusal::InvalidRequest(format!(
-                "subject_token_type is `{ACCESS_TOKEN_TYPE}`"
-            )));
-        }
-        let invalid = || TokenRefusal::InvalidGrant("the subject token is not valid".to_owned());
-        if let Some(signin) = &identities.signin
-            && let Some(session) = signin.session(token)
-        {
+        // RFC 8693 §3: an access token is one this IAM Host issued, its password session; a
+        // provider's token is a JWT or an ID token. The type says which is verified, never both.
+        let session = match request.subject_token_type.as_deref() {
+            Some(ACCESS_TOKEN_TYPE) => true,
+            Some(JWT_TOKEN_TYPE | ID_TOKEN_TYPE) => false,
+            _ => {
+                return Err(TokenRefusal::InvalidRequest(format!(
+                    "subject_token_type is `{ACCESS_TOKEN_TYPE}` for a session of this IAM Host, \
+                     `{JWT_TOKEN_TYPE}` or `{ID_TOKEN_TYPE}` for a provider's token"
+                )));
+            }
+        };
+        // RFC 8693 §2.2.2: a subject token not valid, or not acceptable, is `invalid_request`.
+        let invalid = || TokenRefusal::InvalidRequest("the subject token is not valid".to_owned());
+        if session {
+            let session = identities
+                .signin
+                .as_ref()
+                .and_then(|signin| signin.session(token))
+                .ok_or_else(invalid)?;
             // A session that serves only the enrollment of a second factor proves a password
             // alone, which is what the factor is there to refuse: it is exchanged for nothing.
             if session.opened == crate::authz::sessions::Opened::EnrollFactor {

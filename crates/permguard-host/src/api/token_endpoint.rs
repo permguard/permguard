@@ -34,6 +34,10 @@ pub const CLIENT_CREDENTIALS: &str = "client_credentials";
 pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 /// RFC 8693's access token type: what a subject token is.
 pub const ACCESS_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:access_token";
+/// RFC 8693 §3: a JWT, the type a provider's token is exchanged as.
+pub const JWT_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:jwt";
+/// RFC 8693 §3: an OpenID Connect ID Token, the other type a provider's token is exchanged as.
+pub const ID_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:id_token";
 /// RFC 7523's client assertion type.
 pub const JWT_BEARER: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 /// The families of a token.
@@ -109,6 +113,12 @@ pub struct TokenRequest {
     pub client_assertion: Option<String>,
     pub subject_token: Option<String>,
     pub subject_token_type: Option<String>,
+    /// RFC 8693 §2.1: what the token is for, as an absolute URI; no resource indicator is served.
+    pub resource: Vec<String>,
+    pub requested_token_type: Option<String>,
+    /// RFC 8693 delegation, which is not served: present, the request is refused.
+    pub actor_token: Option<String>,
+    pub actor_token_type: Option<String>,
 }
 
 /// Never an assertion or a subject token: whether the request holds one.
@@ -128,6 +138,9 @@ impl std::fmt::Debug for TokenRequest {
                 "subject_token",
                 &self.subject_token.as_ref().map(|_| "<set>"),
             )
+            .field("resource", &self.resource)
+            .field("requested_token_type", &self.requested_token_type)
+            .field("actor_token", &self.actor_token.as_ref().map(|_| "<set>"))
             .finish_non_exhaustive()
     }
 }
@@ -161,6 +174,9 @@ impl TokenRequest {
                 "client_assertion" => once(&mut request.client_assertion, &mut seen)?,
                 "subject_token" => once(&mut request.subject_token, &mut seen)?,
                 "subject_token_type" => once(&mut request.subject_token_type, &mut seen)?,
+                "requested_token_type" => once(&mut request.requested_token_type, &mut seen)?,
+                "actor_token" => once(&mut request.actor_token, &mut seen)?,
+                "actor_token_type" => once(&mut request.actor_token_type, &mut seen)?,
                 "client_secret" => {
                     return Err(TokenRefusal::InvalidRequest(
                         "a client secret travels in the Authorization header, client_secret_basic"
@@ -168,7 +184,8 @@ impl TokenRequest {
                     ));
                 }
                 "audience" => request.audience.push(value),
-                "target" | "resource" => request.target.push(value),
+                "target" => request.target.push(value),
+                "resource" => request.resource.push(value),
                 _ => {}
             }
         }
@@ -207,10 +224,13 @@ impl std::fmt::Debug for ClientProof {
     }
 }
 
-/// What an issued token answers (RFC 6749 §5.1).
+/// What an issued token answers (RFC 6749 §5.1), and for a token exchange the type of what was
+/// issued (RFC 8693 §2.2.1).
 #[derive(Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TokenAnswer {
     pub access_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issued_token_type: Option<String>,
     pub token_type: String,
     pub expires_in: u64,
     pub scope: String,
@@ -221,6 +241,7 @@ impl std::fmt::Debug for TokenAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenAnswer")
             .field("access_token", &"********")
+            .field("issued_token_type", &self.issued_token_type)
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
             .field("scope", &self.scope)
@@ -235,8 +256,6 @@ pub enum TokenRefusal {
     InvalidClient(String),
     /// `400`.
     InvalidRequest(String),
-    /// `400`: an exchanged subject token that is not one.
-    InvalidGrant(String),
     /// `400`: what may not be issued for the scope.
     InvalidScope(String),
     /// `400`: an audience or a target that may not be named.
@@ -254,7 +273,6 @@ impl TokenRefusal {
         match self {
             Self::InvalidClient(_) => "invalid_client",
             Self::InvalidRequest(_) => "invalid_request",
-            Self::InvalidGrant(_) => "invalid_grant",
             Self::InvalidScope(_) => "invalid_scope",
             Self::InvalidTarget(_) => "invalid_target",
             Self::UnsupportedGrantType(_) => "unsupported_grant_type",
@@ -279,7 +297,6 @@ impl TokenRefusal {
             Self::TooManyRequests(_) => "too many requests: come back after Retry-After",
             Self::InvalidClient(detail)
             | Self::InvalidRequest(detail)
-            | Self::InvalidGrant(detail)
             | Self::InvalidScope(detail)
             | Self::InvalidTarget(detail)
             | Self::UnsupportedGrantType(detail)
@@ -362,6 +379,52 @@ fn source_key(source: &str) -> String {
     }
 }
 
+/// What RFC 8693 asks of a request before anything is proved (§2.1): no delegation, an access
+/// token or nothing asked as the issued type, and a `resource` an absolute URI without fragment,
+/// answered `invalid_target` since no resource indicator is served; `audience` names a member.
+fn conforms(request: &TokenRequest) -> Result<(), TokenRefusal> {
+    if request.grant_type == TOKEN_EXCHANGE {
+        if request.actor_token.is_some() || request.actor_token_type.is_some() {
+            return Err(TokenRefusal::InvalidRequest(
+                "delegation is not served: a token exchange takes no actor_token".to_owned(),
+            ));
+        }
+        if let Some(asked) = request.requested_token_type.as_deref()
+            && asked != ACCESS_TOKEN_TYPE
+        {
+            return Err(TokenRefusal::InvalidRequest(format!(
+                "requested_token_type is `{ACCESS_TOKEN_TYPE}`, the only type issued"
+            )));
+        }
+    }
+    if let Some(resource) = request.resource.iter().find(|uri| !is_absolute_uri(uri)) {
+        return Err(TokenRefusal::InvalidRequest(format!(
+            "`{}` is not an absolute URI without a fragment",
+            resource.chars().take(256).collect::<String>()
+        )));
+    }
+    if !request.resource.is_empty() {
+        return Err(TokenRefusal::InvalidTarget(
+            "no resource indicator is served: name the member as audience, member:<member_id>"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// RFC 3986 §4.3: a scheme, `:`, and the rest, with no fragment; never a space or a control.
+fn is_absolute_uri(text: &str) -> bool {
+    let Some((scheme, rest)) = text.split_once(':') else {
+        return false;
+    };
+    let mut letters = scheme.chars();
+    letters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && letters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !rest.is_empty()
+        && !text.contains('#')
+        && !text.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
 /// Lowercase hex, two characters a byte.
 fn decode_hex(hex: &str) -> Option<Vec<u8>> {
     hex.len()
@@ -441,6 +504,10 @@ impl HostApi {
             WhenFull::Admit,
             now,
         )?;
+        if let Err(refusal) = conforms(request) {
+            self.record_refusal(&claimed, &refusal);
+            return Err(refusal);
+        }
         let subject = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS => self.authenticate_client(tokens, request, proof, now),
             TOKEN_EXCHANGE => self.exchanged_subject(request),
@@ -540,9 +607,13 @@ impl HostApi {
             expires_at = expires_at.min(by);
         }
         if expires_at <= now {
-            return Err(TokenRefusal::InvalidGrant(
-                "the credential has expired".to_owned(),
-            ));
+            // An expired credential fails the client's proof; an expired subject token is not
+            // acceptable (RFC 8693 §2.2.2).
+            return Err(if subject.account.is_some() {
+                client_failed()
+            } else {
+                TokenRefusal::InvalidRequest("the subject token has expired".to_owned())
+            });
         }
         let audience = self.checked_audience(request, family)?;
         let denied = || {
@@ -701,6 +772,8 @@ impl HostApi {
         self.record_issued(&issued, &targets);
         Ok(TokenAnswer {
             access_token,
+            issued_token_type: (request.grant_type == TOKEN_EXCHANGE)
+                .then(|| ACCESS_TOKEN_TYPE.to_owned()),
             token_type: "Bearer".to_owned(),
             expires_in: expires_at - now,
             scope: scope_text,
@@ -920,6 +993,108 @@ mod tests {
         assert_eq!(read.target, vec!["plane/data/*"]);
     }
 
+    fn form(pairs: &[(&str, &str)]) -> TokenRequest {
+        TokenRequest::from_form(
+            pairs
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+        )
+        .expect("read")
+    }
+
+    /// RFC 8693 §2.1: `resource` is its own parameter, never a target; delegation and the asked
+    /// type are read, so they can be answered.
+    #[test]
+    fn rfc_8693_parameters_are_read_apart() {
+        let read = form(&[
+            ("grant_type", TOKEN_EXCHANGE),
+            ("resource", "https://backend.example.com/api"),
+            ("target", "plane/data/*"),
+            ("requested_token_type", ACCESS_TOKEN_TYPE),
+            ("actor_token", "eyJ.actor.token"),
+            ("actor_token_type", JWT_TOKEN_TYPE),
+        ]);
+        assert_eq!(read.resource, vec!["https://backend.example.com/api"]);
+        assert_eq!(read.target, vec!["plane/data/*"]);
+        assert_eq!(
+            read.requested_token_type.as_deref(),
+            Some(ACCESS_TOKEN_TYPE)
+        );
+        assert!(read.actor_token.is_some() && read.actor_token_type.is_some());
+        assert!(!format!("{read:?}").contains("eyJ.actor.token"));
+    }
+
+    /// RFC 8693 §2.1 and §2.2.2, before anything is proved: no delegation, only an access token
+    /// as the issued type, a `resource` an absolute URI without fragment and then not served.
+    #[test]
+    fn a_request_rfc_8693_does_not_allow_is_refused_by_its_rule() {
+        let exchange = |extra: &[(&str, &str)]| {
+            let mut pairs = vec![("grant_type", TOKEN_EXCHANGE)];
+            pairs.extend_from_slice(extra);
+            conforms(&form(&pairs))
+        };
+        let error = |result: Result<(), TokenRefusal>| result.expect_err("refused").error();
+        assert!(exchange(&[]).is_ok());
+        assert!(exchange(&[("requested_token_type", ACCESS_TOKEN_TYPE)]).is_ok());
+        for refused in [
+            vec![("actor_token", "a"), ("actor_token_type", JWT_TOKEN_TYPE)],
+            vec![("actor_token", "a")],
+            vec![("actor_token_type", JWT_TOKEN_TYPE)],
+            vec![("requested_token_type", JWT_TOKEN_TYPE)],
+            vec![("requested_token_type", ID_TOKEN_TYPE)],
+            vec![("resource", "/relative/api")],
+            vec![("resource", "https://backend.example.com/api#part")],
+            vec![("resource", "https://backend example.com")],
+            vec![("resource", "1https://backend.example.com")],
+        ] {
+            assert_eq!(error(exchange(&refused)), "invalid_request", "{refused:?}");
+        }
+        assert_eq!(
+            error(exchange(&[(
+                "resource",
+                "https://backend.example.com/api?x=1"
+            )])),
+            "invalid_target"
+        );
+        assert_eq!(
+            error(exchange(&[("resource", "urn:example:cooperation-context")])),
+            "invalid_target"
+        );
+        // RFC 8693's own parameters are a token exchange's; `resource` is any grant's.
+        let credentials = |extra: &[(&str, &str)]| {
+            let mut pairs = vec![("grant_type", CLIENT_CREDENTIALS)];
+            pairs.extend_from_slice(extra);
+            conforms(&form(&pairs))
+        };
+        assert!(credentials(&[("actor_token", "a")]).is_ok());
+        assert_eq!(
+            error(credentials(&[("resource", "https://backend.example.com")])),
+            "invalid_target"
+        );
+    }
+
+    /// RFC 8693 §2.2.1: an exchange's answer names what it issued; a client credentials answer is
+    /// RFC 6749's alone.
+    #[test]
+    fn an_exchange_answer_names_the_issued_token_type() {
+        let answer = |issued: Option<&str>| {
+            serde_json::to_value(TokenAnswer {
+                access_token: "t".to_owned(),
+                issued_token_type: issued.map(str::to_owned),
+                token_type: "Bearer".to_owned(),
+                expires_in: 60,
+                scope: "decision.evaluate".to_owned(),
+            })
+            .expect("json")
+        };
+        assert_eq!(
+            answer(Some(ACCESS_TOKEN_TYPE))["issued_token_type"],
+            ACCESS_TOKEN_TYPE
+        );
+        assert!(answer(None).get("issued_token_type").is_none());
+    }
+
     #[test]
     fn every_refusal_is_its_rfc_6749_error_and_status() {
         for (refusal, error, status) in [
@@ -992,6 +1167,7 @@ mod tests {
     fn an_answer_never_prints_its_token() {
         let answer = TokenAnswer {
             access_token: "eyJhbGciOiJFZERTQSJ9.secret.part".to_owned(),
+            issued_token_type: Some(ACCESS_TOKEN_TYPE.to_owned()),
             token_type: "Bearer".to_owned(),
             expires_in: 3_600,
             scope: "decision.evaluate".to_owned(),
