@@ -61,7 +61,8 @@ async fn grant(api: &HostApi, request_id: &str) -> Result<crate::api::grants::Cr
             expected_revision: None,
             principal: format!("spiffe://acme/{request_id}"),
             operations: vec![operations::CATALOG_READ.to_owned()],
-            selector: Selector::under(Resource::host()).to_string(),
+            // A coherent grant (WP-11.6): the catalog is read under the Control Plane.
+            selector: Selector::under(Resource::plane("control")).to_string(),
             resource_types: vec!["*".to_owned()],
             constraints: Default::default(),
             expires_at: None,

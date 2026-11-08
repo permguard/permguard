@@ -395,6 +395,41 @@ impl fmt::Display for Selector {
     }
 }
 
+/// Whether a grant of `operation` on `selector` can ever allow anything: the selector contains at
+/// least one resource of the kinds the operation applies to (iteration 02, `2-security/6` Grant
+/// coherence). An unregistered operation fits nothing.
+pub fn operation_fits(operation: &str, selector: &Selector) -> bool {
+    use operations as op;
+    let prefix = selector.prefix();
+    let host = matches!(prefix, Resource::Host);
+    let member = matches!(prefix, Resource::Member { .. })
+        || (matches!(prefix, Resource::Members) && selector.covers_descendants());
+    let plane = |wanted: Option<&str>| match prefix.plane_id() {
+        Some(plane) => wanted.is_none_or(|wanted| wanted == plane),
+        None => false,
+    };
+    match operation {
+        op::AUTHZ_ADMIN => host,
+        op::IDENTITY_READ
+        | op::IDENTITY_ADMIN
+        | op::KEYS_ADMIN
+        | op::MEMBERSHIP_READ
+        | op::MEMBERSHIP_ADMIN
+        | op::CONFIG_READ
+        | op::LIFECYCLE_READ
+        | op::BACKUP_READ
+        | op::BACKUP_MANAGE => host || member,
+        // A Plane's rings are read under it, a key bundle's resource a Plane's (WP-3.4).
+        op::KEYS_READ | op::AUDIT_READ | op::STREAMS_READ => host || member || plane(None),
+        op::GC_MANAGE => member || plane(None),
+        op::CATALOG_READ | op::CATALOG_WRITE | op::POLICY_PUSH | op::EVIDENCE_READ => {
+            plane(Some("control"))
+        }
+        op::DECISION_EVALUATE | op::EVENT_SUBMIT => plane(Some("data")),
+        _ => false,
+    }
+}
+
 /// The longest principal, in bytes.
 pub const MAX_PRINCIPAL_BYTES: usize = 512;
 
@@ -918,6 +953,59 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// WP-11.6, `2-security/6` Grant coherence: each operation fits the selectors that contain a
+    /// resource it applies to, and no other.
+    #[test]
+    fn a_grant_fits_only_where_its_operation_applies() {
+        let fits = |operation: &str, selector: &str| {
+            operation_fits(operation, &Selector::parse(selector).expect("a selector"))
+        };
+        for (operation, fitting, not) in [
+            (
+                operations::AUTHZ_ADMIN,
+                vec!["host", "host/*"],
+                vec!["plane/data/*", "member/*"],
+            ),
+            (
+                operations::IDENTITY_READ,
+                vec![
+                    "host",
+                    "member/*",
+                    "member/0198f2aa-0000-7000-8000-000000000001",
+                ],
+                vec!["plane/control/*", "member"],
+            ),
+            (
+                operations::AUDIT_READ,
+                vec!["host", "plane/data/*", "plane/control/zone/z", "member/*"],
+                vec!["member"],
+            ),
+            (
+                operations::GC_MANAGE,
+                vec!["plane/control/*", "member/*"],
+                vec!["host"],
+            ),
+            (
+                operations::CATALOG_READ,
+                vec!["plane/control/*", "plane/control/zone/billing/ledger/l"],
+                vec!["plane/data/*", "host"],
+            ),
+            (
+                operations::DECISION_EVALUATE,
+                vec!["plane/data/*", "plane/data/zone/billing/*"],
+                vec!["plane/control/*", "host/*", "member/*"],
+            ),
+        ] {
+            for selector in fitting {
+                assert!(fits(operation, selector), "{operation} on {selector}");
+            }
+            for selector in not {
+                assert!(!fits(operation, selector), "{operation} on {selector}");
+            }
+        }
+        assert!(!fits("nothing.registered", "host"));
+    }
 
     /// WP-6.3c: the evidence reads' operation is registered, so a grant naming it is accepted at
     /// issue and loaded.

@@ -589,6 +589,12 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "host.INVALID_SELECTOR": {
+      "code": "invalid_selector",
+      "contract": "7-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
     "host.MEMBER_NAME_TAKEN": {
       "code": "member_name_taken",
       "contract": "7-contracts/8-contract-host-api.md",

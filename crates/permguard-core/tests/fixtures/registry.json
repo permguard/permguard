@@ -269,6 +269,7 @@
     "host.LEASE_EXPIRED": "lease_expired",
     "host.CLONE_SUSPECTED": "clone_suspected",
     "host.MEMBERSHIP_HELD": "membership_held",
+    "host.INVALID_SELECTOR": "invalid_selector",
     "host.MEMBER_NAME_TAKEN": "member_name_taken",
     "host.MEMBER_RECORD_CONFLICT": "member_record_conflict",
     "host.TASK_BUSY": "task_busy",

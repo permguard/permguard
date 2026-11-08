@@ -51,6 +51,10 @@ is cut.
   Lifetimes by family and profile, `cnf` binding an administration token to the client's certificate (required under `regulated`), rate limits per client and source (`429 slow_down`), RFC 6749 errors that never name the grant missing, `no-store`.
   `GET /iam/v1/keys` publishes the token keys and `GET /.well-known/oauth-authorization-server` the metadata (RFC 8414); `Authorization: Basic` is read by the token endpoint alone.
 
+- **Grant coherence.**
+  A grant created over the Host API is refused whole, `invalid_selector`, when one of its operations applies to nothing its selector contains: `decision.evaluate` on `host/*`, `authz.admin` on a Plane, `catalog.read` on `plane/data/*`.
+  The rules are `2-security/6` Grant coherence: `authz.admin` on the Host; a member's per-Host operations on the Host and on `member/<member_id>`; `keys.read`, `audit.read` and `streams.read` also on the Planes; the catalog, policy and evidence operations under `plane/control`; `decision.evaluate` and `event.submit` under `plane/data`.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

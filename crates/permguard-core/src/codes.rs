@@ -506,6 +506,8 @@ pub mod host {
     pub const MEMBER_RECORD_CONFLICT: &str = "member_record_conflict";
     /// The task already holds as many open sessions as its signed `max_concurrency`: no lease until one closes (WP-4.4).
     pub const TASK_BUSY: &str = "task_busy";
+    /// A grant whose selector contains no resource one of its operations applies to (iteration 02, WP-11.6, `2-security/6` Grant coherence).
+    pub const INVALID_SELECTOR: &str = "invalid_selector";
     /// A task message over its task's signed `max_rate_per_minute`: refused, the session kept (WP-4.4).
     pub const RATE_LIMITED: &str = "rate_limited";
     /// A progress report whose `report_seq` is not above the one the coordinator holds: refused, the session kept (WP-4.4).
@@ -868,6 +870,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::MEMBER_NAME_TAKEN,
         host::MEMBER_RECORD_CONFLICT,
         host::TASK_BUSY,
+        host::INVALID_SELECTOR,
         host::RATE_LIMITED,
         host::REPORT_OUT_OF_ORDER,
         host::WATCH_OVERFLOW,

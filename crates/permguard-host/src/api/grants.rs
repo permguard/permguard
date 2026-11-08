@@ -182,6 +182,7 @@ impl HostApi {
         let admitted = self.admit(actor, operations::AUTHZ_ADMIN)?;
         let store = self.store()?;
         bounded(&create)?;
+        coherent(&create)?;
         let mutation = Mutation {
             request_id: create.request_id.clone(),
             expected_revision: create.expected_revision,
@@ -428,6 +429,33 @@ pub const MAX_CONSTRAINTS: usize = 32;
 pub const MAX_CONSTRAINT_BYTES: usize = 256;
 
 /// Refuses a create whose lists are over their bounds.
+/// Every operation of a grant applies to something its selector contains (WP-11.6): a grant that
+/// could never allow anything is refused, `invalid_selector`, naming the first operation that
+/// does not fit.
+fn coherent(create: &CreateGrant) -> Result<(), Refusal> {
+    // A selector that does not read is refused by the store, as it always was.
+    let Ok(selector) = permguard_core::authz::Selector::parse(&create.selector) else {
+        return Ok(());
+    };
+    // An operation nobody registered is the store's to refuse, `invalid_argument`, as before.
+    match create
+        .operations
+        .iter()
+        .filter(|operation| operations::ALL.contains(&operation.as_str()))
+        .find(|operation| !permguard_core::authz::operation_fits(operation, &selector))
+    {
+        Some(operation) => Err(Refusal::new(
+            ErrorClass::Validation,
+            codes::host::INVALID_SELECTOR,
+            format!(
+                "`{operation}` applies to nothing `{}` contains: see the grant coherence rules",
+                create.selector
+            ),
+        )),
+        None => Ok(()),
+    }
+}
+
 fn bounded(create: &CreateGrant) -> Result<(), Refusal> {
     if create.operations.len() > MAX_OPERATIONS {
         return Err(invalid(format!(
@@ -633,6 +661,18 @@ mod tests {
         let mut when = create("r3", "spiffe://acme/alice");
         when.expires_at = Some("yesterday".to_owned());
         assert!(api.create_grant(&admin(), when).await.is_err());
+        // WP-11.6: a grant whose operation applies to nothing its selector contains.
+        let mut incoherent = create("r4", "spiffe://acme/alice");
+        incoherent.operations = vec![operations::DECISION_EVALUATE.to_owned()];
+        incoherent.selector = "host/*".to_owned();
+        let refused = api
+            .create_grant(&admin(), incoherent)
+            .await
+            .expect_err("incoherent");
+        assert_eq!(
+            refused.error().expect("refusal").code(),
+            codes::host::INVALID_SELECTOR
+        );
         let mut no_id = create("", "spiffe://acme/alice");
         no_id.request_id = String::new();
         let refused = api
