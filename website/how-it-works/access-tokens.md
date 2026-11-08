@@ -87,9 +87,10 @@ A token without a role stays served, within everything the subject holds: elevat
 | any other        | by an operator, `permguard iam roles create`                  | the role's own grants, for the operations asked                    | as asked                          |
 
 The IAM Host keeps the system roles, `dp.<member_id>` and `data-planes`, in step with its live members: a member's role ends with its last membership, and a Host that joins again is a new member with a new role, so no assignment passes to it.
-They hold no grants, so a member of one gains nothing until it elevates; an operator assigns users and service accounts to them and never makes, describes or deletes them.
+They hold no grants, so a member of one gains nothing until it elevates; an operator assigns users, provider subjects and service accounts to them, one by one, and never makes, describes, deletes or grants to them.
 A service account elevates to decide only: administration stays its own grants'.
-A token issued under a role names it in its `roles` claim (RFC 9068), the audit's `iam.token.issued` records it, and it is refused once the role ends or its subject leaves it, at the IAM Host's next directory sync.
+A token issued under a role names it in its `roles` claim (RFC 9068), the audit's `iam.token.issued` records it, and it is refused once the role ends or its subject leaves it: `INVALID` at once on the IAM Host, and on each member once it holds the list that says so.
+An all-in-one's own Data Plane decides a token elevated to a system role as a member does, by the token alone, while its subject holds the role.
 
 ```sh
 # The operator assigns the service account to the member's role.
@@ -108,7 +109,7 @@ permguard --data-endpoint https://data-plane.example:7443 \
   check -f request.json --zone <zone-id> --ledger <ledger-id>
 ```
 
-The operations beside a role narrow it, `--scope decision.evaluate`; `data-planes` and a role an operator made need the audience, and the latter the operations, as without a role.
+The operations beside a role narrow it, `--scope decision.evaluate`; `data-planes` needs the audience, and a role an operator made the audience, the operations and the targets, as without a role.
 A program asks the same through the client library:
 
 ```rust
@@ -127,8 +128,8 @@ let token = source.token()?; // renewed a minute before it expires
 | Parameter                                  | Served                                                                                                                                   |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `subject_token_type`                       | `urn:ietf:params:oauth:token-type:access_token` for a session of this IAM Host; `…:jwt` or `…:id_token` for an identity provider's token |
-| `requested_token_type`                     | absent or `urn:ietf:params:oauth:token-type:access_token`; any other type is `invalid_request`                                           |
-| `actor_token`, `actor_token_type`          | refused `invalid_request`: delegation is not served                                                                                      |
+| `requested_token_type`                     | on a token exchange, absent or `urn:ietf:params:oauth:token-type:access_token`; any other type is `invalid_request`                      |
+| `actor_token`, `actor_token_type`          | on a token exchange, refused `invalid_request`: delegation is not served                                                                 |
 | `resource`                                 | an absolute URI without fragment, else `invalid_request`; refused `invalid_target`, since no resource indicator is served                |
 | `scope`                                    | the operations, and at most one `role:<name>` to elevate to                                                                              |
 | `audience`, `target`, `requested_lifetime` | the members or groups the token is for; `target` and `requested_lifetime` are Permguard's own parameters, which RFC 8693 leaves room for |
