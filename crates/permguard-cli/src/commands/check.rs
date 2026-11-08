@@ -84,13 +84,17 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
 
     let client = pdp::client(
         &target.endpoint,
-        &target::tls(globals, &store, &trace)?,
+        &crate::client_token::data_plane_tls(globals, &store, &trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;
-    let answer = client
-        .evaluate(&payload)
-        .map_err(|failure| Failure::from_client(&failure))?;
+    let answer = client.evaluate(&payload).map_err(|failure| {
+        // A token the plane refused is not kept for the next command.
+        if failure.class == "unauthenticated" && globals.token_file.is_none() {
+            crate::client_token::forget(globals, &store);
+        }
+        Failure::from_client(&failure)
+    })?;
 
     // Inside a checkout the policies a plane cites can be named the way `test` names them: by
     // the alias their author wrote, read from the head this workspace tracks. Anywhere else the
@@ -238,6 +242,11 @@ mod tests {
             host_endpoint: None,
             volume: None,
             token_file: None,
+            client_id: None,
+            client_secret_file: None,
+            client_key_file: None,
+            iam_endpoint: None,
+            iam_tls_ca_file: None,
             tls_ca_file: None,
             tls_cert_file: None,
             tls_key_file: None,

@@ -38,6 +38,7 @@ use permguard_host::api::{CreateGrant, Grants, PlanRevoke, Planned, Revoked, Run
 
 use crate::catalog::Failure;
 
+mod accounts;
 mod directory;
 mod ops;
 use crate::endpoint::Endpoint;
@@ -46,6 +47,7 @@ use crate::host_proto as map;
 use crate::host_v1 as proto;
 use crate::http::Client;
 use crate::tls::TlsOptions;
+pub use accounts::Accounts;
 pub use directory::Directory;
 pub use ops::Operations;
 
@@ -78,7 +80,7 @@ impl Change {
 }
 
 /// What the Host listener answers, whichever transport asked.
-pub trait Host: Operations + Directory {
+pub trait Host: Operations + Directory + Accounts {
     /// `GET /host/v1/status`, `OperationsService.GetStatus`.
     fn status(&self) -> Result<StatusView, Failure>;
 

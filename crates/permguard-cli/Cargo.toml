@@ -43,6 +43,11 @@ permguard-notp.workspace = true
 permguard-objects.workspace = true
 permguard-languages.workspace = true
 permguard-stream.workspace = true
+# A certificate's SPKI digest, computed as the server computes a connection's (TC-6).
+permguard-transport.workspace = true
+# Reads a PEM public key or certificate, and names the client's token cache (TC-6, TC-7).
+ring.workspace = true
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
@@ -59,9 +64,7 @@ pkcs11 = ["permguard-server/pkcs11"]
 [dev-dependencies]
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).
 axum.workspace = true
-permguard-transport.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 base64.workspace = true
 rcgen.workspace = true
-ring.workspace = true

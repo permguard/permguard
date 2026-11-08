@@ -1984,7 +1984,7 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
         let principal = format!("spiffe://acme/{scheme}-billing");
 
         let issued = call(&[
-            "host",
+            "iam",
             "grants",
             "issue",
             "--principal",
@@ -2001,7 +2001,7 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
         assert_eq!(issued["grant"]["status"], "active", "{scheme}: {issued}");
         assert_eq!(issued["grant"]["resource_types"], serde_json::json!(["*"]));
         assert!(issued["receipt"]["operation_id"].is_string(), "{scheme}");
-        let listed = call(&["host", "grants", "list", "--principal", &principal]);
+        let listed = call(&["iam", "grants", "list", "--principal", &principal]);
         assert_eq!(
             listed["grants"]
                 .as_array()
@@ -2016,7 +2016,7 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
         // A two-step revocation from a private plan file; the grant is then revoked, terminally.
         let plan_file = root.join(format!("{scheme}-grant-revoke.json"));
         let planned = call(&[
-            "host",
+            "iam",
             "grants",
             "revoke",
             "plan",
@@ -2041,7 +2041,7 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
             );
         }
         call(&[
-            "host",
+            "iam",
             "grants",
             "revoke",
             "run",
@@ -2049,7 +2049,7 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
             "--confirm-file",
             plan_file.to_str().expect("UTF-8"),
         ]);
-        let after = call(&["host", "grants", "list", "--principal", &principal]);
+        let after = call(&["iam", "grants", "list", "--principal", &principal]);
         assert_eq!(after["grants"][0]["status"], "revoked", "{scheme}: {after}");
         assert!(after["revision"].as_u64() > listed["revision"].as_u64());
 

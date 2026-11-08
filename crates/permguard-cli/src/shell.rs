@@ -39,7 +39,7 @@
 
 use std::process::ExitCode;
 
-use crate::args::{Cli, Command, GrantsAction, HostAction, IdentityAction};
+use crate::args::{Cli, Command, HostAction, IdentityAction};
 use crate::commands::catalog::{CatalogAction, catalog_command};
 use crate::commands::config::config_command;
 use crate::commands::inspect::inspect_command;
@@ -274,6 +274,7 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
             server_config,
             action,
         } => commands::host::host_command(&globals, server_config.as_deref(), action, &trace),
+        Command::Iam { action } => commands::iam::iam_command(&globals, action, &trace),
         Command::Restore {
             server_config,
             action,
@@ -436,20 +437,15 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Password { .. } => ("password", Class::Local),
         Command::Factor { .. } => ("factor", Class::Local),
         Command::Setup { .. } => ("setup", Class::Local),
+        Command::Iam { .. } => ("iam", Class::Host),
         Command::Host { action, .. } => {
             let class = match action {
                 HostAction::Identity {
                     action: IdentityAction::Provision { .. } | IdentityAction::Reset { .. },
                 }
-                | HostAction::Grants {
-                    action: GrantsAction::Bootstrap { .. },
-                }
-                | HostAction::Users {
-                    action: crate::args::UsersAction::Bootstrap { .. },
-                }
-                | HostAction::Recovery {
-                    action: crate::args::RecoveryAction::Start { .. },
-                }
+                | HostAction::Grants { .. }
+                | HostAction::Users { .. }
+                | HostAction::Recovery { .. }
                 | HostAction::Holds { .. } => Class::Volume,
                 HostAction::Identity {
                     action: IdentityAction::Pin { .. },
@@ -457,11 +453,6 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 HostAction::Identity { .. }
                 | HostAction::Members { .. }
                 | HostAction::Streams { .. }
-                | HostAction::Grants { .. }
-                | HostAction::Roles { .. }
-                | HostAction::Users { .. }
-                | HostAction::Providers { .. }
-                | HostAction::Recovery { .. }
                 | HostAction::Keys { .. }
                 | HostAction::Audit { .. }
                 | HostAction::Config { .. }

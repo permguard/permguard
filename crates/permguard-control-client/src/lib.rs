@@ -68,6 +68,7 @@ pub mod signin;
 pub mod store;
 pub mod temporal;
 pub mod tls;
+pub mod token_source;
 pub mod v1;
 pub mod verify;
 

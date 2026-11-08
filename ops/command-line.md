@@ -80,7 +80,7 @@ The **State** cell is one of:
 | `events signers`    | `evidence.read` | present |     |
 | `events export`     | `evidence.read` | present |     |
 | `events verify`     | offline         | present |     |
-| `evidence anchors`  | `streams.read` | present |     |
+| `evidence anchors`  | `streams.read`  | present |     |
 
 ## Host identity
 
@@ -134,55 +134,70 @@ The **State** cell is one of:
 | `host secrets witness verify` | `secrets.read`   | blocked | the Host API serves no secrets route: its request and answer are not fixed by any package yet |
 | `host secrets rotate`         | `secrets.manage` | blocked | the Host API serves no secrets route: its request and answer are not fixed by any package yet |
 
-## Grants
+## Directory and access tokens (`iam`, TC-6)
 
-| Command                   | Grant         | State   | Why |
-| ------------------------- | ------------- | ------- | --- |
-| `host grants list`        | `authz.admin` | present |     |
-| `host grants issue`       | `authz.admin` | present |     |
-| `host grants revoke plan` | `authz.admin` | present |     |
-| `host grants revoke run`  | `authz.admin` | present |     |
-| `host grants bootstrap`   | offline       | present |     |
+The IAM Host's directory and access tokens, through its Host listener; the client a command line acts as obtains its tokens as `2-security/7` says (TC-7).
 
-## Roles, local users and identity providers
+| Command                        | Grant          | State   | Why |
+| ------------------------------ | -------------- | ------- | --- |
+| `iam grants list`              | `authz.admin`  | present |     |
+| `iam grants issue`             | `authz.admin`  | present |     |
+| `iam grants revoke plan`       | `authz.admin`  | present |     |
+| `iam grants revoke run`        | `authz.admin`  | present |     |
+| `iam roles list`               | `authz.admin`  | present |     |
+| `iam roles get`                | `authz.admin`  | present |     |
+| `iam roles create`             | `authz.admin`  | present |     |
+| `iam roles update`             | `authz.admin`  | present |     |
+| `iam roles delete`             | `authz.admin`  | present |     |
+| `iam roles members add`        | `authz.admin`  | present |     |
+| `iam roles members remove`     | `authz.admin`  | present |     |
+| `iam roles grant`              | `authz.admin`  | present |     |
+| `iam roles of`                 | `authz.admin`  | present |     |
+| `iam roles apply plan`         | `authz.admin`  | present |     |
+| `iam roles apply run`          | `authz.admin`  | present |     |
+| `iam users list`               | `authz.admin`  | present |     |
+| `iam users get`                | `authz.admin`  | present |     |
+| `iam users create`             | `authz.admin`  | present |     |
+| `iam users update`             | `authz.admin`  | present |     |
+| `iam users password`           | `authz.admin`  | present |     |
+| `iam users disable`            | `authz.admin`  | present |     |
+| `iam users enable`             | `authz.admin`  | present |     |
+| `iam users factor-reset`       | `authz.admin`  | present |     |
+| `iam users unlock`             | `authz.admin`  | present |     |
+| `iam users link`               | `authz.admin`  | present |     |
+| `iam users unlink`             | `authz.admin`  | present |     |
+| `iam users delete`             | `authz.admin`  | present |     |
+| `iam recovery show`            | `authz.admin`  | present |     |
+| `iam recovery acknowledge`     | `authz.admin`  | present |     |
+| `iam providers list`           | `authz.admin`  | present |     |
+| `iam providers refresh`        | `authz.admin`  | present |     |
+| `login`                        | the user's own | present |     |
+| `logout`                       | the user's own | present |     |
+| `password`                     | the user's own | present |     |
+| `factor begin`                 | the user's own | present |     |
+| `factor confirm`               | the user's own | present |     |
+| `setup`                        | the setup code | present |     |
+| `iam service-accounts list`    | `authz.admin`  | present |     |
+| `iam service-accounts get`     | `authz.admin`  | present |     |
+| `iam service-accounts create`  | `authz.admin`  | present |     |
+| `iam service-accounts update`  | `authz.admin`  | present |     |
+| `iam service-accounts suspend` | `authz.admin`  | present |     |
+| `iam service-accounts resume`  | `authz.admin`  | present |     |
+| `iam service-accounts delete`  | `authz.admin`  | present |     |
+| `iam credentials list`         | `authz.admin`  | present |     |
+| `iam credentials create`       | `authz.admin`  | present |     |
+| `iam credentials revoke`       | `authz.admin`  | present |     |
+| `iam tokens list`              | `authz.admin`  | present |     |
+| `iam tokens revoke`            | `authz.admin`  | present |     |
+| `iam token`                    | transport      | present |     |
 
-| Command                     | Grant          | State   | Why |
-| --------------------------- | -------------- | ------- | --- |
-| `host roles list`           | `authz.admin`  | present |     |
-| `host roles get`            | `authz.admin`  | present |     |
-| `host roles create`         | `authz.admin`  | present |     |
-| `host roles update`         | `authz.admin`  | present |     |
-| `host roles delete`         | `authz.admin`  | present |     |
-| `host roles members add`    | `authz.admin`  | present |     |
-| `host roles members remove` | `authz.admin`  | present |     |
-| `host roles grant`          | `authz.admin`  | present |     |
-| `host roles of`             | `authz.admin`  | present |     |
-| `host roles apply plan`     | `authz.admin`  | present |     |
-| `host roles apply run`      | `authz.admin`  | present |     |
-| `host users list`           | `authz.admin`  | present |     |
-| `host users get`            | `authz.admin`  | present |     |
-| `host users create`         | `authz.admin`  | present |     |
-| `host users update`         | `authz.admin`  | present |     |
-| `host users password`       | `authz.admin`  | present |     |
-| `host users disable`        | `authz.admin`  | present |     |
-| `host users enable`         | `authz.admin`  | present |     |
-| `host users factor-reset`   | `authz.admin`  | present |     |
-| `host users unlock`         | `authz.admin`  | present |     |
-| `host users link`           | `authz.admin`  | present |     |
-| `host users unlink`         | `authz.admin`  | present |     |
-| `host users delete`         | `authz.admin`  | present |     |
-| `host users bootstrap`      | offline        | present |     |
-| `host recovery start`       | offline        | present |     |
-| `host recovery show`        | `authz.admin`  | present |     |
-| `host recovery acknowledge` | `authz.admin`  | present |     |
-| `host providers list`       | `authz.admin`  | present |     |
-| `host providers refresh`    | `authz.admin`  | present |     |
-| `login`                     | the user's own | present |     |
-| `logout`                    | the user's own | present |     |
-| `password`                  | the user's own | present |     |
-| `factor begin`              | the user's own | present |     |
-| `factor confirm`            | the user's own | present |     |
-| `setup`                     | the setup code | present |     |
+## Offline provisioning
+
+| Command                 | Grant   | State   | Why |
+| ----------------------- | ------- | ------- | --- |
+| `host grants bootstrap` | offline | present |     |
+| `host users bootstrap`  | offline | present |     |
+| `host recovery start`   | offline | present |     |
 
 ## Audit
 

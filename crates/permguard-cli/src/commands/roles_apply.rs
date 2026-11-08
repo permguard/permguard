@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `permguard host roles apply plan|run` (WP-8.1, `2-security/7` Roles): converges a Host to
+//! `permguard iam roles apply plan|run` (WP-8.1, `2-security/7` Roles): converges a Host to
 //! a declared set of roles, their members and the grants `role:<name>` holds.
 //!
 //! | Step   | What it does                                                                                    |
@@ -212,7 +212,7 @@ pub(super) fn apply(
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// A roles file planned against the Host, as `host roles apply plan` writes it: every change listed,
+/// A roles file planned against the Host, as `iam roles apply plan` writes it: every change listed,
 /// removals included, nothing applied (2-security/7 Roles). What Permguard Admin calls.
 pub fn plan_roles(backend: &dyn Host, file: &[u8]) -> Result<Plan, Failure> {
     let declared: RolesFile = serde_norway::from_slice(file)

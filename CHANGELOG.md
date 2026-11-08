@@ -73,6 +73,7 @@ is cut.
 - **A member holds no directory and admits only its IAM Host's tokens and its bootstrap certificate.**
   A Host running a Data Plane and no Control Plane refuses to start when its configuration states `host.principals`, password or OIDC sign-in, or `host.setup.code_ref`, naming each one.
   It makes no setup code and serves no setup or sign-in route; users and roles an earlier release left on its volume stay there, unread, and the start says so (`authz.directory_unread`).
+  Its bootstrap principal holds the per-Host operations on its own Host and Planes, as an administration token for it does: membership, identity, keys, configuration, lifecycle, backup, audit, streams and collection, never an evaluation.
   Once it has joined, a suspended membership included, every use of its bootstrap principal is audited `host.authz.bootstrap` and reported by health as `degraded: bootstrap`, naming the time of the last use, until 15 minutes after it; a member with no bootstrap principal and no membership warns `host.bootstrap_missing`.
   A recovery started offline (`host recovery start`) does not apply to a member, which has no administrator but its bootstrap principal.
   Every Host API call an access token allows is recorded in the access trail as `host.authz.token`, with the token's `jti`, family and operation.
@@ -82,7 +83,16 @@ is cut.
   A decision or an occurrence whose caller acted by an access token carries `token_status`: the `uri`, `iat` and `sha256:` digest of the status list the token was found `VALID` in, never the token.
   It is a member of record version 1, absent for any other caller, so every record written before digests as it always did; `contracts/vectors/evidence.json` gains one vector of each.
 
+- **`permguard iam` manages service accounts, their credentials and the access tokens, and the command line obtains its own tokens.**
+  `iam service-accounts list|get|create|update|suspend|resume|delete`, `iam credentials list|create|revoke` and `iam tokens list|revoke` reach the IAM Host over REST or gRPC; a `client_secret` is written once to a new file only its owner reads (`--secret-out`), never to the output, a public key is given as a JWK or a PEM public key, and a certificate binding as the certificate itself or its SAN URI.
+  A command line acting as a service account (`--client-id` with `--client-secret-file`, `--client-key-file` or its client certificate, and `--iam-endpoint`, or `auth.client.*` in the configuration) obtains its application token at the IAM Host's token endpoint; `iam token --out` writes one to a private file, and `check` uses one when no `--token-file` is given, kept under `~/.permguard/tokens/` and reused until a minute before it expires.
+  The IAM Host's connection is its own (`--iam-tls-ca-file`, `auth.client.tls_ca_file`; never a Data Plane's `--tls-server-name`), no proof is sent over `--tls-skip-verify`, a signed assertion is addressed to the token endpoint the IAM Host publishes, and a token a Data Plane refuses is dropped from the cache.
+  `permguard_control_client::token_source::TokenSource` offers a program the same: a secret, a signed RFC 7523 assertion or a certificate, the token held in memory and obtained again before it expires; no token, secret or assertion is ever printed, traced or logged.
+
 ### Changed
+
+- **The directory commands move under `permguard iam`.**
+  `host grants list|issue|revoke`, `host roles`, `host users` (but `bootstrap`), `host providers` and `host recovery show|acknowledge` are now `iam grants`, `iam roles`, `iam users`, `iam providers` and `iam recovery`, reaching the IAM Host's listener; the offline `host grants bootstrap`, `host users bootstrap` and `host recovery start` stay where they were. The old paths are gone, not aliased.
 
 - **Every REST path is `/<interface>/<version>/<resource>`; the old paths are gone, not aliased.**
   The catalog moves to `/catalog/v1/zones…`, NOTP to `/notp/v1/zones/{zone}/ledgers/{ledger}/…` (`refs/{name}`, `push/negotiate`, `push/commit`, `pull/negotiate`, `objects`, `objects/fetch`), the stream list to `/streams/v1` and each surface's key set to `/control-plane/v1/keys`, `/data-plane/v1/keys` and `/server-host/v1/keys`.

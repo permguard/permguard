@@ -250,7 +250,7 @@ fn key_by_reference(
 
 /// A setting the environment or the file states, with where it came from; never a compiled
 /// default, none of these having one.
-fn setting_value(key: &str, store: &Store) -> Option<(String, crate::settings::Origin)> {
+pub(crate) fn setting_value(key: &str, store: &Store) -> Option<(String, crate::settings::Origin)> {
     let setting = crate::settings::setting(key)?;
     let resolved =
         crate::settings::resolve(setting, store.file(), None, &crate::settings::environment);
@@ -259,7 +259,11 @@ fn setting_value(key: &str, store: &Store) -> Option<(String, crate::settings::O
 
 /// A path setting, resolved as its origin says: the configuration file's directory for the file,
 /// the working directory for the environment.
-fn configured(key: &str, store: &Store, globals: &Globals) -> Option<std::path::PathBuf> {
+pub(crate) fn configured(
+    key: &str,
+    store: &Store,
+    globals: &Globals,
+) -> Option<std::path::PathBuf> {
     let (value, origin) = setting_value(key, store)?;
     let named = std::path::Path::new(&value);
     Some(match origin {

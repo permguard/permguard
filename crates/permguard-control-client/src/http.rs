@@ -190,6 +190,33 @@ impl Client {
         })
     }
 
+    /// Sends `value` as the `Authorization` header instead of the bearer the TLS options carry:
+    /// a client's own proof at a token endpoint (TC-7). Refused over a connection in the clear,
+    /// or when the value could break out of its header.
+    pub fn with_authorization(mut self, value: &str, needs_tls: bool) -> Result<Self, Error> {
+        let config = |detail: &str| Error::Tls {
+            source: crate::tls::Error::Config {
+                detail: detail.to_owned(),
+            },
+        };
+        if !needs_tls {
+            return Err(config(
+                "a client's proof is sent only over verified TLS: use https://",
+            ));
+        }
+        if self.tls.skip_verify {
+            return Err(config(
+                "a client's proof is sent only over verified TLS: --tls-skip-verify would hand it \
+                 to whoever answered",
+            ));
+        }
+        if value.is_empty() || !value.bytes().all(|byte| (0x20..0x7f).contains(&byte)) {
+            return Err(config("the proof is not one printable header value"));
+        }
+        self.authorization = format!("Authorization: {value}\r\n");
+        Ok(self)
+    }
+
     /// The same client, narrating each exchange to `narrator`.
     pub fn with_narrator(mut self, narrator: Box<dyn crate::narrate::Narrator>) -> Self {
         self.narrator = narrator;

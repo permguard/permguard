@@ -61,15 +61,22 @@ pub fn host_command(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     match action {
-        HostAction::Grants { action } => grants(globals, server_config, action, trace),
-        HostAction::Roles { action } => super::directory::roles(globals, action, trace),
-        HostAction::Users { action } => {
-            super::directory::users(globals, server_config, action, trace)
+        HostAction::Grants {
+            action: crate::args::HostGrantsAction::Bootstrap { fingerprint },
+        } => grants_bootstrap(globals, server_config, &fingerprint, trace),
+        HostAction::Users {
+            action:
+                crate::args::HostUsersAction::Bootstrap {
+                    name,
+                    email,
+                    password_stdin,
+                },
+        } => {
+            super::directory::bootstrap(globals, server_config, &name, email, password_stdin, trace)
         }
-        HostAction::Providers { action } => super::directory::providers(globals, action, trace),
-        HostAction::Recovery { action } => {
-            super::directory::recovery(globals, server_config, action, trace)
-        }
+        HostAction::Recovery {
+            action: crate::args::HostRecoveryAction::Start { reason, expires },
+        } => super::directory::recovery_start(globals, server_config, &reason, expires, trace),
         HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
@@ -107,36 +114,44 @@ pub(super) fn refuse_second_administrator(
     Ok(())
 }
 
-fn grants(
+/// `permguard host grants bootstrap`: the recovery administrator, offline, on the volume.
+fn grants_bootstrap(
     globals: &Globals,
     server_config: Option<&Path>,
-    action: GrantsAction,
+    fingerprint: &str,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     let now = permguard_host::authz::store::now();
+    let volume = volume_of(globals)?;
+    let (store, mutations) = open_mutable(&volume, server_config, trace)?;
+    let principal = permguard_host::authz::store::bootstrap_principal(fingerprint)
+        .map_err(|error| Failure::usage(error.to_string()))?;
+    refuse_second_administrator(&store, principal.as_str(), now)?;
+    let (commitment, grant) =
+        grants::bootstrap(&mutations, &store, fingerprint, now).map_err(refused)?;
+    render(
+        &BootstrapReport {
+            principal: commitment.principal.to_string(),
+            fingerprint: commitment.fingerprint,
+            created_at: permguard_core::time::to_rfc3339(
+                i64::try_from(commitment.created_at).unwrap_or(i64::MAX),
+            ),
+            grant: grant.as_ref().map(grant_report),
+            already_there: grant.is_none(),
+        },
+        globals.output,
+        trace,
+    )?;
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `permguard iam grants …`: the IAM Host's grants, online.
+pub(super) fn grants(
+    globals: &Globals,
+    action: GrantsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
     match action {
-        GrantsAction::Bootstrap { fingerprint } => {
-            let volume = volume_of(globals)?;
-            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-            let principal = permguard_host::authz::store::bootstrap_principal(&fingerprint)
-                .map_err(|error| Failure::usage(error.to_string()))?;
-            refuse_second_administrator(&store, principal.as_str(), now)?;
-            let (commitment, grant) =
-                grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
-            render(
-                &BootstrapReport {
-                    principal: commitment.principal.to_string(),
-                    fingerprint: commitment.fingerprint,
-                    created_at: permguard_core::time::to_rfc3339(
-                        i64::try_from(commitment.created_at).unwrap_or(i64::MAX),
-                    ),
-                    grant: grant.as_ref().map(grant_report),
-                    already_there: grant.is_none(),
-                },
-                globals.output,
-                trace,
-            )?;
-        }
         GrantsAction::Issue {
             principal,
             operations,

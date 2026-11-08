@@ -6,7 +6,7 @@
 //! call of the Host facade over REST or gRPC, printed as the Host answers it.
 //!
 //! A two-step change writes its plan to a new owner-only file and runs from it, as
-//! `host grants revoke` does. A bundle or an export walks every page at the frontier its first
+//! `iam grants revoke` does. A bundle or an export walks every page at the frontier its first
 //! page fixed and writes them to a new owner-only file, never one that exists.
 
 use std::process::ExitCode;

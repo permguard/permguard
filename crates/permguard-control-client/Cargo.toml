@@ -29,6 +29,8 @@ permguard-notp.workspace = true
 permguard-objects.workspace = true
 base64.workspace = true
 http.workspace = true
+# Signs a client assertion (TC-7).
+ring.workspace = true
 rustls.workspace = true
 rustls-native-certs.workspace = true
 serde = { workspace = true }
@@ -44,7 +46,6 @@ tonic-prost.workspace = true
 async-stream.workspace = true
 futures-core.workspace = true
 rcgen.workspace = true
-ring.workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

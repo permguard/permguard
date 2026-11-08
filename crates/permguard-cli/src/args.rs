@@ -269,6 +269,31 @@ pub struct Globals {
     #[arg(long, global = true, value_name = "FILE")]
     pub token_file: Option<PathBuf>,
 
+    /// The service account the command line acts as, obtaining its own access tokens
+    /// [env: PERMGUARD_CLIENT_ID]
+    #[arg(long, global = true, value_name = "NAME")]
+    pub client_id: Option<String>,
+
+    /// A file holding the client's secret, readable by its owner only
+    /// [env: PERMGUARD_CLIENT_SECRET_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub client_secret_file: Option<PathBuf>,
+
+    /// The client's private key, PKCS#8 PEM, for a signed assertion
+    /// [env: PERMGUARD_CLIENT_KEY_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub client_key_file: Option<PathBuf>,
+
+    /// Where the IAM Host's listener is reached, for the client's tokens
+    /// [env: PERMGUARD_IAM_ENDPOINT]
+    #[arg(long, global = true, value_name = "URL")]
+    pub iam_endpoint: Option<String>,
+
+    /// The authority the IAM Host's certificate is checked against, when it is not the one the
+    /// planes are [env: PERMGUARD_IAM_TLS_CA_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub iam_tls_ca_file: Option<PathBuf>,
+
     /// Certificate authority the endpoint's certificate is checked against (PEM).
     #[arg(
         long,
@@ -342,6 +367,12 @@ pub enum Command {
         server_config: Option<PathBuf>,
         #[command(subcommand)]
         action: HostAction,
+    },
+    /// The IAM Host's directory and access tokens, through its Host listener: grants, roles, local
+    /// users, identity providers, recovery, service accounts, credentials and tokens.
+    Iam {
+        #[command(subcommand)]
+        action: IamAction,
     },
     /// Restore a Server Host's volume from a snapshot, offline.
     ///
@@ -1903,34 +1934,21 @@ mod tests {
 /// What `permguard host` works on.
 #[derive(Debug, Subcommand)]
 pub enum HostAction {
-    /// The grants of the Host authorization store; only recovery bootstrap is offline.
+    /// The Host's recovery administrator, offline; the online grants are `iam grants`.
     Grants {
         #[command(subcommand)]
-        action: GrantsAction,
+        action: HostGrantsAction,
     },
-    /// Roles: named sets of grants their members act with.
-    Roles {
-        #[command(subcommand)]
-        action: RolesAction,
-    },
-    /// Local users, who sign in with a password or through a linked identity provider.
-    ///
-    /// The first administrator is created with `setup`, or offline.
+    /// The first administrator, offline; the online users are `iam users`.
     Users {
         #[command(subcommand)]
-        action: UsersAction,
+        action: HostUsersAction,
     },
-    /// The identity providers and the keys the Host fetched for each.
-    Providers {
-        #[command(subcommand)]
-        action: ProvidersAction,
-    },
-    /// Recover administration when every administrator is lost: started offline, acknowledged online.
-    ///
-    /// A new setup code is made offline, and the recovery acknowledged online.
+    /// A recovery started offline when every administrator is lost; shown and acknowledged with
+    /// `iam recovery`.
     Recovery {
         #[command(subcommand)]
-        action: RecoveryAction,
+        action: HostRecoveryAction,
     },
     /// The Host identity; provisioning and emergency reset remain offline.
     Identity {
@@ -2898,17 +2916,17 @@ pub struct Who {
     pub principal: Option<String>,
 }
 
-/// `permguard host roles …`.
+/// `permguard iam roles …`.
 #[derive(Debug, Subcommand)]
 pub enum RolesAction {
     /// List the roles with their member and grant counts.
     #[command(
-        after_help = "Examples:\n  permguard host roles list\n  permguard --host-endpoint grpcs://host.example:9443 host roles list -o json"
+        after_help = "Examples:\n  permguard iam roles list\n  permguard --host-endpoint grpcs://host.example:9443 iam roles list -o json"
     )]
     List,
     /// Show a role: its members and its grants.
     #[command(
-        after_help = "Examples:\n  permguard host roles get operators\n  permguard host roles get readers -o json"
+        after_help = "Examples:\n  permguard iam roles get operators\n  permguard iam roles get readers -o json"
     )]
     Get {
         /// The role's name.
@@ -2916,7 +2934,7 @@ pub enum RolesAction {
     },
     /// Create a role.
     #[command(
-        after_help = "Examples:\n  permguard host roles create operators --description \"run the platform\"\n  permguard host roles create readers -o json"
+        after_help = "Examples:\n  permguard iam roles create operators --description \"run the platform\"\n  permguard iam roles create readers -o json"
     )]
     Create {
         /// The role's name: lowercase letters, digits, `-`, `_` or `.`.
@@ -2930,7 +2948,7 @@ pub enum RolesAction {
     },
     /// Change a role's description.
     #[command(
-        after_help = "Examples:\n  permguard host roles update operators --description \"run and watch the platform\"\n  permguard host roles update readers --description \"read the catalog\" -o json"
+        after_help = "Examples:\n  permguard iam roles update operators --description \"run and watch the platform\"\n  permguard iam roles update readers --description \"read the catalog\" -o json"
     )]
     Update {
         /// The role's name.
@@ -2944,7 +2962,7 @@ pub enum RolesAction {
     },
     /// Delete a role; with `--revoke-grants` its grants are revoked first, each its own operation.
     #[command(
-        after_help = "Examples:\n  permguard host roles delete readers\n  permguard host roles delete readers --revoke-grants -o json"
+        after_help = "Examples:\n  permguard iam roles delete readers\n  permguard iam roles delete readers --revoke-grants -o json"
     )]
     Delete {
         /// The role's name.
@@ -2961,9 +2979,9 @@ pub enum RolesAction {
         #[command(subcommand)]
         action: RoleMembersAction,
     },
-    /// Grant the role: `host grants issue` for `role:<name>`.
+    /// Grant the role: `iam grants issue` for `role:<name>`.
     #[command(
-        after_help = "Examples:\n  permguard host roles grant readers --operations catalog.read --selector plane/control/*\n  permguard host roles grant operators --operations authz.admin --selector host --types host"
+        after_help = "Examples:\n  permguard iam roles grant readers --operations catalog.read --selector plane/control/*\n  permguard iam roles grant operators --operations authz.admin --selector host --types host"
     )]
     Grant {
         /// The role's name.
@@ -2983,7 +3001,7 @@ pub enum RolesAction {
     },
     /// The roles a principal acts with.
     #[command(
-        after_help = "Examples:\n  permguard host roles of --local paperino\n  permguard host roles of --user entra:alice@acme.com -o json"
+        after_help = "Examples:\n  permguard iam roles of --local paperino\n  permguard iam roles of --user entra:alice@acme.com -o json"
     )]
     Of {
         #[command(flatten)]
@@ -3000,204 +3018,245 @@ pub enum RolesAction {
 /// `permguard host recovery …`.
 #[derive(Debug, Subcommand)]
 pub enum RecoveryAction {
-    /// Make a new setup code although administrators exist: offline, on the volume of a stopped
-    /// server, recorded with its reason; the Host is `degraded: recovery` until acknowledged.
-    #[command(
-        after_help = "Examples:\n  permguard --volume /var/lib/permguard host recovery start --reason \"every administrator left\"\n  permguard --volume ./volume host recovery start --reason \"the identity provider was retired\" --expires 2h -o json"
-    )]
-    Start {
-        /// Why: written to the audit trail and shown until the recovery is acknowledged.
-        #[arg(long)]
-        reason: String,
-        /// How long the code serves; `host.setup.expires`, 24h, when left out.
-        #[arg(long, value_name = "DURATION")]
-        expires: Option<String>,
-    },
     /// The recovery waiting to be acknowledged, if any.
     #[command(
-        after_help = "Examples:\n  permguard host recovery show\n  permguard host recovery show -o json"
+        after_help = "Examples:\n  permguard iam recovery show\n  permguard iam recovery show -o json"
     )]
     Show,
     /// Acknowledge the recovery: the Host leaves `degraded: recovery`.
     #[command(
-        after_help = "Examples:\n  permguard host recovery acknowledge\n  permguard host recovery acknowledge -o json"
+        after_help = "Examples:\n  permguard iam recovery acknowledge\n  permguard iam recovery acknowledge -o json"
     )]
     Acknowledge,
 }
 
-/// `permguard host roles apply …`.
+/// What `permguard iam` works on: the IAM Host's directory and access tokens.
 #[derive(Debug, Subcommand)]
-pub enum RolesApplyAction {
-    /// Plan the changes that converge the Host to a roles file, into a new owner-only file;
-    /// every member removed and every grant revoked is listed.
+pub enum IamAction {
+    /// The grants of the IAM Host's authorization store.
+    Grants {
+        #[command(subcommand)]
+        action: GrantsAction,
+    },
+    /// Roles: named sets of grants their members act with.
+    Roles {
+        #[command(subcommand)]
+        action: RolesAction,
+    },
+    /// Local users, who sign in with a password or through a linked identity provider.
+    Users {
+        #[command(subcommand)]
+        action: UsersAction,
+    },
+    /// The identity providers and the keys the IAM Host fetched for each.
+    Providers {
+        #[command(subcommand)]
+        action: ProvidersAction,
+    },
+    /// The recovery started offline, shown and acknowledged.
+    Recovery {
+        #[command(subcommand)]
+        action: RecoveryAction,
+    },
+    /// Service accounts: principals that are not people, holding grants and credentials.
+    ServiceAccounts {
+        #[command(subcommand)]
+        action: ServiceAccountsAction,
+    },
+    /// A service account's credentials: a secret, a public key or a certificate binding.
+    Credentials {
+        #[command(subcommand)]
+        action: CredentialsAction,
+    },
+    /// The access tokens the IAM Host issued: listed and revoked, never shown.
+    Tokens {
+        #[command(subcommand)]
+        action: TokensAction,
+    },
+    /// Obtain an access token as the configured client and write it to a file.
     #[command(
-        after_help = "Examples:\n  permguard host roles apply plan -f roles.yml --out roles.plan\n  permguard host roles apply plan -f roles.yml --out roles.plan -o json"
+        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token"
     )]
-    Plan {
-        /// The roles file, YAML or JSON: each role's description, members and grants.
-        #[arg(short = 'f', long, value_name = "FILE")]
-        file: PathBuf,
-        /// A new owner-only file that receives the plan.
+    Token {
+        /// The operations, space or comma separated.
+        #[arg(long)]
+        scope: String,
+        /// Whom the token is for: `member:<member_id>` or `group:<name>`; repeated for several.
+        #[arg(long, required = true)]
+        audience: Vec<String>,
+        /// What an application token acts on: a selector of the members' Planes; repeated.
+        #[arg(long)]
+        target: Vec<String>,
+        /// A new file the token is written to, readable by its owner only.
         #[arg(long, value_name = "FILE")]
         out: PathBuf,
     },
-    /// Run a plan, refused when the Host changed since it was made.
-    #[command(
-        after_help = "Examples:\n  permguard host roles apply run --confirm-file roles.plan\n  permguard host roles apply run --confirm-file roles.plan -o json"
-    )]
-    Run {
-        /// The plan file written by `roles apply plan`.
-        #[arg(long, value_name = "FILE")]
-        confirm_file: PathBuf,
-    },
 }
 
-/// `permguard host roles members …`.
+/// `permguard iam service-accounts …`.
 #[derive(Debug, Subcommand)]
-pub enum RoleMembersAction {
-    /// Add a member to a role.
+pub enum ServiceAccountsAction {
+    /// The service accounts, with their owner, status and live credentials.
     #[command(
-        after_help = "Examples:\n  permguard host roles members add operators --local paperino\n  permguard host roles members add readers --issuer entra"
-    )]
-    Add {
-        /// The role's name.
-        role: String,
-        #[command(flatten)]
-        who: Who,
-    },
-    /// Remove a member from a role.
-    #[command(
-        after_help = "Examples:\n  permguard host roles members remove operators --local paperino\n  permguard host roles members remove readers --user entra:alice@acme.com"
-    )]
-    Remove {
-        /// The role's name.
-        role: String,
-        #[command(flatten)]
-        who: Who,
-    },
-}
-
-/// `permguard host users …`.
-#[derive(Debug, Subcommand)]
-pub enum UsersAction {
-    /// List the local users.
-    #[command(
-        after_help = "Examples:\n  permguard host users list\n  permguard host users list -o json"
+        after_help = "Examples:\n  permguard iam service-accounts list\n  permguard iam service-accounts list -o json"
     )]
     List,
-    /// Show a user: its roles, links and grants.
+    /// One service account, its grants and its credentials.
     #[command(
-        after_help = "Examples:\n  permguard host users get paperino\n  permguard host users get alice@acme.com -o json"
+        after_help = "Examples:\n  permguard iam service-accounts get billing\n  permguard iam service-accounts get billing -o json"
     )]
     Get {
-        /// The user's name.
+        /// The service account.
         name: String,
     },
-    /// Create a user; its password, if any, read from standard input.
+    /// Create a service account.
     #[command(
-        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard host users create paperino --email paperino@hotmail.com --password-stdin\n  permguard host users create alice@acme.com --email alice@acme.com"
+        after_help = "Examples:\n  permguard iam service-accounts create billing --owner payments --description \"the billing service\"\n  permguard --host-endpoint grpcs://iam.example:5444 iam service-accounts create audit-reader --owner security -o json"
     )]
     Create {
-        /// The user's name: lowercase letters, digits, `.`, `_`, `-`, `+` or `@`.
+        /// The account's name: `sa:<name>` is its principal.
         name: String,
-        /// The user's email, which a provider with `link: email` signs in as this user.
+        /// Who answers for it.
         #[arg(long)]
-        email: Option<String>,
-        /// The name shown for the user.
-        #[arg(long)]
-        display: Option<String>,
-        /// Read the password from standard input: never an argument.
-        #[arg(long)]
-        password_stdin: bool,
+        owner: String,
+        /// What it is for.
+        #[arg(long, default_value = "")]
+        description: String,
     },
-    /// Change a user's email or display name; an empty value clears it.
+    /// Change a service account's owner or description.
     #[command(
-        after_help = "Examples:\n  permguard host users update paperino --email paperino@acme.com\n  permguard host users update paperino --display \"Paolino Paperino\""
+        after_help = "Examples:\n  permguard iam service-accounts update billing --owner finance\n  permguard iam service-accounts update billing --description \"invoices and refunds\" -o json"
     )]
     Update {
-        /// The user's name.
+        /// The service account.
         name: String,
-        /// The new email; empty clears it.
+        /// Who answers for it now.
         #[arg(long)]
-        email: Option<String>,
-        /// The new display name; empty clears it.
+        owner: Option<String>,
+        /// What it is for now.
         #[arg(long)]
-        display: Option<String>,
+        description: Option<String>,
     },
-    /// Set a user's password, read from standard input; its sessions end.
+    /// Suspend a service account: every token of it is suspended too.
     #[command(
-        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard host users password paperino --password-stdin\n  cat password.txt | permguard host users password paperino --password-stdin"
+        after_help = "Examples:\n  permguard iam service-accounts suspend billing\n  permguard iam service-accounts suspend billing -o json"
     )]
-    Password {
-        /// The user's name.
-        name: String,
-        /// Read the password from standard input: never an argument.
-        #[arg(long, required = true)]
-        password_stdin: bool,
-    },
-    /// Disable a user: no method signs it in; its sessions end.
-    #[command(
-        after_help = "Examples:\n  permguard host users disable paperino\n  permguard host users disable paperino -o json"
-    )]
-    Disable {
-        /// The user's name.
+    Suspend {
+        /// The service account.
         name: String,
     },
-    /// Enable a user again.
+    /// Resume a suspended service account.
     #[command(
-        after_help = "Examples:\n  permguard host users enable paperino\n  permguard host users enable paperino -o json"
+        after_help = "Examples:\n  permguard iam service-accounts resume billing\n  permguard iam service-accounts resume billing -o json"
     )]
-    Enable {
-        /// The user's name.
+    Resume {
+        /// The service account.
         name: String,
     },
-    /// Reset a user's second factor.
+    /// Delete a service account; refused while it holds grants.
     #[command(
-        after_help = "Examples:\n  permguard host users factor-reset paperino\n  permguard host users factor-reset paperino -o json"
-    )]
-    FactorReset {
-        /// The user's name.
-        name: String,
-    },
-    /// End a lockout of failed sign-ins.
-    #[command(
-        after_help = "Examples:\n  permguard host users unlock paperino\n  permguard host users unlock paperino -o json"
-    )]
-    Unlock {
-        /// The user's name.
-        name: String,
-    },
-    /// Link a provider's subject: it signs in as this user.
-    #[command(
-        after_help = "Examples:\n  permguard host users link paperino --user entra:0042-abcd\n  permguard host users link paperino --principal oidc:https://login.example#0042"
-    )]
-    Link {
-        /// The user's name.
-        name: String,
-        #[command(flatten)]
-        who: Who,
-    },
-    /// Remove a link.
-    #[command(
-        after_help = "Examples:\n  permguard host users unlink paperino --user entra:0042-abcd\n  permguard host users unlink paperino --principal oidc:https://login.example#0042"
-    )]
-    Unlink {
-        /// The user's name.
-        name: String,
-        #[command(flatten)]
-        who: Who,
-    },
-    /// Delete a user; with `--revoke-grants` its grants are revoked first.
-    #[command(
-        after_help = "Examples:\n  permguard host users delete paperino\n  permguard host users delete paperino --revoke-grants -o json"
+        after_help = "Examples:\n  permguard iam service-accounts delete billing\n  permguard iam service-accounts delete billing -o json"
     )]
     Delete {
-        /// The user's name.
+        /// The service account.
         name: String,
-        /// Revoke the user's active grants first; without it a user holding grants is refused.
-        #[arg(long)]
-        revoke_grants: bool,
     },
+}
+
+/// `permguard iam credentials …`.
+#[derive(Debug, Subcommand)]
+pub enum CredentialsAction {
+    /// A service account's credentials, never a secret.
+    #[command(
+        after_help = "Examples:\n  permguard iam credentials list billing\n  permguard iam credentials list billing -o json"
+    )]
+    List {
+        /// The service account.
+        account: String,
+    },
+    /// Add a credential: a secret written once to a new file, a public key, or a certificate
+    /// binding.
+    #[command(
+        after_help = "Examples:\n  permguard iam credentials create billing --secret-out ./billing.secret\n  permguard iam credentials create billing --public-key ./billing.pub.pem --expires 2027-01-01T00:00:00Z\n  permguard iam credentials create billing --certificate ./billing.crt"
+    )]
+    #[command(group(clap::ArgGroup::new("kind").required(true).multiple(false)))]
+    Create {
+        /// The service account.
+        account: String,
+        /// A `client_secret`, written to this new file, readable by its owner only, never printed.
+        #[arg(long, value_name = "FILE", group = "kind")]
+        secret_out: Option<PathBuf>,
+        /// A `private_key_jwt` public key: an Ed25519 or P-256 JWK, or a PEM public key.
+        #[arg(long, value_name = "FILE", group = "kind")]
+        public_key: Option<PathBuf>,
+        /// A `tls_client_auth` binding to this certificate's public key (PEM).
+        #[arg(long, value_name = "FILE", group = "kind")]
+        certificate: Option<PathBuf>,
+        /// A `tls_client_auth` binding to a certificate's SAN URI.
+        #[arg(long, value_name = "URI", group = "kind")]
+        san_uri: Option<String>,
+        /// When it stops serving, RFC 3339.
+        #[arg(long)]
+        expires: Option<String>,
+    },
+    /// Revoke a credential, and every token it obtained.
+    #[command(
+        after_help = "Examples:\n  permguard iam credentials revoke billing 0198f2aa-0000-7000-8000-000000000009\n  permguard iam credentials revoke billing 0198f2aa-0000-7000-8000-000000000009 -o json"
+    )]
+    Revoke {
+        /// The service account.
+        account: String,
+        /// The credential's id.
+        id: String,
+    },
+}
+
+/// `permguard iam tokens …`.
+#[derive(Debug, Subcommand)]
+pub enum TokensAction {
+    /// The tokens the IAM Host issued and their status.
+    #[command(
+        after_help = "Examples:\n  permguard iam tokens list\n  permguard iam tokens list --subject sa:billing --status valid -o json"
+    )]
+    List {
+        /// Only this subject's tokens.
+        #[arg(long)]
+        subject: Option<String>,
+        /// Only tokens of this status: `valid`, `suspended` or `invalid`.
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Revoke a token: at once on the IAM Host, on each member once it holds the list.
+    #[command(
+        after_help = "Examples:\n  permguard iam tokens revoke 0198f2aa-0000-7000-8000-00000000abcd\n  permguard iam tokens revoke 0198f2aa-0000-7000-8000-00000000abcd -o json"
+    )]
+    Revoke {
+        /// The token's `jti`.
+        jti: String,
+    },
+}
+
+/// `permguard host grants …`: the offline recovery administrator; online grants are `iam grants`.
+#[derive(Debug, Subcommand)]
+pub enum HostGrantsAction {
+    /// Commit the one recovery administrator, by the SHA-256 fingerprint of its certificate, and
+    /// grant it `authz.admin` on the Host. Written once: a second bootstrap naming the same
+    /// fingerprint is the first, one naming another is refused. A committed administrator whose
+    /// grant was revoked is granted again by this command: physical access to the volume is the
+    /// recovery authority.
+    #[command(
+        after_help = "Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
+    )]
+    Bootstrap {
+        /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.
+        #[arg(long)]
+        fingerprint: String,
+    },
+}
+
+/// `permguard host users …`: the offline first administrator; online users are `iam users`.
+#[derive(Debug, Subcommand)]
+pub enum HostUsersAction {
     /// Create the first administrator offline, on a stopped server's volume: a user with
     /// `authz.admin` on the Host, with a password, or with only an email its first provider
     /// sign-in links.
@@ -3217,17 +3276,210 @@ pub enum UsersAction {
     },
 }
 
-/// `permguard host providers …`.
+/// `permguard host recovery …`: started offline; shown and acknowledged with `iam recovery`.
+#[derive(Debug, Subcommand)]
+pub enum HostRecoveryAction {
+    /// Make a new setup code although administrators exist: offline, on the volume of a stopped
+    /// server, recorded with its reason; the Host is `degraded: recovery` until acknowledged.
+    #[command(
+        after_help = "Examples:\n  permguard --volume /var/lib/permguard host recovery start --reason \"every administrator left\"\n  permguard --volume ./volume host recovery start --reason \"the identity provider was retired\" --expires 2h -o json"
+    )]
+    Start {
+        /// Why: written to the audit trail and shown until the recovery is acknowledged.
+        #[arg(long)]
+        reason: String,
+        /// How long the code serves; `host.setup.expires`, 24h, when left out.
+        #[arg(long, value_name = "DURATION")]
+        expires: Option<String>,
+    },
+}
+
+/// `permguard iam roles apply …`.
+#[derive(Debug, Subcommand)]
+pub enum RolesApplyAction {
+    /// Plan the changes that converge the Host to a roles file, into a new owner-only file;
+    /// every member removed and every grant revoked is listed.
+    #[command(
+        after_help = "Examples:\n  permguard iam roles apply plan -f roles.yml --out roles.plan\n  permguard iam roles apply plan -f roles.yml --out roles.plan -o json"
+    )]
+    Plan {
+        /// The roles file, YAML or JSON: each role's description, members and grants.
+        #[arg(short = 'f', long, value_name = "FILE")]
+        file: PathBuf,
+        /// A new owner-only file that receives the plan.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run a plan, refused when the Host changed since it was made.
+    #[command(
+        after_help = "Examples:\n  permguard iam roles apply run --confirm-file roles.plan\n  permguard iam roles apply run --confirm-file roles.plan -o json"
+    )]
+    Run {
+        /// The plan file written by `roles apply plan`.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: PathBuf,
+    },
+}
+
+/// `permguard iam roles members …`.
+#[derive(Debug, Subcommand)]
+pub enum RoleMembersAction {
+    /// Add a member to a role.
+    #[command(
+        after_help = "Examples:\n  permguard iam roles members add operators --local paperino\n  permguard iam roles members add readers --issuer entra"
+    )]
+    Add {
+        /// The role's name.
+        role: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Remove a member from a role.
+    #[command(
+        after_help = "Examples:\n  permguard iam roles members remove operators --local paperino\n  permguard iam roles members remove readers --user entra:alice@acme.com"
+    )]
+    Remove {
+        /// The role's name.
+        role: String,
+        #[command(flatten)]
+        who: Who,
+    },
+}
+
+/// `permguard host users …`.
+#[derive(Debug, Subcommand)]
+pub enum UsersAction {
+    /// List the local users.
+    #[command(
+        after_help = "Examples:\n  permguard iam users list\n  permguard iam users list -o json"
+    )]
+    List,
+    /// Show a user: its roles, links and grants.
+    #[command(
+        after_help = "Examples:\n  permguard iam users get paperino\n  permguard iam users get alice@acme.com -o json"
+    )]
+    Get {
+        /// The user's name.
+        name: String,
+    },
+    /// Create a user; its password, if any, read from standard input.
+    #[command(
+        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard iam users create paperino --email paperino@hotmail.com --password-stdin\n  permguard iam users create alice@acme.com --email alice@acme.com"
+    )]
+    Create {
+        /// The user's name: lowercase letters, digits, `.`, `_`, `-`, `+` or `@`.
+        name: String,
+        /// The user's email, which a provider with `link: email` signs in as this user.
+        #[arg(long)]
+        email: Option<String>,
+        /// The name shown for the user.
+        #[arg(long)]
+        display: Option<String>,
+        /// Read the password from standard input: never an argument.
+        #[arg(long)]
+        password_stdin: bool,
+    },
+    /// Change a user's email or display name; an empty value clears it.
+    #[command(
+        after_help = "Examples:\n  permguard iam users update paperino --email paperino@acme.com\n  permguard iam users update paperino --display \"Paolino Paperino\""
+    )]
+    Update {
+        /// The user's name.
+        name: String,
+        /// The new email; empty clears it.
+        #[arg(long)]
+        email: Option<String>,
+        /// The new display name; empty clears it.
+        #[arg(long)]
+        display: Option<String>,
+    },
+    /// Set a user's password, read from standard input; its sessions end.
+    #[command(
+        after_help = "Examples:\n  printf '%s' \"$PASSWORD\" | permguard iam users password paperino --password-stdin\n  cat password.txt | permguard iam users password paperino --password-stdin"
+    )]
+    Password {
+        /// The user's name.
+        name: String,
+        /// Read the password from standard input: never an argument.
+        #[arg(long, required = true)]
+        password_stdin: bool,
+    },
+    /// Disable a user: no method signs it in; its sessions end.
+    #[command(
+        after_help = "Examples:\n  permguard iam users disable paperino\n  permguard iam users disable paperino -o json"
+    )]
+    Disable {
+        /// The user's name.
+        name: String,
+    },
+    /// Enable a user again.
+    #[command(
+        after_help = "Examples:\n  permguard iam users enable paperino\n  permguard iam users enable paperino -o json"
+    )]
+    Enable {
+        /// The user's name.
+        name: String,
+    },
+    /// Reset a user's second factor.
+    #[command(
+        after_help = "Examples:\n  permguard iam users factor-reset paperino\n  permguard iam users factor-reset paperino -o json"
+    )]
+    FactorReset {
+        /// The user's name.
+        name: String,
+    },
+    /// End a lockout of failed sign-ins.
+    #[command(
+        after_help = "Examples:\n  permguard iam users unlock paperino\n  permguard iam users unlock paperino -o json"
+    )]
+    Unlock {
+        /// The user's name.
+        name: String,
+    },
+    /// Link a provider's subject: it signs in as this user.
+    #[command(
+        after_help = "Examples:\n  permguard iam users link paperino --user entra:0042-abcd\n  permguard iam users link paperino --principal oidc:https://login.example#0042"
+    )]
+    Link {
+        /// The user's name.
+        name: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Remove a link.
+    #[command(
+        after_help = "Examples:\n  permguard iam users unlink paperino --user entra:0042-abcd\n  permguard iam users unlink paperino --principal oidc:https://login.example#0042"
+    )]
+    Unlink {
+        /// The user's name.
+        name: String,
+        #[command(flatten)]
+        who: Who,
+    },
+    /// Delete a user; with `--revoke-grants` its grants are revoked first.
+    #[command(
+        after_help = "Examples:\n  permguard iam users delete paperino\n  permguard iam users delete paperino --revoke-grants -o json"
+    )]
+    Delete {
+        /// The user's name.
+        name: String,
+        /// Revoke the user's active grants first; without it a user holding grants is refused.
+        #[arg(long)]
+        revoke_grants: bool,
+    },
+}
+
+/// `permguard iam providers …`.
 #[derive(Debug, Subcommand)]
 pub enum ProvidersAction {
     /// List the identity providers and how their keys stand.
     #[command(
-        after_help = "Examples:\n  permguard host providers list\n  permguard host providers list -o json"
+        after_help = "Examples:\n  permguard iam providers list\n  permguard iam providers list -o json"
     )]
     List,
     /// Fetch a provider's keys now.
     #[command(
-        after_help = "Examples:\n  permguard host providers refresh entra\n  permguard host providers refresh keycloak -o json"
+        after_help = "Examples:\n  permguard iam providers refresh entra\n  permguard iam providers refresh keycloak -o json"
     )]
     Refresh {
         /// The provider's name.
@@ -3238,22 +3490,9 @@ pub enum ProvidersAction {
 /// `permguard host grants …`: online administration, plus offline recovery bootstrap.
 #[derive(Debug, Subcommand)]
 pub enum GrantsAction {
-    /// Commit the one recovery administrator, by the SHA-256 fingerprint of its certificate, and
-    /// grant it `authz.admin` on the Host. Written once: a second bootstrap naming the same
-    /// fingerprint is the first, one naming another is refused. A committed administrator whose
-    /// grant was revoked is granted again by this command: physical access to the volume is the
-    /// recovery authority.
-    #[command(
-        after_help = "Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
-    )]
-    Bootstrap {
-        /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.
-        #[arg(long)]
-        fingerprint: String,
-    },
     /// Issue a grant through the Host listener.
     #[command(
-        after_help = "Examples:\n  permguard host grants issue --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard --host-endpoint grpcs://host.example:9443 host grants issue --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
+        after_help = "Examples:\n  permguard iam grants issue --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard --host-endpoint grpcs://host.example:9443 iam grants issue --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
     )]
     Issue {
         /// The exact authorization principal, as the credential mapper produces it.
@@ -3282,7 +3521,7 @@ pub enum GrantsAction {
     },
     /// List the grants the store holds, active and terminal, with the store revision.
     #[command(
-        after_help = "Examples:\n  permguard host grants list\n  permguard --host-endpoint grpcs://host.example:9443 host grants list --principal spiffe://acme/billing -o json"
+        after_help = "Examples:\n  permguard iam grants list\n  permguard --host-endpoint grpcs://host.example:9443 iam grants list --principal spiffe://acme/billing -o json"
     )]
     List {
         /// Only this principal's grants.
@@ -3299,7 +3538,7 @@ pub enum GrantsAction {
 pub enum GrantRevokeAction {
     /// Plan grant revocation and write its private confirmation file.
     #[command(
-        after_help = "Examples:\n  permguard host grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json\n  permguard host grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json -o json"
+        after_help = "Examples:\n  permguard iam grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json\n  permguard iam grants revoke plan 0123456789abcdef0123456789abcdef --out revoke.json -o json"
     )]
     Plan {
         /// The grant identifier.
@@ -3313,7 +3552,7 @@ pub enum GrantRevokeAction {
     },
     /// Run a planned grant revocation.
     #[command(
-        after_help = "Examples:\n  permguard host grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json\n  permguard host grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json -o json"
+        after_help = "Examples:\n  permguard iam grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json\n  permguard iam grants revoke run 0123456789abcdef0123456789abcdef --confirm-file revoke.json -o json"
     )]
     Run {
         /// The grant identifier.

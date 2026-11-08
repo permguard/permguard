@@ -138,7 +138,7 @@ host:
   # token from an identity provider maps to `oidc:<issuer>#<claim>`, or to the local user linked to
   # it. A credential no rule maps is unauthenticated. Two rules that collapse to one principal stop
   # the start. The identity provider only authenticates: grants and roles are the Host's own,
-  # managed with `permguard host grants`, `host roles` and `host users`. The first administrator
+  # managed with `permguard host grants`, `iam roles` and `host users`. The first administrator
   # is created offline with `host users bootstrap` (or `host grants bootstrap` for a certificate).
   # A bearer token is accepted only over TLS, on loopback, or behind a declared TLS terminator
   # (a plane's `public.tls.terminated_upstream`). A listener with a `client_ca` that also serves
@@ -175,7 +175,7 @@ host:
   # taken from a secret. `permguard setup https://<host>:5443 --code-file <file> --name <user>
   # --password-stdin` (or --email, for a user a provider signs in) makes it, once; the route is
   # then gone. If every administrator is lost: `permguard host recovery start --reason <why>`
-  # on the stopped server's volume, then setup again, then `host recovery acknowledge`.
+  # on the stopped server's volume, then setup again, then `iam recovery acknowledge`.
   # setup:
   #   expires: 24h                            # how long a code serves
   #   code_ref: permguard-setup-code          # a secret of operations.secrets, at least 32 characters

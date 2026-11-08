@@ -1843,8 +1843,8 @@ fn the_host_identity_members_and_grants_command_families_are_complete() {
         &["host", "members", "sync", "--help"],
         &["host", "members", "sessions", "--help"],
         &["host", "members", "verify", "--help"],
-        &["host", "grants", "revoke", "plan", "--help"],
-        &["host", "grants", "revoke", "run", "--help"],
+        &["iam", "grants", "revoke", "plan", "--help"],
+        &["iam", "grants", "revoke", "run", "--help"],
     ] {
         let output = run(&dir, path);
         assert!(output.status.success(), "{path:?}: {}", stderr(&output));

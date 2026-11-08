@@ -14,6 +14,7 @@ pub mod events;
 pub mod host;
 pub(crate) mod host_ops;
 pub mod host_proof;
+pub mod iam;
 pub mod inspect;
 pub mod objects;
 pub mod offline_ops;

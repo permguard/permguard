@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `permguard host roles`, `host users`, `host providers`, and `login`, `logout`, `password`,
+//! `permguard iam roles`, `host users`, `iam providers`, and `login`, `logout`, `password`,
 //! `factor` (WP-8.1, `2-security/7` Roles, Local users and sign-in, Identity providers).
 //!
 //! A password is read from standard input, never an argument or the environment, and never
@@ -142,7 +142,7 @@ pub(super) fn principal_of(backend: &dyn Host, who: &Who) -> Result<String, Fail
             .map(|provider| provider.issuer.clone())
             .ok_or_else(|| {
                 Failure::usage(format!(
-                    "no identity provider is named `{name}`: `permguard host providers list` names them"
+                    "no identity provider is named `{name}`: `permguard iam providers list` names them"
                 ))
             })
     };
@@ -319,18 +319,9 @@ pub(super) fn roles(
 
 pub(super) fn users(
     globals: &Globals,
-    server_config: Option<&std::path::Path>,
     action: UsersAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    if let UsersAction::Bootstrap {
-        name,
-        email,
-        password_stdin,
-    } = action
-    {
-        return bootstrap(globals, server_config, &name, email, password_stdin, trace);
-    }
     let backend = online_host(globals, trace, false)?;
     let plain = || Plain {
         request_id: request_id(),
@@ -420,7 +411,6 @@ pub(super) fn users(
             }
             serde_json::to_value(backend.delete_user(&name, &plain()).map_err(client)?)
         }
-        UsersAction::Bootstrap { .. } => unreachable!("answered above"),
     }
     .map_err(|error| Failure::internal(format!("rendering the Host answer: {error}")))?;
     render_json(&answer, globals, trace)?;
@@ -448,7 +438,7 @@ fn link(
 }
 
 /// The first administrator, offline: a user and `authz.admin` on the Host, one operation each.
-fn bootstrap(
+pub(super) fn bootstrap(
     globals: &Globals,
     server_config: Option<&std::path::Path>,
     name: &str,
@@ -755,67 +745,75 @@ pub fn setup(
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// `permguard host recovery …` (WP-8.2): `start` offline, on the volume of a stopped server;
-/// `show` and `acknowledge` online, as an administrator.
-pub(super) fn recovery(
+/// `permguard host recovery start` (WP-8.2): a new setup code, offline, on the volume of a
+/// stopped server, recorded with its reason.
+pub(super) fn recovery_start(
     globals: &Globals,
     server_config: Option<&std::path::Path>,
+    reason: &str,
+    expires: Option<String>,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    let reason = reason.trim().to_owned();
+    if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
+        return Err(Failure::usage(
+            "--reason says why, in at most 256 printable characters",
+        ));
+    }
+    let expires = match expires.as_deref() {
+        Some(text) => permguard_core::config::parse_duration(text)
+            .map_err(|error| Failure::usage(format!("--expires: {error}")))?,
+        None => permguard_core::authz::DEFAULT_SETUP_EXPIRES,
+    };
+    let volume = super::host::volume_of(globals)?;
+    let held = super::host::claim(&volume, trace)?;
+    let setup = permguard_host::setup::Setup::open(&held)
+        .map_err(|error| Failure::unavailable(error.to_string()))?;
+    let mutations = super::host::offline_engine(&held, server_config, trace)?;
+    let now = permguard_host::authz::store::now();
+    // Recorded first: a recovery that cannot be recorded is not started.
+    let target = format!("reason={reason}");
+    mutations
+        .project(
+            &permguard_core::AuditEvent::new(
+                permguard_host::setup::AUDIT_RECOVERY_STARTED,
+                permguard_core::Subject::System("recovery"),
+            )
+            .on(&target),
+        )
+        .map_err(|error| Failure::unavailable(format!("recording the recovery: {error}")))?;
+    let waiting = setup
+        .start_recovery(&reason, expires, now)
+        .map_err(|error| Failure::unavailable(error.to_string()))?;
+    trace.say(format!(
+        "a setup code is in {}: start the server, then `permguard setup`",
+        setup.code_path().display()
+    ));
+    std::mem::forget(held);
+    render_json(
+        &serde_json::json!({
+            "code_file": setup.code_path(),
+            "expires_at": permguard_core::time::to_rfc3339(
+                i64::try_from(waiting.expires_at).unwrap_or(i64::MAX)
+            ),
+            "reason": reason,
+        }),
+        globals,
+        trace,
+    )?;
+
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `permguard iam recovery …` (WP-8.2): the recovery waiting, shown and acknowledged online, as an
+/// administrator.
+pub(super) fn recovery(
+    globals: &Globals,
     action: crate::args::RecoveryAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     use crate::args::RecoveryAction;
     match action {
-        RecoveryAction::Start { reason, expires } => {
-            let reason = reason.trim().to_owned();
-            if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
-                return Err(Failure::usage(
-                    "--reason says why, in at most 256 printable characters",
-                ));
-            }
-            let expires = match expires.as_deref() {
-                Some(text) => permguard_core::config::parse_duration(text)
-                    .map_err(|error| Failure::usage(format!("--expires: {error}")))?,
-                None => permguard_core::authz::DEFAULT_SETUP_EXPIRES,
-            };
-            let volume = super::host::volume_of(globals)?;
-            let held = super::host::claim(&volume, trace)?;
-            let setup = permguard_host::setup::Setup::open(&held)
-                .map_err(|error| Failure::unavailable(error.to_string()))?;
-            let mutations = super::host::offline_engine(&held, server_config, trace)?;
-            let now = permguard_host::authz::store::now();
-            // Recorded first: a recovery that cannot be recorded is not started.
-            let target = format!("reason={reason}");
-            mutations
-                .project(
-                    &permguard_core::AuditEvent::new(
-                        permguard_host::setup::AUDIT_RECOVERY_STARTED,
-                        permguard_core::Subject::System("recovery"),
-                    )
-                    .on(&target),
-                )
-                .map_err(|error| {
-                    Failure::unavailable(format!("recording the recovery: {error}"))
-                })?;
-            let waiting = setup
-                .start_recovery(&reason, expires, now)
-                .map_err(|error| Failure::unavailable(error.to_string()))?;
-            trace.say(format!(
-                "a setup code is in {}: start the server, then `permguard setup`",
-                setup.code_path().display()
-            ));
-            std::mem::forget(held);
-            render_json(
-                &serde_json::json!({
-                    "code_file": setup.code_path(),
-                    "expires_at": permguard_core::time::to_rfc3339(
-                        i64::try_from(waiting.expires_at).unwrap_or(i64::MAX)
-                    ),
-                    "reason": reason,
-                }),
-                globals,
-                trace,
-            )?;
-        }
         RecoveryAction::Show => {
             let backend = online_host(globals, trace, false)?;
             render_json(&backend.recovery().map_err(client)?, globals, trace)?;

@@ -187,7 +187,7 @@ impl Directory for RestHost {
     }
 }
 
-fn changed(answer: proto::DirectoryChangeResponse) -> Changed {
+pub(super) fn changed(answer: proto::DirectoryChangeResponse) -> Changed {
     Changed {
         receipt: map::receipt(answer.receipt),
         revision: answer.revision,

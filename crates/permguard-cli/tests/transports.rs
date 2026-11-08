@@ -1159,7 +1159,7 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
 
         for (command, answers) in [
             (["host", "identity", "show"].as_slice(), &mut cli_identities),
-            (["host", "grants", "list"].as_slice(), &mut cli_grants),
+            (["iam", "grants", "list"].as_slice(), &mut cli_grants),
         ] {
             let output = cli(
                 &dir,
@@ -1202,9 +1202,515 @@ fn the_host_facade_reads_the_same_over_https_and_grpcs() {
     assert!(!identities[0].document.is_empty());
 }
 
+/// TC-6 and TC-7: `iam` manages a service account and its secret over either transport, the
+/// secret going to a private file and never to the output; the command line, acting as that
+/// account, obtains its token at the IAM Host and writes it privately; the token is listed and
+/// revoked by its `jti`, never shown.
+#[test]
+fn the_iam_commands_manage_an_account_and_its_client_obtains_a_token() {
+    let dir = scratch("iam");
+    let pki = pki(&dir);
+    let address = host_listener(&dir, &pki);
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
+    let https = format!("https://localhost:{}", address.port());
+    let grpcs = format!("grpcs://localhost:{}", address.port());
+    let ca = pki.authority.to_str().expect("a UTF-8 path").to_owned();
+    let admin = admin_token.to_str().expect("a UTF-8 path").to_owned();
+    let run = |url: &str, args: &[&str]| -> Value {
+        let mut full = vec![
+            "-o",
+            "json",
+            "--host-endpoint",
+            url,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+        ];
+        full.extend_from_slice(args);
+        let output = cli(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        serde_json::from_slice(&output.stdout).expect("the CLI answers JSON")
+    };
+
+    run(
+        &https,
+        &[
+            "iam",
+            "service-accounts",
+            "create",
+            "billing",
+            "--owner",
+            "payments",
+        ],
+    );
+    run(
+        &grpcs,
+        &[
+            "iam",
+            "grants",
+            "issue",
+            "--principal",
+            "sa:billing",
+            "--operations",
+            "decision.evaluate",
+            "--selector",
+            "plane/data/*",
+        ],
+    );
+    let secret_file = dir.join("billing.secret");
+    let secret_path = secret_file.to_str().expect("a UTF-8 path").to_owned();
+    let created = run(
+        &https,
+        &[
+            "iam",
+            "credentials",
+            "create",
+            "billing",
+            "--secret-out",
+            &secret_path,
+        ],
+    );
+    let secret = std::fs::read_to_string(&secret_file).expect("the secret is written");
+    assert!(secret.starts_with("pgc_"), "a client secret");
+    assert!(
+        !created.to_string().contains(&secret),
+        "the secret never reaches the output: {created}"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&secret_file)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "only its owner reads it");
+    }
+    // A second create into the same file is refused before anything is made.
+    let again = cli(
+        &dir,
+        &[
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+            "iam",
+            "credentials",
+            "create",
+            "billing",
+            "--secret-out",
+            &secret_path,
+        ],
+    );
+    assert!(!again.status.success(), "{again:?}");
+    let listed = [
+        run(&https, &["iam", "credentials", "list", "billing"]),
+        run(&grpcs, &["iam", "credentials", "list", "billing"]),
+    ];
+    assert_eq!(listed[0], listed[1], "the same over both transports");
+    assert_eq!(listed[0]["credentials"].as_array().map(Vec::len), Some(1));
+    assert!(!listed[0].to_string().contains(&secret));
+    let accounts = [
+        run(&https, &["iam", "service-accounts", "get", "billing"]),
+        run(&grpcs, &["iam", "service-accounts", "get", "billing"]),
+    ];
+    assert_eq!(accounts[0], accounts[1]);
+
+    // The command line as the account: its own token, at the IAM Host's own Data Plane.
+    let host_id = run(&https, &["host", "identity", "show"])["host_id"]
+        .as_str()
+        .expect("the host id")
+        .to_owned();
+    let token_file = dir.join("billing.token");
+    let token_path = token_file.to_str().expect("a UTF-8 path").to_owned();
+    let audience = format!("member:{host_id}");
+    let issued = cli(
+        &dir,
+        &[
+            "-o",
+            "json",
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &https,
+            "--client-id",
+            "billing",
+            "--client-secret-file",
+            &secret_path,
+            "iam",
+            "token",
+            "--scope",
+            "decision.evaluate",
+            "--audience",
+            &audience,
+            "--target",
+            "plane/data/*",
+            "--out",
+            &token_path,
+        ],
+    );
+    assert!(issued.status.success(), "{issued:?}");
+    let token = std::fs::read_to_string(&token_file).expect("the token is written");
+    assert_eq!(token.split('.').count(), 3, "a compact JWS");
+    assert!(!String::from_utf8_lossy(&issued.stdout).contains(&token));
+    assert!(!String::from_utf8_lossy(&issued.stderr).contains(&token));
+
+    // Listed by its jti, never shown; revoked, and listed as such.
+    let tokens = run(
+        &grpcs,
+        &["iam", "tokens", "list", "--subject", "sa:billing"],
+    );
+    let listed = tokens["tokens"].as_array().expect("tokens");
+    assert_eq!(listed.len(), 1, "{tokens}");
+    assert!(!tokens.to_string().contains(&token));
+    let jti = listed[0]["jti"].as_str().expect("a jti").to_owned();
+    assert_eq!(listed[0]["status"], "valid");
+    run(&https, &["iam", "tokens", "revoke", &jti]);
+    let revoked = run(&https, &["iam", "tokens", "list", "--status", "invalid"]);
+    assert_eq!(revoked["tokens"][0]["jti"], jti.as_str(), "{revoked}");
+
+    // A key credential: its public key given as PEM, the token obtained by a signed assertion
+    // whose audience is the token endpoint the IAM Host publishes, whatever URL was typed.
+    use base64::Engine as _;
+    let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new())
+        .expect("a key");
+    let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).expect("a pair");
+    let pem = |label: &str, der: &[u8]| {
+        format!(
+            "-----BEGIN {label}-----\n{}\n-----END {label}-----\n",
+            base64::engine::general_purpose::STANDARD.encode(der)
+        )
+    };
+    let mut spki = vec![
+        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+    ];
+    spki.extend_from_slice(ring::signature::KeyPair::public_key(&pair).as_ref());
+    let public = dir.join("billing.pub.pem");
+    std::fs::write(&public, pem("PUBLIC KEY", &spki)).expect("writes");
+    let private = dir.join("billing.key.pem");
+    std::fs::write(&private, pem("PRIVATE KEY", pkcs8.as_ref())).expect("writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600))
+            .expect("private");
+    }
+    run(
+        &https,
+        &[
+            "iam",
+            "credentials",
+            "create",
+            "billing",
+            "--public-key",
+            public.to_str().expect("a UTF-8 path"),
+        ],
+    );
+    let keyed = dir.join("keyed.token");
+    let by_key = cli(
+        &dir,
+        &[
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &https,
+            "--client-id",
+            "billing",
+            "--client-key-file",
+            private.to_str().expect("a UTF-8 path"),
+            "iam",
+            "token",
+            "--scope",
+            "decision.evaluate",
+            "--audience",
+            &audience,
+            "--target",
+            "plane/data/*",
+            "--out",
+            keyed.to_str().expect("a UTF-8 path"),
+        ],
+    );
+    assert!(by_key.status.success(), "{by_key:?}");
+    assert_eq!(
+        std::fs::read_to_string(&keyed)
+            .expect("written")
+            .split('.')
+            .count(),
+        3
+    );
+    // A private key in a JWK is refused as a public key.
+    let jwk = dir.join("private.jwk");
+    std::fs::write(
+        &jwk,
+        r#"{"kty":"OKP","crv":"Ed25519","x":"AAAA","d":"BBBB"}"#,
+    )
+    .expect("writes");
+    let leaked = cli(
+        &dir,
+        &[
+            "--host-endpoint",
+            &https,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+            "iam",
+            "credentials",
+            "create",
+            "billing",
+            "--public-key",
+            jwk.to_str().expect("a UTF-8 path"),
+        ],
+    );
+    assert!(
+        !leaked.status.success()
+            && String::from_utf8_lossy(&leaked.stderr).contains("is a private key"),
+        "{leaked:?}"
+    );
+
+    // The commands that moved are gone from `host`, and the offline ones are not `iam`'s.
+    for gone in [
+        vec!["host", "grants", "issue", "--help"],
+        vec!["host", "users", "list", "--help"],
+        vec!["host", "roles", "list", "--help"],
+        vec!["iam", "grants", "bootstrap", "--help"],
+        vec!["iam", "users", "bootstrap", "--help"],
+        vec!["iam", "recovery", "start", "--help"],
+    ] {
+        let output = cli(&dir, &gone);
+        assert!(!output.status.success(), "{gone:?} answers: {output:?}");
+    }
+
+    // A wrong secret is refused by the IAM Host, and says nothing of the secret it was sent.
+    let wrong = dir.join("wrong.secret");
+    std::fs::write(&wrong, "pgc_not-the-secret").expect("writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&wrong, std::fs::Permissions::from_mode(0o600)).expect("private");
+    }
+    let refused = cli(
+        &dir,
+        &[
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &https,
+            "--client-id",
+            "billing",
+            "--client-secret-file",
+            wrong.to_str().expect("a UTF-8 path"),
+            "iam",
+            "token",
+            "--scope",
+            "decision.evaluate",
+            "--audience",
+            &audience,
+            "--out",
+            dir.join("never.token").to_str().expect("a UTF-8 path"),
+        ],
+    );
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(!String::from_utf8_lossy(&refused.stderr).contains("pgc_not-the-secret"));
+    assert!(
+        !dir.join("never.token").exists(),
+        "nothing is written for a refused token"
+    );
+}
+
+/// TC-7: a command that reaches a Data Plane, with a client configured and no `--token-file`,
+/// obtains the client's token at the IAM Host and sends it as its bearer; the next command reuses
+/// the token kept in the user's private cache instead of asking for another.
+#[test]
+fn a_data_plane_command_acts_with_its_clients_token_and_reuses_it() {
+    let dir = scratch("client-token");
+    let pki = pki(&dir);
+    std::fs::write(
+        dir.join("check.json"),
+        r#"{"subject":{"type":"User","id":"alice"},"action":{"name":"read"},"resource":{"type":"Document","id":"budget"}}"#,
+    )
+    .expect("the request writes");
+    let iam = host_listener(&dir, &pki);
+    let seen = Seen::default();
+    // The plane here only records which bearer arrived: any bearer is somebody.
+    let plane = serve_with(
+        rest().merge(grpc()),
+        TlsSettings::new(&pki.certificate, &pki.key),
+        Arc::clone(&seen),
+        Arc::new(AnyBearer),
+    );
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
+    let iam_url = format!("https://localhost:{}", iam.port());
+    let ca = pki.authority.to_str().expect("a UTF-8 path").to_owned();
+    let admin = admin_token.to_str().expect("a UTF-8 path").to_owned();
+    let as_admin = |args: &[&str]| -> Value {
+        let mut full = vec![
+            "-o",
+            "json",
+            "--host-endpoint",
+            &iam_url,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+        ];
+        full.extend_from_slice(args);
+        let output = cli(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        serde_json::from_slice(&output.stdout).expect("JSON")
+    };
+    as_admin(&[
+        "iam",
+        "service-accounts",
+        "create",
+        "billing",
+        "--owner",
+        "payments",
+    ]);
+    as_admin(&[
+        "iam",
+        "grants",
+        "issue",
+        "--principal",
+        "sa:billing",
+        "--operations",
+        "decision.evaluate",
+        "--selector",
+        "plane/data/*",
+    ]);
+    let secret = dir.join("billing.secret");
+    let secret_path = secret.to_str().expect("a UTF-8 path").to_owned();
+    as_admin(&[
+        "iam",
+        "credentials",
+        "create",
+        "billing",
+        "--secret-out",
+        &secret_path,
+    ]);
+    let host_id = as_admin(&["host", "identity", "show"])["host_id"]
+        .as_str()
+        .expect("the host id")
+        .to_owned();
+    let audience = format!("member:{host_id}");
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).expect("a home");
+    let home_text = home.to_str().expect("a UTF-8 path").to_owned();
+    let plane_url = format!("https://localhost:{}", plane.port());
+    let check = || {
+        cli_with(
+            &dir,
+            &[
+                ("HOME", home_text.as_str()),
+                ("PERMGUARD_CLIENT_AUDIENCE", audience.as_str()),
+                ("PERMGUARD_CLIENT_TARGET", "plane/data/*"),
+            ],
+            &[
+                "--tls-ca-file",
+                &ca,
+                "--iam-endpoint",
+                &iam_url,
+                "--client-id",
+                "billing",
+                "--client-secret-file",
+                &secret_path,
+                "check",
+                "--file",
+                "check.json",
+                "--zone",
+                "acme",
+                "--ledger",
+                "main-ledger",
+                "--data-endpoint",
+                &plane_url,
+            ],
+        )
+    };
+    for _ in 0..2 {
+        let output = check();
+        assert!(output.status.success(), "{output:?}");
+    }
+    let sent: Vec<String> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|value| value.clone())
+        .collect();
+    assert_eq!(sent.len(), 2, "{sent:?}");
+    assert!(
+        sent[0].starts_with("Bearer ") && sent[0].split('.').count() == 3,
+        "{sent:?}"
+    );
+    assert_eq!(sent[0], sent[1], "the second command reused the kept token");
+    let tokens = as_admin(&["iam", "tokens", "list", "--subject", "sa:billing"]);
+    assert_eq!(
+        tokens["tokens"].as_array().map(Vec::len),
+        Some(1),
+        "{tokens}"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let directory = home.join(".permguard").join("tokens");
+        let mode = std::fs::metadata(&directory)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o700, "only its owner enters the cache");
+        let kept = std::fs::read_dir(&directory)
+            .expect("the cache")
+            .map(|entry| entry.expect("an entry").path())
+            .collect::<Vec<_>>();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        let mode = std::fs::metadata(&kept[0])
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "only its owner reads the kept token");
+    }
+}
+
+/// Any bearer token is one caller: what a test needs that reads only which bearer arrived.
+struct AnyBearer;
+
+impl permguard_core::authz::Authenticator for AnyBearer {
+    fn authenticate(
+        &self,
+        _peer: Option<&permguard_core::PeerIdentity>,
+        bearer: Option<&str>,
+    ) -> Result<permguard_core::authz::Actor, permguard_core::AccessDenial> {
+        Ok(match bearer {
+            Some(_) => permguard_core::authz::Actor::Authenticated(
+                permguard_core::authz::ActorContext::new(
+                    permguard_core::authz::Principal::new("sa:caller").expect("a principal"),
+                    permguard_core::authz::Credential::AccessToken,
+                    None,
+                ),
+            ),
+            None => permguard_core::authz::Actor::Anonymous,
+        })
+    }
+}
+
 const ADMIN: &str = "spiffe://acme/operator";
 
-/// WP-8.1: `host roles apply` converges the Host to the file, over either transport; planning
+/// WP-8.1: `iam roles apply` converges the Host to the file, over either transport; planning
 /// again changes nothing, and a plan the Host moved past is refused, not applied.
 #[test]
 fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
@@ -1256,7 +1762,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, plan, stderr) = run(
         "https",
         &[
-            "host",
+            "iam",
             "roles",
             "apply",
             "plan",
@@ -1274,7 +1780,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, applied, stderr) = run(
         "https",
         &[
-            "host",
+            "iam",
             "roles",
             "apply",
             "run",
@@ -1289,7 +1795,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, plan, stderr) = run(
         "grpcs",
         &[
-            "host",
+            "iam",
             "roles",
             "apply",
             "plan",
@@ -1301,7 +1807,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     );
     assert!(ok, "{stderr}");
     assert!(kinds(&plan).is_empty(), "{plan}");
-    let (ok, role, stderr) = run("grpcs", &["host", "roles", "get", "operators"]);
+    let (ok, role, stderr) = run("grpcs", &["iam", "roles", "get", "operators"]);
     assert!(ok, "{stderr}");
     assert_eq!(
         role["members"],
@@ -1317,7 +1823,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, plan, stderr) = run(
         "https",
         &[
-            "host",
+            "iam",
             "roles",
             "apply",
             "plan",
@@ -1334,7 +1840,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, _, stderr) = run(
         "https",
         &[
-            "host",
+            "iam",
             "roles",
             "members",
             "add",
@@ -1347,7 +1853,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     let (ok, _, stderr) = run(
         "https",
         &[
-            "host",
+            "iam",
             "roles",
             "apply",
             "run",
@@ -1357,7 +1863,7 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     );
     assert!(!ok, "a stale plan is refused");
     assert!(stderr.contains("plan again"), "{stderr}");
-    let (_, role, _) = run("https", &["host", "roles", "get", "operators"]);
+    let (_, role, _) = run("https", &["iam", "roles", "get", "operators"]);
     assert_eq!(role["description"], "run the Host", "nothing was applied");
 }
 
@@ -1432,6 +1938,39 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay");
     let (directory, _) =
         permguard_host::authz::directory::Directory::open(&volume).expect("the directory");
+    // The access tokens, as the IAM Host composes them (WP-11.4): its own `iam.tokens` ring, and
+    // its Data Plane a local member so a token can be addressed to it.
+    let time = Arc::new(permguard_host::time::TimeGuard::system(
+        std::time::Duration::from_secs(30),
+    ));
+    let iam_tokens = Arc::new(
+        permguard_host::keys::ring::Ring::open(
+            &volume,
+            permguard_host::keys::ring::IAM_TOKENS,
+            permguard_host::identity::Suite::Ed25519Sha256V1,
+            permguard_host::keys::ring::Policy {
+                publish_ahead: std::time::Duration::from_secs(600),
+                rotate_every: std::time::Duration::from_secs(3600),
+                retain: std::time::Duration::from_secs(7200),
+            },
+            Arc::clone(&time),
+        )
+        .expect("the ring opens")
+        .with_binder(Arc::clone(&identity) as Arc<dyn permguard_host::keys::ring::Binder>),
+    );
+    permguard_core::KeyManager::maintain(iam_tokens.as_ref()).expect("the ring is maintained");
+    let (token_registry, _) =
+        permguard_host::authz::tokens::TokenRegistry::open(&volume).expect("the tokens");
+    let tokens = Arc::new(
+        permguard_host::api::tokens::Tokens::new(
+            token_registry,
+            iam_tokens as Arc<dyn permguard_core::keys::SigningRing>,
+            &identity.host_id(),
+            "https://localhost:7443",
+            AssuranceProfile::Development,
+        )
+        .serving_data(true),
+    );
     let api = Arc::new(
         HostApi::new(Composition {
             authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
@@ -1475,7 +2014,8 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             min_length: 12,
         })
         // The IAM Host's listener, serving the directory at `/iam/v1` (WP-11.1).
-        .serving_iam(true),
+        .serving_iam(true)
+        .with_tokens(tokens),
     );
     std::mem::forget(volume);
     let settings = TlsSettings::new(&pki.certificate, &pki.key);
@@ -1494,6 +2034,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             )
             .tls(Some(&settings))
             .authenticator(Some(Arc::new(Bearers)))
+            .client_authentication([permguard_server::host_api::http::TOKEN_PATH.to_owned()])
             .start()
             .await
             .expect("the Host listener binds");

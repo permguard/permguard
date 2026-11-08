@@ -72,6 +72,12 @@
       "item": "write",
       "primitive": "rename",
       "reason": "the operator's own session token in the operator's own token file, outside any Host volume: written beside it and renamed over it so a reader never finds half a token; the storage library serves a volume the Host claimed, which this is not"
+    },
+    {
+      "source": "crates/permguard-cli/src/client_token.rs",
+      "item": "write_cached",
+      "primitive": "rename",
+      "reason": "the command line's own access token, kept in the operator's private cache outside any Host volume: written beside it and renamed over it so the next command never reads half a token; the storage library serves a volume the Host claimed, which this is not"
     }
   ]
 }
