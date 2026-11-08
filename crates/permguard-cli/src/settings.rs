@@ -250,6 +250,14 @@ pub const SETTINGS: &[Setting] = &[
         write: |file, value| file.auth.client.audience = value,
     },
     Setting {
+        key: "auth.client.role",
+        description: "The role a Data Plane command's token elevates to; a member's role names the audience itself",
+        env: "PERMGUARD_CLIENT_ROLE",
+        default: "",
+        read: |file| file.auth.client.role.as_deref(),
+        write: |file, value| file.auth.client.role = value,
+    },
+    Setting {
         key: "auth.client.target",
         description: "What a Data Plane command's token acts on: selectors, comma-separated",
         env: "PERMGUARD_CLIENT_TARGET",
@@ -424,6 +432,8 @@ struct ClientSection {
     audience: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
 }
 
 impl ClientSection {
@@ -438,6 +448,7 @@ impl ClientSection {
             && self.scope.is_none()
             && self.audience.is_none()
             && self.target.is_none()
+            && self.role.is_none()
     }
 }
 

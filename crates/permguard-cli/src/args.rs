@@ -3091,16 +3091,24 @@ pub enum IamAction {
         action: TokensAction,
     },
     /// Obtain an access token and write it to a file: the configured client's, or else the
-    /// person's, the session `--token-file` holds exchanged at the IAM Host.
+    /// person's, the session `--token-file` holds exchanged at the IAM Host; with `--role`,
+    /// elevated to one of the subject's roles and carrying that role's permissions alone.
     #[command(
-        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard --token-file ./alice.session iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token"
+        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard --token-file ./alice.session iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --role dp.0198f2aa-0000-7000-8000-000000000002 --out ./eu-0.token"
     )]
     Token {
-        /// The operations, space or comma separated.
-        #[arg(long)]
-        scope: String,
+        /// The operations, space or comma separated: required without `--role`; beside it, they
+        /// narrow the role's.
+        #[arg(long, required_unless_present = "role")]
+        scope: Option<String>,
+        /// The role to elevate to, one the subject is a member of: `role:<name>` joins the scope.
+        /// A member's role, `dp.<member_id>`, is addressed to its member and targets
+        /// `plane/data/*` unless `--target` narrows it.
+        #[arg(long, value_name = "NAME")]
+        role: Option<String>,
         /// Whom the token is for: `member:<member_id>` or `group:<name>`; repeated for several.
-        #[arg(long, required = true)]
+        /// Required without `--role`; under a member's role the IAM Host names its member.
+        #[arg(long, required_unless_present = "role")]
         audience: Vec<String>,
         /// What an application token acts on: a selector of the members' Planes; repeated.
         #[arg(long)]

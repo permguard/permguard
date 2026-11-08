@@ -2080,6 +2080,268 @@ fn a_data_plane_command_acts_with_its_clients_token_and_reuses_it() {
     }
 }
 
+/// The claims of a compact JWS, unverified: what a test reads of a token it was handed.
+fn claims_of(token: &str) -> Value {
+    use base64::Engine as _;
+
+    let payload = token
+        .trim()
+        .trim_start_matches("Bearer ")
+        .split('.')
+        .nth(1)
+        .expect("a compact JWS");
+    serde_json::from_slice(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .expect("base64url"),
+    )
+    .expect("JSON claims")
+}
+
+/// Role elevation (`2-security/7` Access tokens, `2-security/8` Roles and elevation): a service
+/// account with no grant of its own, assigned to its member's role, elevates with
+/// `iam token --role` and with `auth.client.role` on a Data Plane command, addressed by the IAM
+/// Host to that member alone; without the role, or beyond it, it is refused.
+#[test]
+fn a_client_elevates_to_its_members_role_and_decides_there_alone() {
+    let dir = scratch("client-role");
+    let pki = pki(&dir);
+    std::fs::write(
+        dir.join("check.json"),
+        r#"{"subject":{"type":"User","id":"alice"},"action":{"name":"read"},"resource":{"type":"Document","id":"budget"}}"#,
+    )
+    .expect("the request writes");
+    let iam = host_listener(&dir, &pki);
+    let seen = Seen::default();
+    let plane = serve_with(
+        rest().merge(grpc()),
+        TlsSettings::new(&pki.certificate, &pki.key),
+        Arc::clone(&seen),
+        Arc::new(AnyBearer),
+    );
+    let admin_token = dir.join("admin-token");
+    std::fs::write(&admin_token, ADMIN).expect("the administrator token writes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&admin_token, std::fs::Permissions::from_mode(0o600))
+            .expect("the token is private");
+    }
+    let iam_url = format!("https://localhost:{}", iam.port());
+    let ca = pki.authority.to_str().expect("a UTF-8 path").to_owned();
+    let admin = admin_token.to_str().expect("a UTF-8 path").to_owned();
+    let as_admin = |args: &[&str]| -> Value {
+        let mut full = vec![
+            "-o",
+            "json",
+            "--host-endpoint",
+            &iam_url,
+            "--tls-ca-file",
+            &ca,
+            "--token-file",
+            &admin,
+        ];
+        full.extend_from_slice(args);
+        let output = cli(&dir, &full);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        serde_json::from_slice(&output.stdout).expect("JSON")
+    };
+    as_admin(&[
+        "iam",
+        "service-accounts",
+        "create",
+        "billing",
+        "--owner",
+        "payments",
+    ]);
+    let secret = dir.join("billing.secret");
+    let secret_path = secret.to_str().expect("a UTF-8 path").to_owned();
+    as_admin(&[
+        "iam",
+        "credentials",
+        "create",
+        "billing",
+        "--secret-out",
+        &secret_path,
+    ]);
+    let host_id = as_admin(&["host", "identity", "show"])["host_id"]
+        .as_str()
+        .expect("the host id")
+        .to_owned();
+    let member = format!("member:{host_id}");
+    let role = format!("dp.{host_id}");
+    let roles = as_admin(&["iam", "roles", "list"]).to_string();
+    assert!(
+        roles.contains(&role) && roles.contains("data-planes"),
+        "the system roles follow the live members: {roles}"
+    );
+    let as_client = |args: &[&str]| -> Output {
+        let mut full = vec![
+            "-o",
+            "json",
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &iam_url,
+            "--client-id",
+            "billing",
+            "--client-secret-file",
+            &secret_path,
+            "iam",
+            "token",
+        ];
+        full.extend_from_slice(args);
+        cli(&dir, &full)
+    };
+    let out = |name: &str| dir.join(name).to_str().expect("a UTF-8 path").to_owned();
+
+    // Not yet a member of the role: refused, and so is a token without a role, since the account
+    // holds no grant of its own.
+    let refused = as_client(&["--role", &role, "--out", &out("early.token")]);
+    assert!(
+        !refused.status.success()
+            && String::from_utf8_lossy(&refused.stderr).contains("invalid_scope"),
+        "{refused:?}"
+    );
+    as_admin(&[
+        "iam",
+        "roles",
+        "members",
+        "add",
+        &role,
+        "--principal",
+        "sa:billing",
+    ]);
+    let bare = as_client(&[
+        "--scope",
+        "decision.evaluate",
+        "--audience",
+        &member,
+        "--target",
+        "plane/data/*",
+        "--out",
+        &out("bare.token"),
+    ]);
+    assert!(!bare.status.success(), "no grant of its own: {bare:?}");
+
+    // Elevated: no scope, no audience, no target named; the IAM Host addresses the role.
+    let issued = as_client(&["--role", &role, "--out", &out("eu.token")]);
+    assert!(issued.status.success(), "{issued:?}");
+    let token = std::fs::read_to_string(dir.join("eu.token")).expect("the token is written");
+    let claims = claims_of(&token);
+    assert_eq!(claims["sub"], "sa:billing", "{claims}");
+    assert_eq!(claims["aud"], serde_json::json!([member]), "{claims}");
+    assert_eq!(claims["roles"], serde_json::json!([role]), "{claims}");
+    assert_eq!(claims["permguard_family"], "application", "{claims}");
+    assert_eq!(
+        claims["permguard_target"],
+        serde_json::json!(["plane/data/*"]),
+        "{claims}"
+    );
+    let mut scope: Vec<&str> = claims["scope"]
+        .as_str()
+        .expect("a scope")
+        .split(' ')
+        .collect();
+    scope.sort_unstable();
+    assert_eq!(scope, ["decision.evaluate", "event.submit"], "{claims}");
+    // Narrowed by the operations beside it.
+    let narrowed = as_client(&[
+        "--role",
+        &role,
+        "--scope",
+        "decision.evaluate",
+        "--out",
+        &out("narrowed.token"),
+    ]);
+    assert!(narrowed.status.success(), "{narrowed:?}");
+    assert_eq!(
+        claims_of(&std::fs::read_to_string(dir.join("narrowed.token")).expect("written"))["scope"],
+        "decision.evaluate"
+    );
+
+    // Beyond the role: another member, an administration operation; refused.
+    for (args, name) in [
+        (
+            vec!["--audience", "member:01a1bc76-7028-717c-8b19-c470f894a0dd"],
+            "elsewhere.token",
+        ),
+        (vec!["--scope", "keys.read"], "administer.token"),
+    ] {
+        let mut full = vec!["--role", role.as_str()];
+        full.extend(args);
+        let path = out(name);
+        full.extend(["--out", path.as_str()]);
+        let refused = as_client(&full);
+        assert!(!refused.status.success(), "{full:?}: {refused:?}");
+        assert!(!dir.join(name).exists(), "nothing written for {full:?}");
+    }
+    // A role is a role name, and a scope names one: refused before anything is asked.
+    for args in [
+        vec!["--role", "Not A Role"],
+        vec!["--role", &role, "--scope", "role:data-planes"],
+    ] {
+        let mut full = args.clone();
+        let path = out("usage.token");
+        full.extend(["--out", path.as_str()]);
+        let refused = as_client(&full);
+        assert_eq!(refused.status.code(), Some(64), "{full:?}: {refused:?}");
+    }
+    // Without a role the audience stays the client's to name.
+    let unaddressed = as_client(&["--scope", "decision.evaluate", "--out", &out("none.token")]);
+    assert!(!unaddressed.status.success(), "{unaddressed:?}");
+
+    // A Data Plane command elevates by its configuration, auth.client.role, and needs no audience.
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).expect("a home");
+    let home_text = home.to_str().expect("a UTF-8 path").to_owned();
+    let plane_url = format!("https://localhost:{}", plane.port());
+    let checked = cli_with(
+        &dir,
+        &[
+            ("HOME", home_text.as_str()),
+            ("PERMGUARD_CLIENT_ROLE", role.as_str()),
+        ],
+        &[
+            "--tls-ca-file",
+            &ca,
+            "--iam-endpoint",
+            &iam_url,
+            "--client-id",
+            "billing",
+            "--client-secret-file",
+            &secret_path,
+            "check",
+            "--file",
+            "check.json",
+            "--zone",
+            "acme",
+            "--ledger",
+            "main-ledger",
+            "--data-endpoint",
+            &plane_url,
+        ],
+    );
+    assert!(checked.status.success(), "{checked:?}");
+    let sent: Vec<String> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|value| value.clone())
+        .collect();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    let sent = claims_of(&sent[0]);
+    assert_eq!(sent["roles"], serde_json::json!([role]), "{sent}");
+    assert_eq!(sent["aud"], serde_json::json!([member]), "{sent}");
+    assert_eq!(sent["scope"], "decision.evaluate", "{sent}");
+    let listed = as_admin(&["iam", "tokens", "list", "--subject", "sa:billing"]);
+    assert_eq!(
+        listed["tokens"].as_array().map(Vec::len),
+        Some(3),
+        "the two elevations and the command's: {listed}"
+    );
+}
+
 /// Any bearer token is one caller: what a test needs that reads only which bearer arrived.
 struct AnyBearer;
 
@@ -2415,7 +2677,10 @@ fn host_listeners(
     );
     let api = Arc::new(
         HostApi::new(Composition {
-            authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
+            // Its roles and memberships read from the directory, as the IAM Host composes them.
+            authorization: Arc::new(
+                Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
+            ),
             store: Some(store),
             replay,
             keys: Arc::new(permguard_host::keys::registry::Registry::new(
@@ -2459,6 +2724,9 @@ fn host_listeners(
         .serving_iam(true)
         .with_tokens(tokens),
     );
+    // As the IAM Host does before it serves: the token statuses brought to the directory, and the
+    // system roles to the live members, its own Data Plane among them.
+    api.sync_token_statuses("test").expect("the tokens sync");
     std::mem::forget(volume);
     let settings = TlsSettings::new(&pki.certificate, &pki.key);
     let mutual = TlsSettings::new(&pki.certificate, &pki.key).with_client_ca(&pki.authority);
