@@ -23,6 +23,10 @@ Nothing yet.
 
 ### Added
 
+- **A Host keeps serving while its endpoint is removed, before its intake stops.**
+  `shutdown.deregister_delay` (`PERMGUARD_SHUTDOWN_DEREGISTER_DELAY`) is the start of the drain in which the listeners keep answering, readiness already false, so a load balancer that still routes to a stopping replica is answered rather than refused; it runs inside `shutdown.drain_timeout`, and none by default.
+  The chart sets 3 seconds per group (`dataPlane.groups[].shutdown.deregisterDelaySeconds`), which also keeps the process alive past the `preStop` hook that asked it to drain.
+
 - **The chart makes every Host's identity offline from `production`, and starts it on its witness.**
   An init container `identity`, on the release's `cli` image (`cli.repository`, `cli.digest`), runs `permguard host identity provision --if-missing` in every Pod above `development`, in the Host's own custody, and prints the witness in its log once.
   The operator records it, `controlPlane.identity.witness` or `dataPlane.groups[].identity.witnesses` (one per ordinal), and the Host starts; until then it refuses, and says where to record it.

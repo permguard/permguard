@@ -104,6 +104,7 @@ either bound turns autoscaling on, unless the group says `enabled: false`.
 {{- $shutdown := dict
       "timeoutSeconds" (int (dig "shutdown" "timeoutSeconds" $d.shutdown.timeoutSeconds $g))
       "drainTimeoutSeconds" (int (dig "shutdown" "drainTimeoutSeconds" $d.shutdown.drainTimeoutSeconds $g))
+      "deregisterDelaySeconds" (int (dig "shutdown" "deregisterDelaySeconds" ($d.shutdown.deregisterDelaySeconds | default 0) $g))
 -}}
 {{- $network := dict
       "public" (dig "networkPolicy" "public" "from" (dig "networkPolicy" "public" "from" $root.Values.networkPolicy.public.from $d) $g | default list)

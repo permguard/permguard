@@ -643,6 +643,9 @@ dataPlane:
     let config = rendered.config("permguard-data-plane-billing");
     assert_eq!(config["shutdown"]["timeout"], "40s");
     assert_eq!(config["shutdown"]["drain_timeout"], "32s");
+    // The listeners serve through the endpoint's removal, readiness already false, inside the
+    // drain: 3 seconds unless the group says otherwise.
+    assert_eq!(config["shutdown"]["deregister_delay"], "3s");
 }
 
 #[test]
@@ -656,6 +659,16 @@ dataPlane:
       shutdown: { timeoutSeconds: 30, drainTimeoutSeconds: 30 }
 ",
         "drainTimeoutSeconds",
+    );
+    refused(
+        "\
+dataPlane:
+  groups:
+    - name: billing
+      selector: plane/data/*
+      shutdown: { timeoutSeconds: 30, drainTimeoutSeconds: 5, deregisterDelaySeconds: 5 }
+",
+        "deregisterDelaySeconds (5) is not shorter than shutdown.drainTimeoutSeconds (5)",
     );
 }
 

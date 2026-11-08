@@ -218,6 +218,10 @@
                   "drainTimeoutSeconds": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "deregisterDelaySeconds": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               },
@@ -607,6 +611,10 @@
                   "minimum": 1
                 },
                 "drainTimeoutSeconds": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "deregisterDelaySeconds": {
                   "type": "integer",
                   "minimum": 0
                 }

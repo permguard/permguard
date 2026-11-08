@@ -93,9 +93,12 @@ log:
 # (Kubernetes `terminationGracePeriodSeconds`, 30 s by default); `drain_timeout` is the part of it
 # in which intake stops and in-flight work finishes, at least one second shorter, the rest sealing
 # the trail and releasing the volume. A drain that does not complete exits 75 and is never reported clean.
+# `deregister_delay` is the start of the drain in which the listeners keep serving, readiness
+# already false, while an orchestrator removes the endpoint: none by default, 3 s in the chart.
 # shutdown:
 #   timeout: "30s"
 #   drain_timeout: "25s"
+#   deregister_delay: "0s"
 
 # The Host's clock guard. A backward step of the wall clock larger than this is a clock anomaly:
 # new leases and time-sensitive signatures (NOTP head statements) refuse, and the Host reports

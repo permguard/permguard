@@ -16,7 +16,9 @@ use axum::Router;
 use axum::routing::get;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-use permguard_core::config::{SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_TIMEOUT};
+use permguard_core::config::{
+    SETTING_SHUTDOWN_DEREGISTER_DELAY, SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_TIMEOUT,
+};
 use permguard_core::{
     BoxFuture, BuildSettings, Config, Drained, IncompleteDrain, Layers, ProductIdentity,
     ServerContext, ServerHost, Service, ready,
@@ -126,6 +128,66 @@ fn incomplete(outcome: Result<()>) -> IncompleteDrain {
         .downcast_ref::<IncompleteDrain>()
         .cloned()
         .unwrap_or_else(|| panic!("not an incomplete drain: {error:#}"))
+}
+
+/// When intake stopped, counted from the shutdown.
+struct Timed {
+    from: tokio::time::Instant,
+    at: Arc<Mutex<Option<Duration>>>,
+}
+
+impl Service for Timed {
+    fn name(&self) -> &'static str {
+        "timed"
+    }
+
+    fn start<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        ready(Ok(()))
+    }
+
+    fn stop_intake(&self, context: &ServerContext<'_>) {
+        assert!(!context.health().is_ready(), "readiness goes false first");
+        *self.at.lock().unwrap() = Some(self.from.elapsed());
+    }
+}
+
+/// The listeners serve through `shutdown.deregister_delay` after readiness goes false, the time
+/// an orchestrator takes to remove the endpoint, and only then does intake stop; none by default.
+#[tokio::test(start_paused = true)]
+async fn intake_stops_only_after_the_deregistration_delay() {
+    for (delay, at_least) in [(None, Duration::ZERO), (Some("3s"), Duration::from_secs(3))] {
+        let mut settings = vec![
+            (SETTING_SHUTDOWN_DRAIN_TIMEOUT.to_owned(), "10s".to_owned()),
+            (SETTING_SHUTDOWN_TIMEOUT.to_owned(), "15s".to_owned()),
+        ];
+        if let Some(delay) = delay {
+            settings.push((
+                SETTING_SHUTDOWN_DEREGISTER_DELAY.to_owned(),
+                delay.to_owned(),
+            ));
+        }
+        let config = Config::from_layers(
+            BuildSettings::new("9.9.9", "2026", "Test Holder"),
+            Vec::<String>::new(),
+            Layers::new().with_file(settings),
+        )
+        .expect("the config builds");
+        let at = Arc::new(Mutex::new(None));
+        let services: Vec<Box<dyn Service>> = vec![Box::new(Timed {
+            from: tokio::time::Instant::now(),
+            at: Arc::clone(&at),
+        })];
+        run(&services, &config).await.expect("a clean run");
+        let stopped = at.lock().unwrap().expect("intake stopped");
+        assert!(
+            stopped >= at_least,
+            "{delay:?}: intake stopped after {stopped:?}"
+        );
+        assert!(
+            stopped < at_least + Duration::from_secs(1),
+            "{delay:?}: {stopped:?}"
+        );
+    }
 }
 
 #[tokio::test]

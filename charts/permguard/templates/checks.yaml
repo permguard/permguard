@@ -420,6 +420,9 @@ and its recovery Job, and storage whose takeover is qualified (TD-2).
 {{- if or (lt (int $g.shutdown.timeoutSeconds) 2) (gt (add (int $g.shutdown.drainTimeoutSeconds) 1) (int $g.shutdown.timeoutSeconds)) }}
 {{- fail (printf "dataPlane.groups[%s]: shutdown.drainTimeoutSeconds (%d) leaves less than one second of shutdown.timeoutSeconds (%d): the drain runs inside the budget and the process still has to seal and release its volume." $g.name (int $g.shutdown.drainTimeoutSeconds) (int $g.shutdown.timeoutSeconds)) }}
 {{- end }}
+{{- if ge (int $g.shutdown.deregisterDelaySeconds) (int $g.shutdown.drainTimeoutSeconds) }}
+{{- fail (printf "dataPlane.groups[%s]: shutdown.deregisterDelaySeconds (%d) is not shorter than shutdown.drainTimeoutSeconds (%d): the listeners serve through it inside the drain, which needs time after it." $g.name (int $g.shutdown.deregisterDelaySeconds) (int $g.shutdown.drainTimeoutSeconds)) }}
+{{- end }}
 {{- end }}
 {{- /* Two groups never serve the same resources: neither selector contains the other's start. */ -}}
 {{- range $i, $a := $parsed }}

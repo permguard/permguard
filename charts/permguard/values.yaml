@@ -307,10 +307,13 @@ dataPlane:
       value: 1
     # One budget for a replica's shutdown. The `preStop` hook asks the server to drain, which then
     # has `timeoutSeconds` to stop: `drainTimeoutSeconds` of it to drain, at least one second left
-    # to seal and release the volume. The grace period is `timeoutSeconds` plus five seconds.
+    # to seal and release the volume. The grace period is `timeoutSeconds` plus five seconds. The
+    # first `deregisterDelaySeconds` of the drain the listeners keep serving, readiness already
+    # false, while Kubernetes removes the endpoint: no connection is refused on a scale-down.
     shutdown:
       timeoutSeconds: 30
       drainTimeoutSeconds: 25
+      deregisterDelaySeconds: 3
     # The membership tasks its replicas are invited with, by type. Empty renders `policy.mirror`,
     # `decisions.ship` when evidence is recorded and `events.ship` when the group keeps temporal
     # history, each on the group's selector. An entry of one of those types narrows it

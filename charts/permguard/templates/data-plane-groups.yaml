@@ -70,7 +70,7 @@ spec:
 {{- with (include "permguard.hostListenerConfig" (dict "listener" $dp.hostListener) | fromYaml) }}
 {{- $merged = mergeOverwrite $merged . }}
 {{- end }}
-{{- $_ := set $merged "shutdown" (dict "timeout" (printf "%ds" (int $g.shutdown.timeoutSeconds)) "drain_timeout" (printf "%ds" (int $g.shutdown.drainTimeoutSeconds))) }}
+{{- $_ := set $merged "shutdown" (dict "timeout" (printf "%ds" (int $g.shutdown.timeoutSeconds)) "drain_timeout" (printf "%ds" (int $g.shutdown.drainTimeoutSeconds)) "deregister_delay" (printf "%ds" (int $g.shutdown.deregisterDelaySeconds))) }}
 {{- /* The evidence mode is the decision log's mode (WP-6.1): `required` or `disabled`. */ -}}
 {{- $log := dig "dataPlane" "decisions" "log" dict $merged }}
 {{- $_ := set $log "enabled" (ternary "false" "true" (eq $g.evidence "disabled")) }}

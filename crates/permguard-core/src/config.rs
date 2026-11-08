@@ -289,6 +289,10 @@ pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 /// decision of 2026-10-06).
 pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEOUT";
 
+/// Runtime setting key for how long the listeners keep serving after readiness goes false, before
+/// intake stops: the time an orchestrator takes to remove the endpoint, inside the drain budget.
+pub const SETTING_SHUTDOWN_DEREGISTER_DELAY: &str = "PERMGUARD_SHUTDOWN_DEREGISTER_DELAY";
+
 /// Runtime setting key for a recovery drain run (TD-2): the process stops as soon as it has
 /// started — Load having resumed the streams a drain left — and a drain that completes prints its
 /// signed drain receipt and the Host's verification bundle. What the drain controller's Job sets.
@@ -1243,6 +1247,10 @@ const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 /// store and gives up the volume lock, which a drain that took the whole budget would never reach.
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(25);
 
+/// None by default: a process with no orchestrator in front of it has no endpoint to wait out. A
+/// chart sets one.
+const DEFAULT_SHUTDOWN_DEREGISTER_DELAY: Duration = Duration::ZERO;
+
 /// Thirty seconds, as the event journal's own skew allowance: an NTP step stays inside it, a clock
 /// set back by hand does not.
 pub const DEFAULT_TIME_MAX_CLOCK_SKEW: Duration = Duration::from_secs(30);
@@ -1435,6 +1443,7 @@ pub struct Config {
     limits: Limits,
     shutdown_timeout: Duration,
     shutdown_drain_timeout: Duration,
+    shutdown_deregister_delay: Duration,
     shutdown_recover_drain: bool,
     time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
@@ -1661,6 +1670,7 @@ impl Default for Config {
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
+            shutdown_deregister_delay: DEFAULT_SHUTDOWN_DEREGISTER_DELAY,
             shutdown_recover_drain: false,
             time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
@@ -2356,6 +2366,14 @@ produce: use `EdDSA` or `ES256`"
                 self.shutdown_drain_timeout,
                 MIN_SHUTDOWN_RELEASE,
                 self.shutdown_timeout
+            );
+        }
+        if self.shutdown_deregister_delay >= self.shutdown_drain_timeout {
+            bail!(
+                "`shutdown.deregister_delay` ({:?}) is not shorter than `shutdown.drain_timeout` \
+                 ({:?}): the listeners serve through it inside the drain, which needs time after it",
+                self.shutdown_deregister_delay,
+                self.shutdown_drain_timeout
             );
         }
         Ok(())
@@ -3527,6 +3545,12 @@ produce: use `EdDSA` or `ES256`"
     /// in-flight requests finished, every drain hook reported. Strictly shorter than the budget.
     pub fn shutdown_drain_timeout(&self) -> Duration {
         self.shutdown_drain_timeout
+    }
+
+    /// Returns how long the listeners keep serving after readiness goes false, before intake
+    /// stops: inside [`Config::shutdown_drain_timeout`], and zero unless a deployment sets it.
+    pub fn shutdown_deregister_delay(&self) -> Duration {
+        self.shutdown_deregister_delay
     }
 
     /// Whether this run is a recovery drain (TD-2): stop once started, and print the signed drain
@@ -4758,6 +4782,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_SHUTDOWN_DEREGISTER_DELAY => d(self.shutdown_deregister_delay),
             SETTING_SHUTDOWN_RECOVER_DRAIN => Some(self.shutdown_recover_drain.to_string()),
             SETTING_TIME_MAX_CLOCK_SKEW => d(self.time_max_clock_skew),
             SETTING_ASSURANCE_PROFILE => Some(self.assurance_profile.as_str().to_owned()),
@@ -5431,6 +5456,11 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_SHUTDOWN_DEREGISTER_DELAY) {
+            self.shutdown_deregister_delay = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_SHUTDOWN_DEREGISTER_DELAY}"))?;
         }
 
         if let Some(value) = settings.get(SETTING_SHUTDOWN_RECOVER_DRAIN) {
@@ -6898,6 +6928,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_SECRETS_COORDINATOR_ROOT_REF,
     SETTING_SECRETS_ZONE_KEY_VERSION,
     SETTING_SECRETS_PROVIDER,
+    SETTING_SHUTDOWN_DEREGISTER_DELAY,
     SETTING_SHUTDOWN_DRAIN_TIMEOUT,
     SETTING_SHUTDOWN_RECOVER_DRAIN,
     SETTING_SHUTDOWN_TIMEOUT,

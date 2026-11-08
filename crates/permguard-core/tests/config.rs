@@ -392,6 +392,43 @@ fn test_the_drain_takes_part_of_the_budget_and_never_all_of_it() {
     }
 }
 
+/// The listeners keep serving after readiness goes false while an orchestrator removes the
+/// endpoint: nothing by default, inside the drain when set, refused when it would take all of it.
+#[test]
+fn test_the_deregistration_delay_is_zero_by_default_and_inside_the_drain() {
+    let defaults = config(&[], &[], &[]);
+    assert_eq!(defaults.shutdown_deregister_delay(), Duration::ZERO);
+
+    let set = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443"),
+            (SETTING_SHUTDOWN_DEREGISTER_DELAY, "3s"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(set.shutdown_deregister_delay(), Duration::from_secs(3));
+    set.validate().expect("a delay inside the drain validates");
+
+    for delay in ["25s", "40s"] {
+        let refused = config(
+            &[
+                (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443"),
+                (SETTING_SHUTDOWN_DEREGISTER_DELAY, delay),
+            ],
+            &[],
+            &[],
+        );
+        let error = refused
+            .validate()
+            .expect_err("a delay as long as the drain leaves the drain nothing");
+        assert!(
+            format!("{error}").contains("shutdown.deregister_delay"),
+            "{error}"
+        );
+    }
+}
+
 #[test]
 fn test_a_shutdown_budget_is_read_in_seconds_minutes_or_hours() {
     let cases = [("45", 45), ("45s", 45), ("2m", 120), ("1h", 3600)];
