@@ -210,12 +210,24 @@ impl std::fmt::Debug for ClientProof {
 }
 
 /// What an issued token answers (RFC 6749 §5.1).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TokenAnswer {
     pub access_token: String,
     pub token_type: String,
     pub expires_in: u64,
     pub scope: String,
+}
+
+/// Never the token: what it is for and how long it serves.
+impl std::fmt::Debug for TokenAnswer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenAnswer")
+            .field("access_token", &"********")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("scope", &self.scope)
+            .finish()
+    }
 }
 
 /// Why a token was not issued, as RFC 6749 §5.2 names it.
@@ -279,29 +291,50 @@ impl TokenRefusal {
 }
 
 /// The client's requests within the current minute, per client and per source.
-/// The most keys one minute counts: past it, the minute refuses every new key, so a flood of
-/// distinct sources cannot grow the map without bound.
+/// The most keys one minute counts. Past it, a new source is refused for the rest of the minute,
+/// so a flood of distinct sources cannot grow the map without bound; a new client is admitted
+/// uncounted, still bound by its source's count, so a flood never locks every client out.
 const MAX_WINDOW_KEYS: usize = 100_000;
+
+/// What a full minute does with a key it does not count yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WhenFull {
+    Refuse,
+    Admit,
+}
 
 #[derive(Default)]
 pub(super) struct Limiter {
-    /// The minute counted and each key's requests in it; a new minute starts empty.
-    window: Mutex<(u64, HashMap<String, u32>)>,
+    /// The minute counted and each key's requests in it, by the key's digest: a fixed size
+    /// whatever a caller claims. A new minute starts empty.
+    window: Mutex<(u64, HashMap<[u8; 16], u32>)>,
 }
 
 impl Limiter {
     /// Counts one request of `key` at `now`, refusing past `limit` in the minute.
-    pub(super) fn admit(&self, key: String, limit: u32, now: u64) -> Result<(), TokenRefusal> {
+    pub(super) fn admit(
+        &self,
+        key: &str,
+        limit: u32,
+        when_full: WhenFull,
+        now: u64,
+    ) -> Result<(), TokenRefusal> {
+        let digest = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
+        let mut id = [0u8; 16];
+        id.copy_from_slice(&digest.as_ref()[..16]);
         let mut window = self.window.lock().unwrap_or_else(PoisonError::into_inner);
         let minute = now / 60;
         if window.0 != minute {
             *window = (minute, HashMap::new());
         }
         let wait = TokenRefusal::TooManyRequests(60 - now % 60);
-        if !window.1.contains_key(&key) && window.1.len() >= MAX_WINDOW_KEYS {
-            return Err(wait);
+        if !window.1.contains_key(&id) && window.1.len() >= MAX_WINDOW_KEYS {
+            return match when_full {
+                WhenFull::Refuse => Err(wait),
+                WhenFull::Admit => Ok(()),
+            };
         }
-        let count = window.1.entry(key).or_insert(0);
+        let count = window.1.entry(id).or_insert(0);
         if *count >= limit {
             return Err(wait);
         }
@@ -310,13 +343,50 @@ impl Limiter {
     }
 }
 
-/// The client assertions seen, each refused a second time within its lifetime.
+/// The source a request is counted as: its IPv4 address, or the /64 of its IPv6 address, which
+/// one subscriber holds whole; anything else as given.
+fn source_key(source: &str) -> String {
+    match source.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V6(address)) if address.to_ipv4_mapped().is_none() => {
+            let segments = address.segments();
+            format!(
+                "source:{:x}:{:x}:{:x}:{:x}::/64",
+                segments[0], segments[1], segments[2], segments[3]
+            )
+        }
+        Ok(std::net::IpAddr::V6(address)) => format!(
+            "source:{}",
+            address
+                .to_ipv4_mapped()
+                .map_or_else(|| address.to_string(), |v4| v4.to_string())
+        ),
+        _ => format!("source:{source}"),
+    }
+}
+
+/// How long before this process first served the endpoint an assertion may have been made: a
+/// client signs one right before it asks, and its clock may run a little behind.
+const ASSERTION_TOLERANCE: u64 = 5;
+
+/// The client assertions seen, each refused a second time within its lifetime. They are held in
+/// memory: one made before this process first served the endpoint is refused, so a restart
+/// opens no window to replay an assertion seen before it.
 #[derive(Default)]
 pub(super) struct Replays {
     seen: Mutex<HashMap<(String, String), u64>>,
+    since: Mutex<Option<u64>>,
 }
 
 impl Replays {
+    /// When this process first served the endpoint, recorded at its first request.
+    fn since(&self, now: u64) -> u64 {
+        *self
+            .since
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_or_insert(now)
+    }
+
     fn first_use(&self, account: &str, jti: &str, expires_at: u64, now: u64) -> bool {
         let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
         seen.retain(|_, until| *until > now);
@@ -357,10 +427,26 @@ fn decode_part(part: &str) -> Option<serde_json::Value> {
 }
 
 /// Who a request is counted as, before anything is hashed or verified, so a failing guess spends
-/// its budget as a success does: a client by the name it claims; an exchange by its subject token,
-/// digested, so each session or provider token has its own budget and one person never spends
-/// everyone's. The digest's first eight bytes name it, never the token.
+/// its budget as a success does: a client by the name it claims; an exchange always by its subject
+/// token, digested, whatever client it names, so each session or provider token has its own
+/// budget, one person never spends everyone's, and no exchange spends a service account's. The
+/// digest's first eight bytes name it, never the token.
 fn claimed_by(request: &TokenRequest, proof: &ClientProof) -> String {
+    if request.grant_type == TOKEN_EXCHANGE {
+        let digest = ring::digest::digest(
+            &ring::digest::SHA256,
+            request
+                .subject_token
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        let prefix: String = digest.as_ref()[..8]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        return format!("exchange:{prefix}");
+    }
     proof
         .basic
         .as_ref()
@@ -374,21 +460,7 @@ fn claimed_by(request: &TokenRequest, proof: &ClientProof) -> String {
                 .and_then(decode_part)
                 .and_then(|claims| claims.get("sub")?.as_str().map(str::to_owned))
         })
-        .unwrap_or_else(|| {
-            let digest = ring::digest::digest(
-                &ring::digest::SHA256,
-                request
-                    .subject_token
-                    .as_deref()
-                    .unwrap_or_default()
-                    .as_bytes(),
-            );
-            let prefix: String = digest.as_ref()[..8]
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect();
-            format!("exchange:{prefix}")
-        })
+        .unwrap_or_default()
 }
 
 impl HostApi {
@@ -404,15 +476,22 @@ impl HostApi {
             .as_deref()
             .ok_or_else(|| TokenRefusal::Unavailable("no token registry is open".to_owned()))?;
         let now = self.time.now_secs();
+        tokens.replays.since(now);
         if let Some(source) = &proof.source {
-            tokens
-                .limiter
-                .admit(format!("source:{source}"), SOURCE_REQUESTS_PER_MINUTE, now)?;
+            tokens.limiter.admit(
+                &source_key(source),
+                SOURCE_REQUESTS_PER_MINUTE,
+                WhenFull::Refuse,
+                now,
+            )?;
         }
         let claimed = claimed_by(request, proof);
-        tokens
-            .limiter
-            .admit(format!("client:{claimed}"), CLIENT_REQUESTS_PER_MINUTE, now)?;
+        tokens.limiter.admit(
+            &format!("client:{claimed}"),
+            CLIENT_REQUESTS_PER_MINUTE,
+            WhenFull::Admit,
+            now,
+        )?;
         let subject = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS => self.authenticate_client(tokens, request, proof, now),
             TOKEN_EXCHANGE => self.exchanged_subject(request),
@@ -617,6 +696,19 @@ impl HostApi {
         if !audience_holds || jti.is_empty() || jti.len() > 128 {
             return Err(client_failed());
         }
+        // Made after this process first served the endpoint, and not in its future: a replay
+        // across a restart is refused, since the assertions seen before it are not remembered.
+        // RFC 7523 leaves `iat` out at will: one without it counts as made the longest an
+        // assertion lives before its `exp`.
+        let issued_at = claims
+            .get("iat")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_else(|| expires_at.saturating_sub(MAX_ASSERTION_LIFETIME));
+        if issued_at.saturating_add(ASSERTION_TOLERANCE) < tokens.replays.since(now)
+            || issued_at > now.saturating_add(ASSERTION_TOLERANCE)
+        {
+            return Err(client_failed());
+        }
         let account = identities
             .directory
             .service_account(&subject)
@@ -728,7 +820,8 @@ impl HostApi {
                     client_id: format!("oidc:{}", verifier.name()),
                     account: None,
                     credential_id: None,
-                    expires_by: None,
+                    // Never past the provider's token it was exchanged for.
+                    expires_by: Some(verified.expires_at),
                 });
             }
         }
@@ -1241,9 +1334,19 @@ mod tests {
             !alice.contains("alice"),
             "the key never names the token: {alice}"
         );
-        let client = TokenRequest {
+        let named = TokenRequest {
             client_id: Some("billing".to_owned()),
             ..exchange("pgs_alice-session")
+        };
+        assert_eq!(
+            claimed_by(&named, &none),
+            alice,
+            "an exchange naming a client is still its session's: it spends no account's budget"
+        );
+        let client = TokenRequest {
+            grant_type: CLIENT_CREDENTIALS.to_owned(),
+            client_id: Some("billing".to_owned()),
+            ..TokenRequest::default()
         };
         assert_eq!(
             claimed_by(&client, &none),
@@ -1252,20 +1355,76 @@ mod tests {
         );
     }
 
+    /// T14: an answer printed never carries its token.
+    #[test]
+    fn an_answer_never_prints_its_token() {
+        let answer = TokenAnswer {
+            access_token: "eyJhbGciOiJFZERTQSJ9.secret.part".to_owned(),
+            token_type: "Bearer".to_owned(),
+            expires_in: 3_600,
+            scope: "decision.evaluate".to_owned(),
+        };
+        let printed = format!("{answer:?}");
+        assert!(!printed.contains("secret"), "{printed}");
+        assert!(printed.contains("decision.evaluate"));
+    }
+
     #[test]
     fn the_limiter_admits_a_minutes_bound_then_says_when_to_come_back() {
         let limiter = Limiter::default();
         for _ in 0..3 {
             limiter
-                .admit("client:x".to_owned(), 3, 120)
+                .admit("client:x", 3, WhenFull::Refuse, 120)
                 .expect("admitted");
         }
         assert_eq!(
-            limiter.admit("client:x".to_owned(), 3, 130),
+            limiter.admit("client:x", 3, WhenFull::Refuse, 130),
             Err(TokenRefusal::TooManyRequests(50))
         );
         limiter
-            .admit("client:x".to_owned(), 3, 180)
+            .admit("client:x", 3, WhenFull::Refuse, 180)
             .expect("the next minute");
+    }
+
+    /// A full minute refuses a new source and admits a new client uncounted: a flood of claimed
+    /// names never locks every client out, and never grows the map.
+    #[test]
+    fn a_full_minute_refuses_new_sources_and_admits_new_clients_uncounted() {
+        let limiter = Limiter::default();
+        for n in 0..MAX_WINDOW_KEYS {
+            limiter
+                .admit(&format!("client:{n}"), 1, WhenFull::Admit, 60)
+                .expect("counted");
+        }
+        assert_eq!(
+            limiter.admit("source:198.51.100.7", 300, WhenFull::Refuse, 61),
+            Err(TokenRefusal::TooManyRequests(59))
+        );
+        for _ in 0..5 {
+            limiter
+                .admit("client:billing", 1, WhenFull::Admit, 61)
+                .expect("admitted uncounted");
+        }
+        assert_eq!(
+            limiter
+                .window
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .1
+                .len(),
+            MAX_WINDOW_KEYS
+        );
+    }
+
+    /// One IPv6 subscriber's /64 is one source; an IPv4 address, mapped or not, is itself.
+    #[test]
+    fn an_ipv6_source_is_counted_by_its_64() {
+        assert_eq!(
+            source_key("2001:db8:1:2:aaaa::1"),
+            source_key("2001:db8:1:2:bbbb::9")
+        );
+        assert_ne!(source_key("2001:db8:1:2::1"), source_key("2001:db8:1:3::1"));
+        assert_eq!(source_key("::ffff:198.51.100.7"), "source:198.51.100.7");
+        assert_eq!(source_key("198.51.100.7"), "source:198.51.100.7");
     }
 }

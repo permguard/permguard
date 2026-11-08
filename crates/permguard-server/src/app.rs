@@ -2499,6 +2499,23 @@ impl App {
             context.health().lifecycle().set_storage(report.clone());
         }
         mutations.observe(context.health().clone());
+        // `production` admits the ring in files on this volume, and the Host says so until it
+        // moves to a PKCS#11 token or a KMS: whoever holds the volume holds every member.
+        if let Some(advice) = iam_host
+            .then(|| crate::plane::factories::iam_tokens_custody_advice(config))
+            .flatten()
+        {
+            tracing::warn!(
+                event.name = "keys.token_custody",
+                component = "server",
+                "{advice}"
+            );
+            context.health().lifecycle().degrade(
+                permguard_core::lifecycle::HOST,
+                crate::plane::factories::TOKEN_CUSTODY,
+                advice,
+            );
+        }
 
         if let Some(catalog) = catalog {
             context = context.with_catalog(catalog);
@@ -3187,6 +3204,21 @@ impl App {
                 metrics: context.metrics().clone(),
             },
         );
+        // The status lists this Host holds as a member, fetched on their own cadence within the
+        // shortest `ttl`, and reported (WP-12.1, `2-security/9` Signals).
+        let _status_lists = serving.as_ref().and_then(|api| {
+            api.held_lists().map(|lists| {
+                crate::token_status::drive(
+                    Arc::clone(api),
+                    Arc::clone(lists),
+                    crate::token_status::Observing {
+                        health: context.health().clone(),
+                        metrics: context.metrics().clone(),
+                        time: Arc::clone(&time),
+                    },
+                )
+            })
+        });
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
         let _dormancy = repinning_coordinator
             .as_ref()

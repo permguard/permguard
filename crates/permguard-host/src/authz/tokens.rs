@@ -541,7 +541,12 @@ impl TokenRegistry {
             .tokens
             .values()
             .filter(|token| {
-                token.expires_at > now
+                // A member accepts a token a clock skew past its `exp`: until then it can be
+                // revoked, and its list kept.
+                token
+                    .expires_at
+                    .saturating_add(crate::authz::access_tokens::CLOCK_SKEW)
+                    > now
                     && token.status != status::INVALID
                     && token.status != value
                     && matches(token)
@@ -575,7 +580,13 @@ impl TokenRegistry {
         let transitions: Vec<TokenTransition> = state
             .lists
             .iter()
-            .filter(|(id, list)| Some(**id) != state.open && list.latest_expiry < now)
+            .filter(|(id, list)| {
+                Some(**id) != state.open
+                    && list
+                        .latest_expiry
+                        .saturating_add(crate::authz::access_tokens::CLOCK_SKEW)
+                        < now
+            })
             .map(|(id, _)| {
                 let mut transition = TokenTransition::new(kinds::LIST_RETIRE);
                 transition.at = now;
@@ -620,6 +631,16 @@ impl TokenRegistry {
                 changed_at: list.changed_at,
             })
             .collect()
+    }
+
+    /// Every list's id, without its entries.
+    pub fn list_ids(&self) -> Vec<[u8; 16]> {
+        self.read().lists.keys().copied().collect()
+    }
+
+    /// The registry revision of `list_id`'s last change, without its entries.
+    pub fn changed_at(&self, list_id: &[u8; 16]) -> Option<u64> {
+        self.read().lists.get(list_id).map(|list| list.changed_at)
     }
 
     /// The list `list_id` names, as it stands.
@@ -969,7 +990,13 @@ mod tests {
             let mut state = registry.state.write().expect("unpoisoned");
             state.open = None;
             drop(state);
-            registry.retire_expired("host", NOW + 120).expect("retired")
+            // A member accepts a token a clock skew past its `exp`: its list stays until then.
+            assert_eq!(
+                registry.retire_expired("host", NOW + 120).expect("kept"),
+                0,
+                "within the clock skew"
+            );
+            registry.retire_expired("host", NOW + 121).expect("retired")
         };
         assert_eq!(retired, 1);
         assert!(registry.token(&token.jti).is_none());

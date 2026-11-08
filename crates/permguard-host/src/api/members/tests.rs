@@ -2249,3 +2249,37 @@ async fn a_refused_subscription_is_named_on_health_until_it_ships_again() {
     api.ship_due().await;
     assert!(degraded(&api).is_none(), "restored once it ships");
 }
+
+/// TS-10: a join is asked again only when nothing but the transport, or a coordinator that could
+/// not take it now, refused it; a refused session, a pin that does not hold or a coordinator's own
+/// refusal is final, and so is a Host with no client to reach a coordinator with.
+#[test]
+fn only_a_transient_refusal_is_retried() {
+    use crate::membership::MembershipError;
+
+    let remote = |code: &str| {
+        super::refusal_of(MembershipError::Remote {
+            code: code.to_owned(),
+            reason: "said".to_owned(),
+        })
+    };
+    assert!(super::retryable(&remote(
+        permguard_core::codes::common::UNAVAILABLE
+    )));
+    assert!(super::retryable(&remote(
+        permguard_core::codes::common::PLANE_NOT_READY
+    )));
+    assert_eq!(
+        super::peer_code(&remote(permguard_core::codes::host::SESSION_REFUSED)),
+        Some(permguard_core::codes::host::SESSION_REFUSED)
+    );
+    for final_code in [
+        permguard_core::codes::host::SESSION_REFUSED,
+        permguard_core::codes::host::TASK_UNSERVED,
+        permguard_core::codes::host::ASSURANCE_REFUSED,
+        permguard_core::codes::host::ENROLLMENT_REFUSED,
+        permguard_core::codes::host::PEER_CLIENT_UNCONFIGURED,
+    ] {
+        assert!(!super::retryable(&remote(final_code)), "{final_code}");
+    }
+}

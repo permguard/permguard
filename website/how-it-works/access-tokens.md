@@ -140,11 +140,14 @@ Outside Kubernetes, set `PERMGUARD_HOST_JOIN_INVITATION_FILE`, `PERMGUARD_HOST_J
 
 ## Observing
 
-| Signal                          | Meaning                                                           |
-| ------------------------------- | ----------------------------------------------------------------- |
-| `degraded: token-status`        | a held list is past half its lifetime without a fresher one       |
-| `not ready: token-status`       | a held list expired: tokens of that list are refused              |
-| `degraded: bootstrap`           | a member's bootstrap certificate was used while it is joined      |
-| `degraded: join`                | a configured join has made no membership yet, or was refused      |
-| `host.authz.token` in the trail | an administration call a token allowed, with the token's `jti`    |
-| `iam.token.*` in the trail      | every token issued, exchanged, revoked or refused at the IAM Host |
+| Signal                                        | Meaning                                                                             |
+| --------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `degraded: token-status`                      | a held list is past half its lifetime without a fresher one, or held in memory only |
+| not ready, `degraded: objective.token-status` | a held list expired: tokens of that list are refused                                |
+| `degraded: token-sync`                        | on the IAM Host, tokens' statuses could not follow a directory change               |
+| `degraded: token-custody`                     | under `production`, the IAM Host keeps `iam.tokens` in files                        |
+| `degraded: bootstrap`                         | a member's bootstrap certificate was used while it is joined                        |
+| `degraded: join`                              | a configured join has made no membership yet, or was refused                        |
+| `permguard_token_status_list_age_seconds`     | the oldest list a member holds, since it was issued                                 |
+| `host.authz.token` in the trail               | an administration call a token allowed, with the token's `jti`                      |
+| `iam.token.*` in the trail                    | every token issued, exchanged, revoked or refused at the IAM Host                   |

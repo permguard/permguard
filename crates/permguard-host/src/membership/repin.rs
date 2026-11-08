@@ -706,11 +706,14 @@ impl super::service::Coordinating {
     }
 
     /// Revises every active membership this Host coordinates whose pins lag its own rings: a
-    /// successor re-pins them as they are (WP-4.5, the reverse direction). Answers how many.
+    /// successor re-pins them as they are (WP-4.5, the reverse direction). Answers how many. One
+    /// membership that cannot be revised holds no other back: every one is tried, and the first
+    /// refusal is answered once the pass is over.
     pub fn revise_coordinated(&self) -> Result<usize, MembershipError> {
         let coordinator = self.coordinator();
         let now = self.time.now_secs();
         let mut revised = 0;
+        let mut first_refusal = None;
         for (id, held) in self.store.memberships() {
             let Ok(manifest) = active_manifest(&held) else {
                 continue;
@@ -727,23 +730,40 @@ impl super::service::Coordinating {
             if !lags {
                 continue;
             }
-            let next = self
+            let outcome = self
                 .store
-                .check_successor(&coordinator, &id, Status::Active, None, now)?;
-            self.change(
-                REPIN,
-                AUDIT_REPINNED,
-                crate::operations::journal::Initiator::System("host".to_owned()),
-                &id,
-                |applying| {
-                    self.store
-                        .transition(applying, &coordinator, &next, now)
-                        .map(|_| ())
-                },
-            )?;
-            revised += 1;
+                .check_successor(&coordinator, &id, Status::Active, None, now)
+                .and_then(|next| {
+                    self.change(
+                        REPIN,
+                        AUDIT_REPINNED,
+                        crate::operations::journal::Initiator::System("host".to_owned()),
+                        &id,
+                        |applying| {
+                            self.store
+                                .transition(applying, &coordinator, &next, now)
+                                .map(|_| ())
+                        },
+                    )
+                });
+            match outcome {
+                Ok(_) => revised += 1,
+                Err(error) => {
+                    tracing::warn!(
+                        event.name = "host.membership.coordinated_repin_failed",
+                        component = "host",
+                        membership_id = %crate::identity::record::uuid_text(&id),
+                        error = %error,
+                        "a membership could not be revised for this Host's rings; the others go on"
+                    );
+                    first_refusal.get_or_insert(error);
+                }
+            }
         }
-        Ok(revised)
+        match first_refusal {
+            Some(error) if revised == 0 => Err(error),
+            _ => Ok(revised),
+        }
     }
 }
 

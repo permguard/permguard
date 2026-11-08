@@ -20,7 +20,7 @@
 //! volume, signed as it arrived, and verified again when the Host starts, so a member keeps
 //! deciding through a Control Plane outage until a list expires, and not one second longer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
@@ -345,6 +345,10 @@ pub fn verify_list(
                 other => ListRefusal::Signature(other.to_string()),
             },
         )?;
+    // Exactly 2^20 entries (`2-security/9` The list): a shorter one is not what was issued.
+    if list.len() != ENTRIES {
+        return Err(signature("a list holds exactly 2^20 entries"));
+    }
     Ok(HeldList {
         issuer: issuer.to_owned(),
         uri: uri.to_owned(),
@@ -361,6 +365,24 @@ pub fn verify_list(
 pub struct HeldLists {
     held: Mutex<BTreeMap<(String, String), Arc<HeldList>>>,
     dir: Option<crate::storage::Dir>,
+    /// The lists whose newest one could not be kept on the volume: held in memory only, and the
+    /// older file removed, so a restart never brings back a list a fresher one replaced.
+    unkept: Mutex<BTreeSet<(String, String)>>,
+    /// The lists refused since the last report, by the reason the signals count.
+    refused: Mutex<BTreeMap<&'static str, u64>>,
+}
+
+/// What the lists a member holds say of it (`2-security/9` Signals), at one moment.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Standing {
+    /// Seconds since the oldest held list's `iat`; `None` when none is held.
+    pub oldest_age: Option<u64>,
+    /// The lists past half their lifetime without a fresher one.
+    pub aging: Vec<String>,
+    /// The lists past their `exp`: every token of them is refused.
+    pub expired: Vec<String>,
+    /// The lists held in memory only: their newest could not be kept on the volume.
+    pub unkept: Vec<String>,
 }
 
 impl std::fmt::Debug for HeldLists {
@@ -393,6 +415,8 @@ impl HeldLists {
         Self {
             held: Mutex::default(),
             dir: None,
+            unkept: Mutex::default(),
+            refused: Mutex::default(),
         }
     }
 
@@ -401,6 +425,8 @@ impl HeldLists {
         Self {
             held: Mutex::default(),
             dir: Some(dir),
+            unkept: Mutex::default(),
+            refused: Mutex::default(),
         }
     }
 
@@ -467,27 +493,115 @@ impl HeldLists {
         if let Some(current) = held.get(&key)
             && list.iat <= current.iat
         {
+            // Another list at the same `iat` is the issuer saying two things at once.
+            if list.iat == current.iat && list.digest != current.digest {
+                tracing::warn!(
+                    event.name = "host.token_status_equivocation",
+                    component = "host",
+                    uri = %list.uri,
+                    iat = list.iat,
+                    "the IAM Host signed two lists at one iat: the held one stays in use"
+                );
+            }
             return Err(ListRefusal::Rollback {
                 held: current.iat,
                 offered: list.iat,
             });
         }
-        if let Some(dir) = &self.dir
-            && let Err(error) = crate::storage::write::replace_bytes(
-                dir,
-                &file_of(&list.issuer, &list.uri),
-                list.token.as_bytes(),
-            )
-        {
-            tracing::warn!(
-                event.name = "host.token_status_unkept",
-                component = "host",
-                error = %error,
-                "a status list could not be kept on the volume: it is held in memory only"
-            );
+        if let Some(dir) = &self.dir {
+            let file = file_of(&list.issuer, &list.uri);
+            let mut unkept = self.unkept.lock().unwrap_or_else(PoisonError::into_inner);
+            match crate::storage::write::replace_bytes(dir, &file, list.token.as_bytes()) {
+                Ok(()) => {
+                    unkept.remove(&key);
+                }
+                Err(error) => {
+                    // The older file goes: a restart then holds no list for it and refuses its
+                    // tokens until a fresh one arrives, rather than bring back one this replaced.
+                    let removed = dir.unlink(&file);
+                    tracing::error!(
+                        event.name = "host.token_status_unkept",
+                        component = "host",
+                        error = %error,
+                        removed_older = removed.is_ok(),
+                        "a status list could not be kept on the volume: it is held in memory only"
+                    );
+                    unkept.insert(key.clone());
+                }
+            }
         }
         held.insert(key, Arc::new(list));
         Ok(())
+    }
+
+    /// Drops the lists of `issuer` its index no longer names, `list_ids`, with their files: a
+    /// retired list is never asked for again, and is no longer the member's to report.
+    pub fn keep_named(&self, issuer: &str, list_ids: &[String]) {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |uri: &str| {
+            list_ids
+                .iter()
+                .any(|id| uri.rsplit('/').next() == Some(id.as_str()))
+        };
+        let gone: Vec<(String, String)> = held
+            .keys()
+            .filter(|(of, uri)| of == issuer && !named(uri))
+            .cloned()
+            .collect();
+        for key in gone {
+            held.remove(&key);
+            self.unkept
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&key);
+            if let Some(dir) = &self.dir {
+                let _ = dir.unlink(&file_of(&key.0, &key.1));
+            }
+        }
+    }
+
+    /// Counts a list refused, for the next report.
+    pub fn refused(&self, refusal: &ListRefusal) {
+        *self
+            .refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(refusal.signal())
+            .or_insert(0) += 1;
+    }
+
+    /// The lists refused since the last call, by reason.
+    pub fn take_refused(&self) -> Vec<(&'static str, u64)> {
+        std::mem::take(&mut *self.refused.lock().unwrap_or_else(PoisonError::into_inner))
+            .into_iter()
+            .collect()
+    }
+
+    /// What the lists held say at `now` (`2-security/9` Signals).
+    pub fn standing(&self, now: u64) -> Standing {
+        let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut standing = Standing::default();
+        for list in held.values() {
+            let age = now.saturating_sub(list.iat);
+            standing.oldest_age = Some(standing.oldest_age.map_or(age, |oldest| oldest.max(age)));
+            if now >= list.exp {
+                standing.expired.push(list.uri.clone());
+            } else if now
+                >= list
+                    .iat
+                    .saturating_add(list.exp.saturating_sub(list.iat) / 2)
+            {
+                standing.aging.push(list.uri.clone());
+            }
+        }
+        standing.unkept = self
+            .unkept
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(_, uri)| uri.clone())
+            .collect();
+        standing
     }
 }
 
@@ -647,6 +761,7 @@ impl super::member::Member<'_> {
             else {
                 continue;
             };
+            lists.keep_named(&issuer, &list_ids);
             for list_id in list_ids {
                 let answer = match Request::List(list_id.clone()).encode() {
                     Ok(body) => session.send(&format!("token-status-{list_id}"), body).await,
@@ -681,13 +796,16 @@ impl super::member::Member<'_> {
                     Ok(()) => accepted += 1,
                     // The same list again is no news: only a list that went back is reported.
                     Err(ListRefusal::Rollback { held, offered }) if held == offered => {}
-                    Err(refusal) => tracing::warn!(
-                        event.name = "host.token_status_refused",
-                        component = "host",
-                        reason = refusal.signal(),
-                        error = %refusal,
-                        "a status list was refused: the held one stays in use"
-                    ),
+                    Err(refusal) => {
+                        lists.refused(&refusal);
+                        tracing::warn!(
+                            event.name = "host.token_status_refused",
+                            component = "host",
+                            reason = refusal.signal(),
+                            error = %refusal,
+                            "a status list was refused: the held one stays in use"
+                        );
+                    }
                 }
             }
         }
@@ -830,6 +948,143 @@ mod tests {
 
     /// The held list is replaced only by a fresher one, kept on the volume, and restored at start
     /// verified again; an expired or unverifiable kept file is dropped.
+    /// TS-10: what the held lists say of the member (`2-security/9` Signals): a list past half
+    /// its lifetime is aging, one past `exp` expired; a list its issuer's index no longer names is
+    /// dropped; refusals are counted once.
+    #[test]
+    fn the_lists_report_their_standing_and_retired_ones_are_dropped() {
+        let held = |uri: &str, iat: u64, exp: u64| HeldList {
+            issuer: ISSUER.to_owned(),
+            uri: uri.to_owned(),
+            iat,
+            exp,
+            ttl: 300,
+            list: StatusList::new(BITS, ENTRIES).expect("a list"),
+            digest: [1; 32],
+            token: String::new(),
+        };
+        let lists = HeldLists::in_memory();
+        lists
+            .accept(held(
+                "https://iam.example/iam/v1/status-lists/a",
+                1_000,
+                2_000,
+            ))
+            .expect("held");
+        lists
+            .accept(held(
+                "https://iam.example/iam/v1/status-lists/b",
+                1_000,
+                1_100,
+            ))
+            .expect("held");
+        let standing = lists.standing(1_600);
+        assert_eq!(standing.oldest_age, Some(600));
+        assert_eq!(
+            standing.aging,
+            ["https://iam.example/iam/v1/status-lists/a"]
+        );
+        assert_eq!(
+            standing.expired,
+            ["https://iam.example/iam/v1/status-lists/b"]
+        );
+        assert!(
+            lists.standing(1_400).aging.is_empty(),
+            "before half its life"
+        );
+        lists.keep_named(ISSUER, &["a".to_owned()]);
+        assert_eq!(lists.all().len(), 1, "b is no longer named");
+        lists.keep_named("urn:permguard:iam:another", &[]);
+        assert_eq!(
+            lists.all().len(),
+            1,
+            "another issuer's index drops none of these"
+        );
+        lists.refused(&ListRefusal::Expired(1));
+        lists.refused(&ListRefusal::Expired(2));
+        lists.refused(&ListRefusal::Size(String::new()));
+        assert_eq!(lists.take_refused(), [("expired", 2), ("size", 1)]);
+        assert!(lists.take_refused().is_empty(), "counted once");
+        assert_eq!(HeldLists::in_memory().standing(1_600), Standing::default());
+    }
+
+    /// TS-10: a list the volume does not take is held in memory and reported, never left behind
+    /// a file of the list it replaced as if nothing happened.
+    #[cfg(unix)]
+    #[test]
+    fn a_list_the_volume_does_not_take_is_reported() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = std::env::temp_dir().join(format!(
+            "pg-token-status-unkept-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("a scratch directory");
+        let pair = pair(1);
+        let keys = pinned(&pair);
+        let verify = |token: &str| verify_list(token, &keys, ISSUER, "default", None, NOW);
+        let lists = HeldLists::kept_in(crate::storage::Dir::open(&root).expect("the directory"));
+        lists
+            .accept(
+                verify(&token(
+                    &pair,
+                    "statuslist+jwt",
+                    NOW - 10,
+                    serde_json::json!({}),
+                ))
+                .expect("verified"),
+            )
+            .expect("held");
+        assert!(lists.standing(NOW).unkept.is_empty());
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o500)).expect("locked");
+        // A user the permissions do not stop, root in a container, cannot see this path.
+        if std::fs::write(root.join("probe"), b"").is_ok() {
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
+                .expect("unlocked");
+            let _ = std::fs::remove_dir_all(&root);
+            return;
+        }
+        let fresher =
+            verify(&token(&pair, "statuslist+jwt", NOW, serde_json::json!({}))).expect("verified");
+        let accepted = lists.accept(fresher);
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).expect("unlocked");
+        accepted.expect("held in memory");
+        assert_eq!(
+            lists.iat_of(ISSUER, URI),
+            Some(NOW),
+            "the fresher one decides"
+        );
+        assert_eq!(lists.standing(NOW).unkept, [URI.to_owned()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// TS-10: a list shorter than 2^20 entries is not what the IAM Host issues.
+    #[test]
+    fn a_list_of_another_length_is_refused() {
+        let pair = pair(1);
+        let short = StatusList::new(BITS, 1_024).expect("a short list");
+        let lst = short.encode().expect("encoded");
+        let refused = verify_list(
+            &token(
+                &pair,
+                "statuslist+jwt",
+                NOW,
+                serde_json::json!({"status_list": {"bits": 2, "lst": lst}}),
+            ),
+            &pinned(&pair),
+            ISSUER,
+            "default",
+            None,
+            NOW,
+        );
+        assert!(
+            matches!(refused, Err(ListRefusal::Signature(_))),
+            "{refused:?}"
+        );
+    }
+
     #[test]
     fn a_held_list_is_replaced_by_a_fresher_one_kept_and_restored() {
         let root = std::env::temp_dir().join(format!(

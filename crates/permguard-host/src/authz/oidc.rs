@@ -63,6 +63,8 @@ pub struct OidcRule {
 pub struct Verified {
     pub context: ActorContext,
     pub verified_email: Option<String>,
+    /// Its `exp`: a token exchanged for it never outlives it (`2-security/8` Token exchange).
+    pub expires_at: u64,
 }
 
 impl OidcRule {
@@ -717,14 +719,14 @@ impl Verifier {
         let now = self.time.now_secs();
         let skew = self.time.bound().as_secs();
         let time_claim = |name: &str| claims.get(name).and_then(serde_json::Value::as_u64);
-        match time_claim("exp") {
-            Some(exp) if exp.saturating_add(skew) > now => {}
+        let expires_at = match time_claim("exp") {
+            Some(exp) if exp.saturating_add(skew) > now => exp,
             _ => {
                 return Err(AccessDenial::unauthenticated(
                     "the token has expired or carries no expiry",
                 ));
             }
-        }
+        };
         if time_claim("nbf").is_some_and(|nbf| nbf > now.saturating_add(skew)) {
             return Err(AccessDenial::unauthenticated("the token is not yet valid"));
         }
@@ -800,6 +802,7 @@ impl Verifier {
                 Some(format!("{subject} ({})", self.rule.name)),
             ),
             verified_email,
+            expires_at,
         }))
     }
 }

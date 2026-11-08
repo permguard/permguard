@@ -3773,7 +3773,7 @@ async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
         let claims = URL_SAFE_NO_PAD.encode(
             serde_json::json!({
                 "iss": "billing", "sub": "billing", "jti": "assertion-1",
-                "aud": "https://iam.example:7443/iam/v1/token", "exp": now + 60,
+                "aud": "https://iam.example:7443/iam/v1/token", "iat": now, "exp": now + 60,
             })
             .to_string(),
         );

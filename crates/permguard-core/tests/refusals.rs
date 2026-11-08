@@ -767,7 +767,7 @@ fn a_join_names_its_invitation_and_its_pin_from_any_layer() {
                 (SETTING_HOST_JOIN_PIN_FINGERPRINT.to_owned(), pin.clone()),
                 (
                     SETTING_HOST_JOIN_GROUPS.to_owned(),
-                    "eu, payments".to_owned(),
+                    "payments, eu, payments".to_owned(),
                 ),
             ])
             .with_environment(vec![(
@@ -817,6 +817,24 @@ fn a_join_names_its_invitation_and_its_pin_from_any_layer() {
         ])
         .contains("sha256:<64 hex>"),
         "a pin that is no fingerprint"
+    );
+    assert!(
+        refused(&[
+            (SETTING_HOST_JOIN_INVITATION_FILE, "/i"),
+            (SETTING_HOST_JOIN_PIN_FINGERPRINT, &pin),
+            (SETTING_HOST_JOIN_GROUPS, "eu, Payments"),
+        ])
+        .contains("not a group name"),
+        "a group the membership would refuse, refused at start"
+    );
+    assert!(
+        refused(&[
+            (SETTING_HOST_JOIN_INVITATION_FILE, "/i"),
+            (SETTING_HOST_JOIN_PIN_FINGERPRINT, &pin),
+            (SETTING_HOST_JOIN_NAME, "billing 0"),
+        ])
+        .contains("not a member name"),
+        "a name the membership would refuse, refused at start"
     );
     assert!(
         refused(&[(SETTING_HOST_JOIN_NAME, "dp-a")]).contains("are a join's"),

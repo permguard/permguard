@@ -151,6 +151,8 @@ pub const SETTING_HOST_JOIN_PIN_FINGERPRINT: &str = "PERMGUARD_HOST_JOIN_PIN_FIN
 pub const SETTING_HOST_JOIN_NAME: &str = "PERMGUARD_HOST_JOIN_NAME";
 /// The groups a join asks for, comma or line separated, when the invitation leaves them open.
 pub const SETTING_HOST_JOIN_GROUPS: &str = "PERMGUARD_HOST_JOIN_GROUPS";
+/// The most groups a member belongs to, as a membership records them.
+pub const HOST_JOIN_MAX_GROUPS: usize = 16;
 
 /// Runtime setting keys for the TLS material of each surface.
 ///
@@ -5020,6 +5022,38 @@ produce: use `EdDSA` or `ES256`"
                          `sha256:<64 hex>`"
                     );
                 }
+                // A member's name and groups as a membership records them: each 1 to 63 of
+                // a-z, 0-9, `-`, `_`, `.`; the groups sorted, each once. Refused at start, never
+                // at the first join.
+                let valid = |name: &str| {
+                    (1..=63).contains(&name.len())
+                        && name.bytes().all(|byte| {
+                            byte.is_ascii_lowercase()
+                                || byte.is_ascii_digit()
+                                || matches!(byte, b'-' | b'_' | b'.')
+                        })
+                };
+                if let Some(name) = parts.name.as_deref().filter(|name| !valid(name)) {
+                    bail!(
+                        "{SETTING_HOST_JOIN_NAME} `{name}` is not a member name: 1 to 63 of a-z, \
+                         0-9, `-`, `_`, `.`"
+                    );
+                }
+                let mut groups = parts.groups;
+                if let Some(group) = groups.iter().find(|group| !valid(group)) {
+                    bail!(
+                        "{SETTING_HOST_JOIN_GROUPS} names `{group}`, not a group name: 1 to 63 of \
+                         a-z, 0-9, `-`, `_`, `.`"
+                    );
+                }
+                groups.sort();
+                groups.dedup();
+                if groups.len() > HOST_JOIN_MAX_GROUPS {
+                    bail!(
+                        "{SETTING_HOST_JOIN_GROUPS} names a member's groups: at most \
+                         {HOST_JOIN_MAX_GROUPS}"
+                    );
+                }
                 self.host_join = Some(HostJoin {
                     invitation_files: file
                         .split([',', '\n'])
@@ -5029,7 +5063,7 @@ produce: use `EdDSA` or `ES256`"
                         .collect(),
                     pin_fingerprint: pin.to_ascii_lowercase(),
                     name: parts.name,
-                    groups: parts.groups,
+                    groups,
                 });
             }
             (Some(_), None) => bail!(

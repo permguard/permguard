@@ -227,6 +227,11 @@ pub fn verify(
             .collect(),
         _ => Vec::new(),
     };
+    // Within the bound the endpoint issues, and `*` nowhere in it, beside this member or not.
+    if audience.len() > crate::authz::tokens::MAX_AUDIENCE || audience.iter().any(|one| one == "*")
+    {
+        return Err(refused(6, "an audience this release never issues"));
+    }
     let scope: BTreeSet<String> = text(&claims, "scope")
         .unwrap_or_default()
         .split_whitespace()
@@ -271,6 +276,15 @@ pub fn verify(
             }
         }
         families::ADMINISTRATION => {
+            // The Host is one, whoever coordinates it: a member of two IAM Hosts is administered
+            // by neither's tokens, so no coordinator ever reaches what another one's memberships
+            // hold through it (`2-security/8` On a member). Its bootstrap principal stays.
+            if anchors.iter().any(|other| other.issuer != anchor.issuer) {
+                return Err(refused(
+                    6,
+                    "a member of more than one IAM Host is administered by none of their tokens",
+                ));
+            }
             // Exactly this member's Host, by its own id: never a group, never another target.
             if audience != [anchor.member.clone()] {
                 return Err(refused(
@@ -703,6 +717,30 @@ mod tests {
         .expect("its own certificate");
     }
 
+    /// TS-10: a member of two IAM Hosts is administered by neither's tokens, so no coordinator
+    /// reaches through it what another's memberships hold; their application tokens still decide.
+    #[test]
+    fn a_member_of_two_iam_hosts_takes_no_administration_token() {
+        let pair = pair();
+        let other = Ed25519KeyPair::from_seed_unchecked(&[9; 32]).expect("a key");
+        let both = [
+            anchor(&pair),
+            anchor_of(
+                &other,
+                "urn:permguard:iam:another-host",
+                "member:another-id",
+            ),
+        ];
+        let administration = sign(&pair, header(), administration(json!({})));
+        let refused = verify(&administration, &both, &lists(NOW + 60), None, NOW)
+            .expect_err("no coordinator administers it alone");
+        assert_eq!(refused.step, 6);
+        verify(&administration, &both[..1], &lists(NOW + 60), None, NOW)
+            .expect("one IAM Host administers it");
+        let application = sign(&pair, header(), claims(json!({})));
+        verify(&application, &both, &lists(NOW + 60), None, NOW).expect("decisions still decide");
+    }
+
     /// WP-12.6, ring rotation: while a re-pin keeps the replaced `iam.tokens` set beside the
     /// current one, a token of either key verifies, so no token in flight is refused by the
     /// rotation; once the replaced pin retires, its key's tokens are refused at step 2, and a
@@ -819,6 +857,20 @@ mod tests {
                 None,
             ),
             ("wildcard", with(json!({"aud": ["*"]})), 6, None),
+            (
+                "wildcard beside this member",
+                with(json!({"aud": ["*", MEMBER]})),
+                6,
+                None,
+            ),
+            (
+                "an audience past the bound",
+                with(json!({"aud": (0..=crate::authz::tokens::MAX_AUDIENCE)
+                    .map(|n| if n == 0 { MEMBER.to_owned() } else { format!("group:g{n}") })
+                    .collect::<Vec<_>>()})),
+                6,
+                None,
+            ),
             (
                 "no family",
                 with(json!({"permguard_family": null})),

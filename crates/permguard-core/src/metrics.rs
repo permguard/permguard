@@ -194,11 +194,12 @@ pub mod labels {
         REASON, "reason", [
             "age_expiry", "at_capacity", "closed", "conflict", "event_ahead_of_clock",
             "event_application_incomplete", "event_id_conflict", "event_out_of_order",
-            "event_routing_conflict", "event_too_late", "history_incomplete", "history_stale",
-            "history_unorderable", "journal_full", "journal_unavailable", "ledger_damaged",
-            "ledger_empty", "ledger_expired", "ledger_incompatible", "ledger_not_served",
-            "malformed", "not_followed", "profile_unknown", "quarantined", "spool_full",
-            "unattributable", "unavailable", "unrecordable", "unverifiable",
+            "event_routing_conflict", "event_too_late", "expired", "history_incomplete",
+            "history_stale", "history_unorderable", "journal_full", "journal_unavailable",
+            "ledger_damaged", "ledger_empty", "ledger_expired", "ledger_incompatible",
+            "ledger_not_served", "malformed", "not_followed", "profile_unknown", "quarantined",
+            "rollback", "signature", "size", "spool_full", "unattributable", "unavailable",
+            "unrecordable", "unverifiable",
         ]
     );
     label!(

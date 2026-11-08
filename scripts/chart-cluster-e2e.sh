@@ -15,7 +15,8 @@
 #   a revoked token is refused once the member holds the list that says so
 #   the evaluation latency on a member, token verification on, within the TS-5 objective
 #
-#   scripts/chart-cluster-e2e.sh
+#   scripts/chart-cluster-e2e.sh                       every Host under `development`
+#   PROFILE=production scripts/chart-cluster-e2e.sh    under `production`, the chart's default
 #
 # The images are `permguard/control-plane:e2e` and `permguard/data-plane:e2e`, built from the lab
 # image (`docker build -f lab/compose/Dockerfile -t permguard/lab:local .`), which also runs the
@@ -24,6 +25,14 @@
 set -euo pipefail
 
 cluster="${CLUSTER:-permguard-cluster-e2e}"
+# The assurance profile every Host runs: `development` by default, `production` as the chart's
+# own default deploys it (PROFILE=production).
+profile="${PROFILE:-development}"
+case "${profile}" in
+development) development_mode=true evidence=disabled ;;
+production) development_mode=false evidence=required ;;
+*) echo "chart-cluster-e2e: PROFILE is development or production" >&2; exit 2 ;;
+esac
 namespace=pg
 release=pg
 for tool in docker kind kubectl helm jq openssl curl; do
@@ -99,13 +108,13 @@ values() { # pin, replicas, acme zone id, beta zone id
     local enabled=true
     [ -z "${3:-}" ] && enabled=false
     cat <<EOF
-developmentMode: true
+developmentMode: ${development_mode}
 autogenerate: true
 image: { registry: "", pullPolicy: Never, tag: e2e }
 persistence: { enabled: true, size: 128Mi }
 controlPlane:
   repository: permguard/control-plane
-  assurance: { profile: development }
+  assurance: { profile: ${profile} }
   tls: { secretName: cp-public }
   hostListener: { enabled: true, tls: { secretName: cp-host } }
   extraConfig:
@@ -136,15 +145,15 @@ dataPlane:
     - name: eu
       selector: plane/data/zone/${3:-none}/*
       replicas: $2
-      assurance: { profile: development }
-      evidence: { mode: disabled }
+      assurance: { profile: ${profile} }
+      evidence: { mode: ${evidence} }
       persistence: { enabled: true, size: 64Mi }
       join: { secret: eu-invitations, pinFingerprint: "$1" }
     - name: us
       selector: plane/data/zone/${4:-none}/*
       replicas: $2
-      assurance: { profile: development }
-      evidence: { mode: disabled }
+      assurance: { profile: ${profile} }
+      evidence: { mode: ${evidence} }
       persistence: { enabled: true, size: 64Mi }
       join: { secret: us-invitations, pinFingerprint: "$1" }
 EOF
@@ -244,7 +253,7 @@ for group in eu us; do
         jq -r --arg kind "${kind}" '.data[$kind + ".tasks.json"]' <<<"${membership}" >"${work}/${group}-${kind}-tasks.json"
         (umask 077 && pg --host-endpoint "${host_api}" host members invite create --selector "${selector}" \
             --tasks "${work}/${group}-${kind}-tasks.json" --name "${group}-0" --group "${group}" \
-            --min-assurance development --coordinator-address "https://${release}-permguard-control-plane-host:5444" \
+            --min-assurance "${profile}" --coordinator-address "https://${release}-permguard-control-plane-host:5444" \
             >"${work}/${kind}-0")
         files+=(--from-file="${kind}-0=${work}/${kind}-0")
     done

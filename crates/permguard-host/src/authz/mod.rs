@@ -292,8 +292,20 @@ impl Authorization {
             .ok_or_else(|| actor.without_grant())
     }
 
+    /// The subjects a token for `principal` may carry the grants of: itself and its roles, never
+    /// the public grants of `anonymous` (`2-security/8`, a token never widens by a public grant):
+    /// a token decides alone on a member, so a public grant would reach every member through it.
+    fn token_subjects_of(&self, principal: &Principal) -> Vec<Principal> {
+        let anonymous = Principal::anonymous();
+        self.subjects_of(principal)
+            .into_iter()
+            .filter(|subject| *subject != anonymous)
+            .collect()
+    }
+
     /// Whose grant lets `principal` do `operation` on exactly `resource`, when one does: what the
     /// IAM Host checks before it issues a token for a subject that is not the caller (WP-11.4).
+    /// A public grant never counts.
     pub fn granted_to(
         &self,
         principal: &Principal,
@@ -301,12 +313,13 @@ impl Authorization {
         resource: &Resource,
     ) -> Option<Principal> {
         let allows = self.allows();
-        self.subjects_of(principal)
+        self.token_subjects_of(principal)
             .into_iter()
             .find(|subject| allows.permits(subject, operation, resource))
     }
 
-    /// Whether `principal` may do `operation` on everything under `scope`, whole (WP-11.4).
+    /// Whether `principal` may do `operation` on everything under `scope`, whole (WP-11.4). A
+    /// public grant never counts.
     pub fn principal_covers_whole(
         &self,
         principal: &Principal,
@@ -314,7 +327,7 @@ impl Authorization {
         scope: &Resource,
     ) -> bool {
         let allows = self.allows();
-        self.subjects_of(principal)
+        self.token_subjects_of(principal)
             .iter()
             .any(|subject| allows.permits_whole(subject, operation, scope))
     }
@@ -551,6 +564,33 @@ mod tests {
             Some("oidc:https://login.example")
         );
         assert_eq!(issuer_of("spiffe://acme/billing"), None);
+    }
+
+    /// TS-10: a public grant decides a request to this Host, and never goes into a token: a
+    /// token decides alone on a member, where a public grant would reach every member through it.
+    #[test]
+    fn a_public_grant_never_counts_for_a_token() {
+        let public = Authorization::public_only(&[PublicGrant::new(
+            &[operations::DECISION_EVALUATE],
+            Selector::parse("plane/data/*").expect("a selector"),
+        )]);
+        let ledger = Resource::ledger("data", "z1", "l1");
+        let anybody = Principal::new("sa:billing").expect("a principal");
+        assert!(
+            public
+                .authorize(&actor("sa:billing"), operations::DECISION_EVALUATE, &ledger)
+                .is_ok(),
+            "public to everybody here"
+        );
+        assert_eq!(
+            public.granted_to(&anybody, operations::DECISION_EVALUATE, &ledger),
+            None
+        );
+        assert!(!public.principal_covers_whole(
+            &anybody,
+            operations::DECISION_EVALUATE,
+            &Resource::plane("data")
+        ));
     }
 
     #[test]

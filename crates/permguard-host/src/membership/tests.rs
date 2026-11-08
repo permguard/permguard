@@ -2634,6 +2634,44 @@ fn an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat() {
     );
 }
 
+/// TS-10: groups widen what a token addressed to a group reaches, so a member's request alone
+/// never puts it in one: an approval that names no groups takes the invitation's, here none.
+#[test]
+fn the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them() {
+    let (c, m) = (Host::new("asked-c"), Host::new("asked-m"));
+    let (invitation, token) = invite(&c, Some(m.identity.first_fingerprint().to_owned()));
+    let mut asked = request(&c, &m, &invitation, &token, &EXPORTER);
+    asked.groups = Some(vec!["admins".to_owned()]);
+    let verified = m.verified();
+    let pending = c
+        .store
+        .check_enroll(
+            &c.coordinator(),
+            &Enrolling {
+                peer: &verified,
+                presentation: &m.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &asked,
+            now(),
+        )
+        .expect("the enrollment checks");
+    assert_eq!(
+        pending.groups,
+        Some(vec!["admins".to_owned()]),
+        "shown to the approver"
+    );
+    c.store
+        .enroll(&Applying::for_tests(2), &pending, now())
+        .expect("enrolled");
+    let manifest = approve_named(&c, &pending.membership_id, None, None).expect("approvable");
+    assert!(
+        manifest.member_record.groups.is_empty(),
+        "never taken from the request alone"
+    );
+}
+
 #[test]
 fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
     let c = Host::new("rename-c");

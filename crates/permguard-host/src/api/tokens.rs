@@ -88,11 +88,20 @@ pub struct Tokens {
     /// Whether the IAM Host runs a Data Plane too: it is then its own member, `member:<host_id>`.
     pub serves_data: bool,
     signed: Mutex<BTreeMap<[u8; 16], SignedList>>,
+    /// The lists that existed when this process opened the registry: an earlier process may have
+    /// signed them, ahead of the clock when they changed within one second, so the first list this
+    /// one signs of them is dated [`INHERITED_AHEAD`] ahead, after anything an earlier one signed.
+    inherited: std::collections::BTreeSet<[u8; 16]>,
     /// The token endpoint's requests per client and per source (WP-11.4).
     pub(super) limiter: super::token_endpoint::Limiter,
     /// The client assertions already used (WP-11.4).
     pub(super) replays: super::token_endpoint::Replays,
 }
+
+/// How far ahead the first list a process signs of a list it inherited is dated: past anything
+/// an earlier process signed of it, which ran ahead of the clock only by the changes it made in
+/// one second; a member accepts a list dated ahead, and refuses one not after the list it holds.
+pub const INHERITED_AHEAD: u64 = 60;
 
 impl Tokens {
     pub fn new(
@@ -102,7 +111,9 @@ impl Tokens {
         base_url: &str,
         profile: permguard_core::assurance::AssuranceProfile,
     ) -> Self {
+        let inherited = registry.list_ids().into_iter().collect();
         Self {
+            inherited,
             registry,
             ring,
             issuer: issuer_of(host_id),
@@ -134,7 +145,7 @@ impl Tokens {
 
     /// The signed list token of `list_id` at `now`: the one already signed while the list has not
     /// changed and its `ttl` has not elapsed, a new one otherwise, its `iat` strictly after the
-    /// previous one's.
+    /// previous one's, across a restart too.
     pub fn list_token(&self, list_id: &[u8; 16], now: u64) -> Result<Option<String>, TokenError> {
         Ok(self
             .signed_and_held(list_id, now)?
@@ -147,21 +158,28 @@ impl Tokens {
         list_id: &[u8; 16],
         now: u64,
     ) -> Result<Option<(String, Arc<crate::membership::token_status::HeldList>)>, TokenError> {
-        let Some(view) = self.registry.list(list_id) else {
+        let Some(changed_at) = self.registry.changed_at(list_id) else {
             return Ok(None);
         };
         let mut signed = self.signed.lock().unwrap_or_else(PoisonError::into_inner);
-        // A retired list's token is never asked for again.
-        signed.retain(|id, _| self.registry.list(id).is_some());
+        // A retired list's token is never asked for again; its entries are never copied to say so.
+        signed.retain(|id, _| self.registry.changed_at(id).is_some());
         if let Some(held) = signed.get(list_id)
-            && held.changed_at == view.changed_at
+            && held.changed_at == changed_at
             && now < held.iat.saturating_add(self.timing.ttl)
         {
             return Ok(Some((held.compact.clone(), Arc::clone(&held.held))));
         }
-        let iat = signed
-            .get(list_id)
-            .map_or(now, |held| now.max(held.iat.saturating_add(1)));
+        let Some(view) = self.registry.list(list_id) else {
+            return Ok(None);
+        };
+        // A change is signed at once, so a revocation holds on the IAM Host at once; `iat` grows
+        // strictly, a second past the last when it changed within one.
+        let iat = match signed.get(list_id) {
+            Some(held) => now.max(held.iat.saturating_add(1)),
+            None if self.inherited.contains(list_id) => now.saturating_add(INHERITED_AHEAD),
+            None => now,
+        };
         let lst = view
             .list
             .encode()
@@ -294,11 +312,7 @@ impl Tokens {
 /// What `token.status` answers from (WP-12.1): the lists held, each signed now.
 impl crate::membership::token_status::ListSource for Tokens {
     fn list_ids(&self) -> Vec<String> {
-        self.registry
-            .lists()
-            .iter()
-            .map(|view| uuid_text(&view.list_id))
-            .collect()
+        self.registry.list_ids().iter().map(uuid_text).collect()
     }
 
     fn signed_list(&self, list_id: &str, now: u64) -> Result<Option<String>, String> {
@@ -578,7 +592,12 @@ impl HostApi {
             || {
                 registry
                     .token(&id)
-                    .filter(|token| token.expires_at > now)
+                    .filter(|token| {
+                        token
+                            .expires_at
+                            .saturating_add(crate::authz::access_tokens::CLOCK_SKEW)
+                            > now
+                    })
                     .map(|_| ())
                     .ok_or_else(|| {
                         Refusal::new(
@@ -782,7 +801,8 @@ mod tests {
             .registry
             .set_status(None, |_| true, status::SUSPENDED, "admin", NOW + 10)
             .expect("suspended");
-        // Changed in the same second it was signed: the new `iat` is still the greater.
+        // Changed in the same second it was signed: signed at once, the new `iat` still the
+        // greater.
         let changed = tokens
             .list_token(&token.list_id, NOW)
             .expect("signed")
@@ -808,6 +828,32 @@ mod tests {
             .expect("held");
         assert_eq!(part(&after_ttl, 1)["iat"], NOW + 301);
         assert!(tokens.list_token(&[9; 16], NOW).expect("nothing").is_none());
+    }
+
+    /// TS-10: the first list a process signs of a list an earlier one may have signed is dated
+    /// ahead, so a restart never offers a member an `iat` it already holds; a list made since is
+    /// dated now.
+    #[test]
+    fn a_restarted_iam_host_signs_its_inherited_lists_after_the_earlier_ones() {
+        let (tokens, ring) = tokens("inherited");
+        let token = issue(&tokens, "billing");
+        let before = tokens
+            .list_token(&token.list_id, NOW)
+            .expect("signed")
+            .expect("held");
+        let restarted = Tokens::new(
+            Arc::clone(&tokens.registry),
+            Arc::clone(&ring) as Arc<dyn permguard_core::keys::SigningRing>,
+            &[7; 16],
+            "https://iam.example:7443/",
+            AssuranceProfile::Production,
+        );
+        let after = restarted
+            .list_token(&token.list_id, NOW)
+            .expect("signed")
+            .expect("held");
+        assert_eq!(part(&before, 1)["iat"], NOW);
+        assert_eq!(part(&after, 1)["iat"], NOW + INHERITED_AHEAD);
     }
 
     /// The directory decides a service account's tokens: active `VALID`, suspended `SUSPENDED`,

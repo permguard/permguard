@@ -19,6 +19,10 @@ is cut.
 
 ### Added
 
+- **The IAM Host reports `degraded: token-custody` while `production` keeps `iam.tokens` in files.**
+  The ring signs every token every member decides by, so `file` custody, envelope-encrypted on the IAM Host's volume, is admitted under `production` and reported for as long as it lasts; a PKCS#11 token or a KMS clears it.
+  Plaintext custody stays refused under `production`, and anything but a PKCS#11 token or a KMS under `regulated`.
+
 - **A Data Plane joins its coordinator by itself, from an invitation file.**
   `host.join` (`PERMGUARD_HOST_JOIN_INVITATION_FILE`, `_PIN_FINGERPRINT`, `_NAME`, `_GROUPS`) names one invitation per membership and the coordinator's fingerprint, stated apart from them; the Host joins each once, reads them no more once it holds its memberships, and picks up its approval by itself.
   The approval stays the coordinator's: `host members pending`, then `host members approve`.
@@ -135,8 +139,23 @@ is cut.
   `controlPlane.decisions.producer_keys`, `dataPlane.decisions.log.server`, `dataPlane.events.destination` and `dataPlane.decisions.log.batch` are refused at start whether or not their feature is on, and by the Helm chart, a group's `extraConfig` included: remove them.
   No deployment is in use, so nothing is migrated: a volume holding a version 1 spool or legacy event journals keeps them unsent.
 
+### Security
+
+- **A token never carries a public grant.**
+  The IAM Host issues a token within its subject's own grants and its roles', never the grants public to everybody: a token decides alone on a member, where a public grant would have reached every member through it.
+- **A member of more than one IAM Host takes no administration token.**
+  The Host is one: none of its coordinators reaches through it what another one's memberships hold; its bootstrap principal administers it.
+- **The token endpoint holds against floods and replays.**
+  Rate-limit keys are digests, IPv6 sources are counted by their /64, and a full minute refuses new sources while admitting new clients bound by their source; an exchange is always counted by its subject token; an assertion made before the process first served the endpoint is refused; an exchanged provider token bounds the token's lifetime; an internal failure is answered with a generic description and logged.
+- **A member refuses an audience with `*` anywhere in it, or past 16 entries.**
+
 ### Fixed
 
+- **The status lists are watched.**
+  A member fetches them on their own cadence, half the shortest `ttl` it holds, and reports `degraded: token-status`, holds its readiness when one expired, and exposes `permguard_token_status_list_age_seconds` and `permguard_token_status_list_rejected_total`; the IAM Host re-syncs its tokens with its directory every minute, `degraded: token-sync` while it cannot.
+  A list the volume does not take no longer leaves the older one to come back after a restart; a restarted IAM Host never signs a list at an `iat` a member already holds; a token can be revoked through the members' clock skew; a list of another length than `2^20`, or one the index no longer names, is no longer held.
+- **A join is retried only when it may succeed.**
+  A refused session, a pin that does not hold, or a coordinator's refusal ends it at once, logged; `host.join` names and groups are checked at start; a reissued invitation is read once the membership it replaces has ended; an approval naming no groups takes the invitation's, never the ones the member asked for.
 - **Two mutations ending at the same moment no longer fail one of them.**
   An operation that ended while another was writing its outcome made the other answer "the mutation may have been applied and its record could not be written", or refused new mutations as if the journal held an unresolved one; on a coordinator, two Hosts enrolling at once saw one enrollment recorded and answered as failed.
   Only an intent no running call will end is now unresolved until the next start.

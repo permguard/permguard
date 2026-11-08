@@ -139,6 +139,28 @@ pub(crate) fn iam_tokens_keys_for(
     )?)
 }
 
+/// The capability a Host reports degraded while `iam.tokens` is kept in files on its volume.
+pub(crate) const TOKEN_CUSTODY: &str = "token-custody";
+
+/// What the IAM Host says while `iam.tokens` is in `file` custody under `production`
+/// (`2-security/8` Profiles): envelope-encrypted files on the volume, which `production` admits
+/// and reports, since the ring signs every member's tokens. `None` under any other custody or
+/// profile: plaintext and `regulated`'s other custodies are refused at start.
+pub(crate) fn iam_tokens_custody_advice(config: &Config) -> Option<String> {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::config::KeyCustody;
+
+    (config.assurance().profile() == AssuranceProfile::Production
+        && config.keys_custody_of(IAM_TOKENS) == KeyCustody::File)
+        .then(|| {
+            format!(
+                "`{IAM_TOKENS}` signs every member's tokens and is kept in files on this volume: \
+                 keep it in a PKCS#11 token or a KMS ({})",
+                permguard_core::config::SETTING_KEYS_TOKENS_CUSTODY
+            )
+        })
+}
+
 /// The Host's operations ring, `host.operations`, under `host/keys`: no Plane is handed it.
 /// Its legacy directory is migrated once.
 pub(crate) fn key_manager_for(
@@ -226,6 +248,24 @@ mod tests {
             profile: AssuranceProfile::Development,
         };
         iam_tokens_keys_for(config, &opener)
+    }
+
+    /// `production` admits `iam.tokens` in `file` custody and says so; no other custody or
+    /// profile is reported.
+    #[test]
+    fn file_custody_of_iam_tokens_is_reported_under_production_only() {
+        let advice = |profile: &str, custody: &str| {
+            iam_tokens_custody_advice(&config(&[
+                (SETTING_ASSURANCE_PROFILE, profile),
+                (permguard_core::config::SETTING_KEYS_TOKENS_CUSTODY, custody),
+            ]))
+        };
+        let said = advice("production", "file").expect("reported");
+        assert!(said.contains("PKCS#11 token or a KMS"), "{said}");
+        assert_eq!(advice("production", "kms"), None);
+        assert_eq!(advice("production", "pkcs11"), None);
+        assert_eq!(advice("development", "file"), None);
+        assert_eq!(advice("regulated", "kms"), None);
     }
 
     /// WP-11.3: under `development` the IAM Host opens `iam.tokens` with any custody.

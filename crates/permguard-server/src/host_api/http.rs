@@ -1452,12 +1452,27 @@ fn basic_client(headers: &axum::http::HeaderMap) -> Result<Option<(String, Strin
 
 /// RFC 6749's error answer: `no-store`, and `WWW-Authenticate: Basic` on a failed client proof.
 fn token_refused(refusal: &permguard_host::api::token_endpoint::TokenRefusal) -> Response {
+    use permguard_host::api::token_endpoint::TokenRefusal;
+
     let status = StatusCode::from_u16(refusal.status()).unwrap_or(StatusCode::BAD_REQUEST);
+    // What failed inside, a key store's or a journal's, is the operator's: logged, and never
+    // told to a caller who may not have authenticated at all.
+    let description = if let TokenRefusal::Unavailable(detail) = refusal {
+        tracing::warn!(
+            event.name = "iam.token_unavailable",
+            component = "host",
+            detail = %detail,
+            "the token endpoint could not answer"
+        );
+        "the token endpoint is unavailable: try again later"
+    } else {
+        refusal.description()
+    };
     let mut response = (
         status,
         Json(serde_json::json!({
             "error": refusal.error(),
-            "error_description": refusal.description(),
+            "error_description": description,
         })),
     )
         .into_response();

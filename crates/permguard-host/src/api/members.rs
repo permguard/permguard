@@ -1072,10 +1072,41 @@ pub struct MemberVerification {
 }
 
 /// A membership refusal, as the Host API answers it.
+/// The codes a peer answers when it cannot take a request now and may later: a transport that did
+/// not reach it, or a coordinator busy or starting. Anything else it refused is its decision.
+pub const TRANSIENT_PEER_CODES: [&str; 2] =
+    [codes::common::UNAVAILABLE, codes::common::PLANE_NOT_READY];
+
+/// What the coordinator, or the transport to it, answered a membership request with, when that
+/// is what refused it: the code [`refusal_of`] keeps, internal, beside the one the caller sees.
+pub fn peer_code(refusal: &Refusal) -> Option<&str> {
+    refusal
+        .error()?
+        .internal_detail()?
+        .strip_prefix('`')?
+        .split('`')
+        .next()
+}
+
+/// Whether a membership request may succeed if asked again: refused by nothing but the transport
+/// or a coordinator that could not take it now. A peer's own refusal, its session's included, is
+/// final.
+pub fn retryable(refusal: &Refusal) -> bool {
+    match refusal.error() {
+        Some(error) if error.class() == ErrorClass::Unavailable => {
+            error.code() != codes::host::PEER_CLIENT_UNCONFIGURED
+                && peer_code(refusal).is_none_or(|code| TRANSIENT_PEER_CODES.contains(&code))
+        }
+        _ => false,
+    }
+}
+
 pub fn refusal_of(error: MembershipError) -> Refusal {
     // What the coordinator refused keeps its code where the caller can act on it; a transport
     // failure is `unavailable`, its detail internal.
     if let MembershipError::Remote { code, reason } = &error {
+        // What the peer said, kept internal as it said it: [`peer_code`] reads it there.
+        let said = code;
         let (class, code) = match code.as_str() {
             codes::host::ENROLLMENT_REFUSED => {
                 (ErrorClass::Validation, codes::host::ENROLLMENT_REFUSED)
@@ -1099,7 +1130,7 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
         };
         return Refusal::Api(
             permguard_core::ApiError::new(class, code, "the coordinator did not complete it")
-                .with_internal(format!("`{code}`: {reason}")),
+                .with_internal(format!("`{said}`: {reason}")),
         );
     }
     let class = match &error {
@@ -2933,7 +2964,7 @@ impl HostApi {
             .map(|(id, held)| (uuid_text(&id), held.status == Status::Pending))
     }
 
-    /// The memberships this Host's identity holds as a member, whatever their status, and those
+    /// The memberships this Host's identity holds as a member and that have not ended, and those
     /// still waiting for their approval (TD-5).
     pub fn joined_memberships(&self) -> (usize, Vec<String>) {
         let Ok(me) = self.host_identity().map(|identity| identity.host_id()) else {
@@ -2942,11 +2973,17 @@ impl HostApi {
         let Ok(memberships) = self.memberships() else {
             return (0, Vec::new());
         };
+        // A membership that ended, rejected, revoked or expired, holds no place: a reissued
+        // invitation in its file is read and joined again.
         let mine: Vec<_> = memberships
             .store
             .memberships()
             .into_iter()
-            .filter(|(_, held)| held.role == Role::Member && held.request.member.host_id == me)
+            .filter(|(_, held)| {
+                held.role == Role::Member
+                    && held.request.member.host_id == me
+                    && !held.status.is_terminal()
+            })
             .collect();
         let pending = mine
             .iter()
@@ -3003,7 +3040,9 @@ impl HostApi {
                     coordinator: Target {
                         address: handoff.coordinator.address.clone(),
                         host_id: id_of(&handoff.coordinator.host_id)?,
-                        fingerprint: handoff.coordinator.fingerprint.clone(),
+                        // As the handshake compares it: one spelling, whatever case it was
+                        // written in.
+                        fingerprint: handoff.coordinator.fingerprint.to_ascii_lowercase(),
                     },
                     invite_id: id_of(&handoff.invite_id)?,
                     token,

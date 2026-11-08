@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use permguard_core::config::HostJoin;
-use permguard_core::{ErrorClass, Health, codes};
+use permguard_core::{Health, codes};
 use permguard_host::api::HostApi;
 use permguard_host::api::host_input::InvitationHandoff;
 
@@ -146,10 +146,10 @@ async fn join_one(
                 return Ok((view.status == "pending").then_some(view.membership_id));
             }
             Err(refusal) => match refusal.error() {
-                Some(error)
-                    if error.class() == ErrorClass::Unavailable
-                        && error.code() != codes::host::PEER_CLIENT_UNCONFIGURED =>
-                {
+                // Only a transport that did not reach the coordinator, or a coordinator that could
+                // not take it now, is asked again: a session refused, a pin that does not hold, a
+                // task or an assurance the coordinator refused, is final.
+                Some(error) if permguard_host::api::members::retryable(&refusal) => {
                     unanswered = true;
                     tracing::warn!(
                         event.name = "host.join_retry",
@@ -235,7 +235,12 @@ fn read(path: &Path) -> Result<InvitationHandoff, String> {
 
     let refused = |why: &str| format!("{}: {why}", path.display());
     let named = std::fs::symlink_metadata(path).map_err(|error| refused(&error.to_string()))?;
-    // A Secret mounted by Kubernetes is a link to its current version: what it points to is read.
+    // A Secret mounted by Kubernetes is a link to its current version: what it points to is read,
+    // and only once it is a regular file, so a pipe or a device at the path never blocks the read.
+    let target = std::fs::metadata(path).map_err(|error| refused(&error.to_string()))?;
+    if !target.is_file() {
+        return Err(refused("is not a regular file"));
+    }
     let file = std::fs::File::open(path).map_err(|error| refused(&error.to_string()))?;
     let opened = file
         .metadata()

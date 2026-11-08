@@ -1938,8 +1938,9 @@ impl Store {
 
     /// The member record an approval of `pending` carries (WP-10.1, WP-10.2): the live record of
     /// its Host when it has one, which an approval neither renames nor regroups; otherwise a new
-    /// member, its name and groups from the approval, then the request, then a default, refused
-    /// while another live member Host holds the name.
+    /// member, its name from the approval, then the request, then a default, refused while another
+    /// live member Host holds the name; its groups from the approval, then the invitation, never
+    /// from the request alone.
     fn member_for(
         &self,
         pending: &Pending,
@@ -1963,11 +1964,15 @@ impl Store {
             name.or_else(|| pending.name.clone())
                 .unwrap_or_else(|| default_member_name(&pending.member)),
         )?;
-        let groups = record::member_groups(
-            groups
-                .or_else(|| pending.groups.clone())
-                .unwrap_or_default(),
-        )?;
+        // Groups widen what a token addressed to a group reaches, so they are the coordinator's:
+        // the approval's, or those its invitation fixed. What the member asked for alone is shown
+        // to the approver and never taken unless the approval names it.
+        let fixed = self
+            .read()
+            .invites
+            .get(&pending.invite_id)
+            .and_then(|(invitation, _)| invitation.groups.clone());
+        let groups = record::member_groups(groups.or(fixed).unwrap_or_default())?;
         self.check_name_free(&name, &pending.member.host_id)?;
         Ok(record::MemberRecord {
             member_id: fresh_id(now)?,
@@ -2748,12 +2753,13 @@ impl Store {
                         })
                         .cloned()
                         .collect();
+                    // Every status list task the coordinator added, never only the first.
                     if asked.len() < manifest.tasks.len()
-                        && let Some(status) = manifest
+                        && manifest
                             .tasks
                             .iter()
-                            .find(|task| task.task_type == record::TaskType::TokenStatus)
-                        && !selector_within(&status.selector, &manifest.selector)
+                            .filter(|task| task.task_type == record::TaskType::TokenStatus)
+                            .any(|status| !selector_within(&status.selector, &manifest.selector))
                     {
                         return Err(MembershipError::Widened(
                             "the status lists reach outside the membership's selector".to_owned(),
