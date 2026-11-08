@@ -27,26 +27,14 @@ use crate::authz::directory::{Change, role_principal};
 use crate::identity::record::uuid_text;
 use crate::operations::journal::Initiator;
 
-/// A member's own role: `dp.<member_id>`.
-pub const MEMBER_ROLE_PREFIX: &str = "dp.";
-/// The role that decides on every data plane.
-pub const DATA_PLANES_ROLE: &str = "data-planes";
+pub use crate::authz::directory::{
+    DATA_PLANES_ROLE, MEMBER_ROLE_PREFIX, is_system_role, member_role,
+};
 /// What a system role's token targets when the request names none: the whole of a member's
 /// data plane, which only the member it is addressed to serves.
 pub const DATA_PLANE_TARGET: &str = "plane/data/*";
 /// Who makes and ends the system roles, in the directory's journal and its audit.
 const SYSTEM: &str = "membership";
-
-/// `dp.<member_id>`.
-pub fn member_role(member_id: &str) -> String {
-    format!("{MEMBER_ROLE_PREFIX}{member_id}")
-}
-
-/// Whether `name` is a role the IAM Host keeps itself: an operator assigns it, never makes,
-/// describes or deletes it.
-pub fn is_system_role(name: &str) -> bool {
-    name == DATA_PLANES_ROLE || name.starts_with(MEMBER_ROLE_PREFIX)
-}
 
 impl HostApi {
     /// What an elevation of `subject` to `role` asks: within the role's permissions alone, and

@@ -179,6 +179,22 @@ pub fn role_principal(name: &str) -> String {
     format!("{ROLE_PREFIX}{name}")
 }
 
+/// A member's own role: `dp.<member_id>` (`2-security/8` Roles and elevation).
+pub const MEMBER_ROLE_PREFIX: &str = "dp.";
+/// The role that decides on every data plane.
+pub const DATA_PLANES_ROLE: &str = "data-planes";
+
+/// `dp.<member_id>`.
+pub fn member_role(member_id: &str) -> String {
+    format!("{MEMBER_ROLE_PREFIX}{member_id}")
+}
+
+/// Whether `name` is a role the IAM Host keeps itself: an operator assigns it, never makes,
+/// describes or deletes it, and it is never a grant's principal.
+pub fn is_system_role(name: &str) -> bool {
+    name == DATA_PLANES_ROLE || name.starts_with(MEMBER_ROLE_PREFIX)
+}
+
 /// `user:<name>`.
 pub fn user_principal(name: &str) -> String {
     format!("{USER_PREFIX}{name}")

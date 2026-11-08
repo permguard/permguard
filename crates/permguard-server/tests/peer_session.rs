@@ -4151,6 +4151,20 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
     api.create_grant(&admin(), grant("g-account", "sa:billing", "plane/data/*"))
         .await
         .expect("the account's own");
+    // A system role is never a grant's principal: its members gain nothing until they elevate.
+    for (id, role) in [
+        ("g-own", own_role.clone()),
+        ("g-every", DATA_PLANES_ROLE.to_owned()),
+    ] {
+        let refused = api
+            .create_grant(&admin(), grant(id, &format!("role:{role}"), "plane/data/*"))
+            .await
+            .expect_err("a system role holds no grants");
+        assert!(
+            format!("{refused:?}").contains("system role"),
+            "{role}: {refused:?}"
+        );
+    }
     api.create_grant(
         &admin(),
         grant("g-role", "role:readers", "plane/data/zone/billing/*"),

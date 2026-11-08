@@ -665,15 +665,29 @@ impl GrantStore {
     }
 }
 
-/// Refuses an issue the store would never write: the reserved public principal, no operation
-/// or type, one outside the registries, an expiry already past at `now`. Checked before a
-/// mutation begins, and again by [`GrantStore::issue`].
+/// Refuses an issue the store would never write: the reserved public principal, a system role,
+/// no operation or type, one outside the registries, an expiry already past at `now`. Checked
+/// before a mutation begins, and again by [`GrantStore::issue`].
 pub fn validate_issue(issue: &Issue, now: u64) -> Result<(), AuthzError> {
     if issue.principal.is_anonymous() {
         return Err(AuthzError::Invalid(format!(
             "`{}` is the reserved public principal: what anybody may do is declared in the \
              configuration's `host.authz.public`, never journaled",
             permguard_core::authz::ANONYMOUS
+        )));
+    }
+    // `2-security/8` Roles and elevation: a system role holds no grants, so a member of it gains
+    // nothing until it elevates, and a token issued without a role never reaches through one.
+    if let Some(role) = issue
+        .principal
+        .as_str()
+        .strip_prefix(super::directory::ROLE_PREFIX)
+        && super::directory::is_system_role(role)
+    {
+        return Err(AuthzError::Invalid(format!(
+            "`{}` is a system role: it holds no grants and acts only through elevation, which \
+             gives its members what the IAM Host defines for it",
+            issue.principal.as_str()
         )));
     }
     if issue.operations.is_empty() {
@@ -921,6 +935,43 @@ mod tests {
             Err(AuthzError::Invalid(_))
         ));
         assert_eq!(store.revision(), 0);
+    }
+
+    /// `2-security/8` Roles and elevation: a system role is never a grant's principal, so a token
+    /// issued without a role never reaches through one; an operator's role still is.
+    #[test]
+    fn a_grant_to_a_system_role_is_refused_at_issue() {
+        let root = scratch("system-role");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("opens");
+        for principal in [
+            "role:data-planes",
+            "role:dp.01a1bc76-7028-717c-8b19-c470f894a0dd",
+        ] {
+            let refused = store.issue(
+                &Applying::for_tests(1),
+                issue(principal, "decision.evaluate", "plane/data/*"),
+                1,
+                None,
+            );
+            assert!(
+                matches!(&refused, Err(AuthzError::Invalid(why)) if why.contains("system role")),
+                "{principal}: {refused:?}"
+            );
+        }
+        assert_eq!(store.revision(), 0, "nothing was written");
+        store
+            .issue(
+                &Applying::for_tests(2),
+                issue(
+                    "role:data-planes-readers",
+                    "decision.evaluate",
+                    "plane/data/*",
+                ),
+                1,
+                None,
+            )
+            .expect("an operator's role holds grants");
     }
 
     #[test]

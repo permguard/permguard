@@ -2521,6 +2521,78 @@ fn roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past() {
     assert!(stderr.contains("plan again"), "{stderr}");
     let (_, role, _) = run("https", &["iam", "roles", "get", "operators"]);
     assert_eq!(role["description"], "run the Host", "nothing was applied");
+
+    // A system role is the IAM Host's: a file assigns its members, and nothing else.
+    let (ok, identity, stderr) = run("https", &["host", "identity", "show"]);
+    assert!(ok, "{stderr}");
+    let own = format!("dp.{}", identity["host_id"].as_str().expect("the host id"));
+    let (ok, _, stderr) = run(
+        "https",
+        &[
+            "iam",
+            "service-accounts",
+            "create",
+            "billing",
+            "--owner",
+            "payments",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    let plan_of = |yaml: String, out: &str| {
+        std::fs::write(dir.join("system.yml"), yaml).expect("the roles file writes");
+        run(
+            "https",
+            &[
+                "iam",
+                "roles",
+                "apply",
+                "plan",
+                "-f",
+                "system.yml",
+                "--out",
+                out,
+            ],
+        )
+    };
+    for (refused, out) in [
+        (
+            format!(
+                "roles:\n  {own}:\n    grants:\n      - operations: [decision.evaluate]\n        selector: plane/data/*\n"
+            ),
+            "granted.plan",
+        ),
+        (
+            "roles:\n  data-planes:\n    description: mine\n".to_owned(),
+            "described.plan",
+        ),
+        (
+            "roles:\n  dp.01a1bc76-7028-717c-8b19-c470f894a0dd:\n    members:\n      - principal: sa:billing\n".to_owned(),
+            "unheld.plan",
+        ),
+    ] {
+        let (ok, _, stderr) = plan_of(refused.clone(), out);
+        assert!(!ok && stderr.contains("system role"), "{refused}: {stderr}");
+    }
+    let (ok, plan, stderr) = plan_of(
+        format!("roles:\n  {own}:\n    members:\n      - principal: sa:billing\n"),
+        "assigned.plan",
+    );
+    assert!(ok, "{stderr}");
+    assert_eq!(kinds(&plan), ["add_member"], "{plan}");
+    let (ok, _, stderr) = run(
+        "https",
+        &[
+            "iam",
+            "roles",
+            "apply",
+            "run",
+            "--confirm-file",
+            "assigned.plan",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    let (_, role, _) = run("https", &["iam", "roles", "get", &own]);
+    assert_eq!(role["members"], serde_json::json!(["sa:billing"]), "{role}");
 }
 
 /// `Bearer <name>` is the principal `<name>`; nothing else authenticates.
