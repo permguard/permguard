@@ -27,6 +27,7 @@ pub mod bounds;
 pub mod config;
 pub mod directory;
 pub mod drain;
+pub mod federation;
 pub mod gc;
 pub mod grants;
 pub mod host_input;

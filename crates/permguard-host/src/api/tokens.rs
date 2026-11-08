@@ -95,7 +95,7 @@ pub struct Tokens {
     /// The token endpoint's requests per client and per source (WP-11.4).
     pub(super) limiter: super::token_endpoint::Limiter,
     /// The client assertions already used (WP-11.4).
-    pub(super) replays: super::token_endpoint::Replays,
+    pub(super) replays: super::federation::Replays,
 }
 
 /// How far ahead the first list a process signs of a list it inherited is dated: past anything
@@ -123,7 +123,7 @@ impl Tokens {
             serves_data: false,
             signed: Mutex::default(),
             limiter: super::token_endpoint::Limiter::default(),
-            replays: super::token_endpoint::Replays::default(),
+            replays: super::federation::Replays::default(),
         }
     }
 
