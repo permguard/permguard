@@ -48,6 +48,7 @@ Suspending an account, or revoking one of its credentials, refuses every token i
 | a program, by its key         | `client_credentials` with an RFC 7523 assertion addressed to the published token endpoint | `application` |
 | a program, by its certificate | `client_credentials` over mutual TLS (RFC 8705)                                           | `application` |
 | a person                      | their session from `permguard login`, exchanged (RFC 8693)                                | either family |
+| either, elevated to a role    | the same, with `role:<name>` in the scope                                                 | the role's    |
 
 ```sh
 # A service account: the command line obtains, caches and renews its own token, addressed to
@@ -73,6 +74,67 @@ Programs embedding the client library use `permguard_control_client::token_sourc
 
 A token carries one family: one obtained for an application never administers a Host.
 Under `regulated`, an administration token is bound to the certificate of the connection that asked for it and is refused over any other.
+
+## Elevating to a role
+
+A subject can also elevate to one of its roles, as with a security token service: it asks `scope=role:<name>` and receives a token that carries that role's permissions alone, never its own grants nor its other roles'.
+A token without a role stays served, within everything the subject holds: elevation is an option, never a requirement.
+
+| Role             | Made                                                          | Elevation gives                                                    | Addressed to                      |
+| ---------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------- |
+| `dp.<member_id>` | by the IAM Host, when a member's first membership is approved | `decision.evaluate` and `event.submit` on that member's Data Plane | that member alone, without asking |
+| `data-planes`    | by the IAM Host, with the first member's role                 | the same on every member                                           | the members or groups asked       |
+| any other        | by an operator, `permguard iam roles create`                  | the role's own grants, for the operations asked                    | as asked                          |
+
+The IAM Host keeps the system roles, `dp.<member_id>` and `data-planes`, in step with its live members: a member's role ends with its last membership, and a Host that joins again is a new member with a new role, so no assignment passes to it.
+They hold no grants, so a member of one gains nothing until it elevates; an operator assigns users and service accounts to them and never makes, describes or deletes them.
+A service account elevates to decide only: administration stays its own grants'.
+A token issued under a role names it in its `roles` claim (RFC 9068), the audit's `iam.token.issued` records it, and it is refused once the role ends or its subject leaves it, at the IAM Host's next directory sync.
+
+```sh
+# The operator assigns the service account to the member's role.
+permguard iam roles members add dp.<member-id> --principal sa:billing
+
+# The service account elevates: no audience and no target, the IAM Host addresses the role.
+permguard --iam-endpoint https://iam.example:5444 --client-id billing \
+  --client-secret-file ./billing.secret \
+  iam token --role dp.<member-id> --out ./billing-eu.token
+
+# A Data Plane command elevates by its configuration, auth.client.role.
+PERMGUARD_CLIENT_ROLE=dp.<member-id> \
+permguard --data-endpoint https://data-plane.example:7443 \
+  --iam-endpoint https://iam.example:5444 --client-id billing \
+  --client-secret-file ./billing.secret \
+  check -f request.json --zone <zone-id> --ledger <ledger-id>
+```
+
+The operations beside a role narrow it, `--scope decision.evaluate`; `data-planes` and a role an operator made need the audience, and the latter the operations, as without a role.
+A program asks the same through the client library:
+
+```rust
+use permguard_control_client::token_source::{Asked, Proof, TokenSource};
+
+let asked = Asked { scope: "decision.evaluate".into(), ..Asked::default() }
+    .elevated("dp.0198f2aa-0000-7000-8000-000000000002")?;
+let source = TokenSource::new(iam_endpoint, "billing", Proof::Secret(secret), asked, tls, timeout)?;
+let token = source.token()?; // renewed a minute before it expires
+```
+
+## The token endpoint and RFC 8693
+
+`POST /iam/v1/token` is RFC 6749's, and its token exchange RFC 8693's, to the letter:
+
+| Parameter                                  | Served                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `subject_token_type`                       | `urn:ietf:params:oauth:token-type:access_token` for a session of this IAM Host; `…:jwt` or `…:id_token` for an identity provider's token |
+| `requested_token_type`                     | absent or `urn:ietf:params:oauth:token-type:access_token`; any other type is `invalid_request`                                           |
+| `actor_token`, `actor_token_type`          | refused `invalid_request`: delegation is not served                                                                                      |
+| `resource`                                 | an absolute URI without fragment, else `invalid_request`; refused `invalid_target`, since no resource indicator is served                |
+| `scope`                                    | the operations, and at most one `role:<name>` to elevate to                                                                              |
+| `audience`, `target`, `requested_lifetime` | the members or groups the token is for; `target` and `requested_lifetime` are Permguard's own parameters, which RFC 8693 leaves room for |
+
+An exchange answers `issued_token_type: urn:ietf:params:oauth:token-type:access_token` (§2.2.1), and a subject token that is not valid is `invalid_request` (§2.2.2).
+An exchange needs no client authentication, as §2.1 leaves to the deployment: whoever holds a person's session or provider token can exchange it, within that person's grants, so keep sessions as private as the tokens they obtain.
 
 ## On a member
 
