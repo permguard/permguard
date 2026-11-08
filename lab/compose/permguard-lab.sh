@@ -1179,7 +1179,10 @@ submit_document() { # host; the document on standard input
     token="$(token_for "$1")"
     header="${token}.header"
     (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
-    curl -sS --cacert "${pki}/ca.crt" -H "@${header}" \
+    # The listener takes mutual TLS: the connection is the operator's certificate, the decision the
+    # token's, which a member routes first.
+    curl -sS --cacert "${pki}/ca.crt" --cert "${pki}/operator.crt" --key "${pki}/operator.key" \
+        -H "@${header}" \
         -X POST "$(data_endpoint "$1")/temporal/v1alpha1/events" \
         -H 'content-type: application/json' --data-binary @-
 }
