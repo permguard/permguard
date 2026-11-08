@@ -348,6 +348,42 @@
                 "items": {
                   "type": "object"
                 }
+              },
+              "join": {
+                "description": "TD-5: each replica joins the control plane's Host by itself, from `<invitation>-<ordinal>` of `secret` for each of `invitations` (`membership` by default: the one membership the `-membership` ConfigMap states), its coordinator pinned by `pinFingerprint`; the approval stays the coordinator's.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "secret",
+                  "pinFingerprint"
+                ],
+                "properties": {
+                  "secret": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "pinFingerprint": {
+                    "type": "string",
+                    "pattern": "^sha256:[0-9a-fA-F]{64}$"
+                  },
+                  "namePrefix": {
+                    "type": "string"
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "invitations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$"
+                    }
+                  }
+                }
               }
             },
             "required": [

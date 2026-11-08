@@ -703,6 +703,43 @@ mod tests {
         .expect("its own certificate");
     }
 
+    /// WP-12.6, ring rotation: while a re-pin keeps the replaced `iam.tokens` set beside the
+    /// current one, a token of either key verifies, so no token in flight is refused by the
+    /// rotation; once the replaced pin retires, its key's tokens are refused at step 2, and a
+    /// token naming the new `kid` under an old key's signature fails at step 3.
+    #[test]
+    fn a_rotation_keeps_the_retiring_keys_tokens_until_its_pin_retires() {
+        let old = pair();
+        let new = Ed25519KeyPair::from_seed_unchecked(&[9; 32]).expect("a key");
+        let key = |pair: &Ed25519KeyPair, kid: &str| PinnedKey {
+            kid: kid.to_owned(),
+            algorithm: "EdDSA",
+            public_key: pair.public_key().as_ref().to_vec(),
+        };
+        let headed = |kid: &str| json!({"alg": "EdDSA", "kid": kid, "typ": "at+jwt"});
+        let by_old = sign(&old, headed("iam.tokens:k1"), claims(json!({})));
+        let by_new = sign(&new, headed("iam.tokens:k2"), claims(json!({})));
+        let mut overlapping = anchor(&old);
+        overlapping.keys = vec![key(&new, "iam.tokens:k2"), key(&old, "iam.tokens:k1")];
+        let held = lists(NOW + 60);
+        verify(&by_old, &[overlapping.clone()], &held, None, NOW).expect("the retiring key's");
+        verify(&by_new, &[overlapping.clone()], &held, None, NOW).expect("the current key's");
+        let mut retired = overlapping.clone();
+        retired.keys.retain(|pinned| pinned.kid == "iam.tokens:k2");
+        assert_eq!(
+            verify(&by_old, &[retired.clone()], &held, None, NOW).map_err(|refused| refused.step),
+            Err(2),
+            "the retired key is no longer pinned"
+        );
+        verify(&by_new, &[retired.clone()], &held, None, NOW).expect("the current key's");
+        let forged = sign(&old, headed("iam.tokens:k2"), claims(json!({})));
+        assert_eq!(
+            verify(&forged, &[retired], &held, None, NOW).map_err(|refused| refused.step),
+            Err(3),
+            "the new kid does not lend its name to the old key"
+        );
+    }
+
     /// Each step refuses what it is there for, and the first failing step answers.
     #[test]
     fn every_step_refuses_what_it_checks() {

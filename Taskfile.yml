@@ -31,6 +31,11 @@ tasks:
         --out permguard-benchmark.json {{.ARGS}}
       - target/release/permguard-bench capacity permguard-benchmark.json
 
+  bench:tokens:
+    desc: What token verification adds to a decision on a member (TS-9) — p50, p99 and p99.9, failing past a hundredth of the decision objective.
+    cmds:
+      - cargo bench --locked -p permguard-host --bench token_verify
+
   bench:server:
     desc: Run the control plane for capacity benchmarks — release build, limits raised out of the way.
     cmds:

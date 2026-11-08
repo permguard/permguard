@@ -1501,6 +1501,14 @@ impl App {
         // its IAM Host's access tokens and its bootstrap certificate (WP-12.4, `2-security/8`):
         // a setting that would have it read another is refused, never ignored.
         let member = self.is_member(config);
+        // A coordinator is never a member of another: only a member joins from an invitation
+        // (TD-5).
+        if config.host_join().is_some() && !member {
+            bail!(
+                "host.join is a member's: this Host runs a Control Plane, or no Data Plane, and \
+                 never joins another coordinator; remove host.join"
+            );
+        }
         if member {
             let stated: Vec<&str> = [
                 (!auth.principals.is_empty(), "host.principals"),
@@ -3191,6 +3199,19 @@ impl App {
         let _receiving = serving
             .as_ref()
             .map(|api| crate::zone::drive(Arc::clone(api), Arc::clone(&zone_keys)));
+        // A member joins the coordinator its configured invitation names, by itself (TD-5).
+        let _joining = match (config.host_join(), serving.as_ref()) {
+            (Some(join), Some(api)) => Some(crate::join::drive(
+                Arc::clone(api),
+                join.clone(),
+                context.health().clone(),
+            )?),
+            (Some(_), None) => bail!(
+                "host.join needs this Host's listener (`admin.addr` and its TLS): the join is \
+                 made through its membership side"
+            ),
+            (None, _) => None,
+        };
         // Streams an incomplete drain left are shipped again before the Host leaves Load
         // (WP-5.8, owner decision): one pass within the drain budget.
         if let Some(api) = serving.as_ref() {

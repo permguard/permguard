@@ -20,6 +20,7 @@ pub mod custody;
 pub mod dormancy;
 pub mod host;
 pub mod host_api;
+pub(crate) mod join;
 pub mod legacy_events;
 pub mod legacy_spool;
 pub mod logging;

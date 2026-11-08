@@ -141,6 +141,17 @@ pub const SETTING_ADMIN_ADDR: &str = "PERMGUARD_ADMIN_ADDR";
 /// registry's `jwks_uri` and the telemetry listener's redirect name (WP-2.5).
 pub const SETTING_ADMIN_ADVERTISED_URL: &str = "PERMGUARD_ADMIN_ADVERTISED_URL";
 
+/// The invitation handoffs a Data Plane Host joins its coordinator with by itself, at start
+/// (iteration 02, TD-5): files mounted from a secret, comma or line separated, one per
+/// membership of the replica (its Control Plane tree's and its own).
+pub const SETTING_HOST_JOIN_INVITATION_FILE: &str = "PERMGUARD_HOST_JOIN_INVITATION_FILE";
+/// The coordinator's fingerprint, stated apart from the invitation: the handoff must name it.
+pub const SETTING_HOST_JOIN_PIN_FINGERPRINT: &str = "PERMGUARD_HOST_JOIN_PIN_FINGERPRINT";
+/// The member name a join asks for, when the invitation leaves it open.
+pub const SETTING_HOST_JOIN_NAME: &str = "PERMGUARD_HOST_JOIN_NAME";
+/// The groups a join asks for, comma or line separated, when the invitation leaves them open.
+pub const SETTING_HOST_JOIN_GROUPS: &str = "PERMGUARD_HOST_JOIN_GROUPS";
+
 /// Runtime setting keys for the TLS material of each surface.
 ///
 /// Three surfaces, three sets, because they answer different questions. The public one and the
@@ -1394,6 +1405,8 @@ pub struct Config {
     telemetry_addr: Option<String>,
     telemetry_advertised_url: Option<String>,
     admin_advertised_url: Option<String>,
+    host_join: Option<HostJoin>,
+    host_join_parts: HostJoinParts,
     host_identity_suite: Option<String>,
     host_identity_witness: Option<String>,
     host_peers: Vec<PinnedPeer>,
@@ -1618,6 +1631,8 @@ impl Default for Config {
             telemetry_addr: None,
             telemetry_advertised_url: None,
             admin_advertised_url: None,
+            host_join: None,
+            host_join_parts: HostJoinParts::default(),
             host_identity_suite: None,
             host_identity_witness: None,
             host_peers: Vec::new(),
@@ -1840,6 +1855,7 @@ impl Config {
             config.apply_pairs(pairs)?;
         }
         config.check_cache_bounds()?;
+        config.check_host_join()?;
 
         Ok(config)
     }
@@ -3306,6 +3322,11 @@ produce: use `EdDSA` or `ES256`"
         }
     }
 
+    /// The join a Data Plane Host makes by itself at start, when configured (TD-5).
+    pub fn host_join(&self) -> Option<&HostJoin> {
+        self.host_join.as_ref()
+    }
+
     /// Where the Host listener is reached from outside, trimmed of a trailing slash, when stated.
     pub fn admin_advertised_url(&self) -> Option<&str> {
         self.admin_advertised_url
@@ -4605,6 +4626,22 @@ produce: use `EdDSA` or `ES256`"
             SETTING_TELEMETRY_ADVERTISED_URL => self.telemetry_advertised_url.clone(),
             SETTING_ADMIN_ADDR => self.admin_addr.clone(),
             SETTING_ADMIN_ADVERTISED_URL => self.admin_advertised_url.clone(),
+            SETTING_HOST_JOIN_INVITATION_FILE => self.host_join.as_ref().and_then(|join| {
+                lines(
+                    join.invitation_files
+                        .iter()
+                        .map(|file| file.display().to_string()),
+                )
+            }),
+            SETTING_HOST_JOIN_PIN_FINGERPRINT => self
+                .host_join
+                .as_ref()
+                .map(|join| join.pin_fingerprint.clone()),
+            SETTING_HOST_JOIN_NAME => self.host_join.as_ref().and_then(|join| join.name.clone()),
+            SETTING_HOST_JOIN_GROUPS => self
+                .host_join
+                .as_ref()
+                .and_then(|join| lines(join.groups.iter().cloned())),
             SETTING_HOST_IDENTITY_SUITE => self.host_identity_suite.clone(),
             SETTING_HOST_IDENTITY_WITNESS => self.host_identity_witness.clone(),
             SETTING_HOST_PEERS => lines(self.host_peers.iter().map(ToString::to_string)),
@@ -4937,6 +4974,76 @@ produce: use `EdDSA` or `ES256`"
         Ok(addresses)
     }
 
+    /// `host.join` (TD-5): what one layer states of it, each part over what an earlier layer said.
+    fn apply_host_join(&mut self, settings: &BTreeMap<String, String>) {
+        let text = |key: &str| {
+            settings
+                .get(key)
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+        let parts = &mut self.host_join_parts;
+        if let Some(file) = text(SETTING_HOST_JOIN_INVITATION_FILE) {
+            parts.invitation_file = Some(file);
+        }
+        if let Some(pin) = text(SETTING_HOST_JOIN_PIN_FINGERPRINT) {
+            parts.pin_fingerprint = Some(pin);
+        }
+        if let Some(name) = text(SETTING_HOST_JOIN_NAME) {
+            parts.name = Some(name);
+        }
+        if let Some(groups) = text(SETTING_HOST_JOIN_GROUPS) {
+            parts.groups = groups
+                .split([',', '\n'])
+                .map(str::trim)
+                .filter(|group| !group.is_empty())
+                .map(str::to_owned)
+                .collect();
+        }
+    }
+
+    /// `host.join` once every layer applied: the invitation file and the coordinator's pin, both
+    /// or neither, the name and groups only beside them.
+    fn check_host_join(&mut self) -> Result<()> {
+        let parts = self.host_join_parts.clone();
+        match (parts.invitation_file, parts.pin_fingerprint) {
+            (None, None) if parts.name.is_none() && parts.groups.is_empty() => {}
+            (None, None) => bail!(
+                "{SETTING_HOST_JOIN_NAME} and {SETTING_HOST_JOIN_GROUPS} are a join's: name its \
+                 invitation file and its coordinator's pin too"
+            ),
+            (Some(file), Some(pin)) => {
+                let digest = pin.strip_prefix("sha256:").unwrap_or_default();
+                if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                    bail!(
+                        "{SETTING_HOST_JOIN_PIN_FINGERPRINT} is the coordinator's fingerprint, \
+                         `sha256:<64 hex>`"
+                    );
+                }
+                self.host_join = Some(HostJoin {
+                    invitation_files: file
+                        .split([',', '\n'])
+                        .map(str::trim)
+                        .filter(|file| !file.is_empty())
+                        .map(PathBuf::from)
+                        .collect(),
+                    pin_fingerprint: pin.to_ascii_lowercase(),
+                    name: parts.name,
+                    groups: parts.groups,
+                });
+            }
+            (Some(_), None) => bail!(
+                "a join from {SETTING_HOST_JOIN_INVITATION_FILE} pins its coordinator: set \
+                 {SETTING_HOST_JOIN_PIN_FINGERPRINT}, stated apart from the invitation"
+            ),
+            (None, Some(_)) => bail!(
+                "{SETTING_HOST_JOIN_PIN_FINGERPRINT} pins a join: name its invitation in \
+                 {SETTING_HOST_JOIN_INVITATION_FILE}"
+            ),
+        }
+        Ok(())
+    }
+
     fn apply_build_settings(&mut self, build_settings: BuildSettings) {
         self.version = build_settings.version.to_owned();
         self.commit = build_settings.commit.to_owned();
@@ -5023,6 +5130,8 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_ADMIN_ADVERTISED_URL) {
             self.admin_advertised_url = Some(value.clone());
         }
+
+        self.apply_host_join(&settings);
 
         if let Some(value) = settings.get(SETTING_HOST_IDENTITY_SUITE) {
             self.host_identity_suite = Some(value.clone());
@@ -6534,10 +6643,36 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
     }
 }
 
+/// The join a Data Plane Host makes by itself at start, from an invitation mounted as a file
+/// (iteration 02, TD-5; `1-architecture/11` Join from an invitation file).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostJoin {
+    /// The invitation handoffs, version 1, as `host members invite create` prints them: one per
+    /// membership, each joined once.
+    pub invitation_files: Vec<PathBuf>,
+    /// The coordinator's fingerprint, `sha256:<hex>`, stated apart from the invitation.
+    pub pin_fingerprint: String,
+    pub name: Option<String>,
+    pub groups: Vec<String>,
+}
+
+/// What the layers state of `host.join`, before it is checked whole.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct HostJoinParts {
+    invitation_file: Option<String>,
+    pin_fingerprint: Option<String>,
+    name: Option<String>,
+    groups: Vec<String>,
+}
+
 /// Every setting this crate reads: the inventory the effective-configuration document is
 /// restricted to, so a layer's stray pair — the process environment is a layer — is never
 /// recorded as a setting (WP-2.5). A build's extra settings are declared beside them.
 const CORE_SETTINGS: &[&str] = &[
+    SETTING_HOST_JOIN_INVITATION_FILE,
+    SETTING_HOST_JOIN_PIN_FINGERPRINT,
+    SETTING_HOST_JOIN_NAME,
+    SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
     SETTING_HOST_PEERS,
@@ -6742,6 +6877,10 @@ impl SettingClass {
 /// The core settings of class [`SettingClass::Startup`].
 const STARTUP_SETTINGS: &[&str] = &[
     SETTING_WORKING_DIR,
+    SETTING_HOST_JOIN_INVITATION_FILE,
+    SETTING_HOST_JOIN_PIN_FINGERPRINT,
+    SETTING_HOST_JOIN_NAME,
+    SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
     SETTING_PUBLIC_HTTP_ADDR,

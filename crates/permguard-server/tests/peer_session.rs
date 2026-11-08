@@ -1633,6 +1633,209 @@ async fn approved_pair(coordinator: &Side, member: &Side) -> String {
     id
 }
 
+/// TD-5: a member joins by itself from a configured invitation: a handoff naming another
+/// coordinator than the pinned one, an expired one or a spent one is refused; the join it makes
+/// is pending, the approval the coordinator's; a Host that joined holds a membership and never
+/// joins again.
+#[tokio::test]
+async fn a_member_joins_by_itself_from_an_invitation_and_waits_for_its_approval() {
+    use permguard_host::api::host_input::InvitationHandoff;
+    use permguard_host::api::members::CreateInvite;
+
+    let root = scratch("join-at-start");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        permguard_host::membership::Capabilities::default().declare(
+            permguard_host::membership::record::TaskType::DecisionsShip,
+            permguard_host::membership::record::Role::Coordinator,
+        ),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        permguard_host::membership::Capabilities::default().declare(
+            permguard_host::membership::record::TaskType::DecisionsShip,
+            permguard_host::membership::record::Role::Member,
+        ),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+                groups: None,
+                name: None,
+            },
+        )
+        .await
+        .expect("invited");
+    let join = join_of(&coordinator, &invited, "join");
+    let handoff = InvitationHandoff {
+        version: 1,
+        coordinator: join.coordinator.clone(),
+        invite_id: join.invite_id.clone(),
+        token: join.token.clone(),
+        requested: join.requested.clone(),
+        expires: invited.expires.clone(),
+    };
+    let pin = coordinator.host.identity.first_fingerprint().to_owned();
+    assert!(!member.api.holds_a_membership_as_member());
+
+    // Another coordinator than the pinned one, an old version, an expired invitation: refused,
+    // and nothing is sent.
+    let other = format!("sha256:{}", "0".repeat(64));
+    for (handoff, pin, why) in [
+        (handoff.clone(), other.as_str(), "another coordinator"),
+        (
+            InvitationHandoff {
+                version: 2,
+                ..handoff.clone()
+            },
+            pin.as_str(),
+            "the version",
+        ),
+        (
+            InvitationHandoff {
+                expires: "2001-01-01T00:00:00Z".to_owned(),
+                ..handoff.clone()
+            },
+            pin.as_str(),
+            "the expiry",
+        ),
+        (
+            InvitationHandoff {
+                coordinator: permguard_host::api::members::CoordinatorView {
+                    address: handoff.coordinator.address.replace("https://", "http://"),
+                    ..handoff.coordinator.clone()
+                },
+                ..handoff.clone()
+            },
+            pin.as_str(),
+            "a clear-text coordinator",
+        ),
+    ] {
+        assert!(
+            member
+                .api
+                .join_from_invitation(&handoff, pin, None, Vec::new())
+                .await
+                .is_err(),
+            "{why}"
+        );
+    }
+    assert!(
+        !member.api.holds_a_membership_as_member(),
+        "nothing was made"
+    );
+    assert!(
+        coordinator
+            .api
+            .members(&admin(), Some("pending"))
+            .expect("listed")
+            .members
+            .is_empty(),
+        "nothing reached the coordinator"
+    );
+
+    // The pinned coordinator's invitation joins: pending, the approval the coordinator's.
+    let joined = member
+        .api
+        .join_from_invitation(
+            &handoff,
+            &pin.to_uppercase().replace("SHA256:", "sha256:"),
+            None,
+            Vec::new(),
+        )
+        .await
+        .expect("joined");
+    assert_eq!(joined.status, "pending");
+    assert!(member.api.holds_a_membership_as_member());
+    let pending = coordinator
+        .api
+        .member(&admin(), &joined.membership_id)
+        .expect("the coordinator holds it");
+    assert_eq!(
+        pending.status, "pending",
+        "the approval is the coordinator's"
+    );
+    assert_eq!(
+        member
+            .api
+            .sync_joined(&joined.membership_id)
+            .await
+            .expect("synced")
+            .status,
+        "pending",
+        "nothing is decided until the coordinator approves"
+    );
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &joined.membership_id,
+            permguard_host::api::members::ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+                groups: None,
+                name: None,
+            },
+        )
+        .await
+        .expect("approved");
+    assert_eq!(
+        member
+            .api
+            .sync_joined(&joined.membership_id)
+            .await
+            .expect("synced")
+            .status,
+        "active",
+        "the member reads its approval by itself"
+    );
+
+    // The invitation is spent: a second Host with the same file is refused.
+    let second = side(
+        &root.join("second"),
+        &pki,
+        "second",
+        "data.attest",
+        permguard_host::membership::Capabilities::default().declare(
+            permguard_host::membership::record::TaskType::DecisionsShip,
+            permguard_host::membership::record::Role::Member,
+        ),
+    )
+    .await;
+    let spent = second
+        .api
+        .join_from_invitation(&handoff, &pin, None, Vec::new())
+        .await
+        .expect_err("a spent invitation");
+    assert_eq!(
+        code(&spent),
+        permguard_core::codes::host::ENROLLMENT_REFUSED,
+        "refused for good, never `unavailable`, which the driver would retry"
+    );
+    assert!(!second.api.holds_a_membership_as_member());
+}
+
 /// WP-4.9: while a reset is under way, the member opens no task session and the coordinator
 /// accepts none, each with its own refusal; lifted, both serve again.
 #[tokio::test]

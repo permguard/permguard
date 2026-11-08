@@ -2388,3 +2388,105 @@ hostControls: { storage: {}, backup: {}, objectives: {} }
 ",
     );
 }
+
+/// TD-5: a stateful group's replicas join the control plane's Host by themselves, each with the
+/// invitation of its ordinal from one Secret mounted readable by the server's group only, the
+/// coordinator pinned apart from it; a group that cannot join that way is refused.
+#[test]
+fn a_group_joins_from_an_invitation_secret_by_its_replicas_ordinal() {
+    let pin = format!("sha256:{}", "ab".repeat(32));
+    let values = format!(
+        "dataPlane:\n  hostListener: {{ enabled: true, tls: {{ secretName: data-plane-host }} }}\n  groups:\n    - name: billing\n      selector: plane/data/zone/billing/*\n      replicas: 2\n      join: {{ secret: billing-invitations, pinFingerprint: {pin} }}\n"
+    );
+    let rendered = render(&values);
+    let pod =
+        &rendered.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"];
+    let server = pod["containers"]
+        .as_array()
+        .expect("containers")
+        .iter()
+        .find(|container| container["name"] == "data-plane")
+        .expect("the server");
+    let env = |name: &str| {
+        server["env"]
+            .as_array()
+            .expect("env")
+            .iter()
+            .find(|variable| variable["name"] == name)
+            .unwrap_or_else(|| panic!("no {name}"))
+            .clone()
+    };
+    assert_eq!(
+        env("POD_INDEX")["valueFrom"]["fieldRef"]["fieldPath"],
+        "metadata.labels['apps.kubernetes.io/pod-index']"
+    );
+    assert_eq!(
+        env("PERMGUARD_HOST_JOIN_INVITATION_FILE")["value"],
+        "/var/run/permguard/join/membership-$(POD_INDEX)",
+        "the one membership the group's ConfigMap states"
+    );
+    let named = render(&values.replace(
+        "join: { secret",
+        "join: { invitations: [control, data], secret",
+    ));
+    let only = named.get("StatefulSet", "permguard-data-plane-billing")["spec"]["template"]["spec"]
+        ["containers"][0]["env"]
+        .as_array()
+        .expect("env")
+        .iter()
+        .find(|variable| variable["name"] == "PERMGUARD_HOST_JOIN_INVITATION_FILE")
+        .expect("the invitations")["value"]
+        .clone();
+    assert_eq!(
+        only,
+        "/var/run/permguard/join/control-$(POD_INDEX),/var/run/permguard/join/data-$(POD_INDEX)",
+        "one file per named invitation"
+    );
+    assert_eq!(
+        env("PERMGUARD_HOST_JOIN_PIN_FINGERPRINT")["value"],
+        pin.as_str()
+    );
+    assert_eq!(
+        env("PERMGUARD_HOST_JOIN_NAME")["value"],
+        "billing-$(POD_INDEX)"
+    );
+    assert_eq!(env("PERMGUARD_HOST_JOIN_GROUPS")["value"], "billing");
+    let volume = pod["volumes"]
+        .as_array()
+        .expect("volumes")
+        .iter()
+        .find(|volume| volume["name"] == "join")
+        .expect("the invitations");
+    assert_eq!(volume["secret"]["secretName"], "billing-invitations");
+    assert_eq!(
+        volume["secret"]["defaultMode"], 0o440,
+        "never readable by every user"
+    );
+    assert_eq!(
+        volume["secret"]["optional"], true,
+        "a replica that joined starts without its invitations"
+    );
+    let old = render_with(&values, &["--kube-version", "1.27.0"])
+        .err()
+        .expect("refused");
+    assert!(old.contains("needs Kubernetes 1.28"), "{old}");
+    assert!(
+        !values.contains("token"),
+        "the values name the Secret, never an invitation"
+    );
+
+    // A group that cannot join by its ordinal, or without its Host listener, is refused; a pin that
+    // is no fingerprint is refused by the schema.
+    refused(
+        &values.replace("      replicas: 2\n", "      replicas: 2\n      persistence: { enabled: false }\n      evidence: { mode: disabled }\n"),
+        "needs a stateful group",
+    );
+    refused(
+        &values.replace(
+            "  hostListener: { enabled: true, tls: { secretName: data-plane-host } }\n",
+            "",
+        ),
+        "needs dataPlane.hostListener.enabled",
+    );
+    assert!(render_with(&values.replace(&pin, "sha256:short"), &[]).is_err());
+}

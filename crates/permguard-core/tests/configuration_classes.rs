@@ -106,6 +106,11 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_BACKUP_RETENTION,
             SETTING_HOST_IDENTITY_SUITE,
             SETTING_HOST_IDENTITY_WITNESS,
+            // Unset: no join from an invitation unless configured (TD-5).
+            SETTING_HOST_JOIN_GROUPS,
+            SETTING_HOST_JOIN_INVITATION_FILE,
+            SETTING_HOST_JOIN_NAME,
+            SETTING_HOST_JOIN_PIN_FINGERPRINT,
             SETTING_HOST_PEERS,
             SETTING_ISSUER,
             SETTING_KEYS_KEK_REF,

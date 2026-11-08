@@ -169,6 +169,16 @@ cmd_serve() {
         log "${host}: the lab operator is granted on this volume"
     fi
     listener_env "${host}" "${binary}"
+    # TD-5: a member whose invitations the catalog step wrote joins its coordinator by itself, its
+    # coordinator pinned apart from them; the enroll step then approves the fingerprint it expects.
+    local invited="${state}/join/${host}"
+    if [ -f "${invited}/ready" ]; then
+        export "PERMGUARD_HOST_JOIN_INVITATION_FILE=${invited}/control.json,${invited}/data.json"
+        export "PERMGUARD_HOST_JOIN_PIN_FINGERPRINT=$(cat "${invited}/pin")"
+        export "PERMGUARD_HOST_JOIN_NAME=${host}"
+        export "PERMGUARD_HOST_JOIN_GROUPS=$(cat "${invited}/group")"
+        log "${host}: joins its coordinator by itself from ${invited}"
+    fi
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
     unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES LAB_CLIENT_AUTH
     exec "${binary}" "${config}"
@@ -359,11 +369,82 @@ cmd_catalog() {
     multi-group)
         once "ledger-acme-main" ledger_with "${coordinator}" acme main basics cedar,rego
         once "ledger-beta-main" ledger_with "${coordinator}" beta main basics cedar,rego
+        # TD-5: the two groups join by themselves, from the invitations written here, before
+        # they start.
+        once "invitations-data-plane-acme" invite_member "${coordinator}" data-plane-acme acme
+        once "invitations-data-plane-beta" invite_member "${coordinator}" data-plane-beta beta
         ;;
     *)
         once "ledger-acme-main" ledger_with "${coordinator}" acme main basics cedar,rego
         ;;
     esac
+}
+
+# TD-5: the invitations `member` joins `coordinator` with by itself, one per membership — its
+# Control Plane tree's for `policy.mirror`, its own for `decisions.ship` — written to the lab's
+# state, readable by the server's user only, with the coordinator's fingerprint beside them, stated
+# apart. A one-time invitation each, named for the member and its group.
+invite_member() {
+    local coordinator="$1" member="$2" zone="$3" zone_id dir
+    zone_id="$(zone_id "${coordinator}" "${zone}")"
+    dir="${state}/join/${member}"
+    rm -rf "${dir}"
+    mkdir -p "${dir}"
+    chmod 0700 "${dir}"
+    local control="plane/control/zone/${zone_id}/*" data="plane/data/zone/${zone_id}/*"
+    invitation "${coordinator}" "${member}" "${zone}" "${control}" \
+        "[$(task policy-mirror policy.mirror coordinator member "${control}" policy)]" "${dir}/control.json"
+    invitation "${coordinator}" "${member}" "${zone}" "${data}" \
+        "[$(task decisions-ship decisions.ship member coordinator "${data}" decision)]" "${dir}/data.json"
+    fingerprint "${coordinator}" >"${dir}/pin"
+    printf '%s' "${zone}" >"${dir}/group"
+    touch "${dir}/ready"
+    log "${member}: invited to ${coordinator} for ${zone} (${control}, ${data}); it joins by itself"
+}
+
+invitation() { # coordinator, member, group, selector, tasks, file
+    local tasks
+    tasks="$(mktemp)"
+    printf '%s\n' "$5" >"${tasks}"
+    (
+        umask 077
+        pg --host-endpoint "$(host_endpoint "$1")" host members invite create \
+            --selector "$4" --tasks "${tasks}" --name "$2" --group "$3" \
+            --min-assurance development >"$6"
+    ) || fail "$2: the coordinator created no invitation for $4"
+    rm -f "${tasks}"
+    chmod 0400 "$6"
+}
+
+# TD-5: approves the memberships `member` joined by itself, after checking each pending one names
+# the member's own fingerprint: the lab's isolated authority approves the exact Host it expects.
+approve_joined() {
+    local coordinator="$1" member="$2" deadline=$((SECONDS + 180)) fp pending count=0 id revision
+    fp="$(fingerprint "${member}")"
+    while :; do
+        pending="$(pg --host-endpoint "$(host_endpoint "${coordinator}")" host members pending |
+            jq -c --arg name "${member}" '[.members[] | select(.name == $name)]')"
+        count="$(jq 'length' <<<"${pending}")"
+        [ "${count}" -ge 2 ] && break
+        [ "${SECONDS}" -lt "${deadline}" ] ||
+            fail "${member}: ${count} of its 2 joins reached ${coordinator}"
+        sleep 2
+    done
+    for id in $(jq -r '.[].membership_id' <<<"${pending}"); do
+        [ "$(jq -r --arg id "${id}" '.[] | select(.membership_id == $id) | .member.fingerprint' <<<"${pending}")" = "${fp}" ] ||
+            fail "${member}: the pending membership ${id} names another Host than ${fp}"
+        revision="$(jq -r --arg id "${id}" '.[] | select(.membership_id == $id) | .revision' <<<"${pending}")"
+        pg --host-endpoint "$(host_endpoint "${coordinator}")" host members approve "${id}" \
+            --expected-revision "${revision}" >/dev/null
+    done
+    # The member reads its approval by itself, within a minute.
+    deadline=$((SECONDS + 150))
+    until [ "$(pg --host-endpoint "$(host_endpoint "${member}")" host members list |
+        jq '[.members[] | select(.role == "member" and .status == "active")] | length')" -ge 2 ]; do
+        [ "${SECONDS}" -lt "${deadline}" ] || fail "${member}: its approved memberships are not active"
+        sleep 3
+    done
+    log "${member}: joined by itself, ${fp} approved, both memberships active"
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -465,7 +546,12 @@ cmd_enroll() {
     local temporal=none
     [ "${profile}" = temporal-replicas ] && temporal=temporal
     for entry in $(data_planes_of "${profile}"); do
-        enroll_data_plane "${coordinator}" "${entry%%:*}" "${entry##*:}" "${temporal}"
+        if [ -f "${state}/join/${entry%%:*}/ready" ]; then
+            wait_up "${entry%%:*}"
+            once "joined-${entry%%:*}" approve_joined "${coordinator}" "${entry%%:*}"
+        else
+            enroll_data_plane "${coordinator}" "${entry%%:*}" "${entry##*:}" "${temporal}"
+        fi
     done
     once lab-client lab_client
 }

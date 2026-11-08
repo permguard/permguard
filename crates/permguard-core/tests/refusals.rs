@@ -752,3 +752,74 @@ fn a_stated_iam_tokens_custody_is_read_and_held_to_the_profile() {
             .contains(&permguard_core::assurance::Relaxation::CustodyPlaintext)
     );
 }
+
+/// TD-5: a join from an invitation names its file and its coordinator's pin, both or neither, and
+/// may take them from two layers: the pin in the file, each replica's invitation from its
+/// environment.
+#[test]
+fn a_join_names_its_invitation_and_its_pin_from_any_layer() {
+    let pin = format!("sha256:{}", "AB".repeat(32));
+    let layered = Config::from_layers(
+        BuildSettings::new("1.2.3", "2026", "Build Holder"),
+        NO_DECLARED,
+        Layers::new()
+            .with_file(vec![
+                (SETTING_HOST_JOIN_PIN_FINGERPRINT.to_owned(), pin.clone()),
+                (
+                    SETTING_HOST_JOIN_GROUPS.to_owned(),
+                    "eu, payments".to_owned(),
+                ),
+            ])
+            .with_environment(vec![(
+                SETTING_HOST_JOIN_INVITATION_FILE.to_owned(),
+                "/var/run/permguard/join/control-2, /var/run/permguard/join/data-2".to_owned(),
+            )]),
+    )
+    .expect("a join from two layers");
+    let join = layered.host_join().expect("a join");
+    assert_eq!(
+        join.invitation_files,
+        [
+            std::path::PathBuf::from("/var/run/permguard/join/control-2"),
+            std::path::PathBuf::from("/var/run/permguard/join/data-2")
+        ]
+    );
+    assert_eq!(join.pin_fingerprint, pin.to_ascii_lowercase());
+    assert_eq!(join.groups, ["eu", "payments"]);
+    assert!(config(&[]).host_join().is_none(), "none unless configured");
+
+    let refused = |settings: &[(&str, &str)]| {
+        Config::from_layers(
+            BuildSettings::new("1.2.3", "2026", "Build Holder"),
+            NO_DECLARED,
+            Layers::new().with_file(
+                settings
+                    .iter()
+                    .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                    .collect::<Vec<_>>(),
+            ),
+        )
+        .expect_err("refused")
+        .to_string()
+    };
+    assert!(
+        refused(&[(SETTING_HOST_JOIN_INVITATION_FILE, "/i")]).contains("pins its coordinator"),
+        "an invitation without its pin"
+    );
+    assert!(
+        refused(&[(SETTING_HOST_JOIN_PIN_FINGERPRINT, &pin)]).contains("name its invitation"),
+        "a pin without its invitation"
+    );
+    assert!(
+        refused(&[
+            (SETTING_HOST_JOIN_INVITATION_FILE, "/i"),
+            (SETTING_HOST_JOIN_PIN_FINGERPRINT, "sha256:short"),
+        ])
+        .contains("sha256:<64 hex>"),
+        "a pin that is no fingerprint"
+    );
+    assert!(
+        refused(&[(SETTING_HOST_JOIN_NAME, "dp-a")]).contains("are a join's"),
+        "a name with no join"
+    );
+}

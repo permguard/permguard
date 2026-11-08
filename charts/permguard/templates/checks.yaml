@@ -294,6 +294,17 @@ evidence be deleted by Kubernetes rather than by a verified operation.
 {{- $seen := dict }}
 {{- $parsed := list }}
 {{- range $g := $resolved.groups }}
+{{- if $g.join }}
+{{- if not $g.persistence.enabled }}
+{{- fail (printf "dataPlane.groups[%s].join needs a stateful group (persistence.enabled): each replica joins with the invitation of its ordinal, and a Deployment's replicas have none." $g.name) }}
+{{- end }}
+{{- if not $.Values.dataPlane.hostListener.enabled }}
+{{- fail (printf "dataPlane.groups[%s].join needs dataPlane.hostListener.enabled: a replica joins through its Host listener's membership side." $g.name) }}
+{{- end }}
+{{- if not (semverCompare ">=1.28-0" $.Capabilities.KubeVersion.Version) }}
+{{- fail (printf "dataPlane.groups[%s].join needs Kubernetes 1.28 or later: each replica names its invitation by its Pod's `apps.kubernetes.io/pod-index` label, which older clusters do not set (this one is %s)." $g.name $.Capabilities.KubeVersion.Version) }}
+{{- end }}
+{{- end }}
 {{- if not (regexMatch "^[a-z]([-a-z0-9]*[a-z0-9])?$" $g.name) }}
 {{- fail (printf "dataPlane.groups: %q is not a group name: lowercase letters, digits and `-`, starting with a letter and ending with a letter or a digit." $g.name) }}
 {{- end }}

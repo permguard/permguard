@@ -51,3 +51,9 @@ required-features = ["crash-points"]
 [dev-dependencies]
 # The audit handle and the Host API mutations are async (`composition` and `api` tests).
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+# TS-9: what token verification adds to a decision on a member, against its budget.
+[[bench]]
+name = "token_verify"
+path = "benches/token_verify.rs"
+harness = false

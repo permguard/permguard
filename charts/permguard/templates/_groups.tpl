@@ -134,6 +134,7 @@ either bound turns autoscaling on, unless the group says `enabled: false`.
       "temporal" (not (empty $temporal))
       "pullMode" (toString (dig "mode" "local" $pull))
       "pullLedgers" (dig "ledgers" list $pull | default list)
+      "join" ($g.join | default dict)
 -}}
 {{- $groups = append $groups $resolved -}}
 {{- end -}}

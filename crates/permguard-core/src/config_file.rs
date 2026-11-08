@@ -32,19 +32,21 @@ use crate::config::{
     SETTING_AUTOGENERATE, SETTING_BACKUP_DESTRUCTION, SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_BACKUP_RECOVERY_KEY, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_BACKUP_RETENTION,
     SETTING_DEVELOPMENT_MODE, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
-    SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY,
-    SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER,
-    SETTING_KEYS_KEK_REF, SETTING_KEYS_KEK_VERSION, SETTING_KEYS_KMS_ADDRESS, SETTING_KEYS_KMS_CA,
-    SETTING_KEYS_KMS_MOUNT, SETTING_KEYS_KMS_TOKEN_REF, SETTING_KEYS_MAINTENANCE_INTERVAL,
-    SETTING_KEYS_OPERATIONS_CUSTODY, SETTING_KEYS_PKCS11_MODULE, SETTING_KEYS_PKCS11_PIN_REF,
-    SETTING_KEYS_PKCS11_TOKEN_LABEL, SETTING_KEYS_PREVIOUS_KEK_REF,
-    SETTING_KEYS_PREVIOUS_KEK_VERSION, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
-    SETTING_KEYS_ROTATE_EVERY, SETTING_KEYS_TOKENS_CUSTODY, SETTING_LIMITS_BODY_BYTES,
-    SETTING_LIMITS_CONCURRENT_REQUESTS, SETTING_LIMITS_CONNECTION_LIFETIME,
-    SETTING_LIMITS_CONNECTIONS, SETTING_LIMITS_CONNECTIONS_PER_PEER,
-    SETTING_LIMITS_HANDSHAKE_TIMEOUT, SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT,
-    SETTING_LIMITS_PEER_EXEMPT, SETTING_LIMITS_REQUEST_TIMEOUT, SETTING_LIMITS_WRITE_STALL_TIMEOUT,
-    SETTING_LOG_FORMAT, SETTING_LOG_LEVEL, SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+    SETTING_HOST_JOIN_GROUPS, SETTING_HOST_JOIN_INVITATION_FILE, SETTING_HOST_JOIN_NAME,
+    SETTING_HOST_JOIN_PIN_FINGERPRINT, SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY,
+    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY,
+    SETTING_KEYS_KEK_PROVIDER, SETTING_KEYS_KEK_REF, SETTING_KEYS_KEK_VERSION,
+    SETTING_KEYS_KMS_ADDRESS, SETTING_KEYS_KMS_CA, SETTING_KEYS_KMS_MOUNT,
+    SETTING_KEYS_KMS_TOKEN_REF, SETTING_KEYS_MAINTENANCE_INTERVAL, SETTING_KEYS_OPERATIONS_CUSTODY,
+    SETTING_KEYS_PKCS11_MODULE, SETTING_KEYS_PKCS11_PIN_REF, SETTING_KEYS_PKCS11_TOKEN_LABEL,
+    SETTING_KEYS_PREVIOUS_KEK_REF, SETTING_KEYS_PREVIOUS_KEK_VERSION, SETTING_KEYS_PUBLISH_AHEAD,
+    SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY, SETTING_KEYS_TOKENS_CUSTODY,
+    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
+    SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
+    SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
+    SETTING_LIMITS_REQUEST_TIMEOUT, SETTING_LIMITS_WRITE_STALL_TIMEOUT, SETTING_LOG_FORMAT,
+    SETTING_LOG_LEVEL, SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
     SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING, SETTING_NOTP_COMPRESSION,
     SETTING_NOTP_LEDGER_QUOTA_BYTES, SETTING_NOTP_MAX_BATCH_BYTES, SETTING_NOTP_MAX_BATCH_OBJECTS,
     SETTING_NOTP_MAX_PUSH_BYTES, SETTING_NOTP_MAX_PUSH_OBJECTS, SETTING_NOTP_TRANSFER_TTL,
@@ -867,6 +869,9 @@ struct TelemetrySection {
     /// The peer Hosts this one opens sessions with (WP-2.3).
     #[serde(default)]
     peers: Vec<PeerPinSection>,
+    /// The join a Data Plane Host makes by itself at start (TD-5).
+    #[serde(default)]
+    join: JoinSection,
     #[serde(default)]
     tls: TelemetryTlsSection,
     /// OTLP trace export: off unless the file says otherwise.
@@ -885,6 +890,20 @@ struct TelemetrySection {
     /// How the first administrator's setup code is made (WP-8.2). Structured, so file only.
     #[serde(default)]
     setup: SetupSection,
+}
+
+/// `host.join` (TD-5): what `PERMGUARD_HOST_JOIN_*` say, as the file says it.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JoinSection {
+    #[serde(default)]
+    invitation_file: Option<String>,
+    #[serde(default)]
+    pin_fingerprint: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    groups: Option<Vec<String>>,
 }
 
 /// `host.setup`.
@@ -1405,8 +1424,26 @@ impl ConfigFile {
             .filter(|entries| !entries.is_empty())
             .map(|entries| entries.join(","));
 
+        let join_groups = self
+            .host
+            .join
+            .groups
+            .as_ref()
+            .filter(|groups| !groups.is_empty())
+            .map(|groups| groups.join("\n"));
+
         let candidates = [
             (SETTING_WORKING_DIR, self.working_dir.as_ref()),
+            (
+                SETTING_HOST_JOIN_INVITATION_FILE,
+                self.host.join.invitation_file.as_ref(),
+            ),
+            (
+                SETTING_HOST_JOIN_PIN_FINGERPRINT,
+                self.host.join.pin_fingerprint.as_ref(),
+            ),
+            (SETTING_HOST_JOIN_NAME, self.host.join.name.as_ref()),
+            (SETTING_HOST_JOIN_GROUPS, join_groups.as_ref()),
             (SETTING_AUTOGENERATE, self.autogenerate.as_ref()),
             (SETTING_DEVELOPMENT_MODE, self.development_mode.as_ref()),
             (SETTING_ISSUER, self.public.url.as_ref()),
@@ -2476,6 +2513,27 @@ mod tests {
         let settings = settings_of("shutdown:\n  timeout: 40s\n  drain_timeout: 30s\n");
         assert!(settings.contains(&(SETTING_SHUTDOWN_DRAIN_TIMEOUT.to_owned(), "30s".to_owned())));
         assert!(settings.contains(&(SETTING_SHUTDOWN_TIMEOUT.to_owned(), "40s".to_owned())));
+    }
+
+    #[test]
+    fn test_the_host_join_is_carried_from_the_file() {
+        let settings = settings_of(
+            "host:\n  join:\n    invitation_file: /var/run/permguard/join/invitation\n    pin_fingerprint: sha256:ab\n    name: dp-a\n    groups: [eu, payments]\n",
+        );
+        for (key, value) in [
+            (
+                SETTING_HOST_JOIN_INVITATION_FILE,
+                "/var/run/permguard/join/invitation",
+            ),
+            (SETTING_HOST_JOIN_PIN_FINGERPRINT, "sha256:ab"),
+            (SETTING_HOST_JOIN_NAME, "dp-a"),
+            (SETTING_HOST_JOIN_GROUPS, "eu\npayments"),
+        ] {
+            assert!(
+                settings.contains(&(key.to_owned(), value.to_owned())),
+                "{key}: {settings:?}"
+            );
+        }
     }
 
     #[test]

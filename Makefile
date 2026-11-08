@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: check-boundaries check-traceability traceability-index check-chart check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-release bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-test lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: check-boundaries check-traceability traceability-index check-chart check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-release bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-tokens bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-test lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -156,6 +156,9 @@ bench-release: ## The release benchmark on this machine: every interface and evi
 	cargo build --release --locked -p permguard-all-in-one -p permguard-cli -p permguard-conformance --bins
 	target/release/permguard-bench run --server target/release/permguard-all-in-one --cli target/release/permguard --storage-class "$(or $(STORAGE),unspecified local storage)" --out permguard-benchmark.json $(ARGS)
 	target/release/permguard-bench capacity permguard-benchmark.json
+
+bench-tokens: ## What token verification adds to a decision on a member (TS-9), failing past a hundredth of the decision objective.
+	cargo bench --locked -p permguard-host --bench token_verify
 
 bench-server: ## Run the control plane for capacity benchmarks: release build, limits out of the way (each PERMGUARD_LIMITS_* overridable).
 	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=$${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000} PERMGUARD_LIMITS_CONNECTIONS=$${PERMGUARD_LIMITS_CONNECTIONS:-20000} PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=$${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0} cargo run --release -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)

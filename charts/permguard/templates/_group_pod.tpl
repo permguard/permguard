@@ -63,6 +63,26 @@ containers:
       # environment names the mount, and the environment is read over the file.
       - name: PERMGUARD_WORKING_DIR
         value: /var/lib/permguard/volume
+      {{- with $g.join }}
+      {{- if not $.recover }}
+      # TD-5: the replica joins the control plane's Host by itself, from its own invitations, the
+      # Secret's `<invitation>-<ordinal>`, its coordinator pinned apart from them. The approval stays
+      # the coordinator's; a replica that joined never reads the file again.
+      - name: POD_INDEX
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+      # One invitation per membership: the one the `-membership` ConfigMap states by default.
+      - name: PERMGUARD_HOST_JOIN_INVITATION_FILE
+        value: {{ $files := list }}{{ range $name := (.invitations | default (list "membership")) }}{{ $files = append $files (printf "/var/run/permguard/join/%s-$(POD_INDEX)" $name) }}{{ end }}{{ join "," $files | quote }}
+      - name: PERMGUARD_HOST_JOIN_PIN_FINGERPRINT
+        value: {{ .pinFingerprint | quote }}
+      - name: PERMGUARD_HOST_JOIN_NAME
+        value: {{ printf "%s-$(POD_INDEX)" (.namePrefix | default $g.name) | quote }}
+      - name: PERMGUARD_HOST_JOIN_GROUPS
+        value: {{ join "," (.groups | default (list $g.name)) | quote }}
+      {{- end }}
+      {{- end }}
       {{- if .recover }}
       # A recovery drain (TD-2): stop once started, and print the receipt of a complete drain.
       - name: PERMGUARD_SHUTDOWN_RECOVER_DRAIN
@@ -115,6 +135,11 @@ containers:
         mountPath: /etc/permguard-host-tls
         readOnly: true
       {{- end }}
+      {{- if and $g.join (not .recover) }}
+      - name: join
+        mountPath: /var/run/permguard/join
+        readOnly: true
+      {{- end }}
       {{- with $dp.extraVolumeMounts }}
       {{- toYaml . | nindent 6 }}
       {{- end }}
@@ -142,6 +167,16 @@ volumes:
   - name: host-tls
     secret:
       secretName: {{ $dp.hostListener.tls.secretName }}
+  {{- end }}
+  {{- if and $g.join (not .recover) }}
+  # The invitations, readable by the server's group only (fsGroup), never by every user: 0440,
+  # written in decimal so every YAML reader reads the same mode.
+  - name: join
+    secret:
+      secretName: {{ $g.join.secret }}
+      defaultMode: 288
+      # A replica that joined never reads its invitations again: the Secret may then be removed.
+      optional: true
   {{- end }}
   {{- with $dp.extraVolumes }}
   {{- toYaml . | nindent 2 }}

@@ -2900,6 +2900,136 @@ impl HostApi {
         Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
 
+    /// Whether this Host holds a membership as a member, whatever its status.
+    pub fn holds_a_membership_as_member(&self) -> bool {
+        self.memberships().is_ok_and(|memberships| {
+            memberships
+                .store
+                .memberships()
+                .into_iter()
+                .any(|(_, held)| held.role == Role::Member)
+        })
+    }
+
+    /// The membership this Host joined with `handoff`'s invitation, as a member, whatever it
+    /// became, and whether it still waits for its approval: such an invitation is never joined
+    /// again (TD-5).
+    pub fn joined_with(
+        &self,
+        handoff: &super::host_input::InvitationHandoff,
+    ) -> Option<(String, bool)> {
+        let invite = id_of(&handoff.invite_id).ok()?;
+        let me = self.host_identity().ok()?.host_id();
+        let memberships = self.memberships().ok()?;
+        memberships
+            .store
+            .memberships()
+            .into_iter()
+            .find(|(_, held)| {
+                held.role == Role::Member
+                    && held.request.invite_id == invite
+                    && held.request.member.host_id == me
+            })
+            .map(|(id, held)| (uuid_text(&id), held.status == Status::Pending))
+    }
+
+    /// The memberships this Host's identity holds as a member, whatever their status, and those
+    /// still waiting for their approval (TD-5).
+    pub fn joined_memberships(&self) -> (usize, Vec<String>) {
+        let Ok(me) = self.host_identity().map(|identity| identity.host_id()) else {
+            return (0, Vec::new());
+        };
+        let Ok(memberships) = self.memberships() else {
+            return (0, Vec::new());
+        };
+        let mine: Vec<_> = memberships
+            .store
+            .memberships()
+            .into_iter()
+            .filter(|(_, held)| held.role == Role::Member && held.request.member.host_id == me)
+            .collect();
+        let pending = mine
+            .iter()
+            .filter(|(_, held)| held.status == Status::Pending)
+            .map(|(id, _)| uuid_text(id))
+            .collect();
+        (mine.len(), pending)
+    }
+
+    /// Whether this Host can join a coordinator at all: a membership side and a client to reach
+    /// the coordinator with; a refusal here is the configuration's, never the coordinator's.
+    pub fn can_join(&self) -> Result<(), Refusal> {
+        self.member_side().map(|_| ())
+    }
+
+    /// Joins the coordinator a configured invitation names, as this Host itself, at start
+    /// (iteration 02, TD-5, `1-architecture/11` Join from an invitation file): the handoff of
+    /// version 1, its coordinator `https://`, its fingerprint `pin`, stated apart from it, and not
+    /// expired. The join makes a pending membership the coordinator approves as any other.
+    pub async fn join_from_invitation(
+        &self,
+        handoff: &super::host_input::InvitationHandoff,
+        pin: &str,
+        name: Option<String>,
+        groups: Vec<String>,
+    ) -> Result<MemberView, Refusal> {
+        if handoff.version != 1 {
+            return Err(invalid("the invitation handoff's version is not 1"));
+        }
+        if !handoff.coordinator.address.starts_with("https://") {
+            return Err(invalid(
+                "the invitation's coordinator is not `https://<host>:<port>`",
+            ));
+        }
+        if !handoff.coordinator.fingerprint.eq_ignore_ascii_case(pin) {
+            return Err(invalid(
+                "the invitation names another coordinator than the pinned fingerprint",
+            ));
+        }
+        let expires = permguard_core::time::from_rfc3339(&handoff.expires)
+            .ok_or_else(|| invalid("the invitation's expiry does not read"))?;
+        if expires <= self.time.now() {
+            return Err(invalid("the invitation expired"));
+        }
+        let (memberships, connector) = self.member_side()?;
+        let token = URL_SAFE_NO_PAD
+            .decode(&handoff.token)
+            .map_err(|_| invalid("the invitation's token is not base64url"))?;
+        let held = self
+            .acting_member(memberships, connector)?
+            .join(
+                Initiator::System("join".to_owned()),
+                Join {
+                    coordinator: Target {
+                        address: handoff.coordinator.address.clone(),
+                        host_id: id_of(&handoff.coordinator.host_id)?,
+                        fingerprint: handoff.coordinator.fingerprint.clone(),
+                    },
+                    invite_id: id_of(&handoff.invite_id)?,
+                    token,
+                    selector: selector(&handoff.requested.selector)?,
+                    tasks: tasks(&handoff.requested.tasks)?,
+                    name,
+                    groups: (!groups.is_empty()).then_some(groups),
+                },
+            )
+            .await
+            .map_err(refusal_of)?;
+        Ok(MemberView::of(&held, &self.viewing(memberships)))
+    }
+
+    /// Syncs a membership this Host joined by itself (TD-5): what the coordinator decided of it,
+    /// its approval or its rejection, read by this Host without an operator.
+    pub async fn sync_joined(&self, id: &str) -> Result<MemberView, Refusal> {
+        let (memberships, connector) = self.member_side()?;
+        let held = self
+            .acting_member(memberships, connector)?
+            .sync(Initiator::System("join".to_owned()), &id_of(id)?)
+            .await
+            .map_err(refusal_of)?;
+        Ok(MemberView::of(&held, &self.viewing(memberships)))
+    }
+
     /// `POST /host/v1/memberships/{id}/sync`: the coordinator's manifests since the one held.
     pub async fn sync_membership(
         &self,
