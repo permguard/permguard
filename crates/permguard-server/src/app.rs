@@ -1687,7 +1687,14 @@ impl App {
         // its directory's roles; a member reads none (WP-12.4).
         let authorization = Authorization::new(Arc::clone(&store), &public)
             .with_time(Arc::clone(time))
-            .with_tokens_alone(member);
+            .with_tokens_alone(member)
+            // A member's bootstrap principal holds its per-Host operations (WP-12.4).
+            .with_bootstrap(
+                store
+                    .bootstrap()
+                    .filter(|_| member)
+                    .map(|held| held.principal),
+            );
         let authorization = Arc::new(match &directory {
             Some(directory) => authorization.with_directory(Arc::clone(directory)),
             None => authorization,

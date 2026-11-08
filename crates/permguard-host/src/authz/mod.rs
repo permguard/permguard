@@ -35,7 +35,9 @@ pub mod tokens;
 use std::sync::Arc;
 
 use permguard_core::AccessDenial;
-use permguard_core::authz::{Actor, Allow, AllowSet, Principal, Resource, Selector};
+use permguard_core::authz::{
+    Actor, Allow, AllowSet, Principal, Resource, Selector, per_host_reach,
+};
 
 pub use mapper::{Accounts, MapperError, PrincipalMapper, Rule};
 pub use oidc::{KeySource, KeyState, OidcRule, ProviderStatus, Verifier};
@@ -97,6 +99,9 @@ pub struct Authorization {
     /// Whether an access token's grant decides alone (a member, which holds no grants) or
     /// within the grants (the IAM Host) (WP-12.2).
     tokens_alone: bool,
+    /// A member's bootstrap principal, `cert:sha256:<hex>`: on a member, it holds the per-Host
+    /// operations on its own Host (WP-12.4), the only principal there that is not a token's.
+    bootstrap: Option<Principal>,
 }
 
 impl std::fmt::Debug for Authorization {
@@ -119,6 +124,7 @@ impl Authorization {
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
             )),
             tokens_alone: false,
+            bootstrap: None,
         }
     }
 
@@ -132,6 +138,7 @@ impl Authorization {
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
             )),
             tokens_alone: false,
+            bootstrap: None,
         }
     }
 
@@ -182,6 +189,31 @@ impl Authorization {
         Ok(self
             .tokens_alone
             .then(|| context.authorization_principal().clone()))
+    }
+
+    /// The member's bootstrap principal (WP-12.4): on a member, where the token decides alone,
+    /// it holds the per-Host operations on its own Host and Planes ([`per_host_reach`]), which is
+    /// how a member is joined and reached when its coordinator is lost. Ignored on the IAM Host,
+    /// whose grants decide.
+    pub fn with_bootstrap(mut self, principal: Option<Principal>) -> Self {
+        self.bootstrap = principal;
+        self
+    }
+
+    /// The bootstrap principal's standing on a member, when `actor` is it and `reach` holds.
+    fn bootstrap_reaches(&self, actor: &Actor, reach: impl Fn() -> bool) -> Option<Principal> {
+        let Actor::Authenticated(context) = actor else {
+            return None;
+        };
+        let principal = context.authorization_principal();
+        // The offline certificate itself, as the mapper names it: never a principal another
+        // credential could come to carry.
+        (self.tokens_alone
+            && context.token().is_none()
+            && context.credential() == permguard_core::authz::Credential::Certificate
+            && self.bootstrap.as_ref() == Some(principal)
+            && reach())
+        .then(|| principal.clone())
     }
 
     pub fn with_time(mut self, time: Arc<crate::time::TimeGuard>) -> Self {
@@ -248,6 +280,11 @@ impl Authorization {
         {
             return Ok(decided);
         }
+        if let Some(bootstrap) =
+            self.bootstrap_reaches(actor, || per_host_reach(operation, resource))
+        {
+            return Ok(bootstrap);
+        }
         let allows = self.allows();
         self.subjects_of(&principal)
             .into_iter()
@@ -299,6 +336,12 @@ impl Authorization {
         {
             return Ok(());
         }
+        if self
+            .bootstrap_reaches(actor, || per_host_reach(operation, scope))
+            .is_some()
+        {
+            return Ok(());
+        }
         let allows = self.allows();
         if self
             .subjects_of(&principal)
@@ -320,6 +363,12 @@ impl Authorization {
             Err(_) => return false,
             Ok(Some(_)) => return true,
             Ok(None) => {}
+        }
+        if self
+            .bootstrap_reaches(actor, || per_host_reach(operation, scope))
+            .is_some()
+        {
+            return true;
         }
         let allows = self.allows();
         self.subjects_of(&principal)
@@ -573,5 +622,114 @@ mod tests {
             operations::CATALOG_READ,
             &Resource::plane("data")
         ));
+    }
+
+    /// WP-12.4: on a member, its bootstrap principal holds the per-Host operations on its own Host
+    /// and Planes, never an evaluation and never what the IAM Host administers; the same principal
+    /// by another credential or a token, a stranger and nobody hold nothing; and on the IAM Host
+    /// the bootstrap is decided by its grants alone.
+    #[test]
+    fn a_members_bootstrap_holds_its_per_host_operations_and_nothing_more() {
+        use permguard_core::authz::{ActorContext, Credential, TokenGrant, families, operations};
+
+        let bootstrap = Principal::new(format!("cert:sha256:{}", "ab".repeat(32))).expect("p");
+        let by = |principal: &Principal, credential: Credential| {
+            Actor::Authenticated(ActorContext::new(principal.clone(), credential, None))
+        };
+        let member = Authorization::closed()
+            .with_tokens_alone(true)
+            .with_bootstrap(Some(bootstrap.clone()));
+        let actor = by(&bootstrap, Credential::Certificate);
+        let ledger = Resource::ledger("data", "z", "l");
+        let allowed = [
+            (operations::MEMBERSHIP_ADMIN, Resource::host()),
+            (operations::MEMBERSHIP_READ, Resource::host()),
+            (operations::IDENTITY_READ, Resource::host()),
+            (operations::BACKUP_MANAGE, Resource::host()),
+            (operations::KEYS_READ, Resource::plane("data")),
+            (operations::KEYS_READ, ledger.clone()),
+            (operations::AUDIT_READ, Resource::plane("data")),
+            (operations::STREAMS_READ, Resource::plane("data")),
+            (operations::GC_MANAGE, Resource::plane("data")),
+        ];
+        for (operation, resource) in &allowed {
+            assert_eq!(
+                member.authorize_by(&actor, operation, resource).ok(),
+                Some(bootstrap.clone()),
+                "{operation} on {resource}"
+            );
+        }
+        assert!(
+            member
+                .may_act_under(&actor, operations::KEYS_READ, &Resource::plane("data"))
+                .is_ok()
+        );
+        assert!(member.covers_whole(&actor, operations::GC_MANAGE, &Resource::plane("data")));
+        assert!(
+            member
+                .may_act_under(
+                    &actor,
+                    operations::DECISION_EVALUATE,
+                    &Resource::plane("data")
+                )
+                .is_err()
+        );
+        assert!(!member.covers_whole(
+            &actor,
+            operations::DECISION_EVALUATE,
+            &Resource::plane("data")
+        ));
+        for (operation, resource) in [
+            (operations::DECISION_EVALUATE, ledger.clone()),
+            (operations::EVENT_SUBMIT, ledger.clone()),
+            (operations::AUTHZ_ADMIN, Resource::host()),
+            (operations::GC_MANAGE, Resource::host()),
+            (operations::CATALOG_READ, Resource::plane("control")),
+            (operations::MEMBERSHIP_ADMIN, Resource::member("m")),
+            (operations::MEMBERSHIP_READ, Resource::Members),
+        ] {
+            assert!(
+                member.authorize(&actor, operation, &resource).is_err(),
+                "{operation} on {resource}"
+            );
+        }
+        // The same principal by another credential, a token naming it, a stranger, nobody.
+        let by_token = Actor::Authenticated(ActorContext::of_token(
+            bootstrap.clone(),
+            TokenGrant {
+                family: families::APPLICATION.to_owned(),
+                scope: std::iter::once(operations::DECISION_EVALUATE.to_owned()).collect(),
+                targets: vec![Selector::parse("plane/data/*").expect("a selector")],
+                jti: "j".to_owned(),
+                list_uri: "u".to_owned(),
+                list_iat: 1,
+                list_digest: [0; 32],
+                authority: None,
+            },
+        ));
+        let stranger = by(
+            &Principal::new(format!("cert:sha256:{}", "cd".repeat(32))).expect("p"),
+            Credential::Certificate,
+        );
+        for (who, other) in [
+            ("by a SAN URI", by(&bootstrap, Credential::SanUri)),
+            ("by a token", by_token),
+            ("a stranger", stranger),
+            ("nobody", Actor::Anonymous),
+        ] {
+            assert!(
+                member
+                    .authorize(&other, operations::MEMBERSHIP_ADMIN, &Resource::host())
+                    .is_err(),
+                "{who}"
+            );
+        }
+        let iam_host = Authorization::closed().with_bootstrap(Some(bootstrap.clone()));
+        assert!(
+            iam_host
+                .authorize(&actor, operations::MEMBERSHIP_ADMIN, &Resource::host())
+                .is_err(),
+            "the IAM Host's grants decide"
+        );
     }
 }

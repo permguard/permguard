@@ -565,6 +565,21 @@ impl Actor {
     }
 }
 
+/// Whether `operation` on `resource` is a per-Host operation on a member's own Host: the Host
+/// itself, or a Plane's resource for an operation that applies to one (its rings, audit, streams,
+/// collection). What `member/<id>` names at the IAM Host, an administration token's `host` and a
+/// member's bootstrap principal reach (`2-security/8`); never an evaluation, never another Host.
+pub fn per_host_reach(operation: &str, resource: &Resource) -> bool {
+    families::serves(families::ADMINISTRATION, operation)
+        && match resource {
+            Resource::Host => operation_fits(operation, &Selector::exactly(Resource::Host)),
+            Resource::Plane { .. } | Resource::Zone { .. } | Resource::Ledger { .. } => {
+                operation_fits(operation, &Selector::under(resource.clone()))
+            }
+            Resource::Members | Resource::Member { .. } => false,
+        }
+}
+
 /// The families of an access token (`2-security/8` Families).
 pub mod families {
     /// Evaluation and event submission, on a member's Data Plane tree.
@@ -630,17 +645,11 @@ impl TokenGrant {
         match self.family.as_str() {
             families::APPLICATION => self.targets.iter().any(selected),
             families::ADMINISTRATION => {
-                let own = match resource {
-                    Resource::Host => operation_fits(operation, &Selector::exactly(Resource::Host)),
-                    Resource::Plane { .. } | Resource::Zone { .. } | Resource::Ledger { .. } => {
-                        operation_fits(operation, &Selector::under(resource.clone()))
-                    }
-                    Resource::Members | Resource::Member { .. } => false,
-                };
-                own && self
-                    .targets
-                    .iter()
-                    .any(|target| *target == Selector::exactly(Resource::Host))
+                per_host_reach(operation, resource)
+                    && self
+                        .targets
+                        .iter()
+                        .any(|target| *target == Selector::exactly(Resource::Host))
             }
             _ => false,
         }
