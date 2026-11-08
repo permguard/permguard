@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.24] - 2026-11-08
+
 ### Added
 
 - **The chart makes every Host's identity offline from `production`, and starts it on its witness.**
