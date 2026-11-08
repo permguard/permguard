@@ -6060,7 +6060,7 @@
       "post": {
         "operationId": "createRole",
         "summary": "Create a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.create`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.create`. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted.",
         "requestBody": {
           "required": true,
           "description": "The role and the envelope's request id.",
@@ -6239,7 +6239,7 @@
       "patch": {
         "operationId": "updateRole",
         "summary": "Describe a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.update`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.update`. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted.",
         "parameters": [
           {
             "name": "name",
@@ -6356,7 +6356,7 @@
       "post": {
         "operationId": "deleteRole",
         "summary": "Delete a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.delete`. Refused while `role:<name>` holds active grants: revoke them first.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.delete`. Refused while `role:<name>` holds active grants: revoke them first. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted.",
         "parameters": [
           {
             "name": "name",
@@ -6473,7 +6473,7 @@
       "post": {
         "operationId": "addRoleMember",
         "summary": "Add a member to a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.member.add`. Adding a member already there writes nothing and answers `changed: false`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.add`. Adding a member already there writes nothing and answers `changed: false`. A system role, `dp.<member_id>` or `data-planes`, takes its members here like any other: users and service accounts, who reach it only by elevation.",
         "parameters": [
           {
             "name": "name",
@@ -6590,7 +6590,7 @@
       "post": {
         "operationId": "removeRoleMember",
         "summary": "Remove a member from a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.member.remove`. Removing a member not there writes nothing and answers `changed: false`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.remove`. Removing a member not there writes nothing and answers `changed: false`. A system role, `dp.<member_id>` or `data-planes`, takes its members here like any other: users and service accounts, who reach it only by elevation.",
         "parameters": [
           {
             "name": "name",
@@ -9624,10 +9624,10 @@
       "post": {
         "operationId": "issueToken",
         "summary": "Issue an access token",
-        "description": "RFC 6749 with the profile of RFC 9068, on the IAM Host only. `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion (RFC 7523) or the connection's certificate (RFC 8705, `client_id` in the form); `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) exchanges a person's password session or a provider's token. A token carries one family, application or administration, and only what its subject may do now, in the IAM Host's grants; `Authorization: Basic` is read here and nowhere else. Every answer is `Cache-Control: no-store`.",
+        "description": "RFC 6749 with the profile of RFC 9068, on the IAM Host only. `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion (RFC 7523) or the connection's certificate (RFC 8705, `client_id` in the form); `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) exchanges a person's password session, stated as `urn:ietf:params:oauth:token-type:access_token`, or a provider's token, stated as `urn:ietf:params:oauth:token-type:jwt` or `urn:ietf:params:oauth:token-type:id_token` (§3), and answers `issued_token_type` (§2.2.1). A token carries one family, application or administration, and only what its subject may do now, in the IAM Host's grants; a scope naming `role:<name>` elevates to that role, one the subject is a member of, and the token carries that role's permissions alone, its name in the `roles` claim. `actor_token` is refused, delegation not being served; `requested_token_type` is an access token or nothing; `resource` is an absolute URI without fragment, answered `invalid_target` since no resource indicator is served; a subject token not valid is `invalid_request` (§2.2.2). `Authorization: Basic` is read here and nowhere else. Every answer is `Cache-Control: no-store`.",
         "requestBody": {
           "required": true,
-          "description": "The form: `grant_type`, `scope`, `audience` (repeatable), `target` (repeatable), `requested_lifetime`, and the proof's members.",
+          "description": "The form: `grant_type`, `scope` (the operations, and at most one `role:<name>`), `audience` (repeatable), `target` (repeatable), `requested_lifetime`, and the proof's members; RFC 8693's `requested_token_type`, `resource`, `actor_token` and `actor_token_type` are read and refused as the description says.",
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
@@ -9637,7 +9637,8 @@
                     "type": "string"
                   },
                   "scope": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "The operations, space separated, and at most one `role:<name>` to elevate to."
                   },
                   "audience": {
                     "type": "array",
@@ -9667,7 +9668,32 @@
                     "type": "string"
                   },
                   "subject_token_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token",
+                      "urn:ietf:params:oauth:token-type:jwt",
+                      "urn:ietf:params:oauth:token-type:id_token"
+                    ],
+                    "description": "An access token for a session of this IAM Host; a JWT or an ID token for a provider's token (RFC 8693 §3)."
+                  },
+                  "requested_token_type": {
+                    "type": "string",
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token"
+                    ],
+                    "description": "Absent or an access token; any other type is `invalid_request`."
+                  },
+                  "resource": {
+                    "type": "string",
+                    "description": "An absolute URI without fragment, else `invalid_request`; answered `invalid_target`, since no resource indicator is served."
+                  },
+                  "actor_token": {
+                    "type": "string",
+                    "description": "Refused `invalid_request`: delegation is not served."
+                  },
+                  "actor_token_type": {
+                    "type": "string",
+                    "description": "Refused `invalid_request`, with or without `actor_token`."
                   }
                 },
                 "required": [
@@ -9750,7 +9776,8 @@
         "x-permguard-endpoint": {
           "plane": "iam",
           "category": "tokens",
-          "credential": "client proof (secret, client assertion, certificate) or subject token"
+          "credential": "client proof (secret, client assertion, certificate) or subject token (a session of this IAM Host as urn:ietf:params:oauth:token-type:access_token; a provider's token as urn:ietf:params:oauth:token-type:jwt or urn:ietf:params:oauth:token-type:id_token)",
+          "operation": "the operations asked, or role:<name> to elevate"
         }
       }
     },
@@ -9870,6 +9897,13 @@
             "type": "string",
             "description": "The compact `at+jwt`."
           },
+          "issued_token_type": {
+            "type": "string",
+            "enum": [
+              "urn:ietf:params:oauth:token-type:access_token"
+            ],
+            "description": "What a token exchange issued (RFC 8693 §2.2.1); absent from a `client_credentials` answer."
+          },
           "token_type": {
             "type": "string",
             "enum": [
@@ -9894,7 +9928,7 @@
           "scope"
         ],
         "additionalProperties": false,
-        "description": "RFC 6749 §5.1's answer.",
+        "description": "RFC 6749 §5.1's answer, with RFC 8693 §2.2.1's `issued_token_type` for an exchange.",
         "x-grpc-message": null,
         "x-grpc-note": "RFC 6749's token answer, over HTTP only: the token endpoint has no gRPC binding"
       },
