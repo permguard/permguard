@@ -225,7 +225,23 @@ operations:
     }
 
     /// Starts the server and waits until it is ready; panics with its log otherwise.
-    fn start(&self, log: &Path) -> Child {
+    ///
+    /// A port this test found free can be taken by a test running beside it before the server
+    /// binds it: a server that exited on that alone is started again on new ports, twice at most.
+    fn start(&mut self, log: &Path) -> Child {
+        for attempt in 1..=3 {
+            if let Some(child) = self.started(log, attempt == 3) {
+                return child;
+            }
+            self.host = free_port();
+            self.data = free_port();
+            self.configure(None);
+        }
+        unreachable!("the last attempt panics rather than retries")
+    }
+
+    /// One attempt: the ready server, or `None` when it lost a port and `last` is not set.
+    fn started(&self, log: &Path, last: bool) -> Option<Child> {
         let out = std::fs::File::create(log).expect("a log");
         let mut child = binary()
             .arg(&self.config)
@@ -236,13 +252,14 @@ operations:
         let deadline = Instant::now() + Duration::from_secs(90);
         while Instant::now() < deadline {
             if let Ok(Some(_)) = child.try_wait() {
-                panic!(
-                    "the server exited:\n{}",
-                    std::fs::read_to_string(log).unwrap_or_default()
-                );
+                let said = std::fs::read_to_string(log).unwrap_or_default();
+                if !last && said.contains("Address already in use") {
+                    return None;
+                }
+                panic!("the server exited:\n{said}");
             }
             if get(self.host, "/readyz").0 == 200 {
-                return child;
+                return Some(child);
             }
             std::thread::sleep(Duration::from_millis(250));
         }
@@ -308,7 +325,7 @@ fn stop(mut child: Child) {
 
 #[test]
 fn no_secret_reaches_a_log_an_error_a_metric_discovery_or_a_file() {
-    let canaried = Canaried::new();
+    let mut canaried = Canaried::new();
 
     // A start, the state asked for, a stop: everything said and written while serving.
     let log = canaried.dir.join("serving.log");
