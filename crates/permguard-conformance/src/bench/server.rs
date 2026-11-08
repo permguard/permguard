@@ -83,18 +83,16 @@ pub fn configuration(ports: (u16, u16, u16), evidence: &str) -> String {
         "false"
     };
     let log = match evidence {
-        "required" => format!(
-            concat!(
-                "    log:\n",
-                "      enabled: \"true\"\n",
-                "      server: {{ url: \"http://127.0.0.1:{control}\" }}\n",
-                "      spool: {{ directory: \"data/decisions/spool\", bytes: \"256M\", age: \"24h\" }}\n",
-                "      mode: \"required\"\n",
-                "      sample: {{ permits: \"1.0\" }}\n",
-                "      include: {{ subject_properties: [], resource_properties: [], context: [] }}\n",
-            ),
-            control = control
-        ),
+        // Shipped by the Host to its own Control Plane, in-process (WP-10.4).
+        "required" => concat!(
+            "    log:\n",
+            "      enabled: \"true\"\n",
+            "      spool: { directory: \"data/decisions/spool\", bytes: \"256M\", age: \"24h\" }\n",
+            "      mode: \"required\"\n",
+            "      sample: { permits: \"1.0\" }\n",
+            "      include: { subject_properties: [], resource_properties: [], context: [] }\n",
+        )
+        .to_owned(),
         _ => "    log: { enabled: \"false\" }\n".to_owned(),
     };
     format!(
