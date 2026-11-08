@@ -70,6 +70,14 @@ is cut.
   A member of several coordinators keeps them apart: each status list is held for the IAM Host that signed it, and an application token reaches only ledgers mirrored from the coordinator that issued it.
   Only an `at+jwt` of an IAM Host the member pins is decided this way: a provider's own access token still goes to the configured OIDC rules.
 
+- **A member holds no directory and admits only its IAM Host's tokens and its bootstrap certificate.**
+  A Host running a Data Plane and no Control Plane refuses to start when its configuration states `host.principals`, password or OIDC sign-in, or `host.setup.code_ref`, naming each one.
+  It makes no setup code and serves no setup or sign-in route; users and roles an earlier release left on its volume stay there, unread, and the start says so (`authz.directory_unread`).
+  Once it has joined, a suspended membership included, every use of its bootstrap principal is audited `host.authz.bootstrap` and reported by health as `degraded: bootstrap`, naming the time of the last use, until 15 minutes after it; a member with no bootstrap principal and no membership warns `host.bootstrap_missing`.
+  A recovery started offline (`host recovery start`) does not apply to a member, which has no administrator but its bootstrap principal.
+  Every Host API call an access token allows is recorded in the access trail as `host.authz.token`, with the token's `jti`, family and operation.
+  A Host running neither Plane keeps its own sign-in and first administrator, and decides a token caller within its own grants too, as the IAM Host does.
+
 ### Changed
 
 - **The directory moves to `/iam/v1` and `permguard.iam.v1`, served only by the IAM Host.**

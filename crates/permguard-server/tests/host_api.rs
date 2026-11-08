@@ -4983,6 +4983,116 @@ async fn a_password_is_read_only_after_the_caller_is_authorized() {
     }
 }
 
+/// `Bearer token:<principal>` is an access token's bearer acting as `<principal>`, within an
+/// administration token for `lifecycle.read` on the Host; any other bearer is [`Bearers`]'.
+struct TokenBearers;
+
+impl Authenticator for TokenBearers {
+    fn authenticate(
+        &self,
+        peer: Option<&PeerIdentity>,
+        bearer: Option<&str>,
+    ) -> Result<Actor, AccessDenial> {
+        // `token:<principal>|<the token's own bytes>`: what follows the bar stands for the token,
+        // which no record may carry.
+        match bearer
+            .and_then(|bearer| bearer.strip_prefix("token:"))
+            .and_then(|rest| rest.split_once('|'))
+        {
+            Some((name, _token)) => Ok(Actor::Authenticated(ActorContext::of_token(
+                Principal::new(name).expect("a principal"),
+                permguard_core::authz::TokenGrant {
+                    family: permguard_core::authz::families::ADMINISTRATION.to_owned(),
+                    scope: std::iter::once(operations::LIFECYCLE_READ.to_owned()).collect(),
+                    targets: vec![permguard_core::authz::Selector::parse("host").expect("host")],
+                    jti: "0198f2aa-0000-7000-8000-00000000abcd".to_owned(),
+                    list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                    list_iat: 1,
+                    list_digest: [0; 32],
+                    authority: None,
+                },
+            ))),
+            None => Bearers.authenticate(peer, bearer),
+        }
+    }
+}
+
+/// WP-12.4: a Host API call an access token allowed is recorded in the `access` trail with the
+/// token's `jti` and family, never the token, so an administration through a token is traced to
+/// the issuance the IAM Host recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_a_token_allowed_names_its_jti_in_the_access_trail() {
+    const OPERATOR: &str = "spiffe://acme/operator";
+    let router = host_api::routes(facade("token-access"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(TokenBearers)));
+    assert_eq!(
+        walk_rest(
+            &router,
+            "POST",
+            "/iam/v1/grants",
+            Some(&json!({
+                "request_id": "t-1",
+                "principal": OPERATOR,
+                "operations": [operations::LIFECYCLE_READ],
+                "selector": "host",
+            })),
+            Some(ADMIN)
+        )
+        .await
+        .0,
+        201
+    );
+    const TOKEN_BYTES: &str = "eyJTHEACCESSTOKENITSELF";
+    let token_bearer = format!("token:{OPERATOR}|{TOKEN_BYTES}");
+    assert_eq!(
+        walk_rest(&router, "GET", "/host/v1/status", None, Some(&token_bearer))
+            .await
+            .0,
+        200,
+        "the grant and the token both allow it"
+    );
+    let mut found = None;
+    for _ in 0..100 {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get("/host/v1/audit/access/records?resource=host")
+                    .header("authorization", format!("Bearer {ADMIN}"))
+                    .body(axum::body::Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("reads")
+            .to_bytes();
+        let page: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        found = page["records"].as_array().and_then(|records| {
+            records
+                .iter()
+                .find(|record| record.to_string().contains("host.authz.token"))
+                .cloned()
+        });
+        if found.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let found = found.expect("the access trail names the token");
+    let bytes = receipt_bytes(found["record"].as_str().expect("the record's bytes"));
+    let record = String::from_utf8_lossy(&bytes);
+    assert!(
+        record.contains("0198f2aa-0000-7000-8000-00000000abcd"),
+        "{found}"
+    );
+    assert!(record.contains("administration"), "{found}");
+    assert!(record.contains(operations::LIFECYCLE_READ), "{found}");
+    assert!(!record.contains(TOKEN_BYTES), "never the token: {found}");
+}
+
 /// A call a role's grant allowed is recorded in the `access` trail with the role as `granted_by`
 /// and the caller as the subject: role-derived access is never unattributed (WP-8.1).
 #[tokio::test(flavor = "multi_thread")]

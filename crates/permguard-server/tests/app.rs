@@ -488,6 +488,53 @@ async fn test_two_planes_declaring_one_artifact_do_not_start() {
     );
 }
 
+/// WP-12.4: a member, a Host running a Data Plane and no Control Plane, holds no directory and
+/// admits only its IAM Host's tokens and its bootstrap certificate; a configuration asking it to
+/// read another credential is refused at start, naming each setting, never silently ignored.
+#[tokio::test]
+async fn test_a_member_refuses_a_credential_it_must_not_read() {
+    use permguard_host::composition::Declaration;
+
+    let path = config_file(
+        "member-credentials",
+        concat!(
+            "public:\n  http: 0.0.0.0:5557\n",
+            "host:\n  principals:\n    - san_uri: spiffe://acme/billing\n",
+            "    - oidc:\n        issuer: https://idp.example\n        audience: permguard\n",
+            "  authentication:\n    methods: [password, oidc]\n",
+            "  setup:\n    code_ref: setup-code\n",
+        ),
+    );
+    let refused = app()
+        .with_plane_declaration(|_| Some(("data", true, Declaration::new("data"))))
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a member reads no such credential");
+    let message = format!("{refused:#}");
+    assert!(message.contains("it is a member"), "{message}");
+    for setting in [
+        "host.principals",
+        "host.authentication.password",
+        "host.authentication.oidc",
+        "host.setup.code_ref",
+    ] {
+        assert!(message.contains(setting), "{setting}: {message}");
+    }
+
+    // The same rule is a member's only: a Host running neither Plane keeps its own credentials.
+    let path = config_file(
+        "neither-plane-credentials",
+        concat!(
+            "public:\n  http: 0.0.0.0:5558\n",
+            "host:\n  principals:\n    - san_uri: spiffe://acme/billing\n",
+        ),
+    );
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("a Host running neither Plane is not a member");
+}
+
 #[tokio::test]
 async fn test_serve_rejects_a_config_that_declares_no_listener_at_all() {
     // The Server Host surface defaults on, so a file has to opt out of it explicitly before the

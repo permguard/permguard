@@ -440,6 +440,11 @@ impl HostApi {
         if granted_by != principal {
             self.record_granted(&principal, &granted_by, operation, resource);
         }
+        if let Actor::Authenticated(context) = actor
+            && let Some(token) = context.token()
+        {
+            self.record_token(&principal, token, operation, resource);
+        }
         Ok(Admitted {
             principal,
             _permit: permit,
@@ -481,6 +486,40 @@ impl HostApi {
                 component = COMPONENT,
                 error = %error,
                 "the grant that allowed a call could not be recorded"
+            );
+        }
+    }
+
+    /// Records that an access token allowed `operation`: its `jti` and family, so an
+    /// administration through a token is traced to the issuance the IAM Host recorded (WP-12.4).
+    fn record_token(
+        &self,
+        principal: &Principal,
+        token: &permguard_core::authz::TokenGrant,
+        operation: &str,
+        resource: &Resource,
+    ) {
+        let Some(audit) = self.audit.as_ref() else {
+            return;
+        };
+        let target = resource.to_string();
+        let facts = [
+            ("jti", permguard_core::Fact::Text(&token.jti)),
+            ("family", permguard_core::Fact::Text(&token.family)),
+            ("operation", permguard_core::Fact::Text(operation)),
+        ];
+        let event = permguard_core::AuditEvent::new(
+            crate::audit::AUTHZ_TOKEN,
+            permguard_core::Subject::Principal(principal.as_str()),
+        )
+        .on(&target)
+        .with_facts(&facts);
+        if let Err(error) = audit.append(&event, None) {
+            tracing::warn!(
+                event.name = "host.authz_token_unrecorded",
+                component = COMPONENT,
+                error = %error,
+                "the token that allowed a call could not be recorded"
             );
         }
     }

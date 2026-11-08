@@ -18,6 +18,7 @@
 //! grants cover the whole Plane, the same refusal as out of scope for everybody else.
 
 pub mod access_tokens;
+pub mod bootstrap;
 pub mod credentials;
 pub mod directory;
 pub mod factor;

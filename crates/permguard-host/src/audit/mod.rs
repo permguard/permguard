@@ -156,10 +156,16 @@ const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
 pub const AUDIT_TOKEN_ISSUED: &str = "iam.token.issued";
 /// A token request the IAM Host refused (WP-11.4).
 pub const AUDIT_TOKEN_REFUSED: &str = "iam.token.refused";
+/// The bootstrap principal acting on a joined member (WP-12.4).
+pub const AUDIT_AUTHZ_BOOTSTRAP: &str = "host.authz.bootstrap";
 
 /// The `access` record of a Host API call that a grant held by another subject than the caller's
 /// principal allowed: one of its roles, or its issuer's (WP-8.1).
 pub const AUTHZ_GRANTED: &str = "host.authz.granted";
+
+/// The `access` record of a Host API call an access token allowed (WP-12.4): the token's `jti`,
+/// never the token.
+pub const AUTHZ_TOKEN: &str = "host.authz.token";
 
 /// Every action the process records, with its class (owner decisions of 2026-10-07).
 pub const REGISTRY: &[ActionSchema] = &[
@@ -231,6 +237,15 @@ pub const REGISTRY: &[ActionSchema] = &[
         max_bytes: 4 * 1024,
         phases: false,
     },
+    // The bootstrap principal acting on a joined member (WP-12.4): every use, a break-glass.
+    ActionSchema {
+        action: AUDIT_AUTHZ_BOOTSTRAP,
+        class: Class::Security,
+        root: HOST,
+        facts: &[("memberships", FactType::Uint)],
+        max_bytes: 4 * 1024,
+        phases: false,
+    },
     // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
     // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
     // in the trail.
@@ -243,6 +258,19 @@ pub const REGISTRY: &[ActionSchema] = &[
             ("operation", FactType::Text(64)),
         ],
         max_bytes: 8 * 1024,
+        phases: false,
+    },
+    // A Host API call an access token allowed (WP-12.4): its `jti`, family and operation.
+    ActionSchema {
+        action: AUTHZ_TOKEN,
+        class: Class::Access,
+        root: HOST,
+        facts: &[
+            ("jti", FactType::Text(64)),
+            ("family", FactType::Text(16)),
+            ("operation", FactType::Text(64)),
+        ],
+        max_bytes: 4 * 1024,
         phases: false,
     },
     // The first administrator and recovery (WP-8.2): never the code.
