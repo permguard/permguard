@@ -391,6 +391,8 @@ pub(super) struct Asked {
     pub(super) audience: Vec<String>,
     pub(super) targets: Vec<String>,
     pub(super) role: Option<String>,
+    /// The role's bound on the token's lifetime, in seconds, beside the family's.
+    pub(super) max_lifetime: Option<u64>,
 }
 
 /// The one family `operations` belong to (D19).
@@ -623,6 +625,7 @@ impl HostApi {
             audience,
             targets,
             role,
+            max_lifetime,
         } = self.asked(request, subject)?;
         let lifetimes = tokens.lifetimes;
         let (default, max) = if family == APPLICATION {
@@ -632,6 +635,11 @@ impl HostApi {
                 lifetimes.administration_default,
                 lifetimes.administration_max,
             )
+        };
+        // A role's bound narrows the family's (`2-security/8` Roles and elevation).
+        let (default, max) = match max_lifetime {
+            Some(bound) => (default.min(bound), max.min(bound)),
+            None => (default, max),
         };
         let lifetime = match request.requested_lifetime.as_deref() {
             None => default,
@@ -870,6 +878,7 @@ impl HostApi {
             audience,
             targets,
             role: None,
+            max_lifetime: None,
         })
     }
 

@@ -440,6 +440,8 @@ fn run(backend: &dyn Host, change: &Change) -> Result<(), Failure> {
                 expected_revision: None,
                 name: role.clone(),
                 description: description.clone(),
+                // A roles file names no lifetime: a role it makes has no bound but the family's.
+                max_lifetime: None,
             })
             .map(|_| ()),
         Change::DescribeRole { role, description } => backend
@@ -449,6 +451,8 @@ fn run(backend: &dyn Host, change: &Change) -> Result<(), Failure> {
                     request_id: request_id(),
                     expected_revision: None,
                     description: description.clone(),
+                    // Described from a file, a role keeps the bound an operator gave it.
+                    max_lifetime: None,
                 },
             )
             .map(|_| ()),

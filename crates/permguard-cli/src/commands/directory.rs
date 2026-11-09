@@ -208,6 +208,7 @@ pub(super) fn roles(
         RolesAction::Create {
             name,
             description,
+            max_lifetime,
             expected_revision,
         } => render_json(
             &backend
@@ -216,6 +217,7 @@ pub(super) fn roles(
                     expected_revision,
                     name,
                     description,
+                    max_lifetime,
                 })
                 .map_err(client)?,
             globals,
@@ -224,21 +226,30 @@ pub(super) fn roles(
         RolesAction::Update {
             name,
             description,
+            max_lifetime,
             expected_revision,
-        } => render_json(
-            &backend
-                .update_role(
-                    &name,
-                    &UpdateRole {
-                        request_id: request_id(),
-                        expected_revision,
-                        description,
-                    },
-                )
-                .map_err(client)?,
-            globals,
-            trace,
-        )?,
+        } => {
+            // A bound changed alone keeps the role's description, as read now.
+            let description = match description {
+                Some(description) => description,
+                None => backend.role(&name).map_err(client)?.description,
+            };
+            render_json(
+                &backend
+                    .update_role(
+                        &name,
+                        &UpdateRole {
+                            request_id: request_id(),
+                            expected_revision,
+                            description,
+                            max_lifetime,
+                        },
+                    )
+                    .map_err(client)?,
+                globals,
+                trace,
+            )?
+        }
         RolesAction::Delete {
             name,
             revoke_grants,

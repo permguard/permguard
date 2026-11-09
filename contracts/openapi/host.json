@@ -10026,6 +10026,11 @@
             "description": "Its entry in that list.",
             "x-grpc-field": "index",
             "minimum": 0
+          },
+          "role": {
+            "type": "string",
+            "description": "The role the token was elevated to, by its name; absent when it was issued without elevation.",
+            "x-grpc-field": "role"
           }
         },
         "required": [
@@ -16638,6 +16643,13 @@
             "minimum": 0,
             "description": "The directory revision of its last change.",
             "x-grpc-field": "revision"
+          },
+          "max_lifetime": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, in seconds; absent when nothing but the family bounds it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16717,6 +16729,13 @@
             "minimum": 0,
             "description": "The directory revision it was read at.",
             "x-grpc-field": "directory_revision"
+          },
+          "max_lifetime": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, in seconds; absent when nothing but the family bounds it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16788,6 +16807,16 @@
             "type": "string",
             "description": "What the role is for; empty when absent.",
             "x-grpc-field": "description"
+          },
+          "max_lifetime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, 60 to 86400 seconds; `0` or absent for no bound but the family's. Refused on a system role's name, which the IAM Host makes.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16821,6 +16850,16 @@
             "type": "string",
             "description": "The new description.",
             "x-grpc-field": "description"
+          },
+          "max_lifetime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400,
+            "description": "60 to 86400 seconds; `0` clears the role's bound, absent leaves it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [

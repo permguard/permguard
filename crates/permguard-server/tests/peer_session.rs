@@ -3711,6 +3711,7 @@ async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
             expected_revision: None,
             name: "auditors".to_owned(),
             description: String::new(),
+            max_lifetime: None,
         },
     )
     .await
@@ -3990,6 +3991,7 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
                 expected_revision: None,
                 name: "dp.01a1bc76-7028-717c-8b19-c470f894a0dd".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .await;
@@ -4157,6 +4159,7 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
             expected_revision: None,
             name: "readers".to_owned(),
             description: String::new(),
+            max_lifetime: None,
         },
     )
     .await
@@ -4208,6 +4211,48 @@ async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
     assert_eq!(
         jws_part(&held.access_token, 1)["roles"],
         serde_json::json!(["readers"])
+    );
+    // A role may bound its tokens' lifetime: an elevated token lives at most that long, a longer
+    // ask is refused, and the tokens list names the role it was elevated to.
+    assert_eq!(held.expires_in, 3_600, "the family's default, no bound yet");
+    api.update_role(
+        &admin(),
+        "readers",
+        permguard_host::api::directory::UpdateRole {
+            request_id: "bounded".to_owned(),
+            expected_revision: None,
+            description: String::new(),
+            max_lifetime: Some(600),
+        },
+    )
+    .await
+    .expect("bounded");
+    let bounded = api
+        .issue_token(
+            &asking(readers, &[&audience], &["plane/data/zone/billing/*"]),
+            &basic,
+        )
+        .expect("within the bound");
+    assert_eq!(bounded.expires_in, 600);
+    let longer = TokenRequest {
+        requested_lifetime: Some("1200".to_owned()),
+        ..asking(readers, &[&audience], &["plane/data/zone/billing/*"])
+    };
+    assert_eq!(error(&longer), "invalid_request");
+    let listed = api.token_list(&admin()).expect("tokens").tokens;
+    let jti_of = |token: &str| jws_part(token, 1)["jti"].as_str().expect("jti").to_owned();
+    let role_of = |token: &str| {
+        listed
+            .iter()
+            .find(|view| view.jti == jti_of(token))
+            .expect("listed")
+            .role
+            .clone()
+    };
+    assert_eq!(role_of(&bounded.access_token).as_deref(), Some("readers"));
+    assert_eq!(
+        role_of(&issued.access_token).as_deref(),
+        Some(own_role.as_str())
     );
     assert_eq!(
         error(&asking(readers, &[&audience], &["plane/data/*"])),

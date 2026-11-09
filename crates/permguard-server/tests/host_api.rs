@@ -3682,6 +3682,7 @@ async fn directory_script_grpc(transport: &Transport) -> Vec<Step> {
                         expected_revision: None,
                         name: "operators".into(),
                         description: "run it".into(),
+                        max_lifetime: None,
                     },
                 ))
                 .await,

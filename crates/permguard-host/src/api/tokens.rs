@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::grants::rfc3339;
 use super::{HostApi, Mutation, Receipt, Refusal};
-use crate::authz::directory::{AccountStatus, Directory};
+use crate::authz::directory::{AccountStatus, Directory, ROLE_PREFIX};
 use crate::authz::tokens::{IssuedToken, MUTATION_DOMAIN, TokenError, TokenRegistry, status};
 use crate::identity::record::uuid_text;
 use crate::operations::mutation::{Applied, Failure};
@@ -347,6 +347,9 @@ pub struct TokenView {
     pub status: String,
     pub status_list: String,
     pub index: u64,
+    /// The role the token was elevated to, by its name (`2-security/8` Roles and elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 /// `GET /iam/v1/tokens`.
@@ -407,6 +410,10 @@ fn view(tokens: &Tokens, token: &IssuedToken) -> TokenView {
         status: status::name(token.status).to_owned(),
         status_list: tokens.list_uri(&token.list_id),
         index: token.index,
+        role: token
+            .role
+            .as_deref()
+            .map(|role| role.strip_prefix(ROLE_PREFIX).unwrap_or(role).to_owned()),
     }
 }
 

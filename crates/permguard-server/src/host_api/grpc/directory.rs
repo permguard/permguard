@@ -89,6 +89,7 @@ impl RoleService for Served {
                     members: count(role.members),
                     grants: count(role.grants),
                     revision: role.revision,
+                    max_lifetime: role.max_lifetime,
                 })
                 .collect(),
         }))
@@ -108,6 +109,7 @@ impl RoleService for Served {
             grants: role.grants.into_iter().map(grant).collect(),
             revision: role.revision,
             directory_revision: role.directory_revision,
+            max_lifetime: role.max_lifetime,
         }))
     }
 
@@ -126,6 +128,7 @@ impl RoleService for Served {
                     expected_revision: asked.expected_revision,
                     name: asked.name,
                     description: asked.description,
+                    max_lifetime: asked.max_lifetime,
                 },
             )
             .await
@@ -148,6 +151,7 @@ impl RoleService for Served {
                     request_id: asked.request_id,
                     expected_revision: asked.expected_revision,
                     description: asked.description,
+                    max_lifetime: asked.max_lifetime,
                 },
             )
             .await

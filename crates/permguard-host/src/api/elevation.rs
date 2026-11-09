@@ -81,6 +81,11 @@ impl HostApi {
             self.within_grants(request, subject, &holder, operations)?
         };
         asked.role = Some(role.to_owned());
+        // An operator's role may bound its tokens' lifetime; a system role never does.
+        asked.max_lifetime = identities
+            .directory
+            .role(role)
+            .and_then(|held| held.max_lifetime);
         Ok(asked)
     }
 
@@ -138,6 +143,7 @@ impl HostApi {
             audience,
             targets: targets.into_iter().collect(),
             role: None,
+            max_lifetime: None,
         })
     }
 
@@ -266,6 +272,7 @@ impl HostApi {
             match apply(Change::CreateRole {
                 name: DATA_PLANES_ROLE.to_owned(),
                 description: "decide on every data plane, by elevation".to_owned(),
+                max_lifetime: None,
             }) {
                 Ok(()) => made.push(DATA_PLANES_ROLE.to_owned()),
                 Err(error) => {
@@ -280,6 +287,7 @@ impl HostApi {
             match apply(Change::CreateRole {
                 name: name.clone(),
                 description: format!("decide on the data plane of {member}, by elevation"),
+                max_lifetime: None,
             }) {
                 Ok(()) => made.push(name.clone()),
                 Err(error) => {

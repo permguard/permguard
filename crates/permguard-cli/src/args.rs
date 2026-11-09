@@ -2951,7 +2951,7 @@ pub enum RolesAction {
     },
     /// Create a role.
     #[command(
-        after_help = "Examples:\n  permguard iam roles create operators --description \"run the platform\"\n  permguard iam roles create readers -o json"
+        after_help = "Examples:\n  permguard iam roles create operators --description \"run the platform\"\n  permguard iam roles create billing-deciders --max-lifetime 900\n  permguard iam roles create readers -o json"
     )]
     Create {
         /// The role's name: lowercase letters, digits, `-`, `_` or `.`.
@@ -2959,20 +2959,26 @@ pub enum RolesAction {
         /// What the role is for.
         #[arg(long, default_value = "")]
         description: String,
+        /// The longest a token elevated to the role lives, 60 to 86400 seconds.
+        #[arg(long, value_name = "SECONDS")]
+        max_lifetime: Option<u64>,
         /// The directory revision expected by this mutation.
         #[arg(long)]
         expected_revision: Option<u64>,
     },
-    /// Change a role's description.
+    /// Change a role's description, or the longest a token elevated to it lives.
     #[command(
-        after_help = "Examples:\n  permguard iam roles update operators --description \"run and watch the platform\"\n  permguard iam roles update readers --description \"read the catalog\" -o json"
+        after_help = "Examples:\n  permguard iam roles update operators --description \"run and watch the platform\"\n  permguard iam roles update billing-deciders --max-lifetime 600\n  permguard iam roles update billing-deciders --max-lifetime 0\n  permguard iam roles update readers --description \"read the catalog\" -o json"
     )]
     Update {
         /// The role's name.
         name: String,
-        /// The new description.
-        #[arg(long)]
-        description: String,
+        /// The new description; the role's own is kept when only `--max-lifetime` is given.
+        #[arg(long, required_unless_present = "max_lifetime")]
+        description: Option<String>,
+        /// The longest a token elevated to the role lives, 60 to 86400 seconds; `0` clears it.
+        #[arg(long, value_name = "SECONDS")]
+        max_lifetime: Option<u64>,
         /// The directory revision expected by this mutation.
         #[arg(long)]
         expected_revision: Option<u64>,

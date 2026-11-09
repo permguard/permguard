@@ -90,6 +90,7 @@ The IAM Host keeps the system roles, `dp.<member_id>` and `data-planes`, in step
 They hold no grants, so a member of one gains nothing until it elevates; an operator assigns users, provider subjects and service accounts to them, one by one, and never makes, describes, deletes or grants to them.
 A service account elevates to decide only: administration stays its own grants'.
 A token issued under a role names it in its `roles` claim (RFC 9068), the audit's `iam.token.issued` records it, and it is refused once the role ends or its subject leaves it: `INVALID` at once on the IAM Host, and on each member once it holds the list that says so.
+An operator's role can bound how long its tokens live: `permguard iam roles create deciders --max-lifetime 900`, or `update` it later, `--max-lifetime 0` clearing it; a token elevated to it lives at most that long, and `permguard iam tokens list` names the role each token was elevated to.
 An all-in-one's own Data Plane decides a token elevated to a system role as a member does, by the token alone, while its subject holds the role.
 
 ```sh

@@ -48,6 +48,10 @@ pub struct RoleSummary {
     pub members: usize,
     pub grants: usize,
     pub revision: u64,
+    /// The longest a token elevated to the role lives, in seconds (`2-security/8` Roles and
+    /// elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// `GET /iam/v1/roles`.
@@ -66,6 +70,10 @@ pub struct RoleDetail {
     pub grants: Vec<GrantView>,
     pub revision: u64,
     pub directory_revision: u64,
+    /// The longest a token elevated to the role lives, in seconds (`2-security/8` Roles and
+    /// elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// One user, never its password or factor: whether it holds them.
@@ -120,6 +128,10 @@ pub struct CreateRole {
     pub name: String,
     #[serde(default)]
     pub description: String,
+    /// The longest a token elevated to the role lives, 60 to 86,400 seconds; none or `0` for no
+    /// bound but the family's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// `PATCH /iam/v1/roles/{name}`.
@@ -131,6 +143,9 @@ pub struct UpdateRole {
     #[serde(default)]
     pub expected_revision: Option<u64>,
     pub description: String,
+    /// Absent leaves the role's bound, `0` clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// A change that names nothing more than its target: a deletion, a status, a factor reset.
@@ -354,6 +369,7 @@ impl HostApi {
                     name: role.name,
                     description: role.description,
                     revision: role.revision,
+                    max_lifetime: role.max_lifetime,
                 })
                 .collect(),
         })
@@ -375,6 +391,7 @@ impl HostApi {
             members: role.members.into_iter().collect(),
             revision: role.revision,
             directory_revision: identities.directory.revision(),
+            max_lifetime: role.max_lifetime,
         })
     }
 
@@ -581,6 +598,7 @@ impl HostApi {
         let change = Change::CreateRole {
             name: create.name.clone(),
             description: create.description.clone(),
+            max_lifetime: create.max_lifetime,
         };
         self.change_directory(
             actor,
@@ -603,6 +621,7 @@ impl HostApi {
         let change = Change::UpdateRole {
             name: name.to_owned(),
             description: update.description.clone(),
+            max_lifetime: update.max_lifetime,
         };
         self.change_directory(
             actor,

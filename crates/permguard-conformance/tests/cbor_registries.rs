@@ -716,6 +716,7 @@ fn directory_samples() -> Vec<Sample> {
     let mut role = at(DirectoryTransition::new(kinds::ROLE_CREATE, "operators"), 1);
     role.operation_id = Some(OperationId::from_bytes(ZONE_ID));
     role.description = Some("who runs it".to_owned());
+    role.max_lifetime = Some(900);
     let mut member = at(DirectoryTransition::new(kinds::MEMBER_ADD, "operators"), 2);
     member.member = Some("sa:billing".to_owned());
     let mut user = at(DirectoryTransition::new(kinds::USER_CREATE, "paperino"), 3);
@@ -773,6 +774,7 @@ fn directory_samples() -> Vec<Sample> {
             &[
                 "directory_transition.operation_id",
                 "directory_transition.description",
+                "directory_transition.max_lifetime",
             ],
             decoder(),
         ),

@@ -184,6 +184,7 @@ fn token_in(token: iam::TokenSummary) -> TokenView {
         status: token.status,
         status_list: token.status_list,
         index: token.index,
+        role: token.role,
     }
 }
 

@@ -278,6 +278,7 @@ impl Directory for GrpcHost {
                     members: count(role.members),
                     grants: count(role.grants),
                     revision: role.revision,
+                    max_lifetime: role.max_lifetime,
                 })
                 .collect(),
         })
@@ -304,6 +305,7 @@ impl Directory for GrpcHost {
                 .collect(),
             revision: answer.revision,
             directory_revision: answer.directory_revision,
+            max_lifetime: answer.max_lifetime,
         })
     }
 
@@ -316,6 +318,7 @@ impl Directory for GrpcHost {
                     expected_revision: request.expected_revision,
                     name: request.name.clone(),
                     description: request.description.clone(),
+                    max_lifetime: request.max_lifetime,
                 }),
             )
             .map(changed)
@@ -331,6 +334,7 @@ impl Directory for GrpcHost {
                     request_id: request.request_id.clone(),
                     expected_revision: request.expected_revision,
                     description: request.description.clone(),
+                    max_lifetime: request.max_lifetime,
                 }),
             )
             .map(changed)

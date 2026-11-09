@@ -2291,6 +2291,66 @@ fn a_client_elevates_to_its_members_role_and_decides_there_alone() {
     let unaddressed = as_client(&["--scope", "decision.evaluate", "--out", &out("none.token")]);
     assert!(!unaddressed.status.success(), "{unaddressed:?}");
 
+    // The tokens list names the role a token was elevated to.
+    let listed = as_admin(&["iam", "tokens", "list"]);
+    assert!(
+        listed["tokens"]
+            .as_array()
+            .expect("tokens")
+            .iter()
+            .any(|token| token["role"] == serde_json::json!(role)),
+        "{listed}"
+    );
+    // An operator's role bounds its tokens' lifetime: set, kept when only the bound changes, and
+    // cleared with 0; a bound out of a minute to a day is refused.
+    as_admin(&[
+        "iam",
+        "roles",
+        "create",
+        "deciders",
+        "--description",
+        "decide",
+        "--max-lifetime",
+        "600",
+    ]);
+    assert_eq!(
+        as_admin(&["iam", "roles", "get", "deciders"])["max_lifetime"],
+        600
+    );
+    as_admin(&[
+        "iam",
+        "roles",
+        "update",
+        "deciders",
+        "--max-lifetime",
+        "900",
+    ]);
+    let updated = as_admin(&["iam", "roles", "get", "deciders"]);
+    assert_eq!(updated["max_lifetime"], 900, "{updated}");
+    assert_eq!(
+        updated["description"], "decide",
+        "the description is kept: {updated}"
+    );
+    as_admin(&["iam", "roles", "update", "deciders", "--max-lifetime", "0"]);
+    assert!(
+        as_admin(&["iam", "roles", "get", "deciders"])
+            .get("max_lifetime")
+            .is_none()
+    );
+    let mut full = vec![
+        "-o",
+        "json",
+        "--host-endpoint",
+        &iam_url,
+        "--tls-ca-file",
+        &ca,
+        "--token-file",
+        &admin,
+    ];
+    full.extend(["iam", "roles", "create", "brief", "--max-lifetime", "30"]);
+    let refused = cli(&dir, &full);
+    assert!(!refused.status.success(), "{refused:?}");
+
     // A Data Plane command elevates by its configuration, auth.client.role, and needs no audience.
     let home = dir.join("home");
     std::fs::create_dir_all(&home).expect("a home");

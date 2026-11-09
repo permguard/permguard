@@ -24,6 +24,8 @@ is cut.
   A token without a role is served as before: elevation is an option, never a requirement.
   A token issued under a role is `INVALID` at once when the role is ended or its subject removed from it, and stays so if the subject is added back; an all-in-one's own Data Plane decides a token elevated to a system role by the token alone, as a member does.
   An operator's role elevates to its own grants; a service account elevates to decide only, administration staying its own grants' (D20).
+  An operator's role may bound how long a token elevated to it lives, 60 to 86,400 seconds (`iam roles create|update --max-lifetime`, `max_lifetime` over REST and gRPC; `0` on an update clears it, a roles file leaves it), within the family's bound; a longer `requested_lifetime` is refused `invalid_request`.
+  `iam tokens list`, the REST and gRPC token list name the role each token was elevated to.
 
 - **Every member Host has its own role, `dp.<member_id>`, and `data-planes` decides on all of them.**
   The IAM Host makes a member's role when its first membership is approved and ends it with its last, reconciled with the live members at every approval, every end and every token sync; a Host that joins again is a new member with a new role.

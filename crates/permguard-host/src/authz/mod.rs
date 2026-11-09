@@ -502,6 +502,7 @@ mod tests {
             change(Change::CreateRole {
                 name: name.to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             });
             change(Change::AddMember {
                 role: name.to_owned(),
@@ -630,6 +631,7 @@ mod tests {
             Change::CreateRole {
                 name: "readers".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         );
         change(

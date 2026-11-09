@@ -1547,6 +1547,9 @@ message RoleSummary {
   uint64 members = 3;
   uint64 grants = 4;
   uint64 revision = 5;
+  // The longest a token elevated to the role lives, in seconds; absent for no bound but the
+  // family's.
+  optional uint64 max_lifetime = 6;
 }
 message GetRoleRequest {
   string name = 1;
@@ -1558,18 +1561,23 @@ message GetRoleResponse {
   repeated Grant grants = 4;
   uint64 revision = 5;
   uint64 directory_revision = 6;
+  optional uint64 max_lifetime = 7;
 }
 message CreateRoleRequest {
   string request_id = 1;
   optional uint64 expected_revision = 2;
   string name = 3;
   string description = 4;
+  // 60 to 86400 seconds; absent or 0 for no bound but the family's.
+  optional uint64 max_lifetime = 5;
 }
 message UpdateRoleRequest {
   string name = 1;
   string request_id = 2;
   optional uint64 expected_revision = 3;
   string description = 4;
+  // Absent leaves the role's bound, 0 clears it.
+  optional uint64 max_lifetime = 5;
 }
 message DeleteRoleRequest {
   string name = 1;
