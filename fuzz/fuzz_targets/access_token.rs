@@ -29,6 +29,8 @@ fn anchors() -> &'static [Anchor] {
             }],
             member: "member:0198f2aa-0000-7000-8000-000000000002".to_owned(),
             groups: vec!["group:eu".to_owned()],
+            authority: None,
+            bound_administration: false,
         }]
     })
 }
