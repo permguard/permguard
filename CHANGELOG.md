@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.26] - 2026-11-09
+
 ### Fixed
 
 - **A member no longer stops shipping its decisions and events once more than a peer frame is due.**
