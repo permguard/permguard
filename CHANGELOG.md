@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.25] - 2026-11-09
+
 ### Added
 
 - **A subject elevates to one of its roles, and the token carries that role alone.**
