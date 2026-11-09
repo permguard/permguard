@@ -17,7 +17,10 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`scripts/cli-tour.sh`: the whole command line on a disposable all-in-one.**
+  It starts the all-in-one image in Docker, makes the first administrator with the setup code and signs in, creates a user, a role with its grant and a service account with its secret, creates a zone and a ledger, applies `examples/basics`, asks decisions and reads them back from the control plane, then removes everything (`KEEP=1` keeps it).
 
 ## [0.1.26] - 2026-11-09
 
