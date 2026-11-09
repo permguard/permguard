@@ -22,7 +22,8 @@ is cut.
 - **A member no longer stops shipping its decisions and events once more than a peer frame is due.**
   A ship task's `max_body_bytes` is a ceiling the manifest signs, and the chart signs 1 MiB, as the CLI's published vector does, while a task message travels in one 512 KiB peer frame and its body takes at most 448 KiB.
   The member sealed each batch within the task's limit: once more than 448 KiB of records were due at one pass, a load test or a member that had been away, it sealed a batch no session could carry, the coordinator dropped its frame and closed the session at every pass (`the coordinator closed the task session`), and every record behind that batch stayed on the member, the Host `degraded: shipping`.
-  A member now seals and sends within the smaller of the task's limit and what a frame carries, and a task message or answer past the bound is refused when it is encoded rather than dropped by its peer.
+  An all-in-one stopped the same way: its local ship pass sealed within 1 MiB, and its own Control Plane answered a batch past 448 KiB unverifiable, silently, so its Decision log stopped as soon as a pass found more than about 220 decisions due, a benchmark faster than the 2-second pass or a backlog.
+  A member now seals and sends within the smaller of the task's limit and what a frame carries, an all-in-one's local pass within 448 KiB, and a task message or answer past the bound is refused when it is encoded rather than dropped by its peer.
   A batch sealed past the frame by an earlier release stays sealed, since a sealed batch is never signed again: a member holding one still stops behind it (BUG-0258).
 
 ## [0.1.25] - 2026-11-09

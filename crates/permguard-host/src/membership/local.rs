@@ -54,6 +54,11 @@ pub const LOCAL_TASK: &str = "local";
 /// The largest message a local session carries: the bound a membership's `policy.mirror` task
 /// is usually signed with.
 pub const LOCAL_MAX_BODY_BYTES: u64 = 1024 * 1024;
+/// The largest batch a local ship pass offers: what a task message's body takes, which the ingest
+/// reads a shipment within, local or not. A batch is sealed to this budget and never again, so a
+/// larger one would be answered unverifiable at every pass and the stream would stop behind it
+/// (BUG-0258).
+pub const LOCAL_SHIP_BYTES: u64 = super::record::MAX_BODY_BYTES as u64;
 
 /// Whether `task` is the local task.
 pub fn is_local(task: &MirrorTask) -> bool {
@@ -434,10 +439,7 @@ impl LocalShipping {
         resource: &str,
     ) -> Result<usize, String> {
         let mut count = 0;
-        while let Some(shipment) = self
-            .engine
-            .next(subscription, resource, LOCAL_MAX_BODY_BYTES)?
-        {
+        while let Some(shipment) = self.engine.next(subscription, resource, LOCAL_SHIP_BYTES)? {
             let context = self.context(subscription.task_type, subscription.epoch, resource);
             match handler.handle(&context, &shipment.body) {
                 Ok(answer) => {
@@ -817,7 +819,7 @@ mod tests {
             _resource: &str,
             max_bytes: u64,
         ) -> Result<Option<crate::composition::Shipment>, String> {
-            assert_eq!(max_bytes, LOCAL_MAX_BODY_BYTES);
+            assert_eq!(max_bytes, LOCAL_SHIP_BYTES);
             let mut sent = self.sent.lock().expect("the count");
             if *sent == 2 {
                 return Ok(None);
