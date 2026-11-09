@@ -3220,9 +3220,9 @@ impl App {
             })
         });
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
-        let _dormancy = repinning_coordinator
-            .as_ref()
-            .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
+        let _dormancy = repinning_coordinator.as_ref().map(|coordinating| {
+            crate::dormancy::drive(Arc::clone(coordinating), serving.as_ref().map(Arc::clone))
+        });
         // The zone keys this Host's memberships as a member grant, received and confirmed (WP-4.7).
         let zone_keys = Arc::new(
             permguard_host::secrets::ZoneKeys::open(&volume)

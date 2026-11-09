@@ -6060,7 +6060,7 @@
       "post": {
         "operationId": "createRole",
         "summary": "Create a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.create`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.create`. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted.",
         "requestBody": {
           "required": true,
           "description": "The role and the envelope's request id.",
@@ -6239,7 +6239,7 @@
       "patch": {
         "operationId": "updateRole",
         "summary": "Describe a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.update`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.update`. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted.",
         "parameters": [
           {
             "name": "name",
@@ -6356,7 +6356,7 @@
       "post": {
         "operationId": "deleteRole",
         "summary": "Delete a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.role.delete`. Refused while `role:<name>` holds active grants: revoke them first.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.role.delete`. Refused while `role:<name>` holds active grants: revoke them first. A system role, `dp.<member_id>` or `data-planes`, is the IAM Host's own and refused here: it is assigned, never made, described or deleted. The tokens issued under the role are `INVALID` at once.",
         "parameters": [
           {
             "name": "name",
@@ -6473,7 +6473,7 @@
       "post": {
         "operationId": "addRoleMember",
         "summary": "Add a member to a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.member.add`. Adding a member already there writes nothing and answers `changed: false`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.add`. Adding a member already there writes nothing and answers `changed: false`. A system role, `dp.<member_id>` or `data-planes`, takes its members here like any other, one by one: users, provider subjects (`oidc:<issuer>#<subject>`) and service accounts, who reach it only by elevation; a whole provider or a certificate is refused. The tokens a member removed obtained under the role are `INVALID` at once.",
         "parameters": [
           {
             "name": "name",
@@ -6590,7 +6590,7 @@
       "post": {
         "operationId": "removeRoleMember",
         "summary": "Remove a member from a role",
-        "description": "Under `authz.admin` on the Host. Mutation `host.member.remove`. Removing a member not there writes nothing and answers `changed: false`.",
+        "description": "Under `authz.admin` on the Host. Mutation `host.member.remove`. Removing a member not there writes nothing and answers `changed: false`. The tokens the member obtained under the role are `INVALID` at once, and stay so if it is added back.",
         "parameters": [
           {
             "name": "name",
@@ -9624,10 +9624,10 @@
       "post": {
         "operationId": "issueToken",
         "summary": "Issue an access token",
-        "description": "RFC 6749 with the profile of RFC 9068, on the IAM Host only. `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion (RFC 7523) or the connection's certificate (RFC 8705, `client_id` in the form); `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) exchanges a person's password session or a provider's token. A token carries one family, application or administration, and only what its subject may do now, in the IAM Host's grants; `Authorization: Basic` is read here and nowhere else. Every answer is `Cache-Control: no-store`.",
+        "description": "RFC 6749 with the profile of RFC 9068, on the IAM Host only. `client_credentials` proves a service account by `client_secret_basic`, a `private_key_jwt` assertion (RFC 7523) or the connection's certificate (RFC 8705, `client_id` in the form); `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) exchanges a person's password session, stated as `urn:ietf:params:oauth:token-type:access_token`, or a provider's token, stated as `urn:ietf:params:oauth:token-type:jwt` or `urn:ietf:params:oauth:token-type:id_token` (§3), and answers `issued_token_type` (§2.2.1). A token carries one family, application or administration, and only what its subject may do now, in the IAM Host's grants; a scope naming `role:<name>` elevates to that role, one the subject is a member of, and the token carries that role's permissions alone, its name in the `roles` claim. On a token exchange `actor_token` is refused, delegation not being served, and `requested_token_type` is an access token or nothing (RFC 6749 has a `client_credentials` request ignore them); on every grant `resource` is an absolute URI without fragment, answered `invalid_target` since no resource indicator is served; a subject token not valid is `invalid_request` (§2.2.2). `Authorization: Basic` is read here and nowhere else. Every answer is `Cache-Control: no-store`.",
         "requestBody": {
           "required": true,
-          "description": "The form: `grant_type`, `scope`, `audience` (repeatable), `target` (repeatable), `requested_lifetime`, and the proof's members.",
+          "description": "The form: `grant_type`, `scope` (the operations, and at most one `role:<name>`), `audience` (repeatable), `target` (repeatable), `requested_lifetime`, and the proof's members; RFC 8693's `requested_token_type`, `resource`, `actor_token` and `actor_token_type` are read as the description says.",
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
@@ -9637,7 +9637,8 @@
                     "type": "string"
                   },
                   "scope": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "The operations, space separated, and at most one `role:<name>` to elevate to."
                   },
                   "audience": {
                     "type": "array",
@@ -9667,7 +9668,35 @@
                     "type": "string"
                   },
                   "subject_token_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token",
+                      "urn:ietf:params:oauth:token-type:jwt",
+                      "urn:ietf:params:oauth:token-type:id_token"
+                    ],
+                    "description": "An access token for a session of this IAM Host; a JWT or an ID token for a provider's token (RFC 8693 §3)."
+                  },
+                  "requested_token_type": {
+                    "type": "string",
+                    "enum": [
+                      "urn:ietf:params:oauth:token-type:access_token"
+                    ],
+                    "description": "On a token exchange, absent or an access token; any other type is `invalid_request`."
+                  },
+                  "resource": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Repeatable. Each an absolute URI without fragment, else `invalid_request`; answered `invalid_target`, since no resource indicator is served."
+                  },
+                  "actor_token": {
+                    "type": "string",
+                    "description": "On a token exchange, refused `invalid_request`: delegation is not served."
+                  },
+                  "actor_token_type": {
+                    "type": "string",
+                    "description": "On a token exchange, refused `invalid_request`, with or without `actor_token`."
                   }
                 },
                 "required": [
@@ -9750,7 +9779,8 @@
         "x-permguard-endpoint": {
           "plane": "iam",
           "category": "tokens",
-          "credential": "client proof (secret, client assertion, certificate) or subject token"
+          "credential": "client proof (secret, client assertion, certificate) or subject token (a session of this IAM Host as urn:ietf:params:oauth:token-type:access_token; a provider's token as urn:ietf:params:oauth:token-type:jwt or urn:ietf:params:oauth:token-type:id_token)",
+          "operation": "the operations asked, or role:<name> to elevate"
         }
       }
     },
@@ -9870,6 +9900,13 @@
             "type": "string",
             "description": "The compact `at+jwt`."
           },
+          "issued_token_type": {
+            "type": "string",
+            "enum": [
+              "urn:ietf:params:oauth:token-type:access_token"
+            ],
+            "description": "What a token exchange issued (RFC 8693 §2.2.1); absent from a `client_credentials` answer."
+          },
           "token_type": {
             "type": "string",
             "enum": [
@@ -9894,7 +9931,7 @@
           "scope"
         ],
         "additionalProperties": false,
-        "description": "RFC 6749 §5.1's answer.",
+        "description": "RFC 6749 §5.1's answer, with RFC 8693 §2.2.1's `issued_token_type` for an exchange.",
         "x-grpc-message": null,
         "x-grpc-note": "RFC 6749's token answer, over HTTP only: the token endpoint has no gRPC binding"
       },
@@ -9903,7 +9940,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "The RFC 6749 §5.2 code: `invalid_request`, `invalid_client`, `invalid_grant`, `invalid_scope`, `invalid_target`, `unsupported_grant_type`, `slow_down` or `temporarily_unavailable`."
+            "description": "The RFC 6749 §5.2 code: `invalid_request`, `invalid_client`, `invalid_scope`, `invalid_target`, `unsupported_grant_type`, `slow_down` or `temporarily_unavailable`."
           },
           "error_description": {
             "type": "string",
@@ -9989,6 +10026,11 @@
             "description": "Its entry in that list.",
             "x-grpc-field": "index",
             "minimum": 0
+          },
+          "role": {
+            "type": "string",
+            "description": "The role the token was elevated to, by its name; absent when it was issued without elevation.",
+            "x-grpc-field": "role"
           }
         },
         "required": [
@@ -16601,6 +16643,13 @@
             "minimum": 0,
             "description": "The directory revision of its last change.",
             "x-grpc-field": "revision"
+          },
+          "max_lifetime": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, in seconds; absent when nothing but the family bounds it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16680,6 +16729,13 @@
             "minimum": 0,
             "description": "The directory revision it was read at.",
             "x-grpc-field": "directory_revision"
+          },
+          "max_lifetime": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, in seconds; absent when nothing but the family bounds it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16751,6 +16807,16 @@
             "type": "string",
             "description": "What the role is for; empty when absent.",
             "x-grpc-field": "description"
+          },
+          "max_lifetime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400,
+            "description": "The longest a token elevated to the role lives, 60 to 86400 seconds; `0` or absent for no bound but the family's. Refused on a system role's name, which the IAM Host makes.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [
@@ -16784,6 +16850,16 @@
             "type": "string",
             "description": "The new description.",
             "x-grpc-field": "description"
+          },
+          "max_lifetime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 86400,
+            "description": "60 to 86400 seconds; `0` clears the role's bound, absent leaves it.",
+            "x-grpc-field": "max_lifetime"
           }
         },
         "required": [

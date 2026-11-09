@@ -28,7 +28,8 @@
         { "label": 20, "name": "algorithm", "type": "text", "occurs": "optional", "note": "credential.add of a private_key_jwt: EdDSA or ES256" },
         { "label": 21, "name": "key_id", "type": "text", "occurs": "optional", "note": "credential.add of a private_key_jwt: the RFC 7638 thumbprint of the key" },
         { "label": 22, "name": "binding", "type": "text", "occurs": "optional", "note": "credential.add of a tls_client_auth: spki:sha256:<64 lowercase hex> or a SAN URI" },
-        { "label": 23, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "credential.add: seconds UTC" }
+        { "label": 23, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "credential.add: seconds UTC" },
+        { "label": 24, "name": "max_lifetime", "type": "uint", "occurs": "optional", "note": "role.create, role.update: the longest a token elevated to the role lives, 60 to 86400 seconds; 0 on an update clears it" }
       ]
     }
   },

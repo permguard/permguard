@@ -48,6 +48,10 @@ pub struct RoleSummary {
     pub members: usize,
     pub grants: usize,
     pub revision: u64,
+    /// The longest a token elevated to the role lives, in seconds (`2-security/8` Roles and
+    /// elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// `GET /iam/v1/roles`.
@@ -66,6 +70,10 @@ pub struct RoleDetail {
     pub grants: Vec<GrantView>,
     pub revision: u64,
     pub directory_revision: u64,
+    /// The longest a token elevated to the role lives, in seconds (`2-security/8` Roles and
+    /// elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// One user, never its password or factor: whether it holds them.
@@ -120,6 +128,10 @@ pub struct CreateRole {
     pub name: String,
     #[serde(default)]
     pub description: String,
+    /// The longest a token elevated to the role lives, 60 to 86,400 seconds; none or `0` for no
+    /// bound but the family's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// `PATCH /iam/v1/roles/{name}`.
@@ -131,6 +143,9 @@ pub struct UpdateRole {
     #[serde(default)]
     pub expected_revision: Option<u64>,
     pub description: String,
+    /// Absent leaves the role's bound, `0` clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lifetime: Option<u64>,
 }
 
 /// A change that names nothing more than its target: a deletion, a status, a factor reset.
@@ -354,6 +369,7 @@ impl HostApi {
                     name: role.name,
                     description: role.description,
                     revision: role.revision,
+                    max_lifetime: role.max_lifetime,
                 })
                 .collect(),
         })
@@ -375,6 +391,7 @@ impl HostApi {
             members: role.members.into_iter().collect(),
             revision: role.revision,
             directory_revision: identities.directory.revision(),
+            max_lifetime: role.max_lifetime,
         })
     }
 
@@ -486,6 +503,22 @@ impl HostApi {
         Ok(unlocked)
     }
 
+    /// A system role is the IAM Host's own (`2-security/8` Roles and elevation): an operator assigns
+    /// it and never makes, describes or deletes it.
+    fn system_role_refused(name: &str) -> Result<(), Refusal> {
+        if super::elevation::is_system_role(name) {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!(
+                    "`{name}` is a system role, kept by the IAM Host: assign it, never make, describe \
+                 or delete it"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     /// Applies one directory change as one security mutation.
     pub(super) async fn change_directory<R: Serialize>(
         &self,
@@ -561,9 +594,11 @@ impl HostApi {
     }
 
     pub async fn create_role(&self, actor: &Actor, create: CreateRole) -> Result<Changed, Refusal> {
+        Self::system_role_refused(create.name.as_str())?;
         let change = Change::CreateRole {
             name: create.name.clone(),
             description: create.description.clone(),
+            max_lifetime: create.max_lifetime,
         };
         self.change_directory(
             actor,
@@ -582,9 +617,11 @@ impl HostApi {
         name: &str,
         update: UpdateRole,
     ) -> Result<Changed, Refusal> {
+        Self::system_role_refused(name)?;
         let change = Change::UpdateRole {
             name: name.to_owned(),
             description: update.description.clone(),
+            max_lifetime: update.max_lifetime,
         };
         self.change_directory(
             actor,
@@ -603,19 +640,25 @@ impl HostApi {
         name: &str,
         delete: Plain,
     ) -> Result<Changed, Refusal> {
+        Self::system_role_refused(name)?;
         let change = Change::DeleteRole {
             name: name.to_owned(),
         };
         let principal = role_principal(name);
-        self.change_directory(
-            actor,
-            &(name, &delete),
-            &delete.request_id,
-            delete.expected_revision,
-            change,
-            |_| self.holds_no_grants(&principal),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(name, &delete),
+                &delete.request_id,
+                delete.expected_revision,
+                change,
+                |_| self.holds_no_grants(&principal),
+            )
+            .await?;
+        // The tokens issued under the role are `INVALID` at once, never at the next sync: a role
+        // made again under the same name never brings them back (`2-security/8`).
+        self.apply_token_statuses(&principal)?;
+        Ok(changed)
     }
 
     pub async fn add_member(
@@ -624,6 +667,18 @@ impl HostApi {
         role: &str,
         member: Member,
     ) -> Result<Changed, Refusal> {
+        // A system role's members are people and programs, each by name: a user, a provider's
+        // subject or a service account, never a whole provider or a certificate.
+        if super::elevation::is_system_role(role) && !is_assignable(&member.member) {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!(
+                    "`{role}` is a system role: its members are users, provider subjects \
+                     (oidc:<issuer>#<subject>) and service accounts, one by one"
+                ),
+            ));
+        }
         let change = Change::AddMember {
             role: role.to_owned(),
             member: member.member.clone(),
@@ -649,15 +704,20 @@ impl HostApi {
             role: role.to_owned(),
             member: member.member.clone(),
         };
-        self.change_directory(
-            actor,
-            &(role, "remove", &member),
-            &member.request_id,
-            member.expected_revision,
-            change,
-            |_| Ok(()),
-        )
-        .await
+        let changed = self
+            .change_directory(
+                actor,
+                &(role, "remove", &member),
+                &member.request_id,
+                member.expected_revision,
+                change,
+                |_| Ok(()),
+            )
+            .await?;
+        // What the member obtained under the role is `INVALID` at once: added back, it obtains
+        // new tokens, never its old ones again (`2-security/8`).
+        self.apply_token_statuses(&member.member)?;
+        Ok(changed)
     }
 
     /// Authorizes before a password is looked at: a caller without the grant learns nothing of
@@ -896,4 +956,14 @@ pub fn is_active(summary: &UserSummary) -> bool {
 /// What [`KeyState`] reads as on the wire.
 pub fn key_state(state: KeyState) -> &'static str {
     state.as_str()
+}
+
+/// Whether `member` may be assigned a system role: a user, a provider's subject or a service
+/// account, one principal each, never an issuer standing for every subject nor a certificate.
+fn is_assignable(member: &str) -> bool {
+    member.starts_with(crate::authz::directory::USER_PREFIX)
+        || member.starts_with(crate::authz::directory::SERVICE_ACCOUNT_PREFIX)
+        || member
+            .strip_prefix("oidc:")
+            .is_some_and(|subject| subject.contains('#'))
 }

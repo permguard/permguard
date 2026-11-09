@@ -17,7 +17,37 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A subject elevates to one of its roles, and the token carries that role alone.**
+  The token endpoint, as a security token service, reads `role:<name>` in the scope, at most one, beside operations that narrow it: the subject must be a member of the role, and the token carries the role's permissions alone, never the subject's own grants nor its other roles', with the role in the RFC 9068 `roles` claim and in the audit's `iam.token.issued`.
+  A token without a role is served as before: elevation is an option, never a requirement.
+  A token issued under a role is `INVALID` at once when the role is ended or its subject removed from it, and stays so if the subject is added back; an all-in-one's own Data Plane decides a token elevated to a system role by the token alone, as a member does.
+  An operator's role elevates to its own grants; a service account elevates to decide only, administration staying its own grants' (D20).
+  An operator's role may bound how long a token elevated to it lives, 60 to 86,400 seconds (`iam roles create|update --max-lifetime`, `max_lifetime` over REST and gRPC; `0` on an update clears it, a roles file leaves it), within the family's bound; a longer `requested_lifetime` is refused `invalid_request`.
+  `iam tokens list`, the REST and gRPC token list name the role each token was elevated to.
+
+- **Every member Host has its own role, `dp.<member_id>`, and `data-planes` decides on all of them.**
+  The IAM Host makes a member's role when its first membership is approved and ends it with its last, reconciled with the live members at every approval, every end and every token sync; a Host that joins again is a new member with a new role.
+  Elevated, a member's role is addressed to its member alone, `plane/data/*` unless the request narrows it, with `decision.evaluate` and `event.submit`; `data-planes` gives the same on the members or groups asked.
+  The system roles hold no grants: an operator assigns users, provider subjects and service accounts to them one by one (`iam roles members add`, or a roles file's members) and never makes, describes, deletes or grants to them, which `/iam/v1/roles` and `/iam/v1/grants` refuse.
+  A role an operator made before this release named `data-planes` is adopted as the IAM Host's own, and one named `dp.` and a member id is ended once no live member has that id: before upgrading, move their members and grants to a role of another name; the grants such a role holds are no longer counted for anybody.
+  The token journal records the role under label 18, which an earlier release refuses to read: once one elevated token was issued, the IAM Host's token registry no longer opens under 0.1.24.
+  Label 18 is registered in `contracts/cbor/tokens.json`.
+
+- **The command line and the client library elevate: `iam token --role` and `auth.client.role`.**
+  `iam token --role <name>` asks a token elevated to the role, `--scope` and `--audience` optional beside it: under a member's role the IAM Host names the member itself.
+  `auth.client.role` (`PERMGUARD_CLIENT_ROLE`) elevates the token a Data Plane command obtains for the configured client, so `auth.client.audience` is required only without a role; the kept token is keyed by its role too.
+  A program asks the same with `Asked::elevated(<name>)` of `permguard_control_client::token_source`.
+
+### Changed
+
+- **The token endpoint follows RFC 8693 to its letter.**
+  A provider's token is exchanged as `urn:ietf:params:oauth:token-type:jwt` or `urn:ietf:params:oauth:token-type:id_token`; `access_token` names only the IAM Host's own sessions, `pgs_…`, and a client that sent a provider's token as an access token must state its type (the command line and the client library now do).
+  A subject token that is not valid, or not acceptable, is `invalid_request`, no longer `invalid_grant` (§2.2.2), and every exchange answers `issued_token_type` (§2.2.1).
+  On a token exchange, `actor_token` and `actor_token_type` are refused `invalid_request`, delegation not being served, and `requested_token_type` other than an access token is refused too; a `client_credentials` request ignores them, as RFC 6749 asks.
+  `resource` is no longer read as a target: an absolute URI without fragment is answered `invalid_target`, since no resource indicator is served, and anything else `invalid_request`; name the target with `target`.
+  An exchange still needs no client authentication, the deployment's choice RFC 8693 §2.1 leaves open: whoever holds a person's session can exchange it, within that person's grants.
 
 ## [0.1.24] - 2026-11-08
 

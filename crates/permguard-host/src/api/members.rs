@@ -1695,6 +1695,17 @@ impl HostApi {
         id: &str,
         approve: ApproveMember,
     ) -> Result<MemberChanged, Refusal> {
+        let changed = self.approve_member_held(actor, id, approve).await?;
+        self.member_roles_follow();
+        Ok(changed)
+    }
+
+    async fn approve_member_held(
+        &self,
+        actor: &Actor,
+        id: &str,
+        approve: ApproveMember,
+    ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
         let memberships = self.memberships()?;
         let coordinator = self.coordinator()?;
@@ -2004,6 +2015,17 @@ impl HostApi {
         id: &str,
         change: ChangeMember,
     ) -> Result<MemberChanged, Refusal> {
+        let changed = self.reject_member_held(actor, id, change).await?;
+        self.member_roles_follow();
+        Ok(changed)
+    }
+
+    async fn reject_member_held(
+        &self,
+        actor: &Actor,
+        id: &str,
+        change: ChangeMember,
+    ) -> Result<MemberChanged, Refusal> {
         self.change(actor, id, change, Status::Rejected, REJECT, AUDIT_REJECTED)
             .await
     }
@@ -2229,6 +2251,17 @@ impl HostApi {
 
     /// `POST …/{id}/revoke/run`: the revoked manifest.
     pub async fn run_member_revoke(
+        &self,
+        actor: &Actor,
+        id: &str,
+        run: RunMemberRevoke,
+    ) -> Result<MemberChanged, Refusal> {
+        let changed = self.run_member_revoke_held(actor, id, run).await?;
+        self.member_roles_follow();
+        Ok(changed)
+    }
+
+    async fn run_member_revoke_held(
         &self,
         actor: &Actor,
         id: &str,

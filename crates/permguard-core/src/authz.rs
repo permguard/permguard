@@ -524,6 +524,9 @@ pub struct TokenGrant {
     /// lowercase hex without dashes, as its mirrors' directory is named. None on the IAM Host,
     /// whose own grants decide alongside the token.
     pub authority: Option<String>,
+    /// The one role the subject elevated to, its RFC 9068 `roles` claim, by name: None for a token
+    /// issued without a role.
+    pub role: Option<String>,
 }
 
 /// The status list version an access token was found `VALID` in, as a decision or event record
@@ -1426,6 +1429,7 @@ mod tests {
             list_iat: 1,
             list_digest: [0; 32],
             authority: None,
+            role: None,
         };
         let ledger = Resource::ledger("data", "z", "l");
         let data = Resource::plane("data");

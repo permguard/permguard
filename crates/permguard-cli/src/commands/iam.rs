@@ -38,10 +38,23 @@ pub fn iam_command(
         IamAction::Tokens { action } => tokens(globals, action, trace),
         IamAction::Token {
             scope,
+            role,
             audience,
             target,
             out,
-        } => token(globals, &scope, audience, target, &out, trace),
+        } => {
+            let mut asked = permguard_control_client::token_source::Asked {
+                scope: scope.unwrap_or_default().replace(',', " "),
+                audience,
+                target,
+            };
+            if let Some(role) = role {
+                asked = asked
+                    .elevated(&role)
+                    .map_err(|failure| Failure::from_client(&failure))?;
+            }
+            token(globals, asked, &out, trace)
+        }
     }
 }
 
@@ -254,18 +267,11 @@ fn tokens(
 
 fn token(
     globals: &crate::args::Globals,
-    scope: &str,
-    audience: Vec<String>,
-    target: Vec<String>,
+    asked: permguard_control_client::token_source::Asked,
     out: &Path,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     let reserved = Reserved::claim(out)?;
-    let asked = permguard_control_client::token_source::Asked {
-        scope: scope.replace(',', " "),
-        audience,
-        target,
-    };
     // A configured client's token, or else the person's: the session --token-file holds,
     // exchanged at the IAM Host.
     let source = match crate::client_token::source(globals, asked.clone(), trace)? {

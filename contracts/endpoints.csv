@@ -73,7 +73,7 @@ iam,sign-in,POST,/auth/v1/sessions,no (password),,
 iam,sign-in,DELETE,/auth/v1/sessions/current,yes (session),own session,the caller's own user
 iam,tokens,GET,/iam/v1/keys,no where keys.read is public,keys.read,host
 iam,tokens,GET,/iam/v1/status-lists/{id},no where keys.read is public,keys.read,host
-iam,tokens,POST,/iam/v1/token,"client proof (secret, client assertion, certificate) or subject token",,
+iam,tokens,POST,/iam/v1/token,"client proof (secret, client assertion, certificate) or subject token (a session of this IAM Host as urn:ietf:params:oauth:token-type:access_token; a provider's token as urn:ietf:params:oauth:token-type:jwt or urn:ietf:params:oauth:token-type:id_token)","the operations asked, or role:<name> to elevate",
 iam,tokens,GET,/iam/v1/tokens,credential (IAM Host),authz.admin,host
 iam,tokens,POST,/iam/v1/tokens/{jti}/revoke,credential (IAM Host),authz.admin,host
 iam,users,GET,/iam/v1/users,credential (IAM Host),authz.admin,host

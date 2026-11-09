@@ -265,6 +265,7 @@ mod tests {
                     list_iat: 1,
                     list_digest: [0; 32],
                     authority: Some(authority.to_owned()),
+                    role: None,
                 },
             ))
         };

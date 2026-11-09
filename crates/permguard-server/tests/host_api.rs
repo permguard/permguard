@@ -3682,6 +3682,7 @@ async fn directory_script_grpc(transport: &Transport) -> Vec<Step> {
                         expected_revision: None,
                         name: "operators".into(),
                         description: "run it".into(),
+                        max_lifetime: None,
                     },
                 ))
                 .await,
@@ -5010,6 +5011,7 @@ impl Authenticator for TokenBearers {
                     list_iat: 1,
                     list_digest: [0; 32],
                     authority: None,
+                    role: None,
                 },
             ))),
             None => Bearers.authenticate(peer, bearer),

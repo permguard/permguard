@@ -2951,7 +2951,7 @@ pub enum RolesAction {
     },
     /// Create a role.
     #[command(
-        after_help = "Examples:\n  permguard iam roles create operators --description \"run the platform\"\n  permguard iam roles create readers -o json"
+        after_help = "Examples:\n  permguard iam roles create operators --description \"run the platform\"\n  permguard iam roles create billing-deciders --max-lifetime 900\n  permguard iam roles create readers -o json"
     )]
     Create {
         /// The role's name: lowercase letters, digits, `-`, `_` or `.`.
@@ -2959,20 +2959,26 @@ pub enum RolesAction {
         /// What the role is for.
         #[arg(long, default_value = "")]
         description: String,
+        /// The longest a token elevated to the role lives, 60 to 86400 seconds.
+        #[arg(long, value_name = "SECONDS")]
+        max_lifetime: Option<u64>,
         /// The directory revision expected by this mutation.
         #[arg(long)]
         expected_revision: Option<u64>,
     },
-    /// Change a role's description.
+    /// Change a role's description, or the longest a token elevated to it lives.
     #[command(
-        after_help = "Examples:\n  permguard iam roles update operators --description \"run and watch the platform\"\n  permguard iam roles update readers --description \"read the catalog\" -o json"
+        after_help = "Examples:\n  permguard iam roles update operators --description \"run and watch the platform\"\n  permguard iam roles update billing-deciders --max-lifetime 600\n  permguard iam roles update billing-deciders --max-lifetime 0\n  permguard iam roles update readers --description \"read the catalog\" -o json"
     )]
     Update {
         /// The role's name.
         name: String,
-        /// The new description.
-        #[arg(long)]
-        description: String,
+        /// The new description; the role's own is kept when only `--max-lifetime` is given.
+        #[arg(long, required_unless_present = "max_lifetime")]
+        description: Option<String>,
+        /// The longest a token elevated to the role lives, 60 to 86400 seconds; `0` clears it.
+        #[arg(long, value_name = "SECONDS")]
+        max_lifetime: Option<u64>,
         /// The directory revision expected by this mutation.
         #[arg(long)]
         expected_revision: Option<u64>,
@@ -3091,16 +3097,24 @@ pub enum IamAction {
         action: TokensAction,
     },
     /// Obtain an access token and write it to a file: the configured client's, or else the
-    /// person's, the session `--token-file` holds exchanged at the IAM Host.
+    /// person's, the session `--token-file` holds exchanged at the IAM Host; with `--role`,
+    /// elevated to one of the subject's roles and carrying that role's permissions alone.
     #[command(
-        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard --token-file ./alice.session iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token"
+        after_help = "Examples:\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --scope decision.evaluate --audience group:eu --target plane/data/* --out ./billing.token\n  permguard --token-file ./alice.session iam token --scope keys.read --audience member:0198f2aa-0000-7000-8000-000000000002 --out ./admin.token\n  permguard --iam-endpoint https://iam.example:5444 --client-id billing --client-secret-file ./billing.secret iam token --role dp.0198f2aa-0000-7000-8000-000000000002 --out ./eu-0.token"
     )]
     Token {
-        /// The operations, space or comma separated.
-        #[arg(long)]
-        scope: String,
+        /// The operations, space or comma separated: required without `--role`; beside it, they
+        /// narrow the role's.
+        #[arg(long, required_unless_present = "role")]
+        scope: Option<String>,
+        /// The role to elevate to, one the subject is a member of: `role:<name>` joins the scope.
+        /// A member's role, `dp.<member_id>`, is addressed to its member and targets
+        /// `plane/data/*` unless `--target` narrows it.
+        #[arg(long, value_name = "NAME")]
+        role: Option<String>,
         /// Whom the token is for: `member:<member_id>` or `group:<name>`; repeated for several.
-        #[arg(long, required = true)]
+        /// Required without `--role`; under a member's role the IAM Host names its member.
+        #[arg(long, required_unless_present = "role")]
         audience: Vec<String>,
         /// What an application token acts on: a selector of the members' Planes; repeated.
         #[arg(long)]

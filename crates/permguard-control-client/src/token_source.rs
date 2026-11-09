@@ -13,7 +13,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use permguard_host::api::token_endpoint::{ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, TOKEN_EXCHANGE};
+use permguard_host::api::token_endpoint::{
+    ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, JWT_TOKEN_TYPE, ROLE_SCOPE, TOKEN_EXCHANGE,
+};
 
 use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
@@ -41,7 +43,8 @@ pub enum Proof {
     /// The TLS client certificate the options carry: a `tls_client_auth` binding.
     Certificate,
     /// A person's password session or provider token, exchanged for the person's own token
-    /// (RFC 8693): the subject of the exchange, with no client of its own.
+    /// (RFC 8693): the subject of the exchange, with no client of its own, stated as an access
+    /// token when it is a session and as a JWT otherwise (§3).
     Session(Credential),
 }
 
@@ -62,6 +65,39 @@ pub struct Asked {
     pub scope: String,
     pub audience: Vec<String>,
     pub target: Vec<String>,
+}
+
+impl Asked {
+    /// The same ask, elevated to `role` (`2-security/8` Roles and elevation): `role:<name>` joins
+    /// the scope, and the token carries that role's permissions alone. Under a role the audience
+    /// may be left out, since the IAM Host addresses a member's role to its member and refuses a
+    /// role that needs one; the operations beside it narrow the role's. Refused for a name that is
+    /// not a role name, and beside a scope that already names a role, since a scope names one.
+    pub fn elevated(mut self, role: &str) -> Result<Self, Failure> {
+        let role = role.trim();
+        if !permguard_host::authz::directory::is_role_name(role) {
+            return Err(usage(format!(
+                "`{role}` is not a role name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`"
+            )));
+        }
+        if self.role().is_some() {
+            return Err(usage("a scope names at most one role"));
+        }
+        let operations = self.scope.trim();
+        self.scope = if operations.is_empty() {
+            format!("{ROLE_SCOPE}{role}")
+        } else {
+            format!("{ROLE_SCOPE}{role} {operations}")
+        };
+        Ok(self)
+    }
+
+    /// The role the scope elevates to, when it names one.
+    pub fn role(&self) -> Option<&str> {
+        self.scope
+            .split_whitespace()
+            .find_map(|word| word.strip_prefix(ROLE_SCOPE))
+    }
 }
 
 /// A token, and when it stops serving (seconds since the epoch).
@@ -165,9 +201,12 @@ impl TokenSource {
         if client_id.trim().is_empty() && !matches!(proof, Proof::Session(_)) {
             return Err(usage("a client names its service account"));
         }
-        if asked.scope.trim().is_empty() || asked.audience.is_empty() {
+        // Under a role the IAM Host addresses the token itself, or refuses a role that needs an
+        // audience; without one, the audience is the client's to name.
+        if asked.scope.trim().is_empty() || (asked.audience.is_empty() && asked.role().is_none()) {
             return Err(usage(
-                "a token names its scope and at least one audience (member:<id> or group:<name>)",
+                "a token names its scope and at least one audience (member:<id> or group:<name>), \
+                 or a role it elevates to",
             ));
         }
         if tls.skip_verify {
@@ -270,7 +309,7 @@ impl TokenSource {
                 body.push_str(&format!(
                     "&subject_token={}&subject_token_type={}",
                     form(session.trim()),
-                    form(ACCESS_TOKEN_TYPE)
+                    form(subject_token_type(session))
                 ));
             }
         }
@@ -324,6 +363,11 @@ impl TokenSource {
         ) else {
             return Err(refused("the token endpoint answered no access token"));
         };
+        if !issues_an_access_token(&parsed) {
+            return Err(refused(
+                "the token endpoint issued something other than an access token",
+            ));
+        }
         Ok(Issued {
             token: Credential::new(token.as_bytes().to_vec()),
             expires_at: now().saturating_add(expires_in),
@@ -453,6 +497,29 @@ impl Signer {
     }
 }
 
+/// RFC 8693 §3: what the subject of an exchange is. A password session, which the IAM Host issued
+/// itself, is an access token; anything else is a provider's token, a JWT, which the IAM Host
+/// verifies as the sign-in does and never takes as one of its own.
+fn subject_token_type(subject: &str) -> &'static str {
+    if subject
+        .trim()
+        .starts_with(permguard_host::authz::sessions::TOKEN_PREFIX)
+    {
+        ACCESS_TOKEN_TYPE
+    } else {
+        JWT_TOKEN_TYPE
+    }
+}
+
+/// RFC 8693 §2.2.1: an exchange names what it issued, and only an access token is used as one. An
+/// IAM Host from before 0.1.25 does not name it; one that names another type is never sent on as
+/// a bearer.
+fn issues_an_access_token(answer: &serde_json::Value) -> bool {
+    answer
+        .get("issued_token_type")
+        .is_none_or(|issued| issued.as_str() == Some(ACCESS_TOKEN_TYPE))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -525,6 +592,87 @@ mod tests {
         );
         assert_eq!(claims["aud"], "https://iam.example:5444/iam/v1/token");
         assert!(claims["exp"].as_u64() > claims["iat"].as_u64());
+    }
+
+    /// An elevation names its role first in the scope, keeps the operations beside it, and lifts
+    /// the audience requirement: the IAM Host addresses a member's role itself.
+    #[test]
+    fn an_elevated_ask_names_one_role_and_may_leave_the_audience_out() {
+        let bare = Asked::default();
+        assert!(bare.role().is_none());
+        let elevated = bare.clone().elevated("dp.0198f2aa").expect("elevated");
+        assert_eq!(elevated.scope, "role:dp.0198f2aa");
+        assert_eq!(elevated.role(), Some("dp.0198f2aa"));
+        let narrowed = Asked {
+            scope: "decision.evaluate".to_owned(),
+            ..Asked::default()
+        }
+        .elevated(" data-planes ")
+        .expect("elevated");
+        assert_eq!(narrowed.scope, "role:data-planes decision.evaluate");
+        assert_eq!(narrowed.role(), Some("data-planes"));
+        for refused in ["", "Ops", "a b", "role:ops", &"x".repeat(64)] {
+            assert!(
+                bare.clone()
+                    .elevated(refused)
+                    .is_err_and(|failure| failure.usage),
+                "{refused:?}"
+            );
+        }
+        let twice = elevated.clone().elevated("ops").expect_err("one role");
+        assert!(twice.detail.contains("at most one role"), "{twice:?}");
+        let new = |asked: Asked| {
+            TokenSource::new(
+                Endpoint::parse("https://iam.example:5444").expect("an endpoint"),
+                "billing",
+                Proof::Certificate,
+                asked,
+                TlsOptions {
+                    cert_file: Some("client.pem".into()),
+                    ..TlsOptions::default()
+                },
+                Duration::from_secs(5),
+            )
+        };
+        assert!(new(elevated).is_ok(), "a role addresses itself");
+        let unaddressed = new(Asked {
+            scope: "decision.evaluate".to_owned(),
+            ..Asked::default()
+        })
+        .map(|_| ())
+        .expect_err("no audience, no role");
+        assert!(unaddressed.usage, "{unaddressed:?}");
+    }
+
+    /// A password session is exchanged as the access token the IAM Host issued; a provider's
+    /// token as a JWT, which RFC 8693 §3 names it (an IAM Host refuses it as an access token).
+    #[test]
+    fn a_subject_token_states_its_own_type() {
+        assert_eq!(subject_token_type("pgs_abc"), ACCESS_TOKEN_TYPE);
+        assert_eq!(subject_token_type(" pgs_abc\n"), ACCESS_TOKEN_TYPE);
+        assert_eq!(
+            subject_token_type("eyJhbGciOiJFUzI1NiJ9.e30.c2ln"),
+            JWT_TOKEN_TYPE
+        );
+    }
+
+    /// RFC 8693 §2.2.1: only an access token is taken from an answer; an IAM Host from before
+    /// 0.1.25 names no type.
+    #[test]
+    fn only_an_access_token_is_taken_from_an_answer() {
+        let answer = |issued: serde_json::Value| {
+            let mut answer = serde_json::json!({"access_token": "t", "expires_in": 60});
+            if !issued.is_null() {
+                answer["issued_token_type"] = issued;
+            }
+            issues_an_access_token(&answer)
+        };
+        assert!(answer(serde_json::Value::Null), "an IAM Host before 0.1.25");
+        assert!(answer(serde_json::json!(ACCESS_TOKEN_TYPE)));
+        assert!(!answer(serde_json::json!(
+            "urn:ietf:params:oauth:token-type:jwt"
+        )));
+        assert!(!answer(serde_json::json!(7)));
     }
 
     /// What a source refuses before it sends anything, and what it never shows.

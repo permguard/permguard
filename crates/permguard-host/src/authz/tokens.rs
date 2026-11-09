@@ -30,6 +30,7 @@
 //! | 15    | `status`        | uint          | `token.status`: 0 valid, 1 invalid, 2 suspended       |
 //! | 16    | `account`       | text          | optional, `token.issue`: the service account          |
 //! | 17    | `credential_id` | bytes, 16     | optional, `token.issue`: the credential it proved     |
+//! | 18    | `role`          | text          | optional, `token.issue`: the role it was elevated to  |
 //!
 //! An index is drawn at random among the free entries of the open list and never drawn again in
 //! that list. A list is open until half its entries are drawn; it retires once every token it
@@ -114,6 +115,7 @@ pub struct TokenTransition {
     pub status: Option<u64>,
     pub account: Option<String>,
     pub credential_id: Option<[u8; 16]>,
+    pub role: Option<String>,
 }
 
 fn id16(bytes: Vec<u8>, what: &str) -> Result<[u8; 16], RecordError> {
@@ -142,6 +144,7 @@ impl TokenTransition {
             status: None,
             account: None,
             credential_id: None,
+            role: None,
         }
     }
 
@@ -185,6 +188,7 @@ impl TokenTransition {
         }
         pairs.extend(text(16, &self.account));
         pairs.extend(bytes(17, &self.credential_id));
+        pairs.extend(text(18, &self.role));
         cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError::Cbor(error.to_string()))
     }
 
@@ -196,7 +200,7 @@ impl TokenTransition {
         }
         let value =
             cbor::decode_canonical(bytes).map_err(|error| RecordError::Cbor(error.to_string()))?;
-        let mut map = Labelled::new(value, 17)?;
+        let mut map = Labelled::new(value, 18)?;
         let transition = Self {
             kind: map.text(1)?,
             revision: map.uint(2)?,
@@ -224,6 +228,7 @@ impl TokenTransition {
                 .optional_bytes(17)?
                 .map(|bytes| id16(bytes, "a credential id"))
                 .transpose()?,
+            role: map.optional_text(18)?,
         };
         map.finish()?;
         if !kinds::ALL.contains(&transition.kind.as_str()) {
@@ -285,6 +290,8 @@ pub struct TokenDraft {
     pub expires_at: u64,
     pub account: Option<String>,
     pub credential_id: Option<[u8; 16]>,
+    /// The role the subject elevated to, as `role:<name>`.
+    pub role: Option<String>,
 }
 
 /// One token the registry holds.
@@ -302,6 +309,8 @@ pub struct IssuedToken {
     pub expires_at: u64,
     pub account: Option<String>,
     pub credential_id: Option<[u8; 16]>,
+    /// The role the subject elevated to, as `role:<name>`.
+    pub role: Option<String>,
     pub status: u8,
 }
 
@@ -511,6 +520,7 @@ impl TokenRegistry {
         issued.expires_at = Some(draft.expires_at);
         issued.account = draft.account;
         issued.credential_id = draft.credential_id;
+        issued.role = draft.role;
         transitions.push(issued);
         self.write(&mut journal, &mut state, transitions)?;
         state
@@ -760,6 +770,7 @@ fn replay(state: &mut State, transition: &TokenTransition) -> Result<(), TokenEr
                         expires_at,
                         account: transition.account.clone(),
                         credential_id: transition.credential_id,
+                        role: transition.role.clone(),
                         status: status::VALID,
                     },
                 );
@@ -866,6 +877,7 @@ mod tests {
             expires_at,
             account: Some(account.to_owned()),
             credential_id: Some([1; 16]),
+            role: None,
         }
     }
 
@@ -1062,6 +1074,7 @@ mod tests {
         transition.expires_at = Some(NOW + 60);
         transition.account = Some("billing".to_owned());
         transition.credential_id = Some([4; 16]);
+        transition.role = Some("role:dp.01a1bc76-7028-717c-8b19-c470f894a0dd".to_owned());
         let bytes = transition.encode().expect("encodes");
         assert_eq!(
             TokenTransition::decode(&bytes).expect("decodes"),
@@ -1070,7 +1083,7 @@ mod tests {
         let Value::Map(mut pairs) = cbor::decode_canonical(&bytes).expect("canonical") else {
             panic!("a map")
         };
-        pairs.push((Value::Int(18), Value::Text("x".to_owned())));
+        pairs.push((Value::Int(19), Value::Text("x".to_owned())));
         let extended = cbor::encode(&Value::Map(pairs)).expect("encodes");
         assert!(TokenTransition::decode(&extended).is_err());
         let unknown = TokenTransition::new("token.promote")

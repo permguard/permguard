@@ -19,6 +19,7 @@ use std::process::ExitCode;
 
 use permguard_control_client::host::Host;
 use permguard_host::api::directory::{CreateRole, Member as MemberBody, UpdateRole};
+use permguard_host::api::elevation::is_system_role;
 use serde::{Deserialize, Serialize};
 
 use super::directory::{client, principal_of};
@@ -219,6 +220,16 @@ pub fn plan_roles(backend: &dyn Host, file: &[u8]) -> Result<Plan, Failure> {
         .map_err(|error| Failure::usage(format!("not a roles file: {error}")))?;
     let wanted = resolve(backend, declared)?;
     let (held, undeclared) = held(backend, &wanted)?;
+    // A system role is the IAM Host's to make and end: a file assigns its members, nothing more.
+    if let Some(missing) = wanted
+        .keys()
+        .find(|name| is_system_role(name) && !held.contains_key(*name))
+    {
+        return Err(Failure::usage(format!(
+            "role `{missing}` is a system role the IAM Host does not hold: a member's role \
+             follows its live member, and only the IAM Host makes one"
+        )));
+    }
     Ok(Plan {
         kind: PLAN_KIND.to_owned(),
         changes: changes(&wanted, &held),
@@ -249,6 +260,14 @@ fn resolve(
 ) -> Result<BTreeMap<String, WantedRole>, Failure> {
     let mut wanted = BTreeMap::new();
     for (name, role) in declared.roles {
+        // `2-security/8` Roles and elevation: a system role is assigned, never described, and
+        // holds no grants.
+        if is_system_role(&name) && (!role.grants.is_empty() || !role.description.is_empty()) {
+            return Err(Failure::usage(format!(
+                "role `{name}` is a system role, kept by the IAM Host: declare its members only, \
+                 no description and no grants"
+            )));
+        }
         let mut members = BTreeSet::new();
         for member in role.members {
             let named = [
@@ -366,7 +385,7 @@ fn changes(
             }));
             continue;
         };
-        if have.description != want.description {
+        if have.description != want.description && !is_system_role(role) {
             changes.push(Change::DescribeRole {
                 role: role.clone(),
                 description: want.description.clone(),
@@ -421,6 +440,8 @@ fn run(backend: &dyn Host, change: &Change) -> Result<(), Failure> {
                 expected_revision: None,
                 name: role.clone(),
                 description: description.clone(),
+                // A roles file names no lifetime: a role it makes has no bound but the family's.
+                max_lifetime: None,
             })
             .map(|_| ()),
         Change::DescribeRole { role, description } => backend
@@ -430,6 +451,8 @@ fn run(backend: &dyn Host, change: &Change) -> Result<(), Failure> {
                     request_id: request_id(),
                     expected_revision: None,
                     description: description.clone(),
+                    // Described from a file, a role keeps the bound an operator gave it.
+                    max_lifetime: None,
                 },
             )
             .map(|_| ()),

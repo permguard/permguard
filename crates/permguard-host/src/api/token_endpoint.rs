@@ -1,8 +1,10 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The IAM Host's token endpoint (iteration 02, WP-11.4, `2-security/8` Token endpoint):
-//! `POST /iam/v1/token`, RFC 6749 with the profile of RFC 9068.
+//! The IAM Host's security token service (iteration 02, WP-11.4, `2-security/8` Token endpoint):
+//! `POST /iam/v1/token`, RFC 6749 with the profile of RFC 9068, and RFC 8693's token exchange.
+//! Who the subject is, federation establishes ([`super::federation`]); every token, its scope,
+//! audience, target, lifetime and the role it was elevated to, is this module's.
 //!
 //! | `grant_type`                                       | Client proof                                                   |
 //! | -------------------------------------------------- | -------------------------------------------------------------- |
@@ -18,15 +20,12 @@ use std::sync::{Mutex, PoisonError};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use permguard_core::authz::{Principal, Resource, Selector, operations};
+use permguard_core::authz::{Resource, Selector, operations};
 
 use super::HostApi;
+use super::federation::{Subject, client_failed, decode_part};
 use super::tokens::{TENANT, Tokens};
-use crate::authz::credentials;
-use crate::authz::directory::{
-    AccountStatus, CredentialMaterial, ServiceAccount, UserStatus, service_account_principal,
-    user_principal,
-};
+use crate::authz::directory::role_principal;
 use crate::authz::tokens::{IssuedToken, TokenDraft};
 use crate::identity::record::uuid_text;
 
@@ -36,6 +35,10 @@ pub const CLIENT_CREDENTIALS: &str = "client_credentials";
 pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 /// RFC 8693's access token type: what a subject token is.
 pub const ACCESS_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:access_token";
+/// RFC 8693 §3: a JWT, the type a provider's token is exchanged as.
+pub const JWT_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:jwt";
+/// RFC 8693 §3: an OpenID Connect ID Token, the other type a provider's token is exchanged as.
+pub const ID_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:id_token";
 /// RFC 7523's client assertion type.
 pub const JWT_BEARER: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 /// The families of a token.
@@ -111,6 +114,12 @@ pub struct TokenRequest {
     pub client_assertion: Option<String>,
     pub subject_token: Option<String>,
     pub subject_token_type: Option<String>,
+    /// RFC 8693 §2.1: what the token is for, as an absolute URI; no resource indicator is served.
+    pub resource: Vec<String>,
+    pub requested_token_type: Option<String>,
+    /// RFC 8693 delegation, which is not served: present, the request is refused.
+    pub actor_token: Option<String>,
+    pub actor_token_type: Option<String>,
 }
 
 /// Never an assertion or a subject token: whether the request holds one.
@@ -130,6 +139,9 @@ impl std::fmt::Debug for TokenRequest {
                 "subject_token",
                 &self.subject_token.as_ref().map(|_| "<set>"),
             )
+            .field("resource", &self.resource)
+            .field("requested_token_type", &self.requested_token_type)
+            .field("actor_token", &self.actor_token.as_ref().map(|_| "<set>"))
             .finish_non_exhaustive()
     }
 }
@@ -163,6 +175,9 @@ impl TokenRequest {
                 "client_assertion" => once(&mut request.client_assertion, &mut seen)?,
                 "subject_token" => once(&mut request.subject_token, &mut seen)?,
                 "subject_token_type" => once(&mut request.subject_token_type, &mut seen)?,
+                "requested_token_type" => once(&mut request.requested_token_type, &mut seen)?,
+                "actor_token" => once(&mut request.actor_token, &mut seen)?,
+                "actor_token_type" => once(&mut request.actor_token_type, &mut seen)?,
                 "client_secret" => {
                     return Err(TokenRefusal::InvalidRequest(
                         "a client secret travels in the Authorization header, client_secret_basic"
@@ -170,7 +185,8 @@ impl TokenRequest {
                     ));
                 }
                 "audience" => request.audience.push(value),
-                "target" | "resource" => request.target.push(value),
+                "target" => request.target.push(value),
+                "resource" => request.resource.push(value),
                 _ => {}
             }
         }
@@ -209,10 +225,13 @@ impl std::fmt::Debug for ClientProof {
     }
 }
 
-/// What an issued token answers (RFC 6749 §5.1).
+/// What an issued token answers (RFC 6749 §5.1), and for a token exchange the type of what was
+/// issued (RFC 8693 §2.2.1).
 #[derive(Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TokenAnswer {
     pub access_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issued_token_type: Option<String>,
     pub token_type: String,
     pub expires_in: u64,
     pub scope: String,
@@ -223,6 +242,7 @@ impl std::fmt::Debug for TokenAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenAnswer")
             .field("access_token", &"********")
+            .field("issued_token_type", &self.issued_token_type)
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
             .field("scope", &self.scope)
@@ -237,8 +257,6 @@ pub enum TokenRefusal {
     InvalidClient(String),
     /// `400`.
     InvalidRequest(String),
-    /// `400`: an exchanged subject token that is not one.
-    InvalidGrant(String),
     /// `400`: what may not be issued for the scope.
     InvalidScope(String),
     /// `400`: an audience or a target that may not be named.
@@ -256,7 +274,6 @@ impl TokenRefusal {
         match self {
             Self::InvalidClient(_) => "invalid_client",
             Self::InvalidRequest(_) => "invalid_request",
-            Self::InvalidGrant(_) => "invalid_grant",
             Self::InvalidScope(_) => "invalid_scope",
             Self::InvalidTarget(_) => "invalid_target",
             Self::UnsupportedGrantType(_) => "unsupported_grant_type",
@@ -281,7 +298,6 @@ impl TokenRefusal {
             Self::TooManyRequests(_) => "too many requests: come back after Retry-After",
             Self::InvalidClient(detail)
             | Self::InvalidRequest(detail)
-            | Self::InvalidGrant(detail)
             | Self::InvalidScope(detail)
             | Self::InvalidTarget(detail)
             | Self::UnsupportedGrantType(detail)
@@ -364,49 +380,113 @@ fn source_key(source: &str) -> String {
     }
 }
 
-/// How long before this process first served the endpoint an assertion may have been made: a
-/// client signs one right before it asks, and its clock may run a little behind.
-const ASSERTION_TOLERANCE: u64 = 5;
+/// The scope word that elevates to a role: `role:<name>`.
+pub const ROLE_SCOPE: &str = "role:";
 
-/// The client assertions seen, each refused a second time within its lifetime. They are held in
-/// memory: one made before this process first served the endpoint is refused, so a restart
-/// opens no window to replay an assertion seen before it.
-#[derive(Default)]
-pub(super) struct Replays {
-    seen: Mutex<HashMap<(String, String), u64>>,
-    since: Mutex<Option<u64>>,
+/// What a token is issued for, once checked: its family, operations, audiences, targets and the
+/// role it was elevated to.
+pub(super) struct Asked {
+    pub(super) family: &'static str,
+    pub(super) scope: Vec<String>,
+    pub(super) audience: Vec<String>,
+    pub(super) targets: Vec<String>,
+    pub(super) role: Option<String>,
+    /// The role's bound on the token's lifetime, in seconds, beside the family's.
+    pub(super) max_lifetime: Option<u64>,
 }
 
-impl Replays {
-    /// When this process first served the endpoint, recorded at its first request.
-    fn since(&self, now: u64) -> u64 {
-        *self
-            .since
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_or_insert(now)
+/// The one family `operations` belong to (D19).
+pub(super) fn family_of(operations: &[&str]) -> Result<&'static str, TokenRefusal> {
+    if operations.is_empty() {
+        return Err(TokenRefusal::InvalidScope(
+            "the scope names no operation".to_owned(),
+        ));
     }
-
-    fn first_use(&self, account: &str, jti: &str, expires_at: u64, now: u64) -> bool {
-        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        seen.retain(|_, until| *until > now);
-        seen.insert((account.to_owned(), jti.to_owned()), expires_at)
-            .is_none()
+    if operations
+        .iter()
+        .all(|op| APPLICATION_OPERATIONS.contains(op))
+    {
+        Ok(APPLICATION)
+    } else if operations
+        .iter()
+        .all(|op| ADMINISTRATION_OPERATIONS.contains(op))
+    {
+        Ok(ADMINISTRATION)
+    } else {
+        Err(TokenRefusal::InvalidScope(
+            "the scope is one family's operations: application or administration, never both"
+                .to_owned(),
+        ))
     }
 }
 
-/// Who a request is for, once its proof held.
-struct Subject {
-    principal: Principal,
-    client_id: String,
-    account: Option<ServiceAccount>,
-    credential_id: Option<[u8; 16]>,
-    /// The latest a token for it may expire: its credential's expiry, its session's end.
-    expires_by: Option<u64>,
+/// An application token's targets: 1 to [`MAX_TARGETS`] selectors of a member's Planes.
+pub(super) fn selectors_of(targets: &[String]) -> Result<Vec<Selector>, TokenRefusal> {
+    if targets.is_empty() || targets.len() > MAX_TARGETS {
+        return Err(TokenRefusal::InvalidTarget(format!(
+            "an application token names 1 to {MAX_TARGETS} targets"
+        )));
+    }
+    targets
+        .iter()
+        .map(|target| {
+            let selector = Selector::parse(target).map_err(|_| {
+                TokenRefusal::InvalidTarget(format!("`{target}` is not a selector"))
+            })?;
+            if selector.prefix().plane_id().is_none() {
+                return Err(TokenRefusal::InvalidTarget(format!(
+                    "`{target}` is not a resource of a member's Planes"
+                )));
+            }
+            Ok(selector)
+        })
+        .collect()
 }
 
-fn client_failed() -> TokenRefusal {
-    TokenRefusal::InvalidClient("the client could not be authenticated".to_owned())
+/// What RFC 8693 asks of a request before anything is proved (§2.1): no delegation, an access
+/// token or nothing asked as the issued type, and a `resource` an absolute URI without fragment,
+/// answered `invalid_target` since no resource indicator is served; `audience` names a member.
+fn conforms(request: &TokenRequest) -> Result<(), TokenRefusal> {
+    if request.grant_type == TOKEN_EXCHANGE {
+        if request.actor_token.is_some() || request.actor_token_type.is_some() {
+            return Err(TokenRefusal::InvalidRequest(
+                "delegation is not served: a token exchange takes no actor_token".to_owned(),
+            ));
+        }
+        if let Some(asked) = request.requested_token_type.as_deref()
+            && asked != ACCESS_TOKEN_TYPE
+        {
+            return Err(TokenRefusal::InvalidRequest(format!(
+                "requested_token_type is `{ACCESS_TOKEN_TYPE}`, the only type issued"
+            )));
+        }
+    }
+    if let Some(resource) = request.resource.iter().find(|uri| !is_absolute_uri(uri)) {
+        return Err(TokenRefusal::InvalidRequest(format!(
+            "`{}` is not an absolute URI without a fragment",
+            resource.chars().take(256).collect::<String>()
+        )));
+    }
+    if !request.resource.is_empty() {
+        return Err(TokenRefusal::InvalidTarget(
+            "no resource indicator is served: name the member as audience, member:<member_id>"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// RFC 3986 §4.3: a scheme, `:`, and the rest, with no fragment; never a space or a control.
+fn is_absolute_uri(text: &str) -> bool {
+    let Some((scheme, rest)) = text.split_once(':') else {
+        return false;
+    };
+    let mut letters = scheme.chars();
+    letters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && letters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !rest.is_empty()
+        && !text.contains('#')
+        && !text.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Lowercase hex, two characters a byte.
@@ -420,10 +500,6 @@ fn decode_hex(hex: &str) -> Option<Vec<u8>> {
                 .collect()
         })
         .flatten()
-}
-
-fn decode_part(part: &str) -> Option<serde_json::Value> {
-    serde_json::from_slice(&URL_SAFE_NO_PAD.decode(part).ok()?).ok()
 }
 
 /// Who a request is counted as, before anything is hashed or verified, so a failing guess spends
@@ -492,6 +568,10 @@ impl HostApi {
             WhenFull::Admit,
             now,
         )?;
+        if let Err(refusal) = conforms(request) {
+            self.record_refusal(&claimed, &refusal);
+            return Err(refusal);
+        }
         let subject = match request.grant_type.as_str() {
             CLIENT_CREDENTIALS => self.authenticate_client(tokens, request, proof, now),
             TOKEN_EXCHANGE => self.exchanged_subject(request),
@@ -529,305 +609,6 @@ impl HostApi {
         answer
     }
 
-    /// The service account a `client_credentials` request proves, by exactly one proof.
-    fn authenticate_client(
-        &self,
-        tokens: &Tokens,
-        request: &TokenRequest,
-        proof: &ClientProof,
-        now: u64,
-    ) -> Result<Subject, TokenRefusal> {
-        let identities = self
-            .identities
-            .as_ref()
-            .ok_or_else(|| TokenRefusal::Unavailable("no directory is open".to_owned()))?;
-        let assertion =
-            request.client_assertion.is_some() || request.client_assertion_type.is_some();
-        let certificate = !assertion && proof.basic.is_none();
-        if proof.basic.is_some() && assertion {
-            return Err(TokenRefusal::InvalidRequest(
-                "one client proof: a secret or an assertion, not both".to_owned(),
-            ));
-        }
-        let name = match (&proof.basic, &request.client_id) {
-            (Some((basic, _)), Some(form)) if basic != form => {
-                return Err(TokenRefusal::InvalidRequest(
-                    "the client_id differs from the Basic credentials'".to_owned(),
-                ));
-            }
-            (Some((basic, _)), _) => basic.clone(),
-            (None, Some(form)) => form.clone(),
-            (None, None) if assertion => String::new(),
-            (None, None) => {
-                return Err(TokenRefusal::InvalidClient(
-                    "no client proof: a secret, an assertion or a certificate with client_id"
-                        .to_owned(),
-                ));
-            }
-        };
-        if let Some((_, secret)) = &proof.basic {
-            // An unknown account, a malformed secret and an account holding no secret each cost
-            // one Argon2id, as a wrong secret against one credential does: the answer's time
-            // says no more than its content. An account holding several secrets costs one each.
-            let account = identities.directory.service_account(&name);
-            let secrets: Vec<(crate::authz::directory::Credential, String)> = account
-                .as_ref()
-                .filter(|_| credentials::is_secret(secret))
-                .map(|account| {
-                    account
-                        .live_credentials(now)
-                        .filter_map(|credential| match &credential.material {
-                            CredentialMaterial::Secret { phc } => {
-                                Some((credential.clone(), phc.clone()))
-                            }
-                            _ => None,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            if secrets.is_empty() {
-                crate::authz::password::burn(secret);
-                return Err(client_failed());
-            }
-            let matched = secrets
-                .into_iter()
-                .find(|(_, phc)| crate::authz::password::verify(secret, phc));
-            let (Some(account), Some((credential, _))) = (account, matched) else {
-                return Err(client_failed());
-            };
-            return active_subject(account, &credential);
-        }
-        if assertion {
-            if request.client_assertion_type.as_deref() != Some(JWT_BEARER) {
-                return Err(TokenRefusal::InvalidRequest(format!(
-                    "client_assertion_type is `{JWT_BEARER}`"
-                )));
-            }
-            let jwt = request
-                .client_assertion
-                .as_deref()
-                .ok_or_else(|| TokenRefusal::InvalidRequest("no client_assertion".to_owned()))?;
-            return self.assertion_subject(tokens, jwt, &name, now);
-        }
-        if certificate {
-            let account = identities
-                .directory
-                .service_account(&name)
-                .ok_or_else(client_failed)?;
-            // An SPKI binding matches the certificate's key, a SAN URI binding its SAN URIs: a SAN
-            // URI spelled as a digest never matches a key.
-            let matches = |binding: &str| {
-                if binding.starts_with("spki:sha256:") {
-                    proof.spki.as_deref() == Some(binding)
-                } else {
-                    proof.san_uris.iter().any(|uri| uri == binding)
-                }
-            };
-            let credential = account
-                .live_credentials(now)
-                .find(|credential| {
-                    matches!(&credential.material, CredentialMaterial::Binding { binding }
-                        if matches(binding))
-                })
-                .cloned()
-                .ok_or_else(client_failed)?;
-            return active_subject(account, &credential);
-        }
-        Err(client_failed())
-    }
-
-    /// The service account a client assertion proves (RFC 7523 §3).
-    fn assertion_subject(
-        &self,
-        tokens: &Tokens,
-        jwt: &str,
-        client_id: &str,
-        now: u64,
-    ) -> Result<Subject, TokenRefusal> {
-        let identities = self
-            .identities
-            .as_ref()
-            .ok_or_else(|| TokenRefusal::Unavailable("no directory is open".to_owned()))?;
-        if jwt.len() > MAX_ASSERTION_BYTES {
-            return Err(client_failed());
-        }
-        let mut parts = jwt.split('.');
-        let (Some(protected), Some(payload), Some(signature), None) =
-            (parts.next(), parts.next(), parts.next(), parts.next())
-        else {
-            return Err(client_failed());
-        };
-        let header = decode_part(protected).ok_or_else(client_failed)?;
-        let claims = decode_part(payload).ok_or_else(client_failed)?;
-        let text = |value: &serde_json::Value, name: &str| {
-            value
-                .get(name)
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-        };
-        let (Some(alg), Some(kid)) = (text(&header, "alg"), text(&header, "kid")) else {
-            return Err(client_failed());
-        };
-        let (Some(issuer), Some(subject), Some(jti)) = (
-            text(&claims, "iss"),
-            text(&claims, "sub"),
-            text(&claims, "jti"),
-        ) else {
-            return Err(client_failed());
-        };
-        if issuer != subject || (!client_id.is_empty() && client_id != subject) {
-            return Err(client_failed());
-        }
-        let endpoint = format!("{}/iam/v1/token", tokens.base_url);
-        let audience_holds = match claims.get("aud") {
-            Some(serde_json::Value::String(one)) => *one == endpoint || *one == tokens.issuer,
-            Some(serde_json::Value::Array(many)) => many.iter().any(|one| {
-                one.as_str()
-                    .is_some_and(|one| one == endpoint || one == tokens.issuer)
-            }),
-            _ => false,
-        };
-        let expires_at = claims.get("exp").and_then(serde_json::Value::as_u64);
-        let Some(expires_at) =
-            expires_at.filter(|exp| *exp > now && *exp <= now + MAX_ASSERTION_LIFETIME)
-        else {
-            return Err(client_failed());
-        };
-        if !audience_holds || jti.is_empty() || jti.len() > 128 {
-            return Err(client_failed());
-        }
-        // Made after this process first served the endpoint, and not in its future: a replay
-        // across a restart is refused, since the assertions seen before it are not remembered.
-        // RFC 7523 leaves `iat` out at will: one without it counts as made the longest an
-        // assertion lives before its `exp`.
-        let issued_at = claims
-            .get("iat")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or_else(|| expires_at.saturating_sub(MAX_ASSERTION_LIFETIME));
-        if issued_at.saturating_add(ASSERTION_TOLERANCE) < tokens.replays.since(now)
-            || issued_at > now.saturating_add(ASSERTION_TOLERANCE)
-        {
-            return Err(client_failed());
-        }
-        let account = identities
-            .directory
-            .service_account(&subject)
-            .ok_or_else(client_failed)?;
-        let credential = account
-            .live_credentials(now)
-            .find(|credential| {
-                matches!(&credential.material, CredentialMaterial::Key { key_id, algorithm, .. }
-                    if *key_id == kid && *algorithm == alg)
-            })
-            .cloned()
-            .ok_or_else(client_failed)?;
-        let CredentialMaterial::Key { key, .. } = &credential.material else {
-            return Err(client_failed());
-        };
-        let signature = URL_SAFE_NO_PAD
-            .decode(signature)
-            .map_err(|_| client_failed())?;
-        let algorithm: &dyn ring::signature::VerificationAlgorithm = match alg.as_str() {
-            credentials::EDDSA => &ring::signature::ED25519,
-            credentials::ES256 => &ring::signature::ECDSA_P256_SHA256_FIXED,
-            _ => return Err(client_failed()),
-        };
-        ring::signature::UnparsedPublicKey::new(algorithm, key)
-            .verify(format!("{protected}.{payload}").as_bytes(), &signature)
-            .map_err(|_| client_failed())?;
-        // Verified, then recorded: an assertion is used once within its lifetime.
-        if !tokens.replays.first_use(&subject, &jti, expires_at, now) {
-            return Err(client_failed());
-        }
-        active_subject(account, &credential)
-    }
-
-    /// The person a token exchange is for: a password session, or a provider's token.
-    fn exchanged_subject(&self, request: &TokenRequest) -> Result<Subject, TokenRefusal> {
-        let identities = self
-            .identities
-            .as_ref()
-            .ok_or_else(|| TokenRefusal::Unavailable("no directory is open".to_owned()))?;
-        let token = request
-            .subject_token
-            .as_deref()
-            .ok_or_else(|| TokenRefusal::InvalidRequest("no subject_token".to_owned()))?;
-        // RFC 8693 §2.1: the type is stated, and the only one served is an access token, which a
-        // password session and a provider's token both are.
-        if request.subject_token_type.as_deref() != Some(ACCESS_TOKEN_TYPE) {
-            return Err(TokenRefusal::InvalidRequest(format!(
-                "subject_token_type is `{ACCESS_TOKEN_TYPE}`"
-            )));
-        }
-        let invalid = || TokenRefusal::InvalidGrant("the subject token is not valid".to_owned());
-        if let Some(signin) = &identities.signin
-            && let Some(session) = signin.session(token)
-        {
-            // A session that serves only the enrollment of a second factor proves a password
-            // alone, which is what the factor is there to refuse: it is exchanged for nothing.
-            if session.opened == crate::authz::sessions::Opened::EnrollFactor {
-                return Err(invalid());
-            }
-            let user = identities
-                .directory
-                .user(&session.user)
-                .filter(|user| user.status == UserStatus::Active)
-                .ok_or_else(invalid)?;
-            return Ok(Subject {
-                principal: Principal::new(user_principal(&user.name)).map_err(|_| invalid())?,
-                client_id: "password-session".to_owned(),
-                account: None,
-                credential_id: None,
-                expires_by: Some(session.expires_at),
-            });
-        }
-        // A provider's token, only where `oidc` is among the deployment's methods, and as the
-        // mapper reads it: the user its subject is linked to, or whose email it verifies when the
-        // provider links by email; a disabled user is refused, never its bare subject.
-        let providers: &[std::sync::Arc<crate::authz::oidc::Verifier>] =
-            if identities.exchange_provider_tokens {
-                &identities.providers
-            } else {
-                &[]
-            };
-        for verifier in providers {
-            if let Ok(Some(verified)) = verifier.verify_token(token) {
-                let subject = verified.context.authorization_principal().clone();
-                let linked = identities
-                    .directory
-                    .user_of_subject(subject.as_str())
-                    .or_else(|| {
-                        verifier
-                            .rule()
-                            .link_email
-                            .then(|| {
-                                verified
-                                    .verified_email
-                                    .as_deref()
-                                    .and_then(|email| identities.directory.user_by_email(email))
-                            })
-                            .flatten()
-                    });
-                let principal = match linked {
-                    Some(user) if user.status == UserStatus::Active => {
-                        Principal::new(user_principal(&user.name)).map_err(|_| invalid())?
-                    }
-                    Some(_) => return Err(invalid()),
-                    None => subject,
-                };
-                return Ok(Subject {
-                    principal,
-                    client_id: format!("oidc:{}", verifier.name()),
-                    account: None,
-                    credential_id: None,
-                    // Never past the provider's token it was exchanged for.
-                    expires_by: Some(verified.expires_at),
-                });
-            }
-        }
-        Err(invalid())
-    }
-
     /// Checks what `request` asks against what `subject` may do now, records the token and signs
     /// it.
     fn mint(
@@ -838,32 +619,14 @@ impl HostApi {
         proof: &ClientProof,
         now: u64,
     ) -> Result<TokenAnswer, TokenRefusal> {
-        let scope: Vec<&str> = request
-            .scope
-            .as_deref()
-            .unwrap_or_default()
-            .split_whitespace()
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if scope.is_empty() {
-            return Err(TokenRefusal::InvalidScope(
-                "the scope names no operation".to_owned(),
-            ));
-        }
-        let family = if scope.iter().all(|op| APPLICATION_OPERATIONS.contains(op)) {
-            APPLICATION
-        } else if scope
-            .iter()
-            .all(|op| ADMINISTRATION_OPERATIONS.contains(op))
-        {
-            ADMINISTRATION
-        } else {
-            return Err(TokenRefusal::InvalidScope(
-                "the scope is one family's operations: application or administration, never both"
-                    .to_owned(),
-            ));
-        };
+        let Asked {
+            family,
+            scope,
+            audience,
+            targets,
+            role,
+            max_lifetime,
+        } = self.asked(request, subject)?;
         let lifetimes = tokens.lifetimes;
         let (default, max) = if family == APPLICATION {
             (lifetimes.application_default, lifetimes.application_max)
@@ -872,6 +635,11 @@ impl HostApi {
                 lifetimes.administration_default,
                 lifetimes.administration_max,
             )
+        };
+        // A role's bound narrows the family's (`2-security/8` Roles and elevation).
+        let (default, max) = match max_lifetime {
+            Some(bound) => (default.min(bound), max.min(bound)),
+            None => (default, max),
         };
         let lifetime = match request.requested_lifetime.as_deref() {
             None => default,
@@ -890,74 +658,14 @@ impl HostApi {
             expires_at = expires_at.min(by);
         }
         if expires_at <= now {
-            return Err(TokenRefusal::InvalidGrant(
-                "the credential has expired".to_owned(),
-            ));
+            // An expired credential fails the client's proof; an expired subject token is not
+            // acceptable (RFC 8693 §2.2.2).
+            return Err(if subject.account.is_some() {
+                client_failed()
+            } else {
+                TokenRefusal::InvalidRequest("the subject token has expired".to_owned())
+            });
         }
-        let audience = self.checked_audience(request, family)?;
-        let denied = || {
-            TokenRefusal::InvalidScope(
-                "the subject may not do what the scope asks on what the target names".to_owned(),
-            )
-        };
-        let targets: Vec<String> = if family == ADMINISTRATION {
-            if !request.target.is_empty() {
-                return Err(TokenRefusal::InvalidTarget(
-                    "an administration token's target is its member's Host: name none".to_owned(),
-                ));
-            }
-            let member = audience[0]
-                .strip_prefix("member:")
-                .ok_or_else(|| TokenRefusal::InvalidTarget("no member".to_owned()))?;
-            let resource = Resource::member(member);
-            for op in &scope {
-                let granted_by = self
-                    .authorization
-                    .granted_to(&subject.principal, op, &resource)
-                    .ok_or_else(denied)?;
-                // D20: a service account administers a member only by a grant of its own, never
-                // through a role or a public grant.
-                if subject.account.is_some() && granted_by != subject.principal {
-                    return Err(denied());
-                }
-            }
-            vec!["host".to_owned()]
-        } else {
-            if request.target.is_empty() || request.target.len() > MAX_TARGETS {
-                return Err(TokenRefusal::InvalidTarget(format!(
-                    "an application token names 1 to {MAX_TARGETS} targets"
-                )));
-            }
-            let mut targets = BTreeSet::new();
-            for target in &request.target {
-                let selector = Selector::parse(target).map_err(|_| {
-                    TokenRefusal::InvalidTarget(format!("`{target}` is not a selector"))
-                })?;
-                if selector.prefix().plane_id().is_none() {
-                    return Err(TokenRefusal::InvalidTarget(format!(
-                        "`{target}` is not a resource of a member's Planes"
-                    )));
-                }
-                for op in &scope {
-                    let held = if selector.covers_descendants() {
-                        self.authorization.principal_covers_whole(
-                            &subject.principal,
-                            op,
-                            selector.prefix(),
-                        )
-                    } else {
-                        self.authorization
-                            .granted_to(&subject.principal, op, selector.prefix())
-                            .is_some()
-                    };
-                    if !held {
-                        return Err(denied());
-                    }
-                }
-                targets.insert(selector.to_string());
-            }
-            targets.into_iter().collect()
-        };
         // An administration token is bound to the certificate of the connection that asked for it,
         // when there is one, and must be under `regulated` (RFC 8705 §3).
         let bound = (family == ADMINISTRATION)
@@ -994,6 +702,7 @@ impl HostApi {
                 expires_at,
                 account: None,
                 credential_id: None,
+                role: role.as_ref().map(|name| role_principal(name)),
                 status: 0,
             };
             largest.expires_at = expires_at;
@@ -1020,6 +729,7 @@ impl HostApi {
                     expires_at,
                     account: subject.account.as_ref().map(|account| account.name.clone()),
                     credential_id: subject.credential_id,
+                    role: role.as_ref().map(|name| role_principal(name)),
                 },
                 "iam",
                 now,
@@ -1045,27 +755,141 @@ impl HostApi {
             let _ = tokens
                 .registry
                 .set_status(None, |token| token.jti == jti, decided, "iam", now);
-            return Err(client_failed());
+            // Said as what failed: the role no longer held, the client's credential, or the
+            // subject token of an exchange, which has no client (RFC 8693 §2.2.2).
+            let without_role = crate::authz::tokens::IssuedToken {
+                role: None,
+                ..issued.clone()
+            };
+            let role_alone = issued.role.is_some()
+                && super::tokens::status_from_directory(&identities.directory, &without_role)
+                    .is_none_or(|status| status == crate::authz::tokens::status::VALID);
+            return Err(if role_alone {
+                TokenRefusal::InvalidScope(
+                    "the subject may not elevate to the role the scope names".to_owned(),
+                )
+            } else if subject.account.is_some() {
+                client_failed()
+            } else {
+                TokenRefusal::InvalidRequest("the subject token is not valid".to_owned())
+            });
         }
         let access_token = sign(tokens, &issued, &targets, bound.as_deref(), now)?;
         self.record_issued(&issued, &targets);
         Ok(TokenAnswer {
             access_token,
+            issued_token_type: (request.grant_type == TOKEN_EXCHANGE)
+                .then(|| ACCESS_TOKEN_TYPE.to_owned()),
             token_type: "Bearer".to_owned(),
             expires_in: expires_at - now,
             scope: scope_text,
         })
     }
 
-    /// The audiences asked, each one this IAM Host may name: an `administration` token exactly
-    /// one live member, an `application` token live members or groups holding one.
-    fn checked_audience(
+    /// What `request` asks for `subject`, checked: within everything the subject holds, or, with
+    /// one `role:<name>` in its scope, within that role alone (`2-security/8` Roles and
+    /// elevation).
+    fn asked(&self, request: &TokenRequest, subject: &Subject) -> Result<Asked, TokenRefusal> {
+        let words: BTreeSet<&str> = request
+            .scope
+            .as_deref()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect();
+        let roles: Vec<&str> = words
+            .iter()
+            .filter_map(|word| word.strip_prefix(ROLE_SCOPE))
+            .collect();
+        let operations: Vec<&str> = words
+            .iter()
+            .copied()
+            .filter(|word| !word.starts_with(ROLE_SCOPE))
+            .collect();
+        match roles.as_slice() {
+            [] => self.within_grants(request, subject, &subject.principal, &operations),
+            [role] => self.elevated(request, subject, role, &operations),
+            _ => Err(TokenRefusal::InvalidScope(
+                "a scope names at most one role".to_owned(),
+            )),
+        }
+    }
+
+    /// `operations` on what `request` names, each held by `holder`: the subject itself, or the
+    /// role it elevated to. A service account administers only by a grant of its own (D20).
+    pub(super) fn within_grants(
         &self,
         request: &TokenRequest,
+        subject: &Subject,
+        holder: &permguard_core::authz::Principal,
+        operations: &[&str],
+    ) -> Result<Asked, TokenRefusal> {
+        let family = family_of(operations)?;
+        let audience = self.checked_audience(&request.audience, family)?;
+        let denied = || {
+            TokenRefusal::InvalidScope(
+                "the subject may not do what the scope asks on what the target names".to_owned(),
+            )
+        };
+        let targets: Vec<String> = if family == ADMINISTRATION {
+            if !request.target.is_empty() {
+                return Err(TokenRefusal::InvalidTarget(
+                    "an administration token's target is its member's Host: name none".to_owned(),
+                ));
+            }
+            let member = audience[0]
+                .strip_prefix("member:")
+                .ok_or_else(|| TokenRefusal::InvalidTarget("no member".to_owned()))?;
+            let resource = Resource::member(member);
+            for op in operations {
+                let granted_by = self
+                    .authorization
+                    .granted_to(holder, op, &resource)
+                    .ok_or_else(denied)?;
+                // D20: a service account administers a member only by a grant of its own, never
+                // through a role or a public grant.
+                if subject.account.is_some() && granted_by != subject.principal {
+                    return Err(denied());
+                }
+            }
+            vec!["host".to_owned()]
+        } else {
+            let mut targets = BTreeSet::new();
+            for selector in selectors_of(&request.target)? {
+                for op in operations {
+                    let held = if selector.covers_descendants() {
+                        self.authorization
+                            .principal_covers_whole(holder, op, selector.prefix())
+                    } else {
+                        self.authorization
+                            .granted_to(holder, op, selector.prefix())
+                            .is_some()
+                    };
+                    if !held {
+                        return Err(denied());
+                    }
+                }
+                targets.insert(selector.to_string());
+            }
+            targets.into_iter().collect()
+        };
+        Ok(Asked {
+            family,
+            scope: operations.iter().map(|op| (*op).to_owned()).collect(),
+            audience,
+            targets,
+            role: None,
+            max_lifetime: None,
+        })
+    }
+
+    /// The audiences asked, each one this IAM Host may name: an `administration` token exactly
+    /// one live member, an `application` token live members or groups holding one.
+    pub(super) fn checked_audience(
+        &self,
+        audience: &[String],
         family: &str,
     ) -> Result<Vec<String>, TokenRefusal> {
-        let asked: Vec<String> = request
-            .audience
+        let asked: Vec<String> = audience
             .iter()
             .cloned()
             .collect::<BTreeSet<_>>()
@@ -1125,7 +949,7 @@ impl HostApi {
         let target = targets.join(" ");
         let audience = issued.audience.join(" ");
         let jti = issued.jti_text();
-        let facts = [
+        let mut facts = vec![
             ("client_id", permguard_core::Fact::Text(&issued.client_id)),
             ("family", permguard_core::Fact::Text(&issued.family)),
             ("scope", permguard_core::Fact::Text(&issued.scope)),
@@ -1134,6 +958,10 @@ impl HostApi {
             ("jti", permguard_core::Fact::Text(&jti)),
             ("expires_at", permguard_core::Fact::Uint(issued.expires_at)),
         ];
+        // The role the subject elevated to, when it did (`2-security/8` Roles and elevation).
+        if let Some(role) = issued.role.as_deref() {
+            facts.push(("role", permguard_core::Fact::Text(role)));
+        }
         let event = permguard_core::AuditEvent::new(
             crate::audit::AUDIT_TOKEN_ISSUED,
             permguard_core::Subject::Principal(&issued.subject),
@@ -1175,24 +1003,6 @@ impl HostApi {
     }
 }
 
-/// The subject of `account` proved by `credential`, while both are good.
-fn active_subject(
-    account: ServiceAccount,
-    credential: &crate::authz::directory::Credential,
-) -> Result<Subject, TokenRefusal> {
-    if account.status != AccountStatus::Active {
-        return Err(client_failed());
-    }
-    Ok(Subject {
-        principal: Principal::new(service_account_principal(&account.name))
-            .map_err(|_| client_failed())?,
-        client_id: credential.id_text(),
-        credential_id: Some(credential.id),
-        expires_by: credential.expires_at,
-        account: Some(account),
-    })
-}
-
 /// Signs `issued` as an `at+jwt` under `iam.tokens`.
 /// The claims of `issued`.
 fn claims_of(
@@ -1219,6 +1029,14 @@ fn claims_of(
     });
     if let Some(thumbprint) = bound {
         claims["cnf"] = serde_json::json!({ "x5t#S256": thumbprint });
+    }
+    // RFC 9068 §2.2.3.1: the role the subject elevated to, by its name; `sub` stays the subject.
+    if let Some(role) = issued
+        .role
+        .as_deref()
+        .and_then(|role| role.strip_prefix(crate::authz::directory::ROLE_PREFIX))
+    {
+        claims["roles"] = serde_json::json!([role]);
     }
     claims
 }
@@ -1286,6 +1104,108 @@ mod tests {
         .expect("read");
         assert_eq!(read.audience, vec!["member:a", "group:b"]);
         assert_eq!(read.target, vec!["plane/data/*"]);
+    }
+
+    fn form(pairs: &[(&str, &str)]) -> TokenRequest {
+        TokenRequest::from_form(
+            pairs
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+        )
+        .expect("read")
+    }
+
+    /// RFC 8693 §2.1: `resource` is its own parameter, never a target; delegation and the asked
+    /// type are read, so they can be answered.
+    #[test]
+    fn rfc_8693_parameters_are_read_apart() {
+        let read = form(&[
+            ("grant_type", TOKEN_EXCHANGE),
+            ("resource", "https://backend.example.com/api"),
+            ("target", "plane/data/*"),
+            ("requested_token_type", ACCESS_TOKEN_TYPE),
+            ("actor_token", "eyJ.actor.token"),
+            ("actor_token_type", JWT_TOKEN_TYPE),
+        ]);
+        assert_eq!(read.resource, vec!["https://backend.example.com/api"]);
+        assert_eq!(read.target, vec!["plane/data/*"]);
+        assert_eq!(
+            read.requested_token_type.as_deref(),
+            Some(ACCESS_TOKEN_TYPE)
+        );
+        assert!(read.actor_token.is_some() && read.actor_token_type.is_some());
+        assert!(!format!("{read:?}").contains("eyJ.actor.token"));
+    }
+
+    /// RFC 8693 §2.1 and §2.2.2, before anything is proved: no delegation, only an access token
+    /// as the issued type, a `resource` an absolute URI without fragment and then not served.
+    #[test]
+    fn a_request_rfc_8693_does_not_allow_is_refused_by_its_rule() {
+        let exchange = |extra: &[(&str, &str)]| {
+            let mut pairs = vec![("grant_type", TOKEN_EXCHANGE)];
+            pairs.extend_from_slice(extra);
+            conforms(&form(&pairs))
+        };
+        let error = |result: Result<(), TokenRefusal>| result.expect_err("refused").error();
+        assert!(exchange(&[]).is_ok());
+        assert!(exchange(&[("requested_token_type", ACCESS_TOKEN_TYPE)]).is_ok());
+        for refused in [
+            vec![("actor_token", "a"), ("actor_token_type", JWT_TOKEN_TYPE)],
+            vec![("actor_token", "a")],
+            vec![("actor_token_type", JWT_TOKEN_TYPE)],
+            vec![("requested_token_type", JWT_TOKEN_TYPE)],
+            vec![("requested_token_type", ID_TOKEN_TYPE)],
+            vec![("resource", "/relative/api")],
+            vec![("resource", "https://backend.example.com/api#part")],
+            vec![("resource", "https://backend example.com")],
+            vec![("resource", "1https://backend.example.com")],
+        ] {
+            assert_eq!(error(exchange(&refused)), "invalid_request", "{refused:?}");
+        }
+        assert_eq!(
+            error(exchange(&[(
+                "resource",
+                "https://backend.example.com/api?x=1"
+            )])),
+            "invalid_target"
+        );
+        assert_eq!(
+            error(exchange(&[("resource", "urn:example:cooperation-context")])),
+            "invalid_target"
+        );
+        // RFC 8693's own parameters are a token exchange's; `resource` is any grant's.
+        let credentials = |extra: &[(&str, &str)]| {
+            let mut pairs = vec![("grant_type", CLIENT_CREDENTIALS)];
+            pairs.extend_from_slice(extra);
+            conforms(&form(&pairs))
+        };
+        assert!(credentials(&[("actor_token", "a")]).is_ok());
+        assert_eq!(
+            error(credentials(&[("resource", "https://backend.example.com")])),
+            "invalid_target"
+        );
+    }
+
+    /// RFC 8693 §2.2.1: an exchange's answer names what it issued; a client credentials answer is
+    /// RFC 6749's alone.
+    #[test]
+    fn an_exchange_answer_names_the_issued_token_type() {
+        let answer = |issued: Option<&str>| {
+            serde_json::to_value(TokenAnswer {
+                access_token: "t".to_owned(),
+                issued_token_type: issued.map(str::to_owned),
+                token_type: "Bearer".to_owned(),
+                expires_in: 60,
+                scope: "decision.evaluate".to_owned(),
+            })
+            .expect("json")
+        };
+        assert_eq!(
+            answer(Some(ACCESS_TOKEN_TYPE))["issued_token_type"],
+            ACCESS_TOKEN_TYPE
+        );
+        assert!(answer(None).get("issued_token_type").is_none());
     }
 
     #[test]
@@ -1360,6 +1280,7 @@ mod tests {
     fn an_answer_never_prints_its_token() {
         let answer = TokenAnswer {
             access_token: "eyJhbGciOiJFZERTQSJ9.secret.part".to_owned(),
+            issued_token_type: Some(ACCESS_TOKEN_TYPE.to_owned()),
             token_type: "Bearer".to_owned(),
             expires_in: 3_600,
             scope: "decision.evaluate".to_owned(),

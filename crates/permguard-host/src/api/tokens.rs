@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::grants::rfc3339;
 use super::{HostApi, Mutation, Receipt, Refusal};
-use crate::authz::directory::{AccountStatus, Directory};
+use crate::authz::directory::{AccountStatus, Directory, ROLE_PREFIX};
 use crate::authz::tokens::{IssuedToken, MUTATION_DOMAIN, TokenError, TokenRegistry, status};
 use crate::identity::record::uuid_text;
 use crate::operations::mutation::{Applied, Failure};
@@ -95,7 +95,7 @@ pub struct Tokens {
     /// The token endpoint's requests per client and per source (WP-11.4).
     pub(super) limiter: super::token_endpoint::Limiter,
     /// The client assertions already used (WP-11.4).
-    pub(super) replays: super::token_endpoint::Replays,
+    pub(super) replays: super::federation::Replays,
 }
 
 /// How far ahead the first list a process signs of a list it inherited is dated: past anything
@@ -123,7 +123,7 @@ impl Tokens {
             serves_data: false,
             signed: Mutex::default(),
             limiter: super::token_endpoint::Limiter::default(),
-            replays: super::token_endpoint::Replays::default(),
+            replays: super::federation::Replays::default(),
         }
     }
 
@@ -347,6 +347,9 @@ pub struct TokenView {
     pub status: String,
     pub status_list: String,
     pub index: u64,
+    /// The role the token was elevated to, by its name (`2-security/8` Roles and elevation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 /// `GET /iam/v1/tokens`.
@@ -407,13 +410,32 @@ fn view(tokens: &Tokens, token: &IssuedToken) -> TokenView {
         status: status::name(token.status).to_owned(),
         status_list: tokens.list_uri(&token.list_id),
         index: token.index,
+        role: token
+            .role
+            .as_deref()
+            .map(|role| role.strip_prefix(ROLE_PREFIX).unwrap_or(role).to_owned()),
     }
 }
 
 /// What the directory says `token`'s status must be: a local user's token follows its user,
 /// disabled `SUSPENDED` and deleted `INVALID`; a service account's follows its account and its
-/// credential; `None` for a provider subject's, which the directory does not hold.
+/// credential; `None` for a provider subject's, which the directory does not hold. A token issued
+/// under a role is `INVALID` once the role is ended or its subject no longer one of its members.
 pub fn status_from_directory(directory: &Directory, token: &IssuedToken) -> Option<u8> {
+    if let Some(role) = token.role.as_deref() {
+        let Some(name) = role.strip_prefix(crate::authz::directory::ROLE_PREFIX) else {
+            return Some(status::INVALID);
+        };
+        let issuer = crate::authz::issuer_of(&token.subject);
+        let held = directory.role(name).is_some()
+            && directory
+                .subjects(&token.subject, issuer.as_deref())
+                .iter()
+                .any(|subject| subject.as_str() == role);
+        if !held {
+            return Some(status::INVALID);
+        }
+    }
     if token.account.is_none() {
         let name = token
             .subject
@@ -457,9 +479,20 @@ impl HostApi {
         })
     }
 
-    /// Brings every live token of a service account to the status the directory decides. An
-    /// `INVALID` token stays so. Answers how many changed.
+    /// Brings the system roles to the live members, then every live token to the status the
+    /// directory decides. An `INVALID` token stays so. Answers how many changed.
     pub fn sync_token_statuses(&self, by: &str) -> Result<usize, Refusal> {
+        if self.tokens.is_none() || self.identities.is_none() {
+            return Ok(0);
+        }
+        // The system roles first, so a member gone ends its role and its tokens in this pass.
+        self.reconcile_member_roles_logged();
+        self.apply_token_statuses(by)
+    }
+
+    /// Brings every live token to the status the directory decides now, the system roles as
+    /// they are. An `INVALID` token stays so. Answers how many changed.
+    pub fn apply_token_statuses(&self, by: &str) -> Result<usize, Refusal> {
         let (Some(tokens), Some(identities)) = (self.tokens.as_deref(), self.identities.as_ref())
         else {
             return Ok(0);
@@ -708,6 +741,7 @@ mod tests {
                     expires_at: NOW + 3_600,
                     account: Some(account.to_owned()),
                     credential_id: Some([1; 16]),
+                    role: None,
                 },
                 "iam",
                 NOW,
@@ -909,6 +943,7 @@ mod tests {
             expires_at: NOW + 60,
             account: Some(account.to_owned()),
             credential_id: Some([credential; 16]),
+            role: None,
             status: status::VALID,
         };
         assert_eq!(

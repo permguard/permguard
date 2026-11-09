@@ -179,6 +179,34 @@ pub fn role_principal(name: &str) -> String {
     format!("{ROLE_PREFIX}{name}")
 }
 
+/// A member's own role: `dp.<member_id>` (`2-security/8` Roles and elevation).
+pub const MEMBER_ROLE_PREFIX: &str = "dp.";
+/// The role that decides on every data plane.
+pub const DATA_PLANES_ROLE: &str = "data-planes";
+
+/// `dp.<member_id>`.
+pub fn member_role(member_id: &str) -> String {
+    format!("{MEMBER_ROLE_PREFIX}{member_id}")
+}
+
+/// Whether `name` is a member's role: `dp.` and a `member_id` in its canonical text, 8-4-4-4-12
+/// lowercase hex. A role an operator named `dp.` and anything else is the operator's own.
+pub fn is_member_role(name: &str) -> bool {
+    name.strip_prefix(MEMBER_ROLE_PREFIX).is_some_and(|id| {
+        id.len() == 36
+            && id.bytes().enumerate().all(|(at, byte)| match at {
+                8 | 13 | 18 | 23 => byte == b'-',
+                _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+            })
+    })
+}
+
+/// Whether `name` is a role the IAM Host keeps itself: an operator assigns it, never makes,
+/// describes or deletes it, and it is never a grant's principal.
+pub fn is_system_role(name: &str) -> bool {
+    name == DATA_PLANES_ROLE || is_member_role(name)
+}
+
 /// `user:<name>`.
 pub fn user_principal(name: &str) -> String {
     format!("{USER_PREFIX}{name}")
@@ -215,6 +243,9 @@ pub struct DirectoryTransition {
     pub key_id: Option<String>,
     pub binding: Option<String>,
     pub expires_at: Option<u64>,
+    /// `role.create`, `role.update`: the longest a token elevated to the role lives, in seconds;
+    /// `0` on an update clears it, absent leaves it.
+    pub max_lifetime: Option<u64>,
 }
 
 /// Never a password, a factor or a client secret's hash: whether the transition holds one.
@@ -244,6 +275,7 @@ impl std::fmt::Debug for DirectoryTransition {
             .field("key_id", &self.key_id)
             .field("binding", &self.binding)
             .field("expires_at", &self.expires_at)
+            .field("max_lifetime", &self.max_lifetime)
             .finish_non_exhaustive()
     }
 }
@@ -275,6 +307,7 @@ impl DirectoryTransition {
             key_id: None,
             binding: None,
             expires_at: None,
+            max_lifetime: None,
         }
     }
 
@@ -342,6 +375,9 @@ impl DirectoryTransition {
         if let Some(expires_at) = self.expires_at {
             pairs.push((Value::Int(23), uint(expires_at)?));
         }
+        if let Some(seconds) = self.max_lifetime {
+            pairs.push((Value::Int(24), uint(seconds)?));
+        }
         cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError::Cbor(error.to_string()))
     }
 
@@ -353,7 +389,7 @@ impl DirectoryTransition {
         }
         let value =
             cbor::decode_canonical(bytes).map_err(|error| RecordError::Cbor(error.to_string()))?;
-        let mut map = Labelled::new(value, 23)?;
+        let mut map = Labelled::new(value, 24)?;
         let transition = Self {
             kind: map.text(1)?,
             revision: map.uint(2)?,
@@ -385,6 +421,7 @@ impl DirectoryTransition {
             key_id: map.optional_text(21)?,
             binding: map.optional_text(22)?,
             expires_at: map.optional_uint(23)?,
+            max_lifetime: map.optional_uint(24)?,
         };
         map.finish()?;
         if !kinds::ALL.contains(&transition.kind.as_str()) {
@@ -407,7 +444,12 @@ pub struct Role {
     pub revision: u64,
     pub created_at: u64,
     pub created_by: String,
+    /// The longest a token elevated to it lives, in seconds; none bounds it but its family.
+    pub max_lifetime: Option<u64>,
 }
+
+/// The bounds of a role's `max_lifetime`, in seconds: a minute to a day.
+pub const ROLE_MAX_LIFETIME: std::ops::RangeInclusive<u64> = 60..=86_400;
 
 /// Whether a user may sign in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -641,10 +683,14 @@ pub enum Change {
     CreateRole {
         name: String,
         description: String,
+        /// The longest a token elevated to it lives; `None` or `0` for no bound but the family's.
+        max_lifetime: Option<u64>,
     },
     UpdateRole {
         name: String,
         description: String,
+        /// `None` leaves it, `0` clears it.
+        max_lifetime: Option<u64>,
     },
     DeleteRole {
         name: String,
@@ -1033,10 +1079,23 @@ fn plan(
         }
         Ok(())
     };
+    let lifetime = |seconds: Option<u64>| -> Result<(), DirectoryError> {
+        match seconds {
+            Some(seconds) if seconds != 0 && !ROLE_MAX_LIFETIME.contains(&seconds) => {
+                invalid(format!(
+                    "a role's max_lifetime is {} to {} seconds, or 0 for none",
+                    ROLE_MAX_LIFETIME.start(),
+                    ROLE_MAX_LIFETIME.end()
+                ))
+            }
+            _ => Ok(()),
+        }
+    };
     let transition = match change {
         Change::CreateRole {
             name,
             description: text,
+            max_lifetime,
         } => {
             if !is_role_name(name) {
                 return invalid(format!(
@@ -1050,18 +1109,23 @@ fn plan(
                 return invalid(format!("a Host holds at most {MAX_ROLES} roles"));
             }
             description(text)?;
+            lifetime(*max_lifetime)?;
             let mut transition = DirectoryTransition::new(ROLE_CREATE, name);
             transition.description = Some(text.clone());
+            transition.max_lifetime = max_lifetime.filter(|seconds| *seconds > 0);
             transition
         }
         Change::UpdateRole {
             name,
             description: text,
+            max_lifetime,
         } => {
             role(name)?;
             description(text)?;
+            lifetime(*max_lifetime)?;
             let mut transition = DirectoryTransition::new(ROLE_UPDATE, name);
             transition.description = Some(text.clone());
+            transition.max_lifetime = *max_lifetime;
             transition
         }
         Change::DeleteRole { name } => {
@@ -1434,6 +1498,7 @@ fn replay(state: &mut State, transition: &DirectoryTransition) -> Result<(), Dir
                     revision: at,
                     created_at: transition.at,
                     created_by: transition.by.clone(),
+                    max_lifetime: transition.max_lifetime.filter(|seconds| *seconds > 0),
                 },
             );
         }
@@ -1443,6 +1508,9 @@ fn replay(state: &mut State, transition: &DirectoryTransition) -> Result<(), Dir
                 .get_mut(&name)
                 .ok_or_else(|| missing("the role"))?;
             role.description = transition.description.clone().unwrap_or_default();
+            if let Some(seconds) = transition.max_lifetime {
+                role.max_lifetime = (seconds > 0).then_some(seconds);
+            }
             role.revision = at;
         }
         ROLE_DELETE => {
@@ -1821,6 +1889,64 @@ mod tests {
         }
     }
 
+    /// `2-security/8` Roles and elevation: a role's bound on its tokens' lifetime is a minute to a
+    /// day; an update without one leaves it, `0` clears it, and it survives a reopen.
+    #[test]
+    fn a_role_bounds_its_tokens_lifetime_and_keeps_the_bound_across_a_reopen() {
+        let root = scratch("role-lifetime");
+        let lifetime_of = |directory: &Directory| {
+            directory
+                .role("deciders")
+                .and_then(|role| role.max_lifetime)
+        };
+        let update = |seconds: Option<u64>| Change::UpdateRole {
+            name: "deciders".to_owned(),
+            description: "decide".to_owned(),
+            max_lifetime: seconds,
+        };
+        {
+            let directory = open(&root);
+            for refused in [30, 59, 86_401] {
+                let error = apply(
+                    &directory,
+                    1,
+                    Change::CreateRole {
+                        name: "deciders".to_owned(),
+                        description: String::new(),
+                        max_lifetime: Some(refused),
+                    },
+                )
+                .expect_err("out of bounds");
+                assert!(error.to_string().contains("max_lifetime"), "{error}");
+            }
+            apply(
+                &directory,
+                2,
+                Change::CreateRole {
+                    name: "deciders".to_owned(),
+                    description: String::new(),
+                    max_lifetime: Some(900),
+                },
+            )
+            .expect("a bounded role");
+            assert_eq!(lifetime_of(&directory), Some(900));
+            apply(&directory, 3, update(None)).expect("described");
+            assert_eq!(
+                lifetime_of(&directory),
+                Some(900),
+                "an update without one leaves it"
+            );
+            apply(&directory, 4, update(Some(600))).expect("narrowed");
+            assert_eq!(lifetime_of(&directory), Some(600));
+        }
+        let directory = open(&root);
+        assert_eq!(lifetime_of(&directory), Some(600), "kept across a reopen");
+        apply(&directory, 5, update(Some(0))).expect("cleared");
+        assert_eq!(lifetime_of(&directory), None);
+        let directory = open(&root);
+        assert_eq!(lifetime_of(&directory), None, "cleared across a reopen");
+    }
+
     #[test]
     fn roles_members_users_and_links_survive_a_reopen() {
         let root = scratch("reopen");
@@ -1832,6 +1958,7 @@ mod tests {
                 Change::CreateRole {
                     name: "operators".to_owned(),
                     description: "who runs it".to_owned(),
+                    max_lifetime: None,
                 },
             )
             .expect("a role");
@@ -1925,6 +2052,7 @@ mod tests {
             Change::CreateRole {
                 name: "readers".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .expect("a role");
@@ -1985,6 +2113,7 @@ mod tests {
             Change::CreateRole {
                 name: "readers".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .expect("again");
@@ -2013,6 +2142,7 @@ mod tests {
             Change::CreateRole {
                 name: "r".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .expect("a role");
@@ -2090,6 +2220,7 @@ mod tests {
             Change::CreateRole {
                 name: "r".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .expect("a role");
@@ -2104,7 +2235,8 @@ mod tests {
                 10,
                 Change::CreateRole {
                     name: "Admins".to_owned(),
-                    description: String::new()
+                    description: String::new(),
+                    max_lifetime: None,
                 }
             )
             .contains("role name")
@@ -2114,7 +2246,8 @@ mod tests {
                 11,
                 Change::CreateRole {
                     name: "r".to_owned(),
-                    description: String::new()
+                    description: String::new(),
+                    max_lifetime: None,
                 }
             )
             .contains("exists")
@@ -2540,6 +2673,7 @@ mod tests {
             Change::CreateRole {
                 name: "readers".to_owned(),
                 description: String::new(),
+                max_lifetime: None,
             },
         )
         .expect("a role");

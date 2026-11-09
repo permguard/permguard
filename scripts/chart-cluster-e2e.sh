@@ -15,6 +15,7 @@
 #   the operator's certificate never decides on a member
 #   a revoked token is refused once the member holds the list that says so
 #   the evaluation latency on a member, token verification on, within the TS-5 objective
+#   a service account elevated to eu-0's role decides on eu-0 alone, and on no other's role
 #
 #   scripts/chart-cluster-e2e.sh                       every Host under `development`
 #   PROFILE=production scripts/chart-cluster-e2e.sh    under `production`, the chart's default
@@ -493,7 +494,10 @@ log "${count} decisions on eu-0 with its token: p50 ${p50} ms, p99 ${p99} ms; ob
 awk -v p="${p99}" -v o="${objective}" 'BEGIN { exit !(p <= o) }' || fail "p99 ${p99} ms passes the ${objective} ms objective"
 
 step "a revoked token is refused once the member holds the list that says so"
-jti="$(cut -d. -f2 "${work}/eu.jwt" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null | jq -er '.jti')"
+claims_of() { # token file
+    cut -d. -f2 "$1" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null
+}
+jti="$(claims_of "${work}/eu.jwt" | jq -er '.jti')"
 pg --host-endpoint "${host_api}" iam tokens revoke "${jti}" >/dev/null
 started=${SECONDS}
 until grep -q unauthenticated <<<"$(decide 27443 "${work}/eu.jwt")"; do
@@ -501,5 +505,31 @@ until grep -q unauthenticated <<<"$(decide 27443 "${work}/eu.jwt")"; do
     sleep 5
 done
 log "eu-0 refuses ${jti} $((SECONDS - started)) s after its revocation"
+
+step "a service account elevated to eu-0's role decides on eu-0 alone, and on no other's role"
+# The member's role, dp.<member_id>, is the IAM Host's own since eu-0's approval: the operator only
+# assigns it. Elevated, the token is addressed by the IAM Host to eu-0 and carries the role alone.
+pg --host-endpoint "${host_api}" iam roles list | jq -e --arg eu "dp.${eu}" --arg us "dp.${us}" \
+    '[.roles[].name] | index($eu) != null and index($us) != null and index("data-planes") != null' >/dev/null ||
+    fail "the members' roles do not follow the live members: $(pg --host-endpoint "${host_api}" iam roles list)"
+pg --host-endpoint "${host_api}" iam roles members add "dp.${eu}" --principal sa:e2e >/dev/null
+elevate() { # role, file
+    rm -f "$2"
+    pg --iam-endpoint "${host_api}" --client-id e2e --client-secret-file "${work}/e2e.secret" \
+        iam token --role "$1" --out "$2"
+}
+elevate "dp.${eu}" "${work}/eu-role.jwt" >/dev/null || fail "sa:e2e does not elevate to dp.${eu}"
+claims_of "${work}/eu-role.jwt" | jq -e --arg eu "${eu}" \
+    '.roles == ["dp." + $eu] and .aud == ["member:" + $eu] and .permguard_target == ["plane/data/*"]' >/dev/null ||
+    fail "the elevated token is not eu-0's role alone: $(claims_of "${work}/eu-role.jwt" | jq -c '{roles, aud, permguard_target, scope}')"
+jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"$(decide 27443 "${work}/eu-role.jwt")" ||
+    fail "eu-0 does not decide on its role's token: $(decide 27443 "${work}/eu-role.jwt")"
+log "eu-0 decides on a token elevated to dp.${eu}"
+grep -q unauthenticated <<<"$(decide 27444 "${work}/eu-role.jwt")" ||
+    fail "us-0 decided on eu-0's role's token: $(decide 27444 "${work}/eu-role.jwt")"
+log "us-0 refuses it"
+refused="$(elevate "dp.${us}" "${work}/us-role.jwt" 2>&1)" && fail "sa:e2e elevated to dp.${us}, a role it is not a member of"
+grep -q invalid_scope <<<"${refused}" || fail "dp.${us} was refused for another reason: ${refused}"
+log "sa:e2e is refused us-0's role, which it was never assigned (invalid_scope)"
 
 printf '\nok: chart-cluster-e2e\n'

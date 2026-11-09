@@ -234,6 +234,8 @@ message TokenSummary {
   string status = 9;
   string status_list = 10;
   uint64 index = 11;
+  // The role the token was elevated to, by its name.
+  optional string role = 12;
 }
 message ListTokensResponse {
   repeated TokenSummary tokens = 1;

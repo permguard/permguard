@@ -24,6 +24,7 @@ fn summary(view: TokenView) -> iam_v1::TokenSummary {
         status: view.status,
         status_list: view.status_list,
         index: view.index,
+        role: view.role,
     }
 }
 

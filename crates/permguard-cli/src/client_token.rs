@@ -5,8 +5,9 @@
 //! client, from the flags or the configuration, obtains an application token at the IAM Host's
 //! token endpoint; a command that reaches a Data Plane sends it when no `--token-file` is given.
 //! The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by the
-//! client and what it asked for, and reused until a minute before it expires. Nothing here traces
-//! a secret, a key or a token: the trace names the client and the expiry.
+//! client and what it asked for, the role it elevates to among it, and reused until a minute
+//! before it expires. Nothing here traces a secret, a key or a token: the trace names the client
+//! and the expiry.
 //!
 //! A person's token is the person's session exchanged at the IAM Host (RFC 8693): [`exchange`].
 
@@ -228,7 +229,9 @@ fn private_file(path: &Path, what: &str) -> Result<Credential, Failure> {
 }
 
 /// What a Data Plane command asks for, from the configuration: `auth.client.scope` (by default
-/// `decision.evaluate`), `audience` and `target`, comma-separated.
+/// `decision.evaluate`), `audience` and `target`, comma-separated, elevated to `auth.client.role`
+/// when one is set. Under a role the audience may be left out: the IAM Host addresses a member's
+/// role to its member, and refuses a role that needs an audience.
 fn data_plane_ask(store: &Store) -> Result<Asked, Failure> {
     let list = |key: &str| -> Vec<String> {
         crate::target::setting_value(key, store)
@@ -245,18 +248,25 @@ fn data_plane_ask(store: &Store) -> Result<Asked, Failure> {
     let scope = crate::target::setting_value("auth.client.scope", store)
         .map(|(value, _)| value.replace(',', " "))
         .unwrap_or_else(|| "decision.evaluate".to_owned());
+    let role = crate::target::setting_value("auth.client.role", store).map(|(value, _)| value);
     let audience = list("auth.client.audience");
-    if audience.is_empty() {
+    if audience.is_empty() && role.is_none() {
         return Err(Failure::usage(
             "a client's Data Plane token is addressed: auth.client.audience, \
-             member:<id> or group:<name>",
+             member:<id> or group:<name>, or elevated to a member's role, auth.client.role",
         ));
     }
-    Ok(Asked {
+    let asked = Asked {
         scope,
         audience,
         target: list("auth.client.target"),
-    })
+    };
+    match role {
+        Some(role) => asked
+            .elevated(&role)
+            .map_err(|failure| Failure::from_client(&failure)),
+        None => Ok(asked),
+    }
 }
 
 /// The TLS options a command that reaches a Data Plane sends with: the operator's, and, without a
