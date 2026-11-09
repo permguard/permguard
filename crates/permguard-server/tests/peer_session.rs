@@ -2646,6 +2646,83 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
     }
 }
 
+/// A ship task's signed `max_body_bytes` is a ceiling, and a shipment is also one task message in
+/// one peer frame: under a task signed at 1 MiB, as the chart and the CLI sign it, records taking
+/// more than a frame carries ship whole, in batches a frame carries, and the drain is complete.
+/// A batch sealed to the task's own limit would be dropped by the coordinator with its frame,
+/// every pass, and the stream would stop behind it.
+#[tokio::test]
+async fn records_past_one_frame_ship_in_batches_a_frame_carries() {
+    use permguard_core::Drained;
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("ship-past-frame");
+    let pki = Pki::new(&root);
+    let coordinator = streaming_side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let epoch = member.api.member(&admin(), &id).expect("read").epoch;
+    let resource = permguard_core::authz::Resource::ledger("data", "zone-a", "ledger-1");
+    let producer = member.producer.clone().expect("a producer");
+    let run = producer
+        .open_run(
+            &resource,
+            Some(permguard_stream::engine::Fence {
+                membership_id,
+                task_id: "decisions".to_owned(),
+                epoch,
+            }),
+        )
+        .expect("the run opens")
+        .run_id;
+    // 1 000 records of about 1.5 KiB each: past the task's 1 MiB, past a 512 KiB frame twice over.
+    for seq in 1..=1_000 {
+        let mut record = decision_record(seq);
+        record["pdp"]["engines"]["padding"] = serde_json::json!("x".repeat(1_400));
+        producer.append(&resource, &record).expect("appended");
+    }
+    member
+        .api
+        .register_subscriptions()
+        .expect("the subscriptions are kept");
+
+    let drained = permguard_server::shipping::drain(
+        &member.api,
+        std::time::Instant::now() + Duration::from_secs(60),
+    )
+    .await
+    .expect("drained");
+    assert_eq!(drained, Drained::Complete);
+    assert_eq!(
+        producer.truncate_safe(&resource, &run).expect("safe"),
+        Some(1_000)
+    );
+    assert!(!evidence_degraded(&member));
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
 /// WP-5.8: a Host that ships no stream drains complete at once, whatever its deadline.
 #[tokio::test]
 async fn a_host_shipping_no_stream_drains_complete() {

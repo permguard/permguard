@@ -1071,7 +1071,15 @@ impl Member<'_> {
                 Vec::new(),
             )
             .await?;
-        let max_bytes = session.lease.limits.max_body_bytes;
+        // The task's limit is a ceiling the manifest signs; a shipment is also one task message,
+        // and a message travels in one peer frame. A batch is sealed to this budget and never
+        // again, so a budget past the frame would seal a batch no session could ever carry: the
+        // coordinator drops the frame and the stream stops behind it.
+        let max_bytes = session
+            .lease
+            .limits
+            .max_body_bytes
+            .min(u64::try_from(super::record::MAX_BODY_BYTES).unwrap_or(u64::MAX));
         // The lease's epoch: a revision the session took is the one a pause is set at (after the
         // review); its coordinator boot id tells a restored coordinator (WP-7.9b).
         let subscription = &crate::composition::Subscribed {

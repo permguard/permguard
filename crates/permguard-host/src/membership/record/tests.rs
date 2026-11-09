@@ -582,13 +582,27 @@ fn the_task_session_records_read_back_and_refuse_what_they_forbid() {
             request_id: "r".repeat(MAX_REQUEST_ID_BYTES + 1),
             ..message.clone()
         },
-        TaskMessage {
-            body: vec![0; MAX_BODY_BYTES + 1],
-            ..message.clone()
-        },
     ] {
         assert!(TaskMessage::decode(&refused.encode().expect("encodes")).is_err());
     }
+    // A body past the bound is refused as it is encoded, as it is read: never sent to a peer that
+    // would drop its frame (BUG-0258).
+    assert!(
+        TaskMessage {
+            body: vec![0; MAX_BODY_BYTES + 1],
+            ..message.clone()
+        }
+        .encode()
+        .is_err()
+    );
+    assert!(
+        TaskAnswer {
+            request_id: "r-1".to_owned(),
+            body: vec![0; MAX_BODY_BYTES + 1],
+        }
+        .encode()
+        .is_err()
+    );
     // One peer frame carries the largest message.
     let largest = TaskMessage {
         body: vec![0; MAX_BODY_BYTES],

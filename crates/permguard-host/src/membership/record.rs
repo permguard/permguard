@@ -2175,6 +2175,9 @@ impl MessageKind {
 
 impl TaskMessage {
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        // What `decode` refuses is never sent: past the bound it would reach a peer only to be
+        // dropped with its frame, the sender none the wiser.
+        body_bound(&self.body, "a task message's body")?;
         encode(
             [
                 (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
@@ -2220,6 +2223,7 @@ pub struct TaskAnswer {
 
 impl TaskAnswer {
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        body_bound(&self.body, "a task answer's body")?;
         encode(vec![
             (Value::Int(1), Value::Text(self.request_id.clone())),
             (Value::Int(2), Value::Bytes(self.body.clone())),
