@@ -28,6 +28,7 @@ is cut.
 - **Every Plane and the Host verify tokens themselves.**
   `authority.url`, `authority.audience` and `authority.tls.ca` (`PERMGUARD_AUTHORITY_URL`, `_AUDIENCE`, `_TLS_CA`) name the Authority Plane a Server verifies tokens from: beside it, its keys and lists are handed over in-process; elsewhere they are fetched over HTTPS, the keys every five minutes or at once for an unknown key, the lists every half `ttl`.
   A token is checked for its signature, issuer, audience, validity, status and scopes, and decides alone: public grants never widen it.
+  A relative `authority.tls.ca` is resolved against the volume, as every TLS path of the configuration is.
 - **Everything the HTTP surfaces answer, gRPC answers too.**
   `DataPlane` gains `GetServerConfiguration`, `GetKeys` and `GetStreams`, `ControlPlane` gains `GetStreams` and `DecisionLog` gains `GetConfiguration`, each the same JSON its HTTP route serves.
   Every Plane's gRPC listener serves the standard `grpc.health.v1.Health/Check`, `SERVING` once the Plane accepts work.

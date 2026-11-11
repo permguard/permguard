@@ -2605,9 +2605,10 @@ impl App {
                     Arc::clone(&trust),
                     crate::authority_refresh::Source {
                         url,
+                        // Relative to the volume, as every TLS path of the configuration is.
                         ca: config
                             .setting(crate::plane::SETTING_AUTHORITY_TLS_CA)
-                            .map(|path| resolve_beside(config_file, Path::new(path))),
+                            .map(|path| config.resolve(path)),
                         allow_http: config.assurance().profile()
                             == permguard_core::assurance::AssuranceProfile::Development,
                     },
@@ -3626,15 +3627,6 @@ fn advance_volume_claim(root: &Path, create: bool, out: &mut dyn Write) -> Resul
 /// reads beside a process that writes.
 /// A path from the configuration file, resolved against the file's own directory when relative:
 /// a key set travels with the file that names it, as a realm file does.
-fn resolve_beside(config_file: &Path, path: &Path) -> std::path::PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    config_file
-        .parent()
-        .map_or_else(|| path.to_path_buf(), |directory| directory.join(path))
-}
-
 fn verify_volume(
     root: &Path,
     sample: Option<u16>,
