@@ -20,8 +20,16 @@ experimental: { dogwood: { enabled: "true" } }
 # The Server Host: discovery, health and metrics, in the clear, for the lab's health checks.
 host: { addr: 0.0.0.0:5443 }
 
-# The Host listener: membership, grants and streams, mutual TLS under the lab's authority.
+# The Host listener: membership, keys and streams, mutual TLS under the lab's authority.
 admin: { addr: 0.0.0.0:5444 }
+
+# The Authority Plane, on the coordinator: the lab's service accounts and the tokens every Plane
+# verifies. Its first start makes `admin`, whose key the lab's operator acts with.
+authority: { url: "https://control-plane:8443" }
+authorityPlane:
+  public:
+    http: { addr: 0.0.0.0:8443 }
+    grpc: { addr: 0.0.0.0:8443 }
 
 operations:
   keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }

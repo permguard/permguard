@@ -56,8 +56,8 @@ pub enum Target {
     HostPeer,
     /// A remote key-management service.
     Kms,
-    /// An identity provider's discovery document or key set.
-    IdentityProvider,
+    /// The Authority Plane's key set or status lists.
+    Authority,
 }
 
 impl Target {
@@ -68,7 +68,7 @@ impl Target {
             Self::ControlPlane => "Control Plane",
             Self::HostPeer => "peer Host",
             Self::Kms => "remote KMS",
-            Self::IdentityProvider => "identity provider",
+            Self::Authority => "Authority Plane",
         }
     }
 }

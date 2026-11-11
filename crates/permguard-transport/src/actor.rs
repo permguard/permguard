@@ -271,31 +271,28 @@ mod tests {
             match (peer, bearer) {
                 (Some(peer), _) if peer.fingerprint() == "aa" => {
                     Ok(Actor::Authenticated(ActorContext::new(
-                        Principal::new("spiffe://acme/billing").expect("p"),
-                        Credential::SanUri,
+                        Principal::new("cert:sha256:aa").expect("p"),
+                        Credential::Certificate,
                         None,
                     )))
                 }
                 (Some(_), _) => Ok(Actor::Unmapped {
                     reason: "stranger".to_owned(),
                 }),
+                // A caller that is not a token's: what a 403 without a challenge is answered to.
                 (None, Some("good")) => Ok(Actor::Authenticated(ActorContext::new(
-                    Principal::new("oidc:x#alice").expect("p"),
-                    Credential::Oidc,
+                    Principal::new("cert:sha256:good").expect("p"),
+                    Credential::Certificate,
                     None,
                 ))),
                 (None, Some("scoped")) => Ok(Actor::Authenticated(ActorContext::of_token(
                     Principal::new("sa:billing").expect("p"),
                     permguard_core::authz::TokenGrant {
-                        family: "application".to_owned(),
-                        scope: std::collections::BTreeSet::new(),
-                        targets: Vec::new(),
+                        scopes: Vec::new(),
                         jti: "j".to_owned(),
                         list_uri: "u".to_owned(),
                         list_iat: 1,
                         list_digest: [0; 32],
-                        authority: None,
-                        role: None,
                     },
                 ))),
                 (None, Some(_)) => Err(AccessDenial::unauthenticated("bad token")),
@@ -348,7 +345,7 @@ mod tests {
         );
         assert_eq!(
             ask(Some("aa"), None).await,
-            (http::StatusCode::OK, "spiffe://acme/billing".to_owned())
+            (http::StatusCode::OK, "cert:sha256:aa".to_owned())
         );
         assert_eq!(
             ask(Some("bb"), None).await,
@@ -356,14 +353,14 @@ mod tests {
         );
         assert_eq!(
             ask(None, Some("good")).await,
-            (http::StatusCode::OK, "oidc:x#alice".to_owned())
+            (http::StatusCode::OK, "cert:sha256:good".to_owned())
         );
         let (status, body) = ask(None, Some("bad")).await;
         assert_eq!(status, http::StatusCode::UNAUTHORIZED);
         assert!(body.contains("unauthenticated"), "{body}");
     }
 
-    /// An OAuth token endpoint reads `client_secret_basic` itself (iteration 02, WP-11.4): on the
+    /// An OAuth token endpoint reads `client_secret_basic` itself (`2-security/8` Token endpoint): on the
     /// paths a listener declares, `Basic` passes unread and the request acts as its peer or as
     /// nobody; on every other path it is still refused.
     #[tokio::test]
@@ -474,7 +471,7 @@ mod tests {
         ));
     }
 
-    /// Step 9 of `2-security/8` On a member: a token caller refused for what it asked is told
+    /// Step 7 of `2-security/8` Verifying a token: a token caller refused for what it asked is told
     /// `insufficient_scope`; any other caller's `403` carries no challenge.
     #[tokio::test]
     async fn a_token_callers_refusal_names_insufficient_scope() {

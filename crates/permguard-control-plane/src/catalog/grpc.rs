@@ -413,9 +413,10 @@ mod tests {
 
     use std::sync::Arc;
 
-    use permguard_core::authz::{Actor, ActorContext, Credential, Principal, Selector, operations};
+    use permguard_core::authz::{
+        Actor, ActorContext, Credential, Principal, Selector, TokenGrant, TokenScope, operations,
+    };
     use permguard_core::{Catalog as _, Disclosure};
-    use permguard_host::authz::{GrantStore, Issue};
     use permguard_host::composition::Authorization;
     use permguard_std::catalog::FileCatalog;
     use tonic::Request;
@@ -435,8 +436,25 @@ mod tests {
     fn actor(principal: &str) -> Arc<Actor> {
         Arc::new(Actor::Authenticated(ActorContext::new(
             Principal::new(principal).expect("a principal"),
-            Credential::SanUri,
+            Credential::Certificate,
             None,
+        )))
+    }
+
+    /// The bearer of a token holding `operations` on `selector`.
+    fn bearer(principal: &str, operations: &[&str], selector: &str) -> Arc<Actor> {
+        Arc::new(Actor::Authenticated(ActorContext::of_token(
+            Principal::new(principal).expect("a principal"),
+            TokenGrant {
+                scopes: vec![TokenScope {
+                    operations: operations.iter().map(|op| (*op).to_owned()).collect(),
+                    selector: Selector::parse(selector).expect("a selector"),
+                }],
+                jti: "j".to_owned(),
+                list_uri: "u".to_owned(),
+                list_iat: 1,
+                list_digest: [0; 32],
+            },
         )))
     }
 
@@ -650,30 +668,11 @@ mod tests {
         let catalog = Arc::new(FileCatalog::new(root.join("zones")));
         let billing = catalog.create_zone("billing").expect("billing");
         let people = catalog.create_zone("people").expect("people");
-        let volume = permguard_host::storage::volume::Volume::claim(
-            &root.join("volume"),
-            permguard_core::assurance::AssuranceProfile::Development,
-        )
-        .expect("claimed");
-        let (store, _) = GrantStore::open(&volume).expect("opens");
-        permguard_host::operations::grants::issue(
-            &permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
-                .expect("the mutation journal opens"),
-            &store,
-            permguard_host::operations::journal::Initiator::System("test".to_owned()),
-            Issue {
-                principal: Principal::new("spiffe://acme/billing").expect("p"),
-                operations: vec![operations::CATALOG_READ.to_owned()],
-                selector: Selector::parse(&format!("plane/control/zone/{}/*", billing.id))
-                    .expect("a selector"),
-                resource_types: vec!["*".to_owned()],
-                constraints: Default::default(),
-                issued_by: "test".to_owned(),
-                expires_at: None,
-            },
-            1,
-        )
-        .expect("issued");
+        let billing_reader = bearer(
+            "sa:billing",
+            &[operations::CATALOG_READ],
+            &format!("plane/control/zone/{}/*", billing.id),
+        );
         let facade = CatalogFacade {
             host: None,
             catalog,
@@ -684,7 +683,7 @@ mod tests {
             disclosure: Disclosure::Minimal,
             audit_refusals: false,
             metrics: permguard_core::Metrics::none(),
-            authorization: Arc::new(Authorization::new(store, &[])),
+            authorization: Arc::new(Authorization::closed()),
             exports: None,
         };
 
@@ -709,29 +708,22 @@ mod tests {
         let mut request = Request::new(v1::GetZoneRequest {
             zone: "billing".to_owned(),
         });
-        request
-            .extensions_mut()
-            .insert(actor("spiffe://acme/billing"));
+        request.extensions_mut().insert(Arc::clone(&billing_reader));
         assert!(facade.get_zone(request).await.is_ok());
 
         // And cannot read people, nor tell it from a zone that is not there.
         let mut request = Request::new(v1::GetZoneRequest {
             zone: people.id.clone(),
         });
-        request
-            .extensions_mut()
-            .insert(actor("spiffe://acme/billing"));
+        request.extensions_mut().insert(Arc::clone(&billing_reader));
         let foreign = facade.get_zone(request).await.expect_err("F-22");
         assert_eq!(foreign.code(), tonic::Code::PermissionDenied);
         let mut request = Request::new(v1::GetZoneRequest {
             zone: "nowhere".to_owned(),
         });
-        request
-            .extensions_mut()
-            .insert(actor("spiffe://acme/billing"));
+        request.extensions_mut().insert(Arc::clone(&billing_reader));
         let unknown = facade.get_zone(request).await.expect_err("not disclosed");
         assert_eq!(unknown.code(), tonic::Code::PermissionDenied);
         assert_eq!(unknown.message(), foreign.message());
-        std::mem::forget(volume);
     }
 }

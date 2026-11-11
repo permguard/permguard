@@ -70,7 +70,7 @@ fn the_plan_digest_binds_the_operation_target_revision_and_parameters() {
         plan_digest(KEYS_REVOKE, "t", 3, &[("reason", "drill")])
     );
     for other in [
-        plan_digest(GRANT_REVOKE, "t", 3, &[("reason", "drill")]),
+        plan_digest(MEMBERSHIP_REVOKE, "t", 3, &[("reason", "drill")]),
         plan_digest(KEYS_REVOKE, "u", 3, &[("reason", "drill")]),
         plan_digest(KEYS_REVOKE, "t", 4, &[("reason", "drill")]),
         plan_digest(KEYS_REVOKE, "t", 3, &[("reason", "drills")]),
@@ -84,7 +84,6 @@ fn the_plan_digest_binds_the_operation_target_revision_and_parameters() {
 fn a_plan_requiring_approvals_lives_a_day() {
     assert_eq!(approvals_required(IDENTITY_RESET, true), 1);
     assert_eq!(approvals_required(KEYS_REVOKE, true), 1);
-    assert_eq!(approvals_required(GRANT_REVOKE, true), 0);
     assert_eq!(approvals_required(MEMBERSHIP_REVOKE, true), 0);
     for operation in OPERATIONS {
         assert_eq!(approvals_required(operation, false), 0);

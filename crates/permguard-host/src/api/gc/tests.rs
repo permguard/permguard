@@ -9,7 +9,6 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use super::*;
-use crate::api::grants::CreateGrant;
 use crate::api::testing::{Recording, actor, admin, facade, reopen_with, scratch, tampered};
 use crate::gc::{Entry, Kept};
 
@@ -93,28 +92,14 @@ fn run(request_id: &str, receipt: &str) -> RunGc {
 }
 
 /// `gc.manage` to `principal` on what `selector` covers.
-async fn grant(api: &HostApi, request_id: &str, principal: &str, selector: &str) {
-    api.create_grant(
-        &admin(),
-        CreateGrant {
-            request_id: request_id.to_owned(),
-            expected_revision: None,
-            principal: principal.to_owned(),
-            operations: vec![operations::GC_MANAGE.to_owned()],
-            selector: selector.to_owned(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
+fn grant(principal: &str, selector: &str) {
+    crate::api::testing::grant_to(principal, &[operations::GC_MANAGE], selector);
 }
 
 /// A facade where [`SWEEPER`] holds `gc.manage` on the Control Plane.
 async fn swept(tag: &str) -> HostApi {
     let api = facade(tag);
-    grant(&api, "sweeper", SWEEPER, "plane/control-plane/*").await;
+    grant(SWEEPER, "plane/control-plane/*");
     api
 }
 
@@ -177,7 +162,7 @@ async fn the_grant_is_checked_on_the_scope_the_plan_names() {
     let fake = provided(&api, false);
     let zone = "plane/control-plane/zone/z1";
     let ledger = "plane/control-plane/zone/z1/ledger/l1";
-    grant(&api, "g", OPERATOR, &format!("{zone}/*")).await;
+    grant(OPERATOR, &format!("{zone}/*"));
     let operator = actor(OPERATOR);
     for scope in [zone, ledger] {
         let planned = api
@@ -265,7 +250,7 @@ async fn a_scope_outside_the_plane_or_a_job_nobody_provides_is_refused() {
         .expect_err("outside the grant");
     assert!(matches!(refused, Refusal::Denied(_)), "{refused:?}");
     // Admitted, and still not the Control Plane's to sweep.
-    grant(&api, "data", SWEEPER, "plane/data-plane/*").await;
+    grant(SWEEPER, "plane/data-plane/*");
     for (who, scope) in [
         (admin(), "host"),
         (admin(), "zone/z1"),
@@ -318,8 +303,8 @@ async fn a_receipt_that_is_not_this_jobs_plan_does_not_run() {
         .expect_err("garbage");
     assert_eq!(code(&refused), codes::common::INVALID_ARGUMENT);
     // Another principal holding the grant cannot run the planner's receipt.
+    grant(other_principal(), "plane/control-plane/*");
     let other = actor(other_principal());
-    grant(&api, "g", other_principal(), "plane/control-plane/*").await;
     let refused = api
         .run_gc(&other, gc::OBJECTS, run("r4", &planned.receipt))
         .expect_err("not the planner");
@@ -342,7 +327,7 @@ async fn a_run_that_fails_is_refused_and_a_plan_and_a_run_are_audited() {
         vec![crate::keys::ring::HOST_OPERATIONS],
         Arc::clone(&trail),
     );
-    grant(&api, "sweeper", SWEEPER, "plane/control-plane/*").await;
+    grant(SWEEPER, "plane/control-plane/*");
     let failing = Arc::new(Fake {
         fail: true.into(),
         ..Fake::default()

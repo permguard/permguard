@@ -184,7 +184,6 @@
     "record.DECISION_V1": "permguard.decision.v1",
     "record.EVENT_V1": "permguard.event.record.v1",
     "subject.HOST_V1_PREFIX": "urn:permguard:host:v1:",
-    "subject.IAM_ISSUER_PREFIX": "urn:permguard:iam:",
     "jwt.ACCESS_TOKEN": "at+jwt",
     "jwt.STATUS_LIST_TOKEN": "statuslist+jwt"
   },

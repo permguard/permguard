@@ -41,6 +41,7 @@ pub struct DiscoveredPlane {
 pub enum PlaneId {
     Control,
     Data,
+    Authority,
 }
 
 impl PlaneId {
@@ -49,6 +50,7 @@ impl PlaneId {
         match self {
             Self::Control => "control",
             Self::Data => "data",
+            Self::Authority => "authority",
         }
     }
 
@@ -57,6 +59,7 @@ impl PlaneId {
         match self {
             Self::Control => "control-plane",
             Self::Data => "data-plane",
+            Self::Authority => "authority-plane",
         }
     }
 
@@ -65,6 +68,7 @@ impl PlaneId {
         match self {
             Self::Control => crate::plane::SETTING_CONTROL_HTTP_ADVERTISED_URL,
             Self::Data => crate::plane::SETTING_DATA_HTTP_ADVERTISED_URL,
+            Self::Authority => crate::plane::SETTING_AUTHORITY_HTTP_ADVERTISED_URL,
         }
     }
 
@@ -73,6 +77,7 @@ impl PlaneId {
         match id {
             "control" => Some(Self::Control),
             "data" => Some(Self::Data),
+            "authority" => Some(Self::Authority),
             _ => None,
         }
     }
@@ -95,7 +100,7 @@ impl PlaneId {
 /// The **scheme** comes from that endpoint's own TLS settings, never from a global one: a plane
 /// serving HTTPS while its document says `http://` is a document that cannot be followed either.
 pub fn discovered_planes(config: &Config) -> Vec<DiscoveredPlane> {
-    const KNOWN: [&str; 2] = ["control", "data"];
+    const KNOWN: [&str; 3] = ["authority", "control", "data"];
 
     let mut planes = Vec::new();
     for id in KNOWN {
@@ -130,7 +135,7 @@ pub fn discovered_planes(config: &Config) -> Vec<DiscoveredPlane> {
 ///
 /// The endpoint's scheme follows its own TLS settings, like every published address here.
 fn grpc_only_planes(config: &Config) -> Vec<(&'static str, String)> {
-    const KNOWN: [&str; 2] = ["control", "data"];
+    const KNOWN: [&str; 3] = ["authority", "control", "data"];
 
     let mut planes = Vec::new();
     for id in KNOWN {
@@ -370,10 +375,15 @@ pub struct PlaneConfiguration {
 /// Interfaces are added by whoever serves them — the plane knows its own name and keys, and only
 /// the module that mounts an interface knows that it did.
 pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguration {
+    // The Authority Plane publishes the key set every token verifies under at its API's own path.
+    let keys_path = match plane {
+        PlaneId::Authority => "authority",
+        _ => plane.public_name(),
+    };
     let jwks_uri = discovered_planes(config)
         .into_iter()
         .find(|held| held.id == plane.public_name())
-        .map(|held| format!("{}/{}/v1/keys", held.http_base, held.id))
+        .map(|held| format!("{}/{keys_path}/v1/keys", held.http_base))
         .unwrap_or_default();
 
     let streams_endpoint = discovered_planes(config)
@@ -407,6 +417,7 @@ pub fn server_configuration_document(
         let id = match public {
             "control-plane" => PlaneId::Control.as_str(),
             "data-plane" => PlaneId::Data.as_str(),
+            "authority-plane" => PlaneId::Authority.as_str(),
             other => other,
         };
         lifecycle

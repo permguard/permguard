@@ -841,42 +841,70 @@ mod migrating {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The security-mutation transaction (WP-3.6): a grant issued through the engine.
+// The security-mutation transaction (WP-3.6): a record written through the engine, by a domain
+// of this test's own that writes one file per operation.
 
 mod mutating {
     use super::*;
-    use permguard_core::authz::{Principal, Selector};
     use permguard_host::audit::{Class, HOST, trail};
-    use permguard_host::authz::{GrantStore, Issue};
-    use permguard_host::operations::grants::{self, Grants, failure};
-    use permguard_host::operations::journal::{Initiator, RequestKey};
-    use permguard_host::operations::mutation::{Applied, Begin, MutationError, Mutations, Outcome};
+    use permguard_host::operations::journal::{Initiator, OperationId, RequestKey};
+    use permguard_host::operations::mutation::{
+        Applied, Applying, Begin, Domain, Failure, MutationError, Mutations, Observed, Outcome,
+    };
     use permguard_host::storage::volume::Volume;
 
-    const NOW: u64 = 1_800_000_000;
+    const DOMAIN: &str = "notes";
 
     fn root() -> PathBuf {
         PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the directory"))
     }
 
-    fn issue() -> Issue {
-        Issue {
-            principal: Principal::new("spiffe://acme/billing").expect("a principal"),
-            operations: vec!["catalog.read".to_owned()],
-            selector: Selector::parse("plane/control/*").expect("a selector"),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            issued_by: "test".to_owned(),
-            expires_at: None,
+    /// A domain writing one note per operation, named by the operation: what recovery observes.
+    struct Notes(Dir);
+
+    impl Notes {
+        fn open(volume: &Volume) -> Self {
+            Self(volume.host().subdir("notes", true).expect("the notes"))
+        }
+
+        fn records(&self) -> Vec<String> {
+            let mut names = self.0.names().expect("listed");
+            names.sort();
+            names
+        }
+
+        fn write(&self, applying: &Applying<'_>) -> Result<String, String> {
+            let name = format!("note-{}", applying.operation_id());
+            publish_immutable(&self.0, &name, b"a note", &|_| true, &|held| {
+                held == b"a note"
+            })
+            .map_err(|error| error.to_string())?;
+            Ok(name)
+        }
+    }
+
+    impl Domain for Notes {
+        fn name(&self) -> &'static str {
+            DOMAIN
+        }
+
+        fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
+            let name = format!("note-{operation_id}");
+            let held = self.records().contains(&name);
+            held.then_some(Observed {
+                revision: 1,
+                target: Some(name),
+            })
         }
     }
 
     fn begin() -> Begin {
         Begin {
-            domain: grants::DOMAIN,
-            operation: grants::CREATE,
-            action: grants::AUDIT_ISSUED,
-            initiator: Initiator::Principal("spiffe://acme/operators/root".to_owned()),
+            domain: DOMAIN,
+            operation: "notes.write",
+            // A registered security action: the engine records every phase under it.
+            action: permguard_host::operations::grants::AUDIT_COMMITTED,
+            initiator: Initiator::Principal("sa:admin".to_owned()),
             request: Some(RequestKey {
                 request_id: "r-1".to_owned(),
                 digest: "d".to_owned(),
@@ -885,26 +913,24 @@ mod mutating {
         }
     }
 
-    /// Issues the grant as the operation of request `r-1`, answering its id.
+    /// Writes the note as the operation of request `r-1`, answering its name.
     fn create(
         mutations: &Mutations,
-        store: &GrantStore,
+        store: &Notes,
     ) -> Result<Outcome<String>, MutationError<String>> {
         mutations.run(begin(), |applying| {
-            let record = store
-                .issue(applying, issue(), NOW, None)
-                .map_err(|error| failure(error, |error| error.to_string()))?;
+            let name = store.write(applying).map_err(Failure::Indeterminate)?;
             Ok(Applied {
-                revision: record.revision,
-                target: Some(record.grant_id.to_string()),
-                value: record.grant_id.to_string(),
+                revision: 1,
+                target: Some(name.clone()),
+                value: name,
             })
         })
     }
 
-    fn reopen(path: &Path) -> (Volume, std::sync::Arc<GrantStore>, Mutations) {
+    fn reopen(path: &Path) -> (Volume, Notes, Mutations) {
         let volume = claim_volume(path);
-        let (store, _) = GrantStore::open(&volume).expect("the store opens");
+        let store = Notes::open(&volume);
         let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
         (volume, store, mutations)
     }
@@ -942,7 +968,7 @@ mod mutating {
             .collect()
     }
 
-    /// A crash at any step leaves either no grant and a failed operation, or the grant and an
+    /// A crash at any step leaves either no note and a failed operation, or the note and an
     /// operation committed; every outcome is recorded once the journal is recovered, at least
     /// once (owner decision); and a retry of the request learns the durable result.
     #[test]
@@ -957,7 +983,7 @@ mod mutating {
                 "{point}: the child died of the abort there"
             );
             let (volume, store, mutations) = reopen(&path);
-            let recovered = mutations.recover(&Grants(&store)).expect("recovers");
+            let recovered = mutations.recover(&store).expect("recovers");
             assert!(mutations.open_intents().is_empty(), "{point}");
             assert_eq!(mutations.pending(), 0, "{point}: every outcome recorded");
             let applied = !matches!(point, "mutation.intent_written" | "mutation.intent_audited");
@@ -987,17 +1013,15 @@ mod mutating {
                 ("mutation.intent_written" | "mutation.intent_audited", Outcome::Applied(_)) => {
                     assert_eq!(store.records().len(), 1, "{point}: applied anew, once")
                 }
-                ("mutation.applied", Outcome::Reconciled { target, .. }) => assert_eq!(
-                    target,
-                    Some(store.records()[0].grant_id.to_string()),
-                    "{point}"
-                ),
-                (_, Outcome::Replayed(grant_id)) if applied && point != "mutation.applied" => {
-                    assert_eq!(grant_id, store.records()[0].grant_id.to_string(), "{point}")
+                ("mutation.applied", Outcome::Reconciled { target, .. }) => {
+                    assert_eq!(target, Some(store.records()[0].clone()), "{point}")
+                }
+                (_, Outcome::Replayed(name)) if applied && point != "mutation.applied" => {
+                    assert_eq!(name, store.records()[0], "{point}")
                 }
                 (_, other) => panic!("{point}: {other:?}"),
             }
-            assert_eq!(store.records().len(), 1, "{point}: never two grants");
+            assert_eq!(store.records().len(), 1, "{point}: never two notes");
             drop(mutations);
             drop(store);
             drop(volume);
@@ -1020,7 +1044,7 @@ mod mutating {
             "{point}: the child died of the abort there"
         );
         let (_volume, store, mutations) = reopen(&path);
-        mutations.recover(&Grants(&store)).expect("recovers");
+        mutations.recover(&store).expect("recovers");
         let retried = create(&mutations, &store).expect("the retry answers");
         assert!(matches!(retried, Outcome::Replayed(_)), "{retried:?}");
         assert_eq!(store.records().len(), 1);

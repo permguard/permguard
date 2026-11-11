@@ -38,11 +38,10 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 24] = [
+const REGISTRIES: [&str; 22] = [
     "audit.json",
-    "directory.json",
+    "authority.json",
     "drain-receipt.json",
-    "grant.json",
     "head-statement.json",
     "identity.json",
     "journal.json",
@@ -62,7 +61,6 @@ const REGISTRIES: [&str; 24] = [
     "sealed-key.json",
     "session.json",
     "stream.json",
-    "tokens.json",
 ];
 
 /// The one encoding every registry states.
@@ -632,240 +630,64 @@ fn head_statement_samples() -> Vec<Sample> {
     vec![sample("cose_sign1", envelope, &[], Some(decoder))]
 }
 
-fn grant_samples() -> Vec<Sample> {
-    use permguard_core::authz::{Principal, Selector};
-    use permguard_host::authz::record::{GrantId, GrantRecord, Status, Transition};
+fn authority_samples() -> Vec<Sample> {
+    use permguard_authority_plane::accounts::{AccessKey, Account, AccountRecord, Status};
+    use permguard_authority_plane::tokens::{TokenTransition, kinds};
+    use permguard_core::authz::{Selector, TokenScope};
     use permguard_host::operations::journal::OperationId;
 
-    let record = GrantRecord {
-        grant_id: GrantId::from_bytes(HOST_ID),
-        principal_id: Principal::new("spiffe://acme/billing").expect("a principal"),
-        operations: vec!["catalog.read".to_owned(), "policy.push".to_owned()],
-        selector: Selector::parse("plane/control/zone/billing/*").expect("a selector"),
-        resource_types: vec!["*".to_owned()],
-        constraints: std::collections::BTreeMap::from([("note".to_owned(), "billing".to_owned())]),
-        revision: 3,
+    let scope = TokenScope {
+        operations: ["decision.evaluate".to_owned()].into_iter().collect(),
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+    };
+    let account = Account {
+        name: "billing".to_owned(),
+        description: "the billing service".to_owned(),
         status: Status::Active,
-        issued_by: "cert:sha256:ab".to_owned(),
-        issued_at: 1_759_000_000,
-        expires_at: Some(1_790_000_000),
-        operation_id: Some(OperationId::from_bytes(ZONE_ID)),
+        scopes: vec![scope.clone()],
+        keys: vec![
+            AccessKey {
+                access_key: "pgak_AAAAAAAAAAAAAAAAAAAA".to_owned(),
+                secret_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA".to_owned(),
+                created_at: 1_800_000_000,
+                expires_at: Some(1_900_000_000),
+            },
+            AccessKey {
+                access_key: "pgak_BBBBBBBBBBBBBBBBBBBB".to_owned(),
+                secret_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA".to_owned(),
+                created_at: 1_800_000_000,
+                expires_at: None,
+            },
+        ],
+        created_at: 1_800_000_000,
+        updated_at: 1_800_000_000,
+        revision: 1,
     };
-    let mut open_ended = record.clone();
-    open_ended.expires_at = None;
-    open_ended.operation_id = None;
-    open_ended.constraints.clear();
-    let decoder = || -> Option<Decoder> {
-        Some(Box::new(|bytes: &[u8]| verdict(GrantRecord::decode(bytes))))
+    let held = AccountRecord {
+        name: "billing".to_owned(),
+        revision: 1,
+        at: 1_800_000_000,
+        by: "sa:admin".to_owned(),
+        operation_id: Some(OperationId::from_bytes(HOST_ID)),
+        account: Some(account),
     };
-    vec![
-        sample(
-            "grant_record",
-            record.encode().expect("the record encodes"),
-            &["grant_record.expires_at", "grant_record.operation_id"],
-            decoder(),
-        ),
-        sample(
-            "grant_record",
-            open_ended.encode().expect("the record encodes"),
-            &[],
-            decoder(),
-        ),
-        sample(
-            "transition",
-            Transition {
-                grant_id: GrantId::from_bytes(HOST_ID),
-                revision: 4,
-                at: 1_759_000_100,
-                by: "cert:sha256:ab".to_owned(),
-                operation_id: None,
-            }
-            .encode()
-            .expect("the transition encodes"),
-            &[],
-            Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
-        ),
-        sample(
-            "transition",
-            Transition {
-                grant_id: GrantId::from_bytes(HOST_ID),
-                revision: 5,
-                at: 1_759_000_200,
-                by: "expiry".to_owned(),
-                operation_id: Some(OperationId::from_bytes(ZONE_ID)),
-            }
-            .encode()
-            .expect("the transition encodes"),
-            &["transition.operation_id"],
-            Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
-        ),
-    ]
-}
-
-fn directory_samples() -> Vec<Sample> {
-    use permguard_host::authz::directory::{DirectoryTransition, kinds};
-    use permguard_host::operations::journal::OperationId;
-
-    const PHC: &str = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaA";
-    let at = |mut transition: DirectoryTransition, revision: u64| {
-        transition.revision = revision;
-        transition.at = 1_800_000_000;
-        transition.by = "user:admin".to_owned();
-        transition
+    let deleted = AccountRecord {
+        name: "billing".to_owned(),
+        revision: 2,
+        at: 1_800_000_100,
+        by: "sa:admin".to_owned(),
+        operation_id: None,
+        account: None,
     };
-    let mut role = at(DirectoryTransition::new(kinds::ROLE_CREATE, "operators"), 1);
-    role.operation_id = Some(OperationId::from_bytes(ZONE_ID));
-    role.description = Some("who runs it".to_owned());
-    role.max_lifetime = Some(900);
-    let mut member = at(DirectoryTransition::new(kinds::MEMBER_ADD, "operators"), 2);
-    member.member = Some("sa:billing".to_owned());
-    let mut user = at(DirectoryTransition::new(kinds::USER_CREATE, "paperino"), 3);
-    user.email = Some("paperino@acme.com".to_owned());
-    user.display = Some("Paperino".to_owned());
-    user.password = Some(PHC.to_owned());
-    let mut factor = at(DirectoryTransition::new(kinds::USER_FACTOR, "paperino"), 4);
-    factor.factor = Some(vec![1; 48]);
-    let mut status = at(DirectoryTransition::new(kinds::SA_STATUS, "billing"), 5);
-    status.status = Some("suspended".to_owned());
-    let mut link = at(DirectoryTransition::new(kinds::USER_LINK, "paperino"), 6);
-    link.subject = Some("oidc:https://login.example#0042".to_owned());
-    let mut account = at(DirectoryTransition::new(kinds::SA_CREATE, "billing"), 7);
-    account.owner = Some("payments team".to_owned());
-    account.description = Some(String::new());
-    let mut secret = at(
-        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
-        8,
-    );
-    secret.credential_id = Some(SCOPE_ID);
-    secret.credential_kind = Some("client_secret".to_owned());
-    secret.secret = Some(PHC.to_owned());
-    secret.expires_at = Some(1_900_000_000);
-    let mut key = at(
-        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
-        9,
-    );
-    key.credential_id = Some(HOST_ID);
-    key.credential_kind = Some("private_key_jwt".to_owned());
-    key.public_key = Some(vec![7; 32]);
-    key.algorithm = Some("EdDSA".to_owned());
-    key.key_id = Some(THUMBPRINT_A.to_owned());
-    let mut bound = at(
-        DirectoryTransition::new(kinds::CREDENTIAL_ADD, "billing"),
-        10,
-    );
-    bound.credential_id = Some(ZONE_ID);
-    bound.credential_kind = Some("tls_client_auth".to_owned());
-    bound.binding = Some("spiffe://acme/billing".to_owned());
-    let bare = at(
-        DirectoryTransition::new(kinds::ROLE_DELETE, "operators"),
-        11,
-    );
-    let decoder = || -> Option<Decoder> {
+    let record_decoder = || -> Option<Decoder> {
         Some(Box::new(|bytes: &[u8]| {
-            verdict(DirectoryTransition::decode(bytes))
+            verdict(AccountRecord::decode(bytes))
         }))
     };
-    let root = "directory_transition";
-    let encoded = |transition: &DirectoryTransition| transition.encode().expect("encodes");
-    vec![
-        sample(
-            root,
-            encoded(&role),
-            &[
-                "directory_transition.operation_id",
-                "directory_transition.description",
-                "directory_transition.max_lifetime",
-            ],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&member),
-            &["directory_transition.member"],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&user),
-            &[
-                "directory_transition.email",
-                "directory_transition.display",
-                "directory_transition.password",
-            ],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&factor),
-            &["directory_transition.factor"],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&status),
-            &["directory_transition.status"],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&link),
-            &["directory_transition.subject"],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&account),
-            &[
-                "directory_transition.owner",
-                "directory_transition.description",
-            ],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&secret),
-            &[
-                "directory_transition.credential_id",
-                "directory_transition.credential_kind",
-                "directory_transition.secret",
-                "directory_transition.expires_at",
-            ],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&key),
-            &[
-                "directory_transition.credential_id",
-                "directory_transition.credential_kind",
-                "directory_transition.public_key",
-                "directory_transition.algorithm",
-                "directory_transition.key_id",
-            ],
-            decoder(),
-        ),
-        sample(
-            root,
-            encoded(&bound),
-            &[
-                "directory_transition.credential_id",
-                "directory_transition.credential_kind",
-                "directory_transition.binding",
-            ],
-            decoder(),
-        ),
-        sample(root, encoded(&bare), &[], decoder()),
-    ]
-}
-
-fn token_samples() -> Vec<Sample> {
-    use permguard_host::authz::tokens::{TokenTransition, kinds};
-    use permguard_host::operations::journal::OperationId;
-
     let at = |mut transition: TokenTransition, revision: u64| {
         transition.revision = revision;
         transition.at = 1_800_000_000;
-        transition.by = "iam".to_owned();
+        transition.by = "sa:billing".to_owned();
         transition
     };
     let mut opened = at(TokenTransition::new(kinds::LIST_OPEN), 1);
@@ -874,17 +696,10 @@ fn token_samples() -> Vec<Sample> {
     issued.list_id = Some(ZONE_ID);
     issued.index = Some(424_242);
     issued.jti = Some(SCOPE_ID);
-    issued.subject = Some("sa:billing".to_owned());
-    issued.client_id = Some("0198f2aa-0000-7000-8000-000000000001".to_owned());
-    issued.family = Some("application".to_owned());
-    issued.audience = Some(vec![
-        "member:0198f2aa-0000-7000-8000-000000000002".to_owned(),
-    ]);
-    issued.scope = Some("decision.evaluate".to_owned());
-    issued.expires_at = Some(1_800_003_600);
     issued.account = Some("billing".to_owned());
-    issued.credential_id = Some(HOST_ID);
-    issued.role = Some("role:dp.0198f2aa-0000-7000-8000-000000000002".to_owned());
+    issued.access_key = Some("pgak_AAAAAAAAAAAAAAAAAAAA".to_owned());
+    issued.scopes = Some(vec![scope]);
+    issued.expires_at = Some(1_800_003_600);
     let mut revoked = at(TokenTransition::new(kinds::TOKEN_STATUS), 3);
     revoked.jti = Some(SCOPE_ID);
     revoked.status = Some(1);
@@ -892,56 +707,69 @@ fn token_samples() -> Vec<Sample> {
     let mut retired = at(TokenTransition::new(kinds::LIST_RETIRE), 4);
     retired.list_id = Some(ZONE_ID);
     let bare = at(TokenTransition::new(kinds::LIST_RETIRE), 5);
-    let decoder = || -> Option<Decoder> {
+    let token_decoder = || -> Option<Decoder> {
         Some(Box::new(|bytes: &[u8]| {
             verdict(TokenTransition::decode(bytes))
         }))
     };
-    let root = "token_transition";
     let encoded = |transition: &TokenTransition| transition.encode().expect("encodes");
     vec![
         sample(
-            root,
-            encoded(&opened),
-            &["token_transition.list_id"],
-            decoder(),
+            "account_record",
+            held.encode().expect("encodes"),
+            &[
+                "account_record.operation_id",
+                "account_record.description",
+                "account_record.scopes",
+                "account_record.keys",
+                "account_record.created_at",
+                "access_key.expires_at",
+            ],
+            record_decoder(),
         ),
         sample(
-            root,
+            "account_record",
+            deleted.encode().expect("encodes"),
+            &[],
+            record_decoder(),
+        ),
+        sample(
+            "token_transition",
+            encoded(&opened),
+            &["token_transition.list_id"],
+            token_decoder(),
+        ),
+        sample(
+            "token_transition",
             encoded(&issued),
             &[
                 "token_transition.list_id",
                 "token_transition.index",
                 "token_transition.jti",
-                "token_transition.subject",
-                "token_transition.client_id",
-                "token_transition.family",
-                "token_transition.audience",
-                "token_transition.scope",
-                "token_transition.expires_at",
                 "token_transition.account",
-                "token_transition.credential_id",
-                "token_transition.role",
+                "token_transition.access_key",
+                "token_transition.scopes",
+                "token_transition.expires_at",
             ],
-            decoder(),
+            token_decoder(),
         ),
         sample(
-            root,
+            "token_transition",
             encoded(&revoked),
             &[
                 "token_transition.jti",
                 "token_transition.status",
                 "token_transition.operation_id",
             ],
-            decoder(),
+            token_decoder(),
         ),
         sample(
-            root,
+            "token_transition",
             encoded(&retired),
             &["token_transition.list_id"],
-            decoder(),
+            token_decoder(),
         ),
-        sample(root, encoded(&bare), &[], decoder()),
+        sample("token_transition", encoded(&bare), &[], token_decoder()),
     ]
 }
 
@@ -3368,9 +3196,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "notp.json" => notp_samples(),
         "objects.json" => objects_samples(),
         "sealed-key.json" => sealed_key_samples(),
-        "grant.json" => grant_samples(),
-        "directory.json" => directory_samples(),
-        "tokens.json" => token_samples(),
+        "authority.json" => authority_samples(),
         "layout.json" => layout_samples(),
         "journal.json" => journal_samples(),
         "audit.json" => audit_samples(),
@@ -4053,23 +3879,13 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
 }
 
 #[test]
-fn test_directory_transitions_match_their_registry() {
-    assert_samples_match("directory.json");
+fn test_authority_records_match_their_registry() {
+    assert_samples_match("authority.json");
 }
 
 #[test]
-fn test_directory_transitions_refuse_unknown_labels() {
-    assert_unknown_labels_refused("directory.json");
-}
-
-#[test]
-fn test_token_transitions_match_their_registry() {
-    assert_samples_match("tokens.json");
-}
-
-#[test]
-fn test_token_transitions_refuse_unknown_labels() {
-    assert_unknown_labels_refused("tokens.json");
+fn test_authority_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("authority.json");
 }
 
 #[test]
@@ -4160,16 +3976,6 @@ fn test_layout_records_match_their_registry() {
 #[test]
 fn test_layout_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("layout.json");
-}
-
-#[test]
-fn test_grant_record_matches_its_registry() {
-    assert_samples_match("grant.json");
-}
-
-#[test]
-fn test_grant_record_refuses_unknown_labels() {
-    assert_unknown_labels_refused("grant.json");
 }
 
 #[test]

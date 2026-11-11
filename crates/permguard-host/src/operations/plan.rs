@@ -42,8 +42,6 @@ use crate::audit::checkpoint::Keys;
 use crate::audit::record::{Labelled, RecordError, hex, id16, uint};
 use crate::keys::ring::{HOST_OPERATIONS, Ring};
 
-/// An operator's revocation of a grant.
-pub const GRANT_REVOKE: &str = "grant.revoke";
 /// An operator's revocation of a ring key.
 pub const KEYS_REVOKE: &str = "keys.revoke";
 /// An operator's revocation of a membership.
@@ -58,7 +56,6 @@ pub const GC_OBJECTS: &str = "gc.objects";
 pub const MIGRATE: &str = "migrate";
 /// Every operation a receipt may name.
 pub const OPERATIONS: &[&str] = &[
-    GRANT_REVOKE,
     KEYS_REVOKE,
     MEMBERSHIP_REVOKE,
     IDENTITY_RESET,

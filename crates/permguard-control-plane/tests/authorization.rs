@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! F-21 and F-22 on the control plane (WP-2.4): the catalog and the NOTP push answer `401` to
-//! nobody, `403` to somebody without a grant, and a `billing` member cannot read `people`, nor
-//! learn whether `people` exists.
+//! nobody, `403` to a token without the scope, and a `billing` service account cannot read
+//! `people`, nor learn whether `people` exists.
 
 #![allow(clippy::expect_used)]
 
@@ -12,13 +12,14 @@ use std::sync::Arc;
 
 use http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
-use permguard_core::authz::{Principal, Selector, operations};
+use permguard_core::authz::{Selector, operations};
 use permguard_core::config::SETTING_WORKING_DIR;
 use permguard_core::keys::KeyManager as _;
 use permguard_core::{
     Catalog as _, Config, PeerIdentity, PlaneContext, ProductIdentity, ServerContext,
 };
-use permguard_host::authz::{GrantStore, Issue, PrincipalMapper, PublicGrant, Rule};
+use permguard_host::authz::testing::TestAuthority;
+use permguard_host::authz::{PrincipalMapper, PublicGrant};
 use permguard_host::composition::{Authorization, CONTROL_ATTEST, Host};
 use permguard_std::audit::RecordingAuditSink;
 use permguard_std::catalog::FileCatalog;
@@ -26,8 +27,6 @@ use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
 use permguard_std::storage::MemoryStorage;
 use permguard_transport::ActorLayer;
 use tower::ServiceExt as _;
-
-const BILLING: &str = "spiffe://acme/billing";
 
 fn scratch(tag: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -50,18 +49,26 @@ fn identity() -> ProductIdentity {
     )
 }
 
-/// A deployment with a catalog holding `billing` and `people`, each with a `main` ledger, and a
-/// grant store where `billing` may read and push within its own zone and nobody else holds
-/// anything. The caller is identified by the SAN URI of the certificate the test attaches.
+/// A deployment with a catalog holding `billing` and `people`, each with a `main` ledger, behind
+/// a test Authority Plane whose `billing` token may read and push within its own zone. The caller
+/// is the bearer of the token the test attaches, or the holder of a certificate.
 struct Deployment {
     router: axum::Router,
     billing_zone: String,
     people_zone: String,
-    /// The store the router authorises against, its journal, and billing's grant in it: a test
-    /// may withdraw the grant while a push is under way.
-    store: Arc<GrantStore>,
-    mutations: Arc<permguard_host::operations::mutation::Mutations>,
-    billing_grant: permguard_host::authz::GrantId,
+    /// The authority the router verifies tokens against: a test may revoke billing's token while
+    /// a push is under way.
+    authority: TestAuthority,
+    /// Billing's token, and its index in the authority's status list.
+    billing: Caller,
+    billing_index: u64,
+}
+
+/// Who sends a request: a token's bearer, or a certificate's holder.
+#[derive(Clone)]
+enum Caller {
+    Bearer(String),
+    Certificate(Arc<PeerIdentity>),
 }
 
 fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
@@ -112,38 +119,20 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
     keys.maintain().expect("published");
     keys.maintain().expect("activated");
 
-    // The grant store on the volume: billing within billing, nothing else.
+    // Billing's token: billing within billing, nothing else.
+    let authority = TestAuthority::new();
+    let (billing, billing_index) = authority.token_with_index(
+        "billing",
+        &[(
+            &[operations::CATALOG_READ, operations::POLICY_PUSH],
+            &format!("plane/control/zone/{}/*", billing_zone.id),
+        )],
+    );
     let held = permguard_host::storage::volume::Volume::claim(
         &volume,
         permguard_core::assurance::AssuranceProfile::Development,
     )
     .expect("the volume is claimed");
-    let (store, _) = GrantStore::open(&held).expect("the grant store opens");
-    let grant_mutations = Arc::new(
-        permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
-            .expect("the mutation journal opens"),
-    );
-    let billing_grant = permguard_host::operations::grants::issue(
-        &grant_mutations,
-        &store,
-        permguard_host::operations::journal::Initiator::System("test".to_owned()),
-        Issue {
-            principal: Principal::new(BILLING).expect("a principal"),
-            operations: vec![
-                operations::CATALOG_READ.to_owned(),
-                operations::POLICY_PUSH.to_owned(),
-            ],
-            selector: Selector::parse(&format!("plane/control/zone/{}/*", billing_zone.id))
-                .expect("a selector"),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            issued_by: "test".to_owned(),
-            expires_at: None,
-        },
-        1,
-    )
-    .expect("issued")
-    .grant_id;
     let ref_mutations = std::sync::Arc::new(
         permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
             .expect("the mutation journal opens"),
@@ -157,7 +146,7 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         .host_id([0x11; 16])
         // Every ref update runs in a mutation transaction (WP-7.12).
         .mutations(ref_mutations)
-        .authorization(Arc::new(Authorization::new(Arc::clone(&store), public)))
+        .authorization(Arc::new(Authorization::public_only(public)))
         .build()
         .register(module.declaration(config))
         .expect("the control plane registers");
@@ -166,23 +155,24 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
             .with_catalog(catalog)
             .with_plane_handles("control", Arc::new(registration)),
     ));
-    let mapper = PrincipalMapper::new(&[Rule::SanUri(BILLING.to_owned())], None).expect("a mapper");
     let router = module
         .http_routes(&PlaneContext::new(server, "control"))
-        .layer(ActorLayer::new(Arc::new(mapper)));
+        .layer(ActorLayer::new(Arc::new(
+            authority.authenticator(Arc::new(PrincipalMapper::empty())),
+        )));
     Deployment {
         router,
         billing_zone: billing_zone.id,
         people_zone: people_zone.id,
-        store,
-        mutations: grant_mutations,
-        billing_grant,
+        authority,
+        billing: Caller::Bearer(billing),
+        billing_index,
     }
 }
 
 /// The certificate of `uri`'s holder, as the acceptor would attach it.
-fn certificate(uri: &str) -> Arc<PeerIdentity> {
-    Arc::new(
+fn certificate(uri: &str) -> Caller {
+    Caller::Certificate(Arc::new(
         PeerIdentity::new(
             "CN=anyone",
             Some("anyone".to_owned()),
@@ -190,14 +180,30 @@ fn certificate(uri: &str) -> Arc<PeerIdentity> {
             "01",
         )
         .with_san_uris(vec![uri.to_owned()]),
-    )
+    ))
+}
+
+/// `request` as `caller` sends it.
+fn attach(request: &mut Request<axum::body::Body>, caller: Option<Caller>) {
+    match caller {
+        Some(Caller::Bearer(token)) => {
+            request.headers_mut().insert(
+                http::header::AUTHORIZATION,
+                format!("Bearer {token}").parse().expect("a header"),
+            );
+        }
+        Some(Caller::Certificate(peer)) => {
+            request.extensions_mut().insert(peer);
+        }
+        None => {}
+    }
 }
 
 async fn send(
     router: &axum::Router,
     method: &str,
     path: &str,
-    peer: Option<Arc<PeerIdentity>>,
+    caller: Option<Caller>,
     body: Option<&str>,
 ) -> (StatusCode, http::HeaderMap, String) {
     let mut request = Request::builder().method(method).uri(path);
@@ -207,9 +213,7 @@ async fn send(
     let mut request = request
         .body(axum::body::Body::from(body.unwrap_or("").to_owned()))
         .expect("a request");
-    if let Some(peer) = peer {
-        request.extensions_mut().insert(peer);
-    }
+    attach(&mut request, caller);
     let response = router.clone().oneshot(request).await.expect("answered");
     let status = response.status();
     let headers = response.headers().clone();
@@ -257,6 +261,27 @@ async fn f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_rea
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
+    // A token without the scope here is somebody without a grant: forbidden, never unauthenticated.
+    let scopeless = Caller::Bearer(deployed.authority.token(
+        "nobody",
+        &[(&[operations::DECISION_EVALUATE], "plane/data/*")],
+    ));
+    let (status, headers, _) = send(
+        &deployed.router,
+        "GET",
+        &format!("/catalog/v1/zones/{}", deployed.billing_zone),
+        Some(scopeless),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        headers
+            .get("www-authenticate")
+            .and_then(|v| v.to_str().ok()),
+        Some(permguard_core::api::SCOPE_CHALLENGE)
+    );
+
     // Discovery and health stay open to everybody.
     let (status, _, _) = send(&deployed.router, "GET", "/health", None, None).await;
     assert_eq!(status, StatusCode::OK);
@@ -266,13 +291,13 @@ async fn f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_rea
 async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there()
  {
     let deployed = deployment("f22", &[]);
-    let billing = certificate(BILLING);
+    let billing = deployed.billing.clone();
 
     let (status, _, body) = send(
         &deployed.router,
         "GET",
         &format!("/catalog/v1/zones/{}", deployed.billing_zone),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -282,7 +307,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "GET",
         &format!("/catalog/v1/zones/{}", deployed.people_zone),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -291,7 +316,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "GET",
         "/catalog/v1/zones/nowhere",
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -308,7 +333,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "GET",
         "/catalog/v1/zones/people",
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -317,7 +342,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "GET",
         "/catalog/v1/zones",
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -331,12 +356,12 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         .collect();
     assert_eq!(names, vec!["billing"]);
 
-    // Reading is not writing: the grant names catalog.read and policy.push only.
+    // Reading is not writing: the token holds catalog.read and policy.push only.
     let (status, _, body) = send(
         &deployed.router,
         "PATCH",
         &format!("/catalog/v1/zones/{}", deployed.billing_zone),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         Some(r#"{"name":"billing-2","request_id":"r-rename","expected_revision":1}"#),
     )
     .await;
@@ -345,7 +370,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "POST",
         "/catalog/v1/zones",
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         Some(r#"{"name":"finance","request_id":"r-create"}"#),
     )
     .await;
@@ -373,7 +398,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send_notp(
         &deployed.router,
         &people_push,
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         &negotiation,
     )
     .await;
@@ -381,7 +406,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let (status, _, body) = send_notp(
         &deployed.router,
         &billing_push,
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         &negotiation,
     )
     .await;
@@ -398,7 +423,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         &deployed.router,
         "GET",
         &format!("/catalog/v1/zones/{}/ledgers/main", deployed.people_zone),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -409,20 +434,20 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
             "/catalog/v1/zones/{}/ledgers/nowhere",
             deployed.billing_zone
         ),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
     assert_eq!(foreign_status, StatusCode::FORBIDDEN, "{foreign_body}");
-    // Billing's grant covers its whole zone, so an unknown ledger there is honestly not found:
-    // nothing outside the grant is disclosed by saying so.
+    // Billing's scope covers its whole zone, so an unknown ledger there is honestly not found:
+    // nothing outside the scope is disclosed by saying so.
     assert_eq!(unknown_status, StatusCode::NOT_FOUND, "{unknown_body}");
     // Outside its zone, an unknown ledger is as foreign as a real one.
     let (status, _, body) = send(
         &deployed.router,
         "GET",
         &format!("/catalog/v1/zones/{}/ledgers/nowhere", deployed.people_zone),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -437,7 +462,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
             "/notp/v1/zones/{}/ledgers/main/refs/main",
             deployed.people_zone
         ),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -461,7 +486,7 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
             "/notp/v1/zones/{}/ledgers/main/refs/main",
             deployed.billing_zone
         ),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         None,
     )
     .await;
@@ -497,13 +522,8 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
             "/notp/v1/zones/{}/ledgers/main/{suffix}",
             deployed.billing_zone
         );
-        let (status, _, answered) = send_notp(
-            &deployed.router,
-            &people_path,
-            Some(Arc::clone(&billing)),
-            body,
-        )
-        .await;
+        let (status, _, answered) =
+            send_notp(&deployed.router, &people_path, Some(billing.clone()), body).await;
         assert_eq!(
             status,
             StatusCode::FORBIDDEN,
@@ -515,13 +535,8 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         );
         let (status, _, _) = send_notp(&deployed.router, &billing_path, None, body).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "F-21 on {suffix}");
-        let (status, _, answered) = send_notp(
-            &deployed.router,
-            &billing_path,
-            Some(Arc::clone(&billing)),
-            body,
-        )
-        .await;
+        let (status, _, answered) =
+            send_notp(&deployed.router, &billing_path, Some(billing.clone()), body).await;
         assert!(
             !matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED),
             "billing {suffix} on billing: {status} {answered}"
@@ -532,10 +547,10 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
 async fn send_notp(
     router: &axum::Router,
     path: &str,
-    peer: Option<Arc<PeerIdentity>>,
+    caller: Option<Caller>,
     body: &[u8],
 ) -> (StatusCode, http::HeaderMap, String) {
-    let (status, headers, bytes) = send_notp_bytes(router, path, peer, body).await;
+    let (status, headers, bytes) = send_notp_bytes(router, path, caller, body).await;
     (
         status,
         headers,
@@ -546,7 +561,7 @@ async fn send_notp(
 async fn send_notp_bytes(
     router: &axum::Router,
     path: &str,
-    peer: Option<Arc<PeerIdentity>>,
+    caller: Option<Caller>,
     body: &[u8],
 ) -> (StatusCode, http::HeaderMap, Vec<u8>) {
     let mut request = Request::builder()
@@ -555,9 +570,7 @@ async fn send_notp_bytes(
         .header("content-type", permguard_notp::MEDIA_TYPE)
         .body(axum::body::Body::from(body.to_vec()))
         .expect("a request");
-    if let Some(peer) = peer {
-        request.extensions_mut().insert(peer);
-    }
+    attach(&mut request, caller);
     let response = router.clone().oneshot(request).await.expect("answered");
     let status = response.status();
     let headers = response.headers().clone();
@@ -613,9 +626,9 @@ async fn an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous() {
 }
 
 #[tokio::test]
-async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commit() {
+async fn a_token_revoked_between_negotiation_and_commit_refuses_the_commit() {
     let deployed = deployment("withdrawn", &[]);
-    let billing = certificate(BILLING);
+    let billing = deployed.billing.clone();
     let base = format!("/notp/v1/zones/{}/ledgers/main/push", deployed.billing_zone);
     let new_head = permguard_objects::Digest::compute(b"a commit");
     let negotiation = permguard_notp::NegotiatePushRequest {
@@ -630,7 +643,7 @@ async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commi
     let (status, _, body) = send_notp_bytes(
         &deployed.router,
         &format!("{base}/negotiate"),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         &negotiation,
     )
     .await;
@@ -647,19 +660,19 @@ async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commi
     .encode()
     .expect("the commit encodes");
 
-    // Still granted, the commit reaches the engine: it is refused for what it carries (the head
+    // Its token still live, the commit reaches the engine: it is refused for what it carries (the head
     // was never uploaded), not for who sends it.
     let (status, _, body) = send_notp(
         &deployed.router,
         &format!("{base}/commit"),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         &commit,
     )
     .await;
     assert_eq!(
         status,
         StatusCode::NOT_FOUND,
-        "granted, the commit is judged on its content: {body}"
+        "allowed, the commit is judged on its content: {body}"
     );
     let refused: serde_json::Value = serde_json::from_str(&body).expect("JSON");
     assert!(
@@ -669,27 +682,18 @@ async fn a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commi
         "the head it carries was never uploaded: {body}"
     );
 
-    permguard_host::operations::grants::revoke(
-        &deployed.mutations,
-        &deployed.store,
-        permguard_host::operations::journal::Initiator::System("test".to_owned()),
-        deployed.billing_grant,
-        "test",
-        2,
-    )
-    .expect("the grant is revoked");
+    deployed.authority.revoke(deployed.billing_index);
 
-    // The negotiated session does not carry the grant: the commit is authorised afresh.
+    // The negotiated session does not carry the token: the commit is authenticated afresh, and
+    // the revoked token is refused.
     let (status, _, body) = send_notp(
         &deployed.router,
         &format!("{base}/commit"),
-        Some(Arc::clone(&billing)),
+        Some(billing.clone()),
         &commit,
     )
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    let denial: serde_json::Value = serde_json::from_str(&body).expect("JSON");
-    assert_eq!(denial["code"], "forbidden");
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
 }
 
 /// WP-13.1: the catalog, NOTP, key and stream routes of the Control Plane are at their place in the

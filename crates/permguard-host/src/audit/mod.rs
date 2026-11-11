@@ -78,6 +78,7 @@ pub const ACCESS_QUEUE: usize = 4096;
 pub const HOST: &str = "host";
 pub const CONTROL: &str = "plane/control";
 pub const DATA: &str = "plane/data";
+pub const AUTHORITY: &str = "plane/authority";
 
 /// An audit class and its failure policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -152,18 +153,15 @@ const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
     }
 }
 
-/// A token the IAM Host issued (WP-11.4).
-pub const AUDIT_TOKEN_ISSUED: &str = "iam.token.issued";
-/// A token request the IAM Host refused (WP-11.4).
-pub const AUDIT_TOKEN_REFUSED: &str = "iam.token.refused";
+/// A token the Authority Plane issued (`2-security/8` Audit).
+pub const AUDIT_TOKEN_ISSUED: &str = "authority.token.issued";
+/// A token request the Authority Plane refused.
+pub const AUDIT_TOKEN_REFUSED: &str = "authority.token.refused";
+/// A key made offline for `admin`, recorded at the next start.
+pub const AUDIT_ADMIN_KEY_OFFLINE: &str = "authority.admin_key.offline";
 /// The bootstrap principal acting on a joined member (WP-12.4).
 pub const AUDIT_AUTHZ_BOOTSTRAP: &str = "host.authz.bootstrap";
 
-/// The `access` record of a Host API call that a grant held by another subject than the caller's
-/// principal allowed: one of its roles, or its issuer's (WP-8.1).
-pub const AUTHZ_GRANTED: &str = "host.authz.granted";
-
-/// The `access` record of a Host API call an access token allowed (WP-12.4): the token's `jti`,
 /// never the token.
 pub const AUTHZ_TOKEN: &str = "host.authz.token";
 
@@ -177,49 +175,29 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Host's time guard (WP-2.12).
     action("host.clock_anomaly", Class::Security, HOST),
     action("host.clock_restored", Class::Security, HOST),
-    // The grants (WP-2.5), each a phase of one mutation transaction (WP-3.6).
-    mutation("host.grant.issued", HOST),
-    mutation("host.grant.revoke_planned", HOST),
-    mutation("host.grant.revoked", HOST),
-    mutation("host.grant.expired", HOST),
-    // The Host's directory (WP-8.1): roles, members, local users and links, each a phase of
-    // one mutation transaction; a password, a factor or a token is never a fact.
-    mutation("host.role.created", HOST),
-    mutation("host.role.updated", HOST),
-    mutation("host.role.deleted", HOST),
-    mutation("host.member.added", HOST),
-    mutation("host.member.removed", HOST),
-    mutation("host.user.created", HOST),
-    mutation("host.user.updated", HOST),
-    mutation("host.user.password_set", HOST),
-    mutation("host.user.factor_set", HOST),
-    mutation("host.user.status_set", HOST),
-    mutation("host.user.linked", HOST),
-    mutation("host.user.unlinked", HOST),
-    mutation("host.user.deleted", HOST),
-    // The IAM Host's service accounts and their credentials (iteration 02, WP-11.2); a client
-    // secret, its hash or a key is never a fact.
-    mutation("iam.service_account.created", HOST),
-    mutation("iam.service_account.updated", HOST),
-    mutation("iam.service_account.suspended", HOST),
-    mutation("iam.service_account.resumed", HOST),
-    mutation("iam.service_account.deleted", HOST),
-    mutation("iam.credential.created", HOST),
-    mutation("iam.credential.revoked", HOST),
-    // An access token an administrator revoked (WP-11.5).
-    mutation("iam.token.revoked", HOST),
-    // The token endpoint (WP-11.4): every token issued and every request refused. Never a token,
-    // a secret, an assertion or a session: who, for what, and why not.
+    // The recovery principal's commitment, offline (`2-security/8` Authorization).
+    mutation("host.bootstrap.committed", HOST),
+    // The Authority Plane's service accounts, their scopes and access keys; a secret, its hash
+    // or a token is never a fact.
+    mutation("authority.service_account.created", AUTHORITY),
+    mutation("authority.service_account.updated", AUTHORITY),
+    mutation("authority.service_account.scopes_set", AUTHORITY),
+    mutation("authority.service_account.suspended", AUTHORITY),
+    mutation("authority.service_account.resumed", AUTHORITY),
+    mutation("authority.service_account.deleted", AUTHORITY),
+    mutation("authority.access_key.created", AUTHORITY),
+    mutation("authority.access_key.deleted", AUTHORITY),
+    // An access token an administrator revoked.
+    mutation("authority.token.revoked", AUTHORITY),
+    // The token endpoint: every token issued and every request refused. Never a token or a
+    // secret: who, for what, and why not.
     ActionSchema {
         action: AUDIT_TOKEN_ISSUED,
         class: Class::Security,
-        root: HOST,
+        root: AUTHORITY,
         facts: &[
-            ("client_id", FactType::Text(256)),
-            ("family", FactType::Text(16)),
-            ("scope", FactType::Text(1024)),
-            ("target", FactType::Text(4096)),
-            ("audience", FactType::Text(2048)),
+            ("client_id", FactType::Text(64)),
+            ("scope", FactType::Text(4096)),
             ("jti", FactType::Text(64)),
             ("expires_at", FactType::Uint),
         ],
@@ -229,14 +207,15 @@ pub const REGISTRY: &[ActionSchema] = &[
     ActionSchema {
         action: AUDIT_TOKEN_REFUSED,
         class: Class::Security,
-        root: HOST,
+        root: AUTHORITY,
         facts: &[
-            ("client_id", FactType::Text(256)),
+            ("client_id", FactType::Text(64)),
             ("reason", FactType::Text(64)),
         ],
         max_bytes: 4 * 1024,
         phases: false,
     },
+    action(AUDIT_ADMIN_KEY_OFFLINE, Class::Security, AUTHORITY),
     // The bootstrap principal acting on a joined member (WP-12.4): every use, a break-glass.
     ActionSchema {
         action: AUDIT_AUTHZ_BOOTSTRAP,
@@ -246,84 +225,16 @@ pub const REGISTRY: &[ActionSchema] = &[
         max_bytes: 4 * 1024,
         phases: false,
     },
-    // A Host API call a role's or an issuer's grant allowed (WP-8.1): the principal is the
-    // record's subject, the grant's holder a fact, so a role-derived access is never anonymous
-    // in the trail.
-    ActionSchema {
-        action: AUTHZ_GRANTED,
-        class: Class::Access,
-        root: HOST,
-        facts: &[
-            ("granted_by", FactType::Text(512)),
-            ("operation", FactType::Text(64)),
-        ],
-        max_bytes: 8 * 1024,
-        phases: false,
-    },
-    // A Host API call an access token allowed (WP-12.4): its `jti`, family and operation.
+    // A Host API call an access token allowed: its `jti` and operation.
     ActionSchema {
         action: AUTHZ_TOKEN,
         class: Class::Access,
         root: HOST,
         facts: &[
             ("jti", FactType::Text(64)),
-            ("family", FactType::Text(16)),
             ("operation", FactType::Text(64)),
         ],
         max_bytes: 4 * 1024,
-        phases: false,
-    },
-    // The first administrator and recovery (WP-8.2): never the code.
-    action(crate::setup::AUDIT_COMPLETED, Class::Security, HOST),
-    action(crate::setup::AUDIT_REFUSED, Class::Security, HOST),
-    action(crate::setup::AUDIT_RECOVERY_STARTED, Class::Security, HOST),
-    action(
-        crate::setup::AUDIT_RECOVERY_ACKNOWLEDGED,
-        Class::Security,
-        HOST,
-    ),
-    // Password sign-in (WP-8.1): who, from where, how, and why a refusal; never a secret.
-    ActionSchema {
-        action: "host.signin.accepted",
-        class: Class::Security,
-        root: HOST,
-        facts: &[
-            ("user", FactType::Text(128)),
-            ("source", FactType::Text(64)),
-            ("opened", FactType::Text(32)),
-        ],
-        max_bytes: 8 * 1024,
-        phases: false,
-    },
-    ActionSchema {
-        action: "host.signin.refused",
-        class: Class::Security,
-        root: HOST,
-        facts: &[
-            ("user", FactType::Text(128)),
-            ("source", FactType::Text(64)),
-            ("reason", FactType::Text(32)),
-        ],
-        max_bytes: 8 * 1024,
-        phases: false,
-    },
-    ActionSchema {
-        action: "host.signin.locked",
-        class: Class::Security,
-        root: HOST,
-        facts: &[
-            ("user", FactType::Text(128)),
-            ("source", FactType::Text(64)),
-        ],
-        max_bytes: 8 * 1024,
-        phases: false,
-    },
-    ActionSchema {
-        action: "host.signin.ended",
-        class: Class::Security,
-        root: HOST,
-        facts: &[("user", FactType::Text(128))],
-        max_bytes: 8 * 1024,
         phases: false,
     },
     // An application-consistent snapshot (WP-7.8): its prepare, and how it ended.
@@ -653,7 +564,7 @@ pub fn check_registry(registry: &[ActionSchema]) -> Result<(), String> {
                 schema.action, schema.max_bytes
             ));
         }
-        if ![HOST, CONTROL, DATA].contains(&schema.root) {
+        if ![HOST, CONTROL, DATA, AUTHORITY].contains(&schema.root) {
             return Err(format!(
                 "`{}` names the root `{}`, which the Host does not assign",
                 schema.action, schema.root

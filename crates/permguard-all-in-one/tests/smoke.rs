@@ -203,14 +203,14 @@ fn a_zero_plane_deployment_serves_the_host_surface_and_nothing_else() {
     let _ = child.wait();
 
     assert!(seen.contains("server.started"), "{seen}");
-    // Both planes say they were not selected — and none of their work runs: no listener binds,
+    // Every plane says it was not selected — and none of their work runs: no listener binds,
     // no GC follows, no audit worker queues. The host's own lifecycle records for the gated
     // services remain, and rightly: a registered service that no-ops is still taken through its
     // lifecycle.
     assert_eq!(
         seen.matches("plane is not selected by runtime configuration")
             .count(),
-        2,
+        3,
         "{seen}"
     );
     for plane_work in [

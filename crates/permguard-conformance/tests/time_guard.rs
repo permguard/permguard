@@ -54,15 +54,10 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "`store::now`, for the offline `permguard host grants` and for nothing a running Host reads",
     ),
     (
-        "permguard-host/src/authz/mod.rs",
+        "permguard-host/src/authz/testing.rs",
         2,
-        "the default guard of `Authorization::new` and `public_only`, which a server replaces with \
-         `with_time`",
-    ),
-    (
-        "permguard-host/src/authz/mapper.rs",
-        1,
-        "the default guard of `PrincipalMapper::new`; a server builds it with `with_time`",
+        "the test Authority Plane of the `test-support` feature, never in a release build: its \
+         tokens are minted now and verified under the system's guard",
     ),
     (
         "permguard-host/src/api/replay.rs",

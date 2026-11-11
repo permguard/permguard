@@ -49,6 +49,18 @@ host:
     cert: tls/server.pem
     key: tls/server.key
 
+# The Authority Plane beside the control plane (`2-security/8`): the cluster's service accounts and
+# the token endpoint, uncommented to issue the tokens every Plane verifies. Its first start makes
+# `admin`, its access key and secret key in planes/authority/admin.key on the volume.
+# runtime:
+#   planes: [authority, control]
+# authority:
+#   url: "https://localhost:8443"
+# authorityPlane:
+#   public:
+#     http: { addr: 0.0.0.0:8443, tls: { cert: tls/server.pem, key: tls/server.key } }
+#     grpc: { addr: 0.0.0.0:8443, tls: { cert: tls/server.pem, key: tls/server.key } }
+
 controlPlane:
   public:
     http:

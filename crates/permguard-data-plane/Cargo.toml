@@ -56,6 +56,7 @@ tonic-prost.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
 # Decoding a signed response's parts, as a PEP would (WP-6.6b).
 base64.workspace = true
 # Transport parity, fault injection and the boundary registry, shared by every plane.

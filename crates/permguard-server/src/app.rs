@@ -189,24 +189,15 @@ fn transit_for(
     })
 }
 
-/// What `authorization_for` opens on the volume (WP-2.4, WP-2.5): the authorization every Plane
-/// and the Host listener decide with, the credential mapper, and the grant store the Host API
-/// mutates.
+/// What `authorization_for` opens on the volume: the authorization every Plane and the Host
+/// listener decide with, the authenticator in front of it, the Authority Plane's key set and lists
+/// tokens verify under, and the recovery principal's commitment.
 struct HostAuthz {
     authorization: Arc<permguard_host::authz::Authorization>,
     authenticator: Arc<dyn permguard_core::authz::Authenticator>,
-    /// The same mapper, typed: its identity providers, for the key refresh and the Host API.
-    mapper: Arc<permguard_host::authz::PrincipalMapper>,
-    store: Arc<permguard_host::authz::GrantStore>,
-    /// Roles, members, local users and links (WP-8.1); none on a member (WP-12.4).
-    directory: Option<Arc<permguard_host::authz::directory::Directory>>,
-    /// The password sign-in, when `password` is among the methods.
-    signin: Option<Arc<permguard_host::authz::signin::SignIn>>,
-    /// `host.setup`, and the password policy's length a first administrator's password meets.
-    setup: permguard_core::authz::Setup,
-    min_length: usize,
-    /// Whether `oidc` is among the methods: what a provider's token is exchanged under (WP-11.4).
-    oidc: bool,
+    /// The Authority Plane's key set and status lists, as this Host holds them.
+    trust: Arc<permguard_host::authz::AuthorityTrust>,
+    bootstrap: Arc<permguard_host::authz::BootstrapStore>,
 }
 
 /// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
@@ -536,9 +527,8 @@ impl App {
     /// Supplies what a Plane declares to the Host, registered before any service starts: its
     /// handles reach it through [`ServerContext::plane_handles`] and nothing else.
     /// Whether `config` selects the Plane `id` among the ones this build declares.
-    /// Whether this Host is a member (`2-security/8` Where the directory lives): it runs a Data
-    /// Plane and no Control Plane, so it holds no directory and decides by its IAM Host's tokens.
-    /// A Host running neither Plane keeps its own administrators.
+    /// Whether this Host is a member: it runs a Data Plane and no Control Plane, so it joins a
+    /// coordinator rather than coordinating.
     fn is_member(&self, config: &Config) -> bool {
         self.runs_plane(config, "data") && !self.runs_plane(config, "control")
     }
@@ -1474,11 +1464,9 @@ impl App {
         Ok(config)
     }
 
-    /// Reads and parses the configuration file, rejecting sections nothing in this build accounts for.
-    /// Opens `host/authz/` on the volume, builds the credential mapper from `host.principals[]`
-    /// and the bootstrap commitment, and the authorization from the store plus
-    /// `host.authz.public[]`. A rule that cannot be honoured, or two that collide, stop the start.
-    #[allow(clippy::too_many_arguments)]
+    /// The Host's authorization (`2-security/8` Authorization): the access tokens of the
+    /// Authority Plane, verified with the key set and lists this Host holds; the recovery
+    /// principal's certificate; and `host.authz.public[]`, what anybody may do without a token.
     fn authorization_for(
         &self,
         config: &Config,
@@ -1487,139 +1475,36 @@ impl App {
         volume: &permguard_host::storage::volume::Volume,
         time: &Arc<permguard_host::time::TimeGuard>,
         mutations: &Arc<permguard_host::operations::mutation::Mutations>,
-        secrets: Option<&dyn SecretStore>,
-        host_id: [u8; 16],
     ) -> Result<HostAuthz> {
+        use permguard_host::authz::access_tokens::TokenAuthenticator;
         use permguard_host::authz::{
-            Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
+            AuthorityTrust, Authorization, BootstrapStore, PrincipalMapper, PublicGrant,
         };
 
         let auth = file
             .host_auth()
             .with_context(|| format!("in the configuration file {}", config_file.display()))?;
-        // A member, a Host running a Data Plane and no Control Plane, holds no directory and reads no credential but
-        // its IAM Host's access tokens and its bootstrap certificate (WP-12.4, `2-security/8`):
-        // a setting that would have it read another is refused, never ignored.
-        let member = self.is_member(config);
         // A coordinator is never a member of another: only a member joins from an invitation
         // (TD-5).
-        if config.host_join().is_some() && !member {
+        if config.host_join().is_some() && !self.is_member(config) {
             bail!(
                 "host.join is a member's: this Host runs a Control Plane, or no Data Plane, and \
                  never joins another coordinator; remove host.join"
             );
         }
-        if member {
-            let stated: Vec<&str> = [
-                (!auth.principals.is_empty(), "host.principals"),
-                (auth.authentication.password, "host.authentication.password"),
-                (auth.authentication.oidc, "host.authentication.oidc"),
-                (auth.setup.code_ref.is_some(), "host.setup.code_ref"),
-            ]
-            .into_iter()
-            .filter_map(|(set, name)| set.then_some(name))
-            .collect();
-            if !stated.is_empty() {
-                bail!(
-                    "this Host runs a Data Plane and no Control Plane: it is a member, which holds no \
-                     directory and admits only its IAM Host's access tokens and its bootstrap \
-                     certificate; remove {}",
-                    stated.join(", ")
-                );
-            }
-        }
-        // The second factor's key is named by a structured setting the volume's preparation does
-        // not read: a development deployment that generates its material generates it here.
-        if let Some((reference, _)) = &auth.authentication.factor_key {
-            permguard_std::provision::prepare_secret(config, reference.name())
-                .context("generating the second factor's key")?;
-        }
-        let (store, recovery) = GrantStore::open(volume).with_context(|| {
+        let bootstrap = BootstrapStore::open(volume).with_context(|| {
             format!(
-                "opening the grant store on {}",
+                "opening the recovery principal's commitment on {}",
                 volume.host().path().display()
             )
         })?;
-        // A grant mutation a crash left open is committed or failed before anything reads the
-        // store; then the expiry of grants past their time, each one operation (WP-3.6).
-        let recovered = mutations
-            .recover(&permguard_host::operations::grants::Grants(&store))
-            .context("recovering the grant mutations a crash left open")?;
-        tracing::debug!(
-            event.name = "host.mutations_recovered_for",
-            domain = permguard_host::operations::grants::DOMAIN,
-            "the grant mutations are resolved"
-        );
-        // An expiry that cannot be written does not stop the start: a grant past its time allows
-        // nothing all the same, and the Host reports `degraded: security_mutations` meanwhile.
-        let expiry =
-            permguard_host::operations::grants::expire_due(mutations, &store, time.now_secs());
-        tracing::info!(
-            event.name = "authz.opened",
-            component = "server",
-            grants = store.records().len(),
-            revision = store.revision(),
-            expired = expiry.expired.len(),
-            expiry_unwritten = expiry.unwritten.len(),
-            reconciled = recovered.reconciled.len(),
-            failed = recovered.failed.len(),
-            recovered_truncated_bytes = recovery.truncated_bytes,
-            bootstrap = store.bootstrap().is_some(),
-            "the grant store is open"
-        );
-        let rules: Vec<Rule> = auth
-            .principals
-            .iter()
-            .map(|rule| match rule {
-                permguard_core::authz::PrincipalRule::SanUri(uri) => Ok(Rule::SanUri(uri.clone())),
-                permguard_core::authz::PrincipalRule::Spki(digest) => {
-                    Ok(Rule::Spki(digest.clone()))
-                }
-                permguard_core::authz::PrincipalRule::Oidc(oidc) => {
-                    use permguard_core::authz::{OidcKeySource, check_provider_url};
-                    // Plain HTTP to a provider only under `development` (`1-architecture/7`).
-                    let allow_http = config.assurance().profile()
-                        == permguard_core::assurance::AssuranceProfile::Development;
-                    check_provider_url(&oidc.issuer, allow_http).map_err(|error| {
-                        anyhow::anyhow!("identity provider `{}`: issuer {error}", oidc.name)
-                    })?;
-                    if let OidcKeySource::Uri(uri) = &oidc.keys {
-                        check_provider_url(uri, allow_http).map_err(|error| {
-                            anyhow::anyhow!("identity provider `{}`: jwks_uri {error}", oidc.name)
-                        })?;
-                    }
-                    Ok(Rule::Oidc(Box::new(permguard_host::authz::OidcRule {
-                        name: oidc.name.clone(),
-                        issuer: oidc.issuer.clone(),
-                        audience: oidc.audience.clone(),
-                        algorithms: oidc.algorithms.clone(),
-                        claim: oidc.claim.clone(),
-                        keys: match &oidc.keys {
-                            OidcKeySource::File(path) => {
-                                OidcKeySource::File(resolve_beside(config_file, path))
-                            }
-                            other => other.clone(),
-                        },
-                        ca_file: oidc
-                            .ca_file
-                            .as_ref()
-                            .map(|path| resolve_beside(config_file, path)),
-                        refresh: oidc.refresh,
-                        max_stale: oidc.max_stale,
-                        clients: oidc.clients.clone(),
-                        token_types: oidc.token_types.clone(),
-                        link_email: oidc.link_email,
-                    })))
-                }
-            })
-            .collect::<Result<_>>()?;
-        let bootstrap = store.bootstrap();
-        let mapper = PrincipalMapper::with_time(
-            &rules,
-            bootstrap.as_ref().map(|held| held.fingerprint.as_str()),
-            Arc::clone(time),
-        )
-        .context("building the credential mapper from host.principals")?;
+        // A commitment a crash left open is committed or failed before anything reads it.
+        mutations
+            .recover(&permguard_host::operations::grants::Grants(&bootstrap))
+            .context("recovering the bootstrap commitment a crash left open")?;
+        let held = bootstrap.bootstrap();
+        let mapper = PrincipalMapper::new(held.as_ref().map(|held| held.fingerprint.as_str()))
+            .context("reading the bootstrap commitment")?;
         let public: Vec<PublicGrant> = auth
             .public
             .iter()
@@ -1635,209 +1520,66 @@ impl App {
                 component = "server",
                 grants = public.len(),
                 development_mode = config.development_mode(),
-                "the configuration declares public grants: what they name needs no credential"
+                "the configuration declares public grants: what they name needs no token"
             );
         }
-        // The directory (WP-8.1): roles, members, local users and links; its mutations a crash
-        // left open resolved before anything decides with it. A member decides with none
-        // (WP-12.4): one an earlier release left is read only to say it stays unread, and a
-        // damaged one does not stop a Host that never reads it.
-        let directory = if member {
-            let held = volume
-                .host()
-                .path()
-                .join(permguard_host::authz::store::DIRECTORY)
-                .join(permguard_host::authz::directory::DIRECTORY);
-            if held.exists() {
-                match permguard_host::authz::directory::Directory::open(volume) {
-                    Ok((left, _)) if !left.users().is_empty() || !left.roles().is_empty() => {
-                        tracing::warn!(
-                            event.name = "authz.directory_unread",
-                            component = "server",
-                            roles = left.roles().len(),
-                            users = left.users().len(),
-                            "a member decides with no directory: the users and roles an earlier \
-                             release left on this volume stay there, unread"
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => tracing::warn!(
-                        event.name = "authz.directory_unread",
-                        component = "server",
-                        error = %error,
-                        "a member decides with no directory: the one an earlier release left on \
-                         this volume does not open, and is not read"
-                    ),
-                }
-            }
-            None
-        } else {
-            let (directory, directory_recovery) =
-                permguard_host::authz::directory::Directory::open(volume)
-                    .map_err(|error| anyhow::anyhow!("{error}"))
-                    .context("opening the Host's directory")?;
-            mutations
-                .recover(&permguard_host::authz::directory::Recovering(&directory))
-                .context("recovering the directory mutations a crash left open")?;
-            tracing::info!(
-                event.name = "authz.directory_opened",
-                component = "server",
-                revision = directory.revision(),
-                roles = directory.roles().len(),
-                users = directory.users().len(),
-                recovered_truncated_bytes = directory_recovery.truncated_bytes,
-                "the directory is open"
-            );
-            Some(directory)
-        };
-        // A member decides an access token's bearer by the token alone: its grants are the IAM
-        // Host's, and arrive in the token (WP-12.2). The IAM Host holds them and checks both, and
-        // its directory's roles; a member reads none (WP-12.4).
-        let authorization = Authorization::new(Arc::clone(&store), &public)
-            .with_time(Arc::clone(time))
-            .with_tokens_alone(member)
-            // A member's bootstrap principal holds its per-Host operations (WP-12.4).
-            .with_bootstrap(
-                store
-                    .bootstrap()
-                    .filter(|_| member)
-                    .map(|held| held.principal),
-            );
-        let authorization = Arc::new(match &directory {
-            Some(directory) => authorization.with_directory(Arc::clone(directory)),
-            None => authorization,
-        });
-        let signin = match &directory {
-            Some(directory) => self.signin_for(
-                &auth.authentication,
-                directory,
-                mutations,
-                time,
-                volume,
-                secrets,
-                host_id,
+        // The Authority Plane this Host verifies tokens for: its URL, and the audience every
+        // token names. Without a URL, the Authority Plane of this process announces itself; with
+        // none in it either, every token is refused.
+        let issuer = config
+            .setting(crate::plane::SETTING_AUTHORITY_URL)
+            .map(str::trim)
+            .filter(|url| !url.is_empty());
+        if let Some(url) = issuer {
+            permguard_core::authz::check_service_url(
+                url,
+                config.assurance().profile()
+                    == permguard_core::assurance::AssuranceProfile::Development,
+            )
+            .map_err(|error| anyhow::anyhow!("authority.url: {error}"))?;
+        }
+        let audience = config
+            .setting(crate::plane::SETTING_AUTHORITY_AUDIENCE)
+            .map(str::trim)
+            .filter(|audience| !audience.is_empty())
+            .unwrap_or(permguard_host::authz::authority::DEFAULT_AUDIENCE);
+        let trust = Arc::new(
+            AuthorityTrust::kept_in(volume, issuer, audience, time.now_secs()).with_context(
+                || {
+                    format!(
+                        "opening the Authority Plane's keys and lists on {}",
+                        volume.host().path().display()
+                    )
+                },
             )?,
-            None => None,
-        };
-        // A member links no session or provider subject to a user: it has neither (WP-12.4).
-        if let Some(directory) = &directory {
-            mapper.attach_accounts(permguard_host::authz::Accounts {
-                directory: Arc::clone(directory),
-                signin: signin.clone(),
-                oidc: auth.authentication.oidc,
+        );
+        tracing::info!(
+            event.name = "authz.opened",
+            component = "server",
+            issuer = issuer.unwrap_or("this process"),
+            audience,
+            keys = trust.keys().len(),
+            bootstrap = held.is_some(),
+            "the Host verifies the Authority Plane's tokens"
+        );
+        let authorization = Arc::new(
+            Authorization::public_only(&public).with_bootstrap(held.map(|held| held.principal)),
+        );
+        let authenticator: Arc<dyn permguard_core::authz::Authenticator> =
+            Arc::new(TokenAuthenticator {
+                trust: Arc::clone(&trust) as Arc<dyn permguard_host::authz::access_tokens::Trust>,
+                inner: Arc::new(mapper),
+                time: Arc::clone(time),
             });
-        }
-        tracing::info!(
-            event.name = "authz.methods",
-            component = "server",
-            password_signin = auth.authentication.password,
-            oidc_signin = auth.authentication.oidc,
-            mfa = %auth.authentication.mfa,
-            "the sign-in methods the Host admits"
-        );
-        tracing::info!(
-            event.name = "authz.mapper",
-            component = "server",
-            rules = mapper.rules(),
-            "the credential mapper is built"
-        );
-        // A fetched provider's keys kept on the volume serve from the start, until its first fetch.
-        mapper
-            .attach_key_cache(volume)
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("opening host/authz/oidc/ for the identity providers' keys")?;
-        let mapper = Arc::new(mapper);
         Ok(HostAuthz {
             authorization,
-            authenticator: Arc::clone(&mapper) as Arc<dyn permguard_core::authz::Authenticator>,
-            mapper,
-            store,
-            directory,
-            signin,
-            setup: auth.setup.clone(),
-            min_length: auth.authentication.min_length,
-            oidc: auth.authentication.oidc,
+            authenticator,
+            trust,
+            bootstrap,
         })
     }
 
-    /// The password sign-in `authentication` asks for, or none: sessions, lockout, policy and the
-    /// second factor's sealing key, the Host-local root `factor_key` names (WP-8.1).
-    #[allow(clippy::too_many_arguments)]
-    fn signin_for(
-        &self,
-        authentication: &permguard_core::authz::Authentication,
-        directory: &Arc<permguard_host::authz::directory::Directory>,
-        mutations: &Arc<permguard_host::operations::mutation::Mutations>,
-        time: &Arc<permguard_host::time::TimeGuard>,
-        volume: &permguard_host::storage::volume::Volume,
-        secrets: Option<&dyn SecretStore>,
-        host_id: [u8; 16],
-    ) -> Result<Option<Arc<permguard_host::authz::signin::SignIn>>> {
-        use permguard_host::authz::signin::{Mfa, Policy, Sealer, SignIn};
-        if !authentication.password {
-            return Ok(None);
-        }
-        let mfa = Mfa::parse(&authentication.mfa).with_context(|| {
-            format!("host.authentication.password.mfa `{}`", authentication.mfa)
-        })?;
-        let sealer: Option<Sealer> = match &authentication.factor_key {
-            Some((reference, version)) if mfa != Mfa::Off => {
-                let secrets = secrets.context(
-                    "host.authentication.password.factor_key names a secret and this build resolved no secret store",
-                )?;
-                let root = resolve_root(
-                    secrets,
-                    volume,
-                    reference,
-                    version,
-                    "the second-factor key",
-                    "mfa-seal",
-                )?;
-                let local = Arc::new(permguard_host::secrets::HostLocal::new(root, host_id));
-                Some(Arc::new(move |principal: &str| {
-                    local
-                        .key(permguard_host::secrets::HostPurpose::MfaSeal, principal)
-                        .ok()
-                }))
-            }
-            _ => None,
-        };
-        match (mfa, sealer.is_some()) {
-            (Mfa::Required, false) => bail!(
-                "host.authentication.password.mfa is required and no factor_key names the Host-local root second factors are sealed under: nobody could sign in"
-            ),
-            (Mfa::Optional, false) => tracing::warn!(
-                event.name = "authz.factor_unavailable",
-                component = "server",
-                "host.authentication.password.mfa is optional and no factor_key is configured: no user can enroll a second factor"
-            ),
-            _ => {}
-        }
-        let label = "Permguard".to_owned();
-        Ok(Some(Arc::new(SignIn::new(
-            Arc::clone(directory),
-            Arc::new(permguard_host::authz::sessions::Sessions::new(
-                authentication.lifetime,
-                authentication.idle,
-                Arc::clone(time),
-            )),
-            Arc::clone(mutations),
-            permguard_host::authz::lockout::Lockout::new(
-                authentication.attempts,
-                authentication.window,
-                authentication.lockout,
-                Arc::clone(time),
-            ),
-            Policy {
-                min_length: authentication.min_length,
-                mfa,
-            },
-            sealer,
-            label,
-            Arc::clone(time),
-        ))))
-    }
-
+    /// Reads and parses the configuration file, rejecting sections nothing in this build accounts for.
     fn load(&self, config_file: &Path) -> Result<ConfigFile> {
         let file = ConfigFile::load(config_file)?;
 
@@ -2301,13 +2043,13 @@ impl App {
         let data_signing_keys = self
             .data_signing_keys_for(config, &opener)
             .context("opening the data.attest key ring")?;
-        // The access tokens' ring, on the IAM Host only: the Host of a Server running a Control
-        // Plane (iteration 02, WP-11.3). A member holds none.
-        let iam_host = self.runs_plane(config, "control");
-        let iam_tokens_keys = if iam_host {
+        // The access tokens' ring, on the Host of a Server running the Authority Plane alone: no
+        // other Host signs a token.
+        let authority_host = self.runs_plane(config, "authority");
+        let authority_tokens_keys = if authority_host {
             Some(
-                crate::plane::factories::iam_tokens_keys_for(config, &opener)
-                    .context("opening the iam.tokens key ring")?,
+                crate::plane::factories::authority_tokens_keys_for(config, &opener)
+                    .context("opening the authority.tokens key ring")?,
             )
         } else {
             None
@@ -2318,7 +2060,7 @@ impl App {
                 &keys,
                 &control_signing_keys,
                 &data_signing_keys,
-                &iam_tokens_keys,
+                &authority_tokens_keys,
             ]
             .into_iter()
             .flatten()
@@ -2387,49 +2129,6 @@ impl App {
         mutations
             .recover(&backups)
             .context("recovering the backup mutations a crash left open")?;
-        // The IAM Host's tokens and their status lists (WP-11.5): a revocation a crash left open
-        // resolved before a list is signed. A member keeps none.
-        let token_registry = if iam_host {
-            let (registry, recovery) = permguard_host::authz::tokens::TokenRegistry::open(&volume)
-                .map_err(|error| anyhow::anyhow!("{error}"))
-                .context("opening the token registry")?;
-            mutations
-                .recover(&permguard_host::authz::tokens::Recovering(&registry))
-                .context("recovering the token revocations a crash left open")?;
-            tracing::info!(
-                event.name = "iam.tokens_opened",
-                component = "server",
-                revision = registry.revision(),
-                lists = registry.lists().len(),
-                recovered_truncated_bytes = recovery.truncated_bytes,
-                "the token registry is open"
-            );
-            Some(registry)
-        } else {
-            None
-        };
-        // The IAM Host's tokens, signed under `iam.tokens`, their lists' `uri` on its own listener
-        // (WP-11.5): one service, the Host API's and `token.status`'s (WP-12.1).
-        let tokens_service = match (token_registry.clone(), iam_tokens_keys.clone()) {
-            (Some(registry), Some(ring)) => {
-                let base = config.admin_advertised_url().map_or_else(
-                    || format!("https://{configured}", configured = admin_addr_of(config)),
-                    str::to_owned,
-                );
-                Some(Arc::new(
-                    permguard_host::api::tokens::Tokens::new(
-                        registry,
-                        ring as Arc<dyn permguard_core::keys::SigningRing>,
-                        &host_identity.host_id(),
-                        &base,
-                        config.assurance().profile(),
-                    )
-                    // Its own Data Plane is a local member, `member:<host_id>` (WP-12.2).
-                    .serving_data(self.runs_plane(config, "data")),
-                ))
-            }
-            _ => None,
-        };
         let cut = backups
             .cut(time.now_secs())
             .context("aborting the backups a restart cut short")?;
@@ -2500,9 +2199,9 @@ impl App {
         }
         mutations.observe(context.health().clone());
         // `production` admits the ring in files on this volume, and the Host says so until it
-        // moves to a PKCS#11 token or a KMS: whoever holds the volume holds every member.
-        if let Some(advice) = iam_host
-            .then(|| crate::plane::factories::iam_tokens_custody_advice(config))
+        // moves to a PKCS#11 token or a KMS: whoever holds the volume signs every token.
+        if let Some(advice) = authority_host
+            .then(|| crate::plane::factories::authority_tokens_custody_advice(config))
             .flatten()
         {
             tracing::warn!(
@@ -2528,210 +2227,18 @@ impl App {
             permguard_core::lifecycle::Phase::Load,
         );
 
-        // The authorization store and the credential mapper (WP-2.4): the grants on the volume,
-        // what the configuration declares public, and the rules that turn a credential into a
-        // principal. Built before the Planes register, since every Plane decides with them.
+        // The authorization and its authenticator: the Authority Plane's tokens, what the
+        // configuration declares public, and the recovery principal's certificate. Built before the
+        // Planes register, since every Plane decides with them.
         let file = self.load(config_file)?;
         let HostAuthz {
             authorization,
             authenticator,
-            mapper,
-            store: grants,
-            directory,
-            signin,
-            setup: setup_config,
-            min_length,
-            oidc,
-        } = self.authorization_for(
-            config,
-            config_file,
-            &file,
-            &volume,
-            &time,
-            &mutations,
-            secrets,
-            host_identity.host_id(),
-        )?;
+            trust,
+            bootstrap,
+        } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
         context = context.with_authenticator(authenticator);
-        // What the Server Host surface adds: the password sign-in (WP-8.1) and the first
-        // administrator's setup (WP-8.2). A password or a setup code crosses only TLS or a
-        // loopback address.
-        let secure = config.telemetry_tls().is_some()
-            || config
-                .telemetry_addr()
-                .and_then(|address| address.parse::<std::net::SocketAddr>().ok())
-                .is_some_and(|address| address.ip().is_loopback());
-        let mut host_routes = axum::Router::new();
-        if let Some(signin) = &signin {
-            let profile = config.assurance().profile();
-            if !secure && profile != permguard_core::assurance::AssuranceProfile::Development {
-                bail!(
-                    "password sign-in is on and the Server Host surface is neither TLS nor on a \
-                     loopback address: the `{}` profile signs passwords in over TLS only \
-                     (PERMGUARD_TELEMETRY_TLS_CERT and PERMGUARD_TELEMETRY_TLS_KEY)",
-                    profile.as_str()
-                );
-            }
-            if profile == permguard_core::assurance::AssuranceProfile::Regulated
-                && signin.policy().mfa != permguard_host::authz::signin::Mfa::Required
-            {
-                bail!(
-                    "the `regulated` profile asks a second factor of every password sign-in: \
-                     set host.authentication.password.mfa to required"
-                );
-            }
-            if !secure {
-                tracing::warn!(
-                    event.name = "authz.signin_insecure",
-                    component = "server",
-                    "password sign-in is on and the Server Host surface is neither TLS nor on a \
-                     loopback address: every sign-in is refused until it is"
-                );
-            }
-            host_routes = host_routes.merge(crate::signin_http::router(
-                crate::signin_http::SignInRoutes {
-                    signin: Arc::clone(signin),
-                    secure,
-                    recorder: Some(recorder.clone()),
-                },
-            ));
-            // Its sessions are the surface's credentials: the routes that take one are reached.
-            context =
-                context.with_extension(Arc::new(permguard_telemetry::host::HostAuthenticator(
-                    Arc::new(crate::signin_http::SessionBearers(Arc::clone(signin))),
-                )));
-        }
-
-        // The first administrator (WP-8.2): a setup code while nobody administers the Host, or
-        // while a recovery started offline waits; the route answers `404` otherwise.
-        // A member makes no setup code and serves no setup route: it has no directory to make a
-        // first administrator in, and its bootstrap principal is its administrator (WP-12.4).
-        let member_host = self.is_member(config);
-        let bootstrap_principal = grants.bootstrap().map(|held| held.principal);
-        let setup = Arc::new(
-            permguard_host::setup::Setup::open(&volume)
-                .map_err(|error| anyhow::anyhow!("{error}"))
-                .context("opening host/setup/")?,
-        );
-        if !member_host {
-            let supplied = match &setup_config.code_ref {
-                Some(reference) => {
-                    let secrets = secrets.context(
-                    "host.setup.code_ref names a secret and this build resolved no secret store",
-                )?;
-                    let secret = secrets.resolve(reference).with_context(|| {
-                        format!("resolving host.setup.code_ref `{}`", reference.name())
-                    })?;
-                    Some(zeroize::Zeroizing::new(
-                        String::from_utf8(secret.expose().to_vec())
-                            .context("host.setup.code_ref is not text")?,
-                    ))
-                }
-                None => None,
-            };
-            let now = time.now_secs();
-            match setup
-                .prepare(
-                    permguard_host::setup::administered(&grants, now),
-                    supplied.as_ref().map(|code| code.as_str()),
-                    setup_config.expires,
-                    now,
-                )
-                .map_err(|error| anyhow::anyhow!("{error}"))
-                .context("preparing the setup code")?
-            {
-                permguard_host::setup::Prepared::Waiting { waiting, code_file } => {
-                    let at = permguard_core::time::to_rfc3339(
-                        i64::try_from(waiting.expires_at).unwrap_or(i64::MAX),
-                    );
-                    let place = code_file.map_or_else(
-                        || "the secret host.setup.code_ref names".to_owned(),
-                        |path| path.display().to_string(),
-                    );
-                    tracing::warn!(
-                        event.name = "host.setup_waiting",
-                        component = "server",
-                        origin = waiting.origin.as_str(),
-                        code_file = %place,
-                        expires_at = %at,
-                        "no administrator: the first one is made with the setup code (`permguard setup`)"
-                    );
-                    context.health().lifecycle().degrade(
-                        permguard_core::lifecycle::HOST,
-                        permguard_host::setup::CAPABILITY,
-                        format!(
-                            "a setup code waits for the first administrator: in {place}, until {at}"
-                        ),
-                    );
-                }
-                permguard_host::setup::Prepared::Orphaned => {
-                    tracing::error!(
-                        event.name = "host.setup_orphaned",
-                        component = "server",
-                        "nobody administers this Host any more, and it was administered before: no setup \
-                     code is made again by itself; run `permguard host recovery start` on the stopped server"
-                    );
-                    context.health().lifecycle().degrade(
-                    permguard_core::lifecycle::HOST,
-                    permguard_host::setup::CAPABILITY,
-                    "nobody administers this Host: start a recovery (`permguard host recovery start`)",
-                );
-                }
-                permguard_host::setup::Prepared::Expired => {
-                    tracing::error!(
-                        event.name = "host.setup_expired",
-                        component = "server",
-                        "the setup code host.setup.code_ref supplies expired: supply a new value, or start a recovery"
-                    );
-                    context.health().lifecycle().degrade(
-                        permguard_core::lifecycle::HOST,
-                        permguard_host::setup::CAPABILITY,
-                        "the supplied setup code expired: supply a new one in host.setup.code_ref",
-                    );
-                }
-                permguard_host::setup::Prepared::Closed => {}
-            }
-        }
-        if let Some(recovery) = setup
-            .recovery()
-            .map(|recovery| recovery.filter(|_| !member_host))
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("reading host/setup/recovery.json")?
-        {
-            let at = permguard_core::time::to_rfc3339(
-                i64::try_from(recovery.started_at).unwrap_or(i64::MAX),
-            );
-            tracing::warn!(
-                event.name = "host.recovery_waiting",
-                component = "server",
-                started_at = %at,
-                "a recovery was started offline: an administrator acknowledges it"
-            );
-            context.health().lifecycle().degrade(
-                permguard_core::lifecycle::HOST,
-                permguard_host::setup::RECOVERY_CAPABILITY,
-                format!(
-                    "a recovery was started offline at {at}: {}; acknowledge it (`permguard iam recovery acknowledge`)",
-                    recovery.reason
-                ),
-            );
-        }
-        if let Some(directory) = directory.as_ref().filter(|_| !member_host) {
-            host_routes =
-                host_routes.merge(crate::setup_http::router(crate::setup_http::SetupRoutes {
-                    setup: Arc::clone(&setup),
-                    mutations: Arc::clone(&mutations),
-                    directory: Arc::clone(directory),
-                    store: Arc::clone(&grants),
-                    secure,
-                    min_length,
-                    health: context.health().clone(),
-                    recorder: Some(recorder.clone()),
-                    refusals: Arc::default(),
-                }));
-        }
-        context =
-            context.with_extension(Arc::new(permguard_telemetry::host::HostRoutes(host_routes)));
+        let bootstrap_principal = bootstrap.bootstrap().map(|held| held.principal);
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
         // journal on the volume, the grant store, every ring this process composes and the
@@ -2825,21 +2332,6 @@ impl App {
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))?,
                 None => permguard_host::membership::task::TaskHandlers::default(),
-            };
-            // The IAM Host delivers its status lists to every member (WP-12.1).
-            let handlers = match tokens_service.clone() {
-                Some(tokens) => handlers
-                    .register(
-                        permguard_host::membership::record::TaskType::TokenStatus,
-                        permguard_host::membership::token_status::VERSION,
-                        Arc::new(permguard_host::membership::token_status::StatusLists {
-                            source: tokens
-                                as Arc<dyn permguard_host::membership::token_status::ListSource>,
-                            time: Arc::clone(&time),
-                        }),
-                    )
-                    .map_err(|error| anyhow::anyhow!("{error}"))?,
-                None => handlers,
             };
             // The Host keeps the checkpoints its members export (WP-5.9).
             let handlers = handlers
@@ -2940,7 +2432,6 @@ impl App {
                 });
             let api = HostApi::new(Composition {
                 authorization: Arc::clone(&authorization),
-                store: Some(grants),
                 replay,
                 keys: Arc::clone(&key_registry),
                 health: context.health().clone(),
@@ -3047,104 +2538,7 @@ impl App {
                 None => api,
             };
             local_shipper = local_shipping;
-            // Roles, local users and identity providers over both transports (WP-8.1); a member
-            // holds none (WP-12.4).
-            let api = match &directory {
-                None => api,
-                Some(directory) => {
-                    api.with_identities(permguard_host::api::directory::Identities {
-                        directory: Arc::clone(directory),
-                        signin: signin.clone(),
-                        providers: mapper.providers(),
-                        exchange_provider_tokens: oidc,
-                        min_length: signin.as_ref().map_or(
-                            permguard_host::authz::password::DEFAULT_MIN_LENGTH,
-                            |signin| signin.policy().min_length,
-                        ),
-                    })
-                }
-            };
-            // The recovery an administrator acknowledges (WP-8.2); a member has no administrator
-            // to recover but its bootstrap principal (WP-12.4).
-            let api = if member_host {
-                api
-            } else {
-                api.with_setup(Arc::clone(&setup))
-            };
-            // The directory is served at `/iam/v1` only by the IAM Host: the Host of a Server
-            // running a Control Plane (WP-11.1). A member holds none.
-            let api = api.serving_iam(iam_host);
-            // Its tokens (WP-11.5).
-            let api = match tokens_service.clone() {
-                Some(tokens) => api.with_tokens(tokens),
-                None => api,
-            };
-            // The status lists this Host holds as a member, kept on its volume and restored, each
-            // verified again, before anything is served (WP-12.1).
-            let held_lists = Arc::new(
-                permguard_host::membership::token_status::HeldLists::kept_in(
-                    volume
-                        .host()
-                        .subdir(permguard_host::membership::DIRECTORY, true)
-                        .and_then(|dir| {
-                            dir.subdir(permguard_host::membership::token_status::DIRECTORY, true)
-                        })
-                        .context("opening the held status lists")?,
-                ),
-            );
-            let restored = permguard_host::membership::token_status::restore_held(
-                &held_lists,
-                &members,
-                time.now_secs(),
-            );
-            if restored > 0 {
-                tracing::info!(
-                    event.name = "host.token_status_restored",
-                    component = "server",
-                    lists = restored,
-                    "the status lists kept on the volume were verified and restored"
-                );
-            }
-            let api = api.with_held_lists(Arc::clone(&held_lists));
-            // Access tokens in front of every other credential (WP-12.2): the IAM Host trusts its
-            // own, a member those its memberships pin, their status read from its held lists.
-            let trust: Arc<dyn permguard_host::authz::access_tokens::Trust> =
-                match tokens_service.clone() {
-                    Some(tokens) => Arc::new(permguard_host::api::tokens::LocalTrust {
-                        tokens,
-                        time: Arc::clone(&time),
-                    }),
-                    None => Arc::new(permguard_host::authz::access_tokens::MemberTrust::new(
-                        Arc::clone(&members),
-                        held_lists,
-                        config.assurance().profile()
-                            == permguard_core::assurance::AssuranceProfile::Regulated,
-                    )),
-                };
-            if let Some(inner) = context.authenticator() {
-                context = context.with_authenticator(Arc::new(
-                    permguard_host::authz::access_tokens::TokenAuthenticator {
-                        trust,
-                        inner,
-                        time: Arc::clone(&time),
-                    },
-                ));
-            }
             let api = Arc::new(api);
-            // What the directory decides of every live token, applied before anything is served:
-            // a crash between a directory change and the statuses it implies is repaired here.
-            let synced = api
-                .sync_token_statuses("iam")
-                .map_err(|refusal| anyhow::anyhow!("{refusal:?}"))
-                .context("bringing the tokens' statuses to the directory's")?;
-            if synced > 0 {
-                tracing::warn!(
-                    event.name = "iam.tokens_synced",
-                    component = "server",
-                    tokens = synced,
-                    "token statuses a crash left behind the directory were brought to it"
-                );
-            }
             serving = Some(Arc::clone(&api));
             context = context.with_host_handles(api);
         }
@@ -3194,35 +2588,54 @@ impl App {
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =
             crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
-        // The identity providers' keys, fetched off the request path (WP-8.1).
-        let _refreshing = crate::oidc_refresh::drive(
-            &mapper.providers(),
-            config.assurance().profile()
-                == permguard_core::assurance::AssuranceProfile::Development,
-            &crate::oidc_refresh::Observing {
-                health: context.health().clone(),
-                metrics: context.metrics().clone(),
-            },
-        );
-        // The status lists this Host holds as a member, fetched on their own cadence within the
-        // shortest `ttl`, and reported (WP-12.1, `2-security/9` Signals).
-        let _status_lists = serving.as_ref().and_then(|api| {
-            api.held_lists().map(|lists| {
-                crate::token_status::drive(
-                    Arc::clone(api),
-                    Arc::clone(lists),
-                    crate::token_status::Observing {
+        // The Authority Plane's key set and lists, fetched from `authority.url` off the request
+        // path, when the Authority Plane runs in another process (`2-security/8` Keys and lists on
+        // a Plane). Beside it, the Authority Plane hands them over in-process.
+        let _authority = (!authority_host)
+            .then(|| {
+                config
+                    .setting(crate::plane::SETTING_AUTHORITY_URL)
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .map(str::to_owned)
+            })
+            .flatten()
+            .map(|url| {
+                crate::authority_refresh::drive(
+                    Arc::clone(&trust),
+                    crate::authority_refresh::Source {
+                        url,
+                        ca: config
+                            .setting(crate::plane::SETTING_AUTHORITY_TLS_CA)
+                            .map(|path| resolve_beside(config_file, Path::new(path))),
+                        allow_http: config.assurance().profile()
+                            == permguard_core::assurance::AssuranceProfile::Development,
+                    },
+                    crate::authority_refresh::Observing {
                         health: context.health().clone(),
                         metrics: context.metrics().clone(),
                         time: Arc::clone(&time),
                     },
                 )
             })
-        });
+            .transpose()?;
+        if !authority_host
+            && config
+                .setting(crate::plane::SETTING_AUTHORITY_URL)
+                .is_none()
+        {
+            tracing::warn!(
+                event.name = "authz.authority_unset",
+                component = "server",
+                "no Authority Plane runs in this process and authority.url names none elsewhere: \
+                 every access token is refused, and only public grants and the bootstrap \
+                 principal act here"
+            );
+        }
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
-        let _dormancy = repinning_coordinator.as_ref().map(|coordinating| {
-            crate::dormancy::drive(Arc::clone(coordinating), serving.as_ref().map(Arc::clone))
-        });
+        let _dormancy = repinning_coordinator
+            .as_ref()
+            .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
         // The zone keys this Host's memberships as a member grant, received and confirmed (WP-4.7).
         let zone_keys = Arc::new(
             permguard_host::secrets::ZoneKeys::open(&volume)
@@ -3360,11 +2773,14 @@ impl App {
                  `control.attest` ring: its own ledgers cannot be verified, so it does not mirror them"
             );
         }
-        // The access tokens' ring rotates with the Host's other rings.
-        if let Some(keys) = iam_tokens_keys.clone() {
+        // The access tokens' ring rotates with the Host's other rings, and signs for the Authority
+        // Plane alone.
+        if let Some(keys) = authority_tokens_keys.clone() {
             let keys: Arc<dyn KeyManager> = keys;
-            context = context.with_maintained_ring("iam-tokens", keys);
+            context = context.with_maintained_ring("authority-tokens", Arc::clone(&keys));
+            host = host.ring(permguard_host::composition::AUTHORITY_TOKENS, keys);
         }
+        host = host.authority_trust(Arc::clone(&trust)).volume(&volume);
         if let Some(keys) = control_signing_keys {
             let keys: Arc<dyn KeyManager> = keys;
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
@@ -3405,7 +2821,7 @@ impl App {
         // On a member its bootstrap principal is watched, whatever surface it reaches: every use
         // once joined is audited and reported, and the report cleared on a tick (WP-12.4).
         let mut bootstrap_tick = None;
-        if member_host {
+        if self.is_member(config) {
             match (context.authenticator(), bootstrap_principal) {
                 (Some(inner), Some(principal)) => {
                     let watch = Arc::new(permguard_host::authz::bootstrap::BootstrapWatch::new(
@@ -3697,11 +3113,6 @@ fn identity_witness_checked(
     Ok(witness)
 }
 
-/// The Host listener's address, as the configuration states it.
-fn admin_addr_of(config: &Config) -> String {
-    config.admin_addr().unwrap_or_default().to_owned()
-}
-
 /// Each ring's provider from its custody (WP-3.2, owner decisions of 2026-10-08): the
 /// key-encryption key of the `file` custody resolved from the secret store and witnessed,
 /// with the previous one a rotation leaves behind.
@@ -3712,7 +3123,7 @@ pub(crate) fn custodian_for(
 ) -> Result<Arc<permguard_host::keys::custody::Custodian>> {
     use permguard_core::config::KeyCustody;
     use permguard_host::keys::ring::{
-        CONTROL_ATTEST, DATA_ATTEST, HOST_IDENTITY, HOST_OPERATIONS, IAM_TOKENS,
+        AUTHORITY_TOKENS, CONTROL_ATTEST, DATA_ATTEST, HOST_IDENTITY, HOST_OPERATIONS,
     };
 
     // Every ring this build may open: a ring missing here would fall to the plaintext custody.
@@ -3721,7 +3132,7 @@ pub(crate) fn custodian_for(
         HOST_OPERATIONS,
         CONTROL_ATTEST,
         DATA_ATTEST,
-        IAM_TOKENS,
+        AUTHORITY_TOKENS,
     ]
     .into_iter()
     .map(|ring| (ring, config.keys_custody_of(ring)))

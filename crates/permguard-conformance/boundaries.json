@@ -491,26 +491,6 @@
       "fuzz": "event_batch"
     },
     {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/record.rs",
-      "item": "GrantRecord::decode",
-      "entry": "permguard_host::authz::record::GrantRecord::decode",
-      "max_input_bytes": 65536,
-      "limit": "`authz::record::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Host's own journal and the offline CLI, never from a peer",
-      "enforced_at_decoder": true,
-      "fuzz": "grant_record"
-    },
-    {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/record.rs",
-      "item": "Transition::decode",
-      "entry": "permguard_host::authz::record::Transition::decode",
-      "max_input_bytes": 65536,
-      "limit": "`authz::record::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Host's own journal only",
-      "enforced_at_decoder": true,
-      "fuzz": "grant_transition"
-    },
-    {
       "crate": "permguard-core",
       "source": "crates/permguard-core/src/authz.rs",
       "item": "Resource::parse",
@@ -532,21 +512,11 @@
     },
     {
       "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/oidc.rs",
-      "item": "Verifier::verify",
-      "entry": "permguard_host::authz::oidc::Verifier::verify",
-      "max_input_bytes": 16384,
-      "limit": "`authz::oidc::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits",
-      "enforced_at_decoder": true,
-      "fuzz": "oidc_token"
-    },
-    {
-      "crate": "permguard-host",
       "source": "crates/permguard-host/src/authz/access_tokens.rs",
       "item": "verify",
       "entry": "permguard_host::authz::access_tokens::verify",
       "max_input_bytes": 8192,
-      "limit": "`authz::access_tokens::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits (WP-12.2). The fuzz target cannot forge a signature, so it reaches steps 1 to 3; the steps after it are covered by the unit tests",
+      "limit": "`authz::access_tokens::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits. The fuzz target cannot forge a signature, so it reaches steps 1 to 3; the steps after it are covered by the unit tests",
       "enforced_at_decoder": true,
       "fuzz": "access_token"
     },
@@ -1311,34 +1281,54 @@
       "fuzz": "export_manifest"
     },
     {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/directory.rs",
-      "item": "DirectoryTransition::decode",
-      "entry": "permguard_host::authz::directory::DirectoryTransition::decode",
+      "crate": "permguard-authority-plane",
+      "source": "crates/permguard-authority-plane/src/access_keys.rs",
+      "item": "verify",
+      "entry": "permguard_authority_plane::access_keys::verify",
       "max_input_bytes": 16384,
-      "limit": "`authz::directory::MAX_TRANSITION_BYTES`, checked by the decoder before it parses; read from the Host's own directory journal only",
+      "limit": "`access_keys::is_secret_key`, checked before any hashing: only `pgsk_` and 43 base64url characters reach Argon2id; the form arrives within the token endpoint's 16 KiB",
       "enforced_at_decoder": true,
-      "fuzz": "directory_transition"
+      "fuzz": "access_key_verify"
     },
     {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/tokens.rs",
-      "item": "TokenTransition::decode",
-      "entry": "permguard_host::authz::tokens::TokenTransition::decode",
-      "max_input_bytes": 16384,
-      "limit": "`authz::tokens::MAX_TRANSITION_BYTES`, checked by the decoder before it parses; read from the IAM Host's own token journal only",
+      "crate": "permguard-authority-plane",
+      "source": "crates/permguard-authority-plane/src/cbor.rs",
+      "item": "decode",
+      "entry": "permguard_authority_plane::cbor::decode",
+      "max_input_bytes": 262144,
+      "limit": "`cbor::MAX_RECORD_BYTES`, checked before the canonical CBOR is parsed; a frame of the Authority Plane's own journals",
       "enforced_at_decoder": true,
+      "fuzz": "account_record"
+    },
+    {
+      "crate": "permguard-authority-plane",
+      "source": "crates/permguard-authority-plane/src/tokens.rs",
+      "item": "parse",
+      "entry": "permguard_authority_plane::tokens::status::parse",
+      "max_input_bytes": 8192,
+      "limit": "a query member of `GET /authority/v1/tokens` or a field of `ListTokensRequest`, inside the request line or the message ceiling; matched against three words",
+      "enforced_at_decoder": false,
       "fuzz": "token_transition"
     },
     {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/membership/token_status.rs",
-      "item": "Request::decode",
-      "entry": "permguard_host::membership::token_status::Request::decode",
-      "max_input_bytes": 524288,
-      "limit": "`session::record::MAX_FRAME_BYTES`: a task message arrives in one peer session frame, refused past it before anything reads it, and the task's signed `max_body_bytes` (WP-12.1)",
-      "enforced_at_decoder": false,
-      "fuzz": "token_status_request"
+      "crate": "permguard-authority-plane",
+      "source": "crates/permguard-authority-plane/src/accounts.rs",
+      "item": "AccountRecord::decode",
+      "entry": "permguard_authority_plane::accounts::AccountRecord::decode",
+      "max_input_bytes": 262144,
+      "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own accounts journal only",
+      "enforced_at_decoder": true,
+      "fuzz": "account_record"
+    },
+    {
+      "crate": "permguard-authority-plane",
+      "source": "crates/permguard-authority-plane/src/tokens.rs",
+      "item": "TokenTransition::decode",
+      "entry": "permguard_authority_plane::tokens::TokenTransition::decode",
+      "max_input_bytes": 262144,
+      "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own token journal only",
+      "enforced_at_decoder": true,
+      "fuzz": "token_transition"
     },
     {
       "crate": "permguard-objects",
@@ -1349,16 +1339,6 @@
       "limit": "the caller's `max_encoded`, checked before base64url decoding, and `max_entries`, enforced while the ZLIB stream decompresses: a member reads a list token of at most 1 MiB and `2^20` entries (`2-security/9` Delivery)",
       "enforced_at_decoder": true,
       "fuzz": "status_list_decode"
-    },
-    {
-      "crate": "permguard-host",
-      "source": "crates/permguard-host/src/authz/password.rs",
-      "item": "verify",
-      "entry": "permguard_host::authz::password::verify",
-      "max_input_bytes": 1024,
-      "limit": "`authz::password::MAX_PASSWORD_BYTES`, checked before any hashing; the PHC string comes from the Host's own directory and only an Argon2id one is read",
-      "enforced_at_decoder": true,
-      "fuzz": "password_verify"
     }
   ],
   "trusted": [
@@ -1423,11 +1403,6 @@
       "reason": "a configuration value the operator sets"
     },
     {
-      "source": "crates/permguard-host/src/setup.rs",
-      "item": "Setup::open",
-      "reason": "the Host's own setup folder on its volume, written by this process and by the offline recovery, closed JSON shapes"
-    },
-    {
       "source": "crates/permguard-decisions/src/spool.rs",
       "item": "Spool::open",
       "reason": "the store's own directory on the Host's volume, written by this process"
@@ -1488,19 +1463,9 @@
       "reason": "the assurance profile an operator states in `assurance.profile` (WP-2.8): operator configuration, read once at start"
     },
     {
-      "source": "crates/permguard-host/src/authz/record.rs",
-      "item": "GrantId::from_bytes",
-      "reason": "sixteen bytes already in memory, drawn by this process or decoded by `GrantRecord::decode`, which is the boundary"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/record.rs",
-      "item": "GrantId::parse",
-      "reason": "the grant id an operator types into the offline CLI, 32 hex characters; never read from a peer before the Host API of WP-2.5, which decodes it at its own boundary"
-    },
-    {
       "source": "crates/permguard-host/src/authz/store.rs",
-      "item": "GrantStore::open",
-      "reason": "the store's own directory on the Host's volume, written by this process; every frame is decoded by `GrantRecord::decode` and `Transition::decode`, the registered boundaries"
+      "item": "BootstrapStore::open",
+      "reason": "the recovery principal's commitment on the Host's volume, one file this process or the offline bootstrap wrote under the volume's lock"
     },
     {
       "source": "crates/permguard-host/src/api/replay.rs",
@@ -1713,29 +1678,14 @@
       "reason": "a closed set of three names: the marker's own field, and a command-line value clap already restricts to them (WP-7.9)"
     },
     {
-      "source": "crates/permguard-host/src/authz/directory.rs",
-      "item": "Directory::open",
-      "reason": "the directory's own journal on the Host's volume, written by this process; every frame is decoded by `DirectoryTransition::decode`, the registered boundary"
+      "source": "crates/permguard-authority-plane/src/accounts.rs",
+      "item": "Accounts::open",
+      "reason": "the accounts' own journal on the Authority Plane's volume, written by this process; every frame is decoded by `AccountRecord::decode`, the registered boundary"
     },
     {
-      "source": "crates/permguard-host/src/authz/tokens.rs",
+      "source": "crates/permguard-authority-plane/src/tokens.rs",
       "item": "TokenRegistry::open",
-      "reason": "the token registry's own journal on the IAM Host's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/factor.rs",
-      "item": "unseal",
-      "reason": "a sealed factor from the Host's own directory journal, decoded there by `DirectoryTransition::decode`; it opens under the Host-local key or answers nothing"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/sessions.rs",
-      "item": "Sessions::open",
-      "reason": "opens a session for a user the sign-in already checked: it draws a token and reads no input"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/signin.rs",
-      "item": "Mfa::parse",
-      "reason": "`host.authentication.password.mfa`, a configuration value the operator sets"
+      "reason": "the token registry's own journal on the Authority Plane's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
     }
   ]
 }

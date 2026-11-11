@@ -81,6 +81,7 @@ pkcs11 = ["dep:cryptoki"]
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
 # `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
 tokio = { workspace = true, features = ["test-util"] }
 # The cross-transport vectors of the Host API: the parity harness and the generated gRPC client.

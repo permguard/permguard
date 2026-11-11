@@ -23,6 +23,8 @@ name = "permguard-control-plane"
 path = "src/main.rs"
 
 [dependencies]
+# The Authority Plane, registered beside this one by the binary (`runtime.planes` selects it).
+permguard-authority-plane.workspace = true
 # The cursor keys derived from the store's root, erased on drop (WP-3.3).
 zeroize.workspace = true
 anyhow.workspace = true
@@ -62,6 +64,7 @@ name = "push_crash"
 required-features = ["crash-points"]
 
 [dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
 # Decoding an offset token, to prove that editing one is refused.
 base64.workspace = true
 # The producer half, so the shipping contract is exercised end to end rather

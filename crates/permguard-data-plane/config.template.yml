@@ -76,6 +76,14 @@ log:
   level: info
   format: json
 
+# Where this Server verifies access tokens (`2-security/8`): the Authority Plane's URL, which every
+# token names as its issuer; its keys and status lists are fetched from there over HTTPS, checked
+# against `tls.ca` beside the system's authorities. Without it every token is refused here.
+# authority:
+#   url: "https://permguard-control-plane:8443"
+#   tls:
+#     ca: tls/ca.pem
+
 dataPlane:
   # The plane's signing ring: it will sign the decision responses this plane returns. Part of
   # the model, like the control plane's ring — its own keys, never the operations ring that

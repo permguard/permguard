@@ -14,7 +14,7 @@ use permguard_core::{
 use permguard_host::identity::Suite;
 use permguard_host::keys::registry::Opener;
 use permguard_host::keys::ring::{
-    CONTROL_ATTEST, DATA_ATTEST, HOST_OPERATIONS, IAM_TOKENS, Policy, Ring,
+    AUTHORITY_TOKENS, CONTROL_ATTEST, DATA_ATTEST, HOST_OPERATIONS, Policy, Ring,
 };
 use permguard_std::catalog::FileCatalog;
 use permguard_std::secrets::{DirectorySecretStore, EnvironmentSecretStore};
@@ -101,60 +101,60 @@ pub(crate) fn data_signing_keys_for(
     )?))
 }
 
-/// The IAM Host's ring, `iam.tokens`, under `host/keys` (iteration 02, WP-11.3): it signs access
-/// tokens and status list tokens at the token endpoint, never on a decision path, so any custody
-/// may hold it; `regulated` keeps it in a PKCS#11 token or a KMS, and no profile but `development`
-/// keeps it in plaintext. Opened only by the Host of a Server running a Control Plane.
-pub(crate) fn iam_tokens_keys_for(
+/// The Authority Plane's ring, `authority.tokens`, under `host/keys`: it signs access tokens and
+/// status list tokens at the token endpoint, never on a decision path, so any custody may hold it;
+/// `regulated` keeps it in a PKCS#11 token or a KMS, and no profile but `development` keeps it in
+/// plaintext. Opened only by the Host of a Server running the Authority Plane.
+pub(crate) fn authority_tokens_keys_for(
     config: &Config,
     rings: &Opener<'_>,
 ) -> anyhow::Result<Arc<Ring>> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::config::KeyCustody;
 
-    let custody = config.keys_custody_of(IAM_TOKENS);
+    let custody = config.keys_custody_of(AUTHORITY_TOKENS);
     let profile = config.assurance().profile();
     if profile == AssuranceProfile::Regulated
         && !matches!(custody, KeyCustody::Pkcs11 | KeyCustody::Kms)
     {
         anyhow::bail!(
-            "the `regulated` profile keeps `{IAM_TOKENS}` in a PKCS#11 token or a KMS, and its \
-             custody is `{}`: set {} (operations.keys.rings.\"iam.tokens\".custody)",
+            "the `regulated` profile keeps `{AUTHORITY_TOKENS}` in a PKCS#11 token or a KMS, and its \
+             custody is `{}`: set {} (operations.keys.rings.\"authority.tokens\".custody)",
             custody.as_str(),
             permguard_core::config::SETTING_KEYS_TOKENS_CUSTODY
         );
     }
     if profile != AssuranceProfile::Development && custody == KeyCustody::Development {
         anyhow::bail!(
-            "`{IAM_TOKENS}` is under the `development` custody, plaintext files, which the `{}` \
+            "`{AUTHORITY_TOKENS}` is under the `development` custody, plaintext files, which the `{}` \
              profile refuses",
             profile.as_str()
         );
     }
     Ok(rings.open(
-        IAM_TOKENS,
+        AUTHORITY_TOKENS,
         Suite::Ed25519Sha256V1,
         ring_policy(config),
         None,
     )?)
 }
 
-/// The capability a Host reports degraded while `iam.tokens` is kept in files on its volume.
+/// The capability a Host reports degraded while `authority.tokens` is kept in files on its volume.
 pub(crate) const TOKEN_CUSTODY: &str = "token-custody";
 
-/// What the IAM Host says while `iam.tokens` is in `file` custody under `production`
+/// What the Authority Plane's Host says while `authority.tokens` is in `file` custody under `production`
 /// (`2-security/8` Profiles): envelope-encrypted files on the volume, which `production` admits
 /// and reports, since the ring signs every member's tokens. `None` under any other custody or
 /// profile: plaintext and `regulated`'s other custodies are refused at start.
-pub(crate) fn iam_tokens_custody_advice(config: &Config) -> Option<String> {
+pub(crate) fn authority_tokens_custody_advice(config: &Config) -> Option<String> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::config::KeyCustody;
 
     (config.assurance().profile() == AssuranceProfile::Production
-        && config.keys_custody_of(IAM_TOKENS) == KeyCustody::File)
+        && config.keys_custody_of(AUTHORITY_TOKENS) == KeyCustody::File)
         .then(|| {
             format!(
-                "`{IAM_TOKENS}` signs every member's tokens and is kept in files on this volume: \
+                "`{AUTHORITY_TOKENS}` signs every token of the cluster and is kept in files on this volume: \
                  keep it in a PKCS#11 token or a KMS ({})",
                 permguard_core::config::SETTING_KEYS_TOKENS_CUSTODY
             )
@@ -229,7 +229,7 @@ mod tests {
 
     fn opened(tag: &str, config: &Config) -> anyhow::Result<Arc<Ring>> {
         let root = std::env::temp_dir().join(format!(
-            "pg-iam-tokens-{tag}-{}-{:?}",
+            "pg-authority-tokens-{tag}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -247,15 +247,15 @@ mod tests {
             recorder: None,
             profile: AssuranceProfile::Development,
         };
-        iam_tokens_keys_for(config, &opener)
+        authority_tokens_keys_for(config, &opener)
     }
 
-    /// `production` admits `iam.tokens` in `file` custody and says so; no other custody or
+    /// `production` admits `authority.tokens` in `file` custody and says so; no other custody or
     /// profile is reported.
     #[test]
-    fn file_custody_of_iam_tokens_is_reported_under_production_only() {
+    fn file_custody_of_authority_tokens_is_reported_under_production_only() {
         let advice = |profile: &str, custody: &str| {
-            iam_tokens_custody_advice(&config(&[
+            authority_tokens_custody_advice(&config(&[
                 (SETTING_ASSURANCE_PROFILE, profile),
                 (permguard_core::config::SETTING_KEYS_TOKENS_CUSTODY, custody),
             ]))
@@ -268,21 +268,21 @@ mod tests {
         assert_eq!(advice("regulated", "kms"), None);
     }
 
-    /// WP-11.3: under `development` the IAM Host opens `iam.tokens` with any custody.
+    /// Under `development` the Authority Plane's Host opens `authority.tokens` with any custody.
     #[test]
-    fn the_iam_tokens_ring_opens_under_development() {
+    fn the_authority_tokens_ring_opens_under_development() {
         let ring = opened(
             "development",
             &config(&[(SETTING_ASSURANCE_PROFILE, "development")]),
         )
         .expect("the ring opens");
-        assert_eq!(ring.id(), IAM_TOKENS);
+        assert_eq!(ring.id(), AUTHORITY_TOKENS);
     }
 
     /// `regulated` keeps the ring in a token or a KMS, whatever the Host's custody; and no profile
     /// but `development` keeps it in plaintext. Refused before anything is opened.
     #[test]
-    fn regulated_or_plaintext_custody_of_iam_tokens_is_refused() {
+    fn regulated_or_plaintext_custody_of_authority_tokens_is_refused() {
         for (tag, settings, says) in [
             (
                 "regulated-file",

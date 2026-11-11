@@ -125,7 +125,7 @@ async fn member_verification_replays_and_validates_the_request_before_contacting
     };
     let membership_id = id_of(&id).expect("an id");
     let held = member.store.membership(&membership_id).expect("held");
-    let principal = permguard_core::authz::Principal::new("spiffe://acme/operators/root")
+    let principal = permguard_core::authz::Principal::new(crate::api::testing::ADMIN)
         .expect("an administrator principal");
     let first = api
         .transact(
@@ -797,25 +797,12 @@ async fn one_bundle_verifies_the_coordinator_and_its_pinned_member() {
     let root = scratch("members-bundle");
     let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
     // The bundles of the Planes' resources are read under grants on them.
-    for (request_id, selector) in [
-        ("grant-data", "plane/data/*"),
-        ("grant-control", "plane/control/*"),
-    ] {
-        api.create_grant(
-            &admin(),
-            crate::api::CreateGrant {
-                request_id: request_id.to_owned(),
-                expected_revision: None,
-                principal: crate::api::testing::ADMIN.to_owned(),
-                operations: vec![permguard_core::authz::operations::KEYS_READ.to_owned()],
-                selector: selector.to_owned(),
-                resource_types: Vec::new(),
-                constraints: Default::default(),
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("granted");
+    for selector in ["plane/data/*", "plane/control/*"] {
+        crate::api::testing::grant_to(
+            crate::api::testing::ADMIN,
+            &[permguard_core::authz::operations::KEYS_READ],
+            selector,
+        );
     }
     let member = Host::new("api-bundle-member");
     let (id, _) = enrolled(&api, &member, "bundle-1").await;
@@ -1088,21 +1075,11 @@ async fn every_admin_route_is_denied_without_membership_admin() {
     let member = Host::new("api-denied-member");
     let (id, _) = enrolled(&api, &member, "denied-1").await;
     const READER: &str = "spiffe://acme/operators/reader";
-    api.create_grant(
-        &admin(),
-        crate::api::CreateGrant {
-            request_id: "grant-reader".to_owned(),
-            expected_revision: None,
-            principal: READER.to_owned(),
-            operations: vec![permguard_core::authz::operations::MEMBERSHIP_READ.to_owned()],
-            selector: "host".to_owned(),
-            resource_types: Vec::new(),
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
+    crate::api::testing::grant_to(
+        READER,
+        &[permguard_core::authz::operations::MEMBERSHIP_READ],
+        "host",
+    );
     let reader = actor(READER);
     // The reader reads.
     assert_eq!(api.members(&reader, None).expect("listed").members.len(), 1);
@@ -1215,21 +1192,11 @@ async fn a_later_page_rebuilds_the_same_peers_after_the_memberships_moved() {
 
     let root = scratch("members-pages");
     let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
-    api.create_grant(
-        &admin(),
-        crate::api::CreateGrant {
-            request_id: "grant-data".to_owned(),
-            expected_revision: None,
-            principal: crate::api::testing::ADMIN.to_owned(),
-            operations: vec![permguard_core::authz::operations::KEYS_READ.to_owned()],
-            selector: "plane/data/*".to_owned(),
-            resource_types: Vec::new(),
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
+    crate::api::testing::grant_to(
+        crate::api::testing::ADMIN,
+        &[permguard_core::authz::operations::KEYS_READ],
+        "plane/data/*",
+    );
     let member = Host::new("api-pages-member");
     let (id, _) = enrolled(&api, &member, "pages-1").await;
     let revision = api.member(&admin(), &id).expect("read").revision;

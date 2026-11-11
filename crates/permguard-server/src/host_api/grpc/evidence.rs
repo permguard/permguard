@@ -17,7 +17,7 @@ use permguard_host::api::streams::{AnchorView, StreamQuery};
 
 use super::super::v1;
 use super::super::v1::evidence_service_server::EvidenceService;
-use super::{Answer, Served, raw, ring_out, unimplemented};
+use super::{Answer, Served, raw, ring_out};
 
 fn given(text: String) -> Option<String> {
     (!text.is_empty()).then_some(text)
@@ -200,14 +200,6 @@ impl EvidenceService for Served {
                 })
                 .collect(),
         }))
-    }
-
-    async fn ship_stream_batch(
-        &self,
-        _: Request<v1::ShipStreamBatchRequest>,
-    ) -> Answer<v1::ShipStreamBatchResponse> {
-        // Batches travel on the membership's task transport (WP-5.7, owner decision).
-        Err(unimplemented("a batch over the Host API"))
     }
 
     async fn get_stream_frontier(

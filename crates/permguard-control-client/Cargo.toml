@@ -17,6 +17,8 @@ publish = false
 build = "build.rs"
 
 [dependencies]
+# A secret key, wiped from memory once dropped.
+zeroize.workspace = true
 permguard-core.workspace = true
 # The one definition of what a decision request is. A client that read a payload
 # its own way would refuse what the server accepts, or send less than the caller
@@ -42,6 +44,7 @@ prost-types.workspace = true
 tonic-prost.workspace = true
 
 [dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
 # The fake plane the wire tests stand up: a tonic server on an ephemeral port.
 async-stream.workspace = true
 futures-core.workspace = true

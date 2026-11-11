@@ -19,7 +19,7 @@ use permguard_core::authz::{Principal, Resource, Selector, operations};
 use permguard_core::{Disclosure, Health, PeerSessionsReport, TlsSettings};
 use permguard_host::api::sessions::PeerSessions;
 use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
-use permguard_host::authz::{Authorization, GrantStore, Issue};
+use permguard_host::authz::Authorization;
 use permguard_host::identity::{Identity, Suite, directories};
 use permguard_host::keys::FileKeyProvider;
 use permguard_host::keys::ring::{DATA_ATTEST, HOST_OPERATIONS, Policy, Ring};
@@ -36,7 +36,7 @@ use permguard_host::time::TimeGuard;
 use permguard_transport::Surface;
 use serde_json::Value;
 
-const ADMIN: &str = "spiffe://acme/operators/root";
+const ADMIN: &str = "sa:admin";
 const SERVED: PeerSessionsReport = PeerSessionsReport {
     served: true,
     reason: None,
@@ -98,6 +98,9 @@ impl Pki {
     }
 }
 
+/// Any client certificate is the administrator, acting as an access token would: every operation
+/// on the Host, the stream reads on the Data Plane (WP-5.7b) and the object sweep on the Control
+/// Plane (TC-4). A test shortcut for the token the CLI would otherwise obtain.
 struct MutualTlsAdmin;
 
 impl permguard_core::authz::Authenticator for MutualTlsAdmin {
@@ -106,12 +109,25 @@ impl permguard_core::authz::Authenticator for MutualTlsAdmin {
         peer: Option<&permguard_core::PeerIdentity>,
         _bearer: Option<&str>,
     ) -> Result<permguard_core::authz::Actor, permguard_core::AccessDenial> {
-        use permguard_core::authz::{Actor, ActorContext, Credential};
+        use permguard_core::authz::{Actor, ActorContext, TokenGrant, TokenScope};
+        let scope = |operations: &[&str], resource: &str| TokenScope {
+            operations: operations.iter().map(|op| (*op).to_owned()).collect(),
+            selector: Selector::under(Resource::parse(resource).expect("a resource")),
+        };
         Ok(match peer {
-            Some(_) => Actor::Authenticated(ActorContext::new(
+            Some(_) => Actor::Authenticated(ActorContext::of_token(
                 Principal::new(ADMIN).expect("the administrator principal"),
-                Credential::SanUri,
-                None,
+                TokenGrant {
+                    scopes: vec![
+                        scope(operations::ALL, "host"),
+                        scope(&[operations::STREAMS_READ], "plane/data"),
+                        scope(&[operations::GC_MANAGE], "plane/control"),
+                    ],
+                    jti: "0198f2aa-0000-7000-8000-0000000000ad".to_owned(),
+                    list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
+                    list_iat: 1,
+                    list_digest: [0; 32],
+                },
             )),
             None => Actor::Anonymous,
         })
@@ -202,7 +218,6 @@ fn launch_host(
                 .expect("provisioned"),
             );
             let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
-            let (grants, _) = GrantStore::open(&volume).expect("the grant store opens");
             let audit = Arc::new(
                 permguard_host::audit::Engine::open(
                     &volume,
@@ -225,59 +240,6 @@ fn launch_host(
                 )
                 .expect("the mutation journal opens"),
             );
-            permguard_host::operations::grants::issue(
-                &mutations,
-                &grants,
-                permguard_host::operations::journal::Initiator::System("test".to_owned()),
-                Issue {
-                    principal: Principal::new(ADMIN).expect("the administrator"),
-                    operations: operations::ALL.iter().map(|op| (*op).to_owned()).collect(),
-                    selector: Selector::under(Resource::host()),
-                    resource_types: vec!["*".to_owned()],
-                    constraints: Default::default(),
-                    issued_by: "test".to_owned(),
-                    expires_at: None,
-                },
-                permguard_host::authz::store::now(),
-            )
-            .expect("the administrator is issued");
-            // The stream reads (WP-5.7b), on the Data Plane's resources; the list is on `host`,
-            // which the administrator's grant above already covers.
-            permguard_host::operations::grants::issue(
-                &mutations,
-                &grants,
-                permguard_host::operations::journal::Initiator::System("test".to_owned()),
-                Issue {
-                    principal: Principal::new(ADMIN).expect("the administrator"),
-                    operations: vec![operations::STREAMS_READ.to_owned()],
-                    selector: Selector::under(Resource::parse("plane/data").expect("a resource")),
-                    resource_types: vec!["*".to_owned()],
-                    constraints: Default::default(),
-                    issued_by: "test".to_owned(),
-                    expires_at: None,
-                },
-                permguard_host::authz::store::now(),
-            )
-            .expect("the stream reader is issued");
-            // The operator's object sweep (TC-4), on the Control Plane's resources.
-            permguard_host::operations::grants::issue(
-                &mutations,
-                &grants,
-                permguard_host::operations::journal::Initiator::System("test".to_owned()),
-                Issue {
-                    principal: Principal::new(ADMIN).expect("the administrator"),
-                    operations: vec![operations::GC_MANAGE.to_owned()],
-                    selector: Selector::under(
-                        Resource::parse("plane/control").expect("a resource"),
-                    ),
-                    resource_types: vec!["*".to_owned()],
-                    constraints: Default::default(),
-                    issued_by: "test".to_owned(),
-                    expires_at: None,
-                },
-                permguard_host::authz::store::now(),
-            )
-            .expect("the sweeper is issued");
             let (replay, _) = Replay::open(&volume, permguard_host::authz::store::now())
                 .expect("the replay opens");
             let open_ring = |id: &'static str| {
@@ -348,8 +310,7 @@ fn launch_host(
                 });
             let api = Arc::new(
                 HostApi::new(Composition {
-                    authorization: Arc::new(Authorization::new(Arc::clone(&grants), &[])),
-                    store: Some(grants),
+                    authorization: Arc::new(Authorization::closed()),
                     replay,
                     keys,
                     health: Health::new(),
@@ -392,8 +353,6 @@ fn launch_host(
                     })),
                 })
                 .with_streams(Arc::new(FixedStreams))
-                // A coordinator stands for the IAM Host, serving the directory (WP-11.1).
-                .serving_iam(role == Role::Coordinator)
                 // The application-consistent backups (TC-3).
                 .with_backups(
                     Arc::new(
@@ -1412,10 +1371,7 @@ fn the_host_operations_commands_answer_over_both_transports() {
         );
         assert!(records > 0, "{scheme}");
 
-        configs.push((
-            call(&["host", "config", "show", "--effective"]),
-            call(&["host", "config", "revisions"]),
-        ));
+        configs.push(call(&["host", "config", "show", "--effective"]));
 
         // The revocation's plan is listed, consumed; its planner cannot approve it.
         let plans = call(&["host", "plans", "list"]);
@@ -1442,7 +1398,7 @@ fn the_host_operations_commands_answer_over_both_transports() {
         "the same configuration over REST and gRPC"
     );
     assert_eq!(
-        configs[0].0["settings"][0]["key"], "PERMGUARD_LOG_LEVEL",
+        configs[0]["settings"][0]["key"], "PERMGUARD_LOG_LEVEL",
         "the settings carried"
     );
     assert_eq!(
@@ -2020,11 +1976,10 @@ fn the_evidence_anchors_answer_over_both_transports() {
     );
 }
 
-/// `2-command-line-commands.md` (grants, host identity): an operator issues a grant, lists it,
-/// revokes it in two steps from a private plan file and rotates the Host identity, over REST and
-/// over gRPC; and bootstraps the recovery administrator of a volume offline.
+/// `2-command-line-commands.md` (host identity): an operator rotates the Host identity, over REST
+/// and over gRPC; and bootstraps the recovery principal of a volume offline.
 #[test]
-fn the_grant_and_identity_commands_answer_over_both_transports() {
+fn the_identity_and_bootstrap_commands_answer_over_both_transports() {
     let root = scratch("grants-identity");
     let pki = Pki::new(&root);
     let authority = pki.authority();
@@ -2045,78 +2000,6 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
     for scheme in ["https", "grpcs"] {
         let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
         let call = |args: &[&str]| call(&root, &endpoint, &tls, &words(args));
-        let principal = format!("spiffe://acme/{scheme}-billing");
-
-        let issued = call(&[
-            "iam",
-            "grants",
-            "issue",
-            "--principal",
-            &principal,
-            "--operations",
-            "catalog.read,policy.push",
-            "--selector",
-            "plane/control/*",
-        ]);
-        let grant_id = issued["grant"]["grant_id"]
-            .as_str()
-            .expect("a grant id")
-            .to_owned();
-        assert_eq!(issued["grant"]["status"], "active", "{scheme}: {issued}");
-        assert_eq!(issued["grant"]["resource_types"], serde_json::json!(["*"]));
-        assert!(issued["receipt"]["operation_id"].is_string(), "{scheme}");
-        let listed = call(&["iam", "grants", "list", "--principal", &principal]);
-        assert_eq!(
-            listed["grants"]
-                .as_array()
-                .expect("grants")
-                .iter()
-                .map(|grant| (grant["grant_id"].as_str(), grant["status"].as_str()))
-                .collect::<Vec<_>>(),
-            vec![(Some(grant_id.as_str()), Some("active"))],
-            "{scheme}: {listed}"
-        );
-
-        // A two-step revocation from a private plan file; the grant is then revoked, terminally.
-        let plan_file = root.join(format!("{scheme}-grant-revoke.json"));
-        let planned = call(&[
-            "iam",
-            "grants",
-            "revoke",
-            "plan",
-            &grant_id,
-            "--expected-revision",
-            &listed["revision"].as_u64().expect("a revision").to_string(),
-            "--out",
-            plan_file.to_str().expect("UTF-8"),
-        ]);
-        assert_eq!(written(&plan_file), planned, "{scheme}");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            let mode = std::fs::metadata(&plan_file)
-                .expect("written")
-                .permissions()
-                .mode();
-            assert_eq!(
-                mode & 0o777,
-                0o600,
-                "{scheme}: the plan is the owner's alone"
-            );
-        }
-        call(&[
-            "iam",
-            "grants",
-            "revoke",
-            "run",
-            &grant_id,
-            "--confirm-file",
-            plan_file.to_str().expect("UTF-8"),
-        ]);
-        let after = call(&["iam", "grants", "list", "--principal", &principal]);
-        assert_eq!(after["grants"][0]["status"], "revoked", "{scheme}: {after}");
-        assert!(after["revision"].as_u64() > listed["revision"].as_u64());
-
         // The identity rotates to its next epoch online; a rotation from a stale epoch is refused.
         let shown = call(&["host", "identity", "show"]);
         let epoch = shown["epoch"].as_u64().expect("an epoch");
@@ -2167,8 +2050,8 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
         );
     }
 
-    // The recovery administrator of a volume, offline: committed once, replayed exactly, and
-    // another fingerprint refused.
+    // The recovery principal of a volume, offline: committed once, replayed exactly, and another
+    // fingerprint refused.
     let volume = root.join("offline-volume");
     std::fs::create_dir_all(&volume).expect("created");
     // A Server Host volume the server has started on once, and released.
@@ -2214,8 +2097,8 @@ fn the_grant_and_identity_commands_answer_over_both_transports() {
     assert!(
         refusal["message"]
             .as_str()
-            // A second administrator is a recovery, not a bootstrap (WP-8.2).
-            .is_some_and(|text| text.contains("host recovery start")),
+            // The commitment is written once.
+            .is_some_and(|text| text.contains("written once")),
         "{refusal}"
     );
 }

@@ -38,6 +38,8 @@
 pub const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
 pub mod attestation;
+pub mod authority;
+pub mod authority_v1;
 pub mod catalog;
 pub mod checkpoint;
 pub mod connect;
@@ -53,7 +55,6 @@ mod host_proto;
 /// The generated `permguard.host.v1` stubs (TC-1).
 pub mod host_v1;
 pub mod http;
-pub mod iam_v1;
 pub mod narrate;
 pub mod objects;
 /// The generated `permguard.control.v1` stubs, from the plane's own
@@ -64,7 +65,6 @@ pub mod pdp_v1;
 pub mod pull;
 pub mod remote;
 pub mod remote_http;
-pub mod signin;
 pub mod store;
 pub mod temporal;
 pub mod tls;

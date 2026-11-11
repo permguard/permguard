@@ -4177,7 +4177,7 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
     let nonced: wire::CheckRequest = serde_json::from_value(asked).expect("a request");
     let authenticated = Actor::Authenticated(ActorContext::new(
         Principal::new("spiffe://acme/pep").expect("a principal"),
-        Credential::SanUri,
+        Credential::Certificate,
         Some("the PEP".to_owned()),
     ));
 
@@ -4204,15 +4204,11 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
         let tokened = Actor::Authenticated(ActorContext::of_token(
             Principal::new("sa:billing").expect("a principal"),
             permguard_core::authz::TokenGrant {
-                family: permguard_core::authz::families::APPLICATION.to_owned(),
-                scope: std::collections::BTreeSet::new(),
-                targets: Vec::new(),
+                scopes: Vec::new(),
                 jti: "j".to_owned(),
-                list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                 list_iat: 7,
                 list_digest: [0xab; 32],
-                authority: None,
-                role: None,
             },
         ));
         let handed = asker(&tokened, request, None).expect("handed on");
@@ -4221,7 +4217,7 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
         assert_eq!(
             (status.uri.as_str(), status.iat, status.digest.as_str()),
             (
-                "https://iam.example/iam/v1/status-lists/l",
+                "https://authority.example/authority/v1/status-lists/l",
                 7,
                 format!("sha256:{}", "ab".repeat(32)).as_str()
             )
@@ -5080,7 +5076,7 @@ mod signed_response {
         Arc::new(permguard_core::authz::Actor::Authenticated(
             permguard_core::authz::ActorContext::new(
                 permguard_core::authz::Principal::new(AUDIENCE).expect("a principal"),
-                permguard_core::authz::Credential::Oidc,
+                permguard_core::authz::Credential::AccessToken,
                 None,
             ),
         ))
@@ -5634,11 +5630,11 @@ async fn a_decision_records_its_evidence_on_the_decision_path() {
     );
 }
 
-/// WP-12.3: on a member, a Data Plane caller acting by an access token is decided by the token
-/// alone, its scope and its targets, over the real decision route; the member holds no grant.
+/// WP-12.3: a Data Plane caller acting by an access token is decided by the token alone, its
+/// scopes' operations and selectors, over the real decision route; nothing is public.
 #[tokio::test]
 async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
-    use permguard_core::authz::{Actor, ActorContext, Principal, Selector, TokenGrant};
+    use permguard_core::authz::{Actor, ActorContext, Principal, Selector, TokenGrant, TokenScope};
 
     let root = scratch("token-caller").join("mirrors");
     provision(
@@ -5653,23 +5649,20 @@ async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
         Arc::new(Actor::Authenticated(ActorContext::of_token(
             Principal::new("sa:billing").expect("a principal"),
             TokenGrant {
-                family: "application".to_owned(),
-                scope: std::iter::once(scope.to_owned()).collect(),
-                targets: vec![Selector::parse(target).expect("a selector")],
+                scopes: vec![TokenScope {
+                    operations: std::iter::once(scope.to_owned()).collect(),
+                    selector: Selector::parse(target).expect("a selector"),
+                }],
                 jti: "j".to_owned(),
-                list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                 list_iat: 1,
                 list_digest: [0; 32],
-                authority: None,
-                role: None,
             },
         )))
     };
     let ask = |actor: Arc<Actor>| {
         let router = permguard_data_plane::authz::http::routes(http::Surface {
-            authorization: Arc::new(
-                permguard_host::composition::Authorization::closed().with_tokens_alone(true),
-            ),
+            authorization: Arc::new(permguard_host::composition::Authorization::closed()),
             decider: Arc::clone(&decider),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
@@ -5720,6 +5713,6 @@ async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
         ))
         .await,
         StatusCode::FORBIDDEN,
-        "outside the token's targets"
+        "outside the token's selector"
     );
 }

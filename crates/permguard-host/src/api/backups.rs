@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use permguard_core::authz::{Actor, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::rfc3339;
+use super::rfc3339;
 use super::{HostApi, Receipt, Refusal};
 use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::backup::{self, Backups, Refused, Signing};

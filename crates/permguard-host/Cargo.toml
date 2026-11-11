@@ -17,23 +17,24 @@ publish = false
 # aborts there, at the pass `PERMGUARD_CRASH_HIT` names. Tests only; a release build never carries
 # the check.
 crash-points = []
+# A test Authority Plane minting signed tokens and lists (`authz::testing`), for the tests of
+# every crate that authorizes a token. Tests only.
+test-support = []
 
 [dependencies]
 permguard-core.workspace = true
-# The canonical CBOR of the grant record and the bootstrap commitment (`authz`).
+# The canonical CBOR of the bootstrap commitment (`authz`).
 permguard-objects.workspace = true
-# The compact JWS of a bearer token and the JWKS file of a pinned issuer (`authz::oidc`); the
-# Host API's documents and the replay journal's frames (`api`).
+# The compact JWS of an access token and of a status list (`authz`); the Host API's documents and
+# the replay journal's frames (`api`).
 base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# The start-up record of grants that allow nothing and of a key set that did not re-read (`authz`).
+# What the Host records as it starts and serves.
 tracing.workspace = true
-# The OS CSPRNG, for the volume identity (`storage::volume`), session tokens and salts, the
-# second factor's HMAC and its sealing (`authz`).
+# The OS CSPRNG, for the volume identity (`storage::volume`); the access tokens' and status lists'
+# signatures (`authz`).
 ring.workspace = true
-# Local users' passwords as Argon2id (`authz::password`, WP-8.1).
-argon2.workspace = true
 sha2.workspace = true
 # The secret handle's HMAC, computed inside the Host, and the key wiped when it is dropped
 # (`composition`).
@@ -52,7 +53,7 @@ required-features = ["crash-points"]
 # The audit handle and the Host API mutations are async (`composition` and `api` tests).
 tokio = { workspace = true, features = ["macros", "rt"] }
 
-# TS-9: what token verification adds to a decision on a member, against its budget.
+# TS-9: what token verification adds to a decision, against its budget.
 [[bench]]
 name = "token_verify"
 path = "benches/token_verify.rs"

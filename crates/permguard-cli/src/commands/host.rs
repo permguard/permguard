@@ -1,18 +1,12 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `permguard host grants`: the grant store of a volume, offline (WP-2.4, owner decision of
-//! 2026-10-06).
+//! `permguard host …`: a Server Host, through its Host listener, and offline its volume.
 //!
-//! The Host API that lists, issues and revokes grants arrives with the dedicated Host listener
-//! (WP-2.5); until then an operator works on the volume itself, with the server stopped: the
-//! process lock refuses a volume another process holds. `bootstrap` writes the one recovery
-//! administrator's commitment, once; `issue`, `revoke` and `list` append to and read the journal.
-//!
-//! Bootstrap, issue and revoke are operations of the Host's security-mutation transaction
-//! (WP-3.6), as the Host API's are: an intent in `host/audit/mutations/`, a `security` record of
-//! each phase in the volume's audit trail, the grant written with its operation id. The CLI is
-//! their initiator, `cli`; a mutation a crash left open is resolved before anything else.
+//! Offline, the server stopped (the process lock refuses a volume another process holds),
+//! `grants bootstrap` writes the Host's one recovery principal's commitment, once: an operation of
+//! the Host's security-mutation transaction (WP-3.6), recorded in the volume's audit trail; a
+//! mutation a crash left open is resolved before anything else.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -25,7 +19,7 @@ use serde::Serialize;
 
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Principal;
-use permguard_host::authz::{AuthzError, GrantRecord, GrantStore};
+use permguard_host::authz::{AuthzError, BootstrapStore};
 use permguard_host::keys::custody::Custodian;
 use permguard_host::keys::ring::HOST_IDENTITY;
 use permguard_host::operations::grants;
@@ -34,8 +28,8 @@ use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
 use crate::args::{
-    Globals, GrantRevokeAction, GrantsAction, HoldsAction, HostAction, IdentityAction,
-    InviteAction, MemberChangeArgs, MemberRevokeAction, MembersAction, PinAction, ResetAction,
+    Globals, HoldsAction, HostAction, IdentityAction, InviteAction, MemberChangeArgs,
+    MemberRevokeAction, MembersAction, PinAction, ResetAction,
 };
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
@@ -64,19 +58,6 @@ pub fn host_command(
         HostAction::Grants {
             action: crate::args::HostGrantsAction::Bootstrap { fingerprint },
         } => grants_bootstrap(globals, server_config, &fingerprint, trace),
-        HostAction::Users {
-            action:
-                crate::args::HostUsersAction::Bootstrap {
-                    name,
-                    email,
-                    password_stdin,
-                },
-        } => {
-            super::directory::bootstrap(globals, server_config, &name, email, password_stdin, trace)
-        }
-        HostAction::Recovery {
-            action: crate::args::HostRecoveryAction::Start { reason, expires },
-        } => super::directory::recovery_start(globals, server_config, &reason, expires, trace),
         HostAction::Holds { action } => holds(globals, server_config, action, trace),
         HostAction::Identity { action } => identity(globals, server_config, action, trace),
         HostAction::Members { action } => members(globals, action, trace),
@@ -90,31 +71,7 @@ pub fn host_command(
     }
 }
 
-/// An offline bootstrap makes the first administrator of a volume, and runs again for the same
-/// principal changing nothing; when another administrator exists it is refused (WP-8.2): adding
-/// one then is a recovery, explicit and recorded.
-pub(super) fn refuse_second_administrator(
-    store: &GrantStore,
-    principal: &str,
-    now: u64,
-) -> Result<(), Failure> {
-    let admin = permguard_core::authz::Principal::new(principal).map_err(Failure::usage)?;
-    let holds = store.allows_at(now).permits(
-        &admin,
-        permguard_core::authz::operations::AUTHZ_ADMIN,
-        &permguard_core::authz::Resource::host(),
-    );
-    if !holds && permguard_host::setup::administered_by_another(store, principal, now) {
-        return Err(Failure::usage(
-            "another administrator already administers this Host: a bootstrap makes only the \
-             first one. To add one, ask an administrator; if every administrator is lost, run \
-             `permguard host recovery start --volume <dir> --reason <why>` on the stopped server",
-        ));
-    }
-    Ok(())
-}
-
-/// `permguard host grants bootstrap`: the recovery administrator, offline, on the volume.
+/// `permguard host grants bootstrap`: the recovery principal, offline, on the volume.
 fn grants_bootstrap(
     globals: &Globals,
     server_config: Option<&Path>,
@@ -124,10 +81,7 @@ fn grants_bootstrap(
     let now = permguard_host::authz::store::now();
     let volume = volume_of(globals)?;
     let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-    let principal = permguard_host::authz::store::bootstrap_principal(fingerprint)
-        .map_err(|error| Failure::usage(error.to_string()))?;
-    refuse_second_administrator(&store, principal.as_str(), now)?;
-    let (commitment, grant) =
+    let (commitment, written) =
         grants::bootstrap(&mutations, &store, fingerprint, now).map_err(refused)?;
     render(
         &BootstrapReport {
@@ -136,8 +90,7 @@ fn grants_bootstrap(
             created_at: permguard_core::time::to_rfc3339(
                 i64::try_from(commitment.created_at).unwrap_or(i64::MAX),
             ),
-            grant: grant.as_ref().map(grant_report),
-            already_there: grant.is_none(),
+            already_there: !written,
         },
         globals.output,
         trace,
@@ -145,69 +98,25 @@ fn grants_bootstrap(
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// `permguard iam grants …`: the IAM Host's grants, online.
-pub(super) fn grants(
-    globals: &Globals,
-    action: GrantsAction,
-    trace: &Trace,
-) -> Result<ExitCode, Failure> {
-    match action {
-        GrantsAction::Issue {
-            principal,
-            operations,
-            selector,
-            types,
-            expires,
-            expected_revision,
-        } => {
-            let backend = online_host(globals, trace, false)?;
-            let answer = backend
-                .create_grant(&permguard_host::api::CreateGrant {
-                    request_id: request_id(),
-                    expected_revision,
-                    principal,
-                    operations,
-                    selector,
-                    resource_types: types,
-                    constraints: BTreeMap::new(),
-                    expires_at: expires,
-                })
-                .map_err(|failure| Failure::from_client(&failure))?;
-            render_json(&answer, globals, trace)?;
-        }
-        GrantsAction::Revoke { action } => grant_revoke(globals, action, trace)?,
-        GrantsAction::List {
-            principal,
-            selector,
-        } => {
-            let backend = online_host(globals, trace, false)?;
-            let answer = backend
-                .grants(principal.as_deref(), selector.as_deref())
-                .map_err(|failure| Failure::from_client(&failure))?;
-            render_json(&answer, globals, trace)?;
-        }
-    }
-    Ok(ExitCode::from(EXIT_READY))
-}
-
 /// The initiator the CLI's operations name in the mutation journal and the audit trail.
 pub(super) const INITIATOR: &str = "cli";
 
-/// Opens the grant store and the mutation journal of `volume`, resolving any grant mutation a
+/// Opens the bootstrap commitment and the mutation journal of `volume`, resolving any mutation a
 /// crash left open: what a command that mutates needs.
 fn open_mutable(
     volume: &Path,
     server_config: Option<&Path>,
     trace: &Trace,
-) -> Result<(std::sync::Arc<GrantStore>, Mutations), Failure> {
-    let (store, held) = open(volume, trace)?;
+) -> Result<(std::sync::Arc<BootstrapStore>, Mutations), Failure> {
+    let held = claim(volume, trace)?;
+    let store = BootstrapStore::open(&held).map_err(failure)?;
     let mutations = offline_engine(&held, server_config, trace)?;
     let recovered = mutations
         .recover(&grants::Grants(&store))
-        .map_err(|error| Failure::unavailable(format!("recovering grant mutations: {error}")))?;
+        .map_err(|error| Failure::unavailable(format!("recovering mutations: {error}")))?;
     if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
         trace.say(format!(
-            "grant mutations left open by a crash: {} committed, {} failed",
+            "mutations left open by a crash: {} committed, {} failed",
             recovered.reconciled.len(),
             recovered.failed.len()
         ));
@@ -215,32 +124,6 @@ fn open_mutable(
     // The lock lives as long as the volume; it is held until the process exits.
     std::mem::forget(held);
     Ok((store, mutations))
-}
-
-/// Opens the grant store of `volume`, writing nothing but what the store's own open repairs.
-fn open(
-    volume: &std::path::Path,
-    trace: &Trace,
-) -> Result<(std::sync::Arc<GrantStore>, Volume), Failure> {
-    let held = claim(volume, trace)?;
-    let store = grant_store_of(&held, trace)?;
-    Ok((store, held))
-}
-
-/// The grant store of a volume already held: what the offline commands beside the grants open,
-/// `host users bootstrap` among them (WP-8.1).
-pub(super) fn grant_store_of(
-    held: &Volume,
-    trace: &Trace,
-) -> Result<std::sync::Arc<GrantStore>, Failure> {
-    let (store, recovery) = GrantStore::open(held).map_err(failure)?;
-    if recovery.truncated_bytes > 0 {
-        trace.say(format!(
-            "the grant journal recovered, truncating {} byte(s)",
-            recovery.truncated_bytes
-        ));
-    }
-    Ok(store)
 }
 
 /// Claims `volume`, an existing one only, without opening any store: what `host holds` reads and
@@ -505,64 +388,8 @@ fn refused(error: MutationError<AuthzError>) -> Failure {
 
 fn failure(error: AuthzError) -> Failure {
     match error {
-        AuthzError::Invalid(_)
-        | AuthzError::Unknown(_)
-        | AuthzError::Terminal(..)
-        | AuthzError::Conflict { .. } => Failure::usage(error),
+        AuthzError::Invalid(_) => Failure::usage(error),
         AuthzError::Storage(_) => Failure::unavailable(error),
-        AuthzError::Record(_) => Failure::internal(error),
-    }
-}
-
-#[derive(Serialize)]
-struct GrantReportBody {
-    grant_id: String,
-    principal: String,
-    operations: Vec<String>,
-    selector: String,
-    resource_types: Vec<String>,
-    status: &'static str,
-    revision: u64,
-    issued_by: String,
-    issued_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expires_at: Option<String>,
-}
-
-fn grant_report(record: &GrantRecord) -> GrantReportBody {
-    let instant =
-        |seconds: u64| permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX));
-    GrantReportBody {
-        grant_id: record.grant_id.to_string(),
-        principal: record.principal_id.to_string(),
-        operations: record.operations.clone(),
-        selector: record.selector.to_string(),
-        resource_types: record.resource_types.clone(),
-        status: record.status.as_str(),
-        revision: record.revision,
-        issued_by: record.issued_by.clone(),
-        issued_at: instant(record.issued_at),
-        expires_at: record.expires_at.map(instant),
-    }
-}
-
-impl Report for GrantReportBody {
-    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
-        writeln!(out, "grant      {}", self.grant_id)?;
-        writeln!(out, "principal  {}", self.principal)?;
-        writeln!(out, "operations {}", self.operations.join(", "))?;
-        writeln!(out, "selector   {}", self.selector)?;
-        writeln!(out, "types      {}", self.resource_types.join(", "))?;
-        writeln!(
-            out,
-            "status     {} (revision {})",
-            self.status, self.revision
-        )?;
-        writeln!(out, "issued     {} by {}", self.issued_at, self.issued_by)?;
-        if let Some(expires) = &self.expires_at {
-            writeln!(out, "expires    {expires}")?;
-        }
-        Ok(())
     }
 }
 
@@ -571,28 +398,19 @@ struct BootstrapReport {
     principal: String,
     fingerprint: String,
     created_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    grant: Option<GrantReportBody>,
     already_there: bool,
 }
 
 impl Report for BootstrapReport {
     fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
         if self.already_there {
-            writeln!(
-                out,
-                "the volume already commits to this recovery administrator"
-            )?;
+            writeln!(out, "the volume already commits to this recovery principal")?;
         } else {
-            writeln!(out, "recovery administrator committed")?;
+            writeln!(out, "recovery principal committed")?;
         }
         writeln!(out, "principal   {}", self.principal)?;
         writeln!(out, "fingerprint {}", self.fingerprint)?;
         writeln!(out, "created     {}", self.created_at)?;
-        if let Some(grant) = &self.grant {
-            writeln!(out)?;
-            grant.render_terminal(out)?;
-        }
         Ok(())
     }
 }
@@ -1403,52 +1221,6 @@ fn change_member(
     render_json(&answer, globals, trace)
 }
 
-fn grant_revoke(
-    globals: &Globals,
-    action: GrantRevokeAction,
-    trace: &Trace,
-) -> Result<(), Failure> {
-    match action {
-        GrantRevokeAction::Plan {
-            grant_id,
-            expected_revision,
-            out,
-        } => {
-            let reserved = Reserved::claim(&rooted_file(globals, &out))?;
-            let answer = online_host(globals, trace, false)?
-                .plan_grant_revoke(
-                    &grant_id,
-                    &permguard_host::api::PlanRevoke {
-                        request_id: request_id(),
-                        expected_revision,
-                    },
-                )
-                .map_err(|failure| Failure::from_client(&failure))?;
-            reserved.fill(&serde_json::to_vec_pretty(&answer).map_err(Failure::internal)?)?;
-            render_json(&answer, globals, trace)
-        }
-        GrantRevokeAction::Run {
-            grant_id,
-            confirm_file,
-        } => {
-            let plan: permguard_host::api::Planned = read_json(
-                &rooted_file(globals, &confirm_file),
-                "grant revocation plan",
-            )?;
-            let answer = online_host(globals, trace, false)?
-                .run_grant_revoke(
-                    &grant_id,
-                    &permguard_host::api::RunRevoke {
-                        request_id: request_id(),
-                        receipt: plan.receipt,
-                    },
-                )
-                .map_err(|failure| Failure::from_client(&failure))?;
-            render_json(&answer, globals, trace)
-        }
-    }
-}
-
 fn canonical_url(url: &str) -> Result<String, Failure> {
     let endpoint = permguard_control_client::Endpoint::parse(url).map_err(Failure::usage)?;
     let scheme = match (endpoint.is_grpc(), endpoint.is_tls()) {
@@ -1756,7 +1528,7 @@ fn reset(
                     "--reason is printable text of 1 to 256 bytes",
                 ));
             }
-            let (_store, held) = open(&volume, trace)?;
+            let held = claim(&volume, trace)?;
             let config =
                 permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
@@ -1856,14 +1628,14 @@ fn reset(
             }
             plan.plan_id = issued.plan.plan_id.clone();
             plan.plan_digest = issued.plan_digest;
-            plan.expires = permguard_host::api::grants::rfc3339(issued.expires);
+            plan.expires = permguard_host::api::rfc3339(issued.expires);
             plan.approvals_required = issued.approvals_required;
             trace.say(format!("plan receipt written to {}", out.display()));
             render(&plan, globals.output, trace)?;
             std::mem::forget(held);
         }
         ResetAction::Run { confirm_file } => {
-            let (_store, held) = open(&volume, trace)?;
+            let held = claim(&volume, trace)?;
             let config =
                 permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;

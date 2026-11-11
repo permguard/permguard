@@ -49,8 +49,15 @@ pub mod operations {
     pub const DECISION_EVALUATE: &str = "decision.evaluate";
     /// Submit an occurrence to the temporal interface.
     pub const EVENT_SUBMIT: &str = "event.submit";
-    /// List, issue and revoke grants.
-    pub const AUTHZ_ADMIN: &str = "authz.admin";
+    /// Read the Authority Plane's service accounts, their scopes and access keys (`2-security/5`).
+    pub const ACCOUNTS_READ: &str = "accounts.read";
+    /// Create, change, suspend and delete service accounts, set their scopes, make and delete
+    /// their access keys (`2-security/5`).
+    pub const ACCOUNTS_WRITE: &str = "accounts.write";
+    /// List the tokens the Authority Plane issued (`2-security/5`).
+    pub const TOKENS_READ: &str = "tokens.read";
+    /// Revoke a token the Authority Plane issued (`2-security/5`).
+    pub const TOKENS_REVOKE: &str = "tokens.revoke";
     /// Read the lifecycle of the Host, its Planes and its services: `GET /host/v1/status`
     /// (WP-2.5, owner decision of 2026-10-06).
     pub const LIFECYCLE_READ: &str = "lifecycle.read";
@@ -97,7 +104,10 @@ pub mod operations {
         POLICY_PUSH,
         DECISION_EVALUATE,
         EVENT_SUBMIT,
-        AUTHZ_ADMIN,
+        ACCOUNTS_READ,
+        ACCOUNTS_WRITE,
+        TOKENS_READ,
+        TOKENS_REVOKE,
         LIFECYCLE_READ,
         KEYS_READ,
         CONFIG_READ,
@@ -126,15 +136,11 @@ pub mod resource_types {
     pub const PLANE: &str = "plane";
     pub const ZONE: &str = "zone";
     pub const LEDGER: &str = "ledger";
-    /// The member Hosts of the IAM Host, `member`, and one of them, `member/<member_id>`
-    /// (iteration 02, `2-security/8` Who may obtain what).
-    pub const MEMBERS: &str = "members";
-    pub const MEMBER: &str = "member";
     /// Every type: the one wildcard a grant may carry.
     pub const ANY: &str = "*";
 
     /// Every registered type, the wildcard included.
-    pub const ALL: &[&str] = &[HOST, PLANE, ZONE, LEDGER, MEMBERS, MEMBER, ANY];
+    pub const ALL: &[&str] = &[HOST, PLANE, ZONE, LEDGER, ANY];
 
     /// Whether `resource_type` is registered.
     pub fn is_registered(resource_type: &str) -> bool {
@@ -160,13 +166,6 @@ pub enum Resource {
         plane: String,
         zone_id: String,
         ledger_id: String,
-    },
-    /// Every member Host of the IAM Host: `member`, what `member/*` selects below.
-    Members,
-    /// One member Host, administered through the IAM Host: `member/<member_id>`. It is never a
-    /// resource on the member itself, which names its own Host `host`.
-    Member {
-        member_id: String,
     },
 }
 
@@ -204,18 +203,9 @@ impl Resource {
         }
     }
 
-    /// A member Host, by its `member_id`.
-    pub fn member(member_id: impl Into<String>) -> Self {
-        Self::Member {
-            member_id: member_id.into(),
-        }
-    }
-
     /// The registered type of this resource.
     pub fn resource_type(&self) -> &'static str {
         match self {
-            Self::Members => resource_types::MEMBERS,
-            Self::Member { .. } => resource_types::MEMBER,
             Self::Host => resource_types::HOST,
             Self::Plane { .. } => resource_types::PLANE,
             Self::Zone { .. } => resource_types::ZONE,
@@ -226,7 +216,7 @@ impl Resource {
     /// The Plane this resource belongs to; `None` for the Host.
     pub fn plane_id(&self) -> Option<&str> {
         match self {
-            Self::Host | Self::Members | Self::Member { .. } => None,
+            Self::Host => None,
             Self::Plane { plane } | Self::Zone { plane, .. } | Self::Ledger { plane, .. } => {
                 Some(plane)
             }
@@ -236,8 +226,6 @@ impl Resource {
     /// The path components, in order.
     fn components(&self) -> Vec<&str> {
         match self {
-            Self::Members => vec!["member"],
-            Self::Member { member_id } => vec!["member", member_id],
             Self::Host => vec!["host"],
             Self::Plane { plane } => vec!["plane", plane],
             Self::Zone { plane, zone_id } => vec!["plane", plane, "zone", zone_id],
@@ -258,8 +246,6 @@ impl Resource {
         }
         match parts.as_slice() {
             ["host"] => Ok(Self::Host),
-            ["member"] => Ok(Self::Members),
-            ["member", member_id] => Ok(Self::member(*member_id)),
             ["plane", plane] => Ok(Self::plane(*plane)),
             ["plane", plane, "zone", zone] => Ok(Self::zone(*plane, *zone)),
             ["plane", plane, "zone", zone, "ledger", ledger] => {
@@ -402,14 +388,14 @@ pub fn operation_fits(operation: &str, selector: &Selector) -> bool {
     use operations as op;
     let prefix = selector.prefix();
     let host = matches!(prefix, Resource::Host);
-    let member = matches!(prefix, Resource::Member { .. })
-        || (matches!(prefix, Resource::Members) && selector.covers_descendants());
     let plane = |wanted: Option<&str>| match prefix.plane_id() {
         Some(plane) => wanted.is_none_or(|wanted| wanted == plane),
         None => false,
     };
     match operation {
-        op::AUTHZ_ADMIN => host,
+        op::ACCOUNTS_READ | op::ACCOUNTS_WRITE | op::TOKENS_READ | op::TOKENS_REVOKE => {
+            plane(Some("authority"))
+        }
         op::IDENTITY_READ
         | op::IDENTITY_ADMIN
         | op::KEYS_ADMIN
@@ -418,10 +404,10 @@ pub fn operation_fits(operation: &str, selector: &Selector) -> bool {
         | op::CONFIG_READ
         | op::LIFECYCLE_READ
         | op::BACKUP_READ
-        | op::BACKUP_MANAGE => host || member,
+        | op::BACKUP_MANAGE => host,
         // A Plane's rings are read under it, a key bundle's resource a Plane's (WP-3.4).
-        op::KEYS_READ | op::AUDIT_READ | op::STREAMS_READ => host || member || plane(None),
-        op::GC_MANAGE => member || plane(None),
+        op::KEYS_READ | op::AUDIT_READ | op::STREAMS_READ => host || plane(None),
+        op::GC_MANAGE => plane(None),
         op::CATALOG_READ | op::CATALOG_WRITE | op::POLICY_PUSH | op::EVIDENCE_READ => {
             plane(Some("control"))
         }
@@ -485,49 +471,41 @@ impl fmt::Display for Principal {
     }
 }
 
-/// How an actor was authenticated: what the mapper read, for the audit trail and the log, never
-/// for authorization.
+/// How an actor was authenticated, for the audit trail and the log, never for authorization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Credential {
-    /// An mTLS certificate whose SAN URI a mapper rule names.
-    SanUri,
-    /// An mTLS certificate whose subject public key a mapper rule pins.
-    Spki,
     /// An mTLS certificate whose fingerprint the bootstrap commitment names.
     Certificate,
-    /// A bearer token a configured OIDC issuer signed.
-    Oidc,
-    /// A session a local user opened with its password (WP-8.1).
-    Password,
-    /// An access token the IAM Host signed (iteration 02, WP-12.2): what the actor may do is the
-    /// token's grant.
+    /// An access token the Authority Plane signed (`2-security/8`): what the actor may do is the
+    /// token's scopes.
     AccessToken,
 }
 
-/// What an access token lets its bearer do (iteration 02, `2-security/8`): its family, its
-/// operations and its targets, and the status list it was checked against.
+/// One scope an access token carries: operations on a selector (`2-security/8` Authorization).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenScope {
+    /// The operations, each a registered one.
+    pub operations: std::collections::BTreeSet<String>,
+    /// Where they apply.
+    pub selector: Selector,
+}
+
+/// What an access token lets its bearer do (`2-security/8`): its scopes, and the status list it
+/// was checked against.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenGrant {
-    /// `application` or `administration`.
-    pub family: String,
-    /// The operations, each a registered one.
-    pub scope: std::collections::BTreeSet<String>,
-    /// The resources it may act on: selectors of the member's own tree.
-    pub targets: Vec<Selector>,
+    /// The scopes the token carries, at most [`MAX_TOKEN_SCOPES`].
+    pub scopes: Vec<TokenScope>,
     pub jti: String,
     /// The status list the token was found `VALID` in: its `uri`, `iat` and the SHA-256 of its
     /// bytes, what a decision record names (WP-12.5).
     pub list_uri: String,
     pub list_iat: u64,
     pub list_digest: [u8; 32],
-    /// The coordinator whose ledgers an `application` token reaches on a member: its host id in
-    /// lowercase hex without dashes, as its mirrors' directory is named. None on the IAM Host,
-    /// whose own grants decide alongside the token.
-    pub authority: Option<String>,
-    /// The one role the subject elevated to, its RFC 9068 `roles` claim, by name: None for a token
-    /// issued without a role.
-    pub role: Option<String>,
 }
+
+/// The most scopes a service account holds, and a token carries.
+pub const MAX_TOKEN_SCOPES: usize = 64;
 
 /// The status list version an access token was found `VALID` in, as a decision or event record
 /// names it (iteration 02, WP-12.5): never the token.
@@ -568,94 +546,66 @@ impl Actor {
     }
 }
 
-/// Whether `operation` on `resource` is a per-Host operation on a member's own Host: the Host
+/// Whether `operation` on `resource` is a per-Host operation on a Host's own resources: the Host
 /// itself, or a Plane's resource for an operation that applies to one (its rings, audit, streams,
-/// collection). What `member/<id>` names at the IAM Host, an administration token's `host` and a
-/// member's bootstrap principal reach (`2-security/8`); never an evaluation, never another Host.
+/// collection). What a Host's bootstrap principal reaches (`2-security/8`); never an evaluation,
+/// an event, the catalog or the Authority Plane's accounts.
 pub fn per_host_reach(operation: &str, resource: &Resource) -> bool {
-    families::serves(families::ADMINISTRATION, operation)
-        && match resource {
-            Resource::Host => operation_fits(operation, &Selector::exactly(Resource::Host)),
-            Resource::Plane { .. } | Resource::Zone { .. } | Resource::Ledger { .. } => {
-                operation_fits(operation, &Selector::under(resource.clone()))
-            }
-            Resource::Members | Resource::Member { .. } => false,
-        }
-}
-
-/// The families of an access token (`2-security/8` Families).
-pub mod families {
-    /// Evaluation and event submission, on a member's Data Plane tree.
-    pub const APPLICATION: &str = "application";
-    /// The per-Host operations of one member, on that member's Host.
-    pub const ADMINISTRATION: &str = "administration";
-
-    /// Whether `family` serves `operation`: an application token evaluates and submits events,
-    /// an administration token holds what a grant on a member may name, never an evaluation. A
-    /// family this release does not know serves nothing.
-    pub fn serves(family: &str, operation: &str) -> bool {
-        use super::{Resource, Selector, operation_fits, operations};
-
-        let evaluates = matches!(
-            operation,
-            operations::DECISION_EVALUATE | operations::EVENT_SUBMIT
-        );
-        match family {
-            APPLICATION => evaluates,
-            ADMINISTRATION => {
-                !evaluates && operation_fits(operation, &Selector::under(Resource::Members))
-            }
-            _ => false,
+    use operations as op;
+    matches!(
+        operation,
+        op::IDENTITY_READ
+            | op::IDENTITY_ADMIN
+            | op::KEYS_READ
+            | op::KEYS_ADMIN
+            | op::MEMBERSHIP_READ
+            | op::MEMBERSHIP_ADMIN
+            | op::CONFIG_READ
+            | op::LIFECYCLE_READ
+            | op::BACKUP_READ
+            | op::BACKUP_MANAGE
+            | op::AUDIT_READ
+            | op::STREAMS_READ
+            | op::GC_MANAGE
+    ) && match resource {
+        Resource::Host => operation_fits(operation, &Selector::exactly(Resource::Host)),
+        Resource::Plane { .. } | Resource::Zone { .. } | Resource::Ledger { .. } => {
+            operation_fits(operation, &Selector::under(resource.clone()))
         }
     }
 }
 
 impl TokenGrant {
-    /// Whether the token allows `operation` on `resource`.
+    /// Whether the token allows `operation` on `resource`: step 7 of `2-security/8` Verifying a
+    /// token.
     pub fn permits(&self, operation: &str, resource: &Resource) -> bool {
-        self.allows(operation, resource, |target| target.contains(resource))
+        self.allows(operation, |selector| selector.contains(resource))
     }
 
     /// Whether the token allows `operation` on something at or under `scope`.
     pub fn permits_anywhere_under(&self, operation: &str, scope: &Resource) -> bool {
-        self.allows(operation, scope, |target| {
-            target.contains(scope) || target.reaches_under(scope)
+        self.allows(operation, |selector| {
+            selector.contains(scope) || selector.reaches_under(scope)
         })
     }
 
     /// Whether the token allows `operation` on everything under `scope`, whole.
     pub fn permits_whole(&self, operation: &str, scope: &Resource) -> bool {
-        self.allows(operation, scope, |target| target.covers_whole(scope))
+        self.allows(operation, |selector| selector.covers_whole(scope))
     }
 
-    /// Step 9 of `2-security/8` On a member: the family serves the operation, the operation is in
-    /// `scope`, and the resource is the token's.
-    ///
-    /// An `application` token reaches what its targets select, for evaluation and event submission
-    /// only. An `administration` token's target is `host`, its member's Host as `member/<id>`
-    /// names it at the IAM Host: the Host itself and, for the per-Host operations that apply to a
-    /// Plane's resources (its rings, audit, streams, collection), the member's Planes; never an
-    /// evaluation, and never what the Host administers of other Hosts.
-    fn allows(
-        &self,
-        operation: &str,
-        resource: &Resource,
-        selected: impl Fn(&Selector) -> bool,
-    ) -> bool {
-        if !self.scope.contains(operation) || !families::serves(&self.family, operation) {
-            return false;
-        }
-        match self.family.as_str() {
-            families::APPLICATION => self.targets.iter().any(selected),
-            families::ADMINISTRATION => {
-                per_host_reach(operation, resource)
-                    && self
-                        .targets
-                        .iter()
-                        .any(|target| *target == Selector::exactly(Resource::Host))
-            }
-            _ => false,
-        }
+    /// The operations the token carries, every scope together.
+    pub fn operations(&self) -> std::collections::BTreeSet<&str> {
+        self.scopes
+            .iter()
+            .flat_map(|scope| scope.operations.iter().map(String::as_str))
+            .collect()
+    }
+
+    fn allows(&self, operation: &str, selected: impl Fn(&Selector) -> bool) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.operations.contains(operation) && selected(&scope.selector))
     }
 }
 
@@ -663,11 +613,7 @@ impl Credential {
     /// The credential kind as the trail spells it.
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::SanUri => "san_uri",
-            Self::Spki => "spki",
             Self::Certificate => "certificate",
-            Self::Oidc => "oidc",
-            Self::Password => "password",
             Self::AccessToken => "access_token",
         }
     }
@@ -881,118 +827,9 @@ pub trait Authenticator: Send + Sync {
     ) -> Result<Actor, AccessDenial>;
 }
 
-/// One `host.principals[]` rule, as the configuration file states it; the Host builds its mapper
-/// from these (owner decision, 2026-10-06).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrincipalRule {
-    /// An mTLS certificate carrying exactly this URI among its subject alternative names maps to
-    /// the URI, verbatim.
-    SanUri(String),
-    /// An mTLS certificate whose subject public key info hashes to `sha256:<hex>` maps to
-    /// `spki:sha256:<hex>`.
-    Spki(String),
-    /// A bearer token from a pinned OIDC issuer maps to `oidc:<issuer>#<claim value>`.
-    Oidc(Box<OidcPrincipalRule>),
-}
-
-/// One identity provider: the pinned OIDC issuer of a [`PrincipalRule::Oidc`]
-/// (`2-security/2` Identity providers).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OidcPrincipalRule {
-    /// The short name operators type, `entra:alice@acme.com`; never part of a principal.
-    pub name: String,
-    pub issuer: String,
-    pub audience: String,
-    pub algorithms: Vec<String>,
-    pub claim: String,
-    /// Where the verification keys come from: exactly one source.
-    pub keys: OidcKeySource,
-    /// The authority of a private provider's TLS certificate, beside the system's.
-    pub ca_file: Option<std::path::PathBuf>,
-    /// How often fetched keys are fetched again.
-    pub refresh: std::time::Duration,
-    /// How long the keys last fetched or read stay trusted.
-    pub max_stale: std::time::Duration,
-    /// The `azp` or `client_id` values accepted; empty accepts any client of the audience.
-    pub clients: Vec<String>,
-    /// The accepted `typ` header values; a token with no `typ` is accepted.
-    pub token_types: Vec<String>,
-    /// Whether a token whose verified email equals a local user's acts as that user.
-    pub link_email: bool,
-}
-
-/// Where a provider's verification keys come from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OidcKeySource {
-    /// `<issuer>/.well-known/openid-configuration`, whose `jwks_uri` is fetched.
-    Discovery,
-    /// A pinned key set URL.
-    Uri(String),
-    /// A file the deployment keeps, beside the configuration.
-    File(std::path::PathBuf),
-}
-
-impl OidcKeySource {
-    /// Whether the keys are fetched over the network.
-    pub fn is_fetched(&self) -> bool {
-        !matches!(self, Self::File(_))
-    }
-}
-
-/// The `typ` values a token is accepted with when the provider names none.
-pub const DEFAULT_TOKEN_TYPES: &[&str] = &[
-    "JWT",
-    crate::domains::jwt::ACCESS_TOKEN,
-    "application/at+jwt",
-];
-
-/// The default refresh of fetched keys and their default stale window.
-pub const DEFAULT_KEY_REFRESH: std::time::Duration = std::time::Duration::from_secs(3600);
-pub const DEFAULT_KEY_MAX_STALE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
-/// The shortest refresh a provider may ask for.
-pub const MIN_KEY_REFRESH: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// Whether `name` is a provider name: 1 to 63 lowercase letters, digits or `-`, not starting or
-/// ending with `-`.
-pub fn is_provider_name(name: &str) -> bool {
-    (1..=63).contains(&name.len())
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        && !name.starts_with('-')
-        && !name.ends_with('-')
-}
-
-/// The name a provider takes when its rule gives none: its issuer's host, dots as dashes.
-pub fn default_provider_name(issuer: &str) -> String {
-    let host = issuer
-        .split_once("://")
-        .map_or(issuer, |(_, rest)| rest)
-        .split(['/', ':', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    let name: String = host
-        .chars()
-        .map(|c| {
-            let c = c.to_ascii_lowercase();
-            if c.is_ascii_lowercase() || c.is_ascii_digit() {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let name = name.trim_matches('-');
-    name.chars()
-        .take(63)
-        .collect::<String>()
-        .trim_end_matches('-')
-        .to_owned()
-}
-
-/// Checks an identity provider URL: `https`, or `http` where plain HTTP is allowed; a host; no
-/// credentials, no fragment. Answers why it is not one.
-pub fn check_provider_url(url: &str, allow_http: bool) -> Result<(), String> {
+/// Checks a URL a Host fetches from, the Authority Plane's: `https`, or `http` where plain HTTP is
+/// allowed; a host; no credentials, no fragment. Answers why it is not one.
+pub fn check_service_url(url: &str, allow_http: bool) -> Result<(), String> {
     let (scheme, rest) = url
         .split_once("://")
         .ok_or_else(|| format!("`{url}` is not an absolute URL"))?;
@@ -1030,72 +867,10 @@ pub struct PublicGrantRule {
     pub resource_types: Vec<String>,
 }
 
-/// The `host` section's authentication and public grants, typed.
+/// The `host` section's public grants, typed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostAuth {
-    pub principals: Vec<PrincipalRule>,
     pub public: Vec<PublicGrantRule>,
-    pub authentication: Authentication,
-    pub setup: Setup,
-}
-
-/// `host.setup` (WP-8.2, `2-security/4` First administrator and recovery): how the setup
-/// code a Host without an administrator waits for is made.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Setup {
-    /// How long a code serves after it was made.
-    pub expires: std::time::Duration,
-    /// The secret that is the code, instead of one the Host makes and writes to its volume.
-    pub code_ref: Option<crate::secrets::SecretRef>,
-}
-
-/// How long a setup code serves by default.
-pub const DEFAULT_SETUP_EXPIRES: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
-
-impl Default for Setup {
-    fn default() -> Self {
-        Self {
-            expires: DEFAULT_SETUP_EXPIRES,
-            code_ref: None,
-        }
-    }
-}
-
-/// `host.authentication` (WP-8.1, `2-security/3` Local users):
-/// which sign-in methods the Host admits and how a password sign-in is held.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Authentication {
-    /// Local users sign in with a password.
-    pub password: bool,
-    /// Identity providers' tokens are accepted.
-    pub oidc: bool,
-    pub min_length: usize,
-    /// `off`, `optional` or `required`.
-    pub mfa: String,
-    /// The Host-local root the second factors are sealed under, and its version.
-    pub factor_key: Option<(crate::secrets::SecretRef, String)>,
-    pub attempts: u32,
-    pub window: std::time::Duration,
-    pub lockout: std::time::Duration,
-    pub lifetime: std::time::Duration,
-    pub idle: std::time::Duration,
-}
-
-impl Default for Authentication {
-    fn default() -> Self {
-        Self {
-            password: false,
-            oidc: false,
-            min_length: 12,
-            mfa: "optional".to_owned(),
-            factor_key: None,
-            attempts: 5,
-            window: std::time::Duration::from_secs(900),
-            lockout: std::time::Duration::from_secs(900),
-            lifetime: std::time::Duration::from_secs(8 * 3600),
-            idle: std::time::Duration::from_secs(3600),
-        }
-    }
 }
 
 /// The authenticator of a deployment with no rules: nothing presented is anonymous, anything
@@ -1140,29 +915,26 @@ mod tests {
         };
         for (operation, fitting, not) in [
             (
-                operations::AUTHZ_ADMIN,
-                vec!["host", "host/*"],
-                vec!["plane/data/*", "member/*"],
+                operations::ACCOUNTS_WRITE,
+                vec!["plane/authority", "plane/authority/*"],
+                vec!["plane/data/*", "host"],
             ),
             (
                 operations::IDENTITY_READ,
-                vec![
-                    "host",
-                    "member/*",
-                    "member/0198f2aa-0000-7000-8000-000000000001",
-                ],
-                vec!["plane/control/*", "member"],
+                vec!["host", "host/*"],
+                vec!["plane/control/*", "plane/authority"],
             ),
             (
                 operations::AUDIT_READ,
-                vec!["host", "plane/data/*", "plane/control/zone/z", "member/*"],
-                vec!["member"],
+                vec![
+                    "host",
+                    "plane/data/*",
+                    "plane/control/zone/z",
+                    "plane/authority",
+                ],
+                vec![],
             ),
-            (
-                operations::GC_MANAGE,
-                vec!["plane/control/*", "member/*"],
-                vec!["host"],
-            ),
+            (operations::GC_MANAGE, vec!["plane/control/*"], vec!["host"]),
             (
                 operations::CATALOG_READ,
                 vec!["plane/control/*", "plane/control/zone/billing/ledger/l"],
@@ -1171,7 +943,7 @@ mod tests {
             (
                 operations::DECISION_EVALUATE,
                 vec!["plane/data/*", "plane/data/zone/billing/*"],
-                vec!["plane/control/*", "host/*", "member/*"],
+                vec!["plane/control/*", "host/*", "plane/authority"],
             ),
         ] {
             for selector in fitting {
@@ -1381,8 +1153,8 @@ mod tests {
     #[test]
     fn an_actor_answers_401_for_nobody_and_403_for_somebody() {
         let somebody = Actor::Authenticated(ActorContext::new(
-            principal("spiffe://acme/billing"),
-            Credential::SanUri,
+            principal("cert:sha256:ab"),
+            Credential::Certificate,
             Some("CN=billing".to_owned()),
         ));
         assert_eq!(somebody.without_grant().http_status(), 403);
@@ -1413,78 +1185,92 @@ mod tests {
         assert!(NoRules.authenticate(None, Some("token")).is_err());
     }
 
-    /// Step 9 of `2-security/8` On a member: a token permits only what its family serves, within
-    /// its scope and targets; an administration token's `host` is its member's Host and Planes.
+    /// Step 7 of `2-security/8` Verifying a token: a token permits exactly what one of its scopes
+    /// names, an operation on a resource its selector contains, and nothing else.
     #[test]
-    fn a_token_permits_only_what_its_family_serves() {
-        let grant = |family: &str, scope: &[&str], targets: &[&str]| TokenGrant {
-            family: family.to_owned(),
-            scope: scope.iter().map(|op| (*op).to_owned()).collect(),
-            targets: targets
-                .iter()
-                .map(|target| Selector::parse(target).expect("a selector"))
-                .collect(),
+    fn a_token_permits_only_what_its_scopes_name() {
+        let scope = |operations: &[&str], selector: &str| TokenScope {
+            operations: operations.iter().map(|op| (*op).to_owned()).collect(),
+            selector: Selector::parse(selector).expect("a selector"),
+        };
+        let grant = TokenGrant {
+            scopes: vec![
+                scope(
+                    &[operations::DECISION_EVALUATE, operations::EVENT_SUBMIT],
+                    "plane/data/zone/z/*",
+                ),
+                scope(&[operations::KEYS_READ, operations::BACKUP_MANAGE], "host"),
+                scope(&[operations::ACCOUNTS_READ], "plane/authority"),
+            ],
             jti: "j".to_owned(),
             list_uri: "u".to_owned(),
             list_iat: 1,
             list_digest: [0; 32],
-            authority: None,
-            role: None,
         };
         let ledger = Resource::ledger("data", "z", "l");
+        let other = Resource::ledger("data", "y", "l");
         let data = Resource::plane("data");
 
-        let application = grant(
-            families::APPLICATION,
-            &[operations::DECISION_EVALUATE, operations::KEYS_READ],
-            &["plane/data/*", "host"],
-        );
-        assert!(application.permits(operations::DECISION_EVALUATE, &ledger));
-        assert!(application.permits_anywhere_under(operations::DECISION_EVALUATE, &data));
-        assert!(application.permits_whole(operations::DECISION_EVALUATE, &data));
-        // A per-Host operation is not the application family's, whatever its scope says.
-        assert!(!application.permits(operations::KEYS_READ, &Resource::Host));
-        assert!(!application.permits(operations::KEYS_READ, &data));
+        assert!(grant.permits(operations::DECISION_EVALUATE, &ledger));
+        assert!(grant.permits(operations::EVENT_SUBMIT, &ledger));
         assert!(
-            !application.permits(operations::EVENT_SUBMIT, &ledger),
-            "not in scope"
+            !grant.permits(operations::DECISION_EVALUATE, &other),
+            "another zone"
         );
+        assert!(grant.permits_anywhere_under(operations::DECISION_EVALUATE, &data));
+        assert!(
+            !grant.permits_whole(operations::DECISION_EVALUATE, &data),
+            "one zone only"
+        );
+        assert!(grant.permits(operations::KEYS_READ, &Resource::Host));
+        assert!(grant.permits(operations::BACKUP_MANAGE, &Resource::Host));
+        assert!(
+            !grant.permits(operations::KEYS_READ, &data),
+            "the scope is the Host alone"
+        );
+        assert!(grant.permits(operations::ACCOUNTS_READ, &Resource::plane("authority")));
+        assert!(!grant.permits(operations::ACCOUNTS_WRITE, &Resource::plane("authority")));
+        assert!(!grant.permits(operations::CATALOG_READ, &Resource::plane("control")));
+        assert_eq!(
+            grant.operations().len(),
+            5,
+            "every operation of every scope, once"
+        );
+    }
 
-        let administration = grant(
-            families::ADMINISTRATION,
-            &[
-                operations::KEYS_READ,
-                operations::GC_MANAGE,
-                operations::BACKUP_MANAGE,
-                operations::DECISION_EVALUATE,
-                operations::AUTHZ_ADMIN,
-            ],
-            &["host"],
-        );
-        assert!(administration.permits(operations::KEYS_READ, &Resource::Host));
-        assert!(
-            administration.permits(operations::KEYS_READ, &data),
-            "a Plane's rings"
-        );
-        assert!(administration.permits_anywhere_under(operations::KEYS_READ, &data));
-        assert!(administration.permits(operations::GC_MANAGE, &data));
-        assert!(!administration.permits(operations::GC_MANAGE, &Resource::Host));
-        assert!(administration.permits(operations::BACKUP_MANAGE, &Resource::Host));
-        assert!(!administration.permits(operations::BACKUP_MANAGE, &data));
-        // Never an evaluation, never the Host's own authorization, never another Host.
-        assert!(!administration.permits(operations::DECISION_EVALUATE, &ledger));
-        assert!(!administration.permits(operations::AUTHZ_ADMIN, &Resource::Host));
-        assert!(!administration.permits(operations::KEYS_READ, &Resource::member("m")));
-        assert!(!administration.permits(operations::KEYS_READ, &Resource::Members));
-        // An administration token whose target is not `host` permits nothing.
-        let elsewhere = grant(
-            families::ADMINISTRATION,
-            &[operations::KEYS_READ],
-            &["plane/data/*"],
-        );
-        assert!(!elsewhere.permits(operations::KEYS_READ, &data));
-        // A family this release does not know permits nothing.
-        let unknown = grant("other", &[operations::DECISION_EVALUATE], &["plane/data/*"]);
-        assert!(!unknown.permits(operations::DECISION_EVALUATE, &ledger));
+    /// `2-security/6` Scope coherence: the Authority Plane's operations fit `plane/authority`
+    /// alone, and a per-Host operation reaches the Host's own resources, never an evaluation.
+    #[test]
+    fn the_authority_operations_fit_the_authority_plane_alone() {
+        let authority = Selector::exactly(Resource::plane("authority"));
+        for operation in [
+            operations::ACCOUNTS_READ,
+            operations::ACCOUNTS_WRITE,
+            operations::TOKENS_READ,
+            operations::TOKENS_REVOKE,
+        ] {
+            assert!(operation_fits(operation, &authority), "{operation}");
+            assert!(!operation_fits(
+                operation,
+                &Selector::exactly(Resource::Host)
+            ));
+            assert!(!operation_fits(
+                operation,
+                &Selector::parse("plane/data/*").expect("a selector")
+            ));
+        }
+        assert!(per_host_reach(operations::KEYS_READ, &Resource::Host));
+        assert!(per_host_reach(
+            operations::GC_MANAGE,
+            &Resource::plane("data")
+        ));
+        assert!(!per_host_reach(
+            operations::DECISION_EVALUATE,
+            &Resource::plane("data")
+        ));
+        assert!(!per_host_reach(
+            operations::ACCOUNTS_WRITE,
+            &Resource::plane("authority")
+        ));
     }
 }

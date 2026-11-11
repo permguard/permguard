@@ -23,8 +23,7 @@ const INTERFACES: &[&str] = &[
     "temporal",
     "streams",
     "host",
-    "iam",
-    "auth",
+    "authority",
     "control-plane",
     "data-plane",
     "server-host",
@@ -255,7 +254,7 @@ fn every_mounted_route_is_on_the_layout() {
 
 /// The CSV the contracts imply: one row per operation, in a fixed order.
 fn endpoints_csv() -> String {
-    const PLANES: &[&str] = &["data", "control", "iam", "host", "every surface"];
+    const PLANES: &[&str] = &["data", "control", "authority", "host", "every surface"];
     let mut rows: Vec<(usize, String, String, usize, String)> = Vec::new();
     let mut missing = Vec::new();
     for (name, document) in documents() {

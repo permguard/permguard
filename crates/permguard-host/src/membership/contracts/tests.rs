@@ -46,7 +46,6 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
             matches!(
                 task,
                 TaskType::ZoneSecrets
-                    | TaskType::TokenStatus
                     | TaskType::PolicyMirror
                     | TaskType::AuditCheckpoints
                     | TaskType::EventsImport
@@ -54,21 +53,16 @@ fn every_task_type_has_one_v1_contract_with_its_roles_and_server() {
         );
     }
     let host: Vec<Capability> = Capabilities::host().list();
-    let mut expected: Vec<Capability> = [
-        TaskType::AuditCheckpoints,
-        TaskType::ZoneSecrets,
-        // The IAM Host's status lists, Host to Host (WP-12.1).
-        TaskType::TokenStatus,
-    ]
-    .into_iter()
-    .flat_map(|task| {
-        [ContractRole::Provider, ContractRole::Consumer].map(|role| Capability {
-            task_type: task,
-            version: 1,
-            role,
+    let mut expected: Vec<Capability> = [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
+        .into_iter()
+        .flat_map(|task| {
+            [ContractRole::Provider, ContractRole::Consumer].map(|role| Capability {
+                task_type: task,
+                version: 1,
+                role,
+            })
         })
-    })
-    .collect();
+        .collect();
     // The member's Host consumes `events.import` (WP-6.2c1).
     expected.push(Capability {
         task_type: TaskType::EventsImport,

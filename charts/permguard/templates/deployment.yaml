@@ -119,6 +119,11 @@ spec:
             - name: telemetry
               containerPort: {{ $plane.ports.telemetry }}
               protocol: TCP
+            {{- if $plane.authority.enabled }}
+            - name: authority
+              containerPort: {{ $plane.ports.authority }}
+              protocol: TCP
+            {{- end }}
             {{- if $plane.hostListener.enabled }}
             - name: host
               containerPort: {{ $plane.hostListener.port }}
@@ -302,7 +307,7 @@ spec:
             - name: PERMGUARD_WORKING_DIR
               value: /var/lib/permguard/volume
             - name: PERMGUARD_RUNTIME_PLANES
-              value: "control,data"
+              value: "authority,control,data"
             {{- with (.Values.allInOne.identity | default dict).witness }}
             # The witness the `identity` container printed, kept by the operator (TS-10).
             - name: PERMGUARD_HOST_IDENTITY_WITNESS
@@ -320,6 +325,8 @@ spec:
               containerPort: {{ .Values.allInOne.ports.dataHttp }}
             - name: telemetry
               containerPort: {{ .Values.allInOne.ports.telemetry }}
+            - name: authority
+              containerPort: {{ .Values.allInOne.ports.authority }}
             {{- if .Values.allInOne.hostListener.enabled }}
             - name: host
               containerPort: {{ .Values.allInOne.hostListener.port }}

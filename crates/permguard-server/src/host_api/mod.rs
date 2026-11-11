@@ -2,27 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The Host listener (WP-2.5): REST under `/host/v1` and gRPC in `permguard.host.v1`, on one
-//! port, over the one facade `permguard_host::api::HostApi`; on the IAM Host also the directory,
-//! REST under `/iam/v1` and gRPC in `permguard.iam.v1` (WP-11.1). The handlers here decode, hand the
+//! port, over the one facade `permguard_host::api::HostApi`. The handlers here decode, hand the
 //! actor the boundary decided to the facade, and map its answer onto the wire; nothing is
 //! decided in this module.
 //!
 //! The listener is the `admin` section of the configuration: `admin.addr`, `admin.tls` and
 //! `admin.allow` (owner decision, 2026-10-06). TLS is required and mutual TLS with it, except on
 //! a loopback bind under `development_mode`; `admin.allow` is a peer gate before the credential
-//! mapper; every route authorizes with the Host's grants.
+//! mapper; every route authorizes with the caller's access token, or the bootstrap principal.
 
 pub mod grpc;
 pub mod http;
 pub mod peer;
 pub mod service;
 pub(crate) mod wire;
-
-/// The generated server half of `permguard.iam.v1` (iteration 02, WP-11.1).
-#[allow(clippy::all, missing_docs)]
-pub mod iam_v1 {
-    include!(concat!(env!("OUT_DIR"), "/iam/permguard.iam.v1.rs"));
-}
 
 /// The generated server half of `permguard.host.v1`.
 #[allow(clippy::all, missing_docs)]
@@ -53,7 +46,6 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
 /// The gRPC services of the Host API, for a composition that serves them on their own.
 pub fn grpc_routes(api: Arc<HostApi>, disclosure: Disclosure) -> tonic::service::Routes {
     let mut routes = RoutesBuilder::default();
-    let iam_host = api.is_iam_host();
     let served = grpc::Served::new(api, disclosure);
     routes.add_service(
         v1::identity_service_server::IdentityServiceServer::new(served.clone())
@@ -69,33 +61,7 @@ pub fn grpc_routes(api: Arc<HostApi>, disclosure: Disclosure) -> tonic::service:
         served.clone(),
     ));
     routes.add_service(v1::operations_service_server::OperationsServiceServer::new(
-        served.clone(),
+        served,
     ));
-    // The directory of the IAM Host (WP-11.1): a member serves none.
-    if iam_host {
-        routes.add_service(iam_v1::grant_service_server::GrantServiceServer::new(
-            served.clone(),
-        ));
-        routes.add_service(iam_v1::role_service_server::RoleServiceServer::new(
-            served.clone(),
-        ));
-        routes.add_service(iam_v1::user_service_server::UserServiceServer::new(
-            served.clone(),
-        ));
-        routes.add_service(iam_v1::provider_service_server::ProviderServiceServer::new(
-            served.clone(),
-        ));
-        routes.add_service(iam_v1::recovery_service_server::RecoveryServiceServer::new(
-            served.clone(),
-        ));
-        routes.add_service(
-            iam_v1::service_account_service_server::ServiceAccountServiceServer::new(
-                served.clone(),
-            ),
-        );
-        routes.add_service(iam_v1::token_service_server::TokenServiceServer::new(
-            served,
-        ));
-    }
     routes.routes()
 }

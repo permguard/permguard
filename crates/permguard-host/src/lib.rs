@@ -30,6 +30,5 @@ pub mod process;
 pub mod restore;
 pub mod secrets;
 pub mod session;
-pub mod setup;
 pub mod storage;
 pub mod time;

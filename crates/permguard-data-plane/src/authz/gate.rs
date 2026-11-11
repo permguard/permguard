@@ -84,16 +84,7 @@ fn gated(
         return Ok(None);
     };
     match located(root, zone, ledger) {
-        Some((zone_id, ledger_id, authority)) => {
-            // An access token reaches only the ledgers of the coordinator that issued it, whatever
-            // its selectors say: a member of two coordinators keeps their trees apart (WP-12.3).
-            if let Actor::Authenticated(context) = actor
-                && let Some(issued_by) =
-                    context.token().and_then(|grant| grant.authority.as_deref())
-                && authority.as_deref() != Some(issued_by)
-            {
-                return Err(actor.without_grant());
-            }
+        Some((zone_id, ledger_id)) => {
             authorization.authorize(
                 actor,
                 operation,
@@ -110,8 +101,8 @@ fn gated(
 /// How long a resolved name is remembered before the volume is asked again.
 const LOCATED_FOR: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// A mirror's zone id, ledger id and authority.
-type Found = (String, String, Option<String>);
+/// A mirror's zone id and ledger id.
+type Found = (String, String);
 
 type Located = std::collections::HashMap<(String, String), (std::time::Instant, Option<Found>)>;
 
@@ -135,13 +126,8 @@ fn located(root: &Path, zone: &str, ledger: &str) -> Option<Found> {
             return found.clone();
         }
     }
-    let found = store::find(root, zone, ledger).map(|mirror| {
-        (
-            mirror.identity.zone_id,
-            mirror.identity.ledger_id,
-            mirror.identity.authority,
-        )
-    });
+    let found = store::find(root, zone, ledger)
+        .map(|mirror| (mirror.identity.zone_id, mirror.identity.ledger_id));
     let mut remembered = memo
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -197,7 +183,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use permguard_core::authz::{ActorContext, Credential, Principal, Selector};
+    use permguard_core::authz::{ActorContext, Principal, Selector, TokenGrant, TokenScope};
     use permguard_host::authz::PublicGrant;
 
     fn scratch(tag: &str) -> std::path::PathBuf {
@@ -233,64 +219,25 @@ mod tests {
         .expect("recorded");
     }
 
-    fn actor(name: &str) -> Actor {
-        Actor::Authenticated(ActorContext::new(
-            Principal::new(name).expect("a principal"),
-            Credential::SanUri,
-            None,
+    /// An access token's bearer `sa:<account>`, holding `operation` on `selector`.
+    fn token(account: &str, operation: &str, selector: &str) -> Actor {
+        Actor::Authenticated(ActorContext::of_token(
+            Principal::new(format!("sa:{account}")).expect("a principal"),
+            TokenGrant {
+                scopes: vec![TokenScope {
+                    operations: std::iter::once(operation.to_owned()).collect(),
+                    selector: Selector::parse(selector).expect("a selector"),
+                }],
+                jti: "j".to_owned(),
+                list_uri: "u".to_owned(),
+                list_iat: 1,
+                list_digest: [0; 32],
+            },
         ))
     }
 
     /// The authority every mirror of these tests lives under.
     const AUTHORITY: &str = "11111111111111111111111111111111";
-
-    /// WP-12.3: an access token reaches only the ledgers its issuing coordinator's mirrors hold,
-    /// whatever its selectors name; a ledger of another authority is refused before the grant.
-    #[test]
-    fn a_token_reaches_only_its_coordinators_ledgers() {
-        let root = scratch("token-authority");
-        mirror(&root, "acme", "main");
-        let authorization = Authorization::closed().with_tokens_alone(true);
-        let token = |authority: &str| {
-            Actor::Authenticated(ActorContext::of_token(
-                Principal::new("sa:billing").expect("a principal"),
-                permguard_core::authz::TokenGrant {
-                    family: permguard_core::authz::families::APPLICATION.to_owned(),
-                    scope: std::iter::once(operations::DECISION_EVALUATE.to_owned()).collect(),
-                    targets: vec![
-                        permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
-                    ],
-                    jti: "j".to_owned(),
-                    list_uri: "u".to_owned(),
-                    list_iat: 1,
-                    list_digest: [0; 32],
-                    authority: Some(authority.to_owned()),
-                    role: None,
-                },
-            ))
-        };
-        assert_eq!(
-            evaluation(
-                &authorization,
-                &token(AUTHORITY),
-                &root,
-                Some("acme"),
-                Some("main")
-            ),
-            Ok(Some(("acme-id".to_owned(), "main-id".to_owned())))
-        );
-        assert!(
-            evaluation(
-                &authorization,
-                &token("22222222222222222222222222222222"),
-                &root,
-                Some("acme"),
-                Some("main")
-            )
-            .is_err(),
-            "another coordinator's token"
-        );
-    }
 
     #[test]
     fn the_memo_remembers_a_name_briefly_and_keeps_roots_apart() {
@@ -299,11 +246,7 @@ mod tests {
         mirror(&root, "acme", "main");
         assert_eq!(
             located(&root, "acme", "main"),
-            Some((
-                "acme-id".to_owned(),
-                "main-id".to_owned(),
-                Some(AUTHORITY.to_owned())
-            ))
+            Some(("acme-id".to_owned(), "main-id".to_owned()))
         );
         assert_eq!(
             located(&other, "acme", "main"),
@@ -316,11 +259,7 @@ mod tests {
         std::thread::sleep(LOCATED_FOR + std::time::Duration::from_millis(50));
         assert_eq!(
             located(&other, "acme", "main"),
-            Some((
-                "acme-id".to_owned(),
-                "main-id".to_owned(),
-                Some(AUTHORITY.to_owned())
-            ))
+            Some(("acme-id".to_owned(), "main-id".to_owned()))
         );
     }
 
@@ -507,11 +446,11 @@ mod tests {
             Some(("acme-id".to_owned(), "main-id".to_owned()))
         );
         let permissive = Authorization::permissive();
+        let sensor = token("sensor", operations::EVENT_SUBMIT, "plane/data/*");
         let (source, _) =
-            crate::temporal::gate(&permissive, &actor("spiffe://acme/sensor"), &root, &request)
-                .expect("admitted");
+            crate::temporal::gate(&permissive, &sensor, &root, &request).expect("admitted");
         assert_eq!(
-            source, "spiffe://acme/sensor",
+            source, "sa:sensor",
             "the principal, never the caller's word"
         );
         assert!(
@@ -529,39 +468,16 @@ mod tests {
     }
 
     #[test]
-    fn f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist() {
+    fn f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist() {
         let root = scratch("f22");
         mirror(&root, "billing", "main");
         mirror(&root, "people", "main");
-        let store = {
-            let volume = permguard_host::storage::volume::Volume::claim(
-                &scratch("f22-volume"),
-                permguard_core::assurance::AssuranceProfile::Development,
-            )
-            .expect("claimed");
-            let (store, _) = permguard_host::authz::GrantStore::open(&volume).expect("opens");
-            permguard_host::operations::grants::issue(
-                &permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
-                    .expect("the mutation journal opens"),
-                &store,
-                permguard_host::operations::journal::Initiator::System("test".to_owned()),
-                permguard_host::authz::Issue {
-                    principal: Principal::new("spiffe://acme/billing").expect("p"),
-                    operations: vec![operations::DECISION_EVALUATE.to_owned()],
-                    selector: Selector::parse("plane/data/zone/billing-id/*").expect("a selector"),
-                    resource_types: vec!["*".to_owned()],
-                    constraints: Default::default(),
-                    issued_by: "test".to_owned(),
-                    expires_at: None,
-                },
-                1,
-            )
-            .expect("issued");
-            std::mem::forget(volume);
-            store
-        };
-        let authorization = Authorization::new(store, &[]);
-        let billing = actor("spiffe://acme/billing");
+        let authorization = Authorization::closed();
+        let billing = token(
+            "billing",
+            operations::DECISION_EVALUATE,
+            "plane/data/zone/billing-id/*",
+        );
         assert!(
             evaluation(
                 &authorization,
@@ -592,7 +508,7 @@ mod tests {
         assert_eq!(unknown, foreign, "the same denial, byte for byte");
         let stranger = evaluation(
             &authorization,
-            &actor("spiffe://acme/other"),
+            &token("other", operations::DECISION_EVALUATE, "plane/control/*"),
             &root,
             Some("billing"),
             Some("main"),

@@ -540,7 +540,7 @@ impl Physical {
             head: digests.last().cloned().unwrap_or_default(),
             merkle_root: crate::merkle::root(&digests).unwrap_or_default(),
             batch_id: format!("{}-{first}", hex(&run_id)),
-            created_at: permguard_host::api::grants::rfc3339(context.time.now_secs()),
+            created_at: permguard_host::api::rfc3339(context.time.now_secs()),
             key_set_epoch,
         };
         let bytes =

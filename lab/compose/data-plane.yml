@@ -19,8 +19,12 @@ log: { level: info, format: json }
 # The Server Host: discovery, health and metrics, in the clear, for the lab's health checks.
 host: { addr: 0.0.0.0:5443 }
 
-# The Host listener: membership, grants and streams, mutual TLS under the lab's authority.
+# The Host listener: membership, keys and streams, mutual TLS under the lab's authority.
 admin: { addr: 0.0.0.0:5444 }
+
+# Where the tokens this Data Plane decides by come from: the coordinator's Authority Plane, whose
+# keys and status lists it fetches under the lab's authority.
+authority: { url: "https://control-plane:8443" }
 
 operations:
   keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }

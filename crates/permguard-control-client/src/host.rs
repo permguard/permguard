@@ -9,14 +9,12 @@
 //! facade prints the same report whichever transport carried it. A refusal is the same
 //! `{class, code, message}` on both: the REST body, or the gRPC status and its metadata.
 //!
-//! It reads the status and the identity, rotates the identity, and carries the memberships and
-//! the grants (WP-4.8): every operation the `host identity`, `host members` and `host grants`
-//! commands reach; [`Operations`] adds the key rings, the audit trails, the configuration and the
+//! It reads the status and the identity, rotates the identity, and carries the memberships
+//! (WP-4.8): every operation the `host identity` and `host members` commands reach; [`Operations`] adds the key rings, the audit trails, the configuration and the
 //! plans (TC-2).
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use permguard_host::api::grants::Created;
 use permguard_host::api::identity::{
     IdentityRotated, IdentityVerified, IdentityView, RotateIdentity, VerifyIdentity,
 };
@@ -34,12 +32,10 @@ use permguard_host::api::streams::{
     RunAck, RunSigners, SignerList, SpanView, StreamList, StreamView, SubscriptionList,
     SubscriptionView,
 };
-use permguard_host::api::{CreateGrant, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 
 use crate::catalog::Failure;
+use permguard_host::api::Planned;
 
-mod accounts;
-mod directory;
 mod ops;
 use crate::endpoint::Endpoint;
 use crate::grpc::GrpcChannel;
@@ -47,8 +43,6 @@ use crate::host_proto as map;
 use crate::host_v1 as proto;
 use crate::http::Client;
 use crate::tls::TlsOptions;
-pub use accounts::Accounts;
-pub use directory::Directory;
 pub use ops::Operations;
 
 /// One stream of one resource, as the stream reads name it (WP-5.7b).
@@ -80,7 +74,7 @@ impl Change {
 }
 
 /// What the Host listener answers, whichever transport asked.
-pub trait Host: Operations + Directory + Accounts {
+pub trait Host: Operations {
     /// `GET /host/v1/status`, `OperationsService.GetStatus`.
     fn status(&self) -> Result<StatusView, Failure>;
 
@@ -161,15 +155,6 @@ pub trait Host: Operations + Directory + Accounts {
         membership_id: &str,
         request: &VerifyMember,
     ) -> Result<MemberVerification, Failure>;
-
-    /// `GET /iam/v1/grants?principal&selector`, `GrantService.ListGrants`.
-    fn grants(&self, principal: Option<&str>, selector: Option<&str>) -> Result<Grants, Failure>;
-    /// `POST /iam/v1/grants`, `GrantService.CreateGrant`.
-    fn create_grant(&self, request: &CreateGrant) -> Result<Created, Failure>;
-    /// `POST /iam/v1/grants/{id}/revoke/plan`, `GrantService.PlanGrantRevoke`.
-    fn plan_grant_revoke(&self, grant_id: &str, request: &PlanRevoke) -> Result<Planned, Failure>;
-    /// `POST /iam/v1/grants/{id}/revoke/run`, `GrantService.RunGrantRevoke`.
-    fn run_grant_revoke(&self, grant_id: &str, request: &RunRevoke) -> Result<Revoked, Failure>;
 }
 
 /// A request the caller got wrong before anything was sent.
@@ -432,36 +417,6 @@ impl Host for RestHost {
             &json(request)?,
         )
     }
-
-    fn grants(&self, principal: Option<&str>, selector: Option<&str>) -> Result<Grants, Failure> {
-        let filters: Vec<String> = [("principal", principal), ("selector", selector)]
-            .into_iter()
-            .filter_map(|(name, value)| value.map(|value| format!("{name}={}", query_value(value))))
-            .collect();
-        if filters.is_empty() {
-            self.get("/iam/v1/grants")
-        } else {
-            self.get(&format!("/iam/v1/grants?{}", filters.join("&")))
-        }
-    }
-
-    fn create_grant(&self, request: &CreateGrant) -> Result<Created, Failure> {
-        self.post("/iam/v1/grants", &json(request)?)
-    }
-
-    fn plan_grant_revoke(&self, grant_id: &str, request: &PlanRevoke) -> Result<Planned, Failure> {
-        self.post(
-            &format!("/iam/v1/grants/{}/revoke/plan", segment(grant_id)?),
-            &json(request)?,
-        )
-    }
-
-    fn run_grant_revoke(&self, grant_id: &str, request: &RunRevoke) -> Result<Revoked, Failure> {
-        self.post(
-            &format!("/iam/v1/grants/{}/revoke/run", segment(grant_id)?),
-            &json(request)?,
-        )
-    }
 }
 
 impl RestHost {
@@ -475,14 +430,6 @@ impl RestHost {
         body: &str,
     ) -> Result<T, Failure> {
         crate::catalog::call(&self.client, &self.endpoint, "POST", path, Some(body))
-    }
-
-    fn patch<T: for<'de> serde::Deserialize<'de>>(
-        &self,
-        path: &str,
-        body: &str,
-    ) -> Result<T, Failure> {
-        crate::catalog::call(&self.client, &self.endpoint, "PATCH", path, Some(body))
     }
 }
 
@@ -1163,92 +1110,6 @@ impl Host for GrpcHost {
             member: map::member_in(answer.member.unwrap_or_default()),
         })
     }
-
-    fn grants(&self, principal: Option<&str>, selector: Option<&str>) -> Result<Grants, Failure> {
-        let answer = self
-            .0
-            .run(
-                "ListGrants",
-                self.grants_client().list_grants(proto::ListGrantsRequest {
-                    principal: principal.unwrap_or_default().to_owned(),
-                    selector: selector.unwrap_or_default().to_owned(),
-                }),
-            )
-            .map_err(crate::grpc::failure_of)?;
-        Ok(Grants {
-            revision: answer.revision,
-            grants: answer
-                .grants
-                .into_iter()
-                .map(|grant| map::grant_in(Some(grant)))
-                .collect(),
-        })
-    }
-
-    fn create_grant(&self, request: &CreateGrant) -> Result<Created, Failure> {
-        let answer = self
-            .0
-            .run(
-                "CreateGrant",
-                self.grants_client()
-                    .create_grant(proto::CreateGrantRequest {
-                        request_id: request.request_id.clone(),
-                        expected_revision: request.expected_revision,
-                        principal: request.principal.clone(),
-                        operations: request.operations.clone(),
-                        selector: request.selector.clone(),
-                        resource_types: request.resource_types.clone(),
-                        constraints: request
-                            .constraints
-                            .iter()
-                            .map(|(name, value)| (name.clone(), value.clone()))
-                            .collect(),
-                        expires_at: request.expires_at.clone(),
-                    }),
-            )
-            .map_err(crate::grpc::failure_of)?;
-        Ok(map::created(answer))
-    }
-
-    fn plan_grant_revoke(&self, grant_id: &str, request: &PlanRevoke) -> Result<Planned, Failure> {
-        let answer = self
-            .0
-            .run(
-                "PlanGrantRevoke",
-                self.grants_client()
-                    .plan_grant_revoke(proto::PlanGrantRevokeRequest {
-                        grant_id: grant_id.to_owned(),
-                        request_id: request.request_id.clone(),
-                        expected_revision: request.expected_revision,
-                    }),
-            )
-            .map_err(crate::grpc::failure_of)?;
-        Ok(map::planned(
-            answer.plan_id,
-            answer.plan_digest,
-            answer.expires,
-            answer.revision,
-            &answer.receipt,
-            answer.approvals_required,
-        ))
-    }
-
-    fn run_grant_revoke(&self, grant_id: &str, request: &RunRevoke) -> Result<Revoked, Failure> {
-        let receipt = map::raw(&request.receipt).map_err(usage)?;
-        let answer = self
-            .0
-            .run(
-                "RunGrantRevoke",
-                self.grants_client()
-                    .run_grant_revoke(proto::RunGrantRevokeRequest {
-                        grant_id: grant_id.to_owned(),
-                        request_id: request.request_id.clone(),
-                        receipt,
-                    }),
-            )
-            .map_err(crate::grpc::failure_of)?;
-        Ok(map::revoked(answer))
-    }
 }
 
 impl GrpcHost {
@@ -1262,12 +1123,6 @@ impl GrpcHost {
         &self,
     ) -> proto::evidence_service_client::EvidenceServiceClient<crate::grpc::AuthChannel> {
         proto::evidence_service_client::EvidenceServiceClient::new(self.0.channel())
-    }
-
-    fn grants_client(
-        &self,
-    ) -> crate::iam_v1::grant_service_client::GrantServiceClient<crate::grpc::AuthChannel> {
-        crate::iam_v1::grant_service_client::GrantServiceClient::new(self.0.channel())
     }
 }
 

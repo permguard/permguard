@@ -8,13 +8,12 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use permguard_host::api::grants::Created;
 use permguard_host::api::members::{
     AppraisalView, AssuranceView, ClaimView, HostView, InviteView, LeasePolicyView, LimitsView,
     MemberChanged, MemberReportedView, MemberView, NarrowView, ProgressResourceView,
     RequirementView, SessionView, TaskObservedView, TaskView, ZoneReceiptView, ZoneTupleView,
 };
-use permguard_host::api::{AuditReference, GrantView, Planned, Receipt, Revoked};
+use permguard_host::api::{AuditReference, Planned, Receipt};
 
 use crate::host_v1 as proto;
 
@@ -273,37 +272,6 @@ pub(crate) fn session_in(session: proto::MemberSession) -> SessionView {
         coordinator_boot_id: session.coordinator_boot_id,
         opened_at: session.opened_at,
         expires_at: session.expires_at,
-    }
-}
-
-pub(crate) fn grant_in(grant: Option<proto::Grant>) -> GrantView {
-    let grant = grant.unwrap_or_default();
-    GrantView {
-        grant_id: grant.grant_id,
-        principal: grant.principal,
-        operations: grant.operations,
-        selector: grant.selector,
-        resource_types: grant.resource_types,
-        constraints: grant.constraints.into_iter().collect(),
-        revision: grant.revision,
-        status: grant.status,
-        issued_by: grant.issued_by,
-        issued_at: grant.issued_at,
-        expires_at: grant.expires_at,
-    }
-}
-
-pub(crate) fn created(answer: proto::CreateGrantResponse) -> Created {
-    Created {
-        receipt: receipt(answer.receipt),
-        grant: grant_in(answer.grant),
-    }
-}
-
-pub(crate) fn revoked(answer: proto::RunGrantRevokeResponse) -> Revoked {
-    Revoked {
-        receipt: receipt(answer.receipt),
-        grant: grant_in(answer.grant),
     }
 }
 

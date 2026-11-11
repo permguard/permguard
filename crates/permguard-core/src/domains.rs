@@ -245,9 +245,6 @@ pub mod producer {
 pub mod subject {
     /// A Host: `urn:permguard:host:v1:<host_id>` (WP-2.2).
     pub const HOST_V1_PREFIX: &str = "urn:permguard:host:v1:";
-    /// The issuer of the IAM Host's tokens and lists: `urn:permguard:iam:<host_id>` (iteration
-    /// 02, `2-security/8` Access tokens).
-    pub const IAM_ISSUER_PREFIX: &str = "urn:permguard:iam:";
 }
 
 /// The JWT `typ` values the standards fix, which carry no version of Permguard's: the standard is
@@ -591,7 +588,6 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("event.DOGWOOD_V2", event::DOGWOOD_V2),
         ("producer.DATA_PLANE_V1", producer::DATA_PLANE_V1),
         ("subject.HOST_V1_PREFIX", subject::HOST_V1_PREFIX),
-        ("subject.IAM_ISSUER_PREFIX", subject::IAM_ISSUER_PREFIX),
         ("jwt.ACCESS_TOKEN", jwt::ACCESS_TOKEN),
         ("jwt.STATUS_LIST_TOKEN", jwt::STATUS_LIST_TOKEN),
         ("capability.PDP_V1_PREFIX", capability::PDP_V1_PREFIX),

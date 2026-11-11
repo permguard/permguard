@@ -47,7 +47,7 @@ pub struct Contract {
 }
 
 /// The contracts this build speaks: one per task type, version 1.
-pub const CONTRACTS: [Contract; 7] = [
+pub const CONTRACTS: [Contract; 6] = [
     Contract {
         task_type: TaskType::PolicyMirror,
         version: 1,
@@ -106,16 +106,6 @@ pub const CONTRACTS: [Contract; 7] = [
         provided_by: Server::Host,
         consumed_by: Server::Host,
         messages: "permguard_host::membership::zone: request, delivery, confirmation, receipt",
-        served: true,
-    },
-    Contract {
-        task_type: TaskType::TokenStatus,
-        version: super::token_status::VERSION,
-        provider: Role::Coordinator,
-        consumer: Role::Member,
-        provided_by: Server::Host,
-        consumed_by: Server::Host,
-        messages: "permguard_host::membership::token_status: index, list, the signed statuslist+jwt",
         served: true,
     },
 ];

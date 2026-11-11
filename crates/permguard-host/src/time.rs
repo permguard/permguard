@@ -217,6 +217,16 @@ impl TimeGuard {
         }
     }
 
+    /// A guard whose wall clock reads `seconds` and never moves: what a test of a time-bounded
+    /// check reads.
+    pub fn fixed(seconds: u64) -> Self {
+        Self::new(
+            Arc::new(ManualClock::at(i64::try_from(seconds).unwrap_or(i64::MAX))),
+            Arc::new(ManualMonotonic::default()),
+            permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+        )
+    }
+
     /// The operating system's clocks, nothing kept on a volume.
     pub fn system(bound: Duration) -> Self {
         Self::new(

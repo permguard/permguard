@@ -1,21 +1,14 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-// The Host API, `permguard.host.v1`: the six services of the Host API contract, one RPC per
+// The Host API, `permguard.host.v1`: the five services of the Host API contract, one RPC per
 // operation it names.
 //
 // The contract names its operations and their REST paths, not their message fields, so a message
 // gets its fields when the package that serves its operation defines the shape from the
-// contract, and stays empty until then: no field number is assigned ahead of the contract. The
-// Host listener (WP-2.5) serves `GrantService`, `KeyService.ListKeyRings`, `KeyService.GetKeyRing`
-// and `OperationsService.GetStatus` and `GetEffectiveConfig`; `IdentityService.GetIdentity`,
-// `ListRingBindings` and `OperationsService.ListConfigRevisions` answer `not_served_yet` with empty
-// messages. The REST side of every served operation is `contracts/openapi/host.json`, and the
-// mapping between the two is written there.
-//
-// The service, RPC and message names of the unserved operations are provisional: they are gRPC
-// paths the contract does not name yet, chosen from its operations, and the implementing package
-// confirms or renames them before anything serves them.
+// contract: no field number is assigned ahead of the contract. Every RPC here is served, and so is
+// its REST route; the REST side is `contracts/openapi/host.json`, and the mapping between the two
+// is written there.
 //
 // The peer exchange (`hello`, both proofs, enrolment and every task message) is not a set of
 // unary RPCs: the contract requires one long-lived framed channel bound to one TLS connection.
@@ -101,10 +94,6 @@ service KeyService {
   rpc RunKeyRevoke(RunKeyRevokeRequest) returns (RunKeyRevokeResponse);
   // `GET /host/v1/keys/bundle`.
   rpc GetKeyBundle(GetKeyBundleRequest) returns (GetKeyBundleResponse);
-  // `GET /host/v1/secrets`.
-  rpc ListSecrets(ListSecretsRequest) returns (ListSecretsResponse);
-  // `POST /host/v1/secrets/{ref}/rotate`.
-  rpc RotateSecret(RotateSecretRequest) returns (RotateSecretResponse);
 }
 
 // REST group: audit and streams.
@@ -117,8 +106,6 @@ service EvidenceService {
   rpc ExportAudit(ExportAuditRequest) returns (ExportAuditResponse);
   // `GET /host/v1/streams`.
   rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse);
-  // `POST /host/v1/streams/{plane}/{type}/batches`.
-  rpc ShipStreamBatch(ShipStreamBatchRequest) returns (ShipStreamBatchResponse);
   // `GET /host/v1/streams/{plane}/{type}/frontier`.
   rpc GetStreamFrontier(GetStreamFrontierRequest) returns (GetStreamFrontierResponse);
   // `GET /host/v1/streams/{plane}/{type}/records`.
@@ -137,14 +124,8 @@ service EvidenceService {
 service OperationsService {
   // `GET /host/v1/status`.
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
-  // `POST /host/v1/drain`.
-  rpc Drain(DrainRequest) returns (DrainResponse);
-  // `POST /host/v1/maintenance`.
-  rpc Maintenance(MaintenanceRequest) returns (MaintenanceResponse);
   // `GET /host/v1/config/effective`.
   rpc GetEffectiveConfig(GetEffectiveConfigRequest) returns (GetEffectiveConfigResponse);
-  // `GET /host/v1/config/revisions`.
-  rpc ListConfigRevisions(ListConfigRevisionsRequest) returns (ListConfigRevisionsResponse);
   // `POST /host/v1/backup/prepare`.
   rpc PrepareBackup(PrepareBackupRequest) returns (PrepareBackupResponse);
   // `POST /host/v1/backup/finalize`.
@@ -157,10 +138,6 @@ service OperationsService {
   rpc PlanGc(PlanGcRequest) returns (PlanGcResponse);
   // `POST /host/v1/gc/{job}/run`.
   rpc RunGc(RunGcRequest) returns (RunGcResponse);
-  // `GET /host/v1/storage/quota`.
-  rpc GetStorageQuota(GetStorageQuotaRequest) returns (GetStorageQuotaResponse);
-  // `POST /host/v1/storage/probe`.
-  rpc ProbeStorage(ProbeStorageRequest) returns (ProbeStorageResponse);
   // `GET /host/v1/plans`.
   rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
   // `POST /host/v1/plans/{id}/approve`.
@@ -761,35 +738,6 @@ message VerifyMemberResponse {
   Member member = 4;
   Receipt receipt = 5;
 }
-// `GET /iam/v1/grants?principal&selector`: both filters optional, exact matches.
-message ListGrantsRequest {
-  string principal = 1;
-  string selector = 2;
-}
-message ListGrantsResponse {
-  // The store revision the list was read at.
-  uint64 revision = 1;
-  repeated Grant grants = 2;
-}
-
-// One grant, as the API shows it.
-message Grant {
-  string grant_id = 1;
-  string principal = 2;
-  repeated string operations = 3;
-  string selector = 4;
-  repeated string resource_types = 5;
-  map<string, string> constraints = 6;
-  uint64 revision = 7;
-  // `active`, `revoked` or `expired`.
-  string status = 8;
-  string issued_by = 9;
-  // RFC 3339.
-  string issued_at = 10;
-  // RFC 3339, when the grant expires.
-  optional string expires_at = 11;
-}
-
 // The common envelope's receipt: `{operation_id, revision, audit}`.
 message Receipt {
   string operation_id = 1;
@@ -802,52 +750,6 @@ message AuditReference {
   string trail = 1;
   optional uint64 seq = 2;
   optional string digest = 3;
-}
-// `POST /iam/v1/grants`.
-message CreateGrantRequest {
-  string request_id = 1;
-  optional uint64 expected_revision = 2;
-  string principal = 3;
-  repeated string operations = 4;
-  string selector = 5;
-  repeated string resource_types = 6;
-  map<string, string> constraints = 7;
-  // RFC 3339.
-  optional string expires_at = 8;
-}
-message CreateGrantResponse {
-  Receipt receipt = 1;
-  Grant grant = 2;
-}
-// `POST /iam/v1/grants/{id}/revoke/plan`.
-message PlanGrantRevokeRequest {
-  string grant_id = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-}
-message PlanGrantRevokeResponse {
-  string plan_id = 1;
-  string plan_digest = 2;
-  // RFC 3339: when the plan can no longer be run.
-  string expires = 3;
-  // The grant revision the plan was made against.
-  uint64 revision = 4;
-  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
-  bytes receipt = 5;
-  // How many principals other than the planner must approve it before it runs.
-  uint64 approvals_required = 6;
-}
-// `POST /iam/v1/grants/{id}/revoke/run`.
-message RunGrantRevokeRequest {
-  reserved 3, 4;
-  string grant_id = 1;
-  string request_id = 2;
-  // The receipt the plan step answered (WP-3.9).
-  bytes receipt = 5;
-}
-message RunGrantRevokeResponse {
-  Receipt receipt = 1;
-  Grant grant = 2;
 }
 message ListKeyRingsRequest {}
 message ListKeyRingsResponse {
@@ -963,10 +865,6 @@ message GetKeyBundleResponse {
   // The cursor of the next page; absent on the last one.
   optional string next_cursor = 7;
 }
-message ListSecretsRequest {}
-message ListSecretsResponse {}
-message RotateSecretRequest {}
-message RotateSecretResponse {}
 // `GET /host/v1/audit/{class}/records` (WP-3.7), under `audit.read` on `resource`, which is
 // authorized before the class or any filter is read.
 message ListAuditRecordsRequest {
@@ -1102,10 +1000,6 @@ message StreamResource {
   string resource = 1;
   string state = 2;
 }
-// Batches travel on the membership's task transport; this binding is not served (WP-5.7, owner
-// decision of 2026-10-17).
-message ShipStreamBatchRequest {}
-message ShipStreamBatchResponse {}
 // The query of a stream read (WP-5.7a), under `streams.read` on `resource`, which is authorized
 // before anything else is read.
 message GetStreamFrontierRequest {
@@ -1320,10 +1214,6 @@ message Assurance {
   // Relaxations the values in force amount to, each one the profile permits.
   repeated string relaxations = 4;
 }
-message DrainRequest {}
-message DrainResponse {}
-message MaintenanceRequest {}
-message MaintenanceResponse {}
 message GetEffectiveConfigRequest {}
 message GetEffectiveConfigResponse {
   // `0`: the static configuration this process started with.
@@ -1341,23 +1231,6 @@ message Setting {
   string origin = 4;
   // `startup` (varies per instance) or `static` (one file for every instance).
   string class = 5;
-}
-message ListConfigRevisionsRequest {}
-message ListConfigRevisionsResponse {
-  // Newest first.
-  repeated ConfigRevision revisions = 1;
-}
-
-// One transition of a dynamic Host journal.
-message ConfigRevision {
-  // `grants` today.
-  string journal = 1;
-  uint64 revision = 2;
-  string operation = 3;
-  string target = 4;
-  // RFC 3339.
-  string at = 5;
-  string by = 6;
 }
 // `POST /host/v1/backup/prepare` (WP-7.8): nothing but the call.
 message PrepareBackupRequest {}
@@ -1477,10 +1350,6 @@ message GcKept {
   string reason = 1;
   uint64 count = 2;
 }
-message GetStorageQuotaRequest {}
-message GetStorageQuotaResponse {}
-message ProbeStorageRequest {}
-message ProbeStorageResponse {}
 // `GET /host/v1/plans?status` (WP-3.9): the plans whose operation the caller may do.
 message ListPlansRequest {
   // `pending`, `ready`, `consumed` or `expired`; empty is every status.
@@ -1492,7 +1361,7 @@ message ListPlansResponse {
 // One plan of the plans store (WP-3.9).
 message OperationPlan {
   string plan_id = 1;
-  // `grant.revoke`, `keys.revoke`, `membership.revoke` or `identity.reset`.
+  // `keys.revoke`, `membership.revoke`, `identity.reset` or a collection's.
   string operation = 2;
   string target = 3;
   uint64 revision = 4;
@@ -1524,191 +1393,4 @@ message ApprovePlanRequest {
 message ApprovePlanResponse {
   Receipt receipt = 1;
   OperationPlan plan = 2;
-}
-
-// Roles, members, local users and identity providers (WP-8.1).
-
-// What a directory change answers.
-message DirectoryChangeResponse {
-  Receipt receipt = 1;
-  // The directory revision after it.
-  uint64 revision = 2;
-  // Whether it wrote anything.
-  bool changed = 3;
-}
-message ListRolesRequest {}
-message ListRolesResponse {
-  uint64 revision = 1;
-  repeated RoleSummary roles = 2;
-}
-message RoleSummary {
-  string name = 1;
-  string description = 2;
-  uint64 members = 3;
-  uint64 grants = 4;
-  uint64 revision = 5;
-  // The longest a token elevated to the role lives, in seconds; absent for no bound but the
-  // family's.
-  optional uint64 max_lifetime = 6;
-}
-message GetRoleRequest {
-  string name = 1;
-}
-message GetRoleResponse {
-  string name = 1;
-  string description = 2;
-  repeated string members = 3;
-  repeated Grant grants = 4;
-  uint64 revision = 5;
-  uint64 directory_revision = 6;
-  optional uint64 max_lifetime = 7;
-}
-message CreateRoleRequest {
-  string request_id = 1;
-  optional uint64 expected_revision = 2;
-  string name = 3;
-  string description = 4;
-  // 60 to 86400 seconds; absent or 0 for no bound but the family's.
-  optional uint64 max_lifetime = 5;
-}
-message UpdateRoleRequest {
-  string name = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-  string description = 4;
-  // Absent leaves the role's bound, 0 clears it.
-  optional uint64 max_lifetime = 5;
-}
-message DeleteRoleRequest {
-  string name = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-}
-message MemberRequest {
-  string role = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-  string member = 4;
-}
-message RolesOfRequest {
-  string principal = 1;
-}
-message RolesOfResponse {
-  repeated string roles = 1;
-}
-// A local user: never its password or factor, whether it holds them.
-message UserSummary {
-  string name = 1;
-  optional string email = 2;
-  optional string display = 3;
-  // `active` or `disabled`.
-  string status = 4;
-  bool password = 5;
-  bool factor = 6;
-  repeated string links = 7;
-  repeated string roles = 8;
-  optional uint64 locked_for = 9;
-  uint64 revision = 10;
-}
-message ListUsersRequest {}
-message ListUsersResponse {
-  uint64 revision = 1;
-  repeated UserSummary users = 2;
-}
-message GetUserRequest {
-  string name = 1;
-}
-message GetUserResponse {
-  UserSummary user = 1;
-  repeated Grant grants = 2;
-  uint64 directory_revision = 3;
-}
-message CreateUserRequest {
-  string request_id = 1;
-  optional uint64 expected_revision = 2;
-  string name = 3;
-  optional string email = 4;
-  optional string display = 5;
-  // Hashed by the Host, never answered.
-  optional string password = 6;
-}
-message UpdateUserRequest {
-  string name = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-  optional string email = 4;
-  optional string display = 5;
-}
-message SetPasswordRequest {
-  string name = 1;
-  string request_id = 2;
-  string password = 3;
-}
-message SetUserStatusRequest {
-  string name = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-  bool active = 4;
-}
-message UserPlainRequest {
-  string name = 1;
-  string request_id = 2;
-  optional uint64 expected_revision = 3;
-}
-message UnlockUserRequest {
-  string name = 1;
-}
-message UnlockUserResponse {
-  bool unlocked = 1;
-}
-message LinkUserRequest {
-  string name = 1;
-  string request_id = 2;
-  string subject = 3;
-  // True links, false unlinks.
-  bool link = 4;
-}
-message ListProvidersRequest {}
-message ListProvidersResponse {
-  repeated Provider providers = 1;
-}
-message RefreshProviderRequest {
-  string name = 1;
-}
-// An identity provider: never its keys, their ids and algorithms.
-message Provider {
-  string name = 1;
-  string issuer = 2;
-  string claim = 3;
-  // `discovery`, `jwks_uri` or `jwks_file`.
-  string source = 4;
-  string location = 5;
-  repeated ProviderKey keys = 6;
-  optional string fetched_at = 7;
-  optional uint64 age_seconds = 8;
-  optional string failure = 9;
-  optional string failed_at = 10;
-  // `empty`, `fresh`, `aging` or `stale`.
-  string state = 11;
-}
-message ProviderKey {
-  optional string kid = 1;
-  string algorithm = 2;
-}
-
-// The recovery started offline, waiting to be acknowledged (WP-8.2).
-message GetRecoveryRequest {}
-message GetRecoveryResponse {
-  bool waiting = 1;
-  // RFC 3339.
-  optional string started_at = 2;
-  optional string reason = 3;
-}
-message AcknowledgeRecoveryRequest {}
-message AcknowledgeRecoveryResponse {
-  // Whether a recovery was waiting, and is now acknowledged.
-  bool acknowledged = 1;
-  // RFC 3339.
-  optional string started_at = 2;
-  optional string reason = 3;
 }

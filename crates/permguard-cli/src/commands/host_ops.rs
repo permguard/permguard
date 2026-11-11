@@ -366,9 +366,6 @@ pub(super) fn config(
         HostConfigAction::Show { effective: _ } => {
             render_json(&host.effective_config().map_err(failed)?, globals, trace)?;
         }
-        HostConfigAction::Revisions => {
-            render_json(&host.config_revisions().map_err(failed)?, globals, trace)?;
-        }
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -674,7 +671,7 @@ mod tests {
     use permguard_control_client::catalog::Failure as ClientFailure;
     use permguard_host::api::Planned;
     use permguard_host::api::audit::{AuditCheckpoints, AuditExportPage, AuditRecordPage};
-    use permguard_host::api::config::{Effective, Revisions};
+    use permguard_host::api::config::Effective;
     use permguard_host::api::keys::{KeyBundlePage, KeyRevoked, RingRotated, RingView, Rings};
     use permguard_host::api::plans::{PlanApproved, PlanList};
 
@@ -769,9 +766,6 @@ mod tests {
             unreachable!()
         }
         fn effective_config(&self) -> Result<Effective, ClientFailure> {
-            unreachable!()
-        }
-        fn config_revisions(&self) -> Result<Revisions, ClientFailure> {
             unreachable!()
         }
         fn plans(&self, _: Option<&str>) -> Result<PlanList, ClientFailure> {

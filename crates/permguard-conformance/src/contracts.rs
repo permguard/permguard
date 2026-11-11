@@ -16,10 +16,10 @@ pub mod host_v1 {
     tonic::include_proto!("permguard.host.v1");
 }
 
-/// The generated halves of identity and access, `permguard.iam.v1` (iteration 02, WP-11.1).
+/// The generated client half of the Authority Plane, `permguard.authority.v1`.
 #[allow(clippy::all, missing_docs)]
-pub mod iam_v1 {
-    include!(concat!(env!("OUT_DIR"), "/iam/permguard.iam.v1.rs"));
+pub mod authority_v1 {
+    tonic::include_proto!("permguard.authority.v1");
 }
 
 /// The repository's `contracts/` directory.

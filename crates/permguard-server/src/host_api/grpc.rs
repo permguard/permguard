@@ -12,19 +12,14 @@ use tonic::{Request, Response, Status};
 use permguard_core::Disclosure;
 use permguard_host::api::{self, HostApi, Refusal};
 
-use super::iam_v1::grant_service_server::GrantService;
-use super::iam_v1::recovery_service_server::RecoveryService;
 use super::v1;
 use super::v1::identity_service_server::IdentityService;
 use super::v1::key_service_server::KeyService;
 use super::v1::operations_service_server::OperationsService;
 use super::wire;
 
-mod directory;
 mod evidence;
 mod members;
-mod service_accounts;
-mod tokens;
 
 type Answer<T> = Result<Response<T>, Status>;
 
@@ -60,26 +55,6 @@ impl Served {
                 format!("the call did not finish: {error}"),
             ))),
         }
-    }
-}
-
-fn unimplemented(what: &str) -> Status {
-    Status::unimplemented(format!("{what} is not served by this build"))
-}
-
-fn grant(view: api::GrantView) -> v1::Grant {
-    v1::Grant {
-        grant_id: view.grant_id,
-        principal: view.principal,
-        operations: view.operations,
-        selector: view.selector,
-        resource_types: view.resource_types,
-        constraints: view.constraints.into_iter().collect(),
-        revision: view.revision,
-        status: view.status,
-        issued_by: view.issued_by,
-        issued_at: view.issued_at,
-        expires_at: view.expires_at,
     }
 }
 
@@ -409,110 +384,6 @@ impl IdentityService for Served {
 }
 
 #[tonic::async_trait]
-impl GrantService for Served {
-    async fn list_grants(
-        &self,
-        request: Request<v1::ListGrantsRequest>,
-    ) -> Answer<v1::ListGrantsResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let asked = request.into_inner();
-        let listed = self
-            .api
-            .grants(
-                &actor,
-                blank(asked.principal).as_deref(),
-                blank(asked.selector).as_deref(),
-            )
-            .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::ListGrantsResponse {
-            revision: listed.revision,
-            grants: listed.grants.into_iter().map(grant).collect(),
-        }))
-    }
-
-    async fn create_grant(
-        &self,
-        request: Request<v1::CreateGrantRequest>,
-    ) -> Answer<v1::CreateGrantResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let asked = request.into_inner();
-        let created = self
-            .api
-            .create_grant(
-                &actor,
-                api::CreateGrant {
-                    request_id: asked.request_id,
-                    expected_revision: asked.expected_revision,
-                    principal: asked.principal,
-                    operations: asked.operations,
-                    selector: asked.selector,
-                    resource_types: asked.resource_types,
-                    constraints: asked.constraints.into_iter().collect(),
-                    expires_at: asked.expires_at,
-                },
-            )
-            .await
-            .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::CreateGrantResponse {
-            receipt: Some(receipt(created.receipt)),
-            grant: Some(grant(created.grant)),
-        }))
-    }
-
-    async fn plan_grant_revoke(
-        &self,
-        request: Request<v1::PlanGrantRevokeRequest>,
-    ) -> Answer<v1::PlanGrantRevokeResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let asked = request.into_inner();
-        let planned = self
-            .api
-            .plan_revoke(
-                &actor,
-                &asked.grant_id,
-                api::PlanRevoke {
-                    request_id: asked.request_id,
-                    expected_revision: asked.expected_revision,
-                },
-            )
-            .await
-            .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::PlanGrantRevokeResponse {
-            plan_id: planned.plan_id,
-            plan_digest: planned.plan_digest,
-            expires: planned.expires,
-            revision: planned.revision,
-            receipt: raw(&planned.receipt)?,
-            approvals_required: planned.approvals_required,
-        }))
-    }
-
-    async fn run_grant_revoke(
-        &self,
-        request: Request<v1::RunGrantRevokeRequest>,
-    ) -> Answer<v1::RunGrantRevokeResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let asked = request.into_inner();
-        let revoked = self
-            .api
-            .run_revoke(
-                &actor,
-                &asked.grant_id,
-                api::RunRevoke {
-                    request_id: asked.request_id,
-                    receipt: b64(&asked.receipt),
-                },
-            )
-            .await
-            .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::RunGrantRevokeResponse {
-            receipt: Some(receipt(revoked.receipt)),
-            grant: Some(grant(revoked.grant)),
-        }))
-    }
-}
-
-#[tonic::async_trait]
 impl KeyService for Served {
     async fn list_key_rings(
         &self,
@@ -660,20 +531,6 @@ impl KeyService for Served {
             next_cursor: page.next_cursor,
         }))
     }
-
-    async fn list_secrets(
-        &self,
-        _request: Request<v1::ListSecretsRequest>,
-    ) -> Answer<v1::ListSecretsResponse> {
-        Err(unimplemented("the secrets"))
-    }
-
-    async fn rotate_secret(
-        &self,
-        _request: Request<v1::RotateSecretRequest>,
-    ) -> Answer<v1::RotateSecretResponse> {
-        Err(unimplemented("secret rotation"))
-    }
 }
 
 #[tonic::async_trait]
@@ -741,17 +598,6 @@ impl OperationsService for Served {
         }))
     }
 
-    async fn drain(&self, _request: Request<v1::DrainRequest>) -> Answer<v1::DrainResponse> {
-        Err(unimplemented("draining"))
-    }
-
-    async fn maintenance(
-        &self,
-        _request: Request<v1::MaintenanceRequest>,
-    ) -> Answer<v1::MaintenanceResponse> {
-        Err(unimplemented("maintenance"))
-    }
-
     async fn get_effective_config(
         &self,
         request: Request<v1::GetEffectiveConfigRequest>,
@@ -772,31 +618,6 @@ impl OperationsService for Served {
                     masked: setting.masked,
                     origin: setting.origin,
                     class: setting.class,
-                })
-                .collect(),
-        }))
-    }
-
-    async fn list_config_revisions(
-        &self,
-        request: Request<v1::ListConfigRevisionsRequest>,
-    ) -> Answer<v1::ListConfigRevisionsResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let listed = self
-            .api
-            .config_revisions(&actor)
-            .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::ListConfigRevisionsResponse {
-            revisions: listed
-                .revisions
-                .into_iter()
-                .map(|revision| v1::ConfigRevision {
-                    journal: revision.journal,
-                    revision: revision.revision,
-                    operation: revision.operation,
-                    target: revision.target,
-                    at: revision.at,
-                    by: revision.by,
                 })
                 .collect(),
         }))
@@ -942,20 +763,6 @@ impl OperationsService for Served {
         }))
     }
 
-    async fn get_storage_quota(
-        &self,
-        _request: Request<v1::GetStorageQuotaRequest>,
-    ) -> Answer<v1::GetStorageQuotaResponse> {
-        Err(unimplemented("the storage quota"))
-    }
-
-    async fn probe_storage(
-        &self,
-        _request: Request<v1::ProbeStorageRequest>,
-    ) -> Answer<v1::ProbeStorageResponse> {
-        Err(unimplemented("the storage probe"))
-    }
-
     async fn list_plans(
         &self,
         request: Request<v1::ListPlansRequest>,
@@ -996,38 +803,6 @@ impl OperationsService for Served {
         Ok(Response::new(v1::ApprovePlanResponse {
             receipt: Some(receipt(approved.receipt)),
             plan: Some(plan_out(approved.plan)?),
-        }))
-    }
-}
-
-/// Recovery, on the IAM Host (iteration 02, WP-11.1): `permguard.iam.v1.RecoveryService`.
-#[tonic::async_trait]
-impl RecoveryService for Served {
-    async fn get_recovery(
-        &self,
-        request: Request<v1::GetRecoveryRequest>,
-    ) -> Answer<v1::GetRecoveryResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let view = self.blocking(move |api| api.recovery(&actor)).await?;
-        Ok(Response::new(v1::GetRecoveryResponse {
-            waiting: view.waiting,
-            started_at: view.started_at,
-            reason: view.reason,
-        }))
-    }
-
-    async fn acknowledge_recovery(
-        &self,
-        request: Request<v1::AcknowledgeRecoveryRequest>,
-    ) -> Answer<v1::AcknowledgeRecoveryResponse> {
-        let actor = permguard_transport::actor_of(request.extensions());
-        let done = self
-            .blocking(move |api| api.acknowledge_recovery(&actor))
-            .await?;
-        Ok(Response::new(v1::AcknowledgeRecoveryResponse {
-            acknowledged: done.acknowledged,
-            started_at: done.started_at,
-            reason: done.reason,
         }))
     }
 }

@@ -370,7 +370,7 @@ mod tests {
             .extensions_mut()
             .insert(Arc::new(Actor::Authenticated(ActorContext::new(
                 Principal::new("spiffe://acme/billing").expect("p"),
-                Credential::SanUri,
+                Credential::Certificate,
                 None,
             ))));
         let somebody = GitLikeStore::negotiate_pull(&facade, request)

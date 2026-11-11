@@ -5,11 +5,9 @@
 
 use std::time::Duration;
 
-use permguard_core::authz::{Resource, Selector};
 use permguard_objects::cose::Sign1;
 
 use super::*;
-use crate::api::grants::CreateGrant;
 use crate::api::keys::KeyBundleQuery;
 use crate::api::testing::{Recording, actor, admin, reopen_with, scratch};
 use crate::operations::backup::{Consistency, SnapshotManifest};
@@ -52,20 +50,23 @@ fn backed(tag: &str, lifetime: Option<Duration>) -> (HostApi, std::path::PathBuf
     )
 }
 
-/// A grant creation: a mutation of the Host.
-async fn grant(api: &HostApi, request_id: &str) -> Result<crate::api::grants::Created, Refusal> {
-    api.create_grant(
+/// A membership invitation: a mutation of the Host.
+async fn mutate(
+    api: &HostApi,
+    request_id: &str,
+) -> Result<crate::api::members::InviteCreated, Refusal> {
+    api.create_invite(
         &admin(),
-        CreateGrant {
+        crate::api::members::CreateInvite {
             request_id: request_id.to_owned(),
-            expected_revision: None,
-            principal: format!("spiffe://acme/{request_id}"),
-            operations: vec![operations::CATALOG_READ.to_owned()],
-            // A coherent grant (WP-11.6): the catalog is read under the Control Plane.
-            selector: Selector::under(Resource::plane("control")).to_string(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
+            selector: "plane/data/*".to_owned(),
+            tasks: vec![crate::api::members::tests::task_view()],
+            expires: None,
+            expected_fingerprint: None,
+            min_assurance: None,
+            max_uses: 1,
+            groups: None,
+            name: None,
         },
     )
     .await
@@ -159,7 +160,9 @@ async fn a_prepared_backup_holds_mutations_until_it_is_finalized() {
         .expect("reads go on under the barrier");
     api.ring(HOST_OPERATIONS)
         .expect("reads go on under the barrier");
-    let held = grant(&api, "during").await.expect_err("mutations are held");
+    let held = mutate(&api, "during")
+        .await
+        .expect_err("mutations are held");
     assert_eq!(code(&held), codes::common::UNAVAILABLE);
     let busy = api
         .prepare_backup(&admin(), PrepareBackup {})
@@ -186,7 +189,7 @@ async fn a_prepared_backup_holds_mutations_until_it_is_finalized() {
         .expect_err("not a snapshot id");
     assert_eq!(code(&invalid), codes::common::INVALID_ARGUMENT);
     assert_eq!(
-        code(&grant(&api, "still").await.expect_err("still held")),
+        code(&mutate(&api, "still").await.expect_err("still held")),
         codes::common::UNAVAILABLE,
         "a refused finalize leaves the barrier up"
     );
@@ -216,7 +219,7 @@ async fn a_prepared_backup_holds_mutations_until_it_is_finalized() {
         )
         .expect_err("the token is spent");
     assert_eq!(code(&spent), codes::common::NOT_FOUND);
-    grant(&api, "after").await.expect("mutations resume");
+    mutate(&api, "after").await.expect("mutations resume");
 
     let listed = api.list_backups(&admin()).expect("listed");
     assert_eq!(listed.backups.len(), 1);
@@ -252,11 +255,11 @@ async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
         .prepare_backup(&admin(), PrepareBackup {})
         .expect("prepared");
     assert_eq!(
-        code(&grant(&api, "held").await.expect_err("held")),
+        code(&mutate(&api, "held").await.expect_err("held")),
         codes::common::UNAVAILABLE
     );
     std::thread::sleep(Duration::from_millis(5200));
-    grant(&api, "expired")
+    mutate(&api, "expired")
         .await
         .expect("past its lifetime the barrier holds nothing");
     // The timer records the abort with nobody calling: the store itself says so.
@@ -305,7 +308,7 @@ async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
         .expect("aborted");
     assert_eq!(ended.state, "aborted");
     assert_eq!(ended.snapshot_id, None);
-    grant(&api, "after-abort").await.expect("resumed");
+    mutate(&api, "after-abort").await.expect("resumed");
     // Newest first, each with its manifest.
     let listed = api.list_backups(&admin()).expect("listed").backups;
     assert_eq!(
@@ -327,21 +330,7 @@ async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
 async fn backups_need_their_grants() {
     let (api, _root, _) = backed("backup-grants", None);
     let reader = "spiffe://acme/operators/reader";
-    api.create_grant(
-        &admin(),
-        CreateGrant {
-            request_id: "reader".to_owned(),
-            expected_revision: None,
-            principal: reader.to_owned(),
-            operations: vec![operations::BACKUP_READ.to_owned()],
-            selector: Selector::under(Resource::host()).to_string(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
+    crate::api::testing::grant_to(reader, &[operations::BACKUP_READ], "host/*");
     api.list_backups(&actor(reader)).expect("a reader lists");
     let refused = api
         .prepare_backup(&actor(reader), PrepareBackup {})
@@ -430,7 +419,7 @@ async fn a_snapshot_inside_the_barrier_verifies_and_one_outside_is_crash_consist
         },
     )
     .expect("finalized");
-    grant(&api, "outside").await.expect("a mutation after it");
+    mutate(&api, "outside").await.expect("a mutation after it");
     let outside = scratch("backup-verify-outside");
     copy(&root, &outside);
     let (manifest, _) = manifest_of(&prepared);
@@ -675,7 +664,7 @@ async fn a_prepare_that_outlasts_its_barrier_is_aborted() {
     let listed = api.list_backups(&admin()).expect("listed").backups;
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].state, "aborted");
-    grant(&api, "after").await.expect("mutations go on");
+    mutate(&api, "after").await.expect("mutations go on");
 }
 
 /// WP-7.10: an export manifest signed by the Host under `host.operations` verifies from the
@@ -819,7 +808,7 @@ async fn a_root_that_cannot_be_flushed_refuses_the_prepare() {
     let listed = api.list_backups(&admin()).expect("listed").backups;
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].state, "aborted", "{listed:?}");
-    grant(&api, "after-unflushed")
+    mutate(&api, "after-unflushed")
         .await
         .expect("mutations go on");
     let prepared = api

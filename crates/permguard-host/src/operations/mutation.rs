@@ -182,16 +182,6 @@ impl Applying<'static> {
             _engine: PhantomData,
         }
     }
-
-    /// [`Self::for_tests`] for a test that runs more operations than a byte counts.
-    pub(crate) fn for_tests_numbered(number: u64) -> Self {
-        let mut bytes = [0xa5; 16];
-        bytes[8..].copy_from_slice(&number.to_be_bytes());
-        Self {
-            operation_id: OperationId::from_bytes(bytes),
-            _engine: PhantomData,
-        }
-    }
 }
 
 impl std::fmt::Debug for Applying<'_> {

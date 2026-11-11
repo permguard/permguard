@@ -21,13 +21,8 @@ impl Drop for Dormancy {
     }
 }
 
-/// Runs the pass now and every [`PASS`] until the handle is dropped. A pass that revoked or
-/// suspended a membership brings the members' roles to the live members at once, on the IAM
-/// Host `api` serves (`2-security/8` Roles and elevation).
-pub fn drive(
-    coordinating: Arc<Coordinating>,
-    api: Option<Arc<permguard_host::api::HostApi>>,
-) -> Dormancy {
+/// Runs the pass now and every [`PASS`] until the handle is dropped.
+pub fn drive(coordinating: Arc<Coordinating>) -> Dormancy {
     Dormancy(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -43,10 +38,6 @@ pub fn drive(
                         memberships = moved,
                         "memberships silent past their thresholds are suspended or revoked"
                     );
-                    if let Some(api) = api.as_ref().map(Arc::clone) {
-                        let _ =
-                            tokio::task::spawn_blocking(move || api.member_roles_follow()).await;
-                    }
                 }
                 Err(error) => tracing::error!(
                     event.name = "host.membership.dormancy_failed",

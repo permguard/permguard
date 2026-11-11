@@ -91,6 +91,13 @@ controlPlane:
     http: 6443
     grpc: 6443
     telemetry: 5443
+    # The Authority Plane's listener, REST and gRPC on one port, under the public listener's TLS.
+    authority: 8443
+  # The Authority Plane beside the control plane (`2-security/8`): the cluster's service accounts
+  # and the token endpoint, whose keys and status lists every data plane fetches. Its first start
+  # makes `admin`, its access key and secret key in `planes/authority/admin.key` on the volume.
+  authority:
+    enabled: true
   # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
   # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
   # of it; `templates/checks.yaml` refuses a values file that says neither, or both.
@@ -291,10 +298,10 @@ dataPlane:
     # The serving floor of every replica (`development`, `production`, `regulated`), rendered into
     # its Host configuration, checked at Bootstrap and published by discovery. `custody` says where
     # the Host's private keys are held: `provider` (`development`, `file`, `pkcs11`, `kms`), the
-    # `identity`, `operations` and, on a Control Plane, `tokens` (`iam.tokens`) rings when they
+    # `identity`, `operations` and, on a Control Plane, `tokens` (`authority.tokens`) rings when they
     # differ, and the `pkcs11` (`module`, `tokenLabel`, `pinRef`) or `kms` (`address`, `mount`,
     # `tokenRef`, `ca`) references. `regulated` keeps `host.identity`, `host.operations` and
-    # `iam.tokens` in `pkcs11` or `kms`, and the chart refuses it otherwise.
+    # `authority.tokens` in `pkcs11` or `kms`, and the chart refuses it otherwise.
     # Where decisions are recorded, `host.operations` stays out of a remote KMS: it signs while a
     # decision waits (TS-4).
     assurance:
@@ -328,6 +335,12 @@ dataPlane:
     grpc: 7443
     # Pods have independent network namespaces, so every Server Host uses the canonical port.
     telemetry: 5443
+  # Where every group verifies the access tokens it decides by (`2-security/8`): the Authority
+  # Plane's URL, which every token names as its issuer. Empty, this release's control plane Service
+  # on its authority port; its keys and status lists are fetched from there, checked against the
+  # public listener Secret's `ca.crt` when `tls.secretName` names one.
+  authority:
+    url: ""
   # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
   # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
   # of it; `templates/checks.yaml` refuses a values file that says neither, or both.
@@ -452,6 +465,8 @@ allInOne:
     controlHttp: 6443
     dataHttp: 7443
     telemetry: 5443
+    # The Authority Plane's listener: its keys and lists reach the other Planes in-process.
+    authority: 8443
   # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
   # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
   # of it; `templates/checks.yaml` refuses a values file that says neither, or both.

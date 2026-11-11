@@ -570,24 +570,14 @@ mod tests {
 
     /// `api` with a reader allowed `streams.read` on `plane/data` and below.
     async fn with_reader(api: HostApi) -> HostApi {
-        api.create_grant(
-            &admin(),
-            super::super::CreateGrant {
-                request_id: "reader".to_owned(),
-                expected_revision: None,
-                principal: READER.to_owned(),
-                operations: vec![operations::STREAMS_READ.to_owned()],
-                selector: permguard_core::authz::Selector::under(
-                    Resource::parse("plane/data").expect("a resource"),
-                )
-                .to_string(),
-                resource_types: vec!["*".to_owned()],
-                constraints: Default::default(),
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("the reader is issued");
+        crate::api::testing::grant_to(
+            READER,
+            &[operations::STREAMS_READ],
+            &permguard_core::authz::Selector::under(
+                Resource::parse("plane/data").expect("a resource"),
+            )
+            .to_string(),
+        );
         api
     }
 

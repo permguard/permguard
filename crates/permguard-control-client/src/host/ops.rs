@@ -14,7 +14,7 @@ use permguard_host::api::audit::{
 use permguard_host::api::backups::{
     AbortBackup, BackupEnded, BackupList, BackupPrepared, BackupView, FinalizeBackup, PrepareBackup,
 };
-use permguard_host::api::config::{Effective, Revision, Revisions, Setting};
+use permguard_host::api::config::{Effective, Setting};
 use permguard_host::api::gc::{GcPlanned, GcRan, PlanGc, RunGc};
 use permguard_host::api::keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, KeyView, PlanKeyRevoke, RingRotated, RingSummary,
@@ -58,8 +58,6 @@ pub trait Operations {
     ) -> Result<AuditExportPage, Failure>;
     /// `GET /host/v1/config/effective`, `OperationsService.GetEffectiveConfig`.
     fn effective_config(&self) -> Result<Effective, Failure>;
-    /// `GET /host/v1/config/revisions`, `OperationsService.ListConfigRevisions`.
-    fn config_revisions(&self) -> Result<Revisions, Failure>;
     /// `GET /host/v1/plans?status`, `OperationsService.ListPlans`.
     fn plans(&self, status: Option<&str>) -> Result<PlanList, Failure>;
     /// `POST /host/v1/plans/{id}/approve`, `OperationsService.ApprovePlan`.
@@ -189,10 +187,6 @@ impl Operations for RestHost {
 
     fn effective_config(&self) -> Result<Effective, Failure> {
         self.get("/host/v1/config/effective")
-    }
-
-    fn config_revisions(&self) -> Result<Revisions, Failure> {
-        self.get("/host/v1/config/revisions")
     }
 
     fn plans(&self, status: Option<&str>) -> Result<PlanList, Failure> {
@@ -590,31 +584,6 @@ impl Operations for GrpcHost {
                     masked: setting.masked,
                     origin: setting.origin,
                     class: setting.class,
-                })
-                .collect(),
-        })
-    }
-
-    fn config_revisions(&self) -> Result<Revisions, Failure> {
-        let answer = self
-            .0
-            .run(
-                "ListConfigRevisions",
-                self.operations_client()
-                    .list_config_revisions(proto::ListConfigRevisionsRequest {}),
-            )
-            .map_err(crate::grpc::failure_of)?;
-        Ok(Revisions {
-            revisions: answer
-                .revisions
-                .into_iter()
-                .map(|revision| Revision {
-                    journal: revision.journal,
-                    revision: revision.revision,
-                    operation: revision.operation,
-                    target: revision.target,
-                    at: revision.at,
-                    by: revision.by,
                 })
                 .collect(),
         })

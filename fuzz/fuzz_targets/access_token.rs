@@ -8,31 +8,24 @@ use std::sync::OnceLock;
 use libfuzzer_sys::fuzz_target;
 
 use permguard_host::authz::access_tokens::{self, Anchor};
-use permguard_host::membership::token_status::{HeldLists, PinnedKey};
+use permguard_host::authz::status_lists::{self, HeldLists, PinnedKey};
 
-/// One anchor over RFC 8037 appendix A.2's public key, and no list held: the token is the input
-/// under test, and whatever it claims it is refused by step 7 at the latest.
-fn anchors() -> &'static [Anchor] {
-    static ANCHORS: OnceLock<Vec<Anchor>> = OnceLock::new();
-    ANCHORS.get_or_init(|| {
-        vec![Anchor {
-            issuer: "urn:permguard:iam:0198f2aa-0000-7000-8000-000000000001".to_owned(),
-            tenant: "default".to_owned(),
-            keys: vec![PinnedKey {
-                kid: "iam.tokens:k1".to_owned(),
-                algorithm: "EdDSA",
-                public_key: vec![
-                    0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9,
-                    0x64, 0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02,
-                    0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a,
-                ],
-            }],
-            member: "member:0198f2aa-0000-7000-8000-000000000002".to_owned(),
-            groups: vec!["group:eu".to_owned()],
-            // As on the IAM Host: no coordinator's mirrors to bound an application token to.
-            authority: None,
-            bound_administration: false,
-        }]
+const ISSUER: &str = "https://authority.example:8443";
+
+fn anchor() -> &'static Anchor {
+    static ANCHOR: OnceLock<Anchor> = OnceLock::new();
+    ANCHOR.get_or_init(|| Anchor {
+        issuer: ISSUER.to_owned(),
+        audience: "permguard".to_owned(),
+        keys: vec![PinnedKey {
+            kid: "authority.tokens:k1".to_owned(),
+            algorithm: "EdDSA",
+            public_key: vec![
+                0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64,
+                0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68,
+                0xf7, 0x07, 0x51, 0x1a,
+            ],
+        }],
     })
 }
 
@@ -41,9 +34,12 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     let _ = access_tokens::is_access_token(token);
+    let _ = access_tokens::key_id_of(token);
     let lists = HeldLists::in_memory();
     assert!(
-        access_tokens::verify(token, anchors(), &lists, Some("00"), 1_800_000_000).is_err(),
+        access_tokens::verify(token, anchor(), &lists, 1_800_000_000).is_err(),
         "nothing verifies without the list it names"
     );
+    // A status list token comes over the same network, from the same Authority Plane.
+    let _ = status_lists::verify_list(token, &anchor().keys, ISSUER, None, 1_800_000_000);
 });

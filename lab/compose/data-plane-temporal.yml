@@ -21,6 +21,10 @@ experimental: { dogwood: { enabled: "true" } }
 host: { addr: 0.0.0.0:5443 }
 admin: { addr: 0.0.0.0:5444 }
 
+# Where the tokens this Data Plane decides by come from: the coordinator's Authority Plane, whose
+# keys and status lists it fetches under the lab's authority.
+authority: { url: "https://control-plane:8443" }
+
 operations:
   keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }
   secrets: { provider: directory, coordinator_root_ref: zone-root }

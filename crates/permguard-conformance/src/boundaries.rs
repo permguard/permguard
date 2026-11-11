@@ -31,6 +31,7 @@ pub const SCANNED: &[&str] = &[
     "crates/permguard-host",
     "crates/permguard-notp",
     "crates/permguard-transport",
+    "crates/permguard-authority-plane",
 ];
 
 /// The function names that read outside input wherever they appear: decoders, parsers, verifiers

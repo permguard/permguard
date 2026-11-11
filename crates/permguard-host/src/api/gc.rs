@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
 use permguard_core::authz::{Actor, Resource, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{rfc3339, unreachable_reconciliation};
 use super::replay::{self, Plan};
 use super::{HostApi, Mutation, Receipt, Refusal};
+use super::{rfc3339, unreachable_reconciliation};
 use crate::gc::{self, GcError, GcJob, Report};
 use crate::operations::mutation::{Applied, Failure};
 
@@ -133,7 +133,7 @@ fn within(plane: &str, resource: &Resource) -> bool {
         Resource::Plane { plane: of }
         | Resource::Zone { plane: of, .. }
         | Resource::Ledger { plane: of, .. } => of == plane,
-        Resource::Host | Resource::Members | Resource::Member { .. } => false,
+        Resource::Host => false,
     }
 }
 

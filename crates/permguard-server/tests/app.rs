@@ -488,51 +488,39 @@ async fn test_two_planes_declaring_one_artifact_do_not_start() {
     );
 }
 
-/// WP-12.4: a member, a Host running a Data Plane and no Control Plane, holds no directory and
-/// admits only its IAM Host's tokens and its bootstrap certificate; a configuration asking it to
-/// read another credential is refused at start, naming each setting, never silently ignored.
+/// The settings of the IAM Host that the Authority Plane replaced, `host.principals`,
+/// `host.authentication` and `host.setup`, are refused at start by name: a configuration written
+/// for them never starts a Host that silently ignores them.
 #[tokio::test]
-async fn test_a_member_refuses_a_credential_it_must_not_read() {
-    use permguard_host::composition::Declaration;
-
-    let path = config_file(
-        "member-credentials",
-        concat!(
-            "public:\n  http: 0.0.0.0:5557\n",
+async fn test_a_retired_credential_setting_is_refused_by_name() {
+    for (tag, section, field) in [
+        (
+            "retired-principals",
             "host:\n  principals:\n    - san_uri: spiffe://acme/billing\n",
-            "    - oidc:\n        issuer: https://idp.example\n        audience: permguard\n",
-            "  authentication:\n    methods: [password, oidc]\n",
-            "  setup:\n    code_ref: setup-code\n",
+            "principals",
         ),
-    );
-    let refused = app()
-        .with_plane_declaration(|_| Some(("data", true, Declaration::new("data"))))
-        .dispatch_to(&serve_action(&path), &mut Vec::new())
-        .await
-        .expect_err("a member reads no such credential");
-    let message = format!("{refused:#}");
-    assert!(message.contains("it is a member"), "{message}");
-    for setting in [
-        "host.principals",
-        "host.authentication.password",
-        "host.authentication.oidc",
-        "host.setup.code_ref",
+        (
+            "retired-authentication",
+            "host:\n  authentication:\n    methods: [password]\n",
+            "authentication",
+        ),
+        (
+            "retired-setup",
+            "host:\n  setup:\n    code_ref: setup-code\n",
+            "setup",
+        ),
     ] {
-        assert!(message.contains(setting), "{setting}: {message}");
+        let path = config_file(tag, &format!("public:\n  http: 0.0.0.0:5557\n{section}"));
+        let refused = app()
+            .dispatch_to(&serve_action(&path), &mut Vec::new())
+            .await
+            .expect_err("a retired setting is refused");
+        let message = format!("{refused:#}");
+        assert!(
+            message.contains(&format!("unknown field `{field}`")),
+            "{field}: {message}"
+        );
     }
-
-    // The same rule is a member's only: a Host running neither Plane keeps its own credentials.
-    let path = config_file(
-        "neither-plane-credentials",
-        concat!(
-            "public:\n  http: 0.0.0.0:5558\n",
-            "host:\n  principals:\n    - san_uri: spiffe://acme/billing\n",
-        ),
-    );
-    app()
-        .dispatch_to(&serve_action(&path), &mut Vec::new())
-        .await
-        .expect("a Host running neither Plane is not a member");
 }
 
 #[tokio::test]
@@ -1102,8 +1090,7 @@ async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() 
         .await
         .expect("the server serves through the anomaly");
 
-    // A fresh Host also waits for its first administrator (WP-8.2).
-    assert_eq!(journal.entries(), vec!["setup", "time"]);
+    assert_eq!(journal.entries(), vec!["time"]);
     for _ in 0..50 {
         if actions
             .lock()

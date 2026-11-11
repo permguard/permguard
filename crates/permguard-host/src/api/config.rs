@@ -32,28 +32,6 @@ pub struct Setting {
     pub class: String,
 }
 
-/// One transition of a dynamic Host journal (WP-2.9, owner decision of 2026-10-07).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Revision {
-    /// The journal: `grants` today; memberships and key actions with their packages.
-    pub journal: String,
-    pub revision: u64,
-    /// `issue`, `revoke` or `expire` for the grants.
-    pub operation: String,
-    /// What the transition is about: a grant id.
-    pub target: String,
-    /// RFC 3339.
-    pub at: String,
-    pub by: String,
-}
-
-/// `GET /host/v1/config/revisions`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Revisions {
-    /// Newest first.
-    pub revisions: Vec<Revision>,
-}
-
 /// The effective configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Effective {
@@ -120,37 +98,6 @@ impl HostApi {
     pub fn effective_config(&self, actor: &Actor) -> Result<Effective, Refusal> {
         let _admitted = self.admit(actor, operations::CONFIG_READ)?;
         Ok(self.effective.clone())
-    }
-
-    /// `GET /host/v1/config/revisions`: the transitions of the Host's dynamic journals, newest
-    /// first (owner decision, 2026-10-07): the grants today, memberships and key actions with
-    /// their packages.
-    pub fn config_revisions(&self, actor: &Actor) -> Result<Revisions, Refusal> {
-        let _admitted = self.admit(actor, operations::CONFIG_READ)?;
-        let store = self.store()?;
-        let history = store.history().map_err(|error| {
-            Refusal::Api(
-                permguard_core::ApiError::new(
-                    permguard_core::ErrorClass::Unavailable,
-                    permguard_core::codes::common::UNAVAILABLE,
-                    "the grant journal could not be read",
-                )
-                .with_internal(error.to_string()),
-            )
-        })?;
-        let mut revisions: Vec<Revision> = history
-            .into_iter()
-            .map(|change| Revision {
-                journal: "grants".to_owned(),
-                revision: change.revision,
-                operation: change.operation.to_owned(),
-                target: change.grant_id.to_string(),
-                at: permguard_core::time::to_rfc3339(i64::try_from(change.at).unwrap_or(i64::MAX)),
-                by: change.by,
-            })
-            .collect();
-        revisions.reverse();
-        Ok(Revisions { revisions })
     }
 }
 
@@ -219,59 +166,13 @@ mod tests {
         assert!(!is_secret("PERMGUARD_CONTROL_HTTP_TLS_KEY"));
     }
 
-    #[tokio::test]
-    async fn the_configuration_routes_are_gated_and_the_revisions_list_the_grant_journal() {
+    #[test]
+    fn the_effective_configuration_is_gated() {
         let api = facade("config");
         assert!(api.effective_config(&admin()).is_ok());
         assert!(matches!(
-            api.effective_config(&actor("spiffe://acme/other")),
+            api.effective_config(&actor("sa:other")),
             Err(Refusal::Denied(_))
         ));
-        assert!(matches!(
-            api.config_revisions(&actor("spiffe://acme/other")),
-            Err(Refusal::Denied(_))
-        ));
-        let created = api
-            .create_grant(
-                &admin(),
-                crate::api::CreateGrant {
-                    request_id: "r1".to_owned(),
-                    expected_revision: None,
-                    principal: "spiffe://acme/alice".to_owned(),
-                    operations: vec![permguard_core::authz::operations::CATALOG_READ.to_owned()],
-                    selector: "plane/control/*".to_owned(),
-                    resource_types: Vec::new(),
-                    constraints: Default::default(),
-                    expires_at: None,
-                },
-            )
-            .await
-            .expect("created");
-        let revisions = api.config_revisions(&admin()).expect("listed").revisions;
-        assert_eq!(
-            revisions.len(),
-            2,
-            "the test administrator and alice's grant"
-        );
-        assert_eq!(revisions[0].journal, "grants");
-        assert_eq!(revisions[0].operation, "issue");
-        assert_eq!(revisions[0].target, created.grant.grant_id);
-        assert_eq!(revisions[0].revision, created.receipt.revision);
-        assert_eq!(revisions[0].by, crate::api::testing::ADMIN, "who issued it");
-        assert!(
-            chrono_like(&revisions[0].at),
-            "RFC 3339: {}",
-            revisions[0].at
-        );
-        assert!(
-            revisions[0].revision > revisions[1].revision,
-            "newest first"
-        );
-    }
-
-    /// `YYYY-MM-DDTHH:MM:SSZ`-shaped: the time is rendered, not left empty or raw seconds.
-    fn chrono_like(at: &str) -> bool {
-        let bytes = at.as_bytes();
-        at.len() >= 20 && bytes[4] == b'-' && bytes[10] == b'T' && at.ends_with('Z')
     }
 }

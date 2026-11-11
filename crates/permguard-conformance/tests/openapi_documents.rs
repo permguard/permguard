@@ -14,7 +14,7 @@ use serde_json::Value;
 
 /// The documents the REST surfaces are described by; a new file must be listed here.
 const DOCUMENTS: [&str; 12] = [
-    "auth.json",
+    "authority.json",
     "catalog.json",
     "common.json",
     "discovery.json",

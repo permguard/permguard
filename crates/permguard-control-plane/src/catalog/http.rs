@@ -1293,7 +1293,7 @@ mod tests {
         let shared = Arc::new(fixture.exports);
         let actor = Actor::Authenticated(ActorContext::new(
             Principal::new("spiffe://acme/operator").expect("a principal"),
-            Credential::SanUri,
+            Credential::Certificate,
             None,
         ));
         let facade = |operation: &'static str, selector: String| CatalogFacade {

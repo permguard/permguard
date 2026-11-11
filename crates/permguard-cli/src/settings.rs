@@ -178,92 +178,44 @@ pub const SETTINGS: &[Setting] = &[
         write: |file, value| file.auth.token_file = value,
     },
     Setting {
-        key: "auth.client.id",
-        description: "The service account the command line acts as, obtaining its own access tokens",
-        env: "PERMGUARD_CLIENT_ID",
+        key: "auth.client.access_key",
+        description: "The access key the command line obtains its tokens with, from the Authority Plane",
+        env: "PERMGUARD_ACCESS_KEY",
         default: "",
-        read: |file| file.auth.client.id.as_deref(),
-        write: |file, value| file.auth.client.id = value,
+        read: |file| file.auth.client.access_key.as_deref(),
+        write: |file, value| file.auth.client.access_key = value,
     },
     Setting {
         key: "auth.client.secret_file",
-        description: "A file holding the client's secret, readable by its owner only",
-        env: "PERMGUARD_CLIENT_SECRET_FILE",
+        description: "A file holding the access key's secret key, readable by its owner only",
+        env: "PERMGUARD_SECRET_KEY_FILE",
         default: "",
         read: |file| file.auth.client.secret_file.as_deref(),
         write: |file, value| file.auth.client.secret_file = value,
     },
     Setting {
-        key: "auth.client.key_file",
-        description: "The client's private key, PKCS#8 PEM, for a signed assertion",
-        env: "PERMGUARD_CLIENT_KEY_FILE",
+        key: "auth.client.authority_endpoint",
+        description: "Where the Authority Plane is reached: https:// or grpcs://",
+        env: "PERMGUARD_AUTHORITY_ENDPOINT",
         default: "",
-        read: |file| file.auth.client.key_file.as_deref(),
-        write: |file, value| file.auth.client.key_file = value,
-    },
-    Setting {
-        key: "auth.client.iam_endpoint",
-        description: "Where the IAM Host's listener is reached, for the client's tokens",
-        env: "PERMGUARD_IAM_ENDPOINT",
-        default: "",
-        read: |file| file.auth.client.iam_endpoint.as_deref(),
-        write: |file, value| file.auth.client.iam_endpoint = value,
+        read: |file| file.auth.client.authority_endpoint.as_deref(),
+        write: |file, value| file.auth.client.authority_endpoint = value,
     },
     Setting {
         key: "auth.client.tls_ca_file",
-        description: "The authority the IAM Host's certificate is checked against, when not the planes'",
-        env: "PERMGUARD_IAM_TLS_CA_FILE",
+        description: "The authority the Authority Plane's certificate is checked against, when not the planes'",
+        env: "PERMGUARD_AUTHORITY_TLS_CA_FILE",
         default: "",
         read: |file| file.auth.client.tls_ca_file.as_deref(),
         write: |file, value| file.auth.client.tls_ca_file = value,
     },
     Setting {
-        key: "auth.client.tls_cert_file",
-        description: "The client certificate the IAM Host's connection presents, when not the planes'",
-        env: "PERMGUARD_IAM_TLS_CERT_FILE",
-        default: "",
-        read: |file| file.auth.client.tls_cert_file.as_deref(),
-        write: |file, value| file.auth.client.tls_cert_file = value,
-    },
-    Setting {
-        key: "auth.client.tls_key_file",
-        description: "The private key of auth.client.tls_cert_file",
-        env: "PERMGUARD_IAM_TLS_KEY_FILE",
-        default: "",
-        read: |file| file.auth.client.tls_key_file.as_deref(),
-        write: |file, value| file.auth.client.tls_key_file = value,
-    },
-    Setting {
         key: "auth.client.scope",
-        description: "The operations a Data Plane command's token asks for",
+        description: "The operations a command's token asks, narrowing the account's; all of them when unset",
         env: "PERMGUARD_CLIENT_SCOPE",
-        default: "decision.evaluate",
+        default: "",
         read: |file| file.auth.client.scope.as_deref(),
         write: |file, value| file.auth.client.scope = value,
-    },
-    Setting {
-        key: "auth.client.audience",
-        description: "Whom a Data Plane command's token is for: member:<id> or group:<name>, comma-separated",
-        env: "PERMGUARD_CLIENT_AUDIENCE",
-        default: "",
-        read: |file| file.auth.client.audience.as_deref(),
-        write: |file, value| file.auth.client.audience = value,
-    },
-    Setting {
-        key: "auth.client.role",
-        description: "The role a Data Plane command's token elevates to, narrowed to auth.client.scope; a member's role names the audience itself",
-        env: "PERMGUARD_CLIENT_ROLE",
-        default: "",
-        read: |file| file.auth.client.role.as_deref(),
-        write: |file, value| file.auth.client.role = value,
-    },
-    Setting {
-        key: "auth.client.target",
-        description: "What a Data Plane command's token acts on: selectors, comma-separated",
-        env: "PERMGUARD_CLIENT_TARGET",
-        default: "",
-        read: |file| file.auth.client.target.as_deref(),
-        write: |file, value| file.auth.client.target = value,
     },
 ];
 
@@ -408,47 +360,30 @@ impl AuthSection {
     }
 }
 
-/// The service account the command line acts as (TC-7): never a secret inline, only its file.
+/// The service account the command line acts as: its access key, and its secret key's file, never
+/// the secret inline.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 struct ClientSection {
     #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
+    access_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     secret_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    key_file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    iam_endpoint: Option<String>,
+    authority_endpoint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tls_ca_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tls_cert_file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tls_key_file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    audience: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<String>,
 }
 
 impl ClientSection {
     fn is_empty(&self) -> bool {
-        self.id.is_none()
+        self.access_key.is_none()
             && self.secret_file.is_none()
-            && self.key_file.is_none()
-            && self.iam_endpoint.is_none()
+            && self.authority_endpoint.is_none()
             && self.tls_ca_file.is_none()
-            && self.tls_cert_file.is_none()
-            && self.tls_key_file.is_none()
             && self.scope.is_none()
-            && self.audience.is_none()
-            && self.target.is_none()
-            && self.role.is_none()
     }
 }
 

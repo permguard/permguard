@@ -6,16 +6,18 @@
 #
 #   permguard-lab pki                       the lab's certificate authority, every Host's certificate
 #                                           and the operator's, once
-#   permguard-lab serve <binary> <config>   one Host: claim its volume, grant the operator, serve
+#   permguard-lab serve <binary> <config>   one Host: claim its volume, bootstrap the operator's
+#                                           certificate, serve
 #   permguard-lab catalog <profile>         the zones, ledgers and policies a profile serves
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
 #   permguard-lab assert <profile> [phase]  what the profile must prove; the all-in-one's phases
-#                                           are `rotation` and `identity`, the multi-data-plane's
+#                                           are `rotation` and `authority`, the multi-data-plane's
 #                                           `tokens`, `latency`, `rotation` and `offline`
 #
 # A lab is an isolated test authority, and only a lab does what this script does: it issues every
-# certificate, grants its operator on every volume before the Host starts, and approves the exact
+# certificate, bootstraps its operator's certificate on every volume before the Host starts, acts as
+# the Authority Plane's `admin` whose key it reads from the coordinator's volume, and approves the exact
 # fingerprint it reads from each data plane over a channel its own authority verifies. A deployment
 # approves through an operator or a workload attestation and never embeds an enrollment token.
 #
@@ -46,10 +48,26 @@ fail() {
     exit 1
 }
 
-# The CLI as the lab's operator: its certificate, the lab's authority, JSON out.
-pg() {
+# The CLI as the lab's operator's certificate alone, the lab's authority, JSON out: what a Host's
+# bootstrap principal is, and nothing on a Plane.
+pg_cert() {
     permguard -o json --tls-ca-file "${pki}/ca.crt" --tls-cert-file "${pki}/operator.crt" \
         --tls-key-file "${pki}/operator.key" "$@"
+}
+
+# The access key a key file names.
+access_key_of() { sed -n 's/^access_key: //p' "$1"; }
+
+# The CLI as the lab's operator: the connection its certificate's, every call the Authority Plane's
+# `admin`'s, by the key its first start wrote, once the coordinator wrote it.
+pg() {
+    local auth=()
+    if [ -s "${state}/admin.key" ]; then
+        auth=(--authority-endpoint "$(cat "${state}/authority")"
+            --access-key "$(access_key_of "${state}/admin.key")"
+            --secret-key-file "${state}/admin.key")
+    fi
+    pg_cert ${auth[@]+"${auth[@]}"} "$@"
 }
 host_endpoint() { printf 'https://%s:5444' "$1"; }
 control_endpoint() { printf 'https://%s:6443' "$1"; }
@@ -60,9 +78,7 @@ data_endpoint() { printf 'https://%s:7443' "$1"; }
 # its listeners one after another, and the lab's authority calls the Host listener next.
 wait_up() {
     local host="$1" deadline=$((SECONDS + ${2:-180}))
-    # The identity lab serves this surface over TLS, where a password signs in.
-    until { curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" ||
-        curl -fsS -o /dev/null --cacert "${pki}/ca.crt" "https://${host}:5443/.well-known/server-configuration"; } 2>/dev/null &&
+    until curl -fsS -o /dev/null "http://${host}:5443/.well-known/server-configuration" 2>/dev/null &&
         (: <"/dev/tcp/${host}/5444") 2>/dev/null; do
         [ "${SECONDS}" -lt "${deadline}" ] || fail "${host} did not come up"
         sleep 2
@@ -135,6 +151,19 @@ listener_env() {
     *data-plane) listeners+=(DATA_HTTP DATA_GRPC) ;;
     *all-in-one) listeners+=(CONTROL_HTTP CONTROL_GRPC DATA_HTTP DATA_GRPC) ;;
     esac
+    # The coordinator runs the Authority Plane: TLS under the lab's authority, no client
+    # certificate asked, a client proving itself by its access key or its token.
+    case "${host}" in
+    control-plane | all-in-one)
+        export "PERMGUARD_AUTHORITY_HTTP_TLS_CERT=${pki}/${host}.crt"
+        export "PERMGUARD_AUTHORITY_HTTP_TLS_KEY=${pki}/${host}.key"
+        export "PERMGUARD_AUTHORITY_GRPC_TLS_CERT=${pki}/${host}.crt"
+        export "PERMGUARD_AUTHORITY_GRPC_TLS_KEY=${pki}/${host}.key"
+        ;;
+    esac
+    # Every Host fetches the Authority Plane's keys and lists, if it does not run it, under the
+    # lab's authority.
+    export "PERMGUARD_AUTHORITY_TLS_CA=${pki}/ca.crt"
     # Where clients reach each listener: the service's name, the name its certificate carries.
     export "PERMGUARD_ADMIN_ADVERTISED_URL=https://${host}:5444"
     case "${listeners[*]}" in *CONTROL_HTTP*) export "PERMGUARD_CONTROL_HTTP_ADVERTISED_URL=https://${host}:6443" ;; esac
@@ -143,22 +172,26 @@ listener_env() {
         export "PERMGUARD_${listener}_TLS_CERT=${pki}/${host}.crt"
         export "PERMGUARD_${listener}_TLS_KEY=${pki}/${host}.key"
         export "PERMGUARD_${listener}_TLS_CLIENT_CA=${pki}/ca.crt"
-        # The identity lab: certificates verified when presented, bearer tokens otherwise (WP-8.1).
-        if [ -n "${LAB_CLIENT_AUTH:-}" ]; then
-            export "PERMGUARD_${listener}_TLS_CLIENT_AUTH=${LAB_CLIENT_AUTH}"
-        fi
     done
-    # The Server Host surface over TLS, where a password signs in (WP-8.1); the clear otherwise.
-    if [ -n "${LAB_CLIENT_AUTH:-}" ]; then
-        export "PERMGUARD_TELEMETRY_TLS_CERT=${pki}/${host}.crt"
-        export "PERMGUARD_TELEMETRY_TLS_KEY=${pki}/${host}.key"
-    fi
+}
+
+# The coordinator's `admin` key, copied to the lab's state once its first start wrote it: what the
+# lab's operator acts with. A lab's concession; a deployment moves the key off the volume itself.
+keep_admin_key() {
+    local host="$1" key="${volume}/planes/authority/admin.key"
+    (
+        until [ -s "${key}" ]; do sleep 1; done
+        umask 077
+        cp "${key}" "${state}/admin.key.tmp"
+        mv "${state}/admin.key.tmp" "${state}/admin.key"
+        printf 'https://%s:8443\n' "${host}" >"${state}/authority"
+    ) &
 }
 
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
-# The claim moves forward on every start (TD-1); the operator is granted once, offline, before the
-# Host first serves; the listeners carry the certificate the lab's authority issued to this
-# service's name.
+# The claim moves forward on every start (TD-1); the operator's certificate is bootstrapped once,
+# offline, before the Host first serves; the listeners carry the certificate the lab's authority
+# issued to this service's name.
 cmd_serve() {
     local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}"
     [ -f "${pki}/${host}.crt" ] || fail "the lab authority issued no certificate to ${host}"
@@ -167,9 +200,10 @@ cmd_serve() {
         permguard -o json host grants bootstrap --volume "${volume}" \
             --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
         touch /var/lib/permguard/.lab-operator
-        log "${host}: the lab operator is granted on this volume"
+        log "${host}: the lab operator's certificate is this volume's bootstrap principal"
     fi
     listener_env "${host}" "${binary}"
+    case "${host}" in control-plane | all-in-one) keep_admin_key "${host}" ;; esac
     # TD-5: a member whose invitations the catalog step wrote joins its coordinator by itself, its
     # coordinator pinned apart from them; the enroll step then approves the fingerprint it expects.
     local invited="${state}/join/${host}"
@@ -181,7 +215,7 @@ cmd_serve() {
         log "${host}: joins its coordinator by itself from ${invited}"
     fi
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
-    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES LAB_CLIENT_AUTH
+    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES
     exec "${binary}" "${config}"
 }
 
@@ -226,77 +260,30 @@ data_planes_of() {
     esac
 }
 
-# The operator's online grants on a Host: what the lab's steps and checks use there. Not a boundary:
-# `host grants bootstrap` made the operator each lab Host's recovery administrator (`authz.admin` on
-# `host`), which is what a lab's test authority is.
-grant_operator() {
-    local host="$1" principal
-    case "${host}" in
-    control-plane | all-in-one) ;;
-    *)
-        # A member holds no grants a credential reaches (WP-12.4): the operator's certificate is
-        # its bootstrap principal, holding its per-Host operations, and its decisions are made by
-        # the IAM Host's tokens (`token_for`).
-        log "${host}: a member; the operator acts there as its bootstrap principal"
-        return
-        ;;
-    esac
-    principal="cert:sha256:$(cat "${pki}/operator.fp")"
-    local endpoint
-    endpoint="$(host_endpoint "${host}")"
-    # The backup operations and the key bundle are the restore drill's (`scripts/drill-restore.sh`).
-    pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
-        --operations membership.admin,membership.read,identity.read,streams.read,backup.manage,backup.read,keys.read,lifecycle.read \
-        --selector host >/dev/null
-    case "${host}" in
-    control-plane | all-in-one)
-        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
-            --operations catalog.read,catalog.write,policy.push \
-            --selector "plane/control/*" >/dev/null
-        ;;
-    esac
-    case "${host}" in
-    control-plane)
-        # What the coordinator holds of the members' streams.
-        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
-            --operations streams.read --selector "plane/data/*" >/dev/null
-        ;;
-    all-in-one)
-        # The all-in-one is the IAM Host: its grants decide, a token or not.
-        pg --host-endpoint "${endpoint}" iam grants issue --principal "${principal}" \
-            --operations decision.evaluate,event.submit,streams.read \
-            --selector "plane/data/*" >/dev/null
-        ;;
-    esac
-    log "${host}: the operator's grants are issued"
+# Waits until the coordinator's Authority Plane wrote `admin`'s key and answers with it.
+wait_admin() {
+    local deadline=$((SECONDS + 180))
+    until [ -s "${state}/admin.key" ] && pg authority service-accounts get admin >/dev/null 2>&1; do
+        [ "${SECONDS}" -lt "${deadline}" ] || fail "the Authority Plane's admin key was never written"
+        sleep 2
+    done
 }
 
-# The lab's service account on the IAM Host (TA-5): what its samples and checks decide as on a
-# member, by tokens the command line obtains with its secret (TC-7).
+# The lab's service account (TA-5): what its samples and checks decide as, by tokens the command
+# line obtains with its access key (TC-7).
 lab_client() {
-    local endpoint
-    endpoint="$(host_endpoint control-plane)"
-    pg --host-endpoint "${endpoint}" iam service-accounts create lab-client --owner lab \
-        --description "the lab's samples and checks" >/dev/null
-    pg --host-endpoint "${endpoint}" iam grants issue --principal sa:lab-client \
-        --operations decision.evaluate,event.submit --selector "plane/data/*" >/dev/null
-    rm -f "${state}/lab-client.secret"
-    pg --host-endpoint "${endpoint}" iam credentials create lab-client \
-        --secret-out "${state}/lab-client.secret" >/dev/null
+    pg authority service-accounts create lab-client --description "the lab's samples and checks" \
+        --scope "decision.evaluate,event.submit@plane/data/*" >/dev/null
+    rm -f "${state}/lab-client.key"
+    pg authority keys create lab-client --secret-out "${state}/lab-client.key" >/dev/null
     log "the lab's service account lab-client: decision.evaluate and event.submit on plane/data/*"
 }
 
-# The member id the coordinator gave `host`: what a token addressed to it names.
-member_id_of() {
-    pg --host-endpoint "$(host_endpoint "$1")" host members list |
-        jq -er '[.members[] | select(.role == "member" and .status == "active") | .member_id] | first'
-}
-
-# A token of lab-client addressed to `host`, obtained at the IAM Host and kept for half an hour:
-# prints its file.
+# A token of lab-client, obtained at the Authority Plane and kept for half an hour: prints its
+# file. Every Data Plane of the cluster verifies it alike.
 token_for() {
-    local host="$1" dir="${state}/tokens" file member
-    file="${dir}/${host}.jwt"
+    local dir="${state}/tokens" file
+    file="${dir}/lab-client.jwt"
     if [ -f "${file}" ] && [ -z "$(find "${file}" -mmin +30)" ]; then
         echo "${file}"
         return
@@ -304,12 +291,11 @@ token_for() {
     mkdir -p "${dir}"
     chmod 0700 "${dir}"
     rm -f "${file}"
-    member="$(member_id_of "${host}")" || fail "${host}: no active membership names its member id"
-    pg --iam-endpoint "$(host_endpoint control-plane)" --client-id lab-client \
-        --client-secret-file "${state}/lab-client.secret" iam token \
-        --scope "decision.evaluate event.submit" --audience "member:${member}" \
-        --target "plane/data/*" --out "${file}" >/dev/null ||
-        fail "${host}: the IAM Host issued lab-client no token"
+    pg_cert --authority-endpoint "$(cat "${state}/authority")" \
+        --access-key "$(access_key_of "${state}/lab-client.key")" \
+        --secret-key-file "${state}/lab-client.key" authority token \
+        --scope "decision.evaluate event.submit" --out "${file}" >/dev/null ||
+        fail "the Authority Plane issued lab-client no token"
     echo "${file}"
 }
 
@@ -361,7 +347,8 @@ cmd_catalog() {
     coordinator="$(coordinator_of "${profile}")"
     mkdir -p "${state}"
     wait_up "${coordinator}"
-    once "grants-${coordinator}" grant_operator "${coordinator}"
+    wait_admin
+    once lab-client lab_client
     case "${profile}" in
     temporal-replicas)
         once "ledger-acme-agent-governance" ledger_with "${coordinator}" acme agent-governance dogwood-session-access dogwood
@@ -522,7 +509,6 @@ membership() {
 enroll_data_plane() {
     local coordinator="$1" member="$2" zone="$3" temporal="$4" zone_id
     wait_up "${member}"
-    once "grants-${member}" grant_operator "${member}"
     zone_id="$(zone_id "${coordinator}" "${zone}")"
     local control="plane/control/zone/${zone_id}/*" data="plane/data/zone/${zone_id}/*"
     membership "${coordinator}" "${member}" "${control}" \
@@ -554,7 +540,6 @@ cmd_enroll() {
             enroll_data_plane "${coordinator}" "${entry%%:*}" "${entry##*:}" "${temporal}"
         fi
     done
-    once lab-client lab_client
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -564,14 +549,16 @@ cmd_enroll() {
 # A decision from `host` on `zone/ledger` for one of the `basics` example's requests: the CLI's
 # answer, whatever it is. A refusal is an answer too, so its status is not this function's.
 decide() {
-    local host="$1" zone="$2" ledger="$3" request="$4" token="${5:-}" bearer=()
-    # A member decides by the IAM Host's tokens: lab-client's, addressed to it, unless the caller
-    # names another (`none` for no token at all).
-    if [ -z "${token}" ] && [ "${host}" != all-in-one ]; then
-        token="$(token_for "${host}")"
+    local host="$1" zone="$2" ledger="$3" request="$4" token="${5:-}"
+    # A Data Plane decides by the Authority Plane's tokens: lab-client's, unless the caller names
+    # another (`none` for no token at all, the operator's certificate alone).
+    [ -n "${token}" ] || token="$(token_for)"
+    if [ "${token}" = none ]; then
+        pg_cert --data-endpoint "$(data_endpoint "${host}")" check --ignore-workspace \
+            -f "${examples}/basics/requests/${request}" --zone "${zone}" --ledger "${ledger}" 2>&1 || true
+        return
     fi
-    [ -n "${token}" ] && [ "${token}" != none ] && bearer=(--token-file "${token}")
-    pg ${bearer[@]+"${bearer[@]}"} --data-endpoint "$(data_endpoint "${host}")" check --ignore-workspace \
+    pg_cert --token-file "${token}" --data-endpoint "$(data_endpoint "${host}")" check --ignore-workspace \
         -f "${examples}/basics/requests/${request}" --zone "${zone}" --ledger "${ledger}" 2>&1 || true
 }
 
@@ -611,7 +598,7 @@ cmd_assert() {
         case "${phase}" in
         "") assert_all_in_one ;;
         rotation) assert_all_in_one_rotation ;;
-        identity) assert_all_in_one_identity ;;
+        authority) assert_all_in_one_authority ;;
         *) fail "no all-in-one phase ${phase}" ;;
         esac
         ;;
@@ -679,66 +666,8 @@ assert_all_in_one_rotation() {
 }
 
 # ---------------------------------------------------------------------------------------------
-# identity (WP-8.1): two Keycloak realms as providers, roles, local users, a key rotation
+# authority: service accounts, their keys, scopes and tokens, over both transports
 # ---------------------------------------------------------------------------------------------
-
-keycloak=http://keycloak:8080
-
-# An access token of `user` in `realm`, by the lab client's password grant.
-kc_token() { # realm, user, password
-    curl -fsS -d grant_type=password -d client_id=permguard-lab -d scope=openid \
-        --data-urlencode "username=$2" --data-urlencode "password=$3" \
-        "${keycloak}/realms/$1/protocol/openid-connect/token" | jq -er '.access_token'
-}
-
-# `token` in a private file named `name`: what `--token-file` reads.
-token_file() { # name, token
-    local file="${HOME}/$1.token"
-    (
-        umask 077
-        printf '%s' "$2" >"${file}"
-    )
-    echo "${file}"
-}
-
-# The catalog listed with the bearer in `file`, over `scheme`: the output, the exit status kept.
-zones_as() { # token file, scheme
-    permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "$1" \
-        zones list --control-endpoint "$2://all-in-one:6443" 2>&1
-}
-
-# The bearer in `file` lists the catalog over both transports.
-expect_admitted() { # token file, who
-    local scheme answer
-    for scheme in https grpcs; do
-        answer="$(zones_as "$1" "${scheme}")" || fail "$2 over ${scheme} was refused: ${answer}"
-        jq -e '.zones | length > 0' >/dev/null 2>&1 <<<"${answer}" ||
-            fail "$2 over ${scheme} listed no zone: ${answer}"
-    done
-}
-
-# The bearer in `file` is refused the catalog over both transports, for want of a grant.
-expect_forbidden() { # token file, who
-    local scheme answer
-    for scheme in https grpcs; do
-        if answer="$(zones_as "$1" "${scheme}")"; then
-            fail "$2 over ${scheme} listed the catalog without a grant: ${answer}"
-        fi
-        grep -qiE 'forbidden|permission' <<<"${answer}" ||
-            fail "$2 over ${scheme} was refused, not for want of a grant: ${answer}"
-    done
-}
-
-# The keys of `realm` rotated: a new RSA key of a higher priority, so the next token names it.
-kc_rotate() { # realm
-    local admin
-    admin="$(curl -fsS -d grant_type=password -d client_id=admin-cli \
-        -d username=lab-admin -d password=lab-admin-password \
-        "${keycloak}/realms/master/protocol/openid-connect/token" | jq -er '.access_token')"
-    curl -fsS -o /dev/null -H "Authorization: Bearer ${admin}" -H 'Content-Type: application/json' \
-        -d "{\"name\":\"rotated-$(date +%s)\",\"providerId\":\"rsa-generated\",\"providerType\":\"org.keycloak.keys.KeyProvider\",\"parentId\":\"$1\",\"config\":{\"priority\":[\"500\"],\"enabled\":[\"true\"],\"active\":[\"true\"],\"keySize\":[\"2048\"]}}" \
-        "${keycloak}/admin/realms/$1/components"
-}
 
 # The `kid` a token's header names.
 kid_of() {
@@ -746,95 +675,82 @@ kid_of() {
         base64 -d 2>/dev/null | jq -r '.kid' 2>/dev/null || true
 }
 
-assert_all_in_one_identity() {
-    local host_api alice bob carol answer status kid before deadline
-    host_api="$(host_endpoint all-in-one)"
-    step "all-in-one: two identity providers, roles and local users"
-    wait_serving all-in-one acme main
-
-    # Both providers' keys fetched by the Host, off any request.
-    deadline=$((SECONDS + 120))
-    until pg --host-endpoint "${host_api}" iam providers list |
-        jq -e '[.providers[] | select(.state == "fresh")] | length == 2' >/dev/null 2>&1; do
-        [ "${SECONDS}" -lt "${deadline}" ] ||
-            fail "the providers' keys were not fetched: $(pg --host-endpoint "${host_api}" iam providers list)"
-        sleep 2
-    done
-    log "both providers' keys are fetched and fresh"
-
-    alice="$(token_file alice "$(kc_token ops alice lab-alice-password-0001)")"
-    bob="$(token_file bob "$(kc_token partners bob lab-bob-password-0002)")"
-    expect_forbidden "${alice}" alice
-    expect_forbidden "${bob}" bob
-    log "a verified token without a grant is refused over REST and gRPC"
-
-    # A token that does not verify: 401 with the Bearer challenge.
-    answer="$(curl -sS -o /dev/null -D - --cacert "${pki}/ca.crt" -H 'Authorization: Bearer not.a.token' \
-        https://all-in-one:6443/v1/zones)"
-    grep -q '^HTTP/[0-9.]* 401' <<<"${answer}" || fail "a forged bearer was not refused 401: ${answer}"
-    grep -qi '^www-authenticate: Bearer realm="permguard", error="invalid_token"' <<<"${answer}" ||
-        fail "a refused bearer carries no Bearer challenge: ${answer}"
-    log "a forged token is refused 401 with the Bearer challenge"
-
-    # A role of every subject of `ops`: alice is admitted, bob of the other realm is not.
-    pg --host-endpoint "${host_api}" iam roles create lab-readers --description "read the lab catalog" >/dev/null
-    pg --host-endpoint "${host_api}" iam roles members add lab-readers --issuer ops >/dev/null
-    pg --host-endpoint "${host_api}" iam roles grant lab-readers --operations catalog.read \
-        --selector "plane/control/*" >/dev/null
-    expect_admitted "${alice}" alice
-    expect_forbidden "${bob}" bob
-    log "a role of every ops subject admits alice, and not bob of partners"
-
-    # bob's verified email is a local user's: under link: email he acts as that user and its roles.
-    pg --host-endpoint "${host_api}" iam users create bob --email bob@partners.example >/dev/null
-    pg --host-endpoint "${host_api}" iam roles members add lab-readers --local bob >/dev/null
-    expect_admitted "${bob}" "bob, as the local user bob"
-    pg --host-endpoint "${host_api}" iam users disable bob >/dev/null
-    expect_forbidden_or_refused "${bob}" "bob, disabled"
-    pg --host-endpoint "${host_api}" iam users enable bob >/dev/null
-    log "a verified email signs in as its local user, and a disabled user's tokens are refused"
-
-    # A local user with a password: signed in on the Server Host surface, then admitted by its role.
-    printf '%s' lab-carol-password-0003 |
-        pg --host-endpoint "${host_api}" iam users create carol --password-stdin >/dev/null
-    pg --host-endpoint "${host_api}" iam roles members add lab-readers --local carol >/dev/null
-    carol="${HOME}/carol.session"
-    printf '%s' lab-carol-password-0003 |
-        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
-        fail "carol could not sign in with her password"
-    expect_admitted "${carol}" "carol, signed in with a password"
-    # Her session reaches the routes that take one: she changes her password with it.
-    printf '%s\n%s\n' lab-carol-password-0003 lab-carol-password-0004 |
-        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" password https://all-in-one:5443 >/dev/null ||
-        fail "carol could not change her password with her session"
-    printf '%s' lab-carol-password-0004 |
-        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${carol}" login https://all-in-one:5443 --user carol >/dev/null ||
-        fail "carol could not sign in with her new password"
-    status="$(printf '%s' wrong-password-0000 |
-        permguard -o json --tls-ca-file "${pki}/ca.crt" --token-file "${HOME}/wrong.session" login https://all-in-one:5443 --user carol 2>&1 || true)"
-    grep -q 'refused' <<<"${status}" || fail "a wrong password was not refused: ${status}"
-    log "a local user signs in with a password and acts with its roles"
-
-    # The ops realm rotates its key: the first token signed with it asks the Host to fetch early.
-    before="$(kid_of "$(cat "${alice}")")"
-    kc_rotate ops
-    alice="$(token_file alice "$(kc_token ops alice lab-alice-password-0001)")"
-    kid="$(kid_of "$(cat "${alice}")")"
-    [ -n "${kid}" ] && [ "${kid}" != "${before}" ] || fail "the ops realm did not sign with a new key (${before} → ${kid})"
-    deadline=$((SECONDS + 90))
-    until answer="$(zones_as "${alice}" https)"; do
-        [ "${SECONDS}" -lt "${deadline}" ] || fail "a token of the rotated key was never admitted: ${answer}"
-        sleep 3
-    done
-    expect_admitted "${alice}" "alice, under the rotated key"
-    log "a rotated key is fetched early and admitted, well before the next scheduled refresh"
-
-    pg --host-endpoint "${host_api}" host status |
-        jq -e '[.degraded[]? | select(.capability == "oidc")] | length == 0' >/dev/null ||
-        fail "the Host reports degraded: oidc with both providers fresh"
+# The zones `key`'s account reads over `scheme`, the answer whatever it is.
+zones_with() { # key file, scheme
+    local scheme="${2:-https}"
+    pg_cert --authority-endpoint "${scheme}://all-in-one:8443" \
+        --access-key "$(access_key_of "$1")" --secret-key-file "$1" \
+        --control-endpoint "${scheme}://all-in-one:6443" zones list 2>&1 || true
 }
 
-# Refused, whether for want of a grant or as an unauthenticated credential.
+assert_all_in_one_authority() {
+    local scheme key answer jti
+    step "all-in-one: a service account, its key and its scopes, over HTTPS and gRPC"
+    wait_admin
+    for scheme in https grpcs; do
+        local name="reader-${scheme}"
+        key="${state}/${name}.key"
+        rm -f "${key}"
+        pg --authority-endpoint "${scheme}://all-in-one:8443" authority service-accounts create \
+            "${name}" --scope "catalog.read@plane/control/*" >/dev/null ||
+            fail "${scheme}: the account ${name} was not created"
+        pg --authority-endpoint "${scheme}://all-in-one:8443" authority keys create "${name}" \
+            --secret-out "${key}" >/dev/null || fail "${scheme}: no key for ${name}"
+        rm -rf "${HOME}/.permguard/tokens"
+        answer="$(zones_with "${key}" "${scheme}")"
+        jq -e '.zones | length >= 1' >/dev/null 2>&1 <<<"${answer}" ||
+            fail "${scheme}: ${name} does not read the catalog: ${answer}"
+        answer="$(pg_cert --authority-endpoint "${scheme}://all-in-one:8443" \
+            --access-key "$(access_key_of "${key}")" --secret-key-file "${key}" \
+            --control-endpoint "${scheme}://all-in-one:6443" zones create lab-forbidden 2>&1 || true)"
+        grep -Eq 'forbidden|permission_denied' <<<"${answer}" ||
+            fail "${scheme}: ${name} wrote the catalog its scopes do not name: ${answer}"
+        log "${scheme}: ${name} reads the catalog and is refused a write"
+
+        pg authority service-accounts suspend "${name}" >/dev/null
+        rm -rf "${HOME}/.permguard/tokens"
+        answer="$(zones_with "${key}" "${scheme}")"
+        grep -Eq 'unauthenticated|invalid_client' <<<"${answer}" ||
+            fail "${scheme}: a suspended ${name} still reads: ${answer}"
+        pg authority service-accounts resume "${name}" >/dev/null
+        pg authority service-accounts delete "${name}" >/dev/null
+        log "${scheme}: suspended, it is refused; deleted, its key goes with it"
+    done
+
+    step "all-in-one: a revoked token is refused at once"
+    rm -f "${state}/tokens/lab-client.jwt"
+    expect_decision all-in-one acme main permit.json true >/dev/null
+    jti="$(jti_of "$(token_for)")"
+    pg authority tokens revoke "${jti}" >/dev/null
+    answer="$(decide all-in-one acme main permit.json "${state}/tokens/lab-client.jwt")"
+    grep -q "unauthenticated" <<<"${answer}" ||
+        fail "the all-in-one still decides on the token revoked ${jti}: ${answer}"
+    rm -f "${state}/tokens/lab-client.jwt"
+    expect_decision all-in-one acme main permit.json true >/dev/null
+    log "${jti} is refused once revoked, and a new token decides"
+
+    step "all-in-one: authority.tokens rotates and a token signed before still verifies"
+    local before after epoch started
+    rm -f "${state}/tokens/lab-client.jwt"
+    before="${state}/tokens/before-rotation.jwt"
+    cp "$(token_for)" "${before}"
+    epoch="$(ring_epoch all-in-one authority.tokens)"
+    pg --host-endpoint "$(host_endpoint all-in-one)" host keys rotate authority.tokens \
+        --expected-epoch "${epoch}" >/dev/null || fail "authority.tokens did not rotate"
+    started=${SECONDS}
+    while :; do
+        rm -f "${state}/tokens/lab-client.jwt"
+        after="$(token_for)"
+        [ "$(kid_of "$(cat "${after}")")" != "$(kid_of "$(cat "${before}")")" ] && break
+        [ $((SECONDS - started)) -lt 600 ] || fail "authority.tokens still signs under its old key"
+        sleep 10
+    done
+    expect_decision all-in-one acme main permit.json true "${after}" >/dev/null
+    expect_decision all-in-one acme main permit.json true "${before}" >/dev/null
+    rm -f "${before}"
+    log "the new key signs $((SECONDS - started))s after the rotation; the retiring key still verifies"
+}
+
 expect_forbidden_or_refused() { # token file, who
     local scheme answer
     for scheme in https grpcs; do
@@ -1158,49 +1074,48 @@ assert_multi_data_plane() {
     log "${a} shipped and was acknowledged through ${recorded_a}; ${b}'s stream is untouched: ${after}"
 }
 
-# The `jti` of the token in `file`: its payload's, read without verifying, which the IAM Host
-# lists and revokes by.
+# The `jti` of the token in `file`: its payload's, read without verifying, which the Authority
+# Plane lists and revokes by.
 jti_of() {
     cut -d. -f2 "$1" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' |
         base64 -d 2>/dev/null | jq -er '.jti'
 }
 
-# WP-12.6: a member decides by its IAM Host's tokens, and by nothing else.
+# A Data Plane decides by the Authority Plane's tokens, verified under the keys and lists it
+# fetched itself, and by nothing else.
 assert_tokens() {
-    step "tokens: a token decides on the member it is addressed to, and on no other"
-    local a b answer
-    # Fresh tokens: the offline phase decides on b's after the Control Plane stops.
-    rm -f "${state}/tokens/data-plane-a.jwt" "${state}/tokens/data-plane-b.jwt"
-    a="$(token_for data-plane-a)"
-    b="$(token_for data-plane-b)"
+    step "tokens: one token of lab-client decides on every Data Plane"
+    local token answer
+    # A fresh token: the offline phase decides on it after the Control Plane stops.
+    rm -f "${state}/tokens/lab-client.jwt"
+    token="$(token_for)"
     expect_decision data-plane-a acme main permit.json true >/dev/null
     expect_decision data-plane-b acme main permit.json true >/dev/null
-    answer="$(decide data-plane-b acme main permit.json "${a}")"
-    grep -q "unauthenticated" <<<"${answer}" ||
-        fail "data-plane-b decided on a token addressed to data-plane-a: ${answer}"
-    log "data-plane-a's token decides there and is refused on data-plane-b"
+    log "lab-client's token decides on data-plane-a and data-plane-b"
 
     step "tokens: the operator's certificate administers a member, never decides there"
     answer="$(decide data-plane-a acme main permit.json none)"
     grep -Eq 'forbidden|permission_denied|unauthenticated' <<<"${answer}" ||
         fail "data-plane-a did not refuse a decision to the operator's certificate: ${answer}"
-    pg --host-endpoint "$(host_endpoint data-plane-a)" host status |
+    pg_cert --host-endpoint "$(host_endpoint data-plane-a)" host status |
         jq -e '.degraded | any(.capability == "bootstrap")' >/dev/null ||
         fail "data-plane-a does not report its bootstrap principal's use"
     log "the operator, data-plane-a's bootstrap, is refused a decision; its use there is reported degraded: bootstrap"
 
     step "tokens: a revoked token is refused once the member holds the list that says so"
-    local jti started=${SECONDS}
-    jti="$(jti_of "${a}")"
-    pg --host-endpoint "$(host_endpoint control-plane)" iam tokens revoke "${jti}" >/dev/null
+    local jti revoked="${state}/tokens/revoked.jwt" started=${SECONDS}
+    cp "${token}" "${revoked}"
+    rm -f "${token}"
+    jti="$(jti_of "${revoked}")"
+    pg authority tokens revoke "${jti}" >/dev/null
     while :; do
-        answer="$(decide data-plane-a acme main permit.json "${a}")"
+        answer="$(decide data-plane-a acme main permit.json "${revoked}")"
         grep -q "unauthenticated" <<<"${answer}" && break
         [ $((SECONDS - started)) -lt 240 ] ||
             fail "data-plane-a still decides on the token revoked ${jti}: ${answer}"
         sleep 5
     done
-    rm -f "${a}"
+    rm -f "${revoked}"
     log "data-plane-a refuses ${jti} $((SECONDS - started))s after its revocation"
     expect_decision data-plane-a acme main permit.json true >/dev/null
     log "and decides again on a new token"
@@ -1212,7 +1127,7 @@ assert_tokens() {
 assert_latency() {
     step "latency: decisions on a member, token verification on, within the TS-5 objective"
     local token header request zone ledger objective="${LAB_P99_OBJECTIVE_MS:?the objective, from bench/slo.json}"
-    token="$(token_for data-plane-a)"
+    token="$(token_for)"
     header="${state}/tokens/latency.header"
     (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
     zone="$(zone_id control-plane acme)"
@@ -1241,39 +1156,30 @@ assert_latency() {
         fail "p99 ${p99} ms passes the ${objective} ms objective"
 }
 
-# WP-12.6: the IAM Host rotates `iam.tokens`. Its new key is published ahead, five minutes in the
-# lab, and signs only once every member received the manifest pinning it, which the coordinator's
-# re-pin pass revises within a minute; a member keeps the replaced set as retiring, so a token
-# signed before the rotation still decides.
+# The Authority Plane rotates `authority.tokens`: its new key is published ahead, five minutes in
+# the lab, and every Plane takes the new key set when it meets its `kid`; the retiring key stays in
+# the set while it overlaps, so a token signed before the rotation still decides.
 assert_tokens_rotation() {
-    step "rotation: the IAM Host rotates iam.tokens, its members follow"
-    local before after epoch kid_before kid_after started
-    rm -f "${state}/tokens/data-plane-a.jwt" "${state}/tokens/data-plane-b.jwt"
+    step "rotation: the Authority Plane rotates authority.tokens, every Plane follows"
+    local before after epoch started
+    rm -f "${state}/tokens/lab-client.jwt"
     before="${state}/tokens/before-rotation.jwt"
-    cp "$(token_for data-plane-a)" "${before}"
-    rm -f "${state}/tokens/data-plane-a.jwt"
-    kid_before="$(kid_of "$(cat "${before}")")"
-    [ -n "${kid_before}" ] && [ "${kid_before}" != null ] || fail "lab-client's token names no kid"
-    epoch="$(ring_epoch control-plane iam.tokens)"
-    # Rotating a ring is `keys.admin`, which the operator holds only for this phase's sake.
-    pg --host-endpoint "$(host_endpoint control-plane)" iam grants issue \
-        --principal "cert:sha256:$(cat "${pki}/operator.fp")" --operations keys.admin \
-        --selector host >/dev/null || fail "the operator was not granted keys.admin on the IAM Host"
-    pg --host-endpoint "$(host_endpoint control-plane)" host keys rotate iam.tokens \
-        --expected-epoch "${epoch}" >/dev/null || fail "the IAM Host did not rotate iam.tokens"
+    cp "$(token_for)" "${before}"
+    epoch="$(ring_epoch control-plane authority.tokens)"
+    pg --host-endpoint "$(host_endpoint control-plane)" host keys rotate authority.tokens \
+        --expected-epoch "${epoch}" >/dev/null || fail "the Authority Plane did not rotate authority.tokens"
     started=${SECONDS}
     while :; do
-        after="$(token_for data-plane-a)"
-        kid_after="$(kid_of "$(cat "${after}")")"
-        [ "${kid_after}" != "${kid_before}" ] && break
-        rm -f "${after}"
+        rm -f "${state}/tokens/lab-client.jwt"
+        after="$(token_for)"
+        [ "$(kid_of "$(cat "${after}")")" != "$(kid_of "$(cat "${before}")")" ] && break
         [ $((SECONDS - started)) -lt 600 ] ||
-            fail "iam.tokens still signs under ${kid_before} $((SECONDS - started))s after its rotation"
+            fail "authority.tokens still signs under its old key $((SECONDS - started))s after its rotation"
         sleep 10
     done
-    log "iam.tokens went from epoch ${epoch} to $(ring_epoch control-plane iam.tokens): its new key signs $((SECONDS - started))s after the rotation"
+    log "authority.tokens went from epoch ${epoch} to $(ring_epoch control-plane authority.tokens): its new key signs $((SECONDS - started))s after the rotation"
     expect_decision data-plane-a acme main permit.json true "${after}" >/dev/null
-    expect_decision data-plane-b acme main permit.json true >/dev/null
+    expect_decision data-plane-b acme main permit.json true "${after}" >/dev/null
     log "a token signed under the new key decides on data-plane-a and data-plane-b"
     expect_decision data-plane-a acme main permit.json true "${before}" >/dev/null
     rm -f "${before}"
@@ -1283,12 +1189,12 @@ assert_tokens_rotation() {
 # WP-12.6: with the Control Plane stopped, a member still decides by the tokens and lists it holds.
 assert_tokens_offline() {
     step "tokens: the Control Plane stopped, a member decides on what it holds"
-    local token="${state}/tokens/data-plane-b.jwt"
-    [ -f "${token}" ] || fail "no token for data-plane-b was kept before the Control Plane stopped"
+    local token="${state}/tokens/lab-client.jwt"
+    [ -f "${token}" ] || fail "no token of lab-client was kept before the Control Plane stopped"
     ! (: <"/dev/tcp/control-plane/5444") 2>/dev/null ||
         fail "the Control Plane still answers: the members' decisions prove nothing offline"
     expect_decision data-plane-b acme main permit.json true "${token}" >/dev/null
-    log "data-plane-b decides on lab-client's token and its held status list, its IAM Host stopped"
+    log "data-plane-b decides on lab-client's token and its held status list, its Authority Plane stopped"
 }
 
 assert_multi_group() {
@@ -1337,10 +1243,10 @@ as_user() { # user, fixture, id
 }
 
 submit_document() { # host; the document on standard input
-    # A member takes an occurrence by the IAM Host's tokens: lab-client's, addressed to it.
+    # A member takes an occurrence by the Authority Plane's tokens: lab-client's.
     # The header is read from a file only the lab reads, so the token is never in an argument list.
     local token header
-    token="$(token_for "$1")"
+    token="$(token_for)"
     header="${token}.header"
     (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
     # The listener takes mutual TLS: the connection is the operator's certificate, the decision the

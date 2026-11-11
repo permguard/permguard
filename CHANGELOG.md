@@ -19,8 +19,41 @@ is cut.
 
 ### Added
 
-- **`scripts/cli-tour.sh`: the whole command line on a disposable all-in-one.**
-  It starts the all-in-one image in Docker, makes the first administrator with the setup code and signs in, creates a user, a role with its grant and a service account with its secret, creates a zone and a ledger, applies `examples/basics`, asks decisions and reads them back from the control plane, then removes everything (`KEEP=1` keeps it).
+- **The Authority Plane: service accounts, access keys and the tokens every Plane verifies.**
+  A Plane of its own, `authority`, mounted on the Host as the Control and Data Planes are, on its own listener (`authorityPlane:`, `PERMGUARD_AUTHORITY_HTTP_*` and `PERMGUARD_AUTHORITY_GRPC_*`, port 8443 in the shipped configurations), over REST at `/authority/v1` and gRPC in `permguard.authority.v1`, one facade behind both.
+  A service account holds scopes, each operations on a selector, at most 64, and at most two live access keys: `pgak_` and 20 base32 characters, its secret key `pgsk_` and 43 base64url characters, kept only as an Argon2id hash and answered once.
+  The token endpoint, `POST /authority/v1/token` or `TokenService/IssueToken`, issues an RFC 9068 `at+jwt` for `client_credentials`, signed by the `authority.tokens` ring, carrying the account's scopes or the narrower ones asked, with its entry in a status list.
+  Revocation is a status list (`/authority/v1/status-lists`): a token revoked, an account suspended or deleted, a key deleted reach every Plane at its next refresh.
+  The keys, the lists and the RFC 8414 metadata are open to every caller.
+- **Every Plane and the Host verify tokens themselves.**
+  `authority.url`, `authority.audience` and `authority.tls.ca` (`PERMGUARD_AUTHORITY_URL`, `_AUDIENCE`, `_TLS_CA`) name the Authority Plane a Server verifies tokens from: beside it, its keys and lists are handed over in-process; elsewhere they are fetched over HTTPS, the keys every five minutes or at once for an unknown key, the lists every half `ttl`.
+  A token is checked for its signature, issuer, audience, validity, status and scopes, and decides alone: public grants never widen it.
+  New metrics `permguard_token_status_list_age_seconds`, `permguard_token_status_lists_expired`, `permguard_authority_refresh_failures_total` and `permguard_token_status_list_rejected_total`.
+- **The first administrator is `admin`, made at the first start.**
+  The Authority Plane's first start makes the service account `admin`, with every operation on the Host and every Plane, and writes its access key and secret key to `planes/authority/admin.key` on the volume, readable by its owner alone; the log names the access key, never the secret.
+  `admin` is never deleted and never left without a live key.
+  When every key is lost, `permguard authority admin-key --volume <dir> --secret-out <file>` makes a new one on the stopped server's volume, and the next start records it in the audit trail.
+- **`permguard authority`: service accounts, scopes, access keys and tokens from the command line.**
+  `authority service-accounts`, `scopes`, `keys` and `tokens` over REST or gRPC as `--authority-endpoint` says, `authority token` for the configured client, and `authority admin-key` offline.
+  The command line acts as a service account with `--access-key` and `--secret-key-file` (`auth.client.access_key`, `auth.client.secret_file`), obtains its token at the Authority Plane and keeps it under `~/.permguard/tokens/` until a minute before it expires; a secret key is sent only over verified TLS.
+
+### Changed
+
+- **The Host listener admits an operator by an access token.**
+  `admin.tls.client_auth: optional` lets an operator in with a token and no certificate; peer Hosts and the bootstrap principal still present a certificate the client CA verifies.
+  `admin.allow` is no longer required outside `development`: a certificate grants nothing by itself.
+
+### Removed
+
+- **The IAM Host is gone, and with it everything that was not a service account.** *(Breaking.)*
+  Users, roles, grants issued online, identity providers and OIDC federation, password sign-in and second factors, the setup code, recovery, the security token service and token exchange are removed, with `/iam/v1`, `/auth/v1`, `permguard.iam.v1`, and the `login`, `logout`, `password`, `factor`, `setup`, `iam` and `host users` commands.
+  The settings `host.principals`, `host.authentication` and `host.setup` are refused at start by name; a deployment that set them moves its callers to service accounts.
+  `host grants bootstrap` stays: the offline recovery principal, by its certificate's fingerprint.
+- **A member no longer receives status lists over its membership.** *(Breaking.)*
+  The `token.status` task is removed: every Plane fetches the Authority Plane's lists itself, and a member that joined under an earlier release joins again.
+- **`GET /host/v1/config/revisions` and `OperationsService/ListConfigRevisions` are removed**, with `host config revisions`.
+- **The operator's mutual TLS mapping is removed.** *(Breaking.)*
+  A certificate maps to the bootstrap principal alone; an operator acts by an access token.
 
 ## [0.1.26] - 2026-11-09
 

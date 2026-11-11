@@ -148,6 +148,19 @@ pub fn resolve(
 /// command runs becomes a trust anchor. Nothing secret is ever traced: `-v` names the files,
 /// never what they hold.
 pub fn tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
+    let mut options = base_tls(globals, store, trace)?;
+    // Without `--token-file`, the configured client's token: every Plane and Host API takes it.
+    if options.token.is_none()
+        && let Some(token) = crate::client_token::token(globals, store, trace)?
+    {
+        options.token = Some(token);
+    }
+    Ok(options)
+}
+
+/// [`tls`] without the client's token: the operator's material and `--token-file` alone, what the
+/// Authority Plane's own connection starts from.
+pub fn base_tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
     let path = |flag: &Option<std::path::PathBuf>, key: &str| -> Option<std::path::PathBuf> {
         match flag {
             Some(flag) => Some(rooted_at(&globals.workdir, flag)),

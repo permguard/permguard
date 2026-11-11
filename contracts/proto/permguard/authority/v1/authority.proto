@@ -1,0 +1,329 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The Authority Plane, `permguard.authority.v1` (`2-security/8`): its service accounts, their
+// scopes and access keys, the token endpoint, the keys and status lists every Plane verifies a
+// token with, and the tokens it issued. Every RPC has its REST route on the same listener,
+// `/authority/v1/…`, and answers what that route answers; `contracts/openapi/authority.json` is
+// the REST side.
+//
+// A call carries its access token as `authorization: Bearer <token>` metadata, as every Plane's
+// does; the token endpoint carries the access key and secret key in the request instead, and the
+// keys, the status lists, the metadata and the plane's info and health carry nothing.
+
+syntax = "proto3";
+
+package permguard.authority.v1;
+
+// The plane itself, as every Plane answers it.
+service AuthorityPlane {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  // The plane's discovery document: the JSON `/.well-known/server-configuration` answers.
+  rpc GetServerConfiguration(GetServerConfigurationRequest) returns (GetServerConfigurationResponse);
+}
+
+// Tokens: issued, verified with the keys and lists, listed and revoked.
+service TokenService {
+  // The authorization server metadata (RFC 8414): `/.well-known/oauth-authorization-server`.
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
+  // `POST /authority/v1/token`: a token for an access key and its secret key.
+  rpc IssueToken(IssueTokenRequest) returns (IssueTokenResponse);
+  // `GET /authority/v1/keys`: the `authority.tokens` key set, a JWK set.
+  rpc GetKeys(GetKeysRequest) returns (GetKeysResponse);
+  // `GET /authority/v1/status-lists`: the lists every token's status is read in.
+  rpc ListStatusLists(ListStatusListsRequest) returns (ListStatusListsResponse);
+  // `GET /authority/v1/status-lists/{id}`: one list, a signed `statuslist+jwt`.
+  rpc GetStatusList(GetStatusListRequest) returns (GetStatusListResponse);
+  // `GET /authority/v1/tokens`, under `tokens.read`.
+  rpc ListTokens(ListTokensRequest) returns (ListTokensResponse);
+  // `POST /authority/v1/tokens/{jti}/revoke`, under `tokens.revoke`.
+  rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse);
+}
+
+// Service accounts, their scopes and their access keys, under `accounts.read` and
+// `accounts.write`.
+service ServiceAccountService {
+  rpc ListServiceAccounts(ListServiceAccountsRequest) returns (ListServiceAccountsResponse);
+  rpc GetServiceAccount(GetServiceAccountRequest) returns (ServiceAccountResponse);
+  rpc CreateServiceAccount(CreateServiceAccountRequest) returns (ServiceAccountResponse);
+  rpc UpdateServiceAccount(UpdateServiceAccountRequest) returns (ServiceAccountResponse);
+  rpc DeleteServiceAccount(DeleteServiceAccountRequest) returns (DeleteServiceAccountResponse);
+  rpc SuspendServiceAccount(ServiceAccountStatusRequest) returns (ServiceAccountResponse);
+  rpc ResumeServiceAccount(ServiceAccountStatusRequest) returns (ServiceAccountResponse);
+  rpc GetScopes(GetScopesRequest) returns (ScopesResponse);
+  rpc SetScopes(SetScopesRequest) returns (ScopesResponse);
+  rpc ListAccessKeys(ListAccessKeysRequest) returns (ListAccessKeysResponse);
+  rpc CreateAccessKey(CreateAccessKeyRequest) returns (CreateAccessKeyResponse);
+  rpc DeleteAccessKey(DeleteAccessKeyRequest) returns (DeleteAccessKeyResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string plane = 1;
+  string product = 2;
+  string version = 3;
+  string commit = 4;
+  // `community` or `enterprise`.
+  string edition = 5;
+}
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  bool live = 1;
+  bool ready = 2;
+  // The lifecycle (P2): this plane's phase, what it serves without, and every component.
+  string state = 3;
+  repeated Degraded degraded = 4;
+  repeated Component components = 5;
+}
+
+// One capability that is served and cannot currently do its work.
+message Degraded {
+  string capability = 1;
+  string reason = 2;
+}
+
+// One component of the process, as every Plane's health names it.
+message Component {
+  string component = 1;
+  string kind = 2;
+  string state = 3;
+  bool required = 4;
+  optional string stalled_since = 5;
+  optional string last_success = 6;
+  optional string next_attempt = 7;
+  optional string reason = 8;
+}
+
+message GetServerConfigurationRequest {}
+
+message GetServerConfigurationResponse {
+  // The discovery document, as JSON: byte-identical to the HTTP answer.
+  string document_json = 1;
+}
+
+message GetMetadataRequest {}
+
+message GetMetadataResponse {
+  // The RFC 8414 metadata, as JSON: byte-identical to the HTTP answer.
+  string document_json = 1;
+}
+
+message IssueTokenRequest {
+  // `client_credentials`, the only grant of the community edition.
+  string grant_type = 1;
+  // The access key, `pgak_…`.
+  string client_id = 2;
+  // The secret key, `pgsk_…`: never logged, never answered.
+  string client_secret = 3;
+  // The operations asked, space separated, narrowing the account's; all of them when empty.
+  string scope = 4;
+  // Seconds, within the profile's maximum; one hour when absent.
+  optional uint64 requested_lifetime = 5;
+}
+
+message IssueTokenResponse {
+  string access_token = 1;
+  // `Bearer`.
+  string token_type = 2;
+  uint64 expires_in = 3;
+  string scope = 4;
+}
+
+message GetKeysRequest {}
+
+message GetKeysResponse {
+  // The JWK set, as JSON: byte-identical to the HTTP answer.
+  string jwks_json = 1;
+}
+
+message ListStatusListsRequest {}
+
+message ListStatusListsResponse {
+  // The id of every list a live token may name.
+  repeated string lists = 1;
+}
+
+message GetStatusListRequest {
+  string id = 1;
+}
+
+message GetStatusListResponse {
+  // The signed `statuslist+jwt`.
+  string token = 1;
+}
+
+message ListTokensRequest {
+  // A service account's name; every account's tokens when empty.
+  string account = 1;
+  // `valid`, `invalid` or `suspended`; every status when empty.
+  string status = 2;
+}
+
+// One token the Authority Plane issued; never the token itself.
+message TokenSummary {
+  string jti = 1;
+  // `sa:<name>`.
+  string subject = 2;
+  string account = 3;
+  // The access key it was obtained with.
+  string access_key = 4;
+  repeated Scope scopes = 5;
+  // RFC 3339.
+  string issued_at = 6;
+  string expires_at = 7;
+  // `valid`, `invalid` or `suspended`.
+  string status = 8;
+  // The `uri` of the list its status is read in, and its index there.
+  string status_list = 9;
+  uint64 index = 10;
+}
+
+message ListTokensResponse {
+  repeated TokenSummary tokens = 1;
+}
+
+message RevokeTokenRequest {
+  string jti = 1;
+  string request_id = 2;
+}
+
+message RevokeTokenResponse {
+  TokenSummary token = 1;
+}
+
+// One scope: operations on a selector.
+message Scope {
+  repeated string operations = 1;
+  string selector = 2;
+}
+
+// One access key; never its secret.
+message AccessKey {
+  // `pgak_…`.
+  string access_key = 1;
+  // RFC 3339.
+  string created_at = 2;
+  optional string expires_at = 3;
+  optional string last_used_at = 4;
+  // `active` or `expired`.
+  string status = 5;
+}
+
+message ServiceAccount {
+  string name = 1;
+  string description = 2;
+  // `active` or `suspended`.
+  string status = 3;
+  repeated Scope scopes = 4;
+  repeated AccessKey keys = 5;
+  // Whether it is `admin`: never deleted, suspended, or narrowed.
+  bool administrator = 6;
+  // RFC 3339.
+  string created_at = 7;
+  string updated_at = 8;
+  uint64 revision = 9;
+}
+
+message ListServiceAccountsRequest {}
+
+message ListServiceAccountsResponse {
+  repeated ServiceAccount accounts = 1;
+}
+
+message GetServiceAccountRequest {
+  string name = 1;
+}
+
+message ServiceAccountResponse {
+  ServiceAccount account = 1;
+}
+
+message CreateServiceAccountRequest {
+  string request_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated Scope scopes = 4;
+}
+
+message UpdateServiceAccountRequest {
+  string request_id = 1;
+  string name = 2;
+  string description = 3;
+  optional uint64 expected_revision = 4;
+}
+
+message DeleteServiceAccountRequest {
+  string request_id = 1;
+  string name = 2;
+  optional uint64 expected_revision = 3;
+}
+
+message DeleteServiceAccountResponse {
+  string name = 1;
+  // The live tokens marked `INVALID` with it.
+  uint64 tokens_revoked = 2;
+}
+
+message ServiceAccountStatusRequest {
+  string request_id = 1;
+  string name = 2;
+  optional uint64 expected_revision = 3;
+}
+
+message GetScopesRequest {
+  string name = 1;
+}
+
+message SetScopesRequest {
+  string request_id = 1;
+  string name = 2;
+  repeated Scope scopes = 3;
+  optional uint64 expected_revision = 4;
+  // Whether the account's live tokens are revoked too, so a narrowing holds at once.
+  bool revoke_tokens = 5;
+}
+
+message ScopesResponse {
+  string name = 1;
+  repeated Scope scopes = 2;
+  uint64 revision = 3;
+  uint64 tokens_revoked = 4;
+}
+
+message ListAccessKeysRequest {
+  string name = 1;
+}
+
+message ListAccessKeysResponse {
+  repeated AccessKey keys = 1;
+}
+
+message CreateAccessKeyRequest {
+  string request_id = 1;
+  string name = 2;
+  // RFC 3339; the key never expires when absent.
+  optional string expires_at = 3;
+}
+
+message CreateAccessKeyResponse {
+  AccessKey key = 1;
+  // The secret key, answered once by the call that made it.
+  string secret_key = 2;
+}
+
+message DeleteAccessKeyRequest {
+  string request_id = 1;
+  string name = 2;
+  string access_key = 3;
+  optional uint64 expected_revision = 4;
+}
+
+message DeleteAccessKeyResponse {
+  string access_key = 1;
+  // The live tokens it obtained, marked `INVALID` with it.
+  uint64 tokens_revoked = 2;
+}

@@ -87,6 +87,50 @@ pub const SETTING_DATA_GRPC_TLS_ALLOW: &str = "PERMGUARD_DATA_GRPC_TLS_ALLOW";
 pub const SETTING_DATA_GRPC_TLS_TERMINATED_UPSTREAM: &str =
     "PERMGUARD_DATA_GRPC_TLS_TERMINATED_UPSTREAM";
 
+/// Runtime setting keys for authority-plane public addresses: its token endpoint, keys, lists and
+/// accounts, over HTTP and gRPC alike. See [`SETTING_DATA_HTTP_ADVERTISED_URL`].
+pub const SETTING_AUTHORITY_HTTP_ADVERTISED_URL: &str = "PERMGUARD_AUTHORITY_HTTP_ADVERTISED_URL";
+pub const SETTING_AUTHORITY_HTTP_ENABLED: &str = "PERMGUARD_AUTHORITY_HTTP_ENABLED";
+pub const SETTING_AUTHORITY_HTTP_ADDR: &str = "PERMGUARD_AUTHORITY_HTTP_ADDR";
+pub const SETTING_AUTHORITY_HTTP_TLS_ENABLED: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_ENABLED";
+pub const SETTING_AUTHORITY_HTTP_TLS_CERT: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_CERT";
+pub const SETTING_AUTHORITY_HTTP_TLS_KEY: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_KEY";
+pub const SETTING_AUTHORITY_HTTP_TLS_CLIENT_CA: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_CLIENT_CA";
+pub const SETTING_AUTHORITY_HTTP_TLS_CLIENT_AUTH: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_CLIENT_AUTH";
+pub const SETTING_AUTHORITY_HTTP_TLS_CRL: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_CRL";
+pub const SETTING_AUTHORITY_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_MIN_VERSION";
+pub const SETTING_AUTHORITY_HTTP_TLS_ALLOW: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_ALLOW";
+pub const SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM";
+pub const SETTING_AUTHORITY_GRPC_ENABLED: &str = "PERMGUARD_AUTHORITY_GRPC_ENABLED";
+pub const SETTING_AUTHORITY_GRPC_ADDR: &str = "PERMGUARD_AUTHORITY_GRPC_ADDR";
+pub const SETTING_AUTHORITY_GRPC_TLS_ENABLED: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_ENABLED";
+pub const SETTING_AUTHORITY_GRPC_TLS_CERT: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_CERT";
+pub const SETTING_AUTHORITY_GRPC_TLS_KEY: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_KEY";
+pub const SETTING_AUTHORITY_GRPC_TLS_CLIENT_CA: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_CLIENT_CA";
+pub const SETTING_AUTHORITY_GRPC_TLS_CLIENT_AUTH: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_CLIENT_AUTH";
+pub const SETTING_AUTHORITY_GRPC_TLS_CRL: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_CRL";
+pub const SETTING_AUTHORITY_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_MIN_VERSION";
+pub const SETTING_AUTHORITY_GRPC_TLS_ALLOW: &str = "PERMGUARD_AUTHORITY_GRPC_TLS_ALLOW";
+pub const SETTING_AUTHORITY_GRPC_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_AUTHORITY_GRPC_TLS_TERMINATED_UPSTREAM";
+
+/// Where a Host reaches the Authority Plane whose tokens it verifies (`2-security/8` Where it
+/// runs): its public URL, which every token names as `iss`. Set on the Authority Plane's Server
+/// too, it is the issuer it signs as.
+pub const SETTING_AUTHORITY_URL: &str = "PERMGUARD_AUTHORITY_URL";
+/// The audience every token names: one value per cluster, `permguard` unless stated.
+pub const SETTING_AUTHORITY_AUDIENCE: &str = "PERMGUARD_AUTHORITY_AUDIENCE";
+/// The authority the Authority Plane's certificate is checked against, beside the system's.
+pub const SETTING_AUTHORITY_TLS_CA: &str = "PERMGUARD_AUTHORITY_TLS_CA";
+
+/// Every setting of the `authority` section: read by every Server, whatever Planes it runs.
+pub const AUTHORITY_SETTINGS: [&str; 3] = [
+    SETTING_AUTHORITY_URL,
+    SETTING_AUTHORITY_AUDIENCE,
+    SETTING_AUTHORITY_TLS_CA,
+];
+
 #[derive(Debug, Clone, Copy)]
 pub struct PlaneSettingKeys {
     /// Which plane these keys belong to, so a block that only one plane can
@@ -94,9 +138,9 @@ pub struct PlaneSettingKeys {
     id: &'static str,
     http: PlaneEndpointKeys,
     grpc: PlaneEndpointKeys,
-    /// The plane's signing ring: whether it is composed, and where it lives.
-    keys_enabled: &'static str,
-    keys_directory: &'static str,
+    /// The plane's signing ring: whether it is composed, and where it lives; none for the
+    /// Authority Plane, whose `authority.tokens` ring is the Host's, under `host/keys`.
+    keys: Option<(&'static str, &'static str)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,8 +210,10 @@ impl PlaneSettingKeys {
                 terminated_upstream: SETTING_CONTROL_GRPC_TLS_TERMINATED_UPSTREAM,
             },
         },
-        keys_enabled: permguard_core::config::SETTING_CONTROL_KEYS_ENABLED,
-        keys_directory: permguard_core::config::SETTING_CONTROL_KEYS_DIRECTORY,
+        keys: Some((
+            permguard_core::config::SETTING_CONTROL_KEYS_ENABLED,
+            permguard_core::config::SETTING_CONTROL_KEYS_DIRECTORY,
+        )),
     };
 
     pub const DATA: Self = Self {
@@ -204,49 +250,64 @@ impl PlaneSettingKeys {
                 terminated_upstream: SETTING_DATA_GRPC_TLS_TERMINATED_UPSTREAM,
             },
         },
-        keys_enabled: permguard_core::config::SETTING_DATA_KEYS_ENABLED,
-        keys_directory: permguard_core::config::SETTING_DATA_KEYS_DIRECTORY,
+        keys: Some((
+            permguard_core::config::SETTING_DATA_KEYS_ENABLED,
+            permguard_core::config::SETTING_DATA_KEYS_DIRECTORY,
+        )),
+    };
+
+    pub const AUTHORITY: Self = Self {
+        id: "authority",
+        http: PlaneEndpointKeys {
+            enabled: SETTING_AUTHORITY_HTTP_ENABLED,
+            addr: SETTING_AUTHORITY_HTTP_ADDR,
+            advertised_url: Some(SETTING_AUTHORITY_HTTP_ADVERTISED_URL),
+            tls: PlaneTlsKeys {
+                enabled: SETTING_AUTHORITY_HTTP_TLS_ENABLED,
+                cert: SETTING_AUTHORITY_HTTP_TLS_CERT,
+                key: SETTING_AUTHORITY_HTTP_TLS_KEY,
+                client_ca: SETTING_AUTHORITY_HTTP_TLS_CLIENT_CA,
+                client_auth: SETTING_AUTHORITY_HTTP_TLS_CLIENT_AUTH,
+                crl: SETTING_AUTHORITY_HTTP_TLS_CRL,
+                allow: SETTING_AUTHORITY_HTTP_TLS_ALLOW,
+                min_version: SETTING_AUTHORITY_HTTP_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM,
+            },
+        },
+        grpc: PlaneEndpointKeys {
+            enabled: SETTING_AUTHORITY_GRPC_ENABLED,
+            addr: SETTING_AUTHORITY_GRPC_ADDR,
+            advertised_url: None,
+            tls: PlaneTlsKeys {
+                enabled: SETTING_AUTHORITY_GRPC_TLS_ENABLED,
+                cert: SETTING_AUTHORITY_GRPC_TLS_CERT,
+                key: SETTING_AUTHORITY_GRPC_TLS_KEY,
+                client_ca: SETTING_AUTHORITY_GRPC_TLS_CLIENT_CA,
+                client_auth: SETTING_AUTHORITY_GRPC_TLS_CLIENT_AUTH,
+                crl: SETTING_AUTHORITY_GRPC_TLS_CRL,
+                allow: SETTING_AUTHORITY_GRPC_TLS_ALLOW,
+                min_version: SETTING_AUTHORITY_GRPC_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_AUTHORITY_GRPC_TLS_TERMINATED_UPSTREAM,
+            },
+        },
+        keys: None,
     };
 
     pub(crate) const fn addresses(self) -> PlaneAddresses {
         PlaneAddresses::settings(self.http, self.grpc)
     }
 
-    pub(crate) const fn settings(self) -> [&'static str; 25] {
-        let http = self.http.settings();
-        let grpc = self.grpc.settings();
-
-        [
-            http[0],
-            http[1],
-            http[2],
-            http[3],
-            http[4],
-            http[5],
-            http[6],
-            http[7],
-            http[8],
-            http[9],
-            http[10],
-            grpc[0],
-            grpc[1],
-            grpc[2],
-            grpc[3],
-            grpc[4],
-            grpc[5],
-            grpc[6],
-            grpc[7],
-            grpc[8],
-            grpc[9],
-            grpc[10],
-            self.keys_enabled,
-            self.keys_directory,
-            // HTTP only: a discovery document publishes HTTP addresses.
-            match self.http.advertised_url {
-                Some(key) => key,
-                None => self.http.addr,
-            },
-        ]
+    pub(crate) fn settings(self) -> Vec<&'static str> {
+        let mut settings: Vec<&'static str> = self.http.settings().to_vec();
+        settings.extend(self.grpc.settings());
+        if let Some((enabled, directory)) = self.keys {
+            settings.extend([enabled, directory]);
+        }
+        // HTTP only: a discovery document publishes HTTP addresses.
+        if let Some(key) = self.http.advertised_url {
+            settings.push(key);
+        }
+        settings
     }
 }
 
@@ -273,12 +334,14 @@ pub const fn addresses_for_plane(id: &str) -> Option<PlaneAddresses> {
     match id.as_bytes() {
         b"control" => Some(PlaneSettingKeys::CONTROL.addresses()),
         b"data" => Some(PlaneSettingKeys::DATA.addresses()),
+        b"authority" => Some(PlaneSettingKeys::AUTHORITY.addresses()),
         _ => None,
     }
 }
 
 pub(crate) fn declared_settings_for(planes: &[PlaneService]) -> Vec<&'static str> {
     let mut settings = vec![SETTING_RUNTIME_PLANES, SETTING_RUNTIME_OPTIONAL_PLANES];
+    settings.extend(AUTHORITY_SETTINGS);
 
     for section in section_settings_for(planes) {
         settings.extend(section.keys.settings());
@@ -312,6 +375,16 @@ pub(crate) fn section_settings_for(planes: &[PlaneService]) -> Vec<PlaneSection>
                     keys: PlaneSettingKeys::DATA,
                 });
             }
+            "authority"
+                if !sections
+                    .iter()
+                    .any(|section: &PlaneSection| section.name == "authorityPlane") =>
+            {
+                sections.push(PlaneSection {
+                    name: "authorityPlane",
+                    keys: PlaneSettingKeys::AUTHORITY,
+                });
+            }
             _ => {}
         }
     }
@@ -338,6 +411,37 @@ pub(crate) fn runtime_settings(value: &Value) -> Result<Vec<(String, String)>> {
     }
 
     Ok(settings)
+}
+
+/// The `authority` section: where this Server reaches the Authority Plane, and the audience.
+pub(crate) fn authority_settings(value: &Value) -> Result<Vec<(String, String)>> {
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct AuthoritySection {
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        audience: Option<String>,
+        #[serde(default)]
+        tls: AuthorityTls,
+    }
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct AuthorityTls {
+        #[serde(default)]
+        ca: Option<String>,
+    }
+
+    let section: AuthoritySection =
+        serde_norway::from_value(value.clone()).context("parsing the authority section")?;
+    Ok([
+        (SETTING_AUTHORITY_URL, section.url),
+        (SETTING_AUTHORITY_AUDIENCE, section.audience),
+        (SETTING_AUTHORITY_TLS_CA, section.tls.ca),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value)))
+    .collect())
 }
 
 pub fn plane_settings(value: &Value, keys: PlaneSettingKeys) -> Result<Vec<(String, String)>> {
@@ -415,11 +519,17 @@ pub fn plane_settings(value: &Value, keys: PlaneSettingKeys) -> Result<Vec<(Stri
     }
 
     if let Some(signing) = section.keys {
+        let Some((enabled_key, directory_key)) = keys.keys else {
+            anyhow::bail!(
+                "`keys` names a Plane's own ring, and the Authority Plane signs under the Host's \
+                 `authority.tokens`: set its custody in operations.keys.rings"
+            );
+        };
         if let Some(enabled) = signing.enabled {
-            settings.push((keys.keys_enabled.to_owned(), enabled));
+            settings.push((enabled_key.to_owned(), enabled));
         }
         if let Some(directory) = signing.directory {
-            settings.push((keys.keys_directory.to_owned(), directory));
+            settings.push((directory_key.to_owned(), directory));
         }
     }
 

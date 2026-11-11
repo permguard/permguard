@@ -20,6 +20,7 @@ name = "permguard-all-in-one"
 path = "src/main.rs"
 
 [dependencies]
+permguard-authority-plane.workspace = true
 permguard-control-plane.workspace = true
 permguard-core.workspace = true
 permguard-server.workspace = true
@@ -35,4 +36,4 @@ serde_json.workspace = true
 # a canary is searched in.
 base64.workspace = true
 permguard-core.workspace = true
-permguard-host.workspace = true
+permguard-host = { workspace = true, features = ["test-support"] }

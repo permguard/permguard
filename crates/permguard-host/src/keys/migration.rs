@@ -71,9 +71,9 @@ pub fn layouts() -> Vec<(&'static str, crate::storage::migrate::Reads)> {
             "keys-data-attest",
             Reads::from(SOURCE_VERSION, TARGET_VERSION),
         ),
-        // The IAM Host's ring (WP-11.3) has no legacy directory: it is laid out at the target.
+        // The Authority Plane's ring has no legacy directory: it is laid out at the target.
         (
-            "keys-iam-tokens",
+            "keys-authority-tokens",
             Reads::from(SOURCE_VERSION, TARGET_VERSION),
         ),
     ]

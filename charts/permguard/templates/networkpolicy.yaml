@@ -21,10 +21,10 @@ break those or grow into an allow-everything.
 {{- if .Values.networkPolicy.enabled }}
 {{- $components := dict }}
 {{- if .Values.controlPlane.enabled }}
-{{- $_ := set $components "control-plane" (list .Values.controlPlane.ports.http .Values.controlPlane.ports.grpc .Values.controlPlane.ports.telemetry) }}
+{{- $_ := set $components "control-plane" (list .Values.controlPlane.ports.http .Values.controlPlane.ports.grpc .Values.controlPlane.ports.authority .Values.controlPlane.ports.telemetry) }}
 {{- end }}
 {{- if .Values.allInOne.enabled }}
-{{- $_ := set $components "all-in-one" (list .Values.allInOne.ports.controlHttp .Values.allInOne.ports.dataHttp .Values.allInOne.ports.telemetry) }}
+{{- $_ := set $components "all-in-one" (list .Values.allInOne.ports.controlHttp .Values.allInOne.ports.dataHttp .Values.allInOne.ports.authority .Values.allInOne.ports.telemetry) }}
 {{- end }}
 {{- range $component, $ports := $components }}
 {{- $telemetry := last $ports }}

@@ -440,7 +440,7 @@ mod tests {
     use permguard_core::authz::Selector;
     use permguard_core::{AuditEvent, Subject};
 
-    use super::super::testing::{actor, admin, reopen};
+    use super::super::testing::{actor, reopen};
     use super::*;
     use crate::audit::{Engine, Stamp};
 
@@ -475,22 +475,11 @@ mod tests {
                 .expect("a security record");
         }
         api.audit = Some(Arc::new(engine));
-        api.create_grant(
-            &admin(),
-            super::super::CreateGrant {
-                request_id: "auditor".to_owned(),
-                expected_revision: None,
-                principal: AUDITOR.to_owned(),
-                operations: vec![operations::AUDIT_READ.to_owned()],
-                selector: Selector::under(Resource::parse("plane/control").expect("a resource"))
-                    .to_string(),
-                resource_types: vec!["*".to_owned()],
-                constraints: Default::default(),
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("the auditor is granted");
+        crate::api::testing::grant_to(
+            AUDITOR,
+            &[operations::AUDIT_READ],
+            &Selector::under(Resource::parse("plane/control").expect("a resource")).to_string(),
+        );
         std::mem::forget(volume);
         api
     }

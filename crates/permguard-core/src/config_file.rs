@@ -784,7 +784,7 @@ struct RingsSection {
     identity: RingCustodySection,
     #[serde(default, rename = "host.operations")]
     operations: RingCustodySection,
-    #[serde(default, rename = "iam.tokens")]
+    #[serde(default, rename = "authority.tokens")]
     tokens: RingCustodySection,
 }
 
@@ -880,19 +880,10 @@ struct TelemetrySection {
     /// OTLP trace export: off unless the file says otherwise.
     #[serde(default)]
     otel: OtelSection,
-    /// The credential mapper's rules: which certificates and tokens map to which principal
-    /// (WP-2.4). Structured, so carried from the file only; read with [`ConfigFile::host_auth`].
-    #[serde(default)]
-    principals: Vec<PrincipalRuleSection>,
-    /// The grants anybody holds, declared here and never journaled.
+    /// The grants anybody holds without a token, declared here and never journaled; read with
+    /// [`ConfigFile::host_auth`].
     #[serde(default)]
     authz: AuthzSection,
-    /// Which sign-in methods the Host admits (WP-8.1). Structured, so file only.
-    #[serde(default)]
-    authentication: AuthenticationSection,
-    /// How the first administrator's setup code is made (WP-8.2). Structured, so file only.
-    #[serde(default)]
-    setup: SetupSection,
 }
 
 /// `host.join` (TD-5): what `PERMGUARD_HOST_JOIN_*` say, as the file says it.
@@ -907,113 +898,6 @@ struct JoinSection {
     name: Option<String>,
     #[serde(default)]
     groups: Option<Vec<String>>,
-}
-
-/// `host.setup`.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SetupSection {
-    #[serde(default)]
-    expires: Option<String>,
-    #[serde(default)]
-    code_ref: Option<String>,
-}
-
-/// `host.authentication`.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AuthenticationSection {
-    #[serde(default)]
-    methods: Option<Vec<String>>,
-    #[serde(default)]
-    password: PasswordSection,
-    #[serde(default)]
-    sessions: SessionsSection,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PasswordSection {
-    #[serde(default)]
-    min_length: Option<usize>,
-    #[serde(default)]
-    mfa: Option<String>,
-    #[serde(default)]
-    factor_key: Option<FactorKeySection>,
-    #[serde(default)]
-    lockout: LockoutSection,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FactorKeySection {
-    #[serde(rename = "ref")]
-    reference: String,
-    #[serde(default)]
-    version: Option<String>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LockoutSection {
-    #[serde(default)]
-    attempts: Option<u32>,
-    #[serde(default)]
-    window: Option<String>,
-    #[serde(default)]
-    duration: Option<String>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SessionsSection {
-    #[serde(default)]
-    lifetime: Option<String>,
-    #[serde(default)]
-    idle: Option<String>,
-}
-
-/// One `host.principals[]` entry: exactly one of its members is set.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PrincipalRuleSection {
-    #[serde(default)]
-    san_uri: Option<String>,
-    #[serde(default)]
-    spki: Option<String>,
-    #[serde(default)]
-    oidc: Option<OidcRuleSection>,
-}
-
-/// One identity provider: the pinned issuer of an OIDC rule.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OidcRuleSection {
-    #[serde(default)]
-    name: Option<String>,
-    issuer: String,
-    audience: String,
-    #[serde(default)]
-    algorithms: Vec<String>,
-    #[serde(default)]
-    claim: Option<String>,
-    #[serde(default)]
-    jwks_uri: Option<String>,
-    #[serde(default)]
-    jwks_file: Option<String>,
-    #[serde(default)]
-    ca_file: Option<String>,
-    #[serde(default)]
-    refresh: Option<String>,
-    #[serde(default)]
-    max_stale: Option<String>,
-    #[serde(default)]
-    clients: Vec<String>,
-    #[serde(default)]
-    token_types: Vec<String>,
-    /// `email`: a verified email equal to a local user's acts as that user.
-    #[serde(default)]
-    link: Option<String>,
 }
 
 /// The `host.authz` block: the public grants.
@@ -1844,48 +1728,12 @@ impl ConfigFile {
 
     /// Returns the `storage` section, validated: every qualified tuple names all four parts and its
     /// evidence, no tuple is listed twice, and the floors read as sizes and counts.
-    /// The `host.principals[]` rules and the `host.authz.public[]` grants, typed and checked:
-    /// a rule sets exactly one member, a public grant names registered operations and types and
-    /// a selector that parses. Who the rules collide with is the Host's to decide, with the
-    /// bootstrap commitment in hand.
+    /// The `host.authz.public[]` grants, typed and checked: a public grant names registered
+    /// operations and types and a selector that parses.
     pub fn host_auth(&self) -> Result<crate::authz::HostAuth> {
-        use crate::authz::{PrincipalRule, PublicGrantRule, Selector};
+        use crate::authz::{PublicGrantRule, Selector};
         use crate::authz::{operations, resource_types};
 
-        let mut principals = Vec::new();
-        for (position, rule) in self.host.principals.iter().enumerate() {
-            let at = format!("host.principals[{position}]");
-            let set = usize::from(rule.san_uri.is_some())
-                + usize::from(rule.spki.is_some())
-                + usize::from(rule.oidc.is_some());
-            if set != 1 {
-                bail!("{at} sets exactly one of san_uri, spki or oidc");
-            }
-            if let Some(uri) = &rule.san_uri {
-                if uri.trim().is_empty() {
-                    bail!("{at}.san_uri is empty");
-                }
-                principals.push(PrincipalRule::SanUri(uri.trim().to_owned()));
-            } else if let Some(spki) = &rule.spki {
-                if spki.trim().is_empty() {
-                    bail!("{at}.spki is empty");
-                }
-                principals.push(PrincipalRule::Spki(spki.trim().to_owned()));
-            } else if let Some(oidc) = &rule.oidc {
-                principals.push(PrincipalRule::Oidc(Box::new(oidc_rule(&at, oidc)?)));
-            }
-        }
-        let mut names = std::collections::BTreeSet::new();
-        for rule in &principals {
-            if let PrincipalRule::Oidc(oidc) = rule
-                && !names.insert(oidc.name.clone())
-            {
-                bail!(
-                    "two identity providers in host.principals are named `{}`: give each its own `name`",
-                    oidc.name
-                );
-            }
-        }
         let mut public = Vec::new();
         for (position, grant) in self.host.authz.public.iter().enumerate() {
             let at = format!("host.authz.public[{position}]");
@@ -1902,12 +1750,18 @@ impl ConfigFile {
                     operations::ALL.join(", ")
                 );
             }
-            if grant
-                .operations
-                .iter()
-                .any(|operation| operation == operations::AUTHZ_ADMIN)
-            {
-                bail!("{at}.operations names `authz.admin`, which is never public");
+            // Who may call is never anybody's to change: the Authority Plane's accounts and tokens
+            // are administered by a token, never by a public grant (`2-security/6`).
+            if let Some(administrative) = grant.operations.iter().find(|operation| {
+                matches!(
+                    operation.as_str(),
+                    operations::ACCOUNTS_READ
+                        | operations::ACCOUNTS_WRITE
+                        | operations::TOKENS_READ
+                        | operations::TOKENS_REVOKE
+                )
+            }) {
+                bail!("{at}.operations names `{administrative}`, which is never public");
             }
             let resource_types = if grant.resource_types.is_empty() {
                 vec![resource_types::ANY.to_owned()]
@@ -1931,28 +1785,7 @@ impl ConfigFile {
                 resource_types,
             });
         }
-        let providers = principals
-            .iter()
-            .filter(|rule| matches!(rule, PrincipalRule::Oidc(_)))
-            .count();
-        let authentication = authentication(&self.host.authentication, providers)?;
-        let mut setup = crate::authz::Setup::default();
-        if let Some(expires) = self.host.setup.expires.as_deref().map(str::trim) {
-            setup.expires =
-                crate::config::parse_duration(expires).context("reading host.setup.expires")?;
-        }
-        if let Some(reference) = self.host.setup.code_ref.as_deref().map(str::trim) {
-            if reference.is_empty() {
-                bail!("host.setup.code_ref names a secret");
-            }
-            setup.code_ref = Some(crate::secrets::SecretRef::new(reference));
-        }
-        Ok(crate::authz::HostAuth {
-            principals,
-            public,
-            authentication,
-            setup,
-        })
+        Ok(crate::authz::HostAuth { public })
     }
 
     /// The service objectives the file declares (TS-5), every value read and bounded.
@@ -2218,209 +2051,6 @@ fn push_endpoint_settings(
     }
 }
 
-/// One `host.principals[].oidc` section, read and checked (`2-security/2` Identity providers).
-/// Whether plain HTTP is allowed depends on the assurance profile, which the server checks.
-fn oidc_rule(at: &str, oidc: &OidcRuleSection) -> Result<crate::authz::OidcPrincipalRule> {
-    use crate::authz::{
-        DEFAULT_KEY_MAX_STALE, DEFAULT_KEY_REFRESH, DEFAULT_TOKEN_TYPES, MIN_KEY_REFRESH,
-        OidcKeySource, OidcPrincipalRule, check_provider_url, default_provider_name,
-        is_provider_name,
-    };
-    let issuer = oidc.issuer.trim().to_owned();
-    check_provider_url(&issuer, true)
-        .map_err(|error| anyhow::anyhow!("{at}.oidc.issuer: {error}"))?;
-    let audience = oidc.audience.trim().to_owned();
-    if audience.is_empty() {
-        bail!("{at}.oidc.audience is required");
-    }
-    let name = match oidc.name.as_deref().map(str::trim) {
-        None | Some("") => default_provider_name(&issuer),
-        Some(name) => name.to_owned(),
-    };
-    if !is_provider_name(&name) {
-        bail!("{at}.oidc.name `{name}` is not 1 to 63 lowercase letters, digits or `-`");
-    }
-    let duration = |text: Option<&str>, key: &str, default| -> Result<std::time::Duration> {
-        match text.map(str::trim) {
-            None | Some("") => Ok(default),
-            Some(text) => crate::config::parse_duration(text)
-                .with_context(|| format!("reading {at}.oidc.{key}")),
-        }
-    };
-    let max_stale = duration(
-        oidc.max_stale.as_deref(),
-        "max_stale",
-        DEFAULT_KEY_MAX_STALE,
-    )?;
-    if max_stale.is_zero() {
-        bail!("{at}.oidc.max_stale is positive");
-    }
-    let present = |value: &Option<String>| {
-        value
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    };
-    let keys = match (present(&oidc.jwks_uri), present(&oidc.jwks_file)) {
-        (Some(_), Some(_)) => {
-            bail!("{at}.oidc names both jwks_uri and jwks_file: the keys come from exactly one")
-        }
-        (Some(uri), None) => {
-            check_provider_url(&uri, true)
-                .map_err(|error| anyhow::anyhow!("{at}.oidc.jwks_uri: {error}"))?;
-            OidcKeySource::Uri(uri)
-        }
-        (None, Some(file)) => OidcKeySource::File(std::path::PathBuf::from(file)),
-        (None, None) => OidcKeySource::Discovery,
-    };
-    let refresh = duration(
-        oidc.refresh.as_deref(),
-        "refresh",
-        DEFAULT_KEY_REFRESH.min(max_stale / 2),
-    )?;
-    if keys.is_fetched() {
-        if refresh < MIN_KEY_REFRESH {
-            bail!("{at}.oidc.refresh is at least 1m");
-        }
-        if refresh > max_stale / 2 {
-            bail!(
-                "{at}.oidc.refresh is at most half of max_stale, so a failed fetch is retried before the keys go stale"
-            );
-        }
-    } else if oidc.refresh.is_some() || oidc.ca_file.is_some() {
-        bail!("{at}.oidc: refresh and ca_file apply to fetched keys, not to a jwks_file");
-    }
-    let list = |values: &[String], key: &str| -> Result<Vec<String>> {
-        values
-            .iter()
-            .map(|value| {
-                let value = value.trim();
-                if value.is_empty() {
-                    bail!("{at}.oidc.{key} holds an empty value");
-                }
-                Ok(value.to_owned())
-            })
-            .collect()
-    };
-    let token_types = if oidc.token_types.is_empty() {
-        DEFAULT_TOKEN_TYPES
-            .iter()
-            .map(|typ| (*typ).to_owned())
-            .collect()
-    } else {
-        list(&oidc.token_types, "token_types")?
-    };
-    Ok(OidcPrincipalRule {
-        name,
-        issuer,
-        audience,
-        algorithms: if oidc.algorithms.is_empty() {
-            vec!["RS256".to_owned(), "ES256".to_owned(), "EdDSA".to_owned()]
-        } else {
-            oidc.algorithms.clone()
-        },
-        claim: oidc
-            .claim
-            .as_deref()
-            .map(str::trim)
-            .filter(|claim| !claim.is_empty())
-            .unwrap_or("sub")
-            .to_owned(),
-        keys,
-        ca_file: present(&oidc.ca_file).map(std::path::PathBuf::from),
-        refresh,
-        max_stale,
-        clients: list(&oidc.clients, "clients")?,
-        token_types,
-        link_email: match oidc.link.as_deref().map(str::trim) {
-            None | Some("") => false,
-            Some("email") => true,
-            Some(other) => bail!("{at}.oidc.link is `email` or absent, not `{other}`"),
-        },
-    })
-}
-
-/// `host.authentication`, read and checked against the providers configured.
-fn authentication(
-    section: &AuthenticationSection,
-    providers: usize,
-) -> Result<crate::authz::Authentication> {
-    let mut read = crate::authz::Authentication::default();
-    match &section.methods {
-        None => read.oidc = providers > 0,
-        Some(methods) => {
-            for method in methods {
-                match method.trim() {
-                    "password" => read.password = true,
-                    "oidc" => read.oidc = true,
-                    other => bail!("host.authentication.methods names `{other}`: password or oidc"),
-                }
-            }
-        }
-    }
-    if read.oidc && providers == 0 {
-        bail!(
-            "host.authentication.methods names oidc, and host.principals configures no identity provider"
-        );
-    }
-    let password = &section.password;
-    if let Some(min_length) = password.min_length {
-        if min_length < 8 {
-            bail!("host.authentication.password.min_length is at least 8");
-        }
-        read.min_length = min_length;
-    }
-    if let Some(mfa) = password.mfa.as_deref().map(str::trim) {
-        if !matches!(mfa, "off" | "optional" | "required") {
-            bail!("host.authentication.password.mfa is off, optional or required, not `{mfa}`");
-        }
-        read.mfa = mfa.to_owned();
-    }
-    if let Some(key) = &password.factor_key {
-        if key.reference.trim().is_empty() {
-            bail!("host.authentication.password.factor_key.ref names a secret");
-        }
-        read.factor_key = Some((
-            crate::secrets::SecretRef::new(key.reference.trim()),
-            key.version.clone().unwrap_or_else(|| "v1".to_owned()),
-        ));
-    }
-    let duration = |text: &Option<String>, key: &str, default| -> Result<std::time::Duration> {
-        match text.as_deref().map(str::trim) {
-            None | Some("") => Ok(default),
-            Some(text) => crate::config::parse_duration(text)
-                .with_context(|| format!("reading host.authentication.{key}")),
-        }
-    };
-    if let Some(attempts) = password.lockout.attempts {
-        if attempts == 0 {
-            bail!("host.authentication.password.lockout.attempts is at least 1");
-        }
-        read.attempts = attempts;
-    }
-    read.window = duration(
-        &password.lockout.window,
-        "password.lockout.window",
-        read.window,
-    )?;
-    read.lockout = duration(
-        &password.lockout.duration,
-        "password.lockout.duration",
-        read.lockout,
-    )?;
-    read.lifetime = duration(
-        &section.sessions.lifetime,
-        "sessions.lifetime",
-        read.lifetime,
-    )?;
-    read.idle = duration(&section.sessions.idle, "sessions.idle", read.idle)?;
-    if read.lifetime.is_zero() || read.idle.is_zero() {
-        bail!("host.authentication.sessions: lifetime and idle are positive");
-    }
-    Ok(read)
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -2593,136 +2223,36 @@ mod tests {
     }
 
     #[test]
-    fn test_host_auth_reads_rules_and_public_grants_and_refuses_what_is_never_public() {
+    fn test_host_auth_reads_public_grants_and_refuses_what_is_never_public() {
         let file = ConfigFile::parse(
-            "host:\n  principals:\n    - san_uri: spiffe://acme/alice\n    - spki: \"sha256:ab\"\n  authz:\n    public:\n      - operations: [catalog.read]\n        selector: plane/control/*\n",
+            "host:\n  authz:\n    public:\n      - operations: [catalog.read]\n        selector: plane/control/*\n",
         )
         .expect("the file parses");
         let auth = file.host_auth().expect("the auth section reads");
-        assert_eq!(auth.principals.len(), 2);
         assert_eq!(auth.public.len(), 1);
         assert_eq!(auth.public[0].resource_types, vec!["*"]);
 
         let admin = ConfigFile::parse(
-            "host:\n  authz:\n    public:\n      - operations: [authz.admin]\n        selector: host\n",
+            "host:\n  authz:\n    public:\n      - operations: [accounts.write]\n        selector: plane/authority\n",
         )
         .expect("the file parses");
         let error = admin.host_auth().expect_err("never public").to_string();
         assert!(error.contains("never public"), "{error}");
 
-        let two = ConfigFile::parse(
-            "host:\n  principals:\n    - san_uri: spiffe://acme/alice\n      spki: \"sha256:ab\"\n",
-        )
-        .expect("the file parses");
-        assert!(two.host_auth().is_err(), "exactly one member per rule");
+        // The credential rules, the sign-in and the setup are gone with the IAM Host: the
+        // Authority Plane issues every token.
+        for removed in ["principals: []", "authentication: {}", "setup: {}"] {
+            assert!(
+                ConfigFile::parse(&format!("host:\n  {removed}\n")).is_err(),
+                "{removed}"
+            );
+        }
 
         let unknown = ConfigFile::parse(
             "host:\n  authz:\n    public:\n      - operations: [catalog.delete]\n        selector: host\n",
         )
         .expect("the file parses");
         assert!(unknown.host_auth().is_err(), "an unregistered operation");
-    }
-
-    fn providers(yaml: &str) -> Result<Vec<crate::authz::OidcPrincipalRule>> {
-        let file =
-            ConfigFile::parse(&format!("host:\n  principals:\n{yaml}")).expect("the file parses");
-        Ok(file
-            .host_auth()?
-            .principals
-            .into_iter()
-            .filter_map(|rule| match rule {
-                crate::authz::PrincipalRule::Oidc(oidc) => Some(*oidc),
-                _ => None,
-            })
-            .collect())
-    }
-
-    #[test]
-    fn test_an_identity_provider_reads_with_its_defaults_and_discovers_its_keys() {
-        use crate::authz::OidcKeySource;
-        let read = providers(
-            "    - oidc:\n        issuer: https://login.microsoftonline.com/tenant/v2.0\n        audience: api://permguard\n",
-        )
-        .expect("reads");
-        let entra = &read[0];
-        assert_eq!(
-            entra.name, "login-microsoftonline-com",
-            "the issuer's host by default"
-        );
-        assert_eq!(entra.keys, OidcKeySource::Discovery);
-        assert_eq!(entra.claim, "sub");
-        assert_eq!(entra.refresh, crate::authz::DEFAULT_KEY_REFRESH);
-        assert_eq!(entra.max_stale, crate::authz::DEFAULT_KEY_MAX_STALE);
-        assert_eq!(
-            entra.token_types,
-            vec!["JWT", "at+jwt", "application/at+jwt"]
-        );
-        assert!(entra.clients.is_empty());
-
-        let read = providers(
-            "    - oidc:\n        name: okta\n        issuer: https://acme.okta.com/oauth2/default\n        audience: permguard\n        jwks_uri: https://acme.okta.com/oauth2/default/v1/keys\n        refresh: 10m\n        max_stale: 2h\n        claim: email\n        clients: [cli]\n        ca_file: ./okta-ca.pem\n    - oidc:\n        name: offline\n        issuer: https://idp.internal\n        audience: permguard\n        jwks_file: ./idp.jwks.json\n",
-        )
-        .expect("reads");
-        assert_eq!(
-            read[0].keys,
-            OidcKeySource::Uri("https://acme.okta.com/oauth2/default/v1/keys".to_owned())
-        );
-        assert_eq!(read[0].refresh, std::time::Duration::from_secs(600));
-        assert_eq!(read[0].clients, vec!["cli"]);
-        assert_eq!(
-            read[0].ca_file.as_deref(),
-            Some(std::path::Path::new("./okta-ca.pem"))
-        );
-        assert_eq!(read[1].keys, OidcKeySource::File("./idp.jwks.json".into()));
-    }
-
-    #[test]
-    fn test_an_identity_provider_that_cannot_be_honoured_is_refused_by_name() {
-        let refused = |yaml: &str, says: &str| {
-            let error = format!("{:#}", providers(yaml).expect_err(says));
-            assert!(error.contains(says), "{error}");
-        };
-        let base =
-            "    - oidc:\n        issuer: https://idp.example\n        audience: permguard\n";
-        refused(
-            &format!(
-                "{base}        jwks_uri: https://idp.example/keys\n        jwks_file: ./keys.json\n"
-            ),
-            "exactly one",
-        );
-        refused(&format!("{base}        refresh: 30s\n"), "at least 1m");
-        refused(
-            &format!("{base}        refresh: 20h\n"),
-            "at most half of max_stale",
-        );
-        refused(
-            &format!("{base}        jwks_file: ./keys.json\n        refresh: 1h\n"),
-            "apply to fetched keys",
-        );
-        refused(&format!("{base}        name: Entra\n"), "lowercase");
-        refused(
-            &format!("{base}        jwks_uri: ftp://idp.example/keys\n"),
-            "neither https nor http",
-        );
-        refused(
-            &format!("{base}        jwks_uri: https://user:pw@idp.example/keys\n"),
-            "credentials",
-        );
-        refused(
-            "    - oidc:\n        issuer: idp.example\n        audience: permguard\n",
-            "absolute URL",
-        );
-        refused(
-            "    - oidc:\n        issuer: https://idp.example\n        audience: \"\"\n",
-            "audience is required",
-        );
-        refused(&format!("{base}{base}"), "named `idp-example`");
-        refused(
-            &format!("{base}        token_types: [\"\"]\n"),
-            "empty value",
-        );
-        // Plain HTTP reads here; the server refuses it outside `development`.
-        assert!(providers("    - oidc:\n        issuer: http://keycloak:8080/realms/a\n        audience: permguard\n").is_ok());
     }
 
     #[test]

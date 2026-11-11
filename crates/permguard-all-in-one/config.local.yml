@@ -37,13 +37,10 @@ experimental:
 
 host:
   addr: 127.0.0.1:5443
-  # Who a caller is (WP-2.4). A certificate whose SAN URI a rule names, or whose subject public
-  # key a rule pins, maps to that principal; CN and DN are labels and map nothing. A credential
-  # no rule maps is unauthenticated. The grants a principal holds are issued offline with
-  # `permguard host grants`, and the first administrator with `host grants bootstrap`.
-  # principals:
-  #   - san_uri: "spiffe://acme/operators/alice"
-  #   - spki: "sha256:<64 hex of the subject public key info>"
+  # Who a caller is (`2-security/8`): an access token of the Authority Plane, verified on every
+  # request under the keys and status lists of the `authority` section; what it may do is its
+  # scopes. A certificate acts only as the Host's bootstrap principal, committed offline with
+  # `host grants bootstrap`.
   # What anybody may do without a credential: a development convenience, declared here and
   # never journaled. A production deployment declares none.
   authz:
@@ -53,10 +50,11 @@ host:
       - operations: [decision.evaluate]
         selector: "plane/data/*"
 
-# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over TLS, where
-# grants and keys are administered and the lifecycle and the effective configuration are read.
-# A loopback bind in development may serve plain TLS; anywhere else a client CA is required and
-# `allow` names who may administer. Every route decides with the Host's grants.
+# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over TLS, where the
+# key rings, the memberships and the lifecycle are administered. Every route decides by the
+# caller's access token; peer Hosts and the bootstrap principal present a certificate the client
+# CA verifies, and `client_auth: optional` lets an operator in with a token alone. A loopback bind
+# in development may serve plain TLS; anywhere else a client CA is required.
 admin:
   addr: 127.0.0.1:5444
   tls:
@@ -65,12 +63,31 @@ admin:
 
 runtime:
   planes:
+    - authority
     - control
     - data
   # Every selected plane gates readiness unless it is listed here: an optional plane that
   # fails or waits for a remote is listed as such by `GET /health`, and the rest serves.
   # optional_planes:
   #   - control
+
+# Where this Server verifies access tokens (`2-security/8`): the Authority Plane's URL, which every
+# token names as its issuer. Beside the Authority Plane in this process, its keys and status lists
+# are handed over in-process; a Server without it fetches them from here.
+authority:
+  url: "http://127.0.0.1:8443"
+
+# The Authority Plane: service accounts, their access keys and scopes, and the token endpoint.
+# Its first start makes `admin`, its access key and secret key in planes/authority/admin.key on
+# the volume, readable by the volume's owner alone: move them somewhere safe and delete the file.
+authorityPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:8443
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:8443
 
 controlPlane:
   public:

@@ -58,21 +58,20 @@ sections:
       - crates/permguard-core/src/authz.rs::a_selector_contains_its_prefix_and_its_descendants_only_when_it_says_so
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
       - crates/permguard-host/src/authz/mod.rs::closed_refuses_everybody_and_public_admits_anonymous_and_authenticated_alike
-      - crates/permguard-host/src/authz/mapper.rs::a_san_uri_maps_verbatim_and_a_common_name_maps_nothing
-      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_asks_for_authz_admin_on_the_host_while_it_is_missing
+      - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
+      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
+      - crates/permguard-core/src/authz.rs::a_token_permits_only_what_its_scopes_name
   "1-architecture/1-architecture-server.md#authorization-store":
     paths:
+      - crates/permguard-host/src/operations/grants.rs
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/tokens.rs
       - crates/permguard-host/src/authz/store.rs
-      - crates/permguard-host/src/authz/record.rs
-      - crates/permguard-host/src/authz/oidc.rs
-      - crates/permguard-host/src/api/grants.rs
     tests:
-      - crates/permguard-host/src/authz/store.rs::grants_survive_a_reopen_and_a_revocation_is_terminal
-      - crates/permguard-host/src/authz/store.rs::an_expired_grant_allows_nothing_and_is_written_as_expired_when_noticed
-      - crates/permguard-host/src/authz/store.rs::a_damaged_snapshot_is_rebuilt_from_the_journal
-      - crates/permguard-host/src/authz/oidc.rs::the_key_set_is_looked_at_again_half_way_and_ages_out_only_when_the_file_is_gone
-      - crates/permguard-host/src/authz/oidc.rs::another_issuer_is_not_this_verifiers_and_a_wrong_audience_algorithm_signature_or_expiry_is_refused
-      - crates/permguard-host/src/api/grants.rs::a_create_states_the_revision_it_expects_and_loses_the_race_honestly
+      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
+      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-host/tests/crash_points.rs::every_crash_point_of_a_mutation_recovers_to_one_outcome
     gaps:
       - "open (code): the one-time-claim bootstrap of the recovery administrator is not built, only the offline fingerprint; the grant journal is a segmented directory (recorded interpretation)"
   "1-architecture/1-architecture-server.md#listener-classes":
@@ -94,13 +93,9 @@ sections:
       - crates/permguard-core/src/config.rs
       - crates/permguard-core/src/config_file.rs
       - crates/permguard-host/src/api/config.rs
-      - crates/permguard-host/src/api/grants.rs
     tests:
       - crates/permguard-core/tests/configuration_classes.rs::binds_volume_paths_tls_bootstrap_references_and_instance_ids_are_startup_settings
       - crates/permguard-core/tests/configuration_classes.rs::an_unknown_permguard_variable_fails_startup_by_name_and_build_variables_pass
-      - crates/permguard-host/src/api/grants.rs::a_create_states_the_revision_it_expects_and_loses_the_race_honestly
-      - crates/permguard-host/src/api/grants.rs::a_grant_is_listed_created_and_the_create_is_replayed_not_repeated
-      - crates/permguard-host/src/api/grants.rs::an_audit_intent_that_fails_applies_nothing_and_a_retry_applies_once_it_is_back
       - crates/permguard-host/src/api/config.rs::secrets_are_masked_by_key_and_paths_are_not
   "1-architecture/1-architecture-server.md#volume-ownership-and-files":
     paths:
@@ -137,7 +132,6 @@ sections:
     tests:
       - crates/permguard-host/src/operations/mutation/tests.rs::an_operation_runs_every_step_under_one_operation_id
       - crates/permguard-host/src/operations/mutation/tests.rs::a_request_id_in_flight_is_refused_to_a_second_arrival
-      - crates/permguard-host/src/api/grants.rs::a_create_states_the_revision_it_expects_and_loses_the_race_honestly
       - crates/permguard-host/src/storage/volume.rs::a_second_claim_on_the_same_mount_fails_on_the_lock
       - crates/permguard-core/src/egress.rs::on_the_decision_path_a_call_is_refused_and_counted
   "1-architecture/1-architecture-server.md#deployment-topologies":
@@ -379,11 +373,11 @@ sections:
       - crates/permguard-host/src/membership/task.rs
     tests:
       - crates/permguard-host/src/identity/tests.rs::a_provisioned_identity_opens_again_as_itself_with_a_new_boot_id
-      - crates/permguard-host/src/authz/mapper.rs::a_san_uri_maps_verbatim_and_a_common_name_maps_nothing
       - crates/permguard-server/tests/peer_session.rs::a_connection_changed_between_phases_fails_the_session
       - crates/permguard-host/src/identity/tests.rs::a_rotation_extends_a_chain_that_verifies_from_the_first_fingerprint
       - crates/permguard-server/tests/app.rs::test_a_witness_that_does_not_match_the_volume_refuses_the_start
       - crates/permguard-host/src/membership/task/tests.rs::a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new_boot_id
+      - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
   "1-architecture/3-architecture-server-host-membership.md#model":
     paths:
       - crates/permguard-host/src/membership/record.rs
@@ -1037,12 +1031,12 @@ sections:
       - crates/permguard-host/src/storage/volume.rs
       - crates/permguard-host/src/membership/dormancy.rs
     tests:
-      - crates/permguard-host/src/authz/mapper.rs::a_san_uri_maps_verbatim_and_a_common_name_maps_nothing
       - crates/permguard-host/src/session/tests.rs::a_relayed_session_fails_because_each_connection_has_its_exporter
       - crates/permguard-stream/src/cursor.rs::a_cursor_presented_under_another_scope_is_a_stable_refusal
       - crates/permguard-host/src/storage/dir.rs::a_symbolic_link_is_never_followed
       - crates/permguard-host/tests/volume_lock.rs::a_second_process_on_the_same_mount_fails_on_the_lock
       - crates/permguard-host/src/membership/dormancy/tests.rs::a_silent_member_is_suspended_then_revoked_at_the_thresholds
+      - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
   "1-architecture/7-architecture-security.md#cryptographic-profile-v1":
     paths:
       - crates/permguard-objects/src/crypto/suite.rs
@@ -1203,7 +1197,6 @@ sections:
     tests:
       - crates/permguard-host/src/storage/snapshot.rs::a_snapshot_is_used_only_at_its_revision_and_a_damaged_one_is_rebuilt
       - crates/permguard-control-plane/tests/engine_flow.rs::every_file_of_a_populated_ledger_is_declared
-      - crates/permguard-host/src/authz/store.rs::a_damaged_snapshot_is_rebuilt_from_the_journal
       - crates/permguard-host/src/keys/ring/tests.rs::ring_cbor_is_rebuilt_from_the_journal
   "1-architecture/8-architecture-storage-operations.md#volume-ownership-and-fencing":
     paths:
@@ -1394,14 +1387,12 @@ sections:
     paths:
       - crates/permguard-host/src/operations/mutation.rs
       - crates/permguard-host/src/api/replay.rs
-      - crates/permguard-host/src/api/grants.rs
       - crates/permguard-stream/src/engine/producer.rs
       - crates/permguard-data-plane/src/blocking.rs
     tests:
       - crates/permguard-stream/src/engine/tests.rs::concurrent_appenders_never_share_a_sequence
       - crates/permguard-stream/src/engine/tests.rs::a_failed_group_flush_answers_every_waiting_appender_with_an_error
       - crates/permguard-host/src/operations/mutation/tests.rs::an_operation_runs_every_step_under_one_operation_id
-      - crates/permguard-host/src/api/grants.rs::a_create_states_the_revision_it_expects_and_loses_the_race_honestly
       - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
       - crates/permguard-data-plane/src/blocking.rs::work_beyond_the_bound_is_refused_and_not_queued
   "1-architecture/9-architecture-patterns.md#p4-durability-and-recovery":
@@ -1733,7 +1724,7 @@ sections:
       - crates/permguard-control-plane/tests/engine_flow.rs::an_upload_past_the_ledger_quota_is_refused
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ref_update_the_audit_cannot_record_moves_nothing
       - crates/permguard-control-plane/tests/engine_flow.rs::a_commit_reaching_an_undeclared_unreached_object_is_refused
-      - crates/permguard-control-plane/tests/authorization.rs::a_push_grant_withdrawn_between_negotiation_and_commit_refuses_the_commit
+      - crates/permguard-control-plane/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
   "3-control-plane/2-control-plane-ledger-notp.md#store-durability":
     paths:
       - crates/permguard-control-plane/src/store.rs
@@ -1935,10 +1926,10 @@ sections:
     tests:
       - crates/permguard-data-plane/tests/authorization.rs::f21_an_evaluation_without_a_grant_is_401_before_any_policy_runs
       - crates/permguard-data-plane/tests/authorization.rs::a_public_grant_under_the_plane_lets_the_request_reach_the_decision_path
-      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist
       - crates/permguard-data-plane/tests/authz_decision.rs::one_pipeline_authorizes_then_answers_each_question_by_its_own_interface
       - crates/permguard-data-plane/tests/authz_decision.rs::test_every_payload_gets_the_same_answer_or_refusal_over_rest_and_grpc
       - crates/permguard-data-plane/tests/authz_decision.rs::an_indeterminate_evaluation_is_a_typed_refusal_not_a_deny
+      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
   "4-data-plane/1-data-plane.md#no-network-decision-invariant":
     paths:
       - crates/permguard-core/src/egress.rs
@@ -2055,7 +2046,7 @@ sections:
       - crates/permguard-languages/src/request.rs::a_batch_larger_than_the_plane_accepts_is_refused_not_attempted
       - crates/permguard-languages/src/request.rs::a_field_this_interface_does_not_know_is_refused_rather_than_ignored
       - crates/permguard-data-plane/src/authz/wire.rs::anything_else_is_dropped_rather_than_recorded
-      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist
+      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
   "4-data-plane/2-data-plane-pdp.md#outcome-algebra":
     paths:
       - crates/permguard-languages/src/evaluate.rs
@@ -2075,10 +2066,10 @@ sections:
       - crates/permguard-data-plane/src/authz/snapshot.rs
     tests:
       - crates/permguard-data-plane/tests/authz_decision.rs::one_pipeline_authorizes_then_answers_each_question_by_its_own_interface
-      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist
       - crates/permguard-data-plane/tests/authz_decision.rs::a_head_this_engine_cannot_serve_refuses_instead_of_answering_from_the_old_commit
       - crates/permguard-data-plane/src/authz/cache.rs::the_commit_is_part_of_the_key_so_a_sync_replaces_nothing
       - crates/permguard-data-plane/tests/authz_decision.rs::a_decision_records_its_evidence_on_the_decision_path
+      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
   "4-data-plane/2-data-plane-pdp.md#load-gate":
     paths:
       - crates/permguard-data-plane/src/authz/decide.rs
@@ -2158,7 +2149,7 @@ sections:
       - crates/permguard-data-plane/tests/authz_decision.rs::an_indeterminate_evaluation_is_a_typed_refusal_not_a_deny
       - crates/permguard-data-plane/tests/authz_decision.rs::every_decision_names_its_evidence_and_a_nonce_is_refused_until_something_signs
       - crates/permguard-data-plane/tests/authz_decision.rs::a_signed_response_binds_the_request_the_answer_and_the_policy_state
-      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist
+      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
     gaps:
       - "open (code, deferred by the owner): best-effort evidence mode"
   "4-data-plane/3-data-plane-mirrors-notp.md#source-identity":
@@ -3103,7 +3094,7 @@ sections:
       - crates/permguard-cli/src/commands/mod.rs
     tests:
       - crates/permguard-cli/src/args.rs::test_the_command_tree_is_the_inventory
-      - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_grants_command_families_are_complete
+      - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_authority_command_families_are_complete
     gaps:
       - "open (code): the commands blocked in ops/command-line.md (catalog holds and tombstones, host secrets, drain and maintenance, the non-object gc jobs, storage quota and probe, CLI streams verify)"
   "6-command-line/1-command-line.md#library":
@@ -3130,11 +3121,11 @@ sections:
       - crates/permguard-cli/src/failure.rs
       - crates/permguard-cli/src/confirm.rs
     tests:
-      - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_grants_command_families_are_complete
       - crates/permguard-cli/tests/cli.rs::the_offline_host_commands_take_the_global_volume
       - crates/permguard-cli/tests/transports.rs::the_token_travels_as_a_bearer_on_both_transports_and_never_in_a_report
       - crates/permguard-cli/tests/transports.rs::a_decision_read_that_does_not_verify_exits_two_over_both_transports
       - crates/permguard-cli/tests/host_membership_lifecycle.rs::the_object_sweep_is_planned_and_run_over_both_transports
+      - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_authority_command_families_are_complete
     gaps:
       - "open (code): gc mirrors, imports and streams plan/run are blocked"
   "6-command-line/2-command-line-commands.md#workspace":
@@ -3185,7 +3176,7 @@ sections:
       - crates/permguard-cli/tests/host_membership_lifecycle.rs::the_cli_drives_a_two_host_membership_lifecycle_over_rest
       - crates/permguard-cli/tests/transports.rs::the_host_facade_reads_the_same_over_https_and_grpcs
       - crates/permguard-host/src/api/identity.rs::a_rotation_needs_identity_admin_states_its_epoch_and_is_replayed
-      - crates/permguard-cli/tests/host_membership_lifecycle.rs::the_grant_and_identity_commands_answer_over_both_transports
+      - crates/permguard-cli/tests/host_membership_lifecycle.rs::the_identity_and_bootstrap_commands_answer_over_both_transports
     gaps:
       - "open (code): the online `host identity reset` is not implemented; the reset exists offline"
   "6-command-line/2-command-line-commands.md#membership":
@@ -3210,16 +3201,6 @@ sections:
       - crates/permguard-host/src/keys/bundle/tests.rs::a_ring_exports_offline_from_its_journal
     gaps:
       - "open (code): host secrets list, witness verify and rotate have no Host route"
-  "6-command-line/2-command-line-commands.md#grants":
-    paths:
-      - crates/permguard-cli/src/commands/host.rs
-      - crates/permguard-host/src/api/grants.rs
-    tests:
-      - crates/permguard-cli/tests/transports.rs::the_host_facade_reads_the_same_over_https_and_grpcs
-      - crates/permguard-host/src/api/grants.rs::a_grant_is_listed_created_and_the_create_is_replayed_not_repeated
-      - crates/permguard-host/src/api/grants.rs::a_revocation_is_planned_then_run_once_with_the_plan_it_was_given
-      - crates/permguard-cli/tests/restore.rs::a_forensic_volume_is_never_made_servable
-      - crates/permguard-cli/tests/host_membership_lifecycle.rs::the_grant_and_identity_commands_answer_over_both_transports
   "6-command-line/2-command-line-commands.md#audit":
     paths:
       - crates/permguard-cli/src/commands/host_ops.rs
@@ -3373,10 +3354,10 @@ sections:
       - crates/permguard-data-plane/src/decisions/record.rs
     tests:
       - crates/permguard-core/src/authz.rs::a_principal_is_exact_bounded_and_free_of_control_characters
-      - crates/permguard-host/src/authz/mapper.rs::colliding_rules_and_the_reserved_principal_fail_startup
       - crates/permguard-data-plane/tests/authz_decision.rs::the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_assertion
       - crates/permguard-data-plane/tests/authz_decision.rs::a_record_binds_its_interface_its_actor_apart_from_the_asserted_principal_and_its_question
       - crates/permguard-data-plane/tests/authz_decision.rs::a_signed_response_binds_the_request_the_answer_and_the_policy_state
+      - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
   "7-contracts/0-interfaces-model.md#field-and-transport-rules":
     paths:
       - crates/permguard-languages/src/request.rs
@@ -4124,7 +4105,6 @@ sections:
       - crates/permguard-server/src/host_api/http.rs
     tests:
       - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
-      - crates/permguard-host/src/api/grants.rs::a_create_states_the_revision_it_expects_and_loses_the_race_honestly
       - crates/permguard-host/src/api/plans/tests.rs::a_run_consumes_the_receipt_once
       - crates/permguard-host/src/api/plans/tests.rs::under_regulated_reset_and_key_revocation_are_refused_below_the_approval_count
       - crates/permguard-host/src/api/bounds.rs::concurrency_is_bounded_per_principal_and_released_on_drop
@@ -4171,17 +4151,6 @@ sections:
       - crates/permguard-host/src/session/tests.rs::the_proof_signs_the_connections_exporter_and_never_one_read_from_a_frame
       - crates/permguard-host/src/membership/appraisal/tests.rs::a_declaration_never_satisfies_what_the_policy_wants_appraised
       - crates/permguard-server/tests/host_api.rs::both_transports_answer_the_same_vectors_and_replay_the_same_mutations
-  "7-contracts/8-contract-host-api.md#grants":
-    paths:
-      - crates/permguard-host/src/api/grants.rs
-      - crates/permguard-server/src/host_api/http.rs
-      - crates/permguard-server/src/host_api/grpc.rs
-    tests:
-      - crates/permguard-host/src/api/grants.rs::a_grant_is_listed_created_and_the_create_is_replayed_not_repeated
-      - crates/permguard-host/src/api/grants.rs::a_revocation_is_planned_then_run_once_with_the_plan_it_was_given
-      - crates/permguard-host/src/api/grants.rs::a_plan_made_against_a_stale_revision_is_refused_with_the_current_one
-      - crates/permguard-host/src/api/grants.rs::a_create_validates_before_it_journals
-      - crates/permguard-server/tests/host_api.rs::every_rest_answer_conforms_to_the_host_api_document
   "7-contracts/8-contract-host-api.md#keys-and-secrets":
     paths:
       - crates/permguard-host/src/api/keys.rs
@@ -4248,10 +4217,6 @@ sections:
       - crates/permguard-host/src/api/keys/tests.rs::the_ring_is_public_with_its_epoch_digest_and_binding_and_the_list_is_gated
   "1-architecture/1-architecture-server.md#authentication":
     informative: "a pointer to the 2-security folder, stating no rule of its own"
-  "6-command-line/2-command-line-commands.md#roles-local-users-sign-in-and-identity-providers":
-    informative: "a pointer to 2-security/7, stating no rule of its own"
-  "7-contracts/8-contract-host-api.md#roles-local-users-sign-in-recovery-and-identity-providers":
-    informative: "a pointer to 2-security/5, stating no rule of its own"
   "2-security/1-security-overview.md#ways-in":
     paths:
       - crates/permguard-server/src/app.rs
@@ -4259,175 +4224,39 @@ sections:
       - crates/permguard-host/src/authz/mapper.rs
     tests:
       - crates/permguard-transport/src/actor.rs::the_actor_is_decided_once_and_a_failing_credential_is_answered_before_the_handler
-      - crates/permguard-host/src/authz/mapper.rs::sessions_and_provider_subjects_act_as_local_users_and_only_the_admitted_methods_sign_in
   "2-security/1-security-overview.md#who-may-do-what":
     paths:
       - crates/permguard-host/src/authz/mod.rs
-      - crates/permguard-host/src/authz/directory.rs
       - crates/permguard-host/src/api/mod.rs
     tests:
-      - crates/permguard-host/src/authz/mod.rs::a_member_acts_with_its_roles_grants_and_an_issuer_member_stands_for_every_subject
-      - crates/permguard-server/tests/host_api.rs::a_call_a_role_allowed_names_the_role_in_the_access_trail
+      - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
+      - crates/permguard-host/src/authz/mod.rs::the_bootstrap_holds_its_per_host_operations_and_nothing_more
+      - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
   "2-security/1-security-overview.md#methods-and-profiles":
     paths:
+      - crates/permguard-authority-plane/src/plane.rs
+      - crates/permguard-control-client/src/token_source.rs
       - crates/permguard-core/src/config_file.rs
       - crates/permguard-server/src/app.rs
     tests:
-      - crates/permguard-host/src/authz/mapper.rs::sessions_and_provider_subjects_act_as_local_users_and_only_the_admitted_methods_sign_in
-      - crates/permguard-server/src/oidc_refresh.rs::a_mismatched_issuer_a_redirect_an_oversized_set_and_plain_http_are_refused
+      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
   "2-security/1-security-overview.md#documents":
     informative: "the folder's document map, stating no rule of its own"
   "2-security/1-security-overview.md#what-is-audited":
     paths:
+      - crates/permguard-authority-plane/src/authority.rs
+      - crates/permguard-host/src/api/mod.rs
       - crates/permguard-host/src/audit/mod.rs
-      - crates/permguard-server/src/signin_http.rs
-      - crates/permguard-server/src/setup_http.rs
-      - crates/permguard-host/src/api/recovery.rs
     tests:
-      - crates/permguard-server/tests/host_api.rs::a_call_a_role_allowed_names_the_role_in_the_access_trail
+      - crates/permguard-server/tests/host_api.rs::a_call_a_token_allowed_names_its_jti_in_the_access_trail
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
   "2-security/1-security-overview.md#what-is-observed":
     paths:
-      - crates/permguard-server/src/oidc_refresh.rs
       - crates/permguard-server/src/app.rs
-      - crates/permguard-host/src/api/recovery.rs
     tests:
-      - crates/permguard-server/src/oidc_refresh.rs::a_failed_fetch_is_recorded_and_retried
       - crates/permguard-server/tests/app.rs::test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded
-  "2-security/2-security-identity-providers.md#providers":
-    paths:
-      - crates/permguard-host/src/authz/oidc.rs
-      - crates/permguard-host/src/authz/mapper.rs
-      - crates/permguard-core/src/authz.rs
-    tests:
-      - crates/permguard-host/src/authz/oidc.rs::a_pinned_token_verifies_and_names_the_principal_from_the_claim
-      - crates/permguard-host/src/authz/oidc.rs::a_rule_that_cannot_be_honoured_fails_startup
-  "2-security/2-security-identity-providers.md#provider-keys":
-    paths:
-      - crates/permguard-core/src/config_file.rs
-      - crates/permguard-host/src/authz/oidc.rs
-    tests:
-      - crates/permguard-host/src/authz/oidc.rs::a_rule_that_cannot_be_honoured_fails_startup
-      - crates/permguard-host/src/authz/oidc.rs::keys_of_another_use_type_size_or_algorithm_are_skipped_never_fatal
-  "2-security/2-security-identity-providers.md#key-refresh":
-    paths:
-      - crates/permguard-server/src/oidc_refresh.rs
-      - crates/permguard-host/src/authz/oidc.rs
-    tests:
-      - crates/permguard-server/src/oidc_refresh.rs::the_keys_are_found_through_discovery_and_held_by_the_task
-      - crates/permguard-server/src/oidc_refresh.rs::a_rotated_key_is_fetched_early_when_a_token_names_it
-      - crates/permguard-server/src/oidc_refresh.rs::a_mismatched_issuer_a_redirect_an_oversized_set_and_plain_http_are_refused
-      - crates/permguard-host/src/authz/oidc.rs::an_unknown_key_asks_for_an_early_fetch_at_most_once_a_minute
-    gaps:
-      - "the kept key set on the volume carries no MAC: the same trust boundary as the journals (WP-8.1 review, left as is)"
-  "2-security/2-security-identity-providers.md#token-checks":
-    paths:
-      - crates/permguard-host/src/authz/oidc.rs
-    tests:
-      - crates/permguard-host/src/authz/oidc.rs::another_issuer_is_not_this_verifiers_and_a_wrong_audience_algorithm_signature_or_expiry_is_refused
-      - crates/permguard-host/src/authz/oidc.rs::expiry_reads_wall_time_and_the_stale_window_reads_monotonic_time
-  "2-security/3-security-local-users.md#methods":
-    paths:
-      - crates/permguard-host/src/authz/mapper.rs
-      - crates/permguard-core/src/config_file.rs
-    tests:
-      - crates/permguard-host/src/authz/mapper.rs::sessions_and_provider_subjects_act_as_local_users_and_only_the_admitted_methods_sign_in
-  "2-security/3-security-local-users.md#configuration":
-    paths:
-      - crates/permguard-core/src/config_file.rs
-      - crates/permguard-server/src/app.rs
-    tests:
-      - crates/permguard-host/src/authz/signin.rs::a_password_opens_a_session_and_every_failure_is_one_refusal
-  "2-security/3-security-local-users.md#rules":
-    paths:
-      - crates/permguard-host/src/authz/password.rs
-      - crates/permguard-host/src/authz/factor.rs
-      - crates/permguard-host/src/authz/sessions.rs
-      - crates/permguard-host/src/authz/lockout.rs
-      - crates/permguard-host/src/authz/signin.rs
-      - crates/permguard-server/src/signin_http.rs
-    tests:
-      - crates/permguard-host/src/authz/password.rs::a_password_is_kept_as_argon2id_and_verifies_only_itself
-      - crates/permguard-host/src/authz/password.rs::the_policy_refuses_short_long_blank_and_the_name
-      - crates/permguard-host/src/authz/factor.rs::a_code_matches_one_step_either_way_and_once
-      - crates/permguard-host/src/authz/factor.rs::a_sealed_secret_opens_only_for_its_user_and_key
-      - crates/permguard-host/src/authz/sessions.rs::a_session_is_a_random_token_kept_as_its_digest_and_ends_idle_or_at_its_lifetime
-      - crates/permguard-host/src/authz/lockout.rs::failures_in_the_window_lock_for_the_duration_and_a_source_at_four_times
-      - crates/permguard-host/src/authz/signin.rs::a_session_guessing_its_password_is_locked_out_and_ended
-      - crates/permguard-server/src/signin_http.rs::a_session_reaches_the_routes_that_take_one
-  "2-security/3-security-local-users.md#directory-transitions":
-    paths:
-      - crates/permguard-host/src/authz/directory.rs
-      - crates/permguard-host/src/operations/directory.rs
-    tests:
-      - crates/permguard-host/src/authz/directory.rs::a_status_password_and_factor_change_are_journaled
-      - crates/permguard-host/src/authz/directory.rs::roles_members_users_and_links_survive_a_reopen
-  "2-security/4-security-first-administrator.md#the-setup-code":
-    paths:
-      - crates/permguard-host/src/setup.rs
-      - crates/permguard-server/src/setup_http.rs
-      - crates/permguard-server/src/app.rs
-    tests:
-      - crates/permguard-host/src/setup.rs::a_host_without_an_administrator_waits_for_one_code_kept_only_as_its_digest
-      - crates/permguard-host/src/setup.rs::two_setups_with_one_code_make_one_administrator
-      - crates/permguard-host/src/setup.rs::a_code_appears_only_the_first_time_and_a_supplied_one_expires_for_good
-      - crates/permguard-server/src/setup_http.rs::the_code_makes_the_first_administrator_once_then_the_route_is_gone
-      - crates/permguard-server/src/setup_http.rs::refusals_close_the_route_and_the_clear_takes_no_code
-      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_first_administrator_with_the_setup_code_once
-  "2-security/4-security-first-administrator.md#recovery":
-    paths:
-      - crates/permguard-host/src/setup.rs
-      - crates/permguard-host/src/api/recovery.rs
-      - crates/permguard-cli/src/commands/directory.rs
-    tests:
-      - crates/permguard-host/src/setup.rs::a_recovery_waits_although_administered_and_until_acknowledged
-      - crates/permguard-cli/tests/first_administrator.rs::a_bootstrap_makes_only_the_first_administrator_and_recovery_makes_a_code
-  "2-security/4-security-first-administrator.md#offline-bootstraps":
-    paths:
-      - crates/permguard-cli/src/commands/host.rs
-      - crates/permguard-cli/src/commands/directory.rs
-    tests:
-      - crates/permguard-cli/tests/first_administrator.rs::a_bootstrap_makes_only_the_first_administrator_and_recovery_makes_a_code
-  "2-security/4-security-first-administrator.md#library-calls":
-    paths:
-      - crates/permguard-host/src/setup.rs
-      - crates/permguard-control-client/src/signin.rs
-      - crates/permguard-control-client/src/host/directory.rs
-    tests:
-      - crates/permguard-host/src/setup.rs::the_code_makes_one_new_administrator_once
-  "2-security/5-security-management-api.md#roles":
-    paths:
-      - crates/permguard-host/src/api/directory.rs
-      - crates/permguard-server/src/host_api/http.rs
-      - crates/permguard-server/src/host_api/grpc/directory.rs
-    tests:
-      - crates/permguard-server/tests/host_api.rs::roles_and_users_answer_the_same_over_both_transports
-  "2-security/5-security-management-api.md#local-users":
-    paths:
-      - crates/permguard-host/src/api/directory.rs
-      - crates/permguard-server/src/host_api/http.rs
-    tests:
-      - crates/permguard-server/tests/host_api.rs::roles_and_users_answer_the_same_over_both_transports
-      - crates/permguard-server/tests/host_api.rs::a_password_is_read_only_after_the_caller_is_authorized
-  "2-security/5-security-management-api.md#sign-in":
-    paths:
-      - crates/permguard-server/src/signin_http.rs
-      - crates/permguard-server/src/setup_http.rs
-    tests:
-      - crates/permguard-server/src/signin_http.rs::a_session_reaches_the_routes_that_take_one
-      - crates/permguard-server/src/setup_http.rs::the_code_makes_the_first_administrator_once_then_the_route_is_gone
-  "2-security/5-security-management-api.md#recovery":
-    paths:
-      - crates/permguard-host/src/api/recovery.rs
-      - crates/permguard-server/src/host_api/http.rs
-      - crates/permguard-server/src/host_api/grpc.rs
-    tests:
-      - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
-  "2-security/5-security-management-api.md#identity-providers":
-    paths:
-      - crates/permguard-host/src/api/directory.rs
-      - crates/permguard-server/src/oidc_refresh.rs
-    tests:
-      - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
   "2-security/6-security-api-protection.md#the-authentication-boundary":
     paths:
       - crates/permguard-transport/src/actor.rs
@@ -4437,14 +4266,8 @@ sections:
       - crates/permguard-transport/src/actor.rs::the_actor_is_decided_once_and_a_failing_credential_is_answered_before_the_handler
       - crates/permguard-transport/src/actor.rs::a_credential_scheme_the_boundary_does_not_read_is_refused_not_ignored
       - crates/permguard-transport/src/actor.rs::a_request_without_the_layer_is_refused_never_anonymous
-      - crates/permguard-server/src/signin_http.rs::a_session_reaches_the_routes_that_take_one
-  "2-security/6-security-api-protection.md#every-route-behind-a-grant":
-    paths:
-      - crates/permguard-host/src/api/mod.rs
-      - crates/permguard-server/src/host_api/http.rs
-    tests:
-      - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
-      - crates/permguard-server/tests/host_api.rs::a_password_is_read_only_after_the_caller_is_authorized
+      - crates/permguard-host/src/authz/access_tokens.rs::the_authenticator_decides_every_bearer_and_asks_for_a_key_it_lacks
+      - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
   "2-security/6-security-api-protection.md#transport":
     paths:
       - crates/permguard-transport/src/actor.rs
@@ -4456,7 +4279,7 @@ sections:
       - crates/permguard-transport/src/actor.rs::a_refused_bearer_is_challenged_with_the_bearer_scheme
       - crates/permguard-transport/tests/tls.rs::test_an_optional_client_certificate_is_verified_when_presented_and_not_demanded
       - crates/permguard-core/src/config.rs::an_optional_client_certificate_needs_an_authority_and_no_allow_list
-      - crates/permguard-host/src/authz/mapper.rs::colliding_rules_and_the_reserved_principal_fail_startup
+      - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
   "2-security/6-security-api-protection.md#surfaces":
     paths:
       - crates/permguard-server/src/plane/mod.rs
@@ -4464,26 +4287,289 @@ sections:
       - crates/permguard-telemetry/src/service.rs
     tests:
       - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
-  "2-security/6-security-api-protection.md#proven-by":
-    informative: "the evidence the other sections name, listed together; it states no rule of its own"
-  "2-security/7-security-command-line.md#roles":
+  "2-security/8-security-authority.md#where-it-runs":
     paths:
-      - crates/permguard-cli/src/commands/directory.rs
-      - crates/permguard-cli/src/commands/roles_apply.rs
+      - crates/permguard-authority-plane/src/plane.rs
+      - crates/permguard-all-in-one/src/main_entry.rs
+      - crates/permguard-control-plane/src/main_entry.rs
+      - crates/permguard-server/src/plane/mod.rs
     tests:
-      - crates/permguard-cli/tests/transports.rs::roles_apply_converges_the_host_and_refuses_a_plan_it_moved_past
-      - crates/permguard-cli/src/commands/roles_apply.rs::widening_comes_before_narrowing_and_a_converged_role_changes_nothing
-  "2-security/7-security-command-line.md#local-users-and-sign-in":
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "2-security/8-security-authority.md#service-accounts":
     paths:
-      - crates/permguard-cli/src/commands/directory.rs
-      - crates/permguard-control-client/src/signin.rs
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/authority.rs
     tests:
-      - crates/permguard-cli/tests/first_administrator.rs::a_bootstrap_makes_only_the_first_administrator_and_recovery_makes_a_code
-  "2-security/7-security-command-line.md#identity-providers":
+      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "2-security/8-security-authority.md#access-keys":
     paths:
-      - crates/permguard-cli/src/commands/directory.rs
+      - crates/permguard-authority-plane/src/access_keys.rs
+      - crates/permguard-authority-plane/src/accounts.rs
     tests:
-      - crates/permguard-cli/src/args.rs::test_the_command_tree_is_the_inventory
+      - crates/permguard-authority-plane/src/access_keys.rs::keys_have_their_form_and_never_repeat
+      - crates/permguard-authority-plane/src/access_keys.rs::a_secret_is_kept_as_argon2id_and_verifies_only_itself
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "2-security/8-security-authority.md#the-administrator":
+    paths:
+      - crates/permguard-authority-plane/src/admin.rs
+      - crates/permguard-cli/src/commands/authority.rs
+    tests:
+      - crates/permguard-authority-plane/src/admin.rs::the_first_start_makes_admin_once_and_writes_its_key_owner_only
+      - crates/permguard-authority-plane/src/accounts.rs::the_administrators_scopes_are_coherent_and_reach_every_plane
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
+      - crates/permguard-cli/tests/first_administrator.rs::the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret
+  "2-security/8-security-authority.md#access-tokens":
+    paths:
+      - crates/permguard-authority-plane/src/authority.rs
+      - crates/permguard-authority-plane/src/tokens.rs
+    tests:
+      - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
+      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-host/src/authz/access_tokens.rs::a_valid_token_verifies_into_its_scopes
+  "2-security/8-security-authority.md#token-endpoint":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane/src/authority.rs
+    tests:
+      - crates/permguard-authority-plane/src/http.rs::a_form_reads_once_and_takes_one_proof
+      - crates/permguard-authority-plane/src/authority.rs::a_refusal_names_the_rule_never_the_cause
+      - crates/permguard-control-client/src/authority.rs::the_token_form_carries_the_proof_in_basic_and_never_in_the_body
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
+  "2-security/8-security-authority.md#authorization":
+    paths:
+      - crates/permguard-host/src/authz/mod.rs
+      - crates/permguard-core/src/authz.rs
+    tests:
+      - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
+      - crates/permguard-host/src/authz/mod.rs::the_bootstrap_holds_its_per_host_operations_and_nothing_more
+      - crates/permguard-core/src/authz.rs::a_token_permits_only_what_its_scopes_name
+      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-data-plane/tests/authz_decision.rs::a_token_caller_evaluates_within_its_scope_and_targets_alone
+  "2-security/8-security-authority.md#verifying-a-token":
+    paths:
+      - crates/permguard-host/src/authz/access_tokens.rs
+      - crates/permguard-host/src/authz/status_lists.rs
+    tests:
+      - crates/permguard-host/src/authz/access_tokens.rs::a_valid_token_verifies_into_its_scopes
+      - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
+      - crates/permguard-host/src/authz/access_tokens.rs::the_authenticator_decides_every_bearer_and_asks_for_a_key_it_lacks
+      - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
+  "2-security/8-security-authority.md#keys-and-lists-on-a-plane":
+    paths:
+      - crates/permguard-host/src/authz/authority.rs
+      - crates/permguard-server/src/authority_refresh.rs
+    tests:
+      - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
+      - crates/permguard-host/src/authz/authority.rs::an_announced_issuer_and_an_unknown_key_are_taken_in_turn
+      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+    gaps:
+      - "open (test): the fetch from authority.url over HTTPS, its schedule and its metrics are proven by the lab, not by a Rust test"
+  "2-security/8-security-authority.md#profiles":
+    paths:
+      - crates/permguard-authority-plane/src/plane.rs
+      - crates/permguard-authority-plane/src/authority.rs
+      - crates/permguard-control-client/src/token_source.rs
+    tests:
+      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
+  "2-security/8-security-authority.md#editions":
+    informative: "what each edition carries, a product statement with no rule a build checks"
+  "2-security/8-security-authority.md#audit":
+    paths:
+      - crates/permguard-authority-plane/src/authority.rs
+      - crates/permguard-host/src/audit/mod.rs
+    tests:
+      - crates/permguard-server/tests/host_api.rs::a_call_a_token_allowed_names_its_jti_in_the_access_trail
+      - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
+  "2-security/9-security-token-status.md#the-list":
+    paths:
+      - crates/permguard-authority-plane/src/tokens.rs
+      - crates/permguard-objects/src/status_list.rs
+    tests:
+      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
+  "2-security/9-security-token-status.md#the-status-list-token":
+    paths:
+      - crates/permguard-authority-plane/src/authority.rs
+      - crates/permguard-host/src/authz/status_lists.rs
+    tests:
+      - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
+      - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
+  "2-security/9-security-token-status.md#delivery":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-server/src/authority_refresh.rs
+      - crates/permguard-host/src/authz/authority.rs
+    tests:
+      - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
+      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+    gaps:
+      - "open (test): the fetch of the lists over HTTPS on a Plane without the Authority Plane is proven by the lab, not by a Rust test"
+  "2-security/9-security-token-status.md#checking-a-token":
+    paths:
+      - crates/permguard-host/src/authz/access_tokens.rs
+      - crates/permguard-host/src/authz/status_lists.rs
+    tests:
+      - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
+      - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
+      - crates/permguard-control-plane/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "2-security/9-security-token-status.md#evidence":
+    paths:
+      - crates/permguard-data-plane/src/authz/signing.rs
+      - crates/permguard-core/src/authz.rs
+    tests:
+      - crates/permguard-data-plane/tests/authz_decision.rs::the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_assertion
+  "2-security/9-security-token-status.md#signals":
+    paths:
+      - crates/permguard-server/src/authority_refresh.rs
+    tests:
+      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+    gaps:
+      - "open (test): the age, expiry, failure and rejection metrics are read from the lab's Prometheus, not by a Rust test"
+  "2-security/10-security-threat-model.md#assets":
+    informative: "a list of what the threat model protects, stating no rule of its own"
+  "2-security/10-security-threat-model.md#threats-and-controls":
+    paths:
+      - crates/permguard-host/src/authz/access_tokens.rs
+      - crates/permguard-authority-plane/src/access_keys.rs
+      - crates/permguard-authority-plane/src/authority.rs
+    tests:
+      - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
+      - crates/permguard-authority-plane/src/access_keys.rs::a_secret_is_kept_as_argon2id_and_verifies_only_itself
+      - crates/permguard-authority-plane/src/authority.rs::a_refusal_names_the_rule_never_the_cause
+      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+  "2-security/10-security-threat-model.md#out-of-scope":
+    informative: "what the threat model leaves out, stating no rule of its own"
+  "2-security/5-security-management-api.md#service-accounts":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane/src/grpc.rs
+      - contracts/openapi/authority.json
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+  "2-security/5-security-management-api.md#access-keys":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane/src/grpc.rs
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+      - crates/permguard-authority-plane/src/access_keys.rs::keys_have_their_form_and_never_repeat
+  "2-security/5-security-management-api.md#scopes":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-core/src/authz.rs
+    tests:
+      - crates/permguard-core/src/authz.rs::a_grant_fits_only_where_its_operation_applies
+      - crates/permguard-core/src/authz.rs::the_authority_operations_fit_the_authority_plane_alone
+      - crates/permguard-authority-plane/src/accounts.rs::the_administrators_scopes_are_coherent_and_reach_every_plane
+  "2-security/5-security-management-api.md#tokens":
+    paths:
+      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane/src/grpc.rs
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+  "2-security/6-security-api-protection.md#every-route-behind-a-scope":
+    paths:
+      - crates/permguard-server/src/host_api/http.rs
+      - crates/permguard-server/src/host_api/grpc.rs
+      - crates/permguard-host/src/authz/mod.rs
+    tests:
+      - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
+      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-data-plane/tests/authz_decision.rs::a_token_caller_evaluates_within_its_scope_and_targets_alone
+  "2-security/6-security-api-protection.md#scope-coherence":
+    paths:
+      - crates/permguard-core/src/authz.rs
+      - crates/permguard-authority-plane/src/accounts.rs
+    tests:
+      - crates/permguard-core/src/authz.rs::a_grant_fits_only_where_its_operation_applies
+      - crates/permguard-core/src/authz.rs::the_authority_operations_fit_the_authority_plane_alone
+      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+  "2-security/7-security-command-line.md#service-accounts":
+    paths:
+      - crates/permguard-cli/src/commands/authority.rs
+      - crates/permguard-cli/src/args.rs
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+      - crates/permguard-cli/src/commands/authority.rs::a_scope_reads_its_operations_and_its_selector
+  "2-security/7-security-command-line.md#the-client":
+    paths:
+      - crates/permguard-cli/src/client_token.rs
+      - crates/permguard-control-client/src/token_source.rs
+    tests:
+      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "2-security/7-security-command-line.md#tokens":
+    paths:
+      - crates/permguard-cli/src/commands/authority.rs
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+  "6-command-line/2-command-line-commands.md#service-accounts-and-access-tokens":
+    paths:
+      - crates/permguard-cli/src/commands/authority.rs
+      - ops/command-line.md
+    tests:
+      - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
+      - crates/permguard-cli/tests/first_administrator.rs::the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret
+      - crates/permguard-cli/tests/cli.rs::the_host_identity_members_and_authority_command_families_are_complete
+  "7-contracts/8-contract-host-api.md#service-accounts-and-tokens":
+    informative: "a pointer to 2-security/5, stating no rule of its own"
+  "7-contracts/0-interfaces-model.md#path-layout":
+    paths:
+      - crates/permguard-conformance/tests/api_layout.rs
+      - contracts/endpoints.csv
+    tests:
+      - crates/permguard-conformance/tests/api_layout.rs::the_layout_rule_reads_paths_as_the_contract_says
+      - crates/permguard-conformance/tests/api_layout.rs::every_published_path_is_on_the_layout
+      - crates/permguard-conformance/tests/api_layout.rs::every_mounted_route_is_on_the_layout
+      - crates/permguard-conformance/tests/api_layout.rs::endpoints_csv_is_what_the_contracts_say
+  "1-architecture/11-architecture-deployment-conformance.md#join-from-an-invitation-file":
+    paths:
+      - crates/permguard-server/src/join.rs
+      - crates/permguard-host/src/api/members.rs
+    tests:
+      - crates/permguard-server/tests/peer_session.rs::a_member_joins_by_itself_from_an_invitation_and_waits_for_its_approval
+      - crates/permguard-core/tests/refusals.rs::a_join_names_its_invitation_and_its_pin_from_any_layer
+      - crates/permguard-server/src/join.rs::an_invitation_file_is_read_only_when_no_other_user_can
+  "1-architecture/11-architecture-deployment-conformance.md#the-host-identity-under-production":
+    paths:
+      - crates/permguard-server/src/app.rs
+      - charts/permguard
+    tests:
+      - crates/permguard-server/tests/app.rs::test_a_production_volume_without_an_identity_refuses_to_start_and_mints_nothing
+      - crates/permguard-server/tests/app.rs::test_a_production_volume_holds_no_plaintext_identity_key
+      - crates/permguard-conformance/tests/chart.rs::from_production_every_host_makes_its_identity_offline_and_takes_its_witness
+  "1-architecture/3-architecture-server-host-membership.md#members-names-and-groups":
+    paths:
+      - crates/permguard-host/src/membership/mod.rs
+    tests:
+      - crates/permguard-host/src/membership/tests.rs::an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat
+      - crates/permguard-host/src/membership/tests.rs::the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them
+  "3-control-plane/3-control-plane-evidence-stores.md#what-a-decision-store-accepts-in-clear":
+    paths:
+      - crates/permguard-decisions/src/ceiling.rs
+      - crates/permguard-control-plane/src/service.rs
+    tests:
+      - crates/permguard-decisions/src/ceiling.rs::a_record_within_the_ceiling_is_accepted
+      - crates/permguard-decisions/src/ceiling.rs::a_member_beyond_the_ceiling_is_named
+      - crates/permguard-decisions/src/ceiling.rs::every_member_is_accepted_under_the_star_and_none_under_an_empty_ceiling
+      - crates/permguard-control-plane/src/service.rs::the_decision_store_is_composed_with_its_ceiling
+  "4-data-plane/4-data-plane-decision-log.md#what-is-recorded-in-clear":
+    paths:
+      - crates/permguard-data-plane/src/authz/decide.rs
+      - crates/permguard-core/src/assurance.rs
+    tests:
+      - crates/permguard-data-plane/src/authz/decide.rs::a_record_keeps_in_clear_what_was_named_or_every_member_under_the_star
+      - crates/permguard-core/tests/assurance.rs::test_including_every_member_is_a_relaxation_regulated_refuses
+      - crates/permguard-core/tests/assurance.rs::test_an_include_mixing_the_star_with_names_is_refused
 findings:
   "F-01":
     tests:
@@ -4604,8 +4690,8 @@ findings:
       - crates/permguard-control-plane/src/notp/grpc.rs::a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup
   "F-22":
     tests:
+      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
       - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
-      - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_grant_is_403_and_indistinguishable_from_one_that_does_not_exist
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
       - crates/permguard-control-plane/src/catalog/grpc.rs::f21_f22_over_grpc_the_actor_rides_the_request_extensions
       - crates/permguard-conformance/tests/chart.rs::a_task_selector_wider_than_its_group_is_refused

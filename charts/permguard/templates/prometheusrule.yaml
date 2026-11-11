@@ -150,21 +150,28 @@ spec:
           annotations:
             summary: "{{`{{ $labels.surface }}`}} certificate expires soon"
             runbook_url: "https://docs.permguard.com/observability#alerts"
-    - name: permguard.identity
+    - name: permguard.authority
       rules:
-        - alert: PermguardIdentityProviderKeysNotFresh
-          expr: max by (component) (permguard_oidc_providers_not_fresh) > 0
-          for: 5m
+        - alert: PermguardTokenStatusListsExpired
+          expr: max by (component) (permguard_token_status_lists_expired) > 0
+          for: 2m
           labels:
-            severity: warning
+            severity: critical
           annotations:
-            summary: "{{`{{ $labels.component }}`}} holds identity provider keys that are not fresh"
+            summary: "{{`{{ $labels.component }}`}} holds expired token status lists: every token they name is refused"
             runbook_url: "https://docs.permguard.com/observability#alerts"
-        - alert: PermguardIdentityProviderRefreshFailing
-          expr: increase(permguard_oidc_refresh_failures_total[30m]) > 3
+        - alert: PermguardAuthorityRefreshFailing
+          expr: increase(permguard_authority_refresh_failures_total[15m]) > 3
           labels:
             severity: warning
           annotations:
-            summary: "{{`{{ $labels.component }}`}} cannot fetch identity provider keys"
+            summary: "{{`{{ $labels.component }}`}} cannot fetch the Authority Plane's keys or status lists"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardTokenStatusListRejected
+          expr: increase(permguard_token_status_list_rejected_total[15m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} refused a token status list the Authority Plane served"
             runbook_url: "https://docs.permguard.com/observability#alerts"
 {{- end }}

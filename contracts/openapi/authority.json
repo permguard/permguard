@@ -1,0 +1,2503 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard Authority Plane API",
+    "version": "1",
+    "description": "The Authority Plane (`2-security/8`): `/authority/v1` and `permguard.authority.v1` on the Authority Plane's own listener, one facade behind both. Service accounts with access keys and scopes, the token endpoint, the keys and the status lists every Plane verifies tokens with. Every administration route decides by the caller's access token, its scopes on `plane/authority`; the keys, the lists and the metadata are open to every caller."
+  },
+  "paths": {
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "operationId": "authorityMetadata",
+        "summary": "The authorization server's metadata",
+        "description": "RFC 8414, open to every caller: the issuer, the token endpoint, the JWKS and what the endpoint accepts.",
+        "responses": {
+          "200": {
+            "description": "The metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationServerMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/GetMetadata",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "discovery",
+          "credential": "no"
+        }
+      }
+    },
+    "/authority/v1/token": {
+      "post": {
+        "operationId": "issueAccessToken",
+        "summary": "Issue an access token",
+        "description": "RFC 6749 `client_credentials` with the profile of RFC 9068: the access key and its secret key prove a service account, and the token carries its scopes, narrowed to `scope` when asked, signed by `authority.tokens`, with its entry in a status list. `Authorization: Basic` is read here and nowhere else; every answer is `Cache-Control: no-store`. The secret key travels only over TLS outside `development`.",
+        "requestBody": {
+          "required": true,
+          "description": "`grant_type=client_credentials`, the client's proof and, optionally, the scope asked and the lifetime. The proof is `Authorization: Basic` (`client_secret_basic`), or `client_id` and `client_secret` in the form (`client_secret_post`), never both.",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "enum": [
+                      "client_credentials"
+                    ]
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "description": "The access key, beside `client_secret`, or the Basic user."
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "The secret key, with `client_secret_post`."
+                  },
+                  "scope": {
+                    "type": "string",
+                    "description": "The operations asked, space separated, narrowing the account's; the account's whole when absent."
+                  },
+                  "requested_lifetime": {
+                    "type": "string",
+                    "description": "Seconds, within the profile's maximum; an hour when absent."
+                  }
+                },
+                "required": [
+                  "grant_type"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`, `invalid_scope` or `unsupported_grant_type`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`invalid_client`: the access key and secret key prove no live account. Carries `WWW-Authenticate: Basic realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`slow_down`: too many requests for the key or the source; `Retry-After` says when.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`temporarily_unavailable`: no signing key, or the registry cannot record the token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/IssueToken",
+        "x-grpc-body": {
+          "grant_type": "grant_type",
+          "client_id": "client_id",
+          "client_secret": "client_secret",
+          "scope": "scope",
+          "requested_lifetime": "requested_lifetime"
+        },
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "access key and secret key"
+        }
+      }
+    },
+    "/authority/v1/keys": {
+      "get": {
+        "operationId": "authorityKeys",
+        "summary": "The token keys",
+        "description": "Open to every caller: the `authority.tokens` public keys as a JWKS, what access tokens and status lists are verified with; the current keys and those retiring while they overlap.",
+        "responses": {
+          "200": {
+            "description": "The JWKS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/JwkSet"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No `authority.tokens` key is published yet (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/GetKeys",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "no"
+        }
+      }
+    },
+    "/authority/v1/status-lists": {
+      "get": {
+        "operationId": "listStatusLists",
+        "summary": "The status lists",
+        "description": "Open to every caller: the id of every list a live token may name, so a Plane fetches each.",
+        "responses": {
+          "200": {
+            "description": "The list ids.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusListIds"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/ListStatusLists",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "no"
+        }
+      }
+    },
+    "/authority/v1/status-lists/{id}": {
+      "get": {
+        "operationId": "getStatusList",
+        "summary": "A token status list",
+        "description": "Open to every caller: the signed `statuslist+jwt` itself, a fresh one once the list changed or half its `ttl` elapsed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The list's id, a UUID.",
+            "x-grpc-field": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The compact `statuslist+jwt`.",
+            "content": {
+              "application/statuslist+jwt": {
+                "schema": {
+                  "type": "string",
+                  "description": "The compact JWS."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No list of that id is held (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No `authority.tokens` key signs lists yet (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/GetStatusList",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "no"
+        }
+      }
+    },
+    "/authority/v1/tokens": {
+      "get": {
+        "operationId": "listAccessTokens",
+        "summary": "The tokens issued",
+        "description": "Under `tokens.read` on `plane/authority`. Never a token: each by its `jti`, its account, key, scopes, times and status.",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the tokens of this account.",
+            "x-grpc-field": "account"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the tokens in this status: `valid`, `invalid` or `suspended`.",
+            "x-grpc-field": "status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tokens asked for.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `tokens.read` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/ListTokens",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "access token",
+          "operation": "tokens.read",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/tokens/{jti}/revoke": {
+      "post": {
+        "operationId": "revokeAccessToken",
+        "summary": "Revoke a token",
+        "description": "Under `tokens.revoke` on `plane/authority`: `INVALID` in its list, at once on this Host and on each Plane once it holds the list. Answers the token revoked.",
+        "parameters": [
+          {
+            "name": "jti",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The token's id.",
+            "x-grpc-field": "jti"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeTokenBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The token, now `invalid`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `tokens.revoke` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No token of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.TokenService/RevokeToken",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "tokens",
+          "credential": "access token",
+          "operation": "tokens.revoke",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts": {
+      "get": {
+        "operationId": "listServiceAccounts",
+        "summary": "The service accounts",
+        "description": "Under `accounts.read` on `plane/authority`. Never a secret.",
+        "responses": {
+          "200": {
+            "description": "Every account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.read` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/ListServiceAccounts",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.read",
+          "target": "plane/authority"
+        }
+      },
+      "post": {
+        "operationId": "createServiceAccount",
+        "summary": "Create a service account",
+        "description": "Under `accounts.write` on `plane/authority`. Audited `authority.account.created`; a retry under the same request id answers the stored result.",
+        "requestBody": {
+          "required": true,
+          "description": "The account's name, description and first scopes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The account made, with no key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/CreateServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}": {
+      "get": {
+        "operationId": "getServiceAccount",
+        "summary": "A service account",
+        "description": "Under `accounts.read` on `plane/authority`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.read` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/GetServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.read",
+          "target": "plane/authority"
+        }
+      },
+      "patch": {
+        "operationId": "updateServiceAccount",
+        "summary": "Change a service account's description",
+        "description": "Under `accounts.write` on `plane/authority`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id, the new description and the revision expected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServiceAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The account changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/UpdateServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      },
+      "delete": {
+        "operationId": "deleteServiceAccount",
+        "summary": "Delete a service account",
+        "description": "Under `accounts.write` on `plane/authority`: the account, its keys, and every live token of it marked `INVALID`. `admin` is never deleted.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the revision expected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteServiceAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the deletion revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/DeleteServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}/suspend": {
+      "post": {
+        "operationId": "suspendServiceAccount",
+        "summary": "Suspend a service account",
+        "description": "Under `accounts.write` on `plane/authority`. Suspend a service account: it obtains no token, and its live tokens are `SUSPENDED`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the revision expected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/SuspendServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}/resume": {
+      "post": {
+        "operationId": "resumeServiceAccount",
+        "summary": "Resume a suspended service account",
+        "description": "Under `accounts.write` on `plane/authority`. Resume a suspended service account: its suspended tokens are `VALID` again while they serve.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the revision expected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/ResumeServiceAccount",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "service accounts",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}/scopes": {
+      "get": {
+        "operationId": "getServiceAccountScopes",
+        "summary": "A service account's scopes",
+        "description": "Under `accounts.read` on `plane/authority`.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its scopes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scopes"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.read` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/GetScopes",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "scopes",
+          "credential": "access token",
+          "operation": "accounts.read",
+          "target": "plane/authority"
+        }
+      },
+      "put": {
+        "operationId": "setServiceAccountScopes",
+        "summary": "Set a service account's scopes",
+        "description": "Under `accounts.write` on `plane/authority`: replaced whole, at most 64, each coherent (every operation applies under its selector). A token already issued keeps what it carries until it expires, unless `revoke_tokens` revokes the account's live tokens.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id, the scopes and, optionally, the revision expected and `revoke_tokens`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetScopesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The scopes set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scopes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/SetScopes",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "scopes",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}/keys": {
+      "get": {
+        "operationId": "listAccessKeys",
+        "summary": "A service account's access keys",
+        "description": "Under `accounts.read` on `plane/authority`. Never a secret.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its keys.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessKeyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.read` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/ListAccessKeys",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "access keys",
+          "credential": "access token",
+          "operation": "accounts.read",
+          "target": "plane/authority"
+        }
+      },
+      "post": {
+        "operationId": "createAccessKey",
+        "summary": "Make an access key",
+        "description": "Under `accounts.write` on `plane/authority`: at most two live keys per account. The secret key is answered here, once, and kept only as its Argon2id hash.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and, optionally, when the key expires.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccessKeyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The key and its secret, once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessKeyCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/CreateAccessKey",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "access keys",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    },
+    "/authority/v1/service-accounts/{name}/keys/{access_key}": {
+      "delete": {
+        "operationId": "deleteAccessKey",
+        "summary": "Delete an access key",
+        "description": "Under `accounts.write` on `plane/authority`: the key, and every live token it obtained marked `INVALID`. `admin`'s last live key is never deleted.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account's name.",
+            "x-grpc-field": "name"
+          },
+          {
+            "name": "access_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The access key, `pgak_…`.",
+            "x-grpc-field": "access_key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request id and the revision expected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccessKeyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the deletion revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessKeyDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a value is invalid (`invalid_argument`), or the request id is absent (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a token refused. Carries `WWW-Authenticate`, `Bearer realm=\"permguard\", error=\"invalid_token\"` when a bearer token was refused.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without `accounts.write` on `plane/authority`. Carries `WWW-Authenticate: Bearer realm=\"permguard\", error=\"insufficient_scope\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account or key of that name (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The revision stated is not the current one, or the change would break a rule of the accounts (`conflict`): a name taken, more than two live keys, `admin` deleted or left without a live key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Authority Plane cannot record the change now (`unavailable`): its journal, the mutation engine or the audit trail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.authority.v1.ServiceAccountService/DeleteAccessKey",
+        "x-permguard-endpoint": {
+          "plane": "authority",
+          "category": "access keys",
+          "credential": "access token",
+          "operation": "accounts.write",
+          "target": "plane/authority"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Scope": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The operations, each a registered one that applies under the selector.",
+            "x-grpc-field": "operations"
+          },
+          "selector": {
+            "type": "string",
+            "description": "Where they apply: `host`, `plane/<plane>` or below, `/*` for the subtree.",
+            "x-grpc-field": "selector"
+          }
+        },
+        "required": [
+          "operations",
+          "selector"
+        ],
+        "additionalProperties": false,
+        "description": "One scope: operations on a selector.",
+        "x-grpc-message": "permguard.authority.v1.Scope"
+      },
+      "AccessKey": {
+        "type": "object",
+        "properties": {
+          "access_key": {
+            "type": "string",
+            "description": "`pgak_` and 20 base32 characters.",
+            "x-grpc-field": "access_key"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339.",
+            "x-grpc-field": "created_at"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "RFC 3339; absent when it never expires.",
+            "x-grpc-field": "expires_at"
+          },
+          "last_used_at": {
+            "type": "string",
+            "description": "RFC 3339; absent when no token was obtained with it.",
+            "x-grpc-field": "last_used_at"
+          },
+          "status": {
+            "type": "string",
+            "description": "`active` or `expired`.",
+            "enum": [
+              "active",
+              "expired"
+            ],
+            "x-grpc-field": "status"
+          }
+        },
+        "required": [
+          "access_key",
+          "created_at",
+          "status"
+        ],
+        "additionalProperties": false,
+        "description": "One access key, never its secret.",
+        "x-grpc-message": "permguard.authority.v1.AccessKey"
+      },
+      "ServiceAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The account's name; its subject is `sa:<name>`.",
+            "x-grpc-field": "name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What it is for; empty when none.",
+            "x-grpc-field": "description"
+          },
+          "status": {
+            "type": "string",
+            "description": "`active` or `suspended`.",
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "x-grpc-field": "status"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "description": "Everything its tokens may carry.",
+            "x-grpc-field": "scopes"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessKey"
+            },
+            "description": "Its access keys, at most two live.",
+            "x-grpc-field": "keys"
+          },
+          "administrator": {
+            "type": "boolean",
+            "description": "Whether it is `admin`, which is never deleted.",
+            "x-grpc-field": "administrator"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339.",
+            "x-grpc-field": "created_at"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339.",
+            "x-grpc-field": "updated_at"
+          },
+          "revision": {
+            "type": "integer",
+            "description": "The journal revision of its last change.",
+            "minimum": 0,
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "status",
+          "scopes",
+          "keys",
+          "administrator",
+          "created_at",
+          "updated_at",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "One service account, never a secret.",
+        "x-grpc-message": "permguard.authority.v1.ServiceAccount"
+      },
+      "ServiceAccountList": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccount"
+            },
+            "description": "Every account.",
+            "x-grpc-field": "accounts"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "additionalProperties": false,
+        "description": "The service accounts.",
+        "x-grpc-message": "permguard.authority.v1.ListServiceAccountsResponse"
+      },
+      "CreateServiceAccountBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "name": {
+            "type": "string",
+            "description": "Lower case letters, digits and `-`, unique; `admin` is taken.",
+            "x-grpc-field": "name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What it is for.",
+            "x-grpc-field": "description"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "description": "Its first scopes, at most 64, each coherent.",
+            "x-grpc-field": "scopes"
+          }
+        },
+        "required": [
+          "request_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "A new account.",
+        "x-grpc-message": "permguard.authority.v1.CreateServiceAccountRequest"
+      },
+      "UpdateServiceAccountBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "description": {
+            "type": "string",
+            "description": "Its new description.",
+            "x-grpc-field": "description"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The account's revision the change expects; a stale one is a `conflict`.",
+            "minimum": 0,
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id",
+          "description"
+        ],
+        "additionalProperties": false,
+        "description": "A changed description.",
+        "x-grpc-message": "permguard.authority.v1.UpdateServiceAccountRequest",
+        "x-grpc-only": [
+          "name"
+        ]
+      },
+      "DeleteServiceAccountBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The account's revision the change expects; a stale one is a `conflict`.",
+            "minimum": 0,
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "An account's deletion.",
+        "x-grpc-message": "permguard.authority.v1.DeleteServiceAccountRequest",
+        "x-grpc-only": [
+          "name"
+        ]
+      },
+      "ServiceAccountStatusBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The account's revision the change expects; a stale one is a `conflict`.",
+            "minimum": 0,
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "A suspension or a resumption.",
+        "x-grpc-message": "permguard.authority.v1.ServiceAccountStatusRequest",
+        "x-grpc-only": [
+          "name"
+        ]
+      },
+      "AccountDeleted": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The account deleted.",
+            "x-grpc-field": "name"
+          },
+          "tokens_revoked": {
+            "type": "integer",
+            "description": "Its live tokens, marked `INVALID` with it.",
+            "minimum": 0,
+            "x-grpc-field": "tokens_revoked"
+          }
+        },
+        "required": [
+          "name",
+          "tokens_revoked"
+        ],
+        "additionalProperties": false,
+        "description": "What a deletion answers.",
+        "x-grpc-message": "permguard.authority.v1.DeleteServiceAccountResponse"
+      },
+      "SetScopesBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "description": "The account's scopes, replaced whole.",
+            "x-grpc-field": "scopes"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The account's revision the change expects; a stale one is a `conflict`.",
+            "minimum": 0,
+            "x-grpc-field": "expected_revision"
+          },
+          "revoke_tokens": {
+            "type": "boolean",
+            "description": "Revoke the account's live tokens too, so a narrowing holds at once.",
+            "x-grpc-field": "revoke_tokens"
+          }
+        },
+        "required": [
+          "request_id",
+          "scopes"
+        ],
+        "additionalProperties": false,
+        "description": "An account's scopes, replaced whole.",
+        "x-grpc-message": "permguard.authority.v1.SetScopesRequest",
+        "x-grpc-only": [
+          "name"
+        ]
+      },
+      "Scopes": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The account.",
+            "x-grpc-field": "name"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "description": "Its scopes.",
+            "x-grpc-field": "scopes"
+          },
+          "revision": {
+            "type": "integer",
+            "description": "The account's revision.",
+            "minimum": 0,
+            "x-grpc-field": "revision"
+          },
+          "tokens_revoked": {
+            "type": "integer",
+            "description": "The live tokens a change revoked; 0 on a read.",
+            "minimum": 0,
+            "x-grpc-field": "tokens_revoked"
+          }
+        },
+        "required": [
+          "name",
+          "scopes",
+          "revision",
+          "tokens_revoked"
+        ],
+        "additionalProperties": false,
+        "description": "An account's scopes.",
+        "x-grpc-message": "permguard.authority.v1.ScopesResponse"
+      },
+      "AccessKeyList": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessKey"
+            },
+            "description": "Its keys.",
+            "x-grpc-field": "keys"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "additionalProperties": false,
+        "description": "An account's access keys.",
+        "x-grpc-message": "permguard.authority.v1.ListAccessKeysResponse"
+      },
+      "CreateAccessKeyBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "RFC 3339; the key never expires when absent.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "A new access key.",
+        "x-grpc-message": "permguard.authority.v1.CreateAccessKeyRequest",
+        "x-grpc-only": [
+          "name"
+        ]
+      },
+      "AccessKeyCreated": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/AccessKey",
+            "description": "The key made.",
+            "x-grpc-field": "key"
+          },
+          "secret_key": {
+            "type": "string",
+            "description": "`pgsk_` and 43 base64url characters, answered this once; empty on a retry answered from what the first attempt committed.",
+            "x-grpc-field": "secret_key"
+          }
+        },
+        "required": [
+          "key",
+          "secret_key"
+        ],
+        "additionalProperties": false,
+        "description": "A key and its secret, once.",
+        "x-grpc-message": "permguard.authority.v1.CreateAccessKeyResponse"
+      },
+      "DeleteAccessKeyBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "description": "The account's revision the change expects; a stale one is a `conflict`.",
+            "minimum": 0,
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "An access key's deletion.",
+        "x-grpc-message": "permguard.authority.v1.DeleteAccessKeyRequest",
+        "x-grpc-only": [
+          "name",
+          "access_key"
+        ]
+      },
+      "AccessKeyDeleted": {
+        "type": "object",
+        "properties": {
+          "access_key": {
+            "type": "string",
+            "description": "The key deleted.",
+            "x-grpc-field": "access_key"
+          },
+          "tokens_revoked": {
+            "type": "integer",
+            "description": "The live tokens it obtained, marked `INVALID` with it.",
+            "minimum": 0,
+            "x-grpc-field": "tokens_revoked"
+          }
+        },
+        "required": [
+          "access_key",
+          "tokens_revoked"
+        ],
+        "additionalProperties": false,
+        "description": "What a key's deletion answers.",
+        "x-grpc-message": "permguard.authority.v1.DeleteAccessKeyResponse"
+      },
+      "Token": {
+        "type": "object",
+        "properties": {
+          "jti": {
+            "type": "string",
+            "description": "The token's id, a UUID.",
+            "x-grpc-field": "jti"
+          },
+          "subject": {
+            "type": "string",
+            "description": "`sa:<name>`.",
+            "x-grpc-field": "subject"
+          },
+          "account": {
+            "type": "string",
+            "description": "The account.",
+            "x-grpc-field": "account"
+          },
+          "access_key": {
+            "type": "string",
+            "description": "The key it was obtained with.",
+            "x-grpc-field": "access_key"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "description": "What it carries.",
+            "x-grpc-field": "scopes"
+          },
+          "issued_at": {
+            "type": "string",
+            "description": "RFC 3339.",
+            "x-grpc-field": "issued_at"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "RFC 3339.",
+            "x-grpc-field": "expires_at"
+          },
+          "status": {
+            "type": "string",
+            "description": "`valid`, `invalid` or `suspended`.",
+            "enum": [
+              "valid",
+              "invalid",
+              "suspended"
+            ],
+            "x-grpc-field": "status"
+          },
+          "status_list": {
+            "type": "string",
+            "description": "The `uri` of its status list.",
+            "x-grpc-field": "status_list"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Its entry in the list.",
+            "minimum": 0,
+            "x-grpc-field": "index"
+          }
+        },
+        "required": [
+          "jti",
+          "subject",
+          "account",
+          "access_key",
+          "scopes",
+          "issued_at",
+          "expires_at",
+          "status",
+          "status_list",
+          "index"
+        ],
+        "additionalProperties": false,
+        "description": "One token issued, never the token itself.",
+        "x-grpc-message": "permguard.authority.v1.TokenSummary"
+      },
+      "TokenList": {
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "description": "The tokens asked for.",
+            "x-grpc-field": "tokens"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "additionalProperties": false,
+        "description": "The tokens issued.",
+        "x-grpc-message": "permguard.authority.v1.ListTokensResponse"
+      },
+      "RevokeTokenBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry under it answers the stored result.",
+            "minLength": 1,
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "A token's revocation.",
+        "x-grpc-message": "permguard.authority.v1.RevokeTokenRequest",
+        "x-grpc-only": [
+          "jti"
+        ]
+      },
+      "TokenAnswer": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "The `at+jwt`, RFC 9068.",
+            "x-grpc-field": "access_token"
+          },
+          "token_type": {
+            "type": "string",
+            "description": "`Bearer`.",
+            "enum": [
+              "Bearer"
+            ],
+            "x-grpc-field": "token_type"
+          },
+          "expires_in": {
+            "type": "integer",
+            "description": "Seconds it serves.",
+            "minimum": 1,
+            "x-grpc-field": "expires_in"
+          },
+          "scope": {
+            "type": "string",
+            "description": "The operations it carries, space separated.",
+            "x-grpc-field": "scope"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope"
+        ],
+        "additionalProperties": false,
+        "description": "RFC 6749 §5.1.",
+        "x-grpc-message": "permguard.authority.v1.IssueTokenResponse"
+      },
+      "OAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "invalid_client",
+              "invalid_scope",
+              "unsupported_grant_type",
+              "slow_down",
+              "temporarily_unavailable"
+            ],
+            "description": "RFC 6749 §5.2's code.",
+            "x-grpc-field": null,
+            "x-grpc-note": "gRPC answers the matching status: `INVALID_ARGUMENT`, `UNAUTHENTICATED`, `RESOURCE_EXHAUSTED` or `UNAVAILABLE`, the code in `permguard-error-code`."
+          },
+          "error_description": {
+            "type": "string",
+            "description": "Which rule failed, never which key, account or secret.",
+            "x-grpc-field": null,
+            "x-grpc-note": "The gRPC status message."
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "additionalProperties": false,
+        "description": "A token request refused, RFC 6749 §5.2.",
+        "x-grpc-message": null,
+        "x-grpc-note": "a refused token request is a gRPC status, not a message"
+      },
+      "StatusListIds": {
+        "type": "object",
+        "properties": {
+          "lists": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The id of every list a live token may name.",
+            "x-grpc-field": "lists"
+          }
+        },
+        "required": [
+          "lists"
+        ],
+        "additionalProperties": false,
+        "description": "The status lists held.",
+        "x-grpc-message": "permguard.authority.v1.ListStatusListsResponse"
+      },
+      "AuthorizationServerMetadata": {
+        "type": "object",
+        "description": "RFC 8414's metadata: `issuer`, `token_endpoint`, `jwks_uri`, `grant_types_supported` (`client_credentials`), `token_endpoint_auth_methods_supported` (`client_secret_basic`, `client_secret_post`), `scopes_supported`, and `permguard_edition`, `permguard_audience`, `permguard_status_lists`.",
+        "additionalProperties": true,
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC carries the document as JSON text, `GetMetadataResponse.document_json`."
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.authority.v1.ServiceAccountResponse",
+      "note": "REST answers the account itself as the body",
+      "fields": [
+        "account"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.RevokeTokenResponse",
+      "note": "REST answers the token itself as the body",
+      "fields": [
+        "token"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetKeysResponse",
+      "note": "`jwks_json` holds the JWKS REST answers as the body",
+      "fields": [
+        "jwks_json"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetMetadataResponse",
+      "note": "`document_json` holds the RFC 8414 document REST answers as the body",
+      "fields": [
+        "document_json"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetStatusListResponse",
+      "note": "REST answers the compact token itself, as `application/statuslist+jwt`: the HTTP form the status list draft fixes",
+      "fields": [
+        "token"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetInfoRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.authority.v1.GetInfoResponse",
+      "note": "what `/` and `/version` of the Authority Plane answer, described by health.json for every surface",
+      "fields": [
+        "plane",
+        "product",
+        "version",
+        "commit",
+        "edition"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetHealthRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.authority.v1.GetHealthResponse",
+      "note": "what `/health` of the Authority Plane answers, described by health.json for every surface",
+      "fields": [
+        "live",
+        "ready",
+        "state",
+        "degraded",
+        "components"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.Degraded",
+      "note": "a member of `/health`, described by health.json",
+      "fields": [
+        "capability",
+        "reason"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.Component",
+      "note": "a member of `/health`, described by health.json",
+      "fields": [
+        "component",
+        "kind",
+        "state",
+        "required",
+        "stalled_since",
+        "last_success",
+        "next_attempt",
+        "reason"
+      ]
+    },
+    {
+      "message": "permguard.authority.v1.GetServerConfigurationRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.authority.v1.GetServerConfigurationResponse",
+      "note": "`document_json` holds the JSON text of the document REST answers as the body of `/.well-known/server-configuration`, described by discovery.json",
+      "fields": [
+        "document_json"
+      ]
+    }
+  ],
+  "x-grpc-unmapped-rpcs": [
+    {
+      "rpc": "permguard.authority.v1.AuthorityPlane/GetInfo",
+      "note": "`/` and `/version` of the Authority Plane, as every surface answers them (health.json)"
+    },
+    {
+      "rpc": "permguard.authority.v1.AuthorityPlane/GetHealth",
+      "note": "`/health` of the Authority Plane, as every surface answers it (health.json)"
+    },
+    {
+      "rpc": "permguard.authority.v1.AuthorityPlane/GetServerConfiguration",
+      "note": "`/.well-known/server-configuration` of the Authority Plane, as every surface answers it (discovery.json)"
+    }
+  ]
+}

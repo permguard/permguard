@@ -330,3 +330,34 @@ is verified first, by its own `verify-cli` (TD-4).
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
+
+{{/*
+The Authority Plane's listener (`2-security/8`): REST and gRPC on one port, under `tls` when given.
+*/}}
+{{- define "permguard.authorityListener" -}}
+{{- $http := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .port)) }}
+{{- $grpc := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .port)) }}
+{{- with .tls }}
+{{- $_ := set $http "tls" . }}
+{{- $_ := set $grpc "tls" . }}
+{{- end }}
+{{- toYaml (dict "public" (dict "http" $http "grpc" $grpc)) }}
+{{- end -}}
+
+{{/*
+Where the cluster's Authority Plane is reached, and what every token names as its issuer: the
+control plane's, or the all-in-one's, Service on its authority port; `dataPlane.authority.url` when
+the Authority Plane runs elsewhere.
+*/}}
+{{- define "permguard.authorityUrl" -}}
+{{- if and .Values.dataPlane.authority.url (not .Values.allInOne.enabled) -}}
+{{ .Values.dataPlane.authority.url | trimSuffix "/" }}
+{{- else if .Values.allInOne.enabled -}}
+{{- $scheme := ternary "https" "http" (not (empty .Values.allInOne.tls.secretName)) -}}
+{{ $scheme }}://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.authority }}
+{{- else -}}
+{{- $scheme := ternary "https" "http" (not (empty .Values.controlPlane.tls.secretName)) -}}
+{{ $scheme }}://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.authority }}
+{{- end -}}
+{{- end -}}
+

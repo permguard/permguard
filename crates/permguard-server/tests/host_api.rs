@@ -12,11 +12,11 @@ use std::sync::Arc;
 
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
-use permguard_conformance::contracts::{host_v1, iam_v1};
+use permguard_conformance::contracts::host_v1;
 use permguard_conformance::parity::{Outcome, assert_parity, serve};
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::{
-    Actor, ActorContext, Authenticator, Credential, Principal, Resource, Selector, operations,
+    Actor, ActorContext, Authenticator, Principal, Resource, Selector, operations,
 };
 use permguard_core::config::{
     SETTING_ADMIN_ADDR, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_KEY, SETTING_AUTOGENERATE,
@@ -27,7 +27,7 @@ use permguard_core::{
     ServerContext, Service as _,
 };
 use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
-use permguard_host::authz::{Authorization, GrantStore, Issue, PublicGrant};
+use permguard_host::authz::{Authorization, PublicGrant};
 use permguard_host::composition::HOST_OPERATIONS;
 use permguard_host::storage::volume::Volume;
 use permguard_server::host_api::{self, HostApiService};
@@ -37,8 +37,8 @@ use permguard_transport::ActorLayer;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
-const ADMIN: &str = "spiffe://acme/operators/root";
-const STRANGER: &str = "spiffe://acme/stranger";
+const ADMIN: &str = "sa:admin";
+const STRANGER: &str = "sa:stranger";
 
 /// Identifiers and instants a mutation mints: two facades cannot share them.
 const MINTED: &[&str] = &[
@@ -66,6 +66,8 @@ const MINTED: &[&str] = &[
     "manifest",
     "bundle_digest",
     "items",
+    // A stream anchor's bytes: base64 over REST, bytes over gRPC.
+    "anchor",
     // The invitations each facade issued (WP-4.1).
     "invite_id",
     "token",
@@ -99,9 +101,34 @@ fn scratch(tag: &str) -> PathBuf {
     path
 }
 
-/// The credential mapper of these tests: `Bearer <name>` is the principal `<name>`, so a vector
-/// names who it acts as the same way on both transports.
+/// The authenticator of these tests: `Bearer <name>` is a token of `<name>`, the administrator's
+/// holding every operation on the Host and anybody else's nothing, so a vector names who it acts
+/// as the same way on both transports.
 struct Bearers;
+
+/// The scopes the administrator's token holds: every operation, on the Host.
+fn admin_grant() -> permguard_core::authz::TokenGrant {
+    permguard_core::authz::TokenGrant {
+        scopes: [
+            Resource::host(),
+            Resource::plane("control"),
+            Resource::plane("data"),
+        ]
+        .into_iter()
+        .map(|resource| permguard_core::authz::TokenScope {
+            operations: operations::ALL
+                .iter()
+                .map(|operation| (*operation).to_owned())
+                .collect(),
+            selector: Selector::under(resource),
+        })
+        .collect(),
+        jti: "jti-of-admin".to_owned(),
+        list_uri: "https://authority.test/authority/v1/status-lists/l".to_owned(),
+        list_iat: 1,
+        list_digest: [0; 32],
+    }
+}
 
 impl Authenticator for Bearers {
     fn authenticate(
@@ -110,10 +137,16 @@ impl Authenticator for Bearers {
         bearer: Option<&str>,
     ) -> Result<Actor, AccessDenial> {
         match bearer {
-            Some(name) => Ok(Actor::Authenticated(ActorContext::new(
+            Some(name) => Ok(Actor::Authenticated(ActorContext::of_token(
                 Principal::new(name).expect("a principal"),
-                Credential::Oidc,
-                None,
+                if name == ADMIN {
+                    admin_grant()
+                } else {
+                    permguard_core::authz::TokenGrant {
+                        scopes: Vec::new(),
+                        ..admin_grant()
+                    }
+                },
             ))),
             None => Ok(Actor::Anonymous),
         }
@@ -137,19 +170,11 @@ fn bearer_interceptor(
     Ok(request)
 }
 
-/// A facade over its own volume, with one administrator holding every Host operation and
-/// `keys.read` public, as a deployment would declare it: the IAM Host's, serving the directory.
+/// A facade over its own volume, the administrator's token holding every Host operation and
+/// `keys.read` public, as a deployment would declare it.
 fn facade(tag: &str) -> Arc<HostApi> {
-    facade_of(tag, true)
-}
-
-/// [`facade`] for a member, `iam_host` false, or for the IAM Host.
-fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
     let root = scratch(tag);
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-    let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
-    let (directory, _) =
-        permguard_host::authz::directory::Directory::open(&volume).expect("the directory opens");
     let mutations = Arc::new(
         permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
             .expect("the mutation journal opens"),
@@ -179,25 +204,6 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
         .expect("the identity is provisioned")
         .with_provisioner(provisioner),
     );
-    permguard_host::operations::grants::issue(
-        &mutations,
-        &store,
-        permguard_host::operations::journal::Initiator::System("test".to_owned()),
-        Issue {
-            principal: Principal::new(ADMIN).expect("a principal"),
-            operations: operations::ALL
-                .iter()
-                .map(|operation| (*operation).to_owned())
-                .collect(),
-            selector: Selector::under(Resource::host()),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            issued_by: "test".to_owned(),
-            expires_at: None,
-        },
-        permguard_host::authz::store::now(),
-    )
-    .expect("the administrator is issued");
     let (replay, _) =
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay opens");
     // The operations ring, on the volume and bound by the identity (WP-3.1).
@@ -219,17 +225,6 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
         .with_binder(identity.clone()),
     );
     permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
-    // The IAM Host's tokens (WP-11.5): their registry on the same volume, signed here under the
-    // operations ring, which the facade has at hand; what signs them is not what these tests ask.
-    let (token_registry, _) =
-        permguard_host::authz::tokens::TokenRegistry::open(&volume).expect("the registry opens");
-    let tokens = Arc::new(permguard_host::api::tokens::Tokens::new(
-        token_registry,
-        Arc::clone(&ring) as Arc<dyn permguard_core::keys::SigningRing>,
-        &[7; 16],
-        "https://iam.example:7443",
-        AssuranceProfile::Development,
-    ));
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&identity)),
         vec![Arc::clone(&ring)],
@@ -273,18 +268,10 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
     std::mem::forget(volume);
     let api = Arc::new(
         HostApi::new(Composition {
-            // Roles count in its decisions, as the server composes it (WP-8.1).
-            authorization: Arc::new(
-                Authorization::new(
-                    Arc::clone(&store),
-                    &[PublicGrant::new(
-                        &[operations::KEYS_READ],
-                        Selector::exactly(Resource::host()),
-                    )],
-                )
-                .with_directory(Arc::clone(&directory)),
-            ),
-            store: Some(store),
+            authorization: Arc::new(Authorization::public_only(&[PublicGrant::new(
+                &[operations::KEYS_READ],
+                Selector::exactly(Resource::host()),
+            )])),
             replay,
             keys,
             health: Health::new(),
@@ -340,17 +327,7 @@ fn facade_of(tag: &str, iam_host: bool) -> Arc<HostApi> {
             })),
         })
         .with_streams(Arc::new(FixedStreams))
-        .with_backups(Arc::new(backups), None, None)
-        // Roles and local users on the same volume (WP-8.1).
-        .with_identities(permguard_host::api::directory::Identities {
-            directory,
-            signin: None,
-            providers: Vec::new(),
-            exchange_provider_tokens: false,
-            min_length: 12,
-        })
-        .serving_iam(iam_host)
-        .with_tokens(tokens),
+        .with_backups(Arc::new(backups), None, None),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()
@@ -705,17 +682,6 @@ impl Transport {
         url.trim_start_matches("grpc://")
     }
 
-    async fn grants(
-        &self,
-    ) -> iam_v1::grant_service_client::GrantServiceClient<tonic::transport::Channel> {
-        iam_v1::grant_service_client::GrantServiceClient::connect(format!(
-            "http://{}",
-            self.grpc_url()
-        ))
-        .await
-        .expect("the gRPC endpoint answers")
-    }
-
     async fn evidence(
         &self,
     ) -> host_v1::evidence_service_client::EvidenceServiceClient<tonic::transport::Channel> {
@@ -963,116 +929,6 @@ impl Transport {
         ))
         .await
         .expect("the gRPC endpoint answers")
-    }
-
-    async fn list_grants(&self, who: Option<&str>) -> Outcome {
-        match self {
-            Self::Rest(_) => self.rest("GET", "/iam/v1/grants", who, None).await,
-            Self::Grpc(_) => reduced_grpc(
-                self.grants()
-                    .await
-                    .list_grants(Self::grpc_request(
-                        who,
-                        host_v1::ListGrantsRequest::default(),
-                    ))
-                    .await,
-            ),
-        }
-    }
-
-    async fn create_grant(
-        &self,
-        who: Option<&str>,
-        request_id: &str,
-        principal: &str,
-        operation: &str,
-        expected_revision: Option<u64>,
-    ) -> Outcome {
-        match self {
-            Self::Rest(_) => {
-                let mut body = json!({
-                    "request_id": request_id,
-                    "principal": principal,
-                    "operations": [operation],
-                    "selector": "plane/control/*",
-                });
-                if let Some(expected) = expected_revision {
-                    body["expected_revision"] = json!(expected);
-                }
-                self.rest("POST", "/iam/v1/grants", who, Some(body)).await
-            }
-            Self::Grpc(_) => reduced_grpc(
-                self.grants()
-                    .await
-                    .create_grant(Self::grpc_request(
-                        who,
-                        host_v1::CreateGrantRequest {
-                            request_id: request_id.to_owned(),
-                            expected_revision,
-                            principal: principal.to_owned(),
-                            operations: vec![operation.to_owned()],
-                            selector: "plane/control/*".to_owned(),
-                            resource_types: Vec::new(),
-                            constraints: Default::default(),
-                            expires_at: None,
-                        },
-                    ))
-                    .await,
-            ),
-        }
-    }
-
-    /// A create with every optional member: an expiry, a constraint, explicit types. The
-    /// principal decides the expiry: `carol` far ahead, anyone else in the past.
-    async fn create_grant_full(
-        &self,
-        who: Option<&str>,
-        request_id: &str,
-        principal: &str,
-    ) -> Outcome {
-        let expires_at = if principal.ends_with("carol") {
-            "2099-01-01T00:00:00Z"
-        } else {
-            "2000-01-01T00:00:00Z"
-        };
-        let constraints = std::collections::BTreeMap::from([("env".to_owned(), "lab".to_owned())]);
-        match self {
-            Self::Rest(_) => {
-                self.rest(
-                    "POST",
-                    "/iam/v1/grants",
-                    who,
-                    Some(json!({
-                        "request_id": request_id,
-                        "principal": principal,
-                        "operations": [operations::CATALOG_READ],
-                        "selector": "plane/control/*",
-                        "resource_types": ["zone"],
-                        "constraints": constraints,
-                        "expires_at": expires_at,
-                    })),
-                )
-                .await
-            }
-            Self::Grpc(_) => reduced_grpc(
-                self.grants()
-                    .await
-                    .create_grant(Self::grpc_request(
-                        who,
-                        host_v1::CreateGrantRequest {
-                            request_id: request_id.to_owned(),
-                            expected_revision: None,
-                            principal: principal.to_owned(),
-                            operations: vec![operations::CATALOG_READ.to_owned()],
-                            selector: "plane/control/*".to_owned(),
-                            resource_types: vec!["zone".to_owned()],
-                            constraints: constraints.into_iter().collect(),
-                            expires_at: Some(expires_at.to_owned()),
-                        },
-                    ))
-                    .await,
-            ),
-        }
     }
 
     async fn memberships(
@@ -1543,69 +1399,6 @@ impl Transport {
         }
     }
 
-    async fn plan_revoke(&self, who: Option<&str>, grant_id: &str, request_id: &str) -> Outcome {
-        match self {
-            Self::Rest(_) => {
-                self.rest(
-                    "POST",
-                    &format!("/iam/v1/grants/{grant_id}/revoke/plan"),
-                    who,
-                    Some(json!({ "request_id": request_id })),
-                )
-                .await
-            }
-            Self::Grpc(_) => reduced_grpc(
-                self.grants()
-                    .await
-                    .plan_grant_revoke(Self::grpc_request(
-                        who,
-                        host_v1::PlanGrantRevokeRequest {
-                            grant_id: grant_id.to_owned(),
-                            request_id: request_id.to_owned(),
-                            expected_revision: None,
-                        },
-                    ))
-                    .await,
-            ),
-        }
-    }
-
-    async fn run_revoke(
-        &self,
-        who: Option<&str>,
-        grant_id: &str,
-        request_id: &str,
-        receipt: &str,
-    ) -> Outcome {
-        match self {
-            Self::Rest(_) => {
-                self.rest(
-                    "POST",
-                    &format!("/iam/v1/grants/{grant_id}/revoke/run"),
-                    who,
-                    Some(json!({
-                        "request_id": request_id,
-                        "receipt": receipt,
-                    })),
-                )
-                .await
-            }
-            Self::Grpc(_) => reduced_grpc(
-                self.grants()
-                    .await
-                    .run_grant_revoke(Self::grpc_request(
-                        who,
-                        host_v1::RunGrantRevokeRequest {
-                            grant_id: grant_id.to_owned(),
-                            request_id: request_id.to_owned(),
-                            receipt: receipt_bytes(receipt),
-                        },
-                    ))
-                    .await,
-            ),
-        }
-    }
-
     async fn list_rings(&self, who: Option<&str>) -> Outcome {
         match self {
             Self::Rest(_) => self.rest("GET", "/host/v1/keys", who, None).await,
@@ -1859,24 +1652,6 @@ impl Transport {
         }
     }
 
-    async fn config_revisions(&self, who: Option<&str>) -> Outcome {
-        match self {
-            Self::Rest(_) => {
-                self.rest("GET", "/host/v1/config/revisions", who, None)
-                    .await
-            }
-            Self::Grpc(_) => reduced_grpc(
-                self.operations()
-                    .await
-                    .list_config_revisions(Self::grpc_request(
-                        who,
-                        host_v1::ListConfigRevisionsRequest::default(),
-                    ))
-                    .await,
-            ),
-        }
-    }
-
     async fn plan_gc(&self, who: Option<&str>, job: &str, request_id: &str) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -2086,167 +1861,6 @@ fn member<'a>(outcome: &'a Outcome, path: &[&str]) -> &'a str {
 async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     let admin = Some(ADMIN);
     let mut steps = Vec::new();
-    steps.push((
-        "list the grants as nobody",
-        transport.list_grants(None).await,
-    ));
-    steps.push((
-        "list the grants as a stranger",
-        transport.list_grants(Some(STRANGER)).await,
-    ));
-    steps.push(("list the grants", transport.list_grants(admin).await));
-    let created = transport
-        .create_grant(
-            admin,
-            "r1",
-            "spiffe://acme/alice",
-            operations::CATALOG_READ,
-            None,
-        )
-        .await;
-    let retried = transport
-        .create_grant(
-            admin,
-            "r1",
-            "spiffe://acme/alice",
-            operations::CATALOG_READ,
-            None,
-        )
-        .await;
-    assert_eq!(
-        retried, created,
-        "a retried create returns the stored answer, operation id included"
-    );
-    steps.push(("create a grant", created.clone()));
-    steps.push((
-        "create without a request id",
-        transport
-            .create_grant(
-                admin,
-                "",
-                "spiffe://acme/bob",
-                operations::CATALOG_READ,
-                None,
-            )
-            .await,
-    ));
-    steps.push((
-        "reuse the request id for another grant",
-        transport
-            .create_grant(
-                admin,
-                "r1",
-                "spiffe://acme/bob",
-                operations::CATALOG_READ,
-                None,
-            )
-            .await,
-    ));
-    steps.push((
-        "create with an unregistered operation",
-        transport
-            .create_grant(admin, "r2", "spiffe://acme/bob", "nope.read", None)
-            .await,
-    ));
-    steps.push((
-        "create against a stale revision",
-        transport
-            .create_grant(
-                admin,
-                "r3",
-                "spiffe://acme/bob",
-                operations::CATALOG_READ,
-                Some(999),
-            )
-            .await,
-    ));
-    steps.push((
-        "create as a stranger",
-        transport
-            .create_grant(
-                Some(STRANGER),
-                "r4",
-                "spiffe://acme/bob",
-                operations::CATALOG_READ,
-                None,
-            )
-            .await,
-    ));
-    steps.push(("list the grants after", transport.list_grants(admin).await));
-    let carol = transport
-        .create_grant_full(admin, "r5", "spiffe://acme/carol")
-        .await;
-    steps.push((
-        "create a grant with an expiry and a constraint",
-        carol.clone(),
-    ));
-    steps.push((
-        "create a grant with an expiry in the past",
-        transport
-            .create_grant_full(admin, "r6", "spiffe://acme/dave")
-            .await,
-    ));
-    let grant_id = member(&created, &["grant", "grant_id"]).to_owned();
-    let planned = transport.plan_revoke(admin, &grant_id, "p1").await;
-    let receipt = receipt_of(&planned);
-    // A plan of another grant: its receipt authorizes nothing about this one (WP-3.9).
-    let other_plan = transport
-        .plan_revoke(admin, member(&carol, &["grant", "grant_id"]), "p0")
-        .await;
-    let elsewhere = receipt_of(&other_plan);
-    let other_plan_id = member(&other_plan, &["plan_id"]).to_owned();
-    steps.push(("plan a revocation", planned.clone()));
-    // Listed by plan id, which each stack mints at random: compared in revision order.
-    steps.push((
-        "list the plans",
-        by_revision(transport.list_plans(admin).await),
-    ));
-    steps.push((
-        "list the plans as a stranger",
-        transport.list_plans(Some(STRANGER)).await,
-    ));
-    steps.push((
-        "approve the own plan",
-        transport.approve_plan(admin, &other_plan_id, "a0").await,
-    ));
-    steps.push((
-        "run with a wrong digest",
-        transport
-            .run_revoke(admin, &grant_id, "x1", &tampered(&receipt))
-            .await,
-    ));
-    steps.push((
-        "run with an unknown plan",
-        transport
-            .run_revoke(admin, &grant_id, "x2", &elsewhere)
-            .await,
-    ));
-    let revoked = transport
-        .run_revoke(admin, &grant_id, "run1", &receipt)
-        .await;
-    let retried = transport
-        .run_revoke(admin, &grant_id, "run1", &receipt)
-        .await;
-    assert_eq!(retried, revoked, "a retried run returns the stored receipt");
-    steps.push(("run the revocation", revoked));
-    steps.push((
-        "run the consumed plan again",
-        transport
-            .run_revoke(admin, &grant_id, "run2", &receipt)
-            .await,
-    ));
-    steps.push((
-        "plan against the revoked grant",
-        transport.plan_revoke(admin, &grant_id, "p2").await,
-    ));
-    steps.push((
-        "plan against an unknown grant",
-        transport.plan_revoke(admin, &"0".repeat(32), "p3").await,
-    ));
-    steps.push((
-        "plan against a malformed id",
-        transport.plan_revoke(admin, "not-an-id", "p4").await,
-    ));
     steps.push(("list the key rings", transport.list_rings(admin).await));
     steps.push((
         "list the key rings as nobody",
@@ -2402,10 +2016,6 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "read the effective configuration",
         transport.effective_config(admin).await,
     ));
-    steps.push((
-        "read the configuration revisions",
-        transport.config_revisions(admin).await,
-    ));
     // The application-consistent snapshot (WP-7.8): a prepare, a mutation held, a token no
     // backup answers to, the finalize, the list, a prepare aborted.
     steps.push((
@@ -2435,16 +2045,8 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.prepare_backup(admin).await,
     ));
     steps.push((
-        "create a grant under the barrier",
-        transport
-            .create_grant(
-                admin,
-                "barrier",
-                "spiffe://acme/held",
-                operations::CATALOG_READ,
-                None,
-            )
-            .await,
+        "invite under the barrier",
+        transport.create_invite(admin, "barrier").await,
     ));
     steps.push((
         "finalize with another token",
@@ -2476,12 +2078,6 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     steps.push((
         "plan a sweep nobody serves",
         transport.plan_gc(admin, "everything", "gc").await,
-    ));
-    steps.push((
-        "grant the object sweep",
-        transport
-            .create_grant(admin, "gc-grant", ADMIN, operations::GC_MANAGE, None)
-            .await,
     ));
     let planned = transport.plan_gc(admin, "objects", "gc").await;
     let sweep = receipt_of(&planned);
@@ -2536,7 +2132,21 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     ));
     let planned = transport.plan_key_revoke(admin, ring, "kp1", &first).await;
     let receipt = receipt_of(&planned);
+    let plan_id = member(&planned, &["plan_id"]).to_owned();
     steps.push(("plan a key revocation", planned));
+    // Listed by plan id, which each stack mints at random: compared in revision order.
+    steps.push((
+        "list the plans",
+        by_revision(transport.list_plans(admin).await),
+    ));
+    steps.push((
+        "list the plans as a stranger",
+        transport.list_plans(Some(STRANGER)).await,
+    ));
+    steps.push((
+        "approve the own plan",
+        transport.approve_plan(admin, &plan_id, "a0").await,
+    ));
     steps.push((
         "run the key revocation",
         transport.run_key_revoke(admin, ring, "kr1", &receipt).await,
@@ -2714,15 +2324,9 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
     let served = host_api::grpc::Served::new(facade("vectors-grpc"), Disclosure::Minimal);
     // The server halves are the server crate's own; the client halves below are the
     // conformance crate's, generated from the same proto, as any caller's would be.
-    use permguard_server::host_api::{iam_v1 as served_iam, v1 as served_v1};
+    use permguard_server::host_api::v1 as served_v1;
     grpc.add_service(
         served_v1::identity_service_server::IdentityServiceServer::with_interceptor(
-            served.clone(),
-            bearer_interceptor,
-        ),
-    );
-    grpc.add_service(
-        served_iam::grant_service_server::GrantServiceServer::with_interceptor(
             served.clone(),
             bearer_interceptor,
         ),
@@ -2776,10 +2380,6 @@ fn by_revision(outcome: Outcome) -> Outcome {
 /// The schema of `host.json` each answered step of the script conforms to.
 fn schema_of(case: &str) -> &'static str {
     match case {
-        "list the grants" | "list the grants after" => "GrantList",
-        "create a grant" | "create a grant with an expiry and a constraint" => "GrantCreated",
-        "plan a revocation" => "GrantRevokePlan",
-        "run the revocation" => "GrantRevoked",
         "list the key rings" | "list the key rings as nobody" => "KeyRings",
         "read the operations ring" => "KeyRing",
         "read the verification bundle" | "read the next page of the bundle" => "KeyBundlePage",
@@ -2798,12 +2398,10 @@ fn schema_of(case: &str) -> &'static str {
         "read a stream's anchors" => "StreamAnchorList",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
-        "read the configuration revisions" => "ConfigRevisions",
         "prepare a backup" => "BackupPrepared",
         "finalize the backup" => "BackupEnded",
         "abort a backup" => "BackupAborted",
         "list the backups" => "BackupList",
-        "grant the object sweep" => "GrantCreated",
         "plan the object sweep" => "GcPlanned",
         "run the object sweep" => "GcRan",
         "read the identity" | "read the identity after its rotation" => "HostIdentity",
@@ -2880,21 +2478,6 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
             serde_json::from_slice::<Value>(&bytes).expect("a JSON body")
         }
     };
-    let conflict = raw(
-        "POST",
-        "/iam/v1/grants",
-        Some(ADMIN),
-        Some(json!({
-            "request_id": "schema-conflict",
-            "expected_revision": 77,
-            "principal": "spiffe://acme/alice",
-            "operations": [operations::CATALOG_READ],
-            "selector": "plane/control/*",
-        })),
-    )
-    .await;
-    assert!(conflict.get("revision").is_some(), "{conflict}");
-    document.check_json("HostWireError", &conflict);
     // The identity's own ring: a view, never bound (WP-3.1).
     let identity_ring = raw("GET", "/host/v1/keys/host.identity", None, None).await;
     document.check_json("KeyRing", &identity_ring);
@@ -2907,7 +2490,10 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
         Some(json!({ "request_id": "rot-0", "expected_epoch": 9 })),
     )
     .await;
-    assert_eq!(stale["revision"], 1, "{stale}");
+    assert_eq!(
+        stale["revision"], 1,
+        "the current revision travels beside the conflict: {stale}"
+    );
     document.check_json("HostWireError", &stale);
     let rotated = raw(
         "POST",
@@ -2925,22 +2511,7 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     common.check_json("WireDenial", &denied);
     // And the bodies the routes accept are instances of their request schemas.
     document.check_json(
-        "CreateGrantBody",
-        &json!({
-            "request_id": "r",
-            "expected_revision": null,
-            "principal": "spiffe://acme/alice",
-            "operations": [operations::CATALOG_READ],
-            "selector": "plane/control/*",
-            "expires_at": null,
-        }),
-    );
-    document.check_json(
-        "PlanRevokeBody",
-        &json!({ "request_id": "r", "expected_revision": null }),
-    );
-    document.check_json(
-        "RunRevokeBody",
+        "RunKeyRevokeBody",
         &json!({ "request_id": "r", "receipt": "r" }),
     );
 }
@@ -2961,52 +2532,6 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         }
     };
     use permguard_core::codes::{common, host};
-    assert_eq!(
-        refused("list the grants as nobody"),
-        (String::new(), common::UNAUTHENTICATED.to_owned())
-    );
-    assert_eq!(
-        refused("list the grants as a stranger"),
-        (String::new(), common::FORBIDDEN.to_owned())
-    );
-    assert_eq!(
-        refused("reuse the request id for another grant"),
-        ("conflict".to_owned(), host::REQUEST_ID_REUSED.to_owned())
-    );
-    assert_eq!(
-        refused("create with an unregistered operation"),
-        ("validation".to_owned(), common::INVALID_ARGUMENT.to_owned())
-    );
-    assert_eq!(
-        refused("create without a request id"),
-        (
-            "validation".to_owned(),
-            host::REQUEST_ID_REQUIRED.to_owned()
-        )
-    );
-    assert_eq!(
-        refused("create against a stale revision"),
-        ("conflict".to_owned(), host::REVISION_MISMATCH.to_owned())
-    );
-    assert_eq!(
-        refused("run with a wrong digest"),
-        (
-            "validation".to_owned(),
-            host::PLAN_DIGEST_MISMATCH.to_owned()
-        )
-    );
-    assert_eq!(
-        refused("run with an unknown plan"),
-        ("not_found".to_owned(), host::PLAN_UNKNOWN.to_owned())
-    );
-    assert_eq!(
-        refused("approve the own plan"),
-        ("conflict".to_owned(), host::PLAN_SELF_APPROVAL.to_owned())
-    );
-    assert_eq!(
-        refused("list the plans as a stranger"),
-        (String::new(), common::FORBIDDEN.to_owned())
-    );
     // The object sweep's refusals (WP-7.11b).
     assert_eq!(
         refused("plan a sweep as a stranger"),
@@ -3027,7 +2552,7 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         ("conflict".to_owned(), common::CONFLICT.to_owned())
     );
     assert_eq!(
-        refused("create a grant under the barrier"),
+        refused("invite under the barrier"),
         ("unavailable".to_owned(), common::UNAVAILABLE.to_owned())
     );
     assert_eq!(
@@ -3067,33 +2592,8 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         }
     }
     assert_eq!(
-        refused("run the consumed plan again"),
-        ("conflict".to_owned(), host::PLAN_EXPIRED.to_owned())
-    );
-    assert_eq!(
-        refused("plan against the revoked grant"),
-        ("conflict".to_owned(), host::GRANT_TERMINAL.to_owned())
-    );
-    assert_eq!(
-        refused("plan against an unknown grant"),
-        ("not_found".to_owned(), host::GRANT_UNKNOWN.to_owned())
-    );
-    assert_eq!(
-        refused("plan against a malformed id"),
-        ("validation".to_owned(), common::INVALID_ARGUMENT.to_owned())
-    );
-    assert_eq!(
         refused("read an unknown ring"),
         ("not_found".to_owned(), host::RING_UNKNOWN.to_owned())
-    );
-    assert!(
-        matches!(
-            steps
-                .iter()
-                .find(|(name, _)| *name == "read the configuration revisions"),
-            Some((_, Outcome::Answered(_)))
-        ),
-        "the revisions are served (WP-2.9)"
     );
     assert!(
         matches!(
@@ -3142,10 +2642,6 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
     assert_eq!(
         refused("plan the revocation of a revoked key"),
         ("conflict".to_owned(), host::KEY_REVOKED.to_owned())
-    );
-    assert_eq!(
-        refused("create a grant with an expiry in the past"),
-        ("validation".to_owned(), common::INVALID_ARGUMENT.to_owned())
     );
     // `keys.read` is public on this facade, as a deployment may declare it: nobody lists.
     assert!(matches!(
@@ -3317,19 +2813,12 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
         };
     let (status, _, body) = send(
         "POST",
-        "/iam/v1/grants".to_owned(),
-        Some(json!({
-            "request_id": "s1",
-            "expected_revision": 77,
-            "principal": "spiffe://acme/alice",
-            "operations": [operations::CATALOG_READ],
-            "selector": "plane/control/*",
-        })),
+        "/host/v1/identity/rotate".to_owned(),
+        Some(json!({ "request_id": "s1", "expected_epoch": 77 })),
         Some(ADMIN),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    assert_eq!(body["code"], permguard_core::codes::host::REVISION_MISMATCH);
     assert_eq!(
         body["revision"],
         json!(1),
@@ -3338,14 +2827,8 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
 
     let (status, _, body) = send(
         "POST",
-        "/iam/v1/grants".to_owned(),
-        Some(json!({
-            "request_id": "s2",
-            "principal": "spiffe://acme/alice",
-            "operations": [operations::CATALOG_READ],
-            "selector": "plane/control/*",
-            "surprise": true,
-        })),
+        "/host/v1/identity/rotate".to_owned(),
+        Some(json!({ "request_id": "s2", "expected_epoch": 1, "surprise": true })),
         Some(ADMIN),
     )
     .await;
@@ -3357,12 +2840,8 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
 
     let (status, _, body) = send(
         "POST",
-        "/iam/v1/grants".to_owned(),
-        Some(json!({
-            "principal": "spiffe://acme/alice",
-            "operations": [operations::CATALOG_READ],
-            "selector": "plane/control/*",
-        })),
+        "/host/v1/identity/rotate".to_owned(),
+        Some(json!({ "request_id": "", "expected_epoch": 1 })),
         Some(ADMIN),
     )
     .await;
@@ -3598,349 +3077,6 @@ fn chrono_like(text: &str) -> bool {
             .all(|(at, held)| [4, 7, 10, 13, 16, 19].contains(&at) || held.is_ascii_digit())
 }
 
-/// One step of the directory script, as either transport answered it: the status or code, and the
-/// members the step checks.
-#[derive(Debug, PartialEq, Eq)]
-struct Step {
-    outcome: String,
-    seen: Value,
-}
-
-fn grpc_step<T: serde::Serialize>(
-    answered: Result<tonic::Response<T>, tonic::Status>,
-    seen: impl FnOnce(T) -> Value,
-) -> Step {
-    match answered {
-        Ok(response) => Step {
-            outcome: "ok".to_owned(),
-            seen: seen(response.into_inner()),
-        },
-        Err(status) => match reduced_grpc::<T>(Err(status)) {
-            Outcome::Refused { code, .. } => Step {
-                outcome: code,
-                seen: Value::Null,
-            },
-            Outcome::Answered(_) => unreachable!("an error is a refusal"),
-        },
-    }
-}
-
-fn rest_step(outcome: Outcome, seen: impl FnOnce(&Value) -> Value) -> Step {
-    match outcome {
-        Outcome::Answered(body) => Step {
-            outcome: "ok".to_owned(),
-            seen: seen(&body),
-        },
-        Outcome::Refused { code, .. } => Step {
-            outcome: code,
-            seen: Value::Null,
-        },
-    }
-}
-
-async fn directory_script_rest(transport: &Transport) -> Vec<Step> {
-    let call = |method: &'static str, path: String, who: &'static str, body: Option<Value>| async move {
-        transport.rest(method, &path, Some(who), body).await
-    };
-    let changed = |body: &Value| json!({"revision": body["revision"], "changed": body["changed"]});
-    vec![
-        rest_step(call("POST", "/iam/v1/roles".into(), ADMIN, Some(json!({"request_id": "r1", "name": "operators", "description": "run it"}))).await, changed),
-        rest_step(call("POST", "/iam/v1/users".into(), ADMIN, Some(json!({"request_id": "r2", "name": "paperino", "email": "paperino@hotmail.com", "password": "a long enough secret"}))).await, changed),
-        rest_step(call("POST", "/iam/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r3", "member": "user:paperino"}))).await, changed),
-        rest_step(call("POST", "/iam/v1/roles/operators/members".into(), ADMIN, Some(json!({"request_id": "r4", "member": "user:paperino"}))).await, changed),
-        rest_step(call("GET", "/iam/v1/roles/operators".into(), ADMIN, None).await, |body| json!({"members": body["members"], "description": body["description"]})),
-        rest_step(call("GET", "/iam/v1/principals/user%3Apaperino/roles".into(), ADMIN, None).await, Clone::clone),
-        rest_step(call("GET", "/iam/v1/users".into(), ADMIN, None).await, |body| json!({"name": body["users"][0]["name"], "password": body["users"][0]["password"], "roles": body["users"][0]["roles"]})),
-        rest_step(call("GET", "/iam/v1/roles".into(), "spiffe://acme/stranger", None).await, Clone::clone),
-        rest_step(call("POST", "/iam/v1/users".into(), ADMIN, Some(json!({"request_id": "r5", "name": "weak", "password": "short"}))).await, changed),
-        rest_step(call("POST", "/iam/v1/grants".into(), ADMIN, Some(json!({"request_id": "r6", "principal": "role:operators", "operations": ["catalog.read"], "selector": "plane/control/*"}))).await, |_| Value::Null),
-        rest_step(call("POST", "/iam/v1/roles/operators/delete".into(), ADMIN, Some(json!({"request_id": "r7"}))).await, changed),
-        rest_step(call("POST", "/iam/v1/users/paperino/disable".into(), ADMIN, Some(json!({"request_id": "r8"}))).await, changed),
-        rest_step(call("GET", "/iam/v1/users/paperino".into(), ADMIN, None).await, |body| json!({"status": body["user"]["status"]})),
-        rest_step(call("POST", "/iam/v1/users/paperino/delete".into(), ADMIN, Some(json!({"request_id": "r9"}))).await, changed),
-        rest_step(call("GET", "/iam/v1/users/paperino".into(), ADMIN, None).await, Clone::clone),
-    ]
-}
-
-async fn directory_script_grpc(transport: &Transport) -> Vec<Step> {
-    let url = format!("http://{}", transport.grpc_url());
-    let mut roles = iam_v1::role_service_client::RoleServiceClient::connect(url.clone())
-        .await
-        .expect("roles");
-    let mut users = iam_v1::user_service_client::UserServiceClient::connect(url.clone())
-        .await
-        .expect("users");
-    let mut grants = transport.grants().await;
-    let changed = |answer: host_v1::DirectoryChangeResponse| json!({"revision": answer.revision, "changed": answer.changed});
-    vec![
-        grpc_step(
-            roles
-                .create_role(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::CreateRoleRequest {
-                        request_id: "r1".into(),
-                        expected_revision: None,
-                        name: "operators".into(),
-                        description: "run it".into(),
-                        max_lifetime: None,
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            users
-                .create_user(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::CreateUserRequest {
-                        request_id: "r2".into(),
-                        expected_revision: None,
-                        name: "paperino".into(),
-                        email: Some("paperino@hotmail.com".into()),
-                        display: None,
-                        password: Some("a long enough secret".into()),
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            roles
-                .add_member(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::MemberRequest {
-                        role: "operators".into(),
-                        request_id: "r3".into(),
-                        expected_revision: None,
-                        member: "user:paperino".into(),
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            roles
-                .add_member(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::MemberRequest {
-                        role: "operators".into(),
-                        request_id: "r4".into(),
-                        expected_revision: None,
-                        member: "user:paperino".into(),
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            roles
-                .get_role(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::GetRoleRequest {
-                        name: "operators".into(),
-                    },
-                ))
-                .await,
-            |answer| json!({"members": answer.members, "description": answer.description}),
-        ),
-        grpc_step(
-            roles
-                .roles_of(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::RolesOfRequest {
-                        principal: "user:paperino".into(),
-                    },
-                ))
-                .await,
-            |answer| json!(answer.roles),
-        ),
-        grpc_step(
-            users
-                .list_users(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::ListUsersRequest {},
-                ))
-                .await,
-            |answer| json!({"name": answer.users[0].name, "password": answer.users[0].password, "roles": answer.users[0].roles}),
-        ),
-        grpc_step(
-            roles
-                .list_roles(Transport::grpc_request(
-                    Some("spiffe://acme/stranger"),
-                    host_v1::ListRolesRequest {},
-                ))
-                .await,
-            |_| Value::Null,
-        ),
-        grpc_step(
-            users
-                .create_user(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::CreateUserRequest {
-                        request_id: "r5".into(),
-                        expected_revision: None,
-                        name: "weak".into(),
-                        email: None,
-                        display: None,
-                        password: Some("short".into()),
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            grants
-                .create_grant(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::CreateGrantRequest {
-                        request_id: "r6".into(),
-                        expected_revision: None,
-                        principal: "role:operators".into(),
-                        operations: vec!["catalog.read".into()],
-                        selector: "plane/control/*".into(),
-                        resource_types: Vec::new(),
-                        constraints: Default::default(),
-                        expires_at: None,
-                    },
-                ))
-                .await,
-            |_| Value::Null,
-        ),
-        grpc_step(
-            roles
-                .delete_role(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::DeleteRoleRequest {
-                        name: "operators".into(),
-                        request_id: "r7".into(),
-                        expected_revision: None,
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            users
-                .set_user_status(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::SetUserStatusRequest {
-                        name: "paperino".into(),
-                        request_id: "r8".into(),
-                        expected_revision: None,
-                        active: false,
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            users
-                .get_user(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::GetUserRequest {
-                        name: "paperino".into(),
-                    },
-                ))
-                .await,
-            |answer| json!({"status": answer.user.map(|user| user.status)}),
-        ),
-        grpc_step(
-            users
-                .delete_user(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::UserPlainRequest {
-                        name: "paperino".into(),
-                        request_id: "r9".into(),
-                        expected_revision: None,
-                    },
-                ))
-                .await,
-            changed,
-        ),
-        grpc_step(
-            users
-                .get_user(Transport::grpc_request(
-                    Some(ADMIN),
-                    host_v1::GetUserRequest {
-                        name: "paperino".into(),
-                    },
-                ))
-                .await,
-            |_| Value::Null,
-        ),
-    ]
-}
-
-/// Roles and local users (WP-8.1): the same script over both transports, the same outcome at
-/// every step; a role holding grants is not deleted; a stranger is refused; a weak password too.
-#[tokio::test(flavor = "multi_thread")]
-async fn roles_and_users_answer_the_same_over_both_transports() {
-    let rest = Transport::Rest(
-        host_api::http::routes(facade("directory-rest"), Disclosure::Minimal)
-            .layer(ActorLayer::new(Arc::new(Bearers))),
-    );
-    let mut grpc = tonic::service::RoutesBuilder::default();
-    let served = host_api::grpc::Served::new(facade("directory-grpc"), Disclosure::Minimal);
-    use permguard_server::host_api::iam_v1 as served_iam;
-    grpc.add_service(
-        served_iam::role_service_server::RoleServiceServer::with_interceptor(
-            served.clone(),
-            bearer_interceptor,
-        ),
-    );
-    grpc.add_service(
-        served_iam::user_service_server::UserServiceServer::with_interceptor(
-            served.clone(),
-            bearer_interceptor,
-        ),
-    );
-    grpc.add_service(
-        served_iam::grant_service_server::GrantServiceServer::with_interceptor(
-            served,
-            bearer_interceptor,
-        ),
-    );
-    let served = serve(axum::Router::new(), grpc.routes());
-    let grpc = Transport::Grpc(served.grpc);
-
-    let over_rest = directory_script_rest(&rest).await;
-    let over_grpc = directory_script_grpc(&grpc).await;
-    let expected = [
-        ("ok", json!({"revision": 1, "changed": true})),
-        ("ok", json!({"revision": 2, "changed": true})),
-        ("ok", json!({"revision": 3, "changed": true})),
-        ("ok", json!({"revision": 3, "changed": false})),
-        (
-            "ok",
-            json!({"members": ["user:paperino"], "description": "run it"}),
-        ),
-        ("ok", json!(["operators"])),
-        (
-            "ok",
-            json!({"name": "paperino", "password": true, "roles": ["operators"]}),
-        ),
-        ("forbidden", Value::Null),
-        ("invalid_argument", Value::Null),
-        ("ok", Value::Null),
-        ("conflict", Value::Null),
-        ("ok", json!({"revision": 4, "changed": true})),
-        ("ok", json!({"status": "disabled"})),
-        ("ok", json!({"revision": 5, "changed": true})),
-        ("not_found", Value::Null),
-    ];
-    for (at, (rest, grpc)) in over_rest.iter().zip(&over_grpc).enumerate() {
-        let (outcome, seen) = &expected[at];
-        assert_eq!(rest.outcome, *outcome, "REST step {at}: {rest:?}");
-        assert_eq!(grpc.outcome, *outcome, "gRPC step {at}: {grpc:?}");
-        if !seen.is_null() {
-            assert_eq!(&rest.seen, seen, "REST step {at}");
-            assert_eq!(&grpc.seen, seen, "gRPC step {at}");
-        }
-    }
-    assert_eq!(over_rest.len(), expected.len());
-    assert_eq!(over_grpc.len(), expected.len());
-}
-
 /// What one call of the walk answered: the HTTP status, or the gRPC status code.
 type Answered = (u16, String);
 
@@ -4102,7 +3238,8 @@ enum Open {
     RefusedToEveryone,
     /// `UNIMPLEMENTED` to every caller: not served by this build.
     Unimplemented,
-    /// Open by the deployment's own public grant: `keys.read` on the Host, in this facade.
+    /// Open by the deployment's own public grant, `keys.read` on the Host in this facade: to nobody,
+    /// never to a token that holds no such scope.
     Public,
 }
 
@@ -4153,31 +3290,6 @@ const OPEN_ROUTES: &[(&str, Open, &str)] = &[
         "permguard.host.v1.KeyService/ListKeyRings",
         Open::Public,
         "keys.read is public in this facade",
-    ),
-    (
-        "POST /iam/v1/token",
-        Open::RefusedToEveryone,
-        "the token endpoint authenticates its clients itself; asked with no form, it refuses everyone alike",
-    ),
-    (
-        "GET /iam/v1/keys",
-        Open::Public,
-        "keys.read is public in this facade, and the token keys are read as every key set is",
-    ),
-    (
-        "GET /.well-known/oauth-authorization-server",
-        Open::Public,
-        "RFC 8414's metadata is open to every caller, as discovery is",
-    ),
-    (
-        "GET /iam/v1/status-lists/{id}",
-        Open::Public,
-        "keys.read is public in this facade, and a list is read as the keys are",
-    ),
-    (
-        "permguard.iam.v1.TokenService/GetStatusList",
-        Open::Public,
-        "keys.read is public in this facade, and a list is read as the keys are",
     ),
     (
         "permguard.host.v1.KeyService/GetKeyRing",
@@ -4251,7 +3363,11 @@ fn open_offence(
                 && admin.0 != 0
         }
         Open::Unimplemented => answers.iter().all(|answer| answer.0 == unimplemented),
-        Open::Public => answers.iter().all(|answer| !refused.contains(&answer.0)),
+        // A public grant opens the route to nobody; a token decides alone, so the stranger's,
+        // which holds no scope, is refused where the route authorizes at all.
+        Open::Public => [nobody, admin]
+            .iter()
+            .all(|answer| !refused.contains(&answer.0)),
     };
     (!fine).then(|| format!("{route} ({open:?}): answered {nobody:?}, {stranger:?}, {admin:?}"))
 }
@@ -4383,13 +3499,10 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
             }
         }
     }
-    assert!(walked >= 70, "{walked} REST routes walked");
+    assert!(walked >= 50, "{walked} REST routes walked");
 
     let proto = std::fs::read_to_string(root.join("proto/permguard/host/v1/host.proto"))
         .expect("host.proto reads");
-    // The directory's services, on the IAM Host (WP-11.1); their messages are host.proto's.
-    let iam = std::fs::read_to_string(root.join("proto/permguard/iam/v1/iam.proto"))
-        .expect("iam.proto reads");
     // The messages' scalar fields, `type name = number;`, by message.
     let mut messages: std::collections::HashMap<String, Vec<(String, String, u32)>> =
         std::collections::HashMap::new();
@@ -4415,7 +3528,7 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
         }
     }
     let mut rpcs = 0;
-    for (package, proto) in [("permguard.host.v1", &proto), ("permguard.iam.v1", &iam)] {
+    for (package, proto) in [("permguard.host.v1", &proto)] {
         let mut service = String::new();
         for line in proto.lines().map(str::trim) {
             if let Some(name) = line.strip_prefix("service ") {
@@ -4466,526 +3579,12 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
             }
         }
     }
-    assert!(rpcs >= 70, "{rpcs} gRPC methods walked");
+    assert!(rpcs >= 48, "{rpcs} gRPC methods walked");
     assert!(offences.is_empty(), "{}", offences.join("\n"));
 }
 
-/// WP-11.1: a member holds no directory. Its listener serves no `/iam/v1` route and no
-/// `permguard.iam.v1` service, while it answers every Host route as the IAM Host does. Asked by a
-/// stranger, whom a served route refuses before it looks anything up, so a `404` or
-/// `UNIMPLEMENTED` can only mean the route is not served.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_member_serves_no_directory_on_either_binding() {
-    let member = host_api::routes(facade_of("member-directory", false), Disclosure::Minimal)
-        .layer(ActorLayer::new(Arc::new(Bearers)));
-    let iam_host = host_api::routes(facade("iam-host-directory"), Disclosure::Minimal)
-        .layer(ActorLayer::new(Arc::new(Bearers)));
-    let root = permguard_conformance::contracts::root();
-    let document: Value = serde_json::from_slice(
-        &std::fs::read(root.join("openapi/host.json")).expect("host.json reads"),
-    )
-    .expect("host.json is JSON");
-
-    let mut iam_paths = 0;
-    for (path, operations) in document["paths"].as_object().expect("paths") {
-        let concrete = path.replace(['{', '}'], "");
-        for method in operations.as_object().expect("operations").keys() {
-            if !["get", "post", "patch", "delete"].contains(&method.as_str()) {
-                continue;
-            }
-            let method = method.to_uppercase();
-            let body = (method != "GET").then(|| json!({}));
-            let ask = |router| walk_rest(router, &method, &concrete, body.as_ref(), Some(STRANGER));
-            let (on_member, on_iam) = (ask(&member).await, ask(&iam_host).await);
-            if path.starts_with("/iam/v1/") || path == "/.well-known/oauth-authorization-server" {
-                iam_paths += 1;
-                assert_eq!(on_member.0, 404, "{method} {path} on a member");
-                // A public route refuses no stranger, and answers the list it does not hold
-                // `404` itself: only a route behind a grant tells served from unserved here.
-                let public = OPEN_ROUTES.iter().any(|(open, kind, _)| {
-                    *open == format!("{method} {path}") && *kind == Open::Public
-                });
-                if !public {
-                    assert_ne!(on_iam.0, 404, "{method} {path} on the IAM Host");
-                }
-            } else {
-                assert_eq!(
-                    on_member, on_iam,
-                    "{method} {path}: a member answers as the IAM Host"
-                );
-            }
-        }
-    }
-    assert!(iam_paths >= 20, "{iam_paths} directory routes checked");
-
-    let iam = std::fs::read_to_string(root.join("proto/permguard/iam/v1/iam.proto"))
-        .expect("iam.proto reads");
-    let mut service = String::new();
-    let mut rpcs = 0;
-    for line in iam.lines().map(str::trim) {
-        if let Some(name) = line.strip_prefix("service ") {
-            service = name.trim_end_matches('{').trim().to_owned();
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("rpc ") else {
-            continue;
-        };
-        let method = rest.split('(').next().expect("a method").trim();
-        let rpc = format!("permguard.iam.v1.{service}/{method}");
-        rpcs += 1;
-        // UNIMPLEMENTED is 12: not served.
-        let on_member = walk_grpc(&member, &rpc, &walk_message(&[]), Some(STRANGER)).await;
-        assert_eq!(on_member.0, 12, "{rpc} on a member: {on_member:?}");
-        let on_iam = walk_grpc(&iam_host, &rpc, &walk_message(&[]), Some(STRANGER)).await;
-        assert_ne!(on_iam.0, 12, "{rpc} on the IAM Host: {on_iam:?}");
-    }
-    assert!(rpcs >= 20, "{rpcs} directory methods checked");
-}
-
-/// Every file under `root`, read whole: what a secret must never be found in.
-fn volume_holds(root: &std::path::Path, needle: &[u8]) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        for entry in std::fs::read_dir(&dir).expect("the volume reads").flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                pending.push(path);
-            } else if std::fs::read(&path)
-                .is_ok_and(|bytes| bytes.windows(needle.len()).any(|window| window == needle))
-            {
-                found.push(path);
-            }
-        }
-    }
-    found
-}
-
-/// WP-11.2: a service account and its three kinds of credential over REST. A client secret is
-/// answered once, by the call that drew it: a retry answers the same credential without it, no
-/// read shows it, and no file of the volume holds it. A binding names one account; a revoked
-/// credential is listed `revoked`; an account holding a grant is not deleted.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_service_account_secret_is_answered_once_and_never_kept() {
-    let root = std::env::temp_dir().join(format!(
-        "permguard-host-api-service-accounts-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let rest = Transport::Rest(
-        host_api::http::routes(facade("service-accounts"), Disclosure::Minimal)
-            .layer(ActorLayer::new(Arc::new(Bearers))),
-    );
-    let answered = |outcome: Outcome| match outcome {
-        Outcome::Answered(body) => body,
-        Outcome::Refused { code, .. } => panic!("refused: {code}"),
-    };
-    let refused = |outcome: Outcome| match outcome {
-        Outcome::Refused { code, .. } => code,
-        Outcome::Answered(body) => panic!("answered: {body}"),
-    };
-    let post = |path: &'static str, body: Value| rest.rest("POST", path, Some(ADMIN), Some(body));
-    for name in ["billing", "reports"] {
-        answered(
-            rest.rest(
-                "POST",
-                "/iam/v1/service-accounts",
-                Some(ADMIN),
-                Some(
-                    json!({"request_id": format!("sa-{name}"), "name": name, "owner": "payments"}),
-                ),
-            )
-            .await,
-        );
-    }
-    // A stranger makes nothing, and learns nothing of the account.
-    assert_eq!(
-        refused(
-            rest.rest(
-                "POST",
-                "/iam/v1/service-accounts/billing/credentials",
-                Some(STRANGER),
-                Some(json!({"request_id": "c0", "kind": "client_secret"})),
-            )
-            .await
-        ),
-        "forbidden"
-    );
-
-    let first = answered(
-        post(
-            "/iam/v1/service-accounts/billing/credentials",
-            json!({"request_id": "c1", "kind": "client_secret"}),
-        )
-        .await,
-    );
-    let secret = first["client_secret"]
-        .as_str()
-        .expect("the secret, once")
-        .to_owned();
-    assert!(secret.starts_with("pgc_") && secret.len() == 47, "{secret}");
-    assert_eq!(first["credential"]["kind"], "client_secret");
-    assert_eq!(first["credential"]["status"], "active");
-    let retried = answered(
-        post(
-            "/iam/v1/service-accounts/billing/credentials",
-            json!({"request_id": "c1", "kind": "client_secret"}),
-        )
-        .await,
-    );
-    assert_eq!(retried["credential"]["id"], first["credential"]["id"]);
-    assert_eq!(
-        retried["client_secret"],
-        Value::Null,
-        "a retry never answers the secret"
-    );
-
-    let key = answered(
-        post(
-            "/iam/v1/service-accounts/billing/credentials",
-            json!({"request_id": "c2", "kind": "private_key_jwt", "public_key": {
-                "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-            }}),
-        )
-        .await,
-    );
-    assert_eq!(
-        key["credential"]["key_id"],
-        "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
-    );
-    assert_eq!(key["client_secret"], Value::Null);
-    assert_eq!(
-        refused(
-            post(
-                "/iam/v1/service-accounts/billing/credentials",
-                json!({"request_id": "c3", "kind": "private_key_jwt", "public_key": {
-                    "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-                    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A"
-                }}),
-            )
-            .await
-        ),
-        "invalid_argument",
-        "a private key is never taken"
-    );
-    answered(
-        post(
-            "/iam/v1/service-accounts/billing/credentials",
-            json!({"request_id": "c4", "kind": "tls_client_auth", "certificate": "spiffe://acme/jobs"}),
-        )
-        .await,
-    );
-    assert_eq!(
-        refused(
-            post(
-                "/iam/v1/service-accounts/reports/credentials",
-                json!({"request_id": "c5", "kind": "tls_client_auth", "certificate": "spiffe://acme/jobs"}),
-            )
-            .await
-        ),
-        "conflict",
-        "one binding names one account"
-    );
-
-    let id = first["credential"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_owned();
-    let revoke = format!("/iam/v1/service-accounts/billing/credentials/{id}/revoke");
-    answered(
-        rest.rest(
-            "POST",
-            &revoke,
-            Some(ADMIN),
-            Some(json!({"request_id": "r1"})),
-        )
-        .await,
-    );
-    let detail = answered(
-        rest.rest("GET", "/iam/v1/service-accounts/billing", Some(ADMIN), None)
-            .await,
-    );
-    assert_eq!(detail["service_account"]["credentials"], 2, "two live");
-    assert_eq!(detail["credentials"][0]["status"], "revoked");
-    let listed = answered(
-        rest.rest(
-            "GET",
-            "/iam/v1/service-accounts/billing/credentials",
-            Some(ADMIN),
-            None,
-        )
-        .await,
-    );
-    for read in [&detail, &listed] {
-        let text = read.to_string();
-        assert!(
-            !text.contains(&secret) && !text.contains("argon2"),
-            "{text}"
-        );
-    }
-    assert!(
-        volume_holds(&root, secret.as_bytes()).is_empty(),
-        "the secret reached the volume"
-    );
-
-    answered(
-        post(
-            "/iam/v1/grants",
-            json!({"request_id": "g1", "principal": "sa:billing", "operations": ["catalog.read"],
-                   "selector": "plane/control/*", "resource_types": ["*"]}),
-        )
-        .await,
-    );
-    assert_eq!(
-        refused(
-            post(
-                "/iam/v1/service-accounts/billing/delete",
-                json!({"request_id": "d1"}),
-            )
-            .await
-        ),
-        "conflict",
-        "an account holding a grant is not deleted"
-    );
-    answered(
-        post(
-            "/iam/v1/service-accounts/reports/delete",
-            json!({"request_id": "d2"}),
-        )
-        .await,
-    );
-    assert_eq!(
-        refused(
-            rest.rest("GET", "/iam/v1/service-accounts/reports", Some(ADMIN), None)
-                .await
-        ),
-        "not_found"
-    );
-}
-
-/// The same over gRPC: the secret is answered by the call that drew it.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_service_account_secret_is_answered_once_over_grpc() {
-    let mut grpc = tonic::service::RoutesBuilder::default();
-    let served = host_api::grpc::Served::new(facade("service-accounts-grpc"), Disclosure::Minimal);
-    use permguard_server::host_api::iam_v1 as served_iam;
-    grpc.add_service(
-        served_iam::service_account_service_server::ServiceAccountServiceServer::with_interceptor(
-            served,
-            bearer_interceptor,
-        ),
-    );
-    let served = serve(axum::Router::new(), grpc.routes());
-    let url = format!("http://{}", served.grpc.trim_start_matches("grpc://"));
-    let mut accounts =
-        iam_v1::service_account_service_client::ServiceAccountServiceClient::connect(url)
-            .await
-            .expect("the gRPC endpoint answers");
-    accounts
-        .create_service_account(Transport::grpc_request(
-            Some(ADMIN),
-            iam_v1::CreateServiceAccountRequest {
-                request_id: "sa".to_owned(),
-                expected_revision: None,
-                name: "billing".to_owned(),
-                owner: "payments".to_owned(),
-                description: String::new(),
-            },
-        ))
-        .await
-        .expect("an account");
-    let create = || iam_v1::CreateCredentialRequest {
-        name: "billing".to_owned(),
-        request_id: "c1".to_owned(),
-        expected_revision: None,
-        kind: "client_secret".to_owned(),
-        public_key: std::collections::HashMap::new(),
-        certificate: None,
-        expires_at: None,
-    };
-    let first = accounts
-        .create_credential(Transport::grpc_request(Some(ADMIN), create()))
-        .await
-        .expect("a credential")
-        .into_inner();
-    assert!(
-        first
-            .client_secret
-            .as_deref()
-            .is_some_and(|secret| secret.starts_with("pgc_"))
-    );
-    let retried = accounts
-        .create_credential(Transport::grpc_request(Some(ADMIN), create()))
-        .await
-        .expect("the same credential")
-        .into_inner();
-    assert_eq!(retried.client_secret, None);
-    assert_eq!(
-        retried.credential.map(|credential| credential.id),
-        first.credential.map(|credential| credential.id)
-    );
-}
-
-/// WP-11.4: the token endpoint over HTTP. `Authorization: Basic` reaches it through the
-/// boundary, which refuses the scheme everywhere else; a wrong secret is `401 invalid_client` with
-/// `WWW-Authenticate: Basic`, a request that is not a form `400 invalid_request`, and every answer
-/// is `no-store`. Proven by the client's own secret: with no live member, the request then fails on
-/// its audience, `invalid_target`, after the proof held.
-#[tokio::test(flavor = "multi_thread")]
-async fn the_token_endpoint_reads_basic_and_answers_rfc_6749() {
-    use base64::Engine as _;
-
-    let router = host_api::routes(facade("token-endpoint"), Disclosure::Minimal).layer(
-        ActorLayer::new(Arc::new(Bearers))
-            .client_authentication([host_api::http::TOKEN_PATH.to_owned()]),
-    );
-    let rest = Transport::Rest(router.clone());
-    let created = |outcome: Outcome| match outcome {
-        Outcome::Answered(body) => body,
-        Outcome::Refused { code, .. } => panic!("refused: {code}"),
-    };
-    created(
-        rest.rest(
-            "POST",
-            "/iam/v1/service-accounts",
-            Some(ADMIN),
-            Some(json!({"request_id": "sa", "name": "billing", "owner": "payments"})),
-        )
-        .await,
-    );
-    let secret = created(
-        rest.rest(
-            "POST",
-            "/iam/v1/service-accounts/billing/credentials",
-            Some(ADMIN),
-            Some(json!({"request_id": "c1", "kind": "client_secret"})),
-        )
-        .await,
-    )["client_secret"]
-        .as_str()
-        .expect("the secret")
-        .to_owned();
-    let ask = |content_type: &'static str, basic: Option<String>, body: &'static str| {
-        let router = router.clone();
-        async move {
-            let mut request = Request::builder()
-                .method("POST")
-                .uri(host_api::http::TOKEN_PATH)
-                .header("content-type", content_type);
-            if let Some(basic) = basic {
-                request = request.header(
-                    "authorization",
-                    format!(
-                        "Basic {}",
-                        base64::engine::general_purpose::STANDARD.encode(basic)
-                    ),
-                );
-            }
-            let response = router
-                .oneshot(
-                    request
-                        .body(axum::body::Body::from(body))
-                        .expect("a request"),
-                )
-                .await
-                .expect("answered");
-            let headers = response.headers().clone();
-            let status = response.status().as_u16();
-            let bytes = response
-                .into_body()
-                .collect()
-                .await
-                .expect("a body")
-                .to_bytes();
-            let body: Value = serde_json::from_slice(&bytes).expect("JSON");
-            (status, headers, body)
-        }
-    };
-    let form = "application/x-www-form-urlencoded";
-    let grant = "grant_type=client_credentials&scope=decision.evaluate&audience=member%3Anobody&target=plane%2Fdata%2F*";
-    let (status, headers, body) = ask(form, Some(format!("billing:{secret}")), grant).await;
-    assert_eq!(
-        (status, body["error"].as_str()),
-        (400, Some("invalid_target")),
-        "{body}"
-    );
-    assert_eq!(headers["cache-control"], "no-store");
-    let (status, headers, body) =
-        ask(form, Some(format!("billing:pgc_{}", "A".repeat(43))), grant).await;
-    assert_eq!(
-        (status, body["error"].as_str()),
-        (401, Some("invalid_client")),
-        "{body}"
-    );
-    assert_eq!(headers["www-authenticate"], "Basic realm=\"permguard\"");
-    let (status, _, body) = ask("application/json", None, "{}").await;
-    assert_eq!(
-        (status, body["error"].as_str()),
-        (400, Some("invalid_request"))
-    );
-    let (status, _, body) = ask(form, None, "grant_type=password").await;
-    assert_eq!(
-        (status, body["error"].as_str()),
-        (400, Some("unsupported_grant_type"))
-    );
-    // Basic stays refused by the boundary on every other route.
-    let refused = router
-        .oneshot(
-            Request::builder()
-                .uri("/iam/v1/service-accounts")
-                .header(
-                    "authorization",
-                    format!(
-                        "Basic {}",
-                        base64::engine::general_purpose::STANDARD
-                            .encode(format!("billing:{secret}"))
-                    ),
-                )
-                .body(axum::body::Body::empty())
-                .expect("a request"),
-        )
-        .await
-        .expect("answered");
-    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
-}
-
-/// A password is looked at only once the caller is authorized: without the grant, a password the
-/// policy refuses is answered `401` or `403`, never the policy, and the Host spends no Argon2id
-/// hash on it (WP-8.1).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_password_is_read_only_after_the_caller_is_authorized() {
-    let router = host_api::routes(facade("password-first"), Disclosure::Minimal)
-        .layer(ActorLayer::new(Arc::new(Bearers)));
-    let create = json!({"request_id": "p-1", "name": "paperino", "password": "short"});
-    let set = json!({"request_id": "p-2", "password": "short"});
-    for (path, body) in [
-        ("/iam/v1/users", &create),
-        ("/iam/v1/users/paperino/password", &set),
-    ] {
-        assert_eq!(
-            walk_rest(&router, "POST", path, Some(body), None).await.0,
-            401,
-            "{path}: nobody"
-        );
-        assert_eq!(
-            walk_rest(&router, "POST", path, Some(body), Some(STRANGER))
-                .await
-                .0,
-            403,
-            "{path}: a stranger"
-        );
-        assert_eq!(
-            walk_rest(&router, "POST", path, Some(body), Some(ADMIN))
-                .await
-                .0,
-            400,
-            "{path}: the administrator is told the policy"
-        );
-    }
-}
-
-/// `Bearer token:<principal>` is an access token's bearer acting as `<principal>`, within an
-/// administration token for `lifecycle.read` on the Host; any other bearer is [`Bearers`]'.
+/// `Bearer token:<principal>` is an access token's bearer acting as `<principal>`, its token
+/// holding `lifecycle.read` on the Host; any other bearer is [`Bearers`]'.
 struct TokenBearers;
 
 impl Authenticator for TokenBearers {
@@ -5003,15 +3602,15 @@ impl Authenticator for TokenBearers {
             Some((name, _token)) => Ok(Actor::Authenticated(ActorContext::of_token(
                 Principal::new(name).expect("a principal"),
                 permguard_core::authz::TokenGrant {
-                    family: permguard_core::authz::families::ADMINISTRATION.to_owned(),
-                    scope: std::iter::once(operations::LIFECYCLE_READ.to_owned()).collect(),
-                    targets: vec![permguard_core::authz::Selector::parse("host").expect("host")],
+                    scopes: vec![permguard_core::authz::TokenScope {
+                        operations: std::iter::once(operations::LIFECYCLE_READ.to_owned())
+                            .collect(),
+                        selector: permguard_core::authz::Selector::parse("host").expect("host"),
+                    }],
                     jti: "0198f2aa-0000-7000-8000-00000000abcd".to_owned(),
-                    list_uri: "https://iam.example/iam/v1/status-lists/l".to_owned(),
+                    list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                     list_iat: 1,
                     list_digest: [0; 32],
-                    authority: None,
-                    role: None,
                 },
             ))),
             None => Bearers.authenticate(peer, bearer),
@@ -5020,30 +3619,13 @@ impl Authenticator for TokenBearers {
 }
 
 /// WP-12.4: a Host API call an access token allowed is recorded in the `access` trail with the
-/// token's `jti` and family, never the token, so an administration through a token is traced to
-/// the issuance the IAM Host recorded.
+/// token's `jti`, never the token, so an administration through a token is traced to the issuance
+/// the Authority Plane recorded.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_call_a_token_allowed_names_its_jti_in_the_access_trail() {
-    const OPERATOR: &str = "spiffe://acme/operator";
+    const OPERATOR: &str = "sa:operator";
     let router = host_api::routes(facade("token-access"), Disclosure::Minimal)
         .layer(ActorLayer::new(Arc::new(TokenBearers)));
-    assert_eq!(
-        walk_rest(
-            &router,
-            "POST",
-            "/iam/v1/grants",
-            Some(&json!({
-                "request_id": "t-1",
-                "principal": OPERATOR,
-                "operations": [operations::LIFECYCLE_READ],
-                "selector": "host",
-            })),
-            Some(ADMIN)
-        )
-        .await
-        .0,
-        201
-    );
     const TOKEN_BYTES: &str = "eyJTHEACCESSTOKENITSELF";
     let token_bearer = format!("token:{OPERATOR}|{TOKEN_BYTES}");
     assert_eq!(
@@ -5051,7 +3633,7 @@ async fn a_call_a_token_allowed_names_its_jti_in_the_access_trail() {
             .await
             .0,
         200,
-        "the grant and the token both allow it"
+        "the token allows it"
     );
     let mut found = None;
     for _ in 0..100 {
@@ -5090,98 +3672,6 @@ async fn a_call_a_token_allowed_names_its_jti_in_the_access_trail() {
         record.contains("0198f2aa-0000-7000-8000-00000000abcd"),
         "{found}"
     );
-    assert!(record.contains("administration"), "{found}");
     assert!(record.contains(operations::LIFECYCLE_READ), "{found}");
     assert!(!record.contains(TOKEN_BYTES), "never the token: {found}");
-}
-
-/// A call a role's grant allowed is recorded in the `access` trail with the role as `granted_by`
-/// and the caller as the subject: role-derived access is never unattributed (WP-8.1).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_call_a_role_allowed_names_the_role_in_the_access_trail() {
-    const READER: &str = "spiffe://acme/reader";
-    let router = host_api::routes(facade("granted-by"), Disclosure::Minimal)
-        .layer(ActorLayer::new(Arc::new(Bearers)));
-    let post = |path: &'static str, body: Value| {
-        let router = router.clone();
-        async move {
-            walk_rest(&router, "POST", path, Some(&body), Some(ADMIN))
-                .await
-                .0
-        }
-    };
-    assert_eq!(
-        post(
-            "/iam/v1/roles",
-            json!({"request_id": "g-1", "name": "readers"})
-        )
-        .await,
-        201
-    );
-    assert_eq!(
-        post(
-            "/iam/v1/roles/readers/members",
-            json!({"request_id": "g-2", "member": READER})
-        )
-        .await,
-        200
-    );
-    assert_eq!(
-        post(
-            "/iam/v1/grants",
-            json!({
-                "request_id": "g-3",
-                "principal": "role:readers",
-                "operations": [operations::LIFECYCLE_READ],
-                "selector": "host",
-            })
-        )
-        .await,
-        201
-    );
-    assert_eq!(
-        walk_rest(&router, "GET", "/host/v1/status", None, Some(READER))
-            .await
-            .0,
-        200,
-        "the role's grant allows the reader"
-    );
-
-    // The access trail is written off the request path: read until the record lands.
-    let mut found = None;
-    for _ in 0..100 {
-        let response = router
-            .clone()
-            .oneshot(
-                Request::get("/host/v1/audit/access/records?resource=host")
-                    .header("authorization", format!("Bearer {ADMIN}"))
-                    .body(axum::body::Body::empty())
-                    .expect("a request"),
-            )
-            .await
-            .expect("answered");
-        let bytes = response
-            .into_body()
-            .collect()
-            .await
-            .expect("reads")
-            .to_bytes();
-        let page: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-        found = page["records"].as_array().and_then(|records| {
-            records
-                .iter()
-                .find(|record| record.to_string().contains("host.authz.granted"))
-                .cloned()
-        });
-        if found.is_some() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    let found = found.expect("the access trail names the grant");
-    // The record's bytes, deterministic CBOR: its facts are text inside them.
-    let bytes = receipt_bytes(found["record"].as_str().expect("the record's bytes"));
-    let record = String::from_utf8_lossy(&bytes);
-    assert!(record.contains("role:readers"), "{found}");
-    assert!(record.contains(operations::LIFECYCLE_READ), "{found}");
 }

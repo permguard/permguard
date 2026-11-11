@@ -894,8 +894,8 @@ pub const SETTING_KEYS_CUSTODY: &str = "PERMGUARD_KEYS_CUSTODY";
 pub const SETTING_KEYS_IDENTITY_CUSTODY: &str = "PERMGUARD_KEYS_IDENTITY_CUSTODY";
 /// Runtime setting key for the custody of the `host.operations` ring, when it differs.
 pub const SETTING_KEYS_OPERATIONS_CUSTODY: &str = "PERMGUARD_KEYS_OPERATIONS_CUSTODY";
-/// Runtime setting key for the custody of the IAM Host's `iam.tokens` ring, when it differs
-/// (iteration 02, WP-11.3).
+/// Runtime setting key for the custody of the Authority Plane's `authority.tokens` ring, when it
+/// differs.
 pub const SETTING_KEYS_TOKENS_CUSTODY: &str = "PERMGUARD_KEYS_TOKENS_CUSTODY";
 /// Runtime setting key for what holds the key-encryption key of the `file` custody: `secret`
 /// (the secret store), `pkcs11` or `kms`.
@@ -2493,14 +2493,6 @@ produce: use `EdDSA` or `ES256`"
                 "the Host listener is bound to {address} and demands no client certificate: set \
                  `admin.tls.client_ca`; only a loopback bind under `development_mode: true` may \
                  serve it over plain TLS"
-            );
-        }
-
-        if self.admin_allow.is_empty() && !self.development_mode {
-            bail!(
-                "the administrative surface demands a client certificate but names nobody: list the \
-                 peers that may administer it under `admin.allow`, because a certificate authority \
-                 signs every client it was built for and mutual TLS alone would admit all of them"
             );
         }
 
@@ -4495,13 +4487,13 @@ produce: use `EdDSA` or `ES256`"
         )
     }
 
-    /// The custody of `ring`: `host.identity`, `host.operations` and `iam.tokens` may override the
+    /// The custody of `ring`: `host.identity`, `host.operations` and `authority.tokens` may override the
     /// Host's.
     pub fn keys_custody_of(&self, ring: &str) -> KeyCustody {
         let overridden = match ring {
             "host.identity" => self.keys_identity_custody,
             "host.operations" => self.keys_operations_custody,
-            "iam.tokens" => self.keys_tokens_custody,
+            "authority.tokens" => self.keys_tokens_custody,
             _ => None,
         };
         overridden.unwrap_or_else(|| self.keys_custody())
@@ -4577,15 +4569,15 @@ produce: use `EdDSA` or `ES256`"
         if self.data_signing_keys_enabled() {
             rings.push(("data.attest", self.keys_custody_of("data.attest")));
         }
-        // The IAM Host's ring, when its custody is stated: whether this Host is the IAM Host is
+        // The Authority Plane's ring, when its custody is stated: whether this Host runs it is
         // the composition's to know, which checks the ring's custody where it opens it.
         if self.keys_tokens_custody.is_some() {
-            rings.push(("iam.tokens", self.keys_custody_of("iam.tokens")));
+            rings.push(("authority.tokens", self.keys_custody_of("authority.tokens")));
         }
         rings
     }
 
-    /// Whether the custody of the `iam.tokens` ring was stated apart from the Host's.
+    /// Whether the custody of the `authority.tokens` ring was stated apart from the Host's.
     pub fn keys_tokens_custody_stated(&self) -> bool {
         self.keys_tokens_custody.is_some()
     }
@@ -4914,7 +4906,7 @@ produce: use `EdDSA` or `ES256`"
                 Some(self.keys_custody_of("host.operations").as_str().to_owned())
             }
             SETTING_KEYS_TOKENS_CUSTODY => {
-                Some(self.keys_custody_of("iam.tokens").as_str().to_owned())
+                Some(self.keys_custody_of("authority.tokens").as_str().to_owned())
             }
             SETTING_KEYS_KEK_PROVIDER => Some(self.keys_kek_provider.as_str().to_owned()),
             SETTING_KEYS_KEK_REF => self.keys_kek_ref.as_ref().map(|r| r.name().to_owned()),

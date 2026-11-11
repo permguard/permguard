@@ -50,6 +50,14 @@ host:
     cert: tls/server.pem
     key: tls/server.key
 
+# Where this Server verifies access tokens (`2-security/8`): the Authority Plane's URL, which every
+# token names as its issuer; its keys and status lists are fetched from there over HTTPS, checked
+# against `tls.ca` beside the system's authorities. Without it every token is refused here.
+# authority:
+#   url: "https://permguard-control-plane:8443"
+#   tls:
+#     ca: tls/ca.pem
+
 dataPlane:
   public:
     http:

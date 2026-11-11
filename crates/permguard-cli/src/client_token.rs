@@ -1,192 +1,201 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The command line as a service account (iteration 02, TC-7, `2-security/7` Access tokens): its
-//! client, from the flags or the configuration, obtains an application token at the IAM Host's
-//! token endpoint; a command that reaches a Data Plane sends it when no `--token-file` is given.
-//! The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by the
-//! client and what it asked for, the role it elevates to among it, and reused until a minute
-//! before it expires. Nothing here traces a secret, a key or a token: the trace names the client
-//! and the expiry.
-//!
-//! A person's token is the person's session exchanged at the IAM Host (RFC 8693): [`exchange`].
+//! The command line as a service account (`2-security/7` The client): its access key and secret
+//! key, from the flags or the configuration, obtain a token at the Authority Plane's token
+//! endpoint; every command that reaches a Plane or a Host API sends it when no `--token-file` is
+//! given. The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by
+//! the access key, the Authority Plane and what it asked for, and reused until a minute before it
+//! expires. Nothing here traces a secret or a token: the trace names the access key and the expiry.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use permguard_control_client::endpoint::Endpoint;
 use permguard_control_client::tls::{Credential, TlsOptions};
-use permguard_control_client::token_source::{Asked, Issued, Proof, REFRESH_AHEAD, TokenSource};
+use permguard_control_client::token_source::{Issued, REFRESH_AHEAD, TokenSource};
+use zeroize::Zeroizing;
 
 use crate::args::Globals;
 use crate::failure::Failure;
 use crate::settings::Store;
 use crate::trace::Trace;
 
-/// How long a token request may take.
-const TIMEOUT: Duration = Duration::from_secs(15);
-/// The most a key or cache file may hold.
+/// The most a secret or cache file may hold.
 const FILE_MAX: u64 = 64 * 1024;
 
-/// The client the flags or the configuration name, when there is one: its source for `asked`.
-pub fn source(
-    globals: &Globals,
-    asked: Asked,
-    trace: &Trace,
-) -> Result<Option<TokenSource>, Failure> {
-    let store = crate::session::open_store(globals, trace)?;
-    source_with(globals, &store, asked, trace)
+/// The access key the flags or the configuration name.
+fn access_key(globals: &Globals, store: &Store) -> Option<String> {
+    globals
+        .access_key
+        .clone()
+        .or_else(|| {
+            crate::target::setting_value("auth.client.access_key", store).map(|(value, _)| value)
+        })
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
 }
 
-/// A person's own token for `asked`: the session `--token-file` holds, exchanged at the IAM Host
-/// (RFC 8693), when there is one. The session goes where it was opened, a flag always winning over
-/// the configuration: `--iam-endpoint`, else the `iam` command's own Host, `--host-endpoint`, else
-/// `auth.client.iam_endpoint`, else `host.endpoint`. Reached as the command's Host, its connection
-/// is the Host's, unchanged; reached as the IAM Host, it is the IAM Host's.
-pub fn exchange(
-    globals: &Globals,
-    asked: Asked,
-    trace: &Trace,
-) -> Result<Option<TokenSource>, Failure> {
-    let store = crate::session::open_store(globals, trace)?;
-    let as_iam = globals.iam_endpoint.clone().or_else(|| {
-        globals
-            .host_endpoint
-            .is_none()
-            .then(|| iam_endpoint(globals, &store))
-            .flatten()
-    });
-    let (endpoint, mut tls) = match as_iam {
-        Some(endpoint) => (endpoint, iam_tls(globals, &store, trace)?),
-        None => (
-            crate::session::resolve_endpoint_url(
-                "host.endpoint",
-                globals.host_endpoint.as_deref(),
-                &store,
-                trace,
-            )?,
-            crate::target::tls(globals, &store, trace)?,
-        ),
-    };
-    let Some(session) = tls.token.take() else {
-        return Ok(None);
-    };
-    let endpoint = Endpoint::parse(&endpoint)
-        .map_err(|error| Failure::usage(format!("the IAM Host's endpoint: {error}")))?;
-    trace.say(format!(
-        "the session is exchanged for the person's token at {endpoint}"
-    ));
-    TokenSource::new(endpoint, "", Proof::Session(session), asked, tls, TIMEOUT)
-        .map(Some)
-        .map_err(|failure| Failure::from_client(&failure))
+/// Where the Authority Plane is: `--authority-endpoint` or `auth.client.authority_endpoint`.
+pub fn authority_endpoint(globals: &Globals, store: &Store) -> Option<String> {
+    globals.authority_endpoint.clone().or_else(|| {
+        crate::target::setting_value("auth.client.authority_endpoint", store)
+            .map(|(value, _)| value)
+    })
 }
 
-/// The IAM Host's own connection: never the Data Plane's server name, and its own authority when
-/// one is stated. A client certificate is presented whatever the proof: a listener requiring mutual
-/// TLS admits a secret, a key or a session only over it, and an administration token is bound to it
-/// (RFC 8705); beside another proof it is the connection's, never the proof. It is the IAM Host's
-/// own, `auth.client.tls_cert_file` and its key, when stated, and the planes' otherwise.
-fn iam_tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
-    let mut tls = crate::target::tls(globals, store, trace)?;
+/// The scope a command's token asks: `PERMGUARD_CLIENT_SCOPE` or `auth.client.scope`, comma or
+/// space separated; the account's whole when unset.
+fn scope(store: &Store) -> Option<String> {
+    crate::target::setting_value("auth.client.scope", store)
+        .map(|(value, _)| value.replace(',', " "))
+        .filter(|scope| !scope.trim().is_empty())
+}
+
+/// The Authority Plane's own connection: never a Plane's server name, its own authority when one
+/// is stated, and never a bearer.
+pub fn authority_tls(
+    globals: &Globals,
+    store: &Store,
+    trace: &Trace,
+) -> Result<TlsOptions, Failure> {
+    let mut tls = crate::target::base_tls(globals, store, trace)?;
     tls.server_name = None;
-    let path = |flag: &Option<PathBuf>, key: &str| match flag {
+    tls.token = None;
+    let authority = match &globals.authority_tls_ca_file {
         Some(flag) if flag.is_absolute() => Some(flag.clone()),
         Some(flag) => Some(globals.workdir.join(flag)),
-        None => crate::target::configured(key, store, globals),
+        None => crate::target::configured("auth.client.tls_ca_file", store, globals),
     };
-    if let Some(authority) = path(&globals.iam_tls_ca_file, "auth.client.tls_ca_file") {
+    if let Some(authority) = authority {
         tls.ca_file = Some(authority);
-    }
-    match (
-        path(&globals.iam_tls_cert_file, "auth.client.tls_cert_file"),
-        path(&globals.iam_tls_key_file, "auth.client.tls_key_file"),
-    ) {
-        (Some(certificate), Some(key)) => {
-            trace.say(format!(
-                "the IAM Host's connection presents {}",
-                certificate.display()
-            ));
-            tls.cert_file = Some(certificate);
-            tls.key_file = Some(key);
-            tls.key_pem = None;
-        }
-        (None, None) => {}
-        _ => {
-            return Err(Failure::usage(
-                "the IAM Host's client certificate needs its key: --iam-tls-cert-file and \
-                 --iam-tls-key-file together, or auth.client.tls_cert_file and tls_key_file",
-            ));
-        }
     }
     Ok(tls)
 }
 
-/// The IAM Host a client names: `--iam-endpoint` or `auth.client.iam_endpoint`.
-fn iam_endpoint(globals: &Globals, store: &Store) -> Option<String> {
-    globals.iam_endpoint.clone().or_else(|| {
-        crate::target::setting_value("auth.client.iam_endpoint", store).map(|(value, _)| value)
-    })
+/// The secret key a file holds: the `secret_key:` line of a key file the Authority Plane wrote,
+/// or the whole file.
+pub fn secret_of(text: &str) -> Option<Zeroizing<String>> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("secret_key:"))
+        .map(|secret| secret.trim().to_owned())
+        .or_else(|| Some(text.trim().to_owned()))
+        .filter(|secret| secret.starts_with("pgsk_"))
+        .map(Zeroizing::new)
 }
 
-fn source_with(
+/// The access key a key file names, when it names one.
+pub fn access_key_of(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("access_key:"))
+        .map(|key| key.trim().to_owned())
+        .filter(|key| key.starts_with("pgak_"))
+}
+
+/// The client the flags or the configuration name, when there is one: its token source. A key
+/// file names its access key itself, so `--secret-key-file` alone is enough.
+pub fn source(
     globals: &Globals,
     store: &Store,
-    asked: Asked,
     trace: &Trace,
 ) -> Result<Option<TokenSource>, Failure> {
-    let client_id = match &globals.client_id {
-        Some(flag) => Some(flag.clone()),
-        None => crate::target::setting_value("auth.client.id", store).map(|(value, _)| value),
-    };
-    let Some(client_id) = client_id else {
-        return Ok(None);
-    };
-    if client_id.trim().is_empty() {
-        return Err(Failure::usage(
-            "the client is named by its service account: an empty auth.client.id names nobody",
-        ));
-    }
-    let path = |flag: &Option<PathBuf>, key: &str| match flag {
+    let secret_file = match &globals.secret_key_file {
         Some(flag) if flag.is_absolute() => Some(flag.clone()),
         Some(flag) => Some(globals.workdir.join(flag)),
-        None => crate::target::configured(key, store, globals),
+        None => crate::target::configured("auth.client.secret_file", store, globals),
     };
-    let secret_file = path(&globals.client_secret_file, "auth.client.secret_file");
-    let key_file = path(&globals.client_key_file, "auth.client.key_file");
-    let mut tls = iam_tls(globals, store, trace)?;
-    tls.token = None;
-    let proof = match (secret_file, key_file) {
-        (Some(_), Some(_)) => {
-            return Err(Failure::usage(
-                "the client proves itself one way: a secret file or a key file, not both",
-            ));
-        }
-        (Some(secret), None) => Proof::Secret(crate::token::read(&secret).map_err(|why| {
-            Failure::usage(why.replacen("the token file", "the client secret", 1))
-        })?),
-        (None, Some(key)) => Proof::Key(private_file(&key, "the client key")?),
-        (None, None) if tls.cert_file.is_some() || tls.key_pem.is_some() => Proof::Certificate,
-        (None, None) => {
-            return Err(Failure::usage(format!(
-                "the client `{client_id}` has no proof: --client-secret-file, --client-key-file, \
-                 or a client certificate bound to it"
-            )));
-        }
-    };
-    let endpoint = iam_endpoint(globals, store).ok_or_else(|| {
+    let named = access_key(globals, store);
+    if named.is_none() && secret_file.is_none() {
+        return Ok(None);
+    }
+    let secret_file = secret_file.ok_or_else(|| {
         Failure::usage(
-            "the client obtains its tokens at the IAM Host: --iam-endpoint or \
-             auth.client.iam_endpoint",
+            "the client's secret key is read from a file only its owner reads: \
+             --secret-key-file or auth.client.secret_file",
         )
     })?;
-    let endpoint = Endpoint::parse(&endpoint)
-        .map_err(|error| Failure::usage(format!("--iam-endpoint: {error}")))?;
+    let held = private_file(&secret_file, "the secret key file")?;
+    let text = Zeroizing::new(
+        String::from_utf8(held.expose().to_vec())
+            .map_err(|_| Failure::usage("the secret key file is not text"))?,
+    );
+    let secret = secret_of(&text).ok_or_else(|| {
+        Failure::usage(format!(
+            "{} holds no secret key: a `secret_key: pgsk_…` line, or the key alone",
+            secret_file.display()
+        ))
+    })?;
+    let access_key = named.or_else(|| access_key_of(&text)).ok_or_else(|| {
+        Failure::usage("the client names its access key: --access-key or auth.client.access_key")
+    })?;
+    let endpoint = authority_endpoint(globals, store).ok_or_else(|| {
+        Failure::usage(
+            "the client obtains its tokens at the Authority Plane: --authority-endpoint or \
+             auth.client.authority_endpoint",
+        )
+    })?;
+    let tls = authority_tls(globals, store, trace)?;
     trace.say(format!(
-        "the client `{client_id}` obtains its tokens at {endpoint}"
+        "the access key {access_key} obtains its tokens at {endpoint}"
     ));
-    TokenSource::new(endpoint, &client_id, proof, asked, tls, TIMEOUT)
+    TokenSource::new(&endpoint, &access_key, secret, scope(store), tls)
         .map(Some)
         .map_err(|failure| Failure::from_client(&failure))
+}
+
+/// The configured client's token, from the cache while it serves, else obtained now: `None`
+/// without a client.
+pub fn token(
+    globals: &Globals,
+    store: &Store,
+    trace: &Trace,
+) -> Result<Option<Credential>, Failure> {
+    let Some(source) = source(globals, store, trace)? else {
+        return Ok(None);
+    };
+    let cache = cache_path(globals, store);
+    if let Some(held) = cache.as_deref().and_then(read_cached) {
+        source.hold(held);
+    }
+    let issued = source
+        .token()
+        .map_err(|failure| Failure::from_client(&failure))?;
+    if let Some(cache) = &cache {
+        write_cached(cache, &issued);
+    }
+    trace.say(format!(
+        "acting with the client's token, valid until {}",
+        permguard_core::time::to_rfc3339(i64::try_from(issued.expires_at).unwrap_or(i64::MAX))
+    ));
+    Ok(Some(issued.token))
+}
+
+/// Drops the token kept for the configured client: a surface refused it, revoked or suspended,
+/// and the next command obtains another rather than sending it again.
+pub fn forget(globals: &Globals, store: &Store) {
+    if let Some(path) = cache_path(globals, store) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Where the token for this client is kept: none without a home directory.
+fn cache_path(globals: &Globals, store: &Store) -> Option<PathBuf> {
+    let home = crate::settings::home_directory().ok()?;
+    // Not a secret, a name: which key, where, for what.
+    let key = format!(
+        "{}\n{}\n{}",
+        access_key(globals, store).unwrap_or_default(),
+        authority_endpoint(globals, store).unwrap_or_default(),
+        scope(store).unwrap_or_default()
+    );
+    let digest = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
+    let name: String = digest.as_ref()[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Some(
+        home.join(".permguard")
+            .join("tokens")
+            .join(format!("{name}.json")),
+    )
 }
 
 /// A file only its owner reads, of at most [`FILE_MAX`] bytes: never a link or a FIFO, and the file
@@ -226,132 +235,6 @@ fn private_file(path: &Path, what: &str) -> Result<Credential, Failure> {
         .read_to_end(&mut bytes)
         .map_err(|error| refused(error.to_string()))?;
     Ok(Credential::new(bytes))
-}
-
-/// What a Data Plane command asks for, from the configuration: `auth.client.scope` (by default
-/// `decision.evaluate`), `audience` and `target`, comma-separated, elevated to `auth.client.role`
-/// when one is set. Under a role the audience may be left out: the IAM Host addresses a member's
-/// role to its member, and refuses a role that needs an audience.
-fn data_plane_ask(store: &Store) -> Result<Asked, Failure> {
-    let list = |key: &str| -> Vec<String> {
-        crate::target::setting_value(key, store)
-            .map(|(value, _)| {
-                value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|held| !held.is_empty())
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let scope = crate::target::setting_value("auth.client.scope", store)
-        .map(|(value, _)| value.replace(',', " "))
-        .unwrap_or_else(|| "decision.evaluate".to_owned());
-    let role = crate::target::setting_value("auth.client.role", store).map(|(value, _)| value);
-    let audience = list("auth.client.audience");
-    if audience.is_empty() && role.is_none() {
-        return Err(Failure::usage(
-            "a client's Data Plane token is addressed: auth.client.audience, \
-             member:<id> or group:<name>, or elevated to a member's role, auth.client.role",
-        ));
-    }
-    let asked = Asked {
-        scope,
-        audience,
-        target: list("auth.client.target"),
-    };
-    match role {
-        Some(role) => asked
-            .elevated(&role)
-            .map_err(|failure| Failure::from_client(&failure)),
-        None => Ok(asked),
-    }
-}
-
-/// The TLS options a command that reaches a Data Plane sends with: the operator's, and, without a
-/// `--token-file`, the configured client's token.
-pub fn data_plane_tls(
-    globals: &Globals,
-    store: &Store,
-    trace: &Trace,
-) -> Result<TlsOptions, Failure> {
-    let mut options = crate::target::tls(globals, store, trace)?;
-    if options.token.is_some() {
-        return Ok(options);
-    }
-    let configured = globals.client_id.is_some()
-        || crate::target::setting_value("auth.client.id", store).is_some();
-    if !configured {
-        return Ok(options);
-    }
-    let asked = data_plane_ask(store)?;
-    let cache = cache_path(globals, store, &asked)?;
-    let Some(source) = source_with(globals, store, asked, trace)? else {
-        return Ok(options);
-    };
-    if let Some(held) = cache.as_deref().and_then(read_cached) {
-        source.hold(held);
-    }
-    let issued = source
-        .token()
-        .map_err(|failure| Failure::from_client(&failure))?;
-    if let Some(cache) = &cache {
-        write_cached(cache, &issued);
-    }
-    trace.say(format!(
-        "acting with the client's token, valid until {}",
-        permguard_core::time::to_rfc3339(i64::try_from(issued.expires_at).unwrap_or(i64::MAX))
-    ));
-    options.token = Some(issued.token);
-    Ok(options)
-}
-
-/// Drops the token kept for the configured client and ask: a Data Plane refused it, revoked or
-/// suspended, and the next command obtains another rather than sending it again.
-pub fn forget(globals: &Globals, store: &Store) {
-    let Ok(asked) = data_plane_ask(store) else {
-        return;
-    };
-    if let Ok(Some(path)) = cache_path(globals, store, &asked) {
-        let _ = std::fs::remove_file(path);
-    }
-}
-
-/// Where the token for this client and this ask is kept: none without a home directory.
-fn cache_path(globals: &Globals, store: &Store, asked: &Asked) -> Result<Option<PathBuf>, Failure> {
-    let Ok(home) = crate::settings::home_directory() else {
-        return Ok(None);
-    };
-    let client = globals
-        .client_id
-        .clone()
-        .or_else(|| crate::target::setting_value("auth.client.id", store).map(|(value, _)| value))
-        .unwrap_or_default();
-    let endpoint = globals
-        .iam_endpoint
-        .clone()
-        .or_else(|| {
-            crate::target::setting_value("auth.client.iam_endpoint", store).map(|(value, _)| value)
-        })
-        .unwrap_or_default();
-    // Not a secret, a name: which client, where, for what.
-    let key = format!(
-        "{client}\n{endpoint}\n{}\n{}\n{}",
-        asked.scope,
-        asked.audience.join(" "),
-        asked.target.join(" ")
-    );
-    let digest = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
-    let name: String = digest.as_ref()[..16]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    Ok(Some(
-        home.join(".permguard")
-            .join("tokens")
-            .join(format!("{name}.json")),
-    ))
 }
 
 /// Whether `directory` is the user's own and only theirs: a cache anybody else could write or

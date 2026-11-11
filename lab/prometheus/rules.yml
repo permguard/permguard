@@ -183,25 +183,31 @@ groups:
           summary: "{{ $labels.surface }}'s certificate expires in less than 30 days"
           description: "A 90-day certificate renews at 60; under 30 means two windows were missed."
 
-  - name: permguard-identity
+  - name: permguard-authority
     rules:
-      # The Host also reports `degraded: oidc`, naming each provider; the metrics carry no provider
-      # label, so `permguard iam providers list` says which one.
-      - alert: PermguardIdentityProviderKeysNotFresh
-        expr: max by (component) (permguard_oidc_providers_not_fresh) > 0
-        for: 5m
+      # A Plane without the Authority Plane fetches its keys and status lists from authority.url;
+      # past a list's expiry every token it names is refused.
+      - alert: PermguardTokenStatusListsExpired
+        expr: max by (component) (permguard_token_status_lists_expired) > 0
+        for: 2m
         labels:
-          severity: warning
+          severity: critical
         annotations:
-          summary: "{{ $labels.component }} holds identity provider keys that are not fresh"
-          description: >-
-            Keys older than twice their refresh still verify tokens until max_stale; past it, the
-            provider's tokens are refused.
+          summary: "{{ $labels.component }} holds expired token status lists"
+          description: "Every token those lists name is refused until a fresh list is fetched."
 
-      - alert: PermguardIdentityProviderRefreshFailing
-        expr: increase(permguard_oidc_refresh_failures_total[30m]) > 3
+      - alert: PermguardAuthorityRefreshFailing
+        expr: increase(permguard_authority_refresh_failures_total[15m]) > 3
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.component }} cannot fetch identity provider keys"
-          description: "The provider, its discovery document or the egress policy refuses the fetch."
+          summary: "{{ $labels.component }} cannot fetch the Authority Plane's keys or status lists"
+          description: "The Authority Plane, its certificate or the egress policy refuses the fetch."
+
+      - alert: PermguardTokenStatusListRejected
+        expr: increase(permguard_token_status_list_rejected_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.component }} refused a token status list"
+          description: "A list whose signature, issuer or time did not verify: the held list stays."

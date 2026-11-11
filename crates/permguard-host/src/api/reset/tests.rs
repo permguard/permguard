@@ -261,7 +261,6 @@ async fn a_reset_plan_is_refused_without_its_grant_or_with_an_unknown_mode() {
 /// (WP-3.9).
 #[tokio::test]
 async fn under_dual_control_a_reset_runs_once_another_operator_approved_it() {
-    use crate::api::grants::CreateGrant;
     use crate::api::plans::ApprovePlan;
 
     const SECOND: &str = "spiffe://acme/operators/second";
@@ -282,24 +281,12 @@ async fn under_dual_control_a_reset_runs_once_another_operator_approved_it() {
         .expect_err("not approved");
     assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
 
-    api.create_grant(
-        &admin(),
-        CreateGrant {
-            request_id: "g-second".to_owned(),
-            expected_revision: None,
-            principal: SECOND.to_owned(),
-            operations: vec![permguard_core::authz::operations::IDENTITY_ADMIN.to_owned()],
-            selector: permguard_core::authz::Selector::under(
-                permguard_core::authz::Resource::host(),
-            )
+    crate::api::testing::grant_to(
+        SECOND,
+        &[permguard_core::authz::operations::IDENTITY_ADMIN],
+        &permguard_core::authz::Selector::under(permguard_core::authz::Resource::host())
             .to_string(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
+    );
     let approved = api
         .approve_plan(
             &crate::api::testing::actor(SECOND),

@@ -1,7 +1,7 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 #
-# The Compose lab's all-in-one (TD-3, `all-in-one`): one Server with the Control and Data Planes,
+# The Compose lab's all-in-one (TD-3, `all-in-one`): one Server with the Authority, Control and Data Planes,
 # the development baseline. What varies per container comes from the environment
 # `permguard-lab serve` sets — the listeners' certificates, issued by the lab's own authority.
 #
@@ -14,13 +14,19 @@ autogenerate: true
 assurance: { profile: development }
 log: { level: info, format: json }
 
-runtime: { planes: [control, data] }
+runtime: { planes: [authority, control, data] }
 
 host:
   addr: 0.0.0.0:5443
-  # The Data Plane's own certificate, as its mirror presents it to the Control Plane.
-  principals: [{ san_uri: "spiffe://permguard-lab/all-in-one" }]
 admin: { addr: 0.0.0.0:5444 }
+
+# The Authority Plane beside the others: its keys and lists reach the Planes in-process. Its first
+# start makes `admin`, whose key the lab's operator acts with.
+authority: { url: "https://all-in-one:8443" }
+authorityPlane:
+  public:
+    http: { addr: 0.0.0.0:8443 }
+    grpc: { addr: 0.0.0.0:8443 }
 
 operations:
   keys: { enabled: "true", publish_ahead: 5m, rotate_every: 1h, retain: 1d }

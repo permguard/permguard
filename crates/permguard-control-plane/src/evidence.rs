@@ -191,7 +191,7 @@ mod tests {
     fn actor() -> Actor {
         Actor::Authenticated(ActorContext::new(
             Principal::new("spiffe://acme/auditor").expect("a principal"),
-            Credential::SanUri,
+            Credential::Certificate,
             None,
         ))
     }

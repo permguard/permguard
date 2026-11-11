@@ -37,6 +37,15 @@ data:
     {{- end }}
     {{- $public := dict "public" (dict "http" $http "grpc" $grpc) }}
     {{- $_ := set $config $section $public }}
+    {{- if $plane.authority.enabled }}
+    {{- /* The Authority Plane beside the control plane, under the public listener's TLS. */ -}}
+    {{- $authority := include "permguard.authorityListener" (dict "port" $plane.ports.authority "tls" (include "permguard.publicTls" $plane.tls | fromYaml)) | fromYaml }}
+    {{- $_ := set $config "authorityPlane" $authority }}
+    {{- $_ := set $config "authority" (dict "url" (include "permguard.authorityUrl" $)) }}
+    {{- $_ := set $config "runtime" (dict "planes" (list "authority" "control")) }}
+    {{- else }}
+    {{- $_ := set $config "runtime" (dict "planes" (list "control")) }}
+    {{- end }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" $plane | fromJson) | fromYaml) }}
@@ -62,7 +71,7 @@ data:
           "working_dir" "/var/lib/permguard/volume"
           "log" (dict "level" .Values.logging.level "format" .Values.logging.format)
           "host" (dict "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.telemetry)))
-          "runtime" (dict "planes" (list "control" "data"))
+          "runtime" (dict "planes" (list "authority" "control" "data"))
     }}
     {{- $tls := include "permguard.publicTls" .Values.allInOne.tls | fromYaml }}
     {{- range $section, $port := dict "controlPlane" .Values.allInOne.ports.controlHttp "dataPlane" .Values.allInOne.ports.dataHttp }}
@@ -74,6 +83,8 @@ data:
     {{- end }}
     {{- $_ := set $config $section (dict "public" (dict "http" $http "grpc" $grpc)) }}
     {{- end }}
+    {{- $_ := set $config "authorityPlane" (include "permguard.authorityListener" (dict "port" .Values.allInOne.ports.authority "tls" $tls) | fromYaml) }}
+    {{- $_ := set $config "authority" (dict "url" (include "permguard.authorityUrl" .)) }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" . | fromYaml) $merged }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" .Values.allInOne | fromJson) | fromYaml) }}

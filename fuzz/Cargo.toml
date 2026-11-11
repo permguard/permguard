@@ -21,6 +21,7 @@ permguard-decisions = { path = "../crates/permguard-decisions" }
 permguard-notp = { path = "../crates/permguard-notp" }
 permguard-objects = { path = "../crates/permguard-objects" }
 permguard-host = { path = "../crates/permguard-host" }
+permguard-authority-plane = { path = "../crates/permguard-authority-plane" }
 permguard-events = { path = "../crates/permguard-events" }
 permguard-stream = { path = "../crates/permguard-stream" }
 serde_json = "1"
@@ -131,8 +132,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "grant_record"
-path = "fuzz_targets/grant_record.rs"
+name = "account_record"
+path = "fuzz_targets/account_record.rs"
 test = false
 doc = false
 bench = false
@@ -173,22 +174,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "grant_transition"
-path = "fuzz_targets/grant_transition.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "membership"
 path = "fuzz_targets/membership.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "oidc_token"
-path = "fuzz_targets/oidc_token.rs"
 test = false
 doc = false
 bench = false
@@ -229,13 +216,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "directory_transition"
-path = "fuzz_targets/directory_transition.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "token_transition"
 path = "fuzz_targets/token_transition.rs"
 test = false
@@ -250,13 +230,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "token_status_request"
-path = "fuzz_targets/token_status_request.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "status_list_decode"
 path = "fuzz_targets/status_list_decode.rs"
 test = false
@@ -264,15 +237,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "oidc_key_set"
-path = "fuzz_targets/oidc_key_set.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "password_verify"
-path = "fuzz_targets/password_verify.rs"
+name = "access_key_verify"
+path = "fuzz_targets/access_key_verify.rs"
 test = false
 doc = false
 bench = false

@@ -134,70 +134,35 @@ The **State** cell is one of:
 | `host secrets witness verify` | `secrets.read`   | blocked | the Host API serves no secrets route: its request and answer are not fixed by any package yet |
 | `host secrets rotate`         | `secrets.manage` | blocked | the Host API serves no secrets route: its request and answer are not fixed by any package yet |
 
-## Directory and access tokens (`iam`, TC-6)
+## Service accounts and access tokens (`authority`)
 
-The IAM Host's directory and access tokens, through its Host listener; the client a command line acts as obtains its tokens as `2-security/7` says (TC-7).
+The Authority Plane's service accounts, their scopes and access keys, and the tokens it issued, over REST or gRPC as `--authority-endpoint` says; the client a command line acts as obtains its tokens as `2-security/7` says.
+A secret key is written once to a new file only its owner reads, and never printed.
 
-| Command                        | Grant          | State   | Why |
-| ------------------------------ | -------------- | ------- | --- |
-| `iam grants list`              | `authz.admin`  | present |     |
-| `iam grants issue`             | `authz.admin`  | present |     |
-| `iam grants revoke plan`       | `authz.admin`  | present |     |
-| `iam grants revoke run`        | `authz.admin`  | present |     |
-| `iam roles list`               | `authz.admin`  | present |     |
-| `iam roles get`                | `authz.admin`  | present |     |
-| `iam roles create`             | `authz.admin`  | present |     |
-| `iam roles update`             | `authz.admin`  | present |     |
-| `iam roles delete`             | `authz.admin`  | present |     |
-| `iam roles members add`        | `authz.admin`  | present |     |
-| `iam roles members remove`     | `authz.admin`  | present |     |
-| `iam roles grant`              | `authz.admin`  | present |     |
-| `iam roles of`                 | `authz.admin`  | present |     |
-| `iam roles apply plan`         | `authz.admin`  | present |     |
-| `iam roles apply run`          | `authz.admin`  | present |     |
-| `iam users list`               | `authz.admin`  | present |     |
-| `iam users get`                | `authz.admin`  | present |     |
-| `iam users create`             | `authz.admin`  | present |     |
-| `iam users update`             | `authz.admin`  | present |     |
-| `iam users password`           | `authz.admin`  | present |     |
-| `iam users disable`            | `authz.admin`  | present |     |
-| `iam users enable`             | `authz.admin`  | present |     |
-| `iam users factor-reset`       | `authz.admin`  | present |     |
-| `iam users unlock`             | `authz.admin`  | present |     |
-| `iam users link`               | `authz.admin`  | present |     |
-| `iam users unlink`             | `authz.admin`  | present |     |
-| `iam users delete`             | `authz.admin`  | present |     |
-| `iam recovery show`            | `authz.admin`  | present |     |
-| `iam recovery acknowledge`     | `authz.admin`  | present |     |
-| `iam providers list`           | `authz.admin`  | present |     |
-| `iam providers refresh`        | `authz.admin`  | present |     |
-| `login`                        | the user's own | present |     |
-| `logout`                       | the user's own | present |     |
-| `password`                     | the user's own | present |     |
-| `factor begin`                 | the user's own | present |     |
-| `factor confirm`               | the user's own | present |     |
-| `setup`                        | the setup code | present |     |
-| `iam service-accounts list`    | `authz.admin`  | present |     |
-| `iam service-accounts get`     | `authz.admin`  | present |     |
-| `iam service-accounts create`  | `authz.admin`  | present |     |
-| `iam service-accounts update`  | `authz.admin`  | present |     |
-| `iam service-accounts suspend` | `authz.admin`  | present |     |
-| `iam service-accounts resume`  | `authz.admin`  | present |     |
-| `iam service-accounts delete`  | `authz.admin`  | present |     |
-| `iam credentials list`         | `authz.admin`  | present |     |
-| `iam credentials create`       | `authz.admin`  | present |     |
-| `iam credentials revoke`       | `authz.admin`  | present |     |
-| `iam tokens list`              | `authz.admin`  | present |     |
-| `iam tokens revoke`            | `authz.admin`  | present |     |
-| `iam token`                    | transport      | present |     |
+| Command                              | Grant            | State   | Why |
+| ------------------------------------ | ---------------- | ------- | --- |
+| `authority service-accounts list`    | `accounts.read`  | present |     |
+| `authority service-accounts get`     | `accounts.read`  | present |     |
+| `authority service-accounts create`  | `accounts.write` | present |     |
+| `authority service-accounts update`  | `accounts.write` | present |     |
+| `authority service-accounts suspend` | `accounts.write` | present |     |
+| `authority service-accounts resume`  | `accounts.write` | present |     |
+| `authority service-accounts delete`  | `accounts.write` | present |     |
+| `authority scopes get`               | `accounts.read`  | present |     |
+| `authority scopes set`               | `accounts.write` | present |     |
+| `authority keys list`                | `accounts.read`  | present |     |
+| `authority keys create`              | `accounts.write` | present |     |
+| `authority keys delete`              | `accounts.write` | present |     |
+| `authority tokens list`              | `tokens.read`    | present |     |
+| `authority tokens revoke`            | `tokens.revoke`  | present |     |
+| `authority token`                    | the access key   | present |     |
+| `authority admin-key`                | offline          | present |     |
 
 ## Offline provisioning
 
 | Command                 | Grant   | State   | Why |
 | ----------------------- | ------- | ------- | --- |
 | `host grants bootstrap` | offline | present |     |
-| `host users bootstrap`  | offline | present |     |
-| `host recovery start`   | offline | present |     |
 
 ## Audit
 
@@ -228,7 +193,6 @@ The IAM Host's directory and access tokens, through its Host listener; the clien
 | `inspect`               | transport     | present |     |
 | `discover`              | transport     | present |     |
 | `host config show`      | `config.read` | present |     |
-| `host config revisions` | `config.read` | present |     |
 | `config show`           | local         | present |     |
 | `config get`            | local         | present |     |
 | `config set`            | local         | present |     |

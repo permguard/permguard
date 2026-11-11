@@ -25,9 +25,9 @@ use permguard_core::authz::{Actor, operations};
 use permguard_core::keys::{Jwk, KEY_SET_MAX_AGE};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{Planned, rfc3339};
 use super::replay::Plan;
 use super::{HostApi, Mutation, Receipt, Refusal};
+use super::{Planned, rfc3339};
 use crate::keys::bundle::{self, BundleError, MAX_MANIFEST_BYTES, PAGE_DEFAULT, PAGE_MAX, Source};
 use crate::keys::record::MAX_REASON_BYTES;
 use crate::keys::ring::{
@@ -476,7 +476,7 @@ impl HostApi {
             |operation_id, epoch, _| {
                 let kid = ring
                     .operation_kid(&operation_id)
-                    .ok_or_else(|| super::grants::unreachable_reconciliation(ROTATE))?;
+                    .ok_or_else(|| super::unreachable_reconciliation(ROTATE))?;
                 Ok(RingRotated {
                     receipt: self.receipt(operation_id, epoch),
                     kid,
@@ -592,7 +592,7 @@ impl HostApi {
             },
             // A plan leaves no trace in the ring, so recovery never commits one: it is marked
             // failed, and the plan, which nobody was answered, expires unused.
-            |_, _, _| Err(super::grants::unreachable_reconciliation(REVOKE_PLAN)),
+            |_, _, _| Err(super::unreachable_reconciliation(REVOKE_PLAN)),
         )
     }
 
@@ -670,7 +670,7 @@ impl HostApi {
             |operation_id, epoch, _| {
                 let kid = ring
                     .operation_kid(&operation_id)
-                    .ok_or_else(|| super::grants::unreachable_reconciliation(REVOKE_RUN))?;
+                    .ok_or_else(|| super::unreachable_reconciliation(REVOKE_RUN))?;
                 Ok(KeyRevoked {
                     receipt: self.receipt(operation_id, epoch),
                     kid,

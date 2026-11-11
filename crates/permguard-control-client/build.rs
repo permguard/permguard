@@ -29,6 +29,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         contract.join("permguard/data/v1/data_plane.proto"),
         // The Host listener (TC-1): the facade TC-2's `host` commands build on.
         contract.join("permguard/host/v1/host.proto"),
+        // The Authority Plane: its accounts, keys and tokens, and the token endpoint.
+        contract.join("permguard/authority/v1/authority.proto"),
     ];
 
     for proto in &protos {
@@ -48,25 +50,5 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_client(true)
         .build_server(true)
         .compile_protos(&protos, &[contract.to_path_buf()])?;
-    // Identity and access (iteration 02, WP-11.1): its own services, the Host API's messages.
-    tonic_prost_build::configure()
-        .build_client(true)
-        .build_server(true)
-        .extern_path(".permguard.host.v1", "crate::host_v1")
-        // Its own directory: a generation shares none with the Host API's, which it would
-        // otherwise overwrite with the imported package's husk.
-        .out_dir(iam_out()?)
-        .compile_protos(
-            &[contract.join("permguard/iam/v1/iam.proto")],
-            &[contract.to_path_buf()],
-        )?;
-
     Ok(())
-}
-
-/// Where the `permguard.iam.v1` stubs are generated: `OUT_DIR/iam`.
-fn iam_out() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    let out = std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("iam");
-    std::fs::create_dir_all(&out)?;
-    Ok(out)
 }

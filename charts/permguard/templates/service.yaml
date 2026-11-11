@@ -37,6 +37,12 @@ spec:
       targetPort: grpc
       protocol: TCP
     {{- end }}
+    {{- if ($plane.authority | default dict).enabled }}
+    - name: authority
+      port: {{ $plane.ports.authority }}
+      targetPort: authority
+      protocol: TCP
+    {{- end }}
 ---
 {{- if include "permguard.perReplica" (dict "root" $ "plane" $plane) }}
 {{/*
@@ -118,6 +124,9 @@ spec:
     - name: data-http
       port: {{ .Values.allInOne.ports.dataHttp }}
       targetPort: data-http
+    - name: authority
+      port: {{ .Values.allInOne.ports.authority }}
+      targetPort: authority
 ---
 apiVersion: v1
 kind: Service

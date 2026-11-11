@@ -1831,7 +1831,7 @@ fn a_command_names_one_target_class_and_never_falls_back() {
 
 /// WP-4.8: every normative Host command is present before a request is sent.
 #[test]
-fn the_host_identity_members_and_grants_command_families_are_complete() {
+fn the_host_identity_members_and_authority_command_families_are_complete() {
     let dir = scratch("host-command-families");
     for path in [
         &["host", "identity", "verify", "--help"][..],
@@ -1843,8 +1843,10 @@ fn the_host_identity_members_and_grants_command_families_are_complete() {
         &["host", "members", "sync", "--help"],
         &["host", "members", "sessions", "--help"],
         &["host", "members", "verify", "--help"],
-        &["iam", "grants", "revoke", "plan", "--help"],
-        &["iam", "grants", "revoke", "run", "--help"],
+        &["host", "grants", "bootstrap", "--help"],
+        &["authority", "service-accounts", "create", "--help"],
+        &["authority", "keys", "create", "--help"],
+        &["authority", "tokens", "revoke", "--help"],
     ] {
         let output = run(&dir, path);
         assert!(output.status.success(), "{path:?}: {}", stderr(&output));

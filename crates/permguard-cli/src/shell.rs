@@ -274,7 +274,9 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
             server_config,
             action,
         } => commands::host::host_command(&globals, server_config.as_deref(), action, &trace),
-        Command::Iam { action } => commands::iam::iam_command(&globals, action, &trace),
+        Command::Authority { action } => {
+            commands::authority::authority_command(&globals, action, &trace)
+        }
         Command::Restore {
             server_config,
             action,
@@ -302,31 +304,6 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Discover { url, timeout } => {
             commands::discover::discover_command(&globals, &url, timeout, &trace)
         }
-        Command::Login { url, user, code } => {
-            commands::directory::login(&globals, &url, &user, code.as_deref(), &trace)
-        }
-        Command::Logout { url } => commands::directory::logout(&globals, &url, &trace),
-        Command::Password { url } => commands::directory::password(&globals, &url, &trace),
-        Command::Factor { url, action } => {
-            commands::directory::factor(&globals, &url, action, &trace)
-        }
-        Command::Setup {
-            url,
-            check,
-            code_file,
-            name,
-            email,
-            password_stdin,
-        } => commands::directory::setup(
-            &globals,
-            &url,
-            check,
-            code_file.as_deref(),
-            name.as_deref(),
-            email,
-            password_stdin,
-            &trace,
-        ),
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();
             workspace_command(
@@ -432,20 +409,16 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Evidence { .. } => ("evidence", Class::Host),
         Command::Migrate { .. } => ("migrate", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),
-        Command::Login { .. } => ("login", Class::Local),
-        Command::Logout { .. } => ("logout", Class::Local),
-        Command::Password { .. } => ("password", Class::Local),
-        Command::Factor { .. } => ("factor", Class::Local),
-        Command::Setup { .. } => ("setup", Class::Local),
-        Command::Iam { .. } => ("iam", Class::Host),
+        Command::Authority {
+            action: crate::args::AuthorityAction::AdminKey { .. },
+        } => ("authority", Class::Volume),
+        Command::Authority { .. } => ("authority", Class::Host),
         Command::Host { action, .. } => {
             let class = match action {
                 HostAction::Identity {
                     action: IdentityAction::Provision { .. } | IdentityAction::Reset { .. },
                 }
                 | HostAction::Grants { .. }
-                | HostAction::Users { .. }
-                | HostAction::Recovery { .. }
                 | HostAction::Holds { .. } => Class::Volume,
                 HostAction::Identity {
                     action: IdentityAction::Pin { .. },

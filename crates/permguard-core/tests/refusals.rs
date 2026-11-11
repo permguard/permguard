@@ -244,7 +244,7 @@ fn test_plain_tls_on_loopback_is_allowed_in_development_only() {
 }
 
 #[test]
-fn test_mutual_tls_without_a_list_of_peers_is_refused_outside_development() {
+fn test_mutual_tls_needs_no_list_of_peers_now_that_a_certificate_grants_nothing() {
     // Real files, because validation checks the material before it checks the policy and this test
     // is about the policy.
     // Unique per process and per thread: a fixed name is shared with every other run.
@@ -268,23 +268,24 @@ fn test_mutual_tls_without_a_list_of_peers_is_refused_outside_development() {
         (SETTING_ADMIN_TLS_CLIENT_CA, "tls/ca.pem"),
     ];
 
-    // Mutual TLS answers "who is this". It does not answer "may they", and a deployment that
-    // believes otherwise has granted administration to every client its authority ever signed.
-    let why = refusal(&serving(&mutual));
-    assert!(why.contains("admin.allow"), "{why}");
+    // A certificate answers "who is this" and grants nothing by itself: administration is decided
+    // by an access token's scopes, and only the bootstrap principal's own certificate acts. So a
+    // deployment outside development needs no list of peers, required or optional.
+    serving(&mutual)
+        .validate()
+        .expect("a certificate alone administers nothing");
+    let mut optional = mutual.to_vec();
+    optional.push((SETTING_ADMIN_TLS_CLIENT_AUTH, "optional"));
+    serving(&optional)
+        .validate()
+        .expect("operators with tokens and no certificate reach the listener");
 
+    // A list of peers still gates the connection when a deployment names one.
     let mut listed = mutual.to_vec();
     listed.push((SETTING_ADMIN_ALLOW, "cn:local-operator"));
     serving(&listed)
         .validate()
-        .expect("naming a peer is what the rule asked for");
-
-    // Saying this is a laptop is the other way to satisfy it, and it is the only other way.
-    let mut development = mutual.to_vec();
-    development.push((SETTING_DEVELOPMENT_MODE, "true"));
-    serving(&development)
-        .validate()
-        .expect("a development deployment may admit whatever its own authority signed");
+        .expect("naming a peer stays a deployment's choice");
 }
 
 #[test]
@@ -716,17 +717,17 @@ fn test_the_host_listener_takes_no_upstream_termination() {
     assert!(why.contains("public.tls.terminated_upstream"), "{why}");
 }
 
-/// WP-11.3: the `iam.tokens` custody, when stated, is the ring's own and is held to the profile's
+/// The `authority.tokens` custody, when stated, is the ring's own and is held to the profile's
 /// rules like any ring: plaintext is a relaxation `production` refuses.
 #[test]
-fn a_stated_iam_tokens_custody_is_read_and_held_to_the_profile() {
+fn a_stated_authority_tokens_custody_is_read_and_held_to_the_profile() {
     let config = serving(&[(SETTING_KEYS_TOKENS_CUSTODY, "kms")]);
-    assert_eq!(config.keys_custody_of("iam.tokens"), KeyCustody::Kms);
+    assert_eq!(config.keys_custody_of("authority.tokens"), KeyCustody::Kms);
     assert!(config.keys_tokens_custody_stated());
     assert!(
         config
             .keys_custodies()
-            .contains(&("iam.tokens", KeyCustody::Kms))
+            .contains(&("authority.tokens", KeyCustody::Kms))
     );
     // Unstated, it is the Host's custody and listed nowhere: the composition opens it.
     let unstated = serving(&[]);
@@ -735,10 +736,10 @@ fn a_stated_iam_tokens_custody_is_read_and_held_to_the_profile() {
         unstated
             .keys_custodies()
             .iter()
-            .all(|(ring, _)| *ring != "iam.tokens")
+            .all(|(ring, _)| *ring != "authority.tokens")
     );
     assert_eq!(
-        unstated.keys_custody_of("iam.tokens"),
+        unstated.keys_custody_of("authority.tokens"),
         unstated.keys_custody()
     );
     let plaintext = serving(&[

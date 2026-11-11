@@ -25,26 +25,18 @@ pub mod audit;
 pub mod backups;
 pub mod bounds;
 pub mod config;
-pub mod directory;
 pub mod drain;
-pub mod elevation;
-pub mod federation;
 pub mod gc;
-pub mod grants;
 pub mod host_input;
 pub mod identity;
 pub mod keys;
 pub mod members;
 pub mod plans;
-pub mod recovery;
 pub mod replay;
 pub mod reset;
-pub mod service_accounts;
 pub mod sessions;
 pub mod status;
 pub mod streams;
-pub mod token_endpoint;
-pub mod tokens;
 
 use std::sync::Arc;
 
@@ -53,7 +45,7 @@ use serde::{Deserialize, Serialize};
 use permguard_core::authz::{Actor, Principal, Resource};
 use permguard_core::{AccessDenial, ApiError, ErrorClass, Health, codes};
 
-use crate::authz::{Authorization, GrantStore};
+use crate::authz::Authorization;
 use crate::operations::journal::{Initiator, OperationId, RequestKey};
 use crate::operations::mutation::{
     self, Applying, Begin, Failure, MutationError, Mutations, Outcome,
@@ -61,7 +53,6 @@ use crate::operations::mutation::{
 
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
-pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 pub use identity::{
     IdentityRotated, IdentityVerified, IdentityView, RotateIdentity, VerifyIdentity,
 };
@@ -218,9 +209,6 @@ pub struct Receipt {
 pub struct Composition {
     /// The Host's authorization: every route decides with it.
     pub authorization: Arc<Authorization>,
-    /// The grant store, when a volume holds one; without it the grant mutations are
-    /// `grant_store_unavailable`.
-    pub store: Option<Arc<GrantStore>>,
     /// The durable request-id replay window and the server-held plans.
     pub replay: Replay,
     /// The key rings this process composes, `host.identity` among them when the identity is
@@ -255,7 +243,6 @@ pub struct Composition {
 /// The Host API facade: one instance per process, shared by both transports.
 pub struct HostApi {
     authorization: Arc<Authorization>,
-    store: Option<Arc<GrantStore>>,
     replay: Replay,
     bounds: Bounds,
     keys: Arc<crate::keys::registry::Registry>,
@@ -285,26 +272,11 @@ pub struct HostApi {
     volume: Option<([u8; 16], u64)>,
     /// The local ship tasks of a Host that runs both Planes, given once the server composed them.
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
-    /// Roles, local users and identity providers (WP-8.1), given once the server built them.
-    identities: Option<directory::Identities>,
-    /// The setup folder, whose recovery an administrator acknowledges (WP-8.2).
-    setup: Option<Arc<crate::setup::Setup>>,
-    /// Whether this Host is the IAM Host: the one of a Server running a Control Plane, the only
-    /// one serving the directory at `/iam/v1` (WP-11.1).
-    iam_host: bool,
-    /// The IAM Host's tokens and status lists (WP-11.5), given once the server opened them.
-    tokens: Option<Arc<tokens::Tokens>>,
-    /// One reconcile of the system roles at a time (`2-security/8` Roles and elevation): an
-    /// approval's and the periodic sync's never read the live members and the roles apart.
-    reconciling: std::sync::Mutex<()>,
-    /// The status lists this Host holds as a member (WP-12.1).
-    held_lists: Option<Arc<crate::membership::token_status::HeldLists>>,
 }
 
 impl std::fmt::Debug for HostApi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HostApi")
-            .field("store", &self.store.is_some())
             .field("rings", &self.keys.ids())
             .finish_non_exhaustive()
     }
@@ -315,7 +287,6 @@ impl HostApi {
     pub fn new(composition: Composition) -> Self {
         Self {
             authorization: composition.authorization,
-            store: composition.store,
             replay: composition.replay,
             bounds: Bounds::default(),
             keys: composition.keys,
@@ -337,61 +308,11 @@ impl HostApi {
             gc_spending: std::sync::Mutex::new(()),
             volume: None,
             local_shipping: None,
-            identities: None,
-            setup: None,
-            iam_host: false,
-            tokens: None,
-            held_lists: None,
-            reconciling: std::sync::Mutex::new(()),
         }
-    }
-
-    /// Keeps the status lists `token.status` delivers to this Host as a member (WP-12.1).
-    pub fn with_held_lists(
-        mut self,
-        lists: Arc<crate::membership::token_status::HeldLists>,
-    ) -> Self {
-        self.held_lists = Some(lists);
-        self
-    }
-
-    /// The status lists this Host holds as a member.
-    pub fn held_lists(&self) -> Option<&Arc<crate::membership::token_status::HeldLists>> {
-        self.held_lists.as_ref()
-    }
-
-    /// Serves the IAM Host's tokens and status lists (WP-11.5).
-    pub fn with_tokens(mut self, tokens: Arc<tokens::Tokens>) -> Self {
-        self.tokens = Some(tokens);
-        self
-    }
-
-    /// Whether this facade serves the directory at `/iam/v1`: true for the Host of a Server
-    /// running a Control Plane (WP-11.1). A member holds no directory, so it serves none.
-    pub fn serving_iam(mut self, iam_host: bool) -> Self {
-        self.iam_host = iam_host;
-        self
-    }
-
-    /// Whether this facade serves the directory at `/iam/v1`.
-    pub fn is_iam_host(&self) -> bool {
-        self.iam_host
     }
 
     /// This facade shipping its Data Plane's streams to its own Control Plane through `local`
     /// on every ship pass.
-    /// Serves roles, local users and identity providers (WP-8.1).
-    pub fn with_identities(mut self, identities: directory::Identities) -> Self {
-        self.identities = Some(identities);
-        self
-    }
-
-    /// The setup folder of the volume, whose recovery an administrator acknowledges (WP-8.2).
-    pub fn with_setup(mut self, setup: Arc<crate::setup::Setup>) -> Self {
-        self.setup = Some(setup);
-        self
-    }
-
     pub fn with_local_shipping(
         mut self,
         local: Arc<crate::membership::local::LocalShipping>,
@@ -438,14 +359,9 @@ impl HostApi {
         operation: &str,
         resource: &Resource,
     ) -> Result<Admitted<'_>, Refusal> {
-        let granted_by = self
-            .authorization
-            .authorize_by(actor, operation, resource)?;
+        self.authorization.authorize(actor, operation, resource)?;
         let principal = actor.principal()?;
         let permit = self.bounds.admit(&principal)?;
-        if granted_by != principal {
-            self.record_granted(&principal, &granted_by, operation, resource);
-        }
         if let Actor::Authenticated(context) = actor
             && let Some(token) = context.token()
         {
@@ -457,47 +373,8 @@ impl HostApi {
         })
     }
 
-    /// Records that `granted_by`'s grant, not `principal`'s own, allowed `operation`: an `access`
-    /// record, queued off the request path. Public grants are not recorded: they name nobody.
-    fn record_granted(
-        &self,
-        principal: &Principal,
-        granted_by: &Principal,
-        operation: &str,
-        resource: &Resource,
-    ) {
-        let Some(audit) = self.audit.as_ref() else {
-            return;
-        };
-        if granted_by.as_str() == permguard_core::authz::ANONYMOUS {
-            return;
-        }
-        let target = resource.to_string();
-        let facts = [
-            (
-                "granted_by",
-                permguard_core::Fact::Text(granted_by.as_str()),
-            ),
-            ("operation", permguard_core::Fact::Text(operation)),
-        ];
-        let event = permguard_core::AuditEvent::new(
-            crate::audit::AUTHZ_GRANTED,
-            permguard_core::Subject::Principal(principal.as_str()),
-        )
-        .on(&target)
-        .with_facts(&facts);
-        if let Err(error) = audit.append(&event, None) {
-            tracing::warn!(
-                event.name = "host.authz_granted_unrecorded",
-                component = COMPONENT,
-                error = %error,
-                "the grant that allowed a call could not be recorded"
-            );
-        }
-    }
-
-    /// Records that an access token allowed `operation`: its `jti` and family, so an
-    /// administration through a token is traced to the issuance the IAM Host recorded (WP-12.4).
+    /// Records that an access token allowed `operation`: its `jti`, so an administration through
+    /// a token is traced to the issuance the Authority Plane recorded.
     fn record_token(
         &self,
         principal: &Principal,
@@ -511,7 +388,6 @@ impl HostApi {
         let target = resource.to_string();
         let facts = [
             ("jti", permguard_core::Fact::Text(&token.jti)),
-            ("family", permguard_core::Fact::Text(&token.family)),
             ("operation", permguard_core::Fact::Text(operation)),
         ];
         let event = permguard_core::AuditEvent::new(
@@ -528,17 +404,6 @@ impl HostApi {
                 "the token that allowed a call could not be recorded"
             );
         }
-    }
-
-    /// The grant store, or the refusal a mutation without one answers.
-    fn store(&self) -> Result<&Arc<GrantStore>, Refusal> {
-        self.store.as_ref().ok_or_else(|| {
-            Refusal::new(
-                ErrorClass::Unavailable,
-                codes::host::GRANT_STORE_UNAVAILABLE,
-                "no grant store is open on this process",
-            )
-        })
     }
 
     /// The mutation engine, or the refusal a mutation without one answers.
@@ -777,6 +642,40 @@ struct Admitted<'a> {
     _permit: bounds::Permit<'a>,
 }
 
+/// What a plan answers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Planned {
+    pub plan_id: String,
+    /// What the plan changes, `sha256:<hex>`: what each approval names (WP-3.9).
+    pub plan_digest: String,
+    /// RFC 3339: when the plan can no longer be run.
+    pub expires: String,
+    /// The revision the plan was made against.
+    pub revision: u64,
+    /// The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1`, base64url.
+    pub receipt: String,
+    /// How many principals other than the planner must approve it before it runs.
+    pub approvals_required: u64,
+}
+
+/// The refusal of a reconciled operation whose answer cannot be rebuilt: said as applied, so the
+/// caller reads before it retries.
+pub(super) fn unreachable_reconciliation(operation: &str) -> Refusal {
+    Refusal::new(
+        ErrorClass::Internal,
+        codes::host::MUTATION_UNRECORDED,
+        format!(
+            "`{operation}` was applied before a restart and its answer cannot be rebuilt: read \
+             the current state before retrying"
+        ),
+    )
+}
+
+/// `seconds` since the epoch as RFC 3339.
+pub fn rfc3339(seconds: u64) -> String {
+    permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX))
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     //! A facade over a scratch volume, for the tests of every operation.
@@ -784,11 +683,10 @@ pub(crate) mod testing {
     use std::sync::Arc;
 
     use permguard_core::assurance::AssuranceProfile;
-    use permguard_core::authz::{ActorContext, Credential, Selector, operations};
+    use permguard_core::authz::{ActorContext, Selector, operations};
 
     use super::*;
-    use crate::authz::{GrantStore, Issue, PublicGrant};
-    use crate::operations::grants::Grants;
+    use crate::authz::PublicGrant;
     use crate::operations::mutation::Projection;
     use crate::storage::volume::Volume;
 
@@ -883,17 +781,52 @@ pub(crate) mod testing {
         dir
     }
 
-    pub(crate) fn actor(name: &str) -> Actor {
-        Actor::Authenticated(ActorContext::new(
+    /// The bearer of a token of the Authority Plane holding `scopes`.
+    pub(crate) fn bearer(name: &str, scopes: Vec<permguard_core::authz::TokenScope>) -> Actor {
+        Actor::Authenticated(ActorContext::of_token(
             Principal::new(name).expect("a principal"),
-            Credential::SanUri,
-            None,
+            permguard_core::authz::TokenGrant {
+                scopes,
+                jti: format!("jti-of-{name}"),
+                list_uri: "https://authority.test/authority/v1/status-lists/l".to_owned(),
+                list_iat: 1,
+                list_digest: [0; 32],
+            },
         ))
     }
 
-    pub(crate) const ADMIN: &str = "spiffe://acme/operators/root";
+    std::thread_local! {
+        /// The scopes each test caller's token holds, by name: a test thread's own.
+        static GRANTED: std::cell::RefCell<std::collections::BTreeMap<String, Vec<permguard_core::authz::TokenScope>>> =
+            std::cell::RefCell::default();
+    }
 
-    /// A facade whose store holds one administrator with every Host operation, on a volume that
+    /// Adds `operations` on `selector` to the scopes `name`'s token holds from now on.
+    pub(crate) fn grant_to(name: &str, operations: &[&str], selector: &str) {
+        let scope = permguard_core::authz::TokenScope {
+            operations: operations.iter().map(|op| (*op).to_owned()).collect(),
+            selector: Selector::parse(selector).expect("a selector"),
+        };
+        GRANTED.with(|granted| {
+            granted
+                .borrow_mut()
+                .entry(name.to_owned())
+                .or_default()
+                .push(scope);
+        });
+    }
+
+    /// The caller `name`, its token holding what [`grant_to`] gave it: nothing by default, so
+    /// refused `403` by every route.
+    pub(crate) fn actor(name: &str) -> Actor {
+        let scopes =
+            GRANTED.with(|granted| granted.borrow().get(name).cloned().unwrap_or_default());
+        bearer(name, scopes)
+    }
+
+    pub(crate) const ADMIN: &str = "sa:admin";
+
+    /// A facade whose administrator's token holds every Host operation, on a volume that
     /// outlives the test (the claim is leaked on purpose: the store keeps the directory open).
     pub(crate) fn facade(tag: &str) -> HostApi {
         // `host.operations` signs the plan receipts (WP-3.9).
@@ -917,12 +850,12 @@ pub(crate) mod testing {
         use base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let receipt = crate::operations::plan::PlanReceipt {
             plan_id: [0x11; 16],
-            operation: crate::operations::plan::GRANT_REVOKE.to_owned(),
+            operation: crate::operations::plan::KEYS_REVOKE.to_owned(),
             target: "nothing".to_owned(),
             revision: 0,
             principal: ADMIN.to_owned(),
             plan_digest: crate::operations::plan::plan_digest(
-                crate::operations::plan::GRANT_REVOKE,
+                crate::operations::plan::KEYS_REVOKE,
                 "nothing",
                 0,
                 &[],
@@ -958,7 +891,7 @@ pub(crate) mod testing {
     pub(crate) fn reopen(
         root: &std::path::Path,
         rings: Vec<&'static str>,
-    ) -> (HostApi, Arc<GrantStore>, Volume) {
+    ) -> (HostApi, (), Volume) {
         reopen_with(root, rings, Arc::new(Recording::default()))
     }
 
@@ -967,19 +900,15 @@ pub(crate) mod testing {
         root: &std::path::Path,
         rings: Vec<&'static str>,
         trail: Arc<Recording>,
-    ) -> (HostApi, Arc<GrantStore>, Volume) {
+    ) -> (HostApi, (), Volume) {
         let volume =
             Volume::claim(root, AssuranceProfile::Development).expect("the volume is claimed");
-        let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
         let time = Arc::new(crate::time::TimeGuard::system(
             std::time::Duration::from_secs(30),
         ));
         let mutations = Arc::new(
             Mutations::open(&volume, trail, Arc::clone(&time)).expect("the mutation journal opens"),
         );
-        mutations
-            .recover(&Grants(&store))
-            .expect("the mutation journal recovers");
         let provider: Arc<dyn crate::keys::KeyProvider> =
             Arc::new(crate::keys::FileKeyProvider::new(
                 crate::identity::directories(&volume)
@@ -1047,47 +976,17 @@ pub(crate) mod testing {
         mutations
             .recover(&crate::membership::Memberships(&memberships))
             .expect("the membership mutations recover");
-        let admin = Principal::new(ADMIN).expect("a principal");
-        if !store
-            .records()
-            .iter()
-            .any(|record| record.principal_id == admin)
-        {
-            crate::operations::grants::issue(
-                &mutations,
-                &store,
-                Initiator::System("test".to_owned()),
-                Issue {
-                    principal: admin,
-                    operations: operations::ALL
-                        .iter()
-                        .map(|operation| (*operation).to_owned())
-                        .collect(),
-                    selector: Selector::under(Resource::host()),
-                    resource_types: vec!["*".to_owned()],
-                    constraints: Default::default(),
-                    issued_by: "test".to_owned(),
-                    expires_at: None,
-                },
-                crate::authz::store::now(),
-            )
-            .expect("the administrator is issued");
-        }
         let (replay, _) =
             Replay::open(&volume, crate::authz::store::now()).expect("the replay journal opens");
         mutations
             .recover(&replay)
             .expect("the plans' mutations recover");
-        let authorization = Arc::new(Authorization::new(
-            Arc::clone(&store),
-            &[PublicGrant::new(
-                &[operations::KEYS_READ],
-                Selector::exactly(Resource::host()),
-            )],
-        ));
+        let authorization = Arc::new(Authorization::public_only(&[PublicGrant::new(
+            &[operations::KEYS_READ],
+            Selector::exactly(Resource::host()),
+        )]));
         let api = HostApi::new(Composition {
             authorization,
-            store: Some(Arc::clone(&store)),
             replay,
             keys: Arc::new(registry),
             health: Health::new(),
@@ -1142,11 +1041,22 @@ pub(crate) mod testing {
                 importing: None,
             })),
         });
-        (api, store, volume)
+        (api, (), volume)
     }
 
+    /// The administrator: every operation on the Host, and what [`grant_to`] added.
     pub(crate) fn admin() -> Actor {
-        actor(ADMIN)
+        let mut scopes = vec![permguard_core::authz::TokenScope {
+            operations: operations::ALL
+                .iter()
+                .map(|operation| (*operation).to_owned())
+                .collect(),
+            selector: Selector::under(Resource::host()),
+        }];
+        scopes.extend(
+            GRANTED.with(|granted| granted.borrow().get(ADMIN).cloned().unwrap_or_default()),
+        );
+        bearer(ADMIN, scopes)
     }
 }
 

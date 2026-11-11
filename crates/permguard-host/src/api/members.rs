@@ -35,9 +35,9 @@ use permguard_core::assurance::{AssuranceProfile, Control};
 use permguard_core::authz::{Actor, Selector, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{Planned, rfc3339};
 use super::replay::Plan;
 use super::{HostApi, Mutation, Receipt, Refusal};
+use super::{Planned, rfc3339};
 use crate::identity::record::uuid_text;
 use crate::membership::appraisal::{self, Appraisal, Approval, Evidence};
 use crate::membership::member::{Connector, Join, Member, Target};
@@ -1330,25 +1330,7 @@ impl HostApi {
         if invite.max_uses != 1 {
             return Err(invalid("`max_uses` is 1: an invitation is used once"));
         }
-        let mut offered = tasks(&invite.tasks)?;
-        // An IAM Host offers every member its status lists (WP-12.1): a member without them
-        // refuses every token, so the task is never left to be remembered.
-        if self.tokens.is_some()
-            && !offered
-                .iter()
-                .any(|task| task.task_type == crate::membership::record::TaskType::TokenStatus)
-        {
-            offered.push(crate::membership::record::Task {
-                task_id: "token-status".to_owned(),
-                task_type: crate::membership::record::TaskType::TokenStatus,
-                selector: selector(&invite.selector)?,
-                resource_types: vec!["*".to_owned()],
-                required: true,
-                limits: crate::membership::record::Limits::token_status(),
-                assurance_requirements: Vec::new(),
-                version: crate::membership::token_status::VERSION,
-            });
-        }
+        let offered = tasks(&invite.tasks)?;
         let new = NewInvite {
             selector: selector(&invite.selector)?,
             tasks: offered,
@@ -1696,7 +1678,6 @@ impl HostApi {
         approve: ApproveMember,
     ) -> Result<MemberChanged, Refusal> {
         let changed = self.approve_member_held(actor, id, approve).await?;
-        self.member_roles_follow();
         Ok(changed)
     }
 
@@ -1832,7 +1813,7 @@ impl HostApi {
         revision: u64,
         operation: &str,
     ) -> Result<MemberChanged, Refusal> {
-        let unreachable = || super::grants::unreachable_reconciliation(operation);
+        let unreachable = || super::unreachable_reconciliation(operation);
         let store = &self.memberships()?.store;
         // The enrollment is a membership's revision 1, each manifest one more: the manifest of
         // revision `r` is the one of epoch `r - 1`.
@@ -2016,7 +1997,6 @@ impl HostApi {
         change: ChangeMember,
     ) -> Result<MemberChanged, Refusal> {
         let changed = self.reject_member_held(actor, id, change).await?;
-        self.member_roles_follow();
         Ok(changed)
     }
 
@@ -2245,7 +2225,7 @@ impl HostApi {
                     },
                 })
             },
-            |_, _, _| Err(super::grants::unreachable_reconciliation(REVOKE_PLAN)),
+            |_, _, _| Err(super::unreachable_reconciliation(REVOKE_PLAN)),
         )
     }
 
@@ -2257,7 +2237,6 @@ impl HostApi {
         run: RunMemberRevoke,
     ) -> Result<MemberChanged, Refusal> {
         let changed = self.run_member_revoke_held(actor, id, run).await?;
-        self.member_roles_follow();
         Ok(changed)
     }
 
@@ -2735,26 +2714,6 @@ impl HostApi {
             ring,
             time: Arc::clone(&self.time),
         }))
-    }
-
-    /// Fetches the status lists this Host's `token.status` tasks deliver (WP-12.1): the server's
-    /// periodic pass, at least every list's `ttl`. Nothing without held lists composed.
-    pub async fn token_status_due(&self) -> usize {
-        let Some(lists) = self.held_lists.clone() else {
-            return 0;
-        };
-        let Ok((memberships, connector)) = self.member_side() else {
-            return 0;
-        };
-        let Ok(member) = self.acting_member(memberships, connector) else {
-            return 0;
-        };
-        member
-            .refresh_token_status(
-                crate::operations::journal::Initiator::System("host".to_owned()),
-                &lists,
-            )
-            .await
     }
 
     /// Imports what this Host's `events.import` tasks have due (WP-6.2c2a): the server's periodic

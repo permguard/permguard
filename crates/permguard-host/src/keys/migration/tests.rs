@@ -330,7 +330,7 @@ fn only_a_rings_own_directory_is_a_generation_under_host() {
 
 #[test]
 fn the_declared_layouts_are_the_rings_subsystems() {
-    use crate::keys::ring::{CONTROL_ATTEST, HOST_OPERATIONS, IAM_TOKENS};
+    use crate::keys::ring::{AUTHORITY_TOKENS, CONTROL_ATTEST, HOST_OPERATIONS};
     let names: Vec<&str> = layouts().into_iter().map(|(name, _)| name).collect();
     assert_eq!(
         names,
@@ -338,7 +338,7 @@ fn the_declared_layouts_are_the_rings_subsystems() {
             subsystem(HOST_OPERATIONS),
             subsystem(CONTROL_ATTEST),
             subsystem(DATA_ATTEST),
-            subsystem(IAM_TOKENS)
+            subsystem(AUTHORITY_TOKENS)
         ]
     );
 }

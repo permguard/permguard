@@ -13,6 +13,7 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod app;
+pub mod authority_refresh;
 pub mod banner;
 pub mod checkpoints;
 pub mod command;
@@ -26,17 +27,13 @@ pub mod legacy_spool;
 pub mod logging;
 pub mod objectives;
 pub mod offline;
-pub mod oidc_refresh;
 pub mod plane;
 pub mod prestop;
 pub mod repin;
-pub mod setup_http;
 pub mod shipping;
 pub mod signal;
-pub mod signin_http;
 pub mod stream_gc;
 pub mod time;
-pub mod token_status;
 pub mod witness;
 pub mod zone;
 

@@ -25,6 +25,12 @@ async fn main() -> ExitCode {
     );
 
     PlaneServer::new(identity, build_settings(build::VERSION))
+        // The Authority Plane beside the others (`2-security/8` Where it runs): `runtime.planes`
+        // selects which of them this process serves.
+        .with_plane(
+            permguard_authority_plane::module(),
+            addresses_for_plane("authority").expect("authority plane addresses are known"),
+        )
         .with_plane(
             permguard_control_plane::module(),
             addresses_for_plane("control").expect("control plane addresses are known"),

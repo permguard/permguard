@@ -27,6 +27,8 @@ base64.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 permguard-core.workspace = true
+# The offline `authority admin-key`: the Authority Plane's accounts on a stopped server's volume.
+permguard-authority-plane.workspace = true
 # The grant store of a volume, worked on offline by `host grants` (WP-2.4).
 permguard-host.workspace = true
 # The configuration and the key custody of the server, for the offline `host` commands (WP-3.2).
@@ -51,6 +53,8 @@ rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
+# A secret key, wiped from memory once dropped.
+zeroize.workspace = true
 toml = "1.1"
 
 [target.'cfg(unix)'.dependencies]
@@ -62,6 +66,9 @@ rustix = { workspace = true, features = ["termios"] }
 pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+# The storage and audit sink of the Server context the Authority Plane test composes.
+permguard-std.workspace = true
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).
 axum.workspace = true
 tokio.workspace = true

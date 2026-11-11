@@ -361,7 +361,7 @@ fn remote_plane(
 
     let client = permguard_control_client::pdp::client(
         &target.endpoint,
-        &crate::client_token::data_plane_tls(globals, &settings, trace)?,
+        &crate::target::tls(globals, &settings, trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;

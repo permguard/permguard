@@ -122,19 +122,16 @@ pub enum TaskType {
     EventsImport,
     AuditCheckpoints,
     ZoneSecrets,
-    /// The IAM Host's token status lists, to every member (iteration 02, WP-12.1).
-    TokenStatus,
 }
 
 impl TaskType {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::PolicyMirror,
         Self::DecisionsShip,
         Self::EventsShip,
         Self::EventsImport,
         Self::AuditCheckpoints,
         Self::ZoneSecrets,
-        Self::TokenStatus,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -145,16 +142,13 @@ impl TaskType {
             Self::EventsImport => "events.import",
             Self::AuditCheckpoints => "audit.checkpoints",
             Self::ZoneSecrets => "zone.secrets",
-            Self::TokenStatus => "token.status",
         }
     }
 
     /// The role that provides the task.
     pub fn provider(self) -> Role {
         match self {
-            Self::PolicyMirror | Self::EventsImport | Self::ZoneSecrets | Self::TokenStatus => {
-                Role::Coordinator
-            }
+            Self::PolicyMirror | Self::EventsImport | Self::ZoneSecrets => Role::Coordinator,
             Self::DecisionsShip | Self::EventsShip | Self::AuditCheckpoints => Role::Member,
         }
     }
@@ -301,19 +295,6 @@ pub struct Limits {
 }
 
 impl Limits {
-    /// What a `token.status` task is signed with (WP-12.1): one list per message, within a
-    /// session frame; a few sessions; a refresh every few seconds at most.
-    pub fn token_status() -> Self {
-        Self {
-            max_body_bytes: u64::try_from(crate::session::record::MAX_FRAME_BYTES).unwrap_or(0),
-            max_concurrency: 2,
-            max_rate_per_minute: 600,
-            max_batch_records: 1,
-            // Nothing of the task is kept by the coordinator beyond its replay window: an hour.
-            retention_seconds: 3_600,
-        }
-    }
-
     fn value(&self) -> Result<Value, RecordError> {
         Ok(Value::Map(vec![
             (Value::Int(1), uint(self.max_body_bytes)?),

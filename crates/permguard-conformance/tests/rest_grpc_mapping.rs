@@ -37,7 +37,8 @@ use permguard_conformance::schema::Document;
 use serde_json::{Map, Value};
 
 /// The documents of the surfaces served on both bindings, and the ones described for REST only.
-const MAPPED: [&str; 11] = [
+const MAPPED: [&str; 12] = [
+    "authority.json",
     "catalog.json",
     "common.json",
     "discovery.json",
@@ -471,8 +472,9 @@ fn test_every_mapped_member_and_operation_resolves_against_the_protos_both_ways(
     // Every method the planes serve is named by an operation or listed as unmapped: a gRPC-only
     // method is a mapping decision, never an accident.
     for rpc in rpcs.keys() {
-        let served =
-            rpc.starts_with("permguard.control.v1.") || rpc.starts_with("permguard.data.v1.");
+        let served = rpc.starts_with("permguard.control.v1.")
+            || rpc.starts_with("permguard.data.v1.")
+            || rpc.starts_with("permguard.authority.v1.");
         if served && !used.contains(rpc) && !unmapped_rpcs.contains(rpc) {
             offences.push(format!(
                 "`{rpc}` is named by no operation and not listed in `x-grpc-unmapped-rpcs`"

@@ -3,55 +3,62 @@
 
 #![allow(clippy::expect_used)]
 
-use permguard_core::authz::Selector;
-
 use super::*;
-use crate::api::grants::{CreateGrant, PlanRevoke, RunRevoke};
 use crate::api::keys::{PlanKeyRevoke, RunKeyRevoke};
 use crate::api::status::Assurance;
-use crate::api::testing::{actor, admin, facade, facade_with};
-use crate::keys::ring::{DATA_ATTEST, HOST_OPERATIONS};
+use crate::api::testing::{actor, admin, facade, facade_with, grant_to};
+use crate::keys::ring::{CONTROL_ATTEST, DATA_ATTEST, HOST_OPERATIONS};
 
-const SECOND: &str = "spiffe://acme/operators/second";
-const THIRD: &str = "spiffe://acme/operators/third";
+const SECOND: &str = "sa:second";
+const THIRD: &str = "sa:third";
 
 fn code(refusal: &Refusal) -> &str {
     refusal.error().expect("a domain refusal").code()
 }
 
-/// A grant of `operations` on the Host to `principal`.
-async fn grant(api: &HostApi, request_id: &str, principal: &str, operations: &[&str]) -> String {
-    api.create_grant(
+/// `operations` on the Host to `principal`'s token.
+fn grant(principal: &str, operations: &[&str]) {
+    grant_to(principal, operations, "host/*");
+}
+
+/// A plan of the revocation of `ring`'s active key, by the administrator.
+async fn plan_key(
+    api: &HostApi,
+    ring: &str,
+    request_id: &str,
+) -> Result<crate::api::Planned, Refusal> {
+    let kid = active_kid(api, ring);
+    api.plan_key_revoke(
         &admin(),
-        CreateGrant {
+        ring,
+        PlanKeyRevoke {
             request_id: request_id.to_owned(),
-            expected_revision: None,
-            principal: principal.to_owned(),
-            operations: operations.iter().map(|op| (*op).to_owned()).collect(),
-            selector: Selector::under(Resource::host()).to_string(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
+            kid,
+            reason: "drill".to_owned(),
+            compromised_at: None,
+            expected_epoch: None,
         },
     )
     .await
-    .expect("granted")
-    .grant
-    .grant_id
 }
 
-fn revoke(request_id: &str) -> PlanRevoke {
-    PlanRevoke {
-        request_id: request_id.to_owned(),
-        expected_revision: None,
-    }
-}
-
-fn run(request_id: &str, receipt: &str) -> RunRevoke {
-    RunRevoke {
-        request_id: request_id.to_owned(),
-        receipt: receipt.to_owned(),
-    }
+/// The run of the key revocation `receipt` names, on `ring`.
+async fn run_key(
+    api: &HostApi,
+    actor: &Actor,
+    ring: &str,
+    request_id: &str,
+    receipt: &str,
+) -> Result<crate::api::keys::KeyRevoked, Refusal> {
+    api.run_key_revoke(
+        actor,
+        ring,
+        RunKeyRevoke {
+            request_id: request_id.to_owned(),
+            receipt: receipt.to_owned(),
+        },
+    )
+    .await
 }
 
 /// The facade under `regulated`: dual control in force.
@@ -78,27 +85,22 @@ fn active_kid(api: &HostApi, ring: &str) -> String {
 
 #[tokio::test]
 async fn a_run_consumes_the_receipt_once() {
-    let api = facade("plans-once");
-    let target = grant(&api, "g", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    let planned = api
-        .plan_revoke(&admin(), &target, revoke("p"))
-        .await
-        .expect("planned");
+    let api = facade_with("plans-once", vec![HOST_OPERATIONS, DATA_ATTEST]);
+    let planned = plan_key(&api, DATA_ATTEST, "p").await.expect("planned");
     assert_eq!(
         planned.approvals_required, 0,
-        "a grant revocation needs none"
+        "no approval outside dual control"
     );
     assert!(planned.plan_digest.starts_with("sha256:"));
     let receipt = URL_SAFE_NO_PAD.decode(&planned.receipt).expect("base64url");
     let read = plan::read_receipt(&receipt).expect("a receipt");
-    assert_eq!(read.operation, GRANT_REVOKE);
-    assert_eq!(read.target, target);
+    assert_eq!(read.operation, KEYS_REVOKE);
+    assert!(read.target.starts_with(DATA_ATTEST), "{}", read.target);
     assert_eq!(read.principal, admin_principal());
-    api.run_revoke(&admin(), &target, run("r1", &planned.receipt))
+    run_key(&api, &admin(), DATA_ATTEST, "r1", &planned.receipt)
         .await
         .expect("revoked");
-    let again = api
-        .run_revoke(&admin(), &target, run("r2", &planned.receipt))
+    let again = run_key(&api, &admin(), DATA_ATTEST, "r2", &planned.receipt)
         .await
         .expect_err("run once");
     assert_eq!(code(&again), codes::host::PLAN_EXPIRED);
@@ -110,34 +112,30 @@ fn admin_principal() -> String {
 
 #[tokio::test]
 async fn a_receipt_for_one_plan_does_not_authorize_another() {
-    let api = facade("plans-other");
-    let first = grant(&api, "g1", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    let second = grant(&api, "g2", "spiffe://acme/y", &[operations::LIFECYCLE_READ]).await;
-    let planned = api
-        .plan_revoke(&admin(), &first, revoke("p1"))
+    let api = facade_with(
+        "plans-other",
+        vec![HOST_OPERATIONS, DATA_ATTEST, CONTROL_ATTEST],
+    );
+    let planned = plan_key(&api, DATA_ATTEST, "p1").await.expect("planned");
+    // The receipt of one ring's plan presented for another ring.
+    let refused = run_key(&api, &admin(), CONTROL_ATTEST, "r1", &planned.receipt)
         .await
-        .expect("planned");
-    // The receipt of the first grant's plan presented for the second grant.
-    let refused = api
-        .run_revoke(&admin(), &second, run("r1", &planned.receipt))
-        .await
-        .expect_err("another grant");
+        .expect_err("another ring");
     assert_eq!(code(&refused), codes::host::PLAN_UNKNOWN);
     // Its bytes changed: not the receipt the plan step answered.
-    let refused = api
-        .run_revoke(
-            &admin(),
-            &first,
-            run("r2", &crate::api::testing::tampered(&planned.receipt)),
-        )
-        .await
-        .expect_err("tampered");
+    let refused = run_key(
+        &api,
+        &admin(),
+        DATA_ATTEST,
+        "r2",
+        &crate::api::testing::tampered(&planned.receipt),
+    )
+    .await
+    .expect_err("tampered");
     assert_eq!(code(&refused), codes::host::PLAN_DIGEST_MISMATCH);
     // Not the planner: the plan is not held for it.
-    let other = actor(SECOND);
-    grant(&api, "g3", SECOND, &[operations::AUTHZ_ADMIN]).await;
-    let refused = api
-        .run_revoke(&other, &first, run("r3", &planned.receipt))
+    grant(SECOND, &[operations::KEYS_ADMIN]);
+    let refused = run_key(&api, &actor(SECOND), DATA_ATTEST, "r3", &planned.receipt)
         .await
         .expect_err("another principal");
     assert_eq!(code(&refused), codes::host::PLAN_UNKNOWN);
@@ -145,28 +143,20 @@ async fn a_receipt_for_one_plan_does_not_authorize_another() {
 
 #[tokio::test]
 async fn a_replayed_run_answers_its_result_and_another_receipt_is_refused() {
-    let api = facade("plans-replay");
-    let first = grant(&api, "g1", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    let second = grant(&api, "g2", "spiffe://acme/y", &[operations::LIFECYCLE_READ]).await;
-    let planned = api
-        .plan_revoke(&admin(), &first, revoke("p1"))
-        .await
-        .expect("planned");
-    let other = api
-        .plan_revoke(&admin(), &second, revoke("p2"))
-        .await
-        .expect("planned");
-    let done = api
-        .run_revoke(&admin(), &first, run("r", &planned.receipt))
+    let api = facade_with(
+        "plans-replay",
+        vec![HOST_OPERATIONS, DATA_ATTEST, CONTROL_ATTEST],
+    );
+    let planned = plan_key(&api, DATA_ATTEST, "p1").await.expect("planned");
+    let other = plan_key(&api, CONTROL_ATTEST, "p2").await.expect("planned");
+    let done = run_key(&api, &admin(), DATA_ATTEST, "r", &planned.receipt)
         .await
         .expect("revoked");
-    let replayed = api
-        .run_revoke(&admin(), &first, run("r", &planned.receipt))
+    let replayed = run_key(&api, &admin(), DATA_ATTEST, "r", &planned.receipt)
         .await
         .expect("the stored result");
     assert_eq!(replayed, done);
-    let refused = api
-        .run_revoke(&admin(), &second, run("r", &other.receipt))
+    let refused = run_key(&api, &admin(), CONTROL_ATTEST, "r", &other.receipt)
         .await
         .expect_err("the request id names another run");
     assert_eq!(code(&refused), codes::host::REQUEST_ID_REUSED);
@@ -174,10 +164,8 @@ async fn a_replayed_run_answers_its_result_and_another_receipt_is_refused() {
 
 #[tokio::test]
 async fn a_plan_needs_host_operations_to_sign_its_receipt() {
-    let api = facade_with("plans-no-ring", Vec::new());
-    let target = grant(&api, "g", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    let refused = api
-        .plan_revoke(&admin(), &target, revoke("p"))
+    let api = facade_with("plans-no-ring", vec![DATA_ATTEST]);
+    let refused = plan_key(&api, DATA_ATTEST, "p")
         .await
         .expect_err("nothing signs the receipt");
     assert_eq!(code(&refused), codes::common::UNAVAILABLE);
@@ -206,8 +194,8 @@ async fn under_regulated_reset_and_key_revocation_are_refused_below_the_approval
         .expect("planned");
     assert_eq!(planned.approvals_required, 1);
     let now = api.time.now_secs();
-    let latest = crate::api::grants::rfc3339(now + 86_400);
-    let earliest = crate::api::grants::rfc3339(now + 86_400 - 60);
+    let latest = crate::api::rfc3339(now + 86_400);
+    let earliest = crate::api::rfc3339(now + 86_400 - 60);
     assert!(
         earliest.as_str() <= planned.expires.as_str()
             && planned.expires.as_str() <= latest.as_str(),
@@ -226,13 +214,6 @@ async fn under_regulated_reset_and_key_revocation_are_refused_below_the_approval
         .await
         .expect_err("below the count");
     assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
-    // A grant revocation needs none, even here.
-    let target = grant(&api, "g", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    let grant_plan = api
-        .plan_revoke(&admin(), &target, revoke("p"))
-        .await
-        .expect("planned");
-    assert_eq!(grant_plan.approvals_required, 0);
     // The identity reset needs one.
     assert_eq!(
         plan::approvals_required(IDENTITY_RESET, api.dual_control()),
@@ -279,14 +260,14 @@ async fn the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per
         .expect_err("the planner");
     assert_eq!(code(&refused), codes::host::PLAN_SELF_APPROVAL);
     // A principal without the operation's grant is denied.
-    grant(&api, "g-second-read", SECOND, &[operations::LIFECYCLE_READ]).await;
+    grant(SECOND, &[operations::LIFECYCLE_READ]);
     let refused = api
         .approve_plan(&actor(SECOND), &planned.plan_id, approve("a1"))
         .await
         .expect_err("no keys.admin");
     assert!(matches!(refused, Refusal::Denied(_)), "{refused:?}");
     // With it, one approval, attested by the Host.
-    grant(&api, "g-second", SECOND, &[operations::KEYS_ADMIN]).await;
+    grant(SECOND, &[operations::KEYS_ADMIN]);
     let approved = api
         .approve_plan(&actor(SECOND), &planned.plan_id, approve("a2"))
         .await
@@ -329,7 +310,7 @@ async fn the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per
         .await
         .expect_err("twice");
     assert_eq!(code(&refused), codes::host::PLAN_APPROVAL_REFUSED);
-    grant(&api, "g-third", THIRD, &[operations::KEYS_ADMIN]).await;
+    grant(THIRD, &[operations::KEYS_ADMIN]);
     let refused = api
         .approve_plan(&actor(THIRD), &planned.plan_id, approve("a4"))
         .await
@@ -367,46 +348,42 @@ async fn the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per
 async fn plans_are_listed_to_the_holders_of_their_operations_grant() {
     let api = regulated(facade_with(
         "plans-list",
-        vec![HOST_OPERATIONS, DATA_ATTEST],
+        vec![HOST_OPERATIONS, DATA_ATTEST, CONTROL_ATTEST],
     ));
-    let kid = active_kid(&api, DATA_ATTEST);
-    api.plan_key_revoke(
-        &admin(),
-        DATA_ATTEST,
-        PlanKeyRevoke {
-            request_id: "k".to_owned(),
-            kid,
-            reason: "drill".to_owned(),
-            compromised_at: None,
-            expected_epoch: None,
-        },
-    )
-    .await
-    .expect("planned");
-    let target = grant(&api, "g", "spiffe://acme/x", &[operations::LIFECYCLE_READ]).await;
-    api.plan_revoke(&admin(), &target, revoke("p"))
-        .await
-        .expect("planned");
+    plan_key(&api, DATA_ATTEST, "k1").await.expect("planned");
+    plan_key(&api, CONTROL_ATTEST, "k2").await.expect("planned");
     let all = api.plans(&admin(), None).expect("listed");
     assert_eq!(all.plans.len(), 2);
     let pending = api.plans(&admin(), Some("pending")).expect("listed");
-    assert_eq!(pending.plans.len(), 1);
-    assert_eq!(pending.plans[0].operation, KEYS_REVOKE);
-    let ready = api.plans(&admin(), Some("ready")).expect("listed");
-    assert_eq!(ready.plans[0].operation, GRANT_REVOKE);
-    // A principal with `authz.admin` alone sees the grant plan only.
-    grant(&api, "g-second", SECOND, &[operations::AUTHZ_ADMIN]).await;
-    let seen = api.plans(&actor(SECOND), None).expect("listed");
     assert_eq!(
-        seen.plans
-            .iter()
-            .map(|plan| plan.operation.as_str())
-            .collect::<Vec<_>>(),
-        vec![GRANT_REVOKE]
+        pending.plans.len(),
+        2,
+        "dual control: each awaits an approval"
     );
-    // The receipt is the planner's capability: listed to the planner alone.
-    assert!(seen.plans[0].receipt.is_empty());
+    assert!(
+        pending
+            .plans
+            .iter()
+            .all(|plan| plan.operation == KEYS_REVOKE)
+    );
+    assert!(
+        api.plans(&admin(), Some("ready"))
+            .expect("listed")
+            .plans
+            .is_empty()
+    );
+    // A holder of `keys.admin` sees them, never their receipts.
+    grant(SECOND, &[operations::KEYS_ADMIN]);
+    let seen = api.plans(&actor(SECOND), None).expect("listed");
+    assert_eq!(seen.plans.len(), 2);
+    assert!(seen.plans.iter().all(|plan| plan.receipt.is_empty()));
     assert!(all.plans.iter().all(|plan| !plan.receipt.is_empty()));
+    // A holder of no plan's operation, and nobody, are refused.
+    grant(THIRD, &[operations::LIFECYCLE_READ]);
+    assert!(matches!(
+        api.plans(&actor(THIRD), None),
+        Err(Refusal::Denied(denial)) if denial.http_status() == 403
+    ));
     assert!(matches!(
         api.plans(&Actor::Anonymous, None),
         Err(Refusal::Denied(_))
@@ -441,8 +418,8 @@ async fn a_principal_approves_a_plan_once_whatever_the_count() {
             },
         )
         .expect("planned");
-    grant(&api, "g-second", SECOND, &[operations::KEYS_ADMIN]).await;
-    grant(&api, "g-third", THIRD, &[operations::KEYS_ADMIN]).await;
+    grant(SECOND, &[operations::KEYS_ADMIN]);
+    grant(THIRD, &[operations::KEYS_ADMIN]);
     let approve = |request_id: &str| ApprovePlan {
         request_id: request_id.to_owned(),
     };

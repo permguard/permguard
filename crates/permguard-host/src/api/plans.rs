@@ -26,13 +26,12 @@ use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
 use crate::operations::mutation::{Applied, Applying, Begin, Failure, Mutations, Outcome};
 use crate::operations::plan::{
-    self, Approval, GRANT_REVOKE, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt,
-    PlanSigner,
+    self, Approval, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt, PlanSigner,
 };
 
-use super::grants::{rfc3339, unreachable_reconciliation};
 use super::replay::{self, Plan, PlanApproval, Replay, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
+use super::{rfc3339, unreachable_reconciliation};
 
 /// The action an approval is recorded under, in the `security` trail.
 pub const AUDIT_APPROVED: &str = "host.plan.approved";
@@ -123,7 +122,6 @@ pub struct Issue<'a> {
 /// The grant an operation needs, which its approvers need too.
 fn grant_of(kind: &str) -> Option<&'static str> {
     match kind {
-        GRANT_REVOKE => Some(operations::AUTHZ_ADMIN),
         KEYS_REVOKE => Some(operations::KEYS_ADMIN),
         MEMBERSHIP_REVOKE => Some(operations::MEMBERSHIP_ADMIN),
         IDENTITY_RESET => Some(operations::IDENTITY_ADMIN),
@@ -135,7 +133,6 @@ fn grant_of(kind: &str) -> Option<&'static str> {
 /// The operation an approval of `kind` runs under, in the [`replay::DOMAIN`] domain.
 fn approval_of(kind: &str) -> Option<&'static str> {
     match kind {
-        GRANT_REVOKE => Some("grants.revoke.approve"),
         KEYS_REVOKE => Some("keys.revoke.approve"),
         MEMBERSHIP_REVOKE => Some("members.revoke.approve"),
         IDENTITY_RESET => Some("identity.reset.approve"),
@@ -449,8 +446,7 @@ impl HostApi {
             .filter_map(|kind| grant_of(kind))
             .any(holds)
         {
-            self.authorization
-                .authorize(actor, operations::AUTHZ_ADMIN, &Resource::host())?;
+            return Err(Refusal::Denied(actor.without_grant()));
         }
         let principal = actor.principal()?;
         let _permit = self.bounds.admit(&principal)?;
@@ -493,8 +489,7 @@ impl HostApi {
                         .is_ok()
                 });
             if !any {
-                self.authorization
-                    .authorize(actor, operations::AUTHZ_ADMIN, &Resource::host())?;
+                return Err(Refusal::Denied(actor.without_grant()));
             }
             return Err(unknown());
         };

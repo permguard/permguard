@@ -78,6 +78,18 @@
       "item": "write_cached",
       "primitive": "rename",
       "reason": "the command line's own access token, kept in the operator's private cache outside any Host volume: written beside it and renamed over it so the next command never reads half a token; the storage library serves a volume the Host claimed, which this is not"
+    },
+    {
+      "source": "crates/permguard-authority-plane/src/admin.rs",
+      "item": "fill",
+      "primitive": "flush",
+      "reason": "a key file the operator is handed: the access key and its secret written once into a new file created owner-only and exclusive, which the library's views, published by rename and readable by the process, are not"
+    },
+    {
+      "source": "crates/permguard-authority-plane/src/admin.rs",
+      "item": "offline_key",
+      "primitive": "write",
+      "reason": "the mark an offline `authority admin-key` leaves for the next start to record in the audit trail: a hint, replaced whole, whose loss loses a record of the key, never the key"
     }
   ]
 }

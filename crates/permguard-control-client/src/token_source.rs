@@ -1,104 +1,24 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Access tokens for a client (iteration 02, TC-7, `2-security/7` Access tokens): a service
-//! account's application token, obtained at the IAM Host's token endpoint by its secret, a signed
-//! assertion or its TLS client certificate, held while it serves and obtained again a minute before
-//! it expires; or a person's, their session exchanged for it (RFC 8693). Nothing here prints,
-//! traces or logs a token, a session, a secret or an assertion: `Debug` of every type that holds
+//! Access tokens for a client (`2-security/7` The client): a service account's token, obtained at
+//! the Authority Plane's token endpoint with an access key and its secret key, held while it
+//! serves and obtained again a minute before it expires. Over REST or gRPC as the endpoint's scheme
+//! says. Nothing here prints, traces or logs a token or a secret: `Debug` of every type that holds
 //! one masks it.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use base64::Engine as _;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use permguard_host::api::token_endpoint::{
-    ACCESS_TOKEN_TYPE, CLIENT_CREDENTIALS, JWT_TOKEN_TYPE, ROLE_SCOPE, TOKEN_EXCHANGE,
-};
+use zeroize::Zeroizing;
 
+use crate::authority::TokenAsk;
 use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
 use crate::tls::{Credential, TlsOptions};
 
-/// The token endpoint's path on the IAM Host's listener.
-pub const TOKEN_PATH: &str = "/iam/v1/token";
 /// How long before its `exp` a token is obtained again.
 pub const REFRESH_AHEAD: Duration = Duration::from_secs(60);
-/// How long a client assertion lives: the endpoint takes at most five minutes, and two leave room
-/// for a client clock behind the Host's.
-const ASSERTION_LIFETIME: u64 = 120;
-/// Where the IAM Host publishes its token endpoint (RFC 8414).
-const METADATA_PATH: &str = "/.well-known/oauth-authorization-server";
-/// The assertion type of RFC 7523.
-const JWT_BEARER: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
-
-/// How the client proves who it is.
-pub enum Proof {
-    /// A `client_secret`, sent as HTTP Basic.
-    Secret(Credential),
-    /// The private key of a `private_key_jwt` credential, PKCS#8 DER, Ed25519 or P-256: each
-    /// request signs a fresh assertion.
-    Key(Credential),
-    /// The TLS client certificate the options carry: a `tls_client_auth` binding.
-    Certificate,
-    /// A person's password session or provider token, exchanged for the person's own token
-    /// (RFC 8693): the subject of the exchange, with no client of its own, stated as an access
-    /// token when it is a session and as a JWT otherwise (§3).
-    Session(Credential),
-}
-
-impl std::fmt::Debug for Proof {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Secret(_) => "Secret(********)",
-            Self::Key(_) => "Key(********)",
-            Self::Certificate => "Certificate",
-            Self::Session(_) => "Session(********)",
-        })
-    }
-}
-
-/// What the token is for: its operations, the members it is addressed to and its targets.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Asked {
-    pub scope: String,
-    pub audience: Vec<String>,
-    pub target: Vec<String>,
-}
-
-impl Asked {
-    /// The same ask, elevated to `role` (`2-security/8` Roles and elevation): `role:<name>` joins
-    /// the scope, and the token carries that role's permissions alone. Under a role the audience
-    /// may be left out, since the IAM Host addresses a member's role to its member and refuses a
-    /// role that needs one; the operations beside it narrow the role's. Refused for a name that is
-    /// not a role name, and beside a scope that already names a role, since a scope names one.
-    pub fn elevated(mut self, role: &str) -> Result<Self, Failure> {
-        let role = role.trim();
-        if !permguard_host::authz::directory::is_role_name(role) {
-            return Err(usage(format!(
-                "`{role}` is not a role name: 1 to 63 lowercase letters, digits, `-`, `_` or `.`"
-            )));
-        }
-        if self.role().is_some() {
-            return Err(usage("a scope names at most one role"));
-        }
-        let operations = self.scope.trim();
-        self.scope = if operations.is_empty() {
-            format!("{ROLE_SCOPE}{role}")
-        } else {
-            format!("{ROLE_SCOPE}{role} {operations}")
-        };
-        Ok(self)
-    }
-
-    /// The role the scope elevates to, when it names one.
-    pub fn role(&self) -> Option<&str> {
-        self.scope
-            .split_whitespace()
-            .find_map(|word| word.strip_prefix(ROLE_SCOPE))
-    }
-}
 
 /// A token, and when it stops serving (seconds since the epoch).
 #[derive(Clone)]
@@ -116,27 +36,23 @@ impl std::fmt::Debug for Issued {
     }
 }
 
-/// A client's tokens from one IAM Host.
+/// A client's tokens from one Authority Plane.
 pub struct TokenSource {
     endpoint: Endpoint,
-    client_id: String,
-    proof: Proof,
-    asked: Asked,
+    url: String,
+    access_key: String,
+    secret_key: Zeroizing<String>,
+    scope: Option<String>,
     tls: TlsOptions,
-    timeout: Duration,
     held: Mutex<Option<Issued>>,
-    /// The token endpoint the IAM Host names itself (RFC 8414), an assertion's `aud`: the URL a
-    /// client typed may be another spelling of the same listener.
-    audience: Mutex<Option<String>>,
 }
 
 impl std::fmt::Debug for TokenSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenSource")
             .field("endpoint", &self.endpoint.to_string())
-            .field("client_id", &self.client_id)
-            .field("proof", &self.proof)
-            .field("asked", &self.asked)
+            .field("access_key", &self.access_key)
+            .field("scope", &self.scope)
             .finish_non_exhaustive()
     }
 }
@@ -147,15 +63,6 @@ fn usage(detail: impl Into<String>) -> Failure {
         reason: permguard_core::codes::client::USAGE.to_owned(),
         detail: detail.into(),
         usage: true,
-    }
-}
-
-fn unavailable(detail: impl Into<String>) -> Failure {
-    Failure {
-        class: "unavailable".to_owned(),
-        reason: permguard_core::codes::common::UNAVAILABLE.to_owned(),
-        detail: detail.into(),
-        usage: false,
     }
 }
 
@@ -174,70 +81,70 @@ fn now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-/// A form value, percent-encoded.
-fn form(value: &str) -> String {
-    crate::encode::value(value)
+/// Whether `token` reads as an `at+jwt`: what the endpoint must issue, nothing else.
+fn is_access_token(token: &str) -> bool {
+    use base64::Engine as _;
+    token
+        .split('.')
+        .next()
+        .and_then(|header| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(header)
+                .ok()
+        })
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .is_some_and(|header| {
+            header["typ"].as_str() == Some(permguard_core::domains::jwt::ACCESS_TOKEN)
+        })
 }
 
 impl TokenSource {
-    /// A source for `client_id` at the IAM Host `endpoint` (`https://`), proving itself by `proof`,
-    /// asking for `asked`. The TLS options name the authority the IAM Host is checked against and
-    /// the client certificate the connection presents, whatever the proof: the proof itself for
-    /// [`Proof::Certificate`], the connection's beside any other; a bearer they carry is never sent
-    /// here, a session being sent only as [`Proof::Session`]'s subject token.
+    /// A source for `access_key` at the Authority Plane `url` (`https://` or `grpcs://`), its
+    /// secret `secret_key`, asking `scope`, the account's whole when `None`. The TLS options name
+    /// the authority the Authority Plane is checked against; a bearer they carry is never sent
+    /// there.
     pub fn new(
-        endpoint: Endpoint,
-        client_id: &str,
-        proof: Proof,
-        asked: Asked,
+        url: &str,
+        access_key: &str,
+        secret_key: Zeroizing<String>,
+        scope: Option<String>,
         mut tls: TlsOptions,
-        timeout: Duration,
     ) -> Result<Self, Failure> {
+        let endpoint = Endpoint::parse(url).map_err(|error| usage(error.to_string()))?;
         if !endpoint.is_tls() {
             return Err(usage(
-                "a token is obtained only over TLS: the IAM Host's endpoint is https://",
-            ));
-        }
-        if client_id.trim().is_empty() && !matches!(proof, Proof::Session(_)) {
-            return Err(usage("a client names its service account"));
-        }
-        // Under a role the IAM Host addresses the token itself, or refuses a role that needs an
-        // audience; without one, the audience is the client's to name.
-        if asked.scope.trim().is_empty() || (asked.audience.is_empty() && asked.role().is_none()) {
-            return Err(usage(
-                "a token names its scope and at least one audience (member:<id> or group:<name>), \
-                 or a role it elevates to",
+                "a secret key is sent only over TLS: the Authority Plane's endpoint is https:// \
+                 or grpcs://",
             ));
         }
         if tls.skip_verify {
             return Err(usage(
-                "a client's proof is sent only over verified TLS: --tls-skip-verify would hand it \
-                 to whoever answered; trust the IAM Host's authority instead",
+                "a secret key is sent only over verified TLS: --tls-skip-verify would hand it to \
+                 whoever answered; trust the Authority Plane's authority instead",
             ));
         }
-        if matches!(proof, Proof::Certificate) && tls.cert_file.is_none() && tls.key_pem.is_none() {
-            return Err(usage(
-                "a certificate proof needs the client certificate: --tls-cert-file and its key",
-            ));
-        }
-        if let Proof::Key(key) = &proof {
-            Signer::of(key.expose())?;
+        if access_key.trim().is_empty() || secret_key.trim().is_empty() {
+            return Err(usage("a client names its access key and its secret key"));
         }
         tls.token = None;
         Ok(Self {
             endpoint,
-            client_id: client_id.to_owned(),
-            proof,
-            asked,
+            url: url.to_owned(),
+            access_key: access_key.trim().to_owned(),
+            secret_key,
+            scope: scope.filter(|scope| !scope.trim().is_empty()),
             tls,
-            timeout,
             held: Mutex::new(None),
-            audience: Mutex::new(None),
         })
     }
 
+    /// The access key the source obtains tokens with.
+    pub fn access_key(&self) -> &str {
+        &self.access_key
+    }
+
     /// The token to send: the one held while it serves past [`REFRESH_AHEAD`], otherwise a new
-    /// one from the IAM Host.
+    /// one from the Authority Plane.
     pub fn token(&self) -> Result<Issued, Failure> {
         let mut held = self
             .held
@@ -253,6 +160,14 @@ impl TokenSource {
         Ok(issued)
     }
 
+    /// Drops the token held: a surface refused it, and the next call obtains another.
+    pub fn forget(&self) {
+        *self
+            .held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
     /// Holds `issued`, a token obtained before and kept by the caller, when it still serves.
     pub fn hold(&self, issued: Issued) {
         if issued.expires_at > now() + REFRESH_AHEAD.as_secs() {
@@ -264,492 +179,73 @@ impl TokenSource {
     }
 
     fn obtain(&self) -> Result<Issued, Failure> {
-        let grant_type = match self.proof {
-            Proof::Session(_) => TOKEN_EXCHANGE,
-            _ => CLIENT_CREDENTIALS,
-        };
-        let mut body = format!(
-            "grant_type={}&scope={}",
-            form(grant_type),
-            form(&self.asked.scope)
-        );
-        for audience in &self.asked.audience {
-            body.push_str(&format!("&audience={}", form(audience)));
-        }
-        for target in &self.asked.target {
-            body.push_str(&format!("&target={}", form(target)));
-        }
-        let mut client = crate::http::Client::new(self.timeout, self.tls.clone(), true)
-            .map_err(|error| usage(error.to_string()))?;
-        match &self.proof {
-            Proof::Secret(secret) => {
-                let secret = std::str::from_utf8(secret.expose())
-                    .map_err(|_| usage("the client secret is not text"))?;
-                let pair = format!("{}:{}", form(&self.client_id), form(secret.trim()));
-                client = client
-                    .with_authorization(&format!("Basic {}", STANDARD.encode(pair)), true)
-                    .map_err(|error| usage(error.to_string()))?;
-            }
-            Proof::Key(key) => {
-                let audience = self.audience()?;
-                let assertion = self.assertion(key.expose(), &audience)?;
-                body.push_str(&format!(
-                    "&client_id={}&client_assertion_type={}&client_assertion={}",
-                    form(&self.client_id),
-                    form(JWT_BEARER),
-                    form(&assertion)
-                ));
-            }
-            Proof::Certificate => {
-                body.push_str(&format!("&client_id={}", form(&self.client_id)));
-            }
-            Proof::Session(session) => {
-                let session = std::str::from_utf8(session.expose())
-                    .map_err(|_| usage("the session is not text"))?;
-                body.push_str(&format!(
-                    "&subject_token={}&subject_token_type={}",
-                    form(session.trim()),
-                    form(subject_token_type(session))
-                ));
-            }
-        }
-        let answered = client
-            .request_raw(
-                &self.endpoint,
-                "POST",
-                TOKEN_PATH,
-                "application/x-www-form-urlencoded",
-                Some(body.as_bytes()),
-            )
-            .map_err(|error| unavailable(error.to_string()))?;
-        let parsed: Option<serde_json::Value> = serde_json::from_slice(&answered.body).ok();
-        if answered.status != 200 {
-            // RFC 6749 §5.2: the error and its description, never anything the client sent, and
-            // never a control character a terminal would act on.
-            let printable = |text: &str| -> String {
-                text.chars().filter(|c| !c.is_control()).take(256).collect()
-            };
-            let error = parsed
-                .as_ref()
-                .and_then(|value| value["error"].as_str())
-                .map_or_else(|| format!("http_{}", answered.status), printable);
-            let description = parsed
-                .as_ref()
-                .and_then(|value| value["error_description"].as_str())
-                .map(printable)
-                .unwrap_or_default();
-            let class = match answered.status {
-                401 => "unauthenticated",
-                400 | 403 => "validation",
-                _ => "unavailable",
-            };
-            return Err(Failure {
-                class: class.to_owned(),
-                reason: error.clone(),
-                detail: format!("the IAM Host refused the token: {error} {description}")
-                    .trim()
-                    .to_owned(),
-                usage: false,
-            });
-        }
-        let Some(parsed) = parsed else {
-            return Err(unavailable(
-                "the IAM Host answered something that is not a token answer",
-            ));
-        };
-        let (Some(token), Some(expires_in)) = (
-            parsed["access_token"].as_str(),
-            parsed["expires_in"].as_u64(),
-        ) else {
-            return Err(refused("the token endpoint answered no access token"));
-        };
-        if !issues_an_access_token(&parsed) {
+        let authority =
+            crate::authority::client(&self.url, &self.tls, Box::new(crate::narrate::Silent))
+                .map_err(usage)?;
+        let answer = authority.issue_token(&TokenAsk {
+            access_key: self.access_key.clone(),
+            secret_key: self.secret_key.clone(),
+            scope: self.scope.clone(),
+            lifetime: None,
+        })?;
+        if !answer.token_type.eq_ignore_ascii_case("bearer")
+            || !is_access_token(&answer.access_token)
+        {
             return Err(refused(
                 "the token endpoint issued something other than an access token",
             ));
         }
         Ok(Issued {
-            token: Credential::new(token.as_bytes().to_vec()),
-            expires_at: now().saturating_add(expires_in),
+            token: Credential::new(answer.access_token.into_bytes()),
+            expires_at: now().saturating_add(answer.expires_in),
         })
     }
-
-    /// A fresh RFC 7523 assertion: `iss` and `sub` the client, `aud` the token endpoint, a
-    /// random `jti`, a minute of life, `kid` the key's RFC 7638 thumbprint.
-    /// The token endpoint the IAM Host publishes, held once read.
-    fn audience(&self) -> Result<String, Failure> {
-        let mut held = self
-            .audience
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(audience) = held.as_ref() {
-            return Ok(audience.clone());
-        }
-        let client = crate::http::Client::new(self.timeout, self.tls.clone(), true)
-            .map_err(|error| usage(error.to_string()))?;
-        let answered = client
-            .request_raw(
-                &self.endpoint,
-                "GET",
-                METADATA_PATH,
-                "application/json",
-                None,
-            )
-            .map_err(|error| unavailable(error.to_string()))?;
-        let metadata: serde_json::Value = serde_json::from_slice(&answered.body)
-            .ok()
-            .filter(|_| answered.status == 200)
-            .ok_or_else(|| {
-                unavailable("the IAM Host publishes no authorization server metadata")
-            })?;
-        let audience = metadata["token_endpoint"]
-            .as_str()
-            .filter(|endpoint| endpoint.starts_with("https://"))
-            .ok_or_else(|| unavailable("the IAM Host's metadata names no https token endpoint"))?
-            .to_owned();
-        *held = Some(audience.clone());
-        Ok(audience)
-    }
-
-    fn assertion(&self, key: &[u8], audience: &str) -> Result<String, Failure> {
-        let signer = Signer::of(key)?;
-        let issued_at = now();
-        let mut jti = [0u8; 16];
-        ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut jti)
-            .map_err(|_| usage("no randomness for the assertion's jti"))?;
-        let header =
-            serde_json::json!({"alg": signer.alg(), "kid": signer.thumbprint(), "typ": "JWT"});
-        let claims = serde_json::json!({
-            "iss": self.client_id,
-            "sub": self.client_id,
-            "aud": audience,
-            "jti": URL_SAFE_NO_PAD.encode(jti),
-            "iat": issued_at,
-            "exp": issued_at + ASSERTION_LIFETIME,
-        });
-        let signing_input = format!(
-            "{}.{}",
-            URL_SAFE_NO_PAD.encode(header.to_string()),
-            URL_SAFE_NO_PAD.encode(claims.to_string())
-        );
-        let signature = signer.sign(signing_input.as_bytes())?;
-        Ok(format!(
-            "{signing_input}.{}",
-            URL_SAFE_NO_PAD.encode(signature)
-        ))
-    }
-}
-
-/// A `private_key_jwt` key: Ed25519 or P-256, from its PKCS#8 bytes (DER or PEM).
-enum Signer {
-    Ed25519(ring::signature::Ed25519KeyPair),
-    P256(ring::signature::EcdsaKeyPair),
-}
-
-impl Signer {
-    fn of(key: &[u8]) -> Result<Self, Failure> {
-        use rustls::pki_types::pem::PemObject as _;
-
-        let der = match rustls::pki_types::PrivateKeyDer::from_pem_slice(key) {
-            Ok(rustls::pki_types::PrivateKeyDer::Pkcs8(der)) => der.secret_pkcs8_der().to_vec(),
-            Ok(_) => return Err(usage("the client key is PKCS#8: `BEGIN PRIVATE KEY`")),
-            Err(_) => key.to_vec(),
-        };
-        if let Ok(pair) = ring::signature::Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der) {
-            return Ok(Self::Ed25519(pair));
-        }
-        ring::signature::EcdsaKeyPair::from_pkcs8(
-            &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-            &der,
-            &ring::rand::SystemRandom::new(),
-        )
-        .map(Self::P256)
-        .map_err(|_| usage("the client key is neither an Ed25519 nor a P-256 PKCS#8 key"))
-    }
-
-    fn alg(&self) -> &'static str {
-        match self {
-            Self::Ed25519(_) => "EdDSA",
-            Self::P256(_) => "ES256",
-        }
-    }
-
-    /// The RFC 7638 thumbprint of the public key: the `kid` the IAM Host holds the credential
-    /// under, computed by the IAM Host's own definition.
-    fn thumbprint(&self) -> String {
-        use ring::signature::KeyPair as _;
-
-        let public = match self {
-            Self::Ed25519(pair) => pair.public_key().as_ref().to_vec(),
-            Self::P256(pair) => pair.public_key().as_ref().to_vec(),
-        };
-        permguard_host::authz::credentials::thumbprint(self.alg(), &public).unwrap_or_default()
-    }
-
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Failure> {
-        match self {
-            Self::Ed25519(pair) => Ok(pair.sign(message).as_ref().to_vec()),
-            Self::P256(pair) => pair
-                .sign(&ring::rand::SystemRandom::new(), message)
-                .map(|signature| signature.as_ref().to_vec())
-                .map_err(|_| usage("the assertion could not be signed")),
-        }
-    }
-}
-
-/// RFC 8693 §3: what the subject of an exchange is. A password session, which the IAM Host issued
-/// itself, is an access token; anything else is a provider's token, a JWT, which the IAM Host
-/// verifies as the sign-in does and never takes as one of its own.
-fn subject_token_type(subject: &str) -> &'static str {
-    if subject
-        .trim()
-        .starts_with(permguard_host::authz::sessions::TOKEN_PREFIX)
-    {
-        ACCESS_TOKEN_TYPE
-    } else {
-        JWT_TOKEN_TYPE
-    }
-}
-
-/// RFC 8693 §2.2.1: an exchange names what it issued, and only an access token is used as one. An
-/// IAM Host from before 0.1.25 does not name it; one that names another type is never sent on as
-/// a bearer.
-fn issues_an_access_token(answer: &serde_json::Value) -> bool {
-    answer
-        .get("issued_token_type")
-        .is_none_or(|issued| issued.as_str() == Some(ACCESS_TOKEN_TYPE))
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
-
     use super::*;
 
-    fn source(proof: Proof) -> Result<TokenSource, Failure> {
-        TokenSource::new(
-            Endpoint::parse("https://iam.example:5444").expect("an endpoint"),
-            "billing",
-            proof,
-            Asked {
-                scope: "decision.evaluate".to_owned(),
-                audience: vec!["group:eu".to_owned()],
-                target: vec!["plane/data/*".to_owned()],
-            },
-            TlsOptions::default(),
-            Duration::from_secs(5),
-        )
-    }
-
-    /// A key's assertion verifies under its public key, names the client and the endpoint, and is
-    /// held by the thumbprint the IAM Host computes from the same key.
     #[test]
-    fn an_assertion_is_signed_by_the_key_and_named_by_its_thumbprint() {
-        use ring::signature::KeyPair as _;
-
-        let pkcs8 =
-            ring::signature::Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new())
-                .expect("a key");
-        let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).expect("a pair");
-        let source =
-            source(Proof::Key(Credential::new(pkcs8.as_ref().to_vec()))).expect("a source");
-        let assertion = source
-            .assertion(pkcs8.as_ref(), "https://iam.example:5444/iam/v1/token")
-            .expect("an assertion");
-        let parts: Vec<&str> = assertion.split('.').collect();
-        assert_eq!(parts.len(), 3);
-        ring::signature::UnparsedPublicKey::new(
-            &ring::signature::ED25519,
-            pair.public_key().as_ref(),
-        )
-        .verify(
-            format!("{}.{}", parts[0], parts[1]).as_bytes(),
-            &URL_SAFE_NO_PAD.decode(parts[2]).expect("base64url"),
-        )
-        .expect("the signature verifies");
-        let header: serde_json::Value =
-            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).expect("b64")).expect("json");
-        let claims: serde_json::Value =
-            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).expect("b64")).expect("json");
-        assert_eq!(header["alg"], "EdDSA");
-        let jwk = std::collections::BTreeMap::from([
-            ("kty".to_owned(), "OKP".to_owned()),
-            ("crv".to_owned(), "Ed25519".to_owned()),
-            (
-                "x".to_owned(),
-                URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()),
-            ),
-        ]);
-        let held = permguard_host::authz::credentials::public_key(&jwk).expect("a public key");
-        assert_eq!(
-            header["kid"].as_str(),
-            Some(held.key_id.as_str()),
-            "the IAM Host's own kid for this key"
-        );
-        assert_eq!(
-            (claims["iss"].clone(), claims["sub"].clone()),
-            ("billing".into(), "billing".into())
-        );
-        assert_eq!(claims["aud"], "https://iam.example:5444/iam/v1/token");
-        assert!(claims["exp"].as_u64() > claims["iat"].as_u64());
-    }
-
-    /// An elevation names its role first in the scope, keeps the operations beside it, and lifts
-    /// the audience requirement: the IAM Host addresses a member's role itself.
-    #[test]
-    fn an_elevated_ask_names_one_role_and_may_leave_the_audience_out() {
-        let bare = Asked::default();
-        assert!(bare.role().is_none());
-        let elevated = bare.clone().elevated("dp.0198f2aa").expect("elevated");
-        assert_eq!(elevated.scope, "role:dp.0198f2aa");
-        assert_eq!(elevated.role(), Some("dp.0198f2aa"));
-        let narrowed = Asked {
-            scope: "decision.evaluate".to_owned(),
-            ..Asked::default()
-        }
-        .elevated(" data-planes ")
-        .expect("elevated");
-        assert_eq!(narrowed.scope, "role:data-planes decision.evaluate");
-        assert_eq!(narrowed.role(), Some("data-planes"));
-        for refused in ["", "Ops", "a b", "role:ops", &"x".repeat(64)] {
-            assert!(
-                bare.clone()
-                    .elevated(refused)
-                    .is_err_and(|failure| failure.usage),
-                "{refused:?}"
-            );
-        }
-        let twice = elevated.clone().elevated("ops").expect_err("one role");
-        assert!(twice.detail.contains("at most one role"), "{twice:?}");
-        let new = |asked: Asked| {
+    fn a_source_refuses_the_clear_and_an_unverified_authority() {
+        let secret = || Zeroizing::new("pgsk_x".to_owned());
+        assert!(
             TokenSource::new(
-                Endpoint::parse("https://iam.example:5444").expect("an endpoint"),
-                "billing",
-                Proof::Certificate,
-                asked,
-                TlsOptions {
-                    cert_file: Some("client.pem".into()),
-                    ..TlsOptions::default()
-                },
-                Duration::from_secs(5),
+                "http://127.0.0.1:8443",
+                "pgak_A",
+                secret(),
+                None,
+                TlsOptions::default()
             )
-        };
-        assert!(new(elevated).is_ok(), "a role addresses itself");
-        let unaddressed = new(Asked {
-            scope: "decision.evaluate".to_owned(),
-            ..Asked::default()
-        })
-        .map(|_| ())
-        .expect_err("no audience, no role");
-        assert!(unaddressed.usage, "{unaddressed:?}");
-    }
-
-    /// A password session is exchanged as the access token the IAM Host issued; a provider's
-    /// token as a JWT, which RFC 8693 §3 names it (an IAM Host refuses it as an access token).
-    #[test]
-    fn a_subject_token_states_its_own_type() {
-        assert_eq!(subject_token_type("pgs_abc"), ACCESS_TOKEN_TYPE);
-        assert_eq!(subject_token_type(" pgs_abc\n"), ACCESS_TOKEN_TYPE);
-        assert_eq!(
-            subject_token_type("eyJhbGciOiJFUzI1NiJ9.e30.c2ln"),
-            JWT_TOKEN_TYPE
+            .is_err()
         );
-    }
-
-    /// RFC 8693 §2.2.1: only an access token is taken from an answer; an IAM Host from before
-    /// 0.1.25 names no type.
-    #[test]
-    fn only_an_access_token_is_taken_from_an_answer() {
-        let answer = |issued: serde_json::Value| {
-            let mut answer = serde_json::json!({"access_token": "t", "expires_in": 60});
-            if !issued.is_null() {
-                answer["issued_token_type"] = issued;
-            }
-            issues_an_access_token(&answer)
+        let skip = TlsOptions {
+            skip_verify: true,
+            ..TlsOptions::default()
         };
-        assert!(answer(serde_json::Value::Null), "an IAM Host before 0.1.25");
-        assert!(answer(serde_json::json!(ACCESS_TOKEN_TYPE)));
-        assert!(!answer(serde_json::json!(
-            "urn:ietf:params:oauth:token-type:jwt"
-        )));
-        assert!(!answer(serde_json::json!(7)));
-    }
-
-    /// What a source refuses before it sends anything, and what it never shows.
-    #[test]
-    fn a_source_refuses_the_clear_an_empty_ask_and_shows_no_secret() {
-        let clear = TokenSource::new(
-            Endpoint::parse("http://iam.example:5443").expect("an endpoint"),
-            "billing",
-            Proof::Secret(Credential::new(b"pgc_secret".to_vec())),
-            Asked {
-                scope: "decision.evaluate".to_owned(),
-                audience: vec!["group:eu".to_owned()],
-                target: Vec::new(),
-            },
+        assert!(
+            TokenSource::new("https://authority:8443", "pgak_A", secret(), None, skip).is_err()
+        );
+        assert!(
+            TokenSource::new(
+                "https://authority:8443",
+                "",
+                secret(),
+                None,
+                TlsOptions::default()
+            )
+            .is_err()
+        );
+        let source = TokenSource::new(
+            "grpcs://authority:8443",
+            "pgak_A",
+            secret(),
+            Some(" ".to_owned()),
             TlsOptions::default(),
-            Duration::from_secs(5),
-        );
-        assert!(
-            clear.is_err_and(|failure| failure.detail.contains("only over TLS")),
-            "a secret never travels in the clear"
-        );
-        assert!(
-            source(Proof::Key(Credential::new(b"not a key".to_vec())))
-                .is_err_and(|failure| failure.detail.contains("PKCS#8")),
-        );
-        assert!(
-            source(Proof::Certificate).is_err_and(|failure| failure.detail.contains("certificate")),
-            "no certificate configured"
-        );
-        // No proof, a secret or a signed assertion alike, is sent where the IAM Host is not
-        // verified.
-        for proof in [
-            Proof::Secret(Credential::new(b"pgc_secret".to_vec())),
-            Proof::Key(Credential::new(
-                ring::signature::Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new())
-                    .expect("a key")
-                    .as_ref()
-                    .to_vec(),
-            )),
-        ] {
-            let skipped = TokenSource::new(
-                Endpoint::parse("https://iam.example:5444").expect("an endpoint"),
-                "billing",
-                proof,
-                Asked {
-                    scope: "decision.evaluate".to_owned(),
-                    audience: vec!["group:eu".to_owned()],
-                    target: Vec::new(),
-                },
-                TlsOptions {
-                    skip_verify: true,
-                    ..TlsOptions::default()
-                },
-                Duration::from_secs(5),
-            );
-            assert!(
-                skipped.is_err_and(|failure| failure.detail.contains("--tls-skip-verify")),
-                "refused under --tls-skip-verify"
-            );
-        }
-        let held =
-            source(Proof::Secret(Credential::new(b"pgc_topsecret".to_vec()))).expect("a source");
-        let shown = format!("{held:?}");
-        assert!(!shown.contains("pgc_topsecret"), "{shown}");
-        held.hold(Issued {
-            token: Credential::new(b"eyJ.the.token".to_vec()),
-            expires_at: now() + 3_600,
-        });
-        let issued = held.token().expect("the held token serves");
-        assert_eq!(issued.token.expose(), b"eyJ.the.token");
-        assert!(!format!("{issued:?}").contains("eyJ"));
-        // One about to expire is not held: the next call would obtain another.
-        let expiring = source(Proof::Secret(Credential::new(b"s".to_vec()))).expect("a source");
-        expiring.hold(Issued {
-            token: Credential::new(b"old".to_vec()),
-            expires_at: now() + 30,
-        });
-        assert!(expiring.held.lock().expect("lock").is_none());
+        )
+        .unwrap_or_else(|_| unreachable!("a source"));
+        assert_eq!(source.access_key(), "pgak_A");
+        assert!(!format!("{source:?}").contains("pgsk_"));
+        assert!(!is_access_token("eyJ0eXAiOiJKV1QifQ.e30.x"));
     }
 }

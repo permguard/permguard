@@ -45,13 +45,13 @@ impl Service for HostApiService {
 
     fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            // No address means the deployment did not ask for this listener: grants are then
-            // administered offline, with `permguard host grants`.
+            // No address means the deployment did not ask for this listener: the Host is then
+            // administered offline.
             let Some(configured) = context.config().admin_addr() else {
                 info!(
                     event.name = "host_api.disabled",
                     component = COMPONENT,
-                    "no Host listener address is configured; grants are administered offline"
+                    "no Host listener address is configured; the Host is administered offline"
                 );
                 return Ok(());
             };
@@ -70,10 +70,12 @@ impl Service for HostApiService {
                      administrative travels in the clear"
                 );
             };
+            // Peer Hosts and the bootstrap principal are verified against the client CA; an
+            // operator acting by an access token needs no certificate (`client_auth: optional`).
             if !tls.is_mutual() && !context.config().admin_plain_tls_allowed() {
                 bail!(
-                    "the Host listener at {configured} demands no client certificate and is not \
-                     a loopback bind in development: set `admin.tls.client_ca`"
+                    "the Host listener at {configured} names no client CA and is not a loopback \
+                     bind in development: set `admin.tls.client_ca`"
                 );
             }
             let tls = tls.with_allow(context.config().admin_allow().to_vec());
@@ -90,8 +92,6 @@ impl Service for HostApiService {
             .authenticator(context.authenticator())
             // The peer channel is one long-lived stream: bounded per frame, not in total.
             .streaming([super::peer::channel_path()])
-            // The token endpoint reads `client_secret_basic` itself (WP-11.4).
-            .client_authentication([super::http::TOKEN_PATH.to_owned()])
             .start()
             .await
             .context("starting the Host listener")?;

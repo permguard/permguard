@@ -1,0 +1,58 @@
+{
+  "artifact": "The Authority Plane's journals: a service account as it stands after each change, and the token registry's transitions",
+  "authority": "2-security/8-security-authority.md#service-accounts, 2-security/9-security-token-status.md#the-list; crates/permguard-authority-plane/src/accounts.rs (AccountRecord), crates/permguard-authority-plane/src/tokens.rs (TokenTransition)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "account_record": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "name", "type": "text", "occurs": "required", "note": "the account's name, 1 to 63 of a-z, 0-9, -, _ and ." },
+        { "label": 2, "name": "revision", "type": "uint", "occurs": "required", "note": "the accounts journal revision the record is" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds UTC" },
+        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "who made the change" },
+        { "label": 5, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "exactly 16 bytes: the security mutation that made it" },
+        { "label": 6, "name": "status", "type": "text", "occurs": "required", "note": "active, suspended or deleted" },
+        { "label": 7, "name": "description", "type": "text", "occurs": "optional", "note": "absent once deleted" },
+        { "label": 8, "name": "scopes", "type": "array<map:scope>", "occurs": "optional", "note": "at most 64; absent once deleted" },
+        { "label": 9, "name": "keys", "type": "array<map:access_key>", "occurs": "optional", "note": "absent once deleted" },
+        { "label": 10, "name": "created_at", "type": "uint", "occurs": "optional", "note": "seconds UTC; absent once deleted" }
+      ]
+    },
+    "scope": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "operations", "type": "array<text>", "occurs": "required", "note": "registered operations" },
+        { "label": 2, "name": "selector", "type": "text", "occurs": "required", "note": "a selector of the resource tree" }
+      ]
+    },
+    "access_key": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "access_key", "type": "text", "occurs": "required", "note": "pgak_ and 20 base32 characters" },
+        { "label": 2, "name": "secret_hash", "type": "text", "occurs": "required", "note": "the secret key's Argon2id PHC string, never the secret" },
+        { "label": 3, "name": "created_at", "type": "uint", "occurs": "required", "note": "seconds UTC" },
+        { "label": 4, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "seconds UTC; never expires when absent" }
+      ]
+    },
+    "token_transition": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "list.open, list.retire, token.issue or token.status" },
+        { "label": 2, "name": "revision", "type": "uint", "occurs": "required", "note": "the registry revision the transition is" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds UTC" },
+        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "who made it" },
+        { "label": 5, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "exactly 16 bytes: the security mutation that made it" },
+        { "label": 6, "name": "list_id", "type": "bytes", "occurs": "optional", "note": "list.open, list.retire, token.issue: a UUIDv7" },
+        { "label": 7, "name": "index", "type": "uint", "occurs": "optional", "note": "token.issue: the entry, below 2^20" },
+        { "label": 8, "name": "jti", "type": "bytes", "occurs": "optional", "note": "token.issue, token.status: a UUIDv7" },
+        { "label": 9, "name": "account", "type": "text", "occurs": "optional", "note": "token.issue: the service account" },
+        { "label": 10, "name": "access_key", "type": "text", "occurs": "optional", "note": "token.issue: the access key it was obtained with" },
+        { "label": 11, "name": "scopes", "type": "array<map:scope>", "occurs": "optional", "note": "token.issue: the scopes it carries, 1 to 64" },
+        { "label": 12, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "token.issue: seconds UTC" },
+        { "label": 13, "name": "status", "type": "uint", "occurs": "optional", "note": "token.status: 0 valid, 1 invalid, 2 suspended" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["account_record", "token_transition"]
+}

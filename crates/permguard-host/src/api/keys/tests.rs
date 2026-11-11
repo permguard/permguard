@@ -45,9 +45,10 @@ fn the_ring_is_public_with_its_epoch_digest_and_binding_and_the_list_is_gated() 
     assert_eq!(names, vec![HOST_IDENTITY, DATA_ATTEST]);
     assert_eq!(rings.rings[1].digest, view.digest);
     assert_eq!(rings.rings[1].epoch, 1);
-    // `keys.read` is public on the test facade too: the list admits anonymous.
+    // `keys.read` is public on the test facade too: the list admits anonymous, and never widens
+    // a token without it.
     assert!(api.rings(&Actor::Anonymous).is_ok());
-    assert!(api.rings(&actor("spiffe://acme/other")).is_ok());
+    assert!(api.rings(&actor("sa:other")).is_err());
 }
 
 fn rotate(request_id: &str, expected_epoch: u64) -> RotateRing {

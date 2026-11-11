@@ -59,6 +59,12 @@ spec:
 {{- $_ := set $grpc "tls" $tls }}
 {{- end }}
 {{- $_ := set $config "dataPlane" (dict "public" (dict "http" $http "grpc" $grpc)) }}
+{{- /* The cluster's Authority Plane, whose keys and status lists the group fetches itself. */ -}}
+{{- $authority := dict "url" (include "permguard.authorityUrl" $) }}
+{{- if $dp.tls.secretName }}
+{{- $_ := set $authority "tls" (dict "ca" "/etc/permguard-tls/ca.crt") }}
+{{- end }}
+{{- $_ := set $config "authority" $authority }}
 {{- /* A group that joins by itself (TD-5) mirrors what its memberships grant, unless told not to. */ -}}
 {{- if $g.join }}
 {{- $_ := set $config.dataPlane "mirrors" (dict "enabled" "true" "interval" "30s") }}

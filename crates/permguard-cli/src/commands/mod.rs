@@ -4,21 +4,19 @@
 //! One module per command family: what each command *does*, with the shape
 //! it is typed in living in [`crate::args`].
 
+pub mod authority;
 pub mod catalog;
 pub mod check;
 pub mod config;
 pub mod decisions;
-pub mod directory;
 pub mod discover;
 pub mod events;
 pub mod host;
 pub(crate) mod host_ops;
 pub mod host_proof;
-pub mod iam;
 pub mod inspect;
 pub mod objects;
 pub mod offline_ops;
 pub mod reclaim;
 pub mod restore;
-pub(crate) mod roles_apply;
 pub mod workspace;

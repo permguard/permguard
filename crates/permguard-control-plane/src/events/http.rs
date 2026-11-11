@@ -1243,7 +1243,7 @@ mod gate {
             permguard_core::authz::ActorContext::new(
                 permguard_core::authz::Principal::new("spiffe://acme/auditor")
                     .expect("a principal"),
-                permguard_core::authz::Credential::SanUri,
+                permguard_core::authz::Credential::Certificate,
                 None,
             ),
         ))

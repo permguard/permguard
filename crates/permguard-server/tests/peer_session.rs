@@ -19,7 +19,7 @@ use permguard_core::assurance::AssuranceProfile;
 use permguard_core::{Disclosure, Health, PeerSessionsReport, PinnedPeer, TlsSettings, codes};
 use permguard_host::api::sessions::PeerSessions;
 use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
-use permguard_host::authz::{Authorization, GrantStore};
+use permguard_host::authz::Authorization;
 use permguard_host::identity::{Identity, Suite, directories};
 use permguard_host::keys::FileKeyProvider;
 use permguard_host::session::peers::Peers;
@@ -230,12 +230,10 @@ impl Host {
 
     /// Serves this Host's API on a loopback mutual-TLS listener, peer sessions as `report` says.
     async fn listen(&self, pki: &Pki, peers: &[&Identity], report: PeerSessionsReport) -> Surface {
-        let (store, _) = GrantStore::open(&self.volume).expect("the grant store opens");
         let (replay, _) =
             Replay::open(&self.volume, permguard_host::authz::store::now()).expect("the replay");
         let api = Arc::new(HostApi::new(Composition {
-            authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
-            store: Some(store),
+            authorization: Arc::new(Authorization::closed()),
             replay,
             keys: Arc::new(permguard_host::keys::registry::Registry::default()),
             health: Health::new(),
@@ -565,9 +563,7 @@ struct Side {
     producer: Option<Arc<DecisionProducer>>,
     /// The Host's audit engine, sealing under its operations ring (WP-5.9).
     audit: Arc<permguard_host::audit::Engine>,
-    /// Its access tokens, as the IAM Host it is (WP-11.5).
-    tokens: Arc<permguard_host::api::tokens::Tokens>,
-    /// The authorization every route decides with: the IAM Host's grants.
+    /// The authorization every route decides with: the callers' access tokens alone.
     authorization: Arc<Authorization>,
 }
 
@@ -606,13 +602,27 @@ impl permguard_host::membership::task::TaskHandler for Echo {
     }
 }
 
-const ADMIN: &str = "spiffe://acme/operators/root";
+const ADMIN: &str = "sa:admin";
 
+/// The administrator: an access token holding every operation on the Host.
 fn admin() -> permguard_core::authz::Actor {
-    permguard_core::authz::Actor::Authenticated(permguard_core::authz::ActorContext::new(
+    use permguard_core::authz::{Resource, Selector, TokenGrant, TokenScope, operations};
+
+    permguard_core::authz::Actor::Authenticated(permguard_core::authz::ActorContext::of_token(
         permguard_core::authz::Principal::new(ADMIN).expect("a principal"),
-        permguard_core::authz::Credential::SanUri,
-        None,
+        TokenGrant {
+            scopes: vec![TokenScope {
+                operations: operations::ALL
+                    .iter()
+                    .map(|operation| (*operation).to_owned())
+                    .collect(),
+                selector: Selector::under(Resource::host()),
+            }],
+            jti: "0198f2aa-0000-7000-8000-0000000000ad".to_owned(),
+            list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
+            list_iat: 1,
+            list_digest: [0; 32],
+        },
     ))
 }
 
@@ -649,10 +659,7 @@ async fn side_with(
     crl: Option<PathBuf>,
     streaming: bool,
 ) -> Side {
-    use permguard_core::authz::{Principal, Resource, Selector, operations};
-
     let host = host(root);
-    let (store, _) = GrantStore::open(&host.volume).expect("the grant store opens");
     // One audit engine for the mutations and the checkpoints, as the server composes it.
     let audit = Arc::new(
         permguard_host::audit::Engine::open(
@@ -676,25 +683,6 @@ async fn side_with(
         )
         .expect("the mutation journal opens"),
     );
-    permguard_host::operations::grants::issue(
-        &mutations,
-        &store,
-        permguard_host::operations::journal::Initiator::System("test".to_owned()),
-        permguard_host::authz::Issue {
-            principal: Principal::new(ADMIN).expect("a principal"),
-            operations: operations::ALL
-                .iter()
-                .map(|operation| (*operation).to_owned())
-                .collect(),
-            selector: Selector::under(Resource::host()),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            issued_by: "test".to_owned(),
-            expires_at: None,
-        },
-        permguard_host::authz::store::now(),
-    )
-    .expect("the administrator is issued");
     let (replay, _) =
         Replay::open(&host.volume, permguard_host::authz::store::now()).expect("the replay");
     let open_ring = |id: &'static str| {
@@ -766,32 +754,11 @@ async fn side_with(
             .seal_with(Arc::clone(operations)
                 as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
     }
-    // The access tokens' ring, as an IAM Host composes it: in the registry, so a manifest granting
-    // `token.status` pins it (WP-12.1).
-    let iam_tokens = open_ring(permguard_host::keys::ring::IAM_TOKENS);
-    rings.push(Arc::clone(&iam_tokens));
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&host.identity)),
         rings,
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
-    // The directory and the access tokens, as the IAM Host composes them (WP-11.4): the ring
-    // signs tokens here, kept out of the key registry the other tests read.
-    let (directory, _) =
-        permguard_host::authz::directory::Directory::open(&host.volume).expect("the directory");
-    let (token_registry, _) =
-        permguard_host::authz::tokens::TokenRegistry::open(&host.volume).expect("the tokens");
-    let tokens = Arc::new(
-        permguard_host::api::tokens::Tokens::new(
-            token_registry,
-            Arc::clone(&iam_tokens) as Arc<dyn permguard_core::keys::SigningRing>,
-            &host.identity.host_id(),
-            "https://iam.example:7443",
-            AssuranceProfile::Production,
-        )
-        // Its own Data Plane is a local member, as on an all-in-one server (WP-12.2).
-        .serving_data(true),
-    );
     let ship: Arc<dyn permguard_host::membership::task::TaskHandler> = match &engine {
         Some((_, consumer)) => Arc::new(permguard_stream::engine::ingest::Ingest {
             consumer: Arc::clone(consumer),
@@ -813,18 +780,6 @@ async fn side_with(
                     permguard_host::membership::record::TaskType::PolicyMirror,
                     1,
                     Arc::new(Echo),
-                )
-            })
-            .and_then(|handlers| {
-                // Its status lists, to every member (WP-12.1).
-                handlers.register(
-                    permguard_host::membership::record::TaskType::TokenStatus,
-                    permguard_host::membership::token_status::VERSION,
-                    Arc::new(permguard_host::membership::token_status::StatusLists {
-                        source: Arc::clone(&tokens)
-                            as Arc<dyn permguard_host::membership::token_status::ListSource>,
-                        time: Arc::clone(&host.time),
-                    }),
                 )
             })
             .and_then(|handlers| {
@@ -891,12 +846,9 @@ async fn side_with(
             )) as Arc<dyn permguard_host::membership::member::Connector>
         });
     assert!(connector.is_some(), "a client CA makes a peer client");
-    let authorization = Arc::new(
-        Authorization::new(Arc::clone(&store), &[]).with_directory(Arc::clone(&directory)),
-    );
+    let authorization = Arc::new(Authorization::closed());
     let api = HostApi::new(Composition {
         authorization: Arc::clone(&authorization),
-        store: Some(store),
         replay,
         keys: Arc::clone(&keys),
         health: Health::new(),
@@ -932,19 +884,7 @@ async fn side_with(
                 .map(|served| served as Arc<dyn permguard_host::composition::StreamShipping>),
             importing: None,
         })),
-    })
-    .with_identities(permguard_host::api::directory::Identities {
-        directory,
-        signin: None,
-        providers: Vec::new(),
-        exchange_provider_tokens: false,
-        min_length: 12,
-    })
-    .serving_iam(true)
-    .with_tokens(Arc::clone(&tokens))
-    .with_held_lists(Arc::new(
-        permguard_host::membership::token_status::HeldLists::in_memory(),
-    ));
+    });
     let api = Arc::new(api);
     let listener = Surface::listener(
         "host-api",
@@ -967,7 +907,6 @@ async fn side_with(
         tasks,
         producer: engine.map(|(producer, _)| producer),
         audit,
-        tokens,
         authorization,
     }
 }
@@ -1391,7 +1330,6 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         tasks,
         producer,
         audit,
-        tokens,
         authorization,
     } = member;
     listener.stop(Duration::from_secs(5)).await.expect("stops");
@@ -1406,7 +1344,6 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         tasks,
         producer,
         audit,
-        tokens,
         authorization,
     ));
     let member = side(
@@ -2581,7 +2518,6 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         tasks,
         producer: _,
         audit,
-        tokens,
         authorization,
     } = member;
     drop(producer);
@@ -2595,7 +2531,6 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         connector,
         tasks,
         audit,
-        tokens,
         authorization,
     ));
     let member = streaming_side(
@@ -2975,21 +2910,22 @@ async fn a_members_checkpoints_leave_its_volume_for_its_coordinator() {
     // A checkpoint the coordinator cannot take now waits, and the member says so.
     member
         .api
-        .create_grant(
+        .create_invite(
             &admin(),
-            permguard_host::api::CreateGrant {
-                request_id: "grant-after".to_owned(),
-                expected_revision: None,
-                principal: "spiffe://acme/operators/reader".to_owned(),
-                operations: vec!["audit.read".to_owned()],
-                selector: "host/*".to_owned(),
-                resource_types: Vec::new(),
-                constraints: Default::default(),
-                expires_at: None,
+            permguard_host::api::members::CreateInvite {
+                request_id: "invite-after".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+                groups: None,
+                name: None,
             },
         )
         .await
-        .expect("a grant, a security record more");
+        .expect("an invitation, a security record more");
     member.audit.checkpoint_all().expect("checkpointed");
     coordinator.members.fence();
     assert_eq!(member.api.export_checkpoints_due().await, 0);
@@ -3509,1266 +3445,4 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         .watch_mirror(task, vec![("zone/ledger/main".to_owned(), 0)])
         .await
         .expect("the watch opens");
-}
-
-/// The claims of a compact JWS, decoded, not verified.
-fn jws_part(compact: &str, at: usize) -> serde_json::Value {
-    use base64::Engine as _;
-    serde_json::from_slice(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(compact.split('.').nth(at).expect("a part"))
-            .expect("base64url"),
-    )
-    .expect("JSON")
-}
-
-/// WP-11.4: the IAM Host issues a service account's token for a member it really approved,
-/// within the account's grants, one family at a time; the token is an `at+jwt` its published key
-/// verifies, its status entry is in a signed list, and the account's suspension and the
-/// credential's revocation reach that entry. A wrong proof, a mixed scope, a target the account
-/// holds nothing on, a member it does not know, a role-derived administration and a replayed
-/// assertion are refused.
-#[tokio::test]
-async fn the_iam_host_issues_tokens_within_the_grants_for_its_live_members() {
-    use base64::Engine as _;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use permguard_host::api::directory::{CreateRole, Member, Plain};
-    use permguard_host::api::grants::CreateGrant;
-    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
-    use permguard_host::api::token_endpoint::{ClientProof, TokenRefusal, TokenRequest};
-    use permguard_host::membership::Capabilities;
-    use permguard_host::membership::record::{Role, TaskType};
-    use ring::signature::KeyPair as _;
-
-    let root = scratch("token-endpoint");
-    let pki = Pki::new(&root);
-    let coordinator = side(
-        &root.join("coordinator"),
-        &pki,
-        "coordinator",
-        "host.operations",
-        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
-    )
-    .await;
-    let member = side(
-        &root.join("member"),
-        &pki,
-        "member",
-        "data.attest",
-        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
-    )
-    .await;
-    approved_pair(&coordinator, &member).await;
-    let (record, _) = coordinator
-        .members
-        .live_members()
-        .into_iter()
-        .next()
-        .expect("a live member");
-    let member_id = permguard_host::identity::record::uuid_text(&record.member_id);
-    let api = &coordinator.api;
-    let grant = |id: &str, principal: &str, operation: &str, selector: &str| CreateGrant {
-        request_id: id.to_owned(),
-        expected_revision: None,
-        principal: principal.to_owned(),
-        operations: vec![operation.to_owned()],
-        selector: selector.to_owned(),
-        resource_types: vec!["*".to_owned()],
-        constraints: Default::default(),
-        expires_at: None,
-    };
-    api.create_service_account(
-        &admin(),
-        CreateServiceAccount {
-            request_id: "sa".to_owned(),
-            expected_revision: None,
-            name: "billing".to_owned(),
-            owner: "payments".to_owned(),
-            description: String::new(),
-        },
-    )
-    .await
-    .expect("an account");
-    let secret = api
-        .create_credential(
-            &admin(),
-            "billing",
-            CreateCredential {
-                request_id: "secret".to_owned(),
-                expected_revision: None,
-                kind: "client_secret".to_owned(),
-                public_key: None,
-                certificate: None,
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("a secret");
-    let client_secret = secret.client_secret.clone().expect("drawn");
-    for (id, operation, selector) in [
-        ("g1", "decision.evaluate", "plane/data/zone/billing/*"),
-        ("g2", "identity.read", &*format!("member/{member_id}")),
-    ] {
-        api.create_grant(&admin(), grant(id, "sa:billing", operation, selector))
-            .await
-            .expect("granted");
-    }
-    let basic = ClientProof {
-        basic: Some(("billing".to_owned(), client_secret.clone())),
-        ..ClientProof::default()
-    };
-    let asking = |scope: &str, audience: &str, targets: &[&str]| TokenRequest {
-        grant_type: "client_credentials".to_owned(),
-        scope: Some(scope.to_owned()),
-        audience: vec![audience.to_owned()],
-        target: targets.iter().map(|target| (*target).to_owned()).collect(),
-        ..TokenRequest::default()
-    };
-    let audience = format!("member:{member_id}");
-
-    // An application token, verified against the published key, its status entry valid.
-    let issued = api
-        .issue_token(
-            &asking(
-                "decision.evaluate",
-                &audience,
-                &["plane/data/zone/billing/ledger/l1"],
-            ),
-            &basic,
-        )
-        .expect("issued");
-    assert_eq!(issued.token_type, "Bearer");
-    assert_eq!(issued.expires_in, 3_600);
-    let header = jws_part(&issued.access_token, 0);
-    assert_eq!(header["typ"], "at+jwt");
-    let claims = jws_part(&issued.access_token, 1);
-    assert_eq!(claims["sub"], "sa:billing");
-    assert_eq!(claims["aud"], serde_json::json!([audience]));
-    assert_eq!(claims["permguard_family"], "application");
-    assert_eq!(claims["permguard_tenant"], "default");
-    assert_eq!(claims["scope"], "decision.evaluate");
-    assert_eq!(
-        claims["permguard_target"],
-        serde_json::json!(["plane/data/zone/billing/ledger/l1"])
-    );
-    assert_eq!(claims["client_id"], secret.credential.id);
-    assert!(
-        claims["iss"]
-            .as_str()
-            .is_some_and(|iss| iss.starts_with("urn:permguard:iam:"))
-    );
-    let keys = api.iam_keys(&admin()).expect("the keys");
-    let key = keys["keys"]
-        .as_array()
-        .expect("keys")
-        .iter()
-        .find(|key| key["kid"] == header["kid"])
-        .expect("the kid is published");
-    let (signed, signature) = issued.access_token.rsplit_once('.').expect("three parts");
-    ring::signature::UnparsedPublicKey::new(
-        &ring::signature::ED25519,
-        URL_SAFE_NO_PAD
-            .decode(key["x"].as_str().expect("x"))
-            .expect("base64url"),
-    )
-    .verify(
-        signed.as_bytes(),
-        &URL_SAFE_NO_PAD.decode(signature).expect("base64url"),
-    )
-    .expect("the published key verifies the token");
-    let uri = claims["status"]["status_list"]["uri"]
-        .as_str()
-        .expect("uri");
-    let index = usize::try_from(
-        claims["status"]["status_list"]["idx"]
-            .as_u64()
-            .expect("idx"),
-    )
-    .expect("small");
-    let entry = |api: &HostApi| {
-        let list_id = uri.rsplit('/').next().expect("an id");
-        let token = api.status_list(&admin(), list_id).expect("the list");
-        let lst = jws_part(&token, 1)["status_list"]["lst"]
-            .as_str()
-            .expect("lst")
-            .to_owned();
-        permguard_objects::status_list::StatusList::decode(
-            2,
-            &lst,
-            1 << 20,
-            permguard_objects::status_list::ENTRIES,
-        )
-        .expect("decodes")
-        .get(index)
-        .expect("in range")
-    };
-    assert_eq!(entry(api), 0, "VALID");
-
-    // What is refused, each with its RFC 6749 error.
-    let refused = |request: TokenRequest, proof: &ClientProof| {
-        api.issue_token(&request, proof).expect_err("refused")
-    };
-    let wrong = ClientProof {
-        basic: Some(("billing".to_owned(), format!("pgc_{}", "A".repeat(43)))),
-        ..ClientProof::default()
-    };
-    assert_eq!(
-        refused(
-            asking("decision.evaluate", &audience, &["plane/data/*"]),
-            &wrong
-        )
-        .error(),
-        "invalid_client"
-    );
-    for (request, error) in [
-        (
-            asking(
-                "decision.evaluate identity.read",
-                &audience,
-                &["plane/data/zone/billing/*"],
-            ),
-            "invalid_scope",
-        ),
-        (
-            asking(
-                "decision.evaluate",
-                &audience,
-                &["plane/data/zone/payroll/*"],
-            ),
-            "invalid_scope",
-        ),
-        (
-            asking(
-                "decision.evaluate",
-                "member:0198f2aa-0000-7000-8000-00000000dead",
-                &["plane/data/zone/billing/*"],
-            ),
-            "invalid_target",
-        ),
-        (
-            asking("decision.evaluate", "*", &["plane/data/zone/billing/*"]),
-            "invalid_target",
-        ),
-        (
-            asking("decision.evaluate", &audience, &[]),
-            "invalid_target",
-        ),
-    ] {
-        assert_eq!(refused(request, &basic).error(), error);
-    }
-
-    // An administration token: one member, its own Host, ten minutes by default.
-    let administering = api
-        .issue_token(&asking("identity.read", &audience, &[]), &basic)
-        .expect("an administration token");
-    assert_eq!(administering.expires_in, 600);
-    let claims = jws_part(&administering.access_token, 1);
-    assert_eq!(claims["permguard_family"], "administration");
-    assert_eq!(claims["permguard_target"], serde_json::json!(["host"]));
-    assert!(claims.get("cnf").is_none(), "no certificate, no binding");
-    // Asked over mutual TLS, it is bound to the certificate (RFC 8705): `cnf.x5t#S256`.
-    let bound = api
-        .issue_token(
-            &asking("identity.read", &audience, &[]),
-            &ClientProof {
-                certificate_sha256: Some("ab".repeat(32)),
-                ..basic.clone()
-            },
-        )
-        .expect("a bound administration token");
-    assert_eq!(
-        jws_part(&bound.access_token, 1)["cnf"]["x5t#S256"],
-        URL_SAFE_NO_PAD.encode([0xab; 32])
-    );
-    // Through a role only, a service account administers nothing (D20).
-    api.create_role(
-        &admin(),
-        CreateRole {
-            request_id: "role".to_owned(),
-            expected_revision: None,
-            name: "auditors".to_owned(),
-            description: String::new(),
-            max_lifetime: None,
-        },
-    )
-    .await
-    .expect("a role");
-    api.add_member(
-        &admin(),
-        "auditors",
-        Member {
-            request_id: "member".to_owned(),
-            expected_revision: None,
-            member: "sa:billing".to_owned(),
-        },
-    )
-    .await
-    .expect("a member");
-    api.create_grant(
-        &admin(),
-        grant(
-            "g3",
-            "role:auditors",
-            "audit.read",
-            &format!("member/{member_id}"),
-        ),
-    )
-    .await
-    .expect("granted to the role");
-    assert_eq!(
-        refused(asking("audit.read", &audience, &[]), &basic).error(),
-        "invalid_scope"
-    );
-
-    // A private_key_jwt client: its assertion proves it once.
-    let pair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[11; 32]).expect("a key");
-    let x = URL_SAFE_NO_PAD.encode(pair.public_key().as_ref());
-    let created = api
-        .create_credential(
-            &admin(),
-            "billing",
-            CreateCredential {
-                request_id: "key".to_owned(),
-                expected_revision: None,
-                kind: "private_key_jwt".to_owned(),
-                public_key: Some(
-                    [("kty", "OKP"), ("crv", "Ed25519"), ("x", x.as_str())]
-                        .into_iter()
-                        .map(|(name, value)| (name.to_owned(), value.to_owned()))
-                        .collect(),
-                ),
-                certificate: None,
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("a key");
-    let kid = created.credential.key_id.expect("a kid");
-    let now = permguard_host::authz::store::now();
-    let assertion = {
-        let header = URL_SAFE_NO_PAD
-            .encode(serde_json::json!({"alg": "EdDSA", "kid": kid, "typ": "JWT"}).to_string());
-        let claims = URL_SAFE_NO_PAD.encode(
-            serde_json::json!({
-                "iss": "billing", "sub": "billing", "jti": "assertion-1",
-                "aud": "https://iam.example:7443/iam/v1/token", "iat": now, "exp": now + 60,
-            })
-            .to_string(),
-        );
-        let signature = URL_SAFE_NO_PAD.encode(pair.sign(format!("{header}.{claims}").as_bytes()));
-        format!("{header}.{claims}.{signature}")
-    };
-    let by_assertion = || TokenRequest {
-        client_assertion_type: Some(
-            "urn:ietf:params:oauth:client-assertion-type:jwt-bearer".to_owned(),
-        ),
-        client_assertion: Some(assertion.clone()),
-        ..asking(
-            "decision.evaluate",
-            &audience,
-            &["plane/data/zone/billing/*"],
-        )
-    };
-    api.issue_token(&by_assertion(), &ClientProof::default())
-        .expect("issued by assertion");
-    assert_eq!(
-        api.issue_token(&by_assertion(), &ClientProof::default())
-            .expect_err("replayed")
-            .error(),
-        "invalid_client"
-    );
-
-    // The account suspended: its tokens' entries say so, and it obtains none.
-    api.set_account_status(
-        &admin(),
-        "billing",
-        false,
-        Plain {
-            request_id: "suspend".to_owned(),
-            expected_revision: None,
-        },
-    )
-    .await
-    .expect("suspended");
-    assert_eq!(entry(api), 2, "SUSPENDED");
-    assert!(matches!(
-        api.issue_token(
-            &asking("decision.evaluate", &audience, &["plane/data/*"]),
-            &basic
-        ),
-        Err(TokenRefusal::InvalidClient(_))
-    ));
-    api.set_account_status(
-        &admin(),
-        "billing",
-        true,
-        Plain {
-            request_id: "resume".to_owned(),
-            expected_revision: None,
-        },
-    )
-    .await
-    .expect("resumed");
-    assert_eq!(entry(api), 0, "VALID again");
-    // Its credential revoked: every token it obtained is invalid, for good.
-    api.revoke_credential(
-        &admin(),
-        "billing",
-        &secret.credential.id,
-        Plain {
-            request_id: "revoke".to_owned(),
-            expected_revision: None,
-        },
-    )
-    .await
-    .expect("revoked");
-    assert_eq!(entry(api), 1, "INVALID");
-    assert!(
-        api.issue_token(
-            &asking("decision.evaluate", &audience, &["plane/data/*"]),
-            &basic
-        )
-        .is_err()
-    );
-
-    // An exchange states its subject token's type (RFC 8693).
-    let untyped = TokenRequest {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_owned(),
-        subject_token: Some("pgs_anything".to_owned()),
-        ..asking(
-            "decision.evaluate",
-            &audience,
-            &["plane/data/zone/billing/*"],
-        )
-    };
-    assert_eq!(
-        api.issue_token(&untyped, &ClientProof::default())
-            .expect_err("no type")
-            .error(),
-        "invalid_request"
-    );
-    // RFC 8693 §3 and §2.2.2: a session of another IAM Host, or a provider's token where no
-    // provider is served, is not acceptable: `invalid_request`, never `invalid_grant`.
-    for (token, kind) in [
-        (
-            "pgs_anything",
-            "urn:ietf:params:oauth:token-type:access_token",
-        ),
-        ("eyJ.provider.token", "urn:ietf:params:oauth:token-type:jwt"),
-        (
-            "eyJ.provider.token",
-            "urn:ietf:params:oauth:token-type:id_token",
-        ),
-    ] {
-        let typed = TokenRequest {
-            subject_token: Some(token.to_owned()),
-            subject_token_type: Some(kind.to_owned()),
-            ..untyped.clone()
-        };
-        assert_eq!(
-            api.issue_token(&typed, &ClientProof::default())
-                .expect_err("not acceptable")
-                .error(),
-            "invalid_request",
-            "{kind}"
-        );
-    }
-    // A provider's token is never read as this IAM Host's own access token, nor the reverse.
-    let saml = TokenRequest {
-        subject_token_type: Some("urn:ietf:params:oauth:token-type:saml2".to_owned()),
-        ..untyped.clone()
-    };
-    assert_eq!(
-        api.issue_token(&saml, &ClientProof::default())
-            .expect_err("unserved type")
-            .error(),
-        "invalid_request"
-    );
-    // Every token issued and every request refused is in the security trail; never a secret.
-    let actions = security_actions(&coordinator);
-    assert!(
-        actions.iter().any(|action| action == "iam.token.issued"),
-        "{actions:?}"
-    );
-    assert!(
-        actions.iter().any(|action| action == "iam.token.refused"),
-        "{actions:?}"
-    );
-}
-
-/// `2-security/8` Roles and elevation: every live member has its own role, kept by the IAM Host;
-/// an account elevated to it gets a token for that member alone, `plane/data/*`, the application
-/// operations, the role in `roles`; an operator's role carries its own grants alone, narrower
-/// than the account's; the token ends with the account's place in the role. An operator never
-/// makes or deletes a system role, a scope names one role at most, and a role decides only.
-#[tokio::test]
-async fn an_account_elevates_to_one_role_and_holds_that_role_alone() {
-    use permguard_host::api::directory::{CreateRole, Member, Plain};
-    use permguard_host::api::elevation::{DATA_PLANES_ROLE, member_role};
-    use permguard_host::api::grants::CreateGrant;
-    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
-    use permguard_host::api::token_endpoint::{ClientProof, TokenRequest};
-    use permguard_host::membership::Capabilities;
-    use permguard_host::membership::record::{Role, TaskType};
-
-    let root = scratch("elevation");
-    let pki = Pki::new(&root);
-    let coordinator = side(
-        &root.join("coordinator"),
-        &pki,
-        "coordinator",
-        "host.operations",
-        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
-    )
-    .await;
-    let member = side(
-        &root.join("member"),
-        &pki,
-        "member",
-        "data.attest",
-        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
-    )
-    .await;
-    let membership = approved_pair(&coordinator, &member).await;
-    let (record, _) = coordinator
-        .members
-        .live_members()
-        .into_iter()
-        .next()
-        .expect("a live member");
-    let member_id = permguard_host::identity::record::uuid_text(&record.member_id);
-    let own_role = member_role(&member_id);
-    let api = &coordinator.api;
-
-    // The member's role and the role of every data plane follow the live member, idempotently.
-    api.reconcile_member_roles().expect("reconciled");
-    let roles: Vec<String> = api
-        .roles(&admin())
-        .expect("roles")
-        .roles
-        .into_iter()
-        .map(|role| role.name)
-        .collect();
-    assert!(roles.contains(&own_role), "{roles:?}");
-    assert!(
-        roles.iter().any(|name| name == DATA_PLANES_ROLE),
-        "{roles:?}"
-    );
-    assert_eq!(
-        api.reconcile_member_roles().expect("again"),
-        (Vec::new(), Vec::new())
-    );
-
-    // An operator assigns a system role and never makes, describes or deletes one.
-    let made = api
-        .create_role(
-            &admin(),
-            CreateRole {
-                request_id: "made".to_owned(),
-                expected_revision: None,
-                name: "dp.01a1bc76-7028-717c-8b19-c470f894a0dd".to_owned(),
-                description: String::new(),
-                max_lifetime: None,
-            },
-        )
-        .await;
-    assert!(made.is_err(), "a system role's name is the IAM Host's");
-    let deleted = api
-        .delete_role(
-            &admin(),
-            DATA_PLANES_ROLE,
-            Plain {
-                request_id: "deleted".to_owned(),
-                expected_revision: None,
-            },
-        )
-        .await;
-    assert!(deleted.is_err(), "a system role is never deleted by hand");
-
-    api.create_service_account(
-        &admin(),
-        CreateServiceAccount {
-            request_id: "sa".to_owned(),
-            expected_revision: None,
-            name: "billing".to_owned(),
-            owner: "payments".to_owned(),
-            description: String::new(),
-        },
-    )
-    .await
-    .expect("an account");
-    let secret = api
-        .create_credential(
-            &admin(),
-            "billing",
-            CreateCredential {
-                request_id: "secret".to_owned(),
-                expected_revision: None,
-                kind: "client_secret".to_owned(),
-                public_key: None,
-                certificate: None,
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("a secret");
-    let basic = ClientProof {
-        basic: Some((
-            "billing".to_owned(),
-            secret.client_secret.clone().expect("drawn"),
-        )),
-        ..ClientProof::default()
-    };
-    let asking = |scope: &str, audience: &[&str], targets: &[&str]| TokenRequest {
-        grant_type: "client_credentials".to_owned(),
-        scope: Some(scope.to_owned()),
-        audience: audience.iter().map(|aud| (*aud).to_owned()).collect(),
-        target: targets.iter().map(|target| (*target).to_owned()).collect(),
-        ..TokenRequest::default()
-    };
-    let error = |request: &TokenRequest| {
-        api.issue_token(request, &basic)
-            .expect_err("refused")
-            .error()
-    };
-    let elevate = format!("role:{own_role}");
-
-    // Not one of its members yet: no elevation.
-    assert_eq!(error(&asking(&elevate, &[], &[])), "invalid_scope");
-    let assign = |id: &str| Member {
-        request_id: id.to_owned(),
-        expected_revision: None,
-        member: "sa:billing".to_owned(),
-    };
-    // A system role's members are users, provider subjects and service accounts, one by one:
-    // never a whole provider, never a certificate.
-    for (id, member) in [
-        ("issuer", "oidc:https://login.example"),
-        ("certificate", "spiffe://acme/billing"),
-    ] {
-        let refused = api
-            .add_member(
-                &admin(),
-                &own_role,
-                Member {
-                    request_id: id.to_owned(),
-                    expected_revision: None,
-                    member: member.to_owned(),
-                },
-            )
-            .await
-            .expect_err("not assignable to a system role");
-        assert!(
-            format!("{refused:?}").contains("system role"),
-            "{member}: {refused:?}"
-        );
-    }
-    api.add_member(&admin(), &own_role, assign("assign"))
-        .await
-        .expect("assigned");
-
-    // Elevated: the member alone, its whole data plane, the application operations, the role
-    // named; `sub` stays the account.
-    let issued = api
-        .issue_token(&asking(&elevate, &[], &[]), &basic)
-        .expect("elevated");
-    let claims = jws_part(&issued.access_token, 1);
-    assert_eq!(claims["sub"], "sa:billing");
-    assert_eq!(
-        claims["aud"],
-        serde_json::json!([format!("member:{member_id}")])
-    );
-    assert_eq!(
-        claims["permguard_target"],
-        serde_json::json!(["plane/data/*"])
-    );
-    assert_eq!(claims["scope"], "decision.evaluate event.submit");
-    assert_eq!(claims["roles"], serde_json::json!([own_role]));
-    assert_eq!(issued.scope, "decision.evaluate event.submit");
-    // Narrowed by the scope beside the role, and by a target under the data plane.
-    let narrowed = api
-        .issue_token(
-            &asking(
-                &format!("{elevate} decision.evaluate"),
-                &[],
-                &["plane/data/zone/billing/*"],
-            ),
-            &basic,
-        )
-        .expect("narrowed");
-    let claims = jws_part(&narrowed.access_token, 1);
-    assert_eq!(claims["scope"], "decision.evaluate");
-    assert_eq!(
-        claims["permguard_target"],
-        serde_json::json!(["plane/data/zone/billing/*"])
-    );
-    // Never another member, never the control plane, never an administration, one role.
-    assert_eq!(
-        error(&asking(
-            &elevate,
-            &["member:01a1bc76-7028-717c-8b19-c470f894a0dd"],
-            &[]
-        )),
-        "invalid_target"
-    );
-    assert_eq!(
-        error(&asking(&elevate, &[], &["plane/control/*"])),
-        "invalid_target"
-    );
-    assert_eq!(
-        error(&asking(&format!("{elevate} identity.read"), &[], &[])),
-        "invalid_scope"
-    );
-    assert_eq!(
-        error(&asking(
-            &format!("{elevate} role:{DATA_PLANES_ROLE}"),
-            &[],
-            &[]
-        )),
-        "invalid_scope"
-    );
-
-    // An operator's role carries its own grants alone, never the account's wider ones.
-    api.create_role(
-        &admin(),
-        CreateRole {
-            request_id: "readers".to_owned(),
-            expected_revision: None,
-            name: "readers".to_owned(),
-            description: String::new(),
-            max_lifetime: None,
-        },
-    )
-    .await
-    .expect("a role");
-    let grant = |id: &str, principal: &str, selector: &str| CreateGrant {
-        request_id: id.to_owned(),
-        expected_revision: None,
-        principal: principal.to_owned(),
-        operations: vec!["decision.evaluate".to_owned()],
-        selector: selector.to_owned(),
-        resource_types: vec!["*".to_owned()],
-        constraints: Default::default(),
-        expires_at: None,
-    };
-    api.create_grant(&admin(), grant("g-account", "sa:billing", "plane/data/*"))
-        .await
-        .expect("the account's own");
-    // A system role is never a grant's principal: its members gain nothing until they elevate.
-    for (id, role) in [
-        ("g-own", own_role.clone()),
-        ("g-every", DATA_PLANES_ROLE.to_owned()),
-    ] {
-        let refused = api
-            .create_grant(&admin(), grant(id, &format!("role:{role}"), "plane/data/*"))
-            .await
-            .expect_err("a system role holds no grants");
-        assert!(
-            format!("{refused:?}").contains("system role"),
-            "{role}: {refused:?}"
-        );
-    }
-    api.create_grant(
-        &admin(),
-        grant("g-role", "role:readers", "plane/data/zone/billing/*"),
-    )
-    .await
-    .expect("the role's");
-    api.add_member(&admin(), "readers", assign("assign-readers"))
-        .await
-        .expect("assigned");
-    let audience = format!("member:{member_id}");
-    let readers = "role:readers decision.evaluate";
-    let held = api
-        .issue_token(
-            &asking(readers, &[&audience], &["plane/data/zone/billing/*"]),
-            &basic,
-        )
-        .expect("within the role");
-    assert_eq!(
-        jws_part(&held.access_token, 1)["roles"],
-        serde_json::json!(["readers"])
-    );
-    // A role may bound its tokens' lifetime: an elevated token lives at most that long, a longer
-    // ask is refused, and the tokens list names the role it was elevated to.
-    assert_eq!(held.expires_in, 3_600, "the family's default, no bound yet");
-    api.update_role(
-        &admin(),
-        "readers",
-        permguard_host::api::directory::UpdateRole {
-            request_id: "bounded".to_owned(),
-            expected_revision: None,
-            description: String::new(),
-            max_lifetime: Some(600),
-        },
-    )
-    .await
-    .expect("bounded");
-    let bounded = api
-        .issue_token(
-            &asking(readers, &[&audience], &["plane/data/zone/billing/*"]),
-            &basic,
-        )
-        .expect("within the bound");
-    assert_eq!(bounded.expires_in, 600);
-    let longer = TokenRequest {
-        requested_lifetime: Some("1200".to_owned()),
-        ..asking(readers, &[&audience], &["plane/data/zone/billing/*"])
-    };
-    assert_eq!(error(&longer), "invalid_request");
-    let listed = api.token_list(&admin()).expect("tokens").tokens;
-    let jti_of = |token: &str| jws_part(token, 1)["jti"].as_str().expect("jti").to_owned();
-    let role_of = |token: &str| {
-        listed
-            .iter()
-            .find(|view| view.jti == jti_of(token))
-            .expect("listed")
-            .role
-            .clone()
-    };
-    assert_eq!(role_of(&bounded.access_token).as_deref(), Some("readers"));
-    assert_eq!(
-        role_of(&issued.access_token).as_deref(),
-        Some(own_role.as_str())
-    );
-    assert_eq!(
-        error(&asking(readers, &[&audience], &["plane/data/*"])),
-        "invalid_scope",
-        "the account holds plane/data/*, the role does not"
-    );
-    assert_eq!(
-        error(&asking(
-            "role:readers",
-            &[&audience],
-            &["plane/data/zone/billing/*"]
-        )),
-        "invalid_scope",
-        "an operator's role names its operations"
-    );
-    // D20: a service account administers by its own grants alone, never through a role.
-    assert_eq!(
-        error(&asking("role:readers identity.read", &[&audience], &[])),
-        "invalid_scope"
-    );
-
-    // Every data plane: addressed as asked, so an audience is named; its whole data plane.
-    api.add_member(&admin(), DATA_PLANES_ROLE, assign("assign-every"))
-        .await
-        .expect("assigned");
-    let every = format!("role:{DATA_PLANES_ROLE}");
-    assert_eq!(error(&asking(&every, &[], &[])), "invalid_target");
-    let everywhere = api
-        .issue_token(&asking(&every, &[&audience], &[]), &basic)
-        .expect("elevated to every data plane");
-    let claims = jws_part(&everywhere.access_token, 1);
-    assert_eq!(claims["roles"], serde_json::json!([DATA_PLANES_ROLE]));
-    assert_eq!(claims["aud"], serde_json::json!([audience.clone()]));
-    assert_eq!(
-        claims["permguard_target"],
-        serde_json::json!(["plane/data/*"])
-    );
-
-    // Out of the role: its tokens are invalid at once, and stay so when it is added back; the
-    // others stay valid.
-    let status_of = |token: &str| {
-        let jti = jws_part(token, 1)["jti"].as_str().expect("jti").to_owned();
-        api.token_list(&admin())
-            .expect("tokens")
-            .tokens
-            .into_iter()
-            .find(|view| view.jti == jti)
-            .expect("listed")
-            .status
-    };
-    api.remove_member(&admin(), &own_role, assign("unassign"))
-        .await
-        .expect("removed");
-    assert_eq!(status_of(&issued.access_token), "invalid");
-    assert_eq!(status_of(&narrowed.access_token), "invalid");
-    assert_eq!(status_of(&held.access_token), "valid");
-    assert_eq!(status_of(&everywhere.access_token), "valid");
-    assert_eq!(error(&asking(&elevate, &[], &[])), "invalid_scope");
-    api.add_member(&admin(), &own_role, assign("assign-again"))
-        .await
-        .expect("assigned again");
-    api.sync_token_statuses("test").expect("synced");
-    assert_eq!(
-        status_of(&issued.access_token),
-        "invalid",
-        "added back, it obtains new tokens, never its old ones again"
-    );
-
-    // The member's last membership ends: its role ends with it, and the tokens issued under it
-    // are invalid at once.
-    let again = api
-        .issue_token(&asking(&elevate, &[], &[]), &basic)
-        .expect("elevated again");
-    let held_membership = api.member(&admin(), &membership).expect("the membership");
-    let planned = api
-        .plan_member_revoke(
-            &admin(),
-            &membership,
-            permguard_host::api::members::PlanMemberRevoke {
-                request_id: "plan-end".to_owned(),
-                reason: "decommissioned".to_owned(),
-                expected_revision: Some(held_membership.revision),
-            },
-        )
-        .await
-        .expect("planned");
-    api.run_member_revoke(
-        &admin(),
-        &membership,
-        permguard_host::api::members::RunMemberRevoke {
-            request_id: "run-end".to_owned(),
-            receipt: planned.receipt,
-        },
-    )
-    .await
-    .expect("revoked");
-    let roles: Vec<String> = api
-        .roles(&admin())
-        .expect("roles")
-        .roles
-        .into_iter()
-        .map(|role| role.name)
-        .collect();
-    assert!(!roles.contains(&own_role), "{roles:?}");
-    assert!(
-        roles.iter().any(|name| name == DATA_PLANES_ROLE),
-        "every data plane's role stays: {roles:?}"
-    );
-    assert_eq!(status_of(&again.access_token), "invalid");
-}
-
-/// WP-12.1: an IAM Host offers `token.status` in every invitation and keeps it in the membership
-/// of a member that can take it, even when its request narrowed it away; the member fetches the
-/// signed lists over the task, verifies them under the pinned `iam.tokens` set, holds them, and
-/// sees a revocation once it fetches again; a list it already holds is not accepted twice.
-#[tokio::test]
-async fn a_member_holds_the_iam_hosts_status_lists_over_token_status() {
-    use permguard_host::api::service_accounts::{CreateCredential, CreateServiceAccount};
-    use permguard_host::api::token_endpoint::{ClientProof, TokenRequest};
-    use permguard_host::api::tokens::RevokeToken;
-    use permguard_host::membership::Capabilities;
-    use permguard_host::membership::record::{Role, TaskType};
-
-    let root = scratch("token-status");
-    let pki = Pki::new(&root);
-    let coordinator = side(
-        &root.join("coordinator"),
-        &pki,
-        "coordinator",
-        "host.operations",
-        Capabilities::default()
-            .declare(TaskType::DecisionsShip, Role::Coordinator)
-            .declare(TaskType::TokenStatus, Role::Coordinator),
-    )
-    .await;
-    let member = side(
-        &root.join("member"),
-        &pki,
-        "member",
-        "data.attest",
-        Capabilities::default()
-            .declare(TaskType::DecisionsShip, Role::Member)
-            .declare(TaskType::TokenStatus, Role::Member),
-    )
-    .await;
-    approved_pair(&coordinator, &member).await;
-    let (record, _) = coordinator
-        .members
-        .live_members()
-        .into_iter()
-        .next()
-        .expect("a live member");
-    let (_, held) = member
-        .members
-        .memberships()
-        .into_iter()
-        .next()
-        .expect("the member's membership");
-    let (manifest, ..) = held.manifest.expect("a manifest");
-    assert!(
-        manifest
-            .tasks
-            .iter()
-            .any(|task| task.task_type == TaskType::TokenStatus),
-        "the narrowed request kept the status lists"
-    );
-    assert!(
-        manifest
-            .ring_pins
-            .iter()
-            .any(|pin| pin.ring == "iam.tokens" && pin.owner == Role::Coordinator),
-        "the manifest pins the token ring"
-    );
-
-    // A token, so the IAM Host holds a list.
-    let api = &coordinator.api;
-    api.create_service_account(
-        &admin(),
-        CreateServiceAccount {
-            request_id: "sa".to_owned(),
-            expected_revision: None,
-            name: "billing".to_owned(),
-            owner: "payments".to_owned(),
-            description: String::new(),
-        },
-    )
-    .await
-    .expect("an account");
-    let secret = api
-        .create_credential(
-            &admin(),
-            "billing",
-            CreateCredential {
-                request_id: "secret".to_owned(),
-                expected_revision: None,
-                kind: "client_secret".to_owned(),
-                public_key: None,
-                certificate: None,
-                expires_at: None,
-            },
-        )
-        .await
-        .expect("a secret")
-        .client_secret
-        .expect("drawn");
-    api.create_grant(
-        &admin(),
-        permguard_host::api::grants::CreateGrant {
-            request_id: "g".to_owned(),
-            expected_revision: None,
-            principal: "sa:billing".to_owned(),
-            operations: vec!["decision.evaluate".to_owned()],
-            selector: "plane/data/*".to_owned(),
-            resource_types: vec!["*".to_owned()],
-            constraints: Default::default(),
-            expires_at: None,
-        },
-    )
-    .await
-    .expect("granted");
-    let issued = api
-        .issue_token(
-            &TokenRequest {
-                grant_type: "client_credentials".to_owned(),
-                scope: Some("decision.evaluate".to_owned()),
-                audience: vec![format!(
-                    "member:{}",
-                    permguard_host::identity::record::uuid_text(&record.member_id)
-                )],
-                target: vec!["plane/data/*".to_owned()],
-                ..TokenRequest::default()
-            },
-            &ClientProof {
-                basic: Some(("billing".to_owned(), secret.clone())),
-                ..ClientProof::default()
-            },
-        )
-        .expect("issued");
-    let claims = jws_part(&issued.access_token, 1);
-    let uri = claims["status"]["status_list"]["uri"]
-        .as_str()
-        .expect("uri")
-        .to_owned();
-    let index = usize::try_from(
-        claims["status"]["status_list"]["idx"]
-            .as_u64()
-            .expect("idx"),
-    )
-    .expect("small");
-    let jti = claims["jti"].as_str().expect("jti").to_owned();
-
-    // The member fetches it, verified, and holds it.
-    assert_eq!(member.api.token_status_due().await, 1);
-    let lists = member.api.held_lists().expect("held lists").clone();
-    let issuer = claims["iss"].as_str().expect("iss").to_owned();
-    let first = lists.get(&issuer, &uri).expect("the list is held");
-    assert_eq!(first.list.get(index), Ok(0), "VALID");
-    // The same list again is not news.
-    assert_eq!(member.api.token_status_due().await, 0);
-
-    // WP-12.2/12.3: the member verifies the token with what it holds, and its Data Plane acts on
-    // the token alone, within its scope and targets.
-    use permguard_core::authz::{Actor, Authenticator as _, Resource, operations};
-    let authenticator = permguard_host::authz::access_tokens::TokenAuthenticator {
-        trust: Arc::new(permguard_host::authz::access_tokens::MemberTrust::new(
-            Arc::clone(&member.members),
-            Arc::clone(&lists),
-            false,
-        )),
-        inner: Arc::new(permguard_core::authz::NoRules),
-        time: Arc::new(permguard_host::time::TimeGuard::system(
-            std::time::Duration::from_secs(30),
-        )),
-    };
-    let actor = authenticator
-        .authenticate(None, Some(&issued.access_token))
-        .expect("the member accepts the IAM Host's token");
-    // The coordinator's own memberships are not a member's: it trusts no token through them.
-    {
-        use permguard_host::authz::access_tokens::Trust as _;
-        let coordinators = permguard_host::authz::access_tokens::MemberTrust::new(
-            Arc::clone(&coordinator.members),
-            Arc::clone(&lists),
-            false,
-        );
-        assert!(coordinators.anchors().is_empty());
-        let members = permguard_host::authz::access_tokens::MemberTrust::new(
-            Arc::clone(&member.members),
-            Arc::clone(&lists),
-            false,
-        );
-        let anchors = members.anchors();
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].issuer, issuer);
-        assert_eq!(
-            anchors[0].authority.as_deref(),
-            Some(
-                coordinator
-                    .host
-                    .identity
-                    .host_id_text()
-                    .replace('-', "")
-                    .as_str()
-            ),
-            "the coordinator's mirrors' authority"
-        );
-    }
-    let Actor::Authenticated(context) = &actor else {
-        panic!("an authenticated actor");
-    };
-    assert_eq!(context.authorization_principal().as_str(), "sa:billing");
-    assert_eq!(context.token().expect("a token grant").list_uri, uri);
-    let authorization = permguard_host::authz::Authorization::closed().with_tokens_alone(true);
-    let ledger = Resource::ledger("data", "billing", "l1");
-    assert!(
-        authorization
-            .authorize(&actor, operations::DECISION_EVALUATE, &ledger)
-            .is_ok()
-    );
-    assert!(
-        authorization
-            .authorize(&actor, operations::EVENT_SUBMIT, &ledger)
-            .is_err(),
-        "outside the token's scope"
-    );
-    assert!(
-        authorization
-            .authorize(
-                &actor,
-                operations::DECISION_EVALUATE,
-                &Resource::plane("control")
-            )
-            .is_err(),
-        "outside the token's targets"
-    );
-    // A token the member did not hold the issuer of, or a tampered one, is refused.
-    let mut tampered = issued.access_token.clone();
-    let last = tampered.pop().expect("a character");
-    tampered.push(if last == 'A' { 'B' } else { 'A' });
-    assert!(authenticator.authenticate(None, Some(&tampered)).is_err());
-
-    // Revoked at the IAM Host: the next fetch carries it.
-    api.revoke_token(
-        &admin(),
-        &jti,
-        RevokeToken {
-            request_id: "revoke".to_owned(),
-        },
-    )
-    .await
-    .expect("revoked");
-    assert_eq!(member.api.token_status_due().await, 1);
-    let second = lists.get(&issuer, &uri).expect("still held");
-    assert_eq!(second.list.get(index), Ok(1), "INVALID");
-    assert!(
-        second.iat > first.iat,
-        "a fresher list replaced the held one"
-    );
-    // Once the member holds the list that revokes it, the token is refused.
-    assert!(
-        authenticator
-            .authenticate(None, Some(&issued.access_token))
-            .is_err(),
-        "a revoked token is refused at step 7"
-    );
-    // The older one is refused should it come back.
-    assert!(lists.accept((*first).clone()).is_err());
-
-    // On the IAM Host, an all-in-one serving its own Data Plane: a token addressed to its local
-    // member is verified under its own set and lists, and narrows the subject's grants.
-    let local = permguard_host::authz::access_tokens::TokenAuthenticator {
-        trust: Arc::new(permguard_host::api::tokens::LocalTrust {
-            tokens: Arc::clone(&coordinator.tokens),
-            time: Arc::new(permguard_host::time::TimeGuard::system(
-                std::time::Duration::from_secs(30),
-            )),
-        }),
-        inner: Arc::new(permguard_core::authz::NoRules),
-        time: Arc::new(permguard_host::time::TimeGuard::system(
-            std::time::Duration::from_secs(30),
-        )),
-    };
-    let narrow = api
-        .issue_token(
-            &TokenRequest {
-                grant_type: "client_credentials".to_owned(),
-                scope: Some("decision.evaluate".to_owned()),
-                audience: vec![coordinator.tokens.local_member()],
-                target: vec!["plane/data/zone/billing/*".to_owned()],
-                ..TokenRequest::default()
-            },
-            &ClientProof {
-                basic: Some(("billing".to_owned(), secret.clone())),
-                ..ClientProof::default()
-            },
-        )
-        .expect("issued to the local member");
-    let actor = local
-        .authenticate(None, Some(&narrow.access_token))
-        .expect("the IAM Host accepts its own token");
-    let grants = &coordinator.authorization;
-    assert!(
-        grants
-            .authorize(
-                &actor,
-                operations::DECISION_EVALUATE,
-                &Resource::ledger("data", "billing", "l1")
-            )
-            .is_ok(),
-        "within the grants and the token"
-    );
-    assert!(
-        grants
-            .authorize(
-                &actor,
-                operations::DECISION_EVALUATE,
-                &Resource::ledger("data", "payroll", "l1")
-            )
-            .is_err(),
-        "the grants allow it, the token does not"
-    );
-    // Revoked: refused at once, from the issuer's own state, with no list to wait for.
-    let narrow_jti = jws_part(&narrow.access_token, 1)["jti"]
-        .as_str()
-        .expect("jti")
-        .to_owned();
-    api.revoke_token(
-        &admin(),
-        &narrow_jti,
-        RevokeToken {
-            request_id: "revoke-local".to_owned(),
-        },
-    )
-    .await
-    .expect("revoked");
-    assert!(
-        local
-            .authenticate(None, Some(&narrow.access_token))
-            .is_err(),
-        "a revoked token is refused on the IAM Host at once"
-    );
 }

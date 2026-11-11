@@ -1,13 +1,13 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Host API proto declares the services of the Host API contract and the IAM proto the
-//! directory's, each a server trait, and a message gets its fields only when the package that
-//! serves its operation defines the shape.
+//! The Host API proto declares the services of the Host API contract and the Authority Plane's
+//! proto its own, and a Host API message gets its fields only when the package that serves its
+//! operation defines the shape.
 
 use std::collections::BTreeSet;
 
-use permguard_conformance::contracts::{host_v1, iam_v1};
+use permguard_conformance::contracts::{authority_v1, host_v1};
 
 /// Naming a generated server proves the service exists; a missing or renamed one fails to compile.
 fn served<T>() -> &'static str {
@@ -26,34 +26,22 @@ fn test_the_host_api_declares_the_five_services_of_every_host() {
     assert_eq!(services.len(), 5);
 }
 
-/// The directory the IAM Host serves in `permguard.iam.v1` (WP-11.1): grants, roles, local users,
-/// identity providers and the recovery.
+/// The Authority Plane's services in `permguard.authority.v1`: its clients, which a caller drives.
 #[test]
-fn test_the_iam_api_declares_the_directory_services() {
+fn test_the_authority_api_declares_its_services() {
     let services = [
-        served::<iam_v1::grant_service_server::GrantServiceServer<()>>(),
-        served::<iam_v1::role_service_server::RoleServiceServer<()>>(),
-        served::<iam_v1::user_service_server::UserServiceServer<()>>(),
-        served::<iam_v1::provider_service_server::ProviderServiceServer<()>>(),
-        served::<iam_v1::recovery_service_server::RecoveryServiceServer<()>>(),
+        served::<authority_v1::authority_plane_client::AuthorityPlaneClient<()>>(),
+        served::<authority_v1::token_service_client::TokenServiceClient<()>>(),
+        served::<authority_v1::service_account_service_client::ServiceAccountServiceClient<()>>(),
     ];
-    assert_eq!(services.len(), 5);
+    assert_eq!(services.len(), 3);
 }
 
 /// The messages whose operations the Host listener serves (WP-2.5): the only ones with fields.
 /// A package that serves another operation adds its messages here with its OpenAPI mapping.
 const SHAPED: &[&str] = &[
-    "ListGrantsRequest",
-    "ListGrantsResponse",
-    "Grant",
     "Receipt",
     "AuditReference",
-    "CreateGrantRequest",
-    "CreateGrantResponse",
-    "PlanGrantRevokeRequest",
-    "PlanGrantRevokeResponse",
-    "RunGrantRevokeRequest",
-    "RunGrantRevokeResponse",
     "ListKeyRingsResponse",
     "KeyRingSummary",
     "GetKeyRingRequest",
@@ -65,8 +53,6 @@ const SHAPED: &[&str] = &[
     "Assurance",
     "GetEffectiveConfigResponse",
     "Setting",
-    "ListConfigRevisionsResponse",
-    "ConfigRevision",
     "GetIdentityResponse",
     "RotateIdentityRequest",
     "RotateIdentityResponse",
@@ -219,37 +205,6 @@ const SHAPED: &[&str] = &[
     "GcKept",
     // Where the volume stands, in the status (TS-5).
     "HostStorage",
-    // Roles, local users and identity providers (WP-8.1).
-    "CreateRoleRequest",
-    "CreateUserRequest",
-    "DeleteRoleRequest",
-    "DirectoryChangeResponse",
-    "GetRoleRequest",
-    "GetRoleResponse",
-    "GetUserRequest",
-    "GetUserResponse",
-    "LinkUserRequest",
-    "ListProvidersResponse",
-    "ListRolesResponse",
-    "ListUsersResponse",
-    "MemberRequest",
-    "Provider",
-    "ProviderKey",
-    "RefreshProviderRequest",
-    "RolesOfRequest",
-    "RolesOfResponse",
-    "RoleSummary",
-    "SetPasswordRequest",
-    "SetUserStatusRequest",
-    "UnlockUserRequest",
-    "UnlockUserResponse",
-    "UpdateRoleRequest",
-    "UpdateUserRequest",
-    "UserPlainRequest",
-    "UserSummary",
-    // The recovery an administrator acknowledges (WP-8.2).
-    "GetRecoveryResponse",
-    "AcknowledgeRecoveryResponse",
     // A member's name and groups (iteration 02, WP-10.1, WP-10.3).
     "MemberGroups",
     "ChangeMemberRecordRequest",

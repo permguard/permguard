@@ -1,9 +1,9 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The first administrator offline, and recovery (WP-8.2): a bootstrap makes the first one and
-//! runs again for it changing nothing, refuses a second one, and `host recovery start` makes a
-//! setup code instead, private to the volume's owner, never printed.
+//! The administrator's key offline: when every key of `admin` is lost, `authority admin-key` makes
+//! a new one on the stopped server's volume, its secret written to a new file only its owner reads
+//! and never printed, and leaves the mark the next start records in the audit trail.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -50,6 +50,23 @@ impl Volume {
         volume
     }
 
+    /// The command line on this volume, without the server's configuration: what the `authority`
+    /// commands take.
+    fn run_on_volume(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_permguard"))
+            .arg("-w")
+            .arg(&self.dir)
+            .arg("-o")
+            .arg("json")
+            .args(args)
+            .arg("--volume")
+            .arg(&self.volume)
+            .env("PERMGUARD_CONFIG", self.dir.join("cli-config.yml"))
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("the binary runs")
+    }
+
     fn run(&self, args: &[&str], stdin: Option<&str>) -> Output {
         let mut child = Command::new(env!("CARGO_BIN_EXE_permguard"))
             .arg("-w")
@@ -92,115 +109,83 @@ fn json(output: &Output) -> serde_json::Value {
 }
 
 #[test]
-fn a_bootstrap_makes_only_the_first_administrator_and_recovery_makes_a_code() {
-    let volume = Volume::provisioned("bootstrap");
+fn the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret() {
+    use permguard_authority_plane::{accounts, admin};
 
-    let first = json(&volume.run(
-        &[
-            "host",
-            "users",
-            "bootstrap",
-            "--name",
-            "alice",
-            "--password-stdin",
-        ],
-        Some("alice's first password"),
-    ));
-    assert_eq!(first["principal"], "user:alice");
-    assert!(first["grant"].is_string(), "{first}");
-
-    // Again for the same administrator: nothing changes.
-    let again = json(&volume.run(
-        &[
-            "host",
-            "users",
-            "bootstrap",
-            "--name",
-            "alice",
-            "--email",
-            "alice@acme.example",
-        ],
-        None,
-    ));
-    assert_eq!(again["already_administrator"], true, "{again}");
-
-    // A second administrator is not a bootstrap.
-    for refused in [
-        volume.run(
-            &[
-                "host",
-                "users",
-                "bootstrap",
-                "--name",
-                "mallory",
-                "--email",
-                "m@evil.example",
-            ],
-            None,
-        ),
-        volume.run(
-            &[
-                "host",
-                "grants",
-                "bootstrap",
-                "--fingerprint",
-                &"ab".repeat(32),
-            ],
-            None,
-        ),
-    ] {
-        assert!(!refused.status.success(), "a second administrator was made");
-        assert!(
-            stderr(&refused).contains("host recovery start"),
-            "{}",
-            stderr(&refused)
-        );
-    }
-
-    // Recovery: a reason, then a code in a private file, never in the output.
-    let unexplained = volume.run(&["host", "recovery", "start", "--reason", " "], None);
-    assert!(!unexplained.status.success());
-    let started = volume.run(
-        &[
-            "host",
-            "recovery",
-            "start",
-            "--reason",
-            "every administrator left",
-            "--expires",
-            "2h",
-        ],
-        None,
-    );
-    let report = json(&started);
-    let code_file = PathBuf::from(report["code_file"].as_str().expect("the code's file"));
-    let code = std::fs::read_to_string(&code_file)
-        .expect("the code")
-        .trim()
-        .to_owned();
-    assert!(code.starts_with("pgsetup_"), "{code}");
+    let volume = Volume::provisioned("admin-key");
+    let out = volume.dir.join("admin.key");
+    let out_text = out.to_str().expect("a UTF-8 path");
+    let refused = volume.run_on_volume(&["authority", "admin-key", "--secret-out", out_text]);
+    assert!(!refused.status.success());
     assert!(
-        !String::from_utf8_lossy(&started.stdout).contains(&code)
-            && !stderr(&started).contains(&code),
-        "never printed"
+        stderr(&refused).contains("holds no Authority Plane"),
+        "{}",
+        stderr(&refused)
     );
+    assert!(!out.exists(), "nothing is written for a refusal");
+
+    // The Authority Plane's first start, as the server makes it: `admin` and its first key.
+    let plane_dir = volume.volume.join("planes/authority");
+    std::fs::create_dir_all(&plane_dir).expect("the plane's directory");
+    let first = {
+        let dir = permguard_host::storage::Dir::open(&plane_dir).expect("opens");
+        let (held, _) =
+            accounts::Accounts::open(&dir, permguard_host::storage::journal::Options::default())
+                .expect("the accounts open");
+        admin::ensure(&held, &plane_dir, permguard_host::authz::store::now())
+            .expect("made")
+            .expect("the first start makes it")
+    };
+
+    let made = volume.run_on_volume(&["authority", "admin-key", "--secret-out", out_text]);
+    let printed = String::from_utf8_lossy(&made.stdout).into_owned() + &stderr(&made);
+    assert!(!printed.contains("pgsk_"), "never printed: {printed}");
+    let answer = json(&made);
+    let access_key = answer["access_key"]
+        .as_str()
+        .expect("the new key")
+        .to_owned();
+    assert!(
+        access_key.starts_with("pgak_") && access_key != first,
+        "{answer}"
+    );
+    let text = std::fs::read_to_string(&out).expect("the key file");
+    assert!(
+        text.contains(&format!("access_key: {access_key}")),
+        "the file names its key"
+    );
+    assert!(admin::secret_of(&text).is_some(), "and holds its secret");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        let mode = std::fs::metadata(&code_file)
-            .expect("metadata")
+        let mode = std::fs::metadata(&out)
+            .expect("written")
             .permissions()
             .mode();
-        assert_eq!(mode & 0o077, 0, "private to the volume's owner");
+        assert_eq!(mode & 0o077, 0, "the key file is its owner's alone");
     }
-    let recovery = volume
-        .volume
-        .join("host")
-        .join("setup")
-        .join("recovery.json");
-    assert!(
-        std::fs::read_to_string(recovery)
-            .expect("the recovery record")
-            .contains("every administrator left")
+    assert_eq!(
+        admin::take_offline_mark(&plane_dir).as_deref(),
+        Some(access_key.as_str()),
+        "the next start records it"
     );
+    {
+        let dir = permguard_host::storage::Dir::open(&plane_dir).expect("opens");
+        let (held, _) =
+            accounts::Accounts::open(&dir, permguard_host::storage::journal::Options::default())
+                .expect("the accounts open");
+        let keys: Vec<String> = held
+            .get(accounts::ADMIN)
+            .expect("admin")
+            .keys
+            .into_iter()
+            .map(|key| key.access_key)
+            .collect();
+        assert!(keys.contains(&access_key), "{keys:?}");
+    }
+
+    // The file is new or nothing is written: a second run never overwrites a secret.
+    let again = volume.run_on_volume(&["authority", "admin-key", "--secret-out", out_text]);
+    assert!(!again.status.success(), "{}", stderr(&again));
+    assert_eq!(std::fs::read_to_string(&out).expect("kept"), text);
 }

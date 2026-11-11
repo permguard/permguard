@@ -100,18 +100,16 @@ fn the_registry_is_well_formed_and_refuses_a_forbidden_fact() {
     assert!(check_registry(HUGE).is_err(), "no schema outgrows a record");
 }
 
-/// The Host refuses an unregistered action, which would fail the grant it records: every action
-/// the Host API's grants record is registered, as a `security` action of the Host.
+/// The Host refuses an unregistered action, which would fail the mutation it records: the
+/// bootstrap commitment's and the Authority Plane's mutations are registered, as `security`
+/// actions recorded at each phase.
 #[test]
 fn every_action_the_host_records_is_registered() {
-    use crate::operations::grants::{
-        AUDIT_EXPIRED, AUDIT_ISSUED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED,
-    };
-    for action in [
-        AUDIT_ISSUED,
-        AUDIT_REVOKE_PLANNED,
-        AUDIT_REVOKED,
-        AUDIT_EXPIRED,
+    for (action, root) in [
+        (crate::operations::grants::AUDIT_COMMITTED, HOST),
+        ("authority.service_account.created", AUTHORITY),
+        ("authority.access_key.created", AUTHORITY),
+        ("authority.token.revoked", AUTHORITY),
     ] {
         let schema = REGISTRY
             .iter()
@@ -119,7 +117,7 @@ fn every_action_the_host_records_is_registered() {
             .unwrap_or_else(|| panic!("`{action}` is not registered"));
         assert_eq!(
             (schema.class, schema.root, schema.phases),
-            (Class::Security, HOST, true),
+            (Class::Security, root, true),
             "{action}: a security mutation, recorded at each phase"
         );
     }

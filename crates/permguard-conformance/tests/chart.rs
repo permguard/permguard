@@ -1274,10 +1274,10 @@ dataPlane:
     );
 }
 
-/// WP-11.3: the IAM Host's `iam.tokens` ring follows the same rule, on a unit that runs a Control
+/// The Authority Plane's `authority.tokens` ring follows the same rule, on a unit that runs a Control
 /// Plane only: a data plane group opens no such ring, and its custody is not asked for there.
 #[test]
-fn a_regulated_control_plane_keeps_iam_tokens_in_hsm_or_kms() {
+fn a_regulated_control_plane_keeps_authority_tokens_in_hsm_or_kms() {
     refused(
         "\
 controlPlane:
@@ -1288,7 +1288,7 @@ controlPlane:
       pkcs11: { module: /m.so, tokenLabel: t, pinRef: p }
       tokens: file
 ",
-        "iam.tokens",
+        "authority.tokens",
     );
     refused(
         "\
@@ -1300,7 +1300,7 @@ controlPlane:
       pkcs11: { module: /m.so, tokenLabel: t, pinRef: p }
   extraEnv: [{ name: PERMGUARD_KEYS_TOKENS_CUSTODY, value: file }]
 ",
-        "iam.tokens",
+        "authority.tokens",
     );
     // A data plane group with the same values renders: it holds no token ring.
     render_verified(&format!(

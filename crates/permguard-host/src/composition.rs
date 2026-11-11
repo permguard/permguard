@@ -62,9 +62,15 @@ pub const DATA_ATTEST: RingId = RingId("data.attest");
 /// The Host's own operations ring: it seals the audit trail, and no Plane is handed it. A Plane
 /// may sign under it only [`LedgerExportV1`], whose payload the Host writes (WP-7.10).
 pub const HOST_OPERATIONS: RingId = RingId("host.operations");
-/// The IAM Host's ring (iteration 02, WP-11.3): access tokens and status list tokens, which only
-/// the Host signs; no Plane declares a signer on it.
-pub const IAM_TOKENS: RingId = RingId("iam.tokens");
+/// The Authority Plane's ring: access tokens and status list tokens, which only the Authority
+/// Plane signs; no other Plane declares a signer on it.
+pub const AUTHORITY_TOKENS: RingId = RingId("authority.tokens");
+
+/// The directory under the volume root each Plane keeps its own state in.
+pub const PLANES: &str = "planes";
+
+/// The Plane that issues the access tokens, and alone signs under [`AUTHORITY_TOKENS`].
+pub const AUTHORITY_PLANE: &str = "authority";
 
 /// The Plane artifacts allowed on [`HOST_OPERATIONS`]: each a payload the Host writes.
 const OPERATIONS_ARTIFACTS: &[&str] = &[permguard_core::domains::protected::LEDGER_EXPORT];
@@ -168,6 +174,7 @@ pub struct Declaration {
     layouts: Vec<&'static str>,
     reads_holds: bool,
     gc_jobs: Vec<&'static str>,
+    feeds_trust: bool,
 }
 
 impl Declaration {
@@ -177,6 +184,13 @@ impl Declaration {
             plane: plane.into(),
             ..Self::default()
         }
+    }
+
+    /// Declares that this Plane hands the Host the key set and status lists every token verifies
+    /// under: the Authority Plane's, beside it in one process. Refused for any other Plane.
+    pub fn feeds_token_trust(mut self) -> Self {
+        self.feeds_trust = true;
+        self
     }
 
     /// Declares that this Plane signs artifact `T`, with the ring `T` names.
@@ -373,6 +387,8 @@ pub struct Host {
     zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
     host_id: Option<[u8; 16]>,
     layouts: BTreeMap<String, u16>,
+    authority_trust: Option<Arc<crate::authz::AuthorityTrust>>,
+    volume: Option<(std::path::PathBuf, crate::storage::journal::Options)>,
     claimed: std::sync::Mutex<Claims>,
 }
 
@@ -403,9 +419,28 @@ pub struct HostBuilder {
     zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
     host_id: Option<[u8; 16]>,
     layouts: BTreeMap<String, u16>,
+    authority_trust: Option<Arc<crate::authz::AuthorityTrust>>,
+    volume: Option<(std::path::PathBuf, crate::storage::journal::Options)>,
 }
 
 impl HostBuilder {
+    /// The volume this process claimed: each Plane keeps its own state under `planes/<plane>/`,
+    /// its journals stamped with the claim, as the Host's are.
+    pub fn volume(mut self, volume: &crate::storage::volume::Volume) -> Self {
+        self.volume = Some((
+            volume.root().to_path_buf(),
+            volume.journal_options(crate::storage::journal::Options::default()),
+        ));
+        self
+    }
+
+    /// The Authority Plane's key set and lists the Host verifies tokens with: the Authority Plane
+    /// in this process feeds it.
+    pub fn authority_trust(mut self, trust: Arc<crate::authz::AuthorityTrust>) -> Self {
+        self.authority_trust = Some(trust);
+        self
+    }
+
     /// The key manager behind `ring`.
     pub fn ring(mut self, ring: RingId, keys: Arc<dyn KeyManager>) -> Self {
         self.rings.insert(ring, keys);
@@ -533,6 +568,8 @@ impl HostBuilder {
             zone_keys: self.zone_keys,
             host_id: self.host_id,
             layouts: self.layouts,
+            authority_trust: self.authority_trust,
+            volume: self.volume,
             claimed: std::sync::Mutex::new(Claims::default()),
         }
     }
@@ -563,14 +600,21 @@ impl Host {
             });
         }
         // `host.operations` is the Host's: a Plane signs under it only a payload the Host writes
-        // (WP-7.10).
+        // (WP-7.10). `authority.tokens` is the Authority Plane's alone: whoever signs under it
+        // decides on every Plane.
         if let Some((artifact, _)) = declaration.signers.iter().find(|(artifact, ring)| {
             (*ring == HOST_OPERATIONS && !OPERATIONS_ARTIFACTS.contains(artifact))
-                || *ring == IAM_TOKENS
+                || (*ring == AUTHORITY_TOKENS && plane != AUTHORITY_PLANE)
         }) {
             return Err(CompositionError::Reserved {
                 plane,
                 artifact: (*artifact).to_owned(),
+            });
+        }
+        if declaration.feeds_trust && plane != AUTHORITY_PLANE {
+            return Err(CompositionError::Reserved {
+                plane,
+                artifact: "the token trust".to_owned(),
             });
         }
         if let Some(job) = declaration
@@ -804,6 +848,11 @@ impl Host {
                 .then(|| self.gc_jobs.clone())
                 .flatten(),
             declared_gc_jobs: declaration.gc_jobs.clone(),
+            authority_trust: declaration
+                .feeds_trust
+                .then(|| self.authority_trust.clone())
+                .flatten(),
+            volume: self.volume.clone(),
         })
     }
 }
@@ -840,6 +889,8 @@ pub struct Registration {
     holds: Option<Arc<crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     declared_gc_jobs: Vec<&'static str>,
+    authority_trust: Option<Arc<crate::authz::AuthorityTrust>>,
+    volume: Option<(std::path::PathBuf, crate::storage::journal::Options)>,
 }
 
 /// Who serves a resource under this Host's memberships, and what was observed of them: the Host
@@ -1071,6 +1122,27 @@ impl Registration {
             recorder,
             schema: PhantomData,
         }))
+    }
+
+    /// This Plane's own directory on the volume, `planes/<plane>/`, created on first use, and the
+    /// options its journals open with: `None` when the Host composes no volume.
+    pub fn state_dir(
+        &self,
+    ) -> Result<
+        Option<(crate::storage::Dir, crate::storage::journal::Options)>,
+        crate::storage::StorageError,
+    > {
+        let Some((root, options)) = &self.volume else {
+            return Ok(None);
+        };
+        let planes = crate::storage::Dir::open(root)?.subdir(PLANES, true)?;
+        Ok(Some((planes.subdir(&self.plane, true)?, *options)))
+    }
+
+    /// The key set and status lists every token verifies under, for the Authority Plane to feed:
+    /// `None` when not declared, or when the Host built none.
+    pub fn authority_trust(&self) -> Option<Arc<crate::authz::AuthorityTrust>> {
+        self.authority_trust.clone()
     }
 
     /// The Host's authorization, which every Plane decides with: deny by default, and closed
@@ -1521,22 +1593,22 @@ pub trait JwsArtifact: Artifact + sealed::Sealed {
     const CANONICAL_HEADER: bool = false;
 }
 
-/// An access token (iteration 02, WP-11.4): RFC 9068's `at+jwt`, signed by the IAM Host alone.
+/// An access token: RFC 9068's `at+jwt`, signed by the Authority Plane alone.
 pub struct AccessTokenV1;
 
 impl Artifact for AccessTokenV1 {
     const TYPE: &'static str = permguard_core::domains::jwt::ACCESS_TOKEN;
-    const RING: RingId = IAM_TOKENS;
-    /// `iat`, `nbf` and `exp` are what a member judges it by.
+    const RING: RingId = AUTHORITY_TOKENS;
+    /// `iat`, `nbf` and `exp` are what a Plane judges it by.
     const TIME_SENSITIVE: bool = true;
 }
 
-/// A token status list (iteration 02, WP-11.5): `statuslist+jwt`, signed by the IAM Host alone.
+/// A token status list: `statuslist+jwt`, signed by the Authority Plane alone.
 pub struct StatusListTokenV1;
 
 impl Artifact for StatusListTokenV1 {
     const TYPE: &'static str = permguard_core::domains::jwt::STATUS_LIST_TOKEN;
-    const RING: RingId = IAM_TOKENS;
+    const RING: RingId = AUTHORITY_TOKENS;
     /// `iat` orders a list's versions and `exp` bounds how long a revocation may go unseen.
     const TIME_SENSITIVE: bool = true;
 }
@@ -1795,6 +1867,12 @@ impl MutationHandle {
     /// The domain it applies.
     pub fn domain(&self) -> &'static str {
         self.domain
+    }
+
+    /// The engine behind it: a Plane that declared two domains runs the second on a handle of
+    /// its own, [`MutationHandle::new`].
+    pub fn engine(&self) -> Arc<crate::operations::mutation::Mutations> {
+        Arc::clone(&self.engine)
     }
 
     /// [`crate::operations::mutation::Mutations::run_checked`], for an operation of this domain;

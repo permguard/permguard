@@ -15,9 +15,9 @@
 # skips it, PERMGUARD_LAB_IMAGE names another). KEEP=1 leaves the last profile running; the logs
 # of a failed profile are written under ARTIFACTS (default `target/compose-lab`). ROTATION=1 runs
 # the all-in-one with keys replaced every two minutes (`docker-compose.lab.rotation.yml`) and proves
-# its decisions keep reaching its Control Plane across the rotations (BUG-0195). IDENTITY=1 runs the
-# all-in-one beside a Keycloak of two realms (`docker-compose.lab.identity.yml`) and proves both
-# providers, roles, local users and a key rotation over REST and gRPC (WP-8.1).
+# its decisions keep reaching its Control Plane across the rotations (BUG-0195). Every all-in-one
+# run also proves the Authority Plane: a service account, its key and scopes over HTTPS and gRPC, a
+# token revoked and the token keys rotated.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -55,9 +55,6 @@ run_profile() {
     local files=(-f docker-compose.lab.yml)
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         files+=(-f docker-compose.lab.rotation.yml)
-    fi
-    if [ "${IDENTITY:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
-        files+=(-f docker-compose.lab.identity.yml)
     fi
     dc() { COMPOSE_PROFILES="${profile}" docker compose "${files[@]}" -p "${project}" "$@"; }
     failed() {
@@ -104,12 +101,12 @@ run_profile() {
         step "${profile}: decisions across key rotations"
         dc run --rm lab assert "${profile}" rotation || failed "an assertion failed across rotations"
     fi
-    if [ "${IDENTITY:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
-        step "${profile}: identity providers, roles and local users"
-        dc run --rm lab assert "${profile}" identity || failed "an identity assertion failed"
+    if [ "${profile}" = all-in-one ]; then
+        step "${profile}: service accounts, keys and tokens of the Authority Plane"
+        dc run --rm lab assert "${profile}" authority || failed "an Authority Plane assertion failed"
     fi
     if [ "${profile}" = multi-data-plane ]; then
-        step "${profile}: decisions by the IAM Host's tokens (WP-12.6)"
+        step "${profile}: decisions by the Authority Plane's tokens"
         dc run --rm lab assert "${profile}" tokens || failed "a token assertion failed"
         step "${profile}: evaluation latency with token verification on (WP-14.1)"
         dc run --rm -e "LAB_P99_OBJECTIVE_MS=$(jq -r '.p99_ms.required' bench/slo.json)" lab assert "${profile}" latency ||

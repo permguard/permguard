@@ -438,7 +438,7 @@ fn plan(
             reason,
             plan_id: issued.plan.plan_id.clone(),
             plan_digest: issued.plan_digest,
-            expires: permguard_host::api::grants::rfc3339(issued.expires),
+            expires: permguard_host::api::rfc3339(issued.expires),
         },
         globals.output,
         trace,

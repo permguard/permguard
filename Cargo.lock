@@ -2382,6 +2382,7 @@ name = "permguard-all-in-one"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "permguard-authority-plane",
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
@@ -2393,6 +2394,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-authority-plane"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "axum",
+ "base64 0.23.1",
+ "http",
+ "http-body-util",
+ "permguard-core",
+ "permguard-host",
+ "permguard-objects",
+ "permguard-server",
+ "permguard-transport",
+ "prost",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tower",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "permguard-cli"
 version = "0.1.0"
 dependencies = [
@@ -2401,6 +2431,7 @@ dependencies = [
  "base64 0.23.1",
  "clap",
  "clap_complete",
+ "permguard-authority-plane",
  "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
@@ -2411,6 +2442,7 @@ dependencies = [
  "permguard-notp",
  "permguard-objects",
  "permguard-server",
+ "permguard-std",
  "permguard-stream",
  "permguard-transport",
  "rcgen",
@@ -2423,6 +2455,7 @@ dependencies = [
  "tokio",
  "toml",
  "tonic",
+ "zeroize",
 ]
 
 [[package]]
@@ -2436,6 +2469,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "permguard-authority-plane",
  "permguard-control-client",
  "permguard-core",
  "permguard-decisions",
@@ -2485,6 +2519,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "zeroize",
 ]
 
 [[package]]
@@ -2496,6 +2531,7 @@ dependencies = [
  "base64 0.23.1",
  "http",
  "http-body-util",
+ "permguard-authority-plane",
  "permguard-conformance",
  "permguard-control-client",
  "permguard-core",
@@ -2612,7 +2648,6 @@ dependencies = [
 name = "permguard-host"
 version = "0.1.0"
 dependencies = [
- "argon2",
  "base64 0.23.1",
  "hmac",
  "permguard-core",

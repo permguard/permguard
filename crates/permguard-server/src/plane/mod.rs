@@ -127,6 +127,21 @@ pub trait PlaneModule: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// The paths where `Authorization` is the client's own credential, not a bearer token: a
+    /// token endpoint's `client_secret_basic`, which the boundary hands to the route unread. The
+    /// default names none.
+    fn client_authentication_paths(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Whether this plane, though selected, has nothing to serve under `config`: it is then not
+    /// declared to the Host, and runs no check and no service. The default is never dormant.
+    fn dormant(&self, config: &permguard_core::Config) -> bool {
+        let _ = config;
+
+        false
+    }
+
     /// What this plane requires of a configuration before the process starts.
     ///
     /// The hook exists because a plane's own requirements are the plane's, and the server has no
@@ -533,6 +548,7 @@ impl PlaneService {
             .limits(self.module.limits(context.config()))
             .metrics(context.metrics().clone())
             .authenticator(context.authenticator())
+            .client_authentication(self.module.client_authentication_paths())
             .upstream_tls(context.config().public_tls_terminated_upstream())
             .start()
             .await
@@ -644,6 +660,7 @@ impl PlaneServer {
         )
         .with_declared_settings(declared_settings_for(&self.planes))
         .with_section_settings("runtime", runtime_settings)
+        .with_section_settings("authority", settings::authority_settings)
         .with_service(Box::new(
             TelemetryService::new()
                 .with_configuration(server_configuration_document)
@@ -697,7 +714,7 @@ impl PlaneServer {
         for plane in &self.planes {
             let module = plane.module();
             app = app.with_plane_declaration(move |config| {
-                plane_enabled(config, module.id()).then(|| {
+                (plane_enabled(config, module.id()) && !module.dormant(config)).then(|| {
                     (
                         module.id(),
                         plane_required(config, module.id()),
@@ -779,7 +796,7 @@ impl PlaneServer {
             // checks and services included, not merely its listeners.
             let module = plane.module();
             app = app.with_startup_check(move |config| {
-                if !plane_enabled(config, module.id()) {
+                if !plane_enabled(config, module.id()) || module.dormant(config) {
                     return Ok(());
                 }
 
