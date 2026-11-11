@@ -5,8 +5,8 @@
 //! key, from the flags or the configuration, obtain a token at the Authority Plane's token
 //! endpoint; every command that reaches a Plane or a Host API sends it when no `--token-file` is
 //! given. The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by
-//! the access key, the Authority Plane and what it asked for, and reused until a minute before it
-//! expires. Nothing here traces a secret or a token: the trace names the access key and the expiry.
+//! the access key, whether flagged, configured or named by the key file, its secret key, the
+//! Authority Plane and what it asked for, and reused until a minute before it expires. Nothing here traces a secret or a token: the trace names the access key and the expiry.
 
 use std::path::{Path, PathBuf};
 
@@ -90,13 +90,12 @@ pub fn access_key_of(text: &str) -> Option<String> {
         .filter(|key| key.starts_with("pgak_"))
 }
 
-/// The client the flags or the configuration name, when there is one: its token source. A key
-/// file names its access key itself, so `--secret-key-file` alone is enough.
-pub fn source(
+/// The client the flags or the configuration name, when there is one: its access key and its
+/// secret key. A key file names its access key itself, so `--secret-key-file` alone is enough.
+fn credentials(
     globals: &Globals,
     store: &Store,
-    trace: &Trace,
-) -> Result<Option<TokenSource>, Failure> {
+) -> Result<Option<(String, Zeroizing<String>)>, Failure> {
     let secret_file = match &globals.secret_key_file {
         Some(flag) if flag.is_absolute() => Some(flag.clone()),
         Some(flag) => Some(globals.workdir.join(flag)),
@@ -126,6 +125,19 @@ pub fn source(
     let access_key = named.or_else(|| access_key_of(&text)).ok_or_else(|| {
         Failure::usage("the client names its access key: --access-key or auth.client.access_key")
     })?;
+    Ok(Some((access_key, secret)))
+}
+
+/// The client the flags or the configuration name, when there is one: its token source, and where
+/// its token is kept.
+fn source(
+    globals: &Globals,
+    store: &Store,
+    trace: &Trace,
+) -> Result<Option<(TokenSource, Option<PathBuf>)>, Failure> {
+    let Some((access_key, secret)) = credentials(globals, store)? else {
+        return Ok(None);
+    };
     let endpoint = authority_endpoint(globals, store).ok_or_else(|| {
         Failure::usage(
             "the client obtains its tokens at the Authority Plane: --authority-endpoint or \
@@ -136,8 +148,10 @@ pub fn source(
     trace.say(format!(
         "the access key {access_key} obtains its tokens at {endpoint}"
     ));
-    TokenSource::new(&endpoint, &access_key, secret, scope(store), tls)
-        .map(Some)
+    let scope = scope(store);
+    let cache = cache_path(&access_key, &secret, &endpoint, scope.as_deref());
+    TokenSource::new(&endpoint, &access_key, secret, scope, tls)
+        .map(|source| Some((source, cache)))
         .map_err(|failure| Failure::from_client(&failure))
 }
 
@@ -148,10 +162,9 @@ pub fn token(
     store: &Store,
     trace: &Trace,
 ) -> Result<Option<Credential>, Failure> {
-    let Some(source) = source(globals, store, trace)? else {
+    let Some((source, cache)) = source(globals, store, trace)? else {
         return Ok(None);
     };
-    let cache = cache_path(globals, store);
     if let Some(held) = cache.as_deref().and_then(read_cached) {
         source.hold(held);
     }
@@ -171,31 +184,41 @@ pub fn token(
 /// Drops the token kept for the configured client: a surface refused it, revoked or suspended,
 /// and the next command obtains another rather than sending it again.
 pub fn forget(globals: &Globals, store: &Store) {
-    if let Some(path) = cache_path(globals, store) {
+    let Ok(Some((access_key, secret))) = credentials(globals, store) else {
+        return;
+    };
+    let Some(endpoint) = authority_endpoint(globals, store) else {
+        return;
+    };
+    if let Some(path) = cache_path(&access_key, &secret, &endpoint, scope(store).as_deref()) {
         let _ = std::fs::remove_file(path);
     }
 }
 
-/// Where the token for this client is kept: none without a home directory.
-fn cache_path(globals: &Globals, store: &Store) -> Option<PathBuf> {
-    let home = crate::settings::home_directory().ok()?;
-    // Not a secret, a name: which key, where, for what.
-    let key = format!(
-        "{}\n{}\n{}",
-        access_key(globals, store).unwrap_or_default(),
-        authority_endpoint(globals, store).unwrap_or_default(),
-        scope(store).unwrap_or_default()
-    );
-    let digest = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
-    let name: String = digest.as_ref()[..16]
+/// The name a client's token is kept under: which access key, where and for what, keyed by its
+/// secret key, so another key file, or the same access key with another secret, never reads it.
+/// An HMAC, so the name says nothing of the secret.
+fn cache_name(access_key: &str, secret: &str, endpoint: &str, scope: Option<&str>) -> String {
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
+    let named = format!("{access_key}\n{endpoint}\n{}", scope.unwrap_or_default());
+    ring::hmac::sign(&key, named.as_bytes()).as_ref()[..16]
         .iter()
         .map(|byte| format!("{byte:02x}"))
-        .collect();
-    Some(
-        home.join(".permguard")
-            .join("tokens")
-            .join(format!("{name}.json")),
-    )
+        .collect()
+}
+
+/// Where the token for this client is kept: none without a home directory.
+fn cache_path(
+    access_key: &str,
+    secret: &str,
+    endpoint: &str,
+    scope: Option<&str>,
+) -> Option<PathBuf> {
+    let home = crate::settings::home_directory().ok()?;
+    Some(home.join(".permguard").join("tokens").join(format!(
+        "{}.json",
+        cache_name(access_key, secret, endpoint, scope)
+    )))
 }
 
 /// A file only its owner reads, of at most [`FILE_MAX`] bytes: never a link or a FIFO, and the file
@@ -397,7 +420,7 @@ fn write_cached(path: &Path, issued: &Issued) {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_secret_file, secret_file_refusal};
+    use super::{cache_name, read_secret_file, secret_file_refusal};
 
     const READER: u32 = 65532;
 
@@ -479,5 +502,32 @@ mod tests {
         let refused = read_secret_file(&file).expect_err("readable by its group");
         assert!(refused.message.contains("chmod 600"), "{}", refused.message);
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// A token is kept apart for every access key, secret key, Authority Plane and scope: one
+    /// client's token is never another's, and the name keeps nothing of the secret.
+    #[test]
+    fn every_client_keeps_its_token_apart() {
+        let name = |key, secret, endpoint, scope| cache_name(key, secret, endpoint, scope);
+        let one = name("pgak_A", "pgsk_a", "https://authority:8443", None);
+        assert_eq!(
+            one,
+            name("pgak_A", "pgsk_a", "https://authority:8443", None)
+        );
+        assert_eq!(one.len(), 32);
+        for other in [
+            name("pgak_B", "pgsk_a", "https://authority:8443", None),
+            name("pgak_A", "pgsk_b", "https://authority:8443", None),
+            name("pgak_A", "pgsk_a", "https://other:8443", None),
+            name(
+                "pgak_A",
+                "pgsk_a",
+                "https://authority:8443",
+                Some("catalog.read@plane/control"),
+            ),
+        ] {
+            assert_ne!(one, other);
+        }
+        assert!(!one.contains("pgsk"));
     }
 }

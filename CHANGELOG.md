@@ -40,7 +40,7 @@ is cut.
   When every key is lost, `permguard authority admin-key --volume <dir> --secret-out <file>` makes a new one on the stopped server's volume, and the next start records it in the audit trail.
 - **`permguard authority`: service accounts, scopes, access keys and tokens from the command line.**
   `authority service-accounts`, `scopes`, `keys` and `tokens` over REST or gRPC as `--authority-endpoint` says, `authority token` for the configured client, and `authority admin-key` offline.
-  The command line acts as a service account with `--access-key` and `--secret-key-file` (`auth.client.access_key`, `auth.client.secret_file`), obtains its token at the Authority Plane and keeps it under `~/.permguard/tokens/` until a minute before it expires; a secret key is sent only over verified TLS.
+  The command line acts as a service account with `--access-key` and `--secret-key-file` (`auth.client.access_key`, `auth.client.secret_file`), obtains its token at the Authority Plane and keeps it under `~/.permguard/tokens/`, apart for every access key, secret key, Authority Plane and scope, until a minute before it expires; a secret key is sent only over verified TLS.
 - **`scripts/cli-tour.sh`: the whole command line on a disposable all-in-one.**
   It starts the all-in-one image in Docker, reads `admin`'s key the Authority Plane wrote at its first start, creates a service account with its scope, its access key and a token, creates a zone and a ledger, applies `examples/basics`, asks decisions and reads them back from the control plane, then removes everything (`KEEP=1` keeps it).
 

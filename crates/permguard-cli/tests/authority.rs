@@ -363,6 +363,30 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
         );
         assert!(!refused.status.success(), "{scheme}: {refused:?}");
 
+        // A key file names its access key, so `--secret-key-file` alone is enough: each key
+        // file keeps its own token, and the account never acts with the administrator's, kept
+        // the command before.
+        let alone = |secret: &Path, args: &[&str]| {
+            let mut full = vec![
+                "-o",
+                "json",
+                "--authority-endpoint",
+                &endpoint,
+                "--tls-ca-file",
+                &ca,
+                "--secret-key-file",
+                secret.to_str().expect("a UTF-8 path"),
+            ];
+            full.extend_from_slice(args);
+            let output = cli(&dir, &full);
+            assert!(!printed_a_secret(&output), "{scheme}: {output:?}");
+            output
+        };
+        let listed = alone(&admin_key, &["authority", "service-accounts", "list"]);
+        assert!(listed.status.success(), "{scheme}: {listed:?}");
+        let refused = alone(&secret, &["authority", "service-accounts", "list"]);
+        assert!(!refused.status.success(), "{scheme}: {refused:?}");
+
         // Listed by its account, never shown; revoked by its `jti`, and the Host refuses it.
         // Two: the one written to the file, and the one the refused call obtained.
         let listed = as_admin(&["authority", "tokens", "list", "--account", &account]);
