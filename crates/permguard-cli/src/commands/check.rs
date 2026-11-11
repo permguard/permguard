@@ -88,13 +88,10 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;
-    let answer = client.evaluate(&payload).map_err(|failure| {
-        // A token the plane refused is not kept for the next command.
-        if failure.class == "unauthenticated" && globals.token_file.is_none() {
-            crate::client_token::forget(globals, &store);
-        }
-        Failure::from_client(&failure)
-    })?;
+    // A token the plane refused is not kept for the next command: `shell` drops it.
+    let answer = client
+        .evaluate(&payload)
+        .map_err(|failure| Failure::from_client(&failure))?;
 
     // Inside a checkout the policies a plane cites can be named the way `test` names them: by
     // the alias their author wrote, read from the head this workspace tracks. Anywhere else the

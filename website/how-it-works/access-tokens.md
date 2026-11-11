@@ -45,6 +45,15 @@ permguard authority tokens list --account billing
 permguard authority tokens revoke <jti>
 ```
 
+The command line keeps its client's token under `~/.permguard/tokens/` until a minute before it expires.
+A token's bearer may always revoke its own, without `tokens.revoke`:
+
+```sh
+permguard authority whoami         # the token in use: account, access key, scopes, jti, expiry; never the token
+permguard authority token revoke   # revoked on every Plane, and dropped; the next command obtains another
+permguard authority token forget   # dropped here only: it stays valid until it expires
+```
+
 ## Signals
 
 | Metric                                       | Meaning                                                     |

@@ -164,9 +164,13 @@ fn run_command(args: Vec<std::ffi::OsString>) -> ExitCode {
         );
     }
 
+    let globals = cli.globals.clone();
     match dispatch(cli) {
         Ok(code) => code,
-        Err(failure) => ExitCode::from(failure.report(format)),
+        Err(failure) => {
+            crate::client_token::forget_refused(&globals, &failure.code);
+            ExitCode::from(failure.report(format))
+        }
     }
 }
 

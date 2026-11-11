@@ -242,6 +242,16 @@ fn invalid(message: impl Into<String>) -> Refusal {
     )
 }
 
+/// The bearer's principal, when `jti` names the very token it presents.
+fn own_token(actor: &Actor, jti: &str) -> Option<String> {
+    let Actor::Authenticated(context) = actor else {
+        return None;
+    };
+    let presented = tokens::parse_id(&context.token()?.jti)?;
+    (tokens::parse_id(jti)? == presented)
+        .then(|| context.authorization_principal().as_str().to_owned())
+}
+
 fn not_found(message: impl Into<String>) -> Refusal {
     refused(ErrorClass::NotFound, codes::common::NOT_FOUND, message)
 }
@@ -1702,14 +1712,19 @@ impl Authority {
     }
 
     /// `POST /authority/v1/tokens/{jti}/revoke`: `INVALID` in its list, at once here and on each
-    /// Plane once it holds the list.
+    /// Plane once it holds the list; under `tokens.revoke`, or by the token's own bearer.
     pub fn revoke_token(
         &self,
         actor: &Actor,
         jti: &str,
         revoke: RevokeToken,
     ) -> Result<TokenView, Refusal> {
-        let principal = self.admit(actor, operations::TOKENS_REVOKE)?;
+        // A bearer may always end its own token: that widens nothing. Any other is
+        // `tokens.revoke`'s.
+        let principal = match own_token(actor, jti) {
+            Some(principal) => principal,
+            None => self.admit(actor, operations::TOKENS_REVOKE)?,
+        };
         let id = tokens::parse_id(jti).ok_or_else(|| not_found(format!("no token `{jti}`")))?;
         let now = self.now();
         let rebuild = || {
@@ -1872,5 +1887,41 @@ mod tests {
             source_key("2001:db8:1:2:3:4:5:6"),
             "source:2001:db8:1:2::/64"
         );
+    }
+
+    /// A bearer names its own token by its `jti`, however it is spelt; any other `jti`, or a
+    /// caller without a token, is left to `tokens.revoke`.
+    #[test]
+    fn a_bearer_may_revoke_its_own_token_only() {
+        use permguard_core::authz::{ActorContext, Credential, Principal, TokenGrant};
+
+        let jti = "0198f2aa-0000-7000-8000-000000000001";
+        let bearer = Actor::Authenticated(ActorContext::of_token(
+            Principal::new("sa:billing").unwrap_or_else(|_| unreachable!("a principal")),
+            TokenGrant {
+                scopes: vec![scope(&["decision.evaluate"], "plane/data/*")],
+                jti: jti.to_owned(),
+                list_uri: String::new(),
+                list_iat: 0,
+                list_digest: [0; 32],
+            },
+        ));
+        assert_eq!(own_token(&bearer, jti).as_deref(), Some("sa:billing"));
+        assert_eq!(
+            own_token(&bearer, &jti.to_uppercase()).as_deref(),
+            Some("sa:billing")
+        );
+        assert_eq!(
+            own_token(&bearer, "0198f2aa-0000-7000-8000-000000000002"),
+            None
+        );
+        assert_eq!(own_token(&bearer, "not-a-jti"), None);
+        let certificate = Actor::Authenticated(ActorContext::new(
+            Principal::new("cert:sha256:ab").unwrap_or_else(|_| unreachable!("a principal")),
+            Credential::Certificate,
+            None,
+        ));
+        assert_eq!(own_token(&certificate, jti), None);
+        assert_eq!(own_token(&Actor::Anonymous, jti), None);
     }
 }

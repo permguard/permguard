@@ -92,7 +92,7 @@ pub fn access_key_of(text: &str) -> Option<String> {
 
 /// The client the flags or the configuration name, when there is one: its access key and its
 /// secret key. A key file names its access key itself, so `--secret-key-file` alone is enough.
-fn credentials(
+pub fn credentials(
     globals: &Globals,
     store: &Store,
 ) -> Result<Option<(String, Zeroizing<String>)>, Failure> {
@@ -155,6 +155,9 @@ fn source(
         .map_err(|failure| Failure::from_client(&failure))
 }
 
+/// Whether this run sent the configured client's token, so a refusal of it drops the kept copy.
+static SENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The configured client's token, from the cache while it serves, else obtained now: `None`
 /// without a client.
 pub fn token(
@@ -178,19 +181,56 @@ pub fn token(
         "acting with the client's token, valid until {}",
         permguard_core::time::to_rfc3339(i64::try_from(issued.expires_at).unwrap_or(i64::MAX))
     ));
+    SENT.store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(Some(issued.token))
+}
+
+/// After a command failed: when a surface refused the client's token this run sent, revoked,
+/// suspended or expired, the kept copy is dropped, and the next command obtains another rather
+/// than sending it again.
+pub fn forget_refused(globals: &Globals, code: &str) {
+    if code != permguard_core::codes::common::UNAUTHENTICATED
+        || !SENT.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        return;
+    }
+    if let Ok(store) = crate::session::open_store(globals, &Trace::new(false)) {
+        forget(globals, &store);
+    }
+}
+
+/// The client's kept token, while it has not expired, and where it is kept: `None` without a
+/// client or a kept token.
+pub fn kept(globals: &Globals, store: &Store) -> Result<Option<(Issued, PathBuf)>, Failure> {
+    let Some(path) = client_cache(globals, store)? else {
+        return Ok(None);
+    };
+    Ok(read_kept(&path, 0).map(|issued| (issued, path)))
+}
+
+/// Where the configured client's token is kept: `None` without a client or a home directory.
+pub fn client_cache(globals: &Globals, store: &Store) -> Result<Option<PathBuf>, Failure> {
+    let Some((access_key, secret)) = credentials(globals, store)? else {
+        return Ok(None);
+    };
+    let endpoint = authority_endpoint(globals, store).ok_or_else(|| {
+        Failure::usage(
+            "the client obtains its tokens at the Authority Plane: --authority-endpoint or \
+             auth.client.authority_endpoint",
+        )
+    })?;
+    Ok(cache_path(
+        &access_key,
+        &secret,
+        &endpoint,
+        scope(store).as_deref(),
+    ))
 }
 
 /// Drops the token kept for the configured client: a surface refused it, revoked or suspended,
 /// and the next command obtains another rather than sending it again.
 pub fn forget(globals: &Globals, store: &Store) {
-    let Ok(Some((access_key, secret))) = credentials(globals, store) else {
-        return;
-    };
-    let Some(endpoint) = authority_endpoint(globals, store) else {
-        return;
-    };
-    if let Some(path) = cache_path(&access_key, &secret, &endpoint, scope(store).as_deref()) {
+    if let Ok(Some(path)) = client_cache(globals, store) {
         let _ = std::fs::remove_file(path);
     }
 }
@@ -353,6 +393,11 @@ fn private_directory(directory: &Path) -> bool {
 }
 
 fn read_cached(path: &Path) -> Option<Issued> {
+    read_kept(path, REFRESH_AHEAD.as_secs())
+}
+
+/// The token kept at `path` while more than `ahead` seconds of it remain.
+fn read_kept(path: &Path, ahead: u64) -> Option<Issued> {
     if !path.parent().is_some_and(private_directory) {
         return None;
     }
@@ -363,7 +408,7 @@ fn read_cached(path: &Path) -> Option<Issued> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs());
-    (expires_at > now + REFRESH_AHEAD.as_secs()).then(|| Issued {
+    (expires_at > now + ahead).then(|| Issued {
         token: Credential::new(token.as_bytes().to_vec()),
         expires_at,
     })

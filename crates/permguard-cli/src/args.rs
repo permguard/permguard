@@ -1488,7 +1488,11 @@ mod tests {
                 .get_subcommands()
                 .filter(|subcommand| subcommand.get_name() != "help")
                 .collect();
-            if subcommands.is_empty() && !path.is_empty() {
+            // A command is one a user runs: a leaf, or one that runs alone beside its
+            // subcommands (`authority token --out` beside `authority token forget`).
+            if (subcommands.is_empty() || command.is_args_conflicts_with_subcommands_set())
+                && !path.is_empty()
+            {
                 out.insert(path.trim().to_owned());
             }
             for subcommand in subcommands {
@@ -1735,9 +1739,11 @@ mod tests {
                 return;
             }
 
+            // A leaf, or a command that runs alone beside its subcommands.
             let does_something = command
                 .get_subcommands()
-                .all(|subcommand| subcommand.get_name() == "help");
+                .all(|subcommand| subcommand.get_name() == "help")
+                || command.is_args_conflicts_with_subcommands_set();
             let examples = command.get_after_help().map(ToString::to_string);
 
             match (does_something, examples) {
@@ -2817,11 +2823,21 @@ pub enum AuthorityAction {
         #[command(subcommand)]
         action: KeysOfAccountAction,
     },
-    /// A token for the configured client, written to a new file only its owner reads.
+    /// The token in use: its account, access key, scopes, `jti` and expiry, never the token.
     #[command(
-        after_help = "Examples:\n  permguard authority token --out ~/.permguard/token\n  permguard authority token --scope decision.evaluate --lifetime 600 --out token.jwt"
+        after_help = "Examples:\n  permguard authority whoami\n  permguard authority whoami -o json"
+    )]
+    Whoami,
+    /// A token for the configured client, written to a new file only its owner reads; or the
+    /// client's kept token, forgotten or revoked.
+    #[command(
+        args_conflicts_with_subcommands = true,
+        subcommand_negates_reqs = true,
+        after_help = "Examples:\n  permguard authority token --out ~/.permguard/token\n  permguard authority token --scope decision.evaluate --lifetime 600 --out token.jwt\n  permguard authority token forget\n  permguard authority token revoke"
     )]
     Token {
+        #[command(subcommand)]
+        action: Option<TokenAction>,
         /// The operations asked, comma or space separated, narrowing the account's.
         #[arg(long)]
         scope: Option<String>,
@@ -2829,8 +2845,8 @@ pub enum AuthorityAction {
         #[arg(long, value_name = "SECONDS")]
         lifetime: Option<u64>,
         /// The new file the token is written to.
-        #[arg(long, value_name = "FILE")]
-        out: PathBuf,
+        #[arg(long, value_name = "FILE", required = true)]
+        out: Option<PathBuf>,
     },
     /// The tokens issued: list and revoke.
     Tokens {
@@ -2979,6 +2995,23 @@ pub enum KeysOfAccountAction {
         #[arg(value_name = "ACCESS_KEY")]
         key: String,
     },
+}
+
+/// `permguard authority token …`: the configured client's kept token.
+#[derive(Debug, Subcommand)]
+pub enum TokenAction {
+    /// Drop the client's kept token: it stays valid until it expires, and the next command
+    /// obtains another.
+    #[command(
+        after_help = "Examples:\n  permguard authority token forget\n  permguard authority token forget -o json"
+    )]
+    Forget,
+    /// Revoke the token in use, `--token-file`'s or the client's kept one, on every Plane, and
+    /// drop it: the next command obtains another. A bearer may always revoke its own token.
+    #[command(
+        after_help = "Examples:\n  permguard authority token revoke\n  permguard authority token revoke --token-file token.jwt -o json"
+    )]
+    Revoke,
 }
 
 /// `permguard authority tokens …`.

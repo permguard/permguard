@@ -386,12 +386,106 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
         assert!(listed.status.success(), "{scheme}: {listed:?}");
         let refused = alone(&secret, &["authority", "service-accounts", "list"]);
         assert!(!refused.status.success(), "{scheme}: {refused:?}");
+        // The refusal names who, what and where, and a denial has no class.
+        let denied: Value = serde_json::from_slice(&refused.stderr).expect("a JSON failure");
+        assert_eq!(denied["code"], "forbidden", "{denied}");
+        assert!(denied.get("class").is_none(), "{denied}");
+        assert_eq!(
+            denied["message"],
+            format!(
+                "the token of `sa:{account}` carries no scope for `accounts.read` on the \
+                 resource asked"
+            ),
+            "{denied}"
+        );
+
+        // A wrong secret names the access key and every cause `invalid_client` covers.
+        let wrong = dir.join(format!("{account}-wrong.key"));
+        std::fs::write(
+            &wrong,
+            format!(
+                "access_key: {access_key}\nsecret_key: pgsk_{}\n",
+                "A".repeat(43)
+            ),
+        )
+        .expect("written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&wrong, std::fs::Permissions::from_mode(0o600)).expect("0600");
+        }
+        let unaccepted = alone(&wrong, &["authority", "whoami"]);
+        assert!(!unaccepted.status.success(), "{scheme}: {unaccepted:?}");
+        let unaccepted: Value = serde_json::from_slice(&unaccepted.stderr).expect("JSON");
+        assert_eq!(unaccepted["code"], "invalid_client", "{unaccepted}");
+        assert_eq!(
+            unaccepted["message"],
+            format!(
+                "the Authority Plane did not accept the access key {access_key}: its secret key \
+                 does not match, the key is unknown, expired or deleted, or its account is \
+                 suspended"
+            ),
+            "{unaccepted}"
+        );
+
+        // `whoami` names the token in use, never shows it.
+        let whoami = |secret: &Path| {
+            let output = alone(secret, &["authority", "whoami"]);
+            assert!(output.status.success(), "{scheme}: {output:?}");
+            serde_json::from_slice::<Value>(&output.stdout).expect("JSON")
+        };
+        let kept = whoami(&secret);
+        assert_eq!(kept["account"], format!("sa:{account}"), "{kept}");
+        assert_eq!(kept["access_key"], access_key.as_str(), "{kept}");
+        assert_eq!(kept["source"], "client", "{kept}");
+        assert_eq!(kept["scopes"][0]["selector"], "plane/data/*", "{kept}");
+        assert!(
+            kept["expires_in"].as_u64().is_some_and(|left| left > 60),
+            "{kept}"
+        );
+        let kept_in = PathBuf::from(kept["kept_in"].as_str().expect("where it is kept"));
+        assert!(kept_in.is_file(), "{scheme}: {kept}");
+        let kept_jti = kept["jti"].as_str().expect("a jti").to_owned();
+
+        // Its own bearer revokes it, without `tokens.revoke`, and it is kept no more.
+        let revoked = alone(&secret, &["authority", "token", "revoke"]);
+        assert!(revoked.status.success(), "{scheme}: {revoked:?}");
+        let revoked: Value = serde_json::from_slice(&revoked.stdout).expect("JSON");
+        assert_eq!(revoked["jti"], kept_jti.as_str(), "{revoked}");
+        assert_eq!(revoked["status"], "invalid", "{revoked}");
+        assert!(!kept_in.exists(), "{scheme}: a revoked token is not kept");
+
+        // The next command obtains another; forgetting drops it, once.
+        let renewed = whoami(&secret);
+        assert_ne!(renewed["jti"], kept_jti.as_str(), "{renewed}");
+        for forgotten in [true, false] {
+            let output = alone(&secret, &["authority", "token", "forget"]);
+            assert!(output.status.success(), "{scheme}: {output:?}");
+            let output: Value = serde_json::from_slice(&output.stdout).expect("JSON");
+            assert_eq!(output["forgotten"], forgotten, "{output}");
+        }
+        let nothing = alone(&secret, &["authority", "token", "revoke"]);
+        assert!(nothing.status.success(), "{scheme}: {nothing:?}");
+        let nothing: Value = serde_json::from_slice(&nothing.stdout).expect("JSON");
+        assert!(nothing["revoked"].is_null(), "{nothing}");
+
+        // A kept token revoked elsewhere is refused, and the refusal drops it.
+        let again = whoami(&secret);
+        let again_jti = again["jti"].as_str().expect("a jti").to_owned();
+        as_admin(&["authority", "tokens", "revoke", &again_jti]);
+        let refused = alone(&secret, &["authority", "service-accounts", "list"]);
+        assert!(!refused.status.success(), "{scheme}: {refused:?}");
+        let refused: Value = serde_json::from_slice(&refused.stderr).expect("JSON");
+        assert_eq!(refused["code"], "unauthenticated", "{refused}");
+        assert!(!kept_in.exists(), "{scheme}: a refused token is not kept");
+        assert_ne!(whoami(&secret)["jti"], again_jti.as_str());
 
         // Listed by its account, never shown; revoked by its `jti`, and the Host refuses it.
-        // Two: the one written to the file, and the one the refused call obtained.
+        // Five: the one written to the file, the one the refused call obtained and its own bearer
+        // revoked, the one forgotten, the one revoked elsewhere and the one obtained after.
         let listed = as_admin(&["authority", "tokens", "list", "--account", &account]);
         let tokens = listed.as_array().expect("a list of tokens");
-        assert_eq!(tokens.len(), 2, "{listed}");
+        assert_eq!(tokens.len(), 5, "{listed}");
         let jti = jti_of(token.trim());
         assert!(
             tokens.iter().any(|listed| listed["jti"] == jti.as_str()),

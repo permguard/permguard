@@ -365,7 +365,7 @@
       "post": {
         "operationId": "revokeAccessToken",
         "summary": "Revoke a token",
-        "description": "Under `tokens.revoke` on `plane/authority`: `INVALID` in its list, at once on this Host and on each Plane once it holds the list. Answers the token revoked.",
+        "description": "Under `tokens.revoke` on `plane/authority`, or by the token's own bearer: `INVALID` in its list, at once on this Host and on each Plane once it holds the list. Answers the token revoked.",
         "parameters": [
           {
             "name": "jti",

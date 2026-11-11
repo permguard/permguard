@@ -139,24 +139,27 @@ The **State** cell is one of:
 The Authority Plane's service accounts, their scopes and access keys, and the tokens it issued, over REST or gRPC as `--authority-endpoint` says; the client a command line acts as obtains its tokens as `2-security/7` says.
 A secret key is written once to a new file only its owner reads, and never printed.
 
-| Command                              | Grant            | State   | Why |
-| ------------------------------------ | ---------------- | ------- | --- |
-| `authority service-accounts list`    | `accounts.read`  | present |     |
-| `authority service-accounts get`     | `accounts.read`  | present |     |
-| `authority service-accounts create`  | `accounts.write` | present |     |
-| `authority service-accounts update`  | `accounts.write` | present |     |
-| `authority service-accounts suspend` | `accounts.write` | present |     |
-| `authority service-accounts resume`  | `accounts.write` | present |     |
-| `authority service-accounts delete`  | `accounts.write` | present |     |
-| `authority scopes get`               | `accounts.read`  | present |     |
-| `authority scopes set`               | `accounts.write` | present |     |
-| `authority keys list`                | `accounts.read`  | present |     |
-| `authority keys create`              | `accounts.write` | present |     |
-| `authority keys delete`              | `accounts.write` | present |     |
-| `authority tokens list`              | `tokens.read`    | present |     |
-| `authority tokens revoke`            | `tokens.revoke`  | present |     |
-| `authority token`                    | the access key   | present |     |
-| `authority admin-key`                | offline          | present |     |
+| Command                              | Grant                       | State   | Why |
+| ------------------------------------ | --------------------------- | ------- | --- |
+| `authority service-accounts list`    | `accounts.read`             | present |     |
+| `authority service-accounts get`     | `accounts.read`             | present |     |
+| `authority service-accounts create`  | `accounts.write`            | present |     |
+| `authority service-accounts update`  | `accounts.write`            | present |     |
+| `authority service-accounts suspend` | `accounts.write`            | present |     |
+| `authority service-accounts resume`  | `accounts.write`            | present |     |
+| `authority service-accounts delete`  | `accounts.write`            | present |     |
+| `authority scopes get`               | `accounts.read`             | present |     |
+| `authority scopes set`               | `accounts.write`            | present |     |
+| `authority keys list`                | `accounts.read`             | present |     |
+| `authority keys create`              | `accounts.write`            | present |     |
+| `authority keys delete`              | `accounts.write`            | present |     |
+| `authority tokens list`              | `tokens.read`               | present |     |
+| `authority tokens revoke`            | `tokens.revoke`, or its own | present |     |
+| `authority token`                    | the access key              | present |     |
+| `authority token forget`             | none                        | present |     |
+| `authority token revoke`             | its own token               | present |     |
+| `authority whoami`                   | none                        | present |     |
+| `authority admin-key`                | offline                     | present |     |
 
 ## Offline provisioning
 

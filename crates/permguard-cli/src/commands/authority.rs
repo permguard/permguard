@@ -10,11 +10,12 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use permguard_control_client::authority::{Authority, Scope, TokenAsk};
+use permguard_control_client::tls::Credential;
 
 use super::host::{Reserved, render_json, request_id, rooted_file, volume_of};
 use crate::args::{
     AuthorityAction, Globals, KeysOfAccountAction, ScopesAction, ServiceAccountsAction,
-    TokensAction,
+    TokenAction, TokensAction,
 };
 use crate::failure::{EXIT_READY, Failure};
 use crate::trace::Trace;
@@ -53,20 +54,30 @@ fn authority(
     trace: &Trace,
 ) -> Result<Box<dyn Authority + Send + Sync>, Failure> {
     let store = crate::session::open_store(globals, trace)?;
-    let url = crate::client_token::authority_endpoint(globals, &store).ok_or_else(|| {
-        Failure::usage(
-            "the Authority Plane is reached at --authority-endpoint or \
-             auth.client.authority_endpoint",
-        )
-    })?;
     // The operator's own token when one is given, otherwise the client's.
     let bearer = match crate::target::base_tls(globals, &store, trace)?.token {
         Some(given) => Some(given),
         None => crate::client_token::token(globals, &store, trace)?,
     };
+    authority_as(globals, &store, bearer, trace)
+}
+
+/// The Authority Plane over its own connection, presenting `bearer`.
+fn authority_as(
+    globals: &Globals,
+    store: &crate::settings::Store,
+    bearer: Option<Credential>,
+    trace: &Trace,
+) -> Result<Box<dyn Authority + Send + Sync>, Failure> {
+    let url = crate::client_token::authority_endpoint(globals, store).ok_or_else(|| {
+        Failure::usage(
+            "the Authority Plane is reached at --authority-endpoint or \
+             auth.client.authority_endpoint",
+        )
+    })?;
     let tls = permguard_control_client::tls::TlsOptions {
         token: bearer,
-        ..crate::client_token::authority_tls(globals, &store, trace)?
+        ..crate::client_token::authority_tls(globals, store, trace)?
     };
     permguard_control_client::authority::client(
         &url,
@@ -74,6 +85,136 @@ fn authority(
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)
+}
+
+/// Without a client and without `--token-file`, there is no token in use.
+fn no_client() -> Failure {
+    Failure::usage(
+        "no client is configured: --secret-key-file or auth.client.secret_file, with \
+         --authority-endpoint or auth.client.authority_endpoint; or --token-file",
+    )
+}
+
+/// What a token says of itself, read from its payload, unverified: the Authority Plane and every
+/// Plane verify it, this only names it.
+fn claims_of(token: &Credential) -> Result<serde_json::Value, Failure> {
+    use base64::Engine as _;
+
+    let unreadable = || Failure::usage("the token in use is not a JWT this command can read");
+    let token = std::str::from_utf8(token.expose()).map_err(|_| unreadable())?;
+    let payload = token.trim().split('.').nth(1).ok_or_else(unreadable)?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| unreadable())?;
+    let claims: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
+    if claims["jti"].as_str().is_none() {
+        return Err(unreadable());
+    }
+    Ok(claims)
+}
+
+/// A claim's time as RFC 3339, when the token states it.
+fn time_of(claims: &serde_json::Value, claim: &str) -> Option<String> {
+    claims[claim].as_i64().map(permguard_core::time::to_rfc3339)
+}
+
+/// `authority whoami`: the token in use, `--token-file`'s or the client's, kept or obtained now.
+fn whoami(globals: &Globals, trace: &Trace) -> Result<ExitCode, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let (token, kept_in) = match crate::target::base_tls(globals, &store, trace)?.token {
+        Some(given) => (given, None),
+        None => {
+            let token =
+                crate::client_token::token(globals, &store, trace)?.ok_or_else(no_client)?;
+            (token, crate::client_token::client_cache(globals, &store)?)
+        }
+    };
+    let claims = claims_of(&token)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let expires_in = claims["exp"].as_u64().map(|exp| exp.saturating_sub(now));
+    render_json(
+        &serde_json::json!({
+            "account": claims["sub"],
+            "access_key": claims["client_id"],
+            "scopes": claims["permguard_scopes"],
+            "jti": claims["jti"],
+            "issuer": claims["iss"],
+            "audience": claims["aud"],
+            "issued_at": time_of(&claims, "iat"),
+            "expires_at": time_of(&claims, "exp"),
+            "expires_in": expires_in,
+            "source": if kept_in.is_some() { "client" } else { "token file" },
+            "kept_in": kept_in.map(|path| path.display().to_string()),
+        }),
+        globals,
+        trace,
+    )?;
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `authority token forget`: the client's kept token dropped, valid still until it expires.
+fn forget(globals: &Globals, trace: &Trace) -> Result<ExitCode, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let path = crate::client_token::client_cache(globals, &store)?.ok_or_else(no_client)?;
+    let forgotten = match std::fs::remove_file(&path) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(Failure::internal(format!("{}: {error}", path.display())));
+        }
+    };
+    render_json(
+        &serde_json::json!({
+            "forgotten": forgotten,
+            "kept_in": path.display().to_string(),
+        }),
+        globals,
+        trace,
+    )?;
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `authority token revoke`: the token in use, `--token-file`'s or the client's kept one, revoked
+/// by its own bearer and dropped; never a token obtained only to be revoked.
+fn revoke_in_use(globals: &Globals, trace: &Trace) -> Result<ExitCode, Failure> {
+    let store = crate::session::open_store(globals, trace)?;
+    let (token, kept_in) = match crate::target::base_tls(globals, &store, trace)?.token {
+        Some(given) => (given, None),
+        None => match crate::client_token::kept(globals, &store)? {
+            Some((issued, path)) => (issued.token, Some(path)),
+            None => {
+                crate::client_token::client_cache(globals, &store)?.ok_or_else(no_client)?;
+                render_json(
+                    &serde_json::json!({
+                        "revoked": null,
+                        "reason": "no token is kept for this client: nothing to revoke",
+                    }),
+                    globals,
+                    trace,
+                )?;
+                return Ok(ExitCode::from(EXIT_READY));
+            }
+        },
+    };
+    let jti = claims_of(&token)?["jti"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let authority = authority_as(globals, &store, Some(token), trace)?;
+    let revoked = authority.revoke_token(&request_id(), &jti);
+    // Revoked now, or refused as revoked or expired already: either way it is not kept.
+    if let Some(path) = &kept_in
+        && revoked.as_ref().map_or_else(
+            |failure| failure.reason == permguard_core::codes::common::UNAUTHENTICATED,
+            |_| true,
+        )
+    {
+        let _ = std::fs::remove_file(path);
+    }
+    render_json(&revoked.map_err(failed)?, globals, trace)?;
+    Ok(ExitCode::from(EXIT_READY))
 }
 
 fn failed(failure: permguard_control_client::catalog::Failure) -> Failure {
@@ -91,11 +232,24 @@ pub fn authority_command(
         AuthorityAction::Scopes { action } => scopes(globals, action, trace),
         AuthorityAction::Keys { action } => keys(globals, action, trace),
         AuthorityAction::Tokens { action } => tokens(globals, action, trace),
+        AuthorityAction::Whoami => whoami(globals, trace),
         AuthorityAction::Token {
+            action: Some(TokenAction::Forget),
+            ..
+        } => forget(globals, trace),
+        AuthorityAction::Token {
+            action: Some(TokenAction::Revoke),
+            ..
+        } => revoke_in_use(globals, trace),
+        AuthorityAction::Token {
+            action: None,
             scope,
             lifetime,
             out,
-        } => token(globals, scope, lifetime, &out, trace),
+        } => {
+            let out = out.ok_or_else(|| Failure::usage("the token is written to --out <file>"))?;
+            token(globals, scope, lifetime, &out, trace)
+        }
         AuthorityAction::AdminKey { secret_out } => admin_key(globals, &secret_out, trace),
     }
 }
@@ -262,29 +416,14 @@ fn token(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     let store = crate::session::open_store(globals, trace)?;
-    let secret_file = globals.secret_key_file.as_ref().map_or_else(
-        || crate::target::configured("auth.client.secret_file", &store, globals),
-        |flag| Some(rooted_file(globals, flag)),
-    );
-    let Some(secret_file) = secret_file else {
-        return Err(Failure::usage(
-            "a token is obtained with the client's secret key: --secret-key-file or \
-             auth.client.secret_file",
-        ));
-    };
-    let text = std::fs::read_to_string(&secret_file)
-        .map(zeroize::Zeroizing::new)
-        .map_err(|error| Failure::usage(format!("{}: {error}", secret_file.display())))?;
-    let secret_key = crate::client_token::secret_of(&text)
-        .ok_or_else(|| Failure::usage(format!("{} holds no secret key", secret_file.display())))?;
-    let access_key = globals
-        .access_key
-        .clone()
-        .or_else(|| {
-            crate::target::setting_value("auth.client.access_key", &store).map(|(value, _)| value)
-        })
-        .or_else(|| crate::client_token::access_key_of(&text))
-        .ok_or_else(|| Failure::usage("the client names its access key: --access-key"))?;
+    // The key file read as every command reads it: only its owner's, or one root mounts.
+    let (access_key, secret_key) =
+        crate::client_token::credentials(globals, &store)?.ok_or_else(|| {
+            Failure::usage(
+                "a token is obtained with the client's secret key: --secret-key-file or \
+                 auth.client.secret_file",
+            )
+        })?;
     let url = crate::client_token::authority_endpoint(globals, &store)
         .ok_or_else(|| Failure::usage("the Authority Plane is reached at --authority-endpoint"))?;
     let tls = crate::client_token::authority_tls(globals, &store, trace)?;

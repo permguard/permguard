@@ -37,7 +37,8 @@ service TokenService {
   rpc GetStatusList(GetStatusListRequest) returns (GetStatusListResponse);
   // `GET /authority/v1/tokens`, under `tokens.read`.
   rpc ListTokens(ListTokensRequest) returns (ListTokensResponse);
-  // `POST /authority/v1/tokens/{jti}/revoke`, under `tokens.revoke`.
+  // `POST /authority/v1/tokens/{jti}/revoke`, under `tokens.revoke`, or by the token's own
+  // bearer.
   rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse);
 }
 

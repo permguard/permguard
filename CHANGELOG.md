@@ -41,11 +41,17 @@ is cut.
 - **`permguard authority`: service accounts, scopes, access keys and tokens from the command line.**
   `authority service-accounts`, `scopes`, `keys` and `tokens` over REST or gRPC as `--authority-endpoint` says, `authority token` for the configured client, and `authority admin-key` offline.
   The command line acts as a service account with `--access-key` and `--secret-key-file` (`auth.client.access_key`, `auth.client.secret_file`), obtains its token at the Authority Plane and keeps it under `~/.permguard/tokens/`, apart for every access key, secret key, Authority Plane and scope, until a minute before it expires; a secret key is sent only over verified TLS.
+  `authority whoami` names the token in use, its account, access key, scopes, `jti` and expiry, never the token; `authority token forget` drops the kept token, and `authority token revoke` revokes it on every Plane, which a bearer may always do for its own token without `tokens.revoke`.
+  A token a Plane refuses as unauthenticated is dropped from the cache whatever the command, and the next command obtains another.
 - **`scripts/cli-tour.sh`: the whole command line on a disposable all-in-one.**
   It starts the all-in-one image in Docker, reads `admin`'s key the Authority Plane wrote at its first start, creates a service account with its scope, its access key and a token, creates a zone and a ledger, applies `examples/basics`, asks decisions and reads them back from the control plane, then removes everything (`KEEP=1` keeps it).
 
 ### Changed
 
+- **A refusal says what was refused.**
+  A `forbidden` names the caller's principal and the operation, on every Plane and the Host: ``the token of `sa:billing` carries no scope for `accounts.read` on the resource asked``; never the resource, so an unknown name and a foreign one are still refused alike.
+  A refused token request names the access key and every cause `invalid_client` covers, since the Authority Plane never says which.
+  The command line's JSON and YAML failure carries no `class` for a denial, `unauthenticated` or `forbidden`, as the wire does, rather than an empty one.
 - **The Host listener admits an operator by an access token.**
   `admin.tls.client_auth: optional` lets an operator in with a token and no certificate; peer Hosts and the bootstrap principal still present a certificate the client CA verifies.
   `admin.allow` is no longer required outside `development`: a certificate grants nothing by itself.

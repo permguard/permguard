@@ -1529,7 +1529,8 @@ fn a_denial_reads_the_same_over_https_and_grpcs() {
         assert_eq!(answers[0], answers[1], "{command:?}");
         assert_eq!(
             answers[0],
-            (Some(64), Value::from(""), Value::from("unauthenticated")),
+            // A denial has no class, as on the wire.
+            (Some(64), Value::Null, Value::from("unauthenticated")),
             "{command:?}"
         );
     }

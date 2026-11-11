@@ -138,6 +138,7 @@ impl Authorization {
     /// it, `Some(subject)` when it does, `None` for a caller without a token.
     fn token_decides(
         actor: &Actor,
+        operation: &str,
         allowed: impl Fn(&TokenGrant) -> bool,
     ) -> Result<Option<Principal>, AccessDenial> {
         let Actor::Authenticated(context) = actor else {
@@ -147,7 +148,7 @@ impl Authorization {
             return Ok(None);
         };
         if !allowed(grant) {
-            return Err(actor.without_grant());
+            return Err(actor.without_grant_for(operation));
         }
         Ok(Some(context.authorization_principal().clone()))
     }
@@ -187,7 +188,7 @@ impl Authorization {
     ) -> Result<Principal, AccessDenial> {
         actor.principal()?;
         if let Some(decided) =
-            Self::token_decides(actor, |grant| grant.permits(operation, resource))?
+            Self::token_decides(actor, operation, |grant| grant.permits(operation, resource))?
         {
             return Ok(decided);
         }
@@ -200,7 +201,7 @@ impl Authorization {
         if self.public.permits(&anonymous, operation, resource) {
             return Ok(anonymous);
         }
-        Err(actor.without_grant())
+        Err(actor.without_grant_for(operation))
     }
 
     /// The first stage of a lookup by name: whether `actor` holds anything for `operation` at or
@@ -212,7 +213,7 @@ impl Authorization {
         scope: &Resource,
     ) -> Result<(), AccessDenial> {
         actor.principal()?;
-        if Self::token_decides(actor, |grant| {
+        if Self::token_decides(actor, operation, |grant| {
             grant.permits_anywhere_under(operation, scope)
         })?
         .is_some()
@@ -225,7 +226,7 @@ impl Authorization {
         {
             return Ok(());
         }
-        Err(actor.without_grant())
+        Err(actor.without_grant_for(operation))
     }
 
     /// Whether `actor` may do `operation` on everything under `scope`, so a name that resolves to
@@ -234,7 +235,9 @@ impl Authorization {
         if actor.principal().is_err() {
             return false;
         }
-        match Self::token_decides(actor, |grant| grant.permits_whole(operation, scope)) {
+        match Self::token_decides(actor, operation, |grant| {
+            grant.permits_whole(operation, scope)
+        }) {
             Err(_) => return false,
             Ok(Some(_)) => return true,
             Ok(None) => {}
@@ -258,7 +261,7 @@ impl Authorization {
         if self.covers_whole(actor, operation, scope) {
             Ok(())
         } else {
-            Err(actor.without_grant())
+            Err(actor.without_grant_for(operation))
         }
     }
 }

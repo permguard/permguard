@@ -316,10 +316,8 @@ fn token_form(ask: &TokenAsk) -> (String, String) {
 }
 
 /// RFC 6749's refusal as a failure: the error and its description, never anything sent.
-fn token_failure(status: u16, body: &[u8]) -> Failure {
+fn token_failure(status: u16, body: &[u8], access_key: &str) -> Failure {
     let parsed: Option<serde_json::Value> = serde_json::from_slice(body).ok();
-    let printable =
-        |text: &str| -> String { text.chars().filter(|c| !c.is_control()).take(256).collect() };
     let error = parsed
         .as_ref()
         .and_then(|value| value["error"].as_str())
@@ -337,11 +335,30 @@ fn token_failure(status: u16, body: &[u8]) -> Failure {
             _ => "unavailable",
         }
         .to_owned(),
-        reason: error.clone(),
-        detail: format!("the Authority Plane refused the token: {error} {description}")
-            .trim()
-            .to_owned(),
+        detail: refused_token(&error, &description, access_key),
+        reason: error,
         usage: false,
+    }
+}
+
+/// At most 256 characters of `text`, without a control character.
+fn printable(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).take(256).collect()
+}
+
+/// Why no token was issued, the error's code left to the failure's reason. `invalid_client`
+/// never says which of its causes holds (`2-security/8` Token endpoint), so all are named.
+fn refused_token(error: &str, description: &str, access_key: &str) -> String {
+    if error == "invalid_client" {
+        return format!(
+            "the Authority Plane did not accept the access key {access_key}: its secret key does \
+             not match, the key is unknown, expired or deleted, or its account is suspended"
+        );
+    }
+    if description.is_empty() {
+        "the Authority Plane issued no token".to_owned()
+    } else {
+        format!("the Authority Plane issued no token: {description}")
     }
 }
 
@@ -379,7 +396,11 @@ impl Authority for RestAuthority {
                 usage: false,
             })?;
         if answered.status != 200 {
-            return Err(token_failure(answered.status, &answered.body));
+            return Err(token_failure(
+                answered.status,
+                &answered.body,
+                &ask.access_key,
+            ));
         }
         serde_json::from_slice(&answered.body).map_err(|_| Failure {
             class: "unavailable".to_owned(),
@@ -703,17 +724,19 @@ impl Authority for GrpcAuthority {
                     .message()
                     .split(':')
                     .next()
-                    .unwrap_or_default()
-                    .to_owned(),
-                detail: format!(
-                    "the Authority Plane refused the token: {}",
-                    status
+                    .map(printable)
+                    .unwrap_or_default(),
+                detail: {
+                    let (error, description) = status
                         .message()
-                        .chars()
-                        .filter(|c| !c.is_control())
-                        .take(256)
-                        .collect::<String>()
-                ),
+                        .split_once(':')
+                        .unwrap_or((status.message(), ""));
+                    refused_token(
+                        &printable(error),
+                        printable(description).trim(),
+                        &ask.access_key,
+                    )
+                },
                 usage: false,
             })?;
         Ok(TokenAnswer {
@@ -992,8 +1015,25 @@ mod tests {
         let failure = token_failure(
             401,
             br#"{"error":"invalid_client","error_description":"x"}"#,
+            "pgak_AAAAAAAAAAAAAAAAAAAA",
         );
         assert_eq!(failure.reason, "invalid_client");
         assert_eq!(failure.class, "unauthenticated");
+        assert_eq!(
+            failure.detail,
+            "the Authority Plane did not accept the access key pgak_AAAAAAAAAAAAAAAAAAAA: its \
+             secret key does not match, the key is unknown, expired or deleted, or its account \
+             is suspended"
+        );
+        let failure = token_failure(
+            400,
+            br#"{"error":"invalid_scope","error_description":"`catalog.write` is not held"}"#,
+            "pgak_AAAAAAAAAAAAAAAAAAAA",
+        );
+        assert_eq!(failure.reason, "invalid_scope");
+        assert_eq!(
+            failure.detail,
+            "the Authority Plane issued no token: `catalog.write` is not held"
+        );
     }
 }

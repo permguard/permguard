@@ -125,24 +125,39 @@ impl Failure {
                 "usage" | "unavailable" | "internal" => format!("error: {}\n", self.message),
                 code => format!("error: {} ({code})\n", self.message),
             },
-            OutputFormat::Json => format!(
-                "{}\n",
-                serde_json::json!({
-                    "class": self.class,
-                    "code": self.code,
-                    "message": self.message,
-                })
-            ),
-            OutputFormat::Yaml => format!(
-                "class: {}\ncode: {}\nmessage: {}\n",
-                self.class,
-                self.code,
-                serde_json::json!(self.message)
-            ),
+            OutputFormat::Json => format!("{}\n", self.structured()),
+            OutputFormat::Yaml => {
+                let class = if self.class.is_empty() {
+                    String::new()
+                } else {
+                    format!("class: {}\n", self.class)
+                };
+                format!(
+                    "{class}code: {}\nmessage: {}\n",
+                    self.code,
+                    serde_json::json!(self.message)
+                )
+            }
         };
         let _ = crate::streams::err(|out| out.write_all(text.as_bytes()));
 
         self.status
+    }
+
+    /// `{class, code, message}`; a denial, `unauthenticated` or `forbidden`, has no class on the
+    /// wire and none here: `{code, message}`.
+    fn structured(&self) -> serde_json::Value {
+        let mut value = serde_json::json!({
+            "class": self.class,
+            "code": self.code,
+            "message": self.message,
+        });
+        if self.class.is_empty()
+            && let Some(fields) = value.as_object_mut()
+        {
+            fields.remove("class");
+        }
+        value
     }
 }
 
@@ -184,5 +199,24 @@ mod tests {
         assert_eq!(failed.class, "unavailable");
         assert_eq!(failed.code, "some_code");
         assert_eq!(failed.message, "what happened");
+    }
+
+    /// A denial carries a code and no class, as on the wire: never an empty `class`.
+    #[test]
+    fn a_denial_is_reported_without_a_class() {
+        let denied = Failure::from_client(&permguard_control_client::catalog::Failure {
+            class: String::new(),
+            reason: "forbidden".to_owned(),
+            detail: "no scope".to_owned(),
+            usage: true,
+        });
+        assert_eq!(
+            denied.structured(),
+            serde_json::json!({"code": "forbidden", "message": "no scope"})
+        );
+        assert_eq!(
+            Failure::internal("broken").structured(),
+            serde_json::json!({"class": "internal", "code": "internal", "message": "broken"})
+        );
     }
 }

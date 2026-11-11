@@ -716,6 +716,25 @@ impl Actor {
         }
     }
 
+    /// [`Actor::without_grant`], naming the caller's principal and the operation, both its own.
+    /// Never the resource: one resolved from a name the caller gave would tell what exists
+    /// outside its scope, and an unknown name and a foreign one must be refused alike.
+    pub fn without_grant_for(&self, operation: &str) -> AccessDenial {
+        match self {
+            Self::Authenticated(context) if context.token().is_some() => {
+                AccessDenial::forbidden(format!(
+                    "the token of `{}` carries no scope for `{operation}` on the resource asked",
+                    context.authorization_principal()
+                ))
+            }
+            Self::Authenticated(context) => AccessDenial::forbidden(format!(
+                "`{}` holds no grant for `{operation}` on the resource asked",
+                context.authorization_principal()
+            )),
+            _ => self.without_grant(),
+        }
+    }
+
     /// A label for the log: the display name, the principal, or what went wrong.
     pub fn label(&self) -> String {
         match self {
@@ -1163,6 +1182,18 @@ mod tests {
             reason: "certificate sha256:ab".to_owned(),
         };
         assert_eq!(unmapped.without_grant().http_status(), 401);
+        let refused = somebody.without_grant_for("accounts.read");
+        assert_eq!(refused.http_status(), 403);
+        assert_eq!(
+            refused.message(),
+            "`cert:sha256:ab` holds no grant for `accounts.read` on the resource asked"
+        );
+        assert_eq!(
+            Actor::Anonymous
+                .without_grant_for("accounts.read")
+                .http_status(),
+            401
+        );
         assert!(unmapped.principal().is_err(), "never a principal");
         assert_eq!(
             Actor::Anonymous.principal().expect("anonymous"),
