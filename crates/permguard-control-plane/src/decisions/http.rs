@@ -1355,6 +1355,27 @@ mod strict {
         assert_eq!(body["code"], permguard_core::codes::stream::STREAM_UNKNOWN);
     }
 
+    /// `GetConfiguration` answers the document the well-known route answers, as JSON text.
+    #[tokio::test]
+    async fn get_configuration_answers_the_well_known_document_over_grpc() {
+        use crate::v1::decision_log_server::DecisionLog as _;
+
+        let facade = facade("configuration-grpc");
+        let router = routes(facade.clone());
+        let (status, body) = get(&router, super::super::configuration::CONFIGURATION_PATH).await;
+        assert_eq!(status, StatusCode::OK);
+        let answered = facade
+            .get_configuration(tonic::Request::new(
+                crate::v1::GetDecisionConfigurationRequest {},
+            ))
+            .await
+            .expect("answered")
+            .into_inner();
+        let over_grpc: serde_json::Value =
+            serde_json::from_str(&answered.document_json).expect("JSON");
+        assert_eq!(over_grpc, body);
+    }
+
     /// WP-6.3b: `GetSigners` answers the same manifest of a Host run.
     #[tokio::test]
     async fn get_signers_answers_a_host_run_over_grpc() {

@@ -404,6 +404,8 @@ impl PlaneModule for AuthorityPlaneModule {
             plane,
         };
         let mut grpc = RoutesBuilder::default();
+        // The gRPC Health Checking Protocol, beside the plane's own services.
+        grpc.add_service(permguard_server::plane::health::service(context));
         grpc.add_service(
             crate::v1::authority_plane_server::AuthorityPlaneServer::new(served.clone()),
         );

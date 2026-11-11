@@ -276,6 +276,18 @@ pub fn plane_http_base(config: &Config, plane: PlaneId) -> Option<String> {
         .map(|held| held.http_base)
 }
 
+/// The document `GET /streams/v1` answers, and the planes' `GetStreams` carries as JSON text:
+/// every evidence stream a plane declares, enabled or not.
+pub fn streams_document(streams: &[permguard_stream::StreamDescriptor]) -> String {
+    serde_json::json!({
+        "streams": streams
+            .iter()
+            .map(permguard_stream::StreamDescriptor::public_view)
+            .collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
 /// The `GET /streams/v1` discovery route: every evidence stream this plane declares, enabled or
 /// not.
 ///
@@ -286,13 +298,7 @@ pub fn plane_http_base(config: &Config, plane: PlaneId) -> Option<String> {
 pub fn streams_route(streams: Vec<permguard_stream::StreamDescriptor>) -> axum::Router {
     use axum::routing::get;
 
-    let document = serde_json::json!({
-        "streams": streams
-            .iter()
-            .map(permguard_stream::StreamDescriptor::public_view)
-            .collect::<Vec<_>>(),
-    })
-    .to_string();
+    let document = streams_document(&streams);
 
     axum::Router::new().route(
         "/streams/v1",

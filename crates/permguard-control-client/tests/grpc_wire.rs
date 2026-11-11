@@ -78,6 +78,15 @@ impl ControlPlane for FakePlane {
                 .into(),
         }))
     }
+
+    async fn get_streams(
+        &self,
+        _request: Request<proto::GetStreamsRequest>,
+    ) -> Result<Response<proto::GetStreamsResponse>, Status> {
+        Ok(Response::new(proto::GetStreamsResponse {
+            document_json: r#"{"streams":[]}"#.into(),
+        }))
+    }
 }
 
 fn zone(id: &str, name: &str) -> proto::Zone {

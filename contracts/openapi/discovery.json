@@ -35,7 +35,7 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetServerConfiguration",
-        "x-grpc-note": "gRPC returns the document as a JSON string (`GetServerConfigurationResponse.document_json`), control plane only; the data plane and the telemetry listener have no gRPC counterpart.",
+        "x-grpc-note": "gRPC returns the document as a JSON string (`GetServerConfigurationResponse.document_json`) on every Plane: `ControlPlane`, `DataPlane` and `AuthorityPlane` each answer `GetServerConfiguration`; the telemetry listener has no gRPC counterpart.",
         "x-permguard-endpoint": {
           "plane": "every surface",
           "category": "discovery",
@@ -59,8 +59,8 @@
             }
           }
         },
-        "x-grpc-rpc": null,
-        "x-grpc-note": "No gRPC method lists the declared streams; REST-only.",
+        "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetStreams",
+        "x-grpc-note": "gRPC returns the document as a JSON string (`GetStreamsResponse.document_json`): `ControlPlane/GetStreams` and `DataPlane/GetStreams` each answer their Plane's.",
         "x-permguard-endpoint": {
           "plane": "every surface",
           "category": "discovery",
@@ -748,6 +748,47 @@
       "fields": [
         "document_json"
       ]
+    },
+    {
+      "message": "permguard.control.v1.GetStreamsResponse",
+      "note": "`document_json` holds the JSON text of the document REST answers as the body",
+      "fields": [
+        "document_json"
+      ]
+    },
+    {
+      "message": "permguard.data.v1.GetServerConfigurationRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.data.v1.GetServerConfigurationResponse",
+      "note": "`document_json` holds the JSON text of the data plane's document REST answers as the body",
+      "fields": [
+        "document_json"
+      ]
+    },
+    {
+      "message": "permguard.data.v1.GetStreamsRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.data.v1.GetStreamsResponse",
+      "note": "`document_json` holds the JSON text of the document REST answers as the body",
+      "fields": [
+        "document_json"
+      ]
+    }
+  ],
+  "x-grpc-unmapped-rpcs": [
+    {
+      "rpc": "permguard.data.v1.DataPlane/GetServerConfiguration",
+      "note": "`/.well-known/server-configuration` of the data plane, which this document's one operation names for the control plane"
+    },
+    {
+      "rpc": "permguard.data.v1.DataPlane/GetStreams",
+      "note": "`/streams/v1` of the data plane, which this document's one operation names for the control plane"
     }
   ]
 }

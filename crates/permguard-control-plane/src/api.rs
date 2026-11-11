@@ -8,7 +8,8 @@ use permguard_core::PlaneHealth;
 use crate::v1::control_plane_server::ControlPlane;
 use crate::v1::{
     GetHealthRequest, GetHealthResponse, GetInfoRequest, GetInfoResponse,
-    GetServerConfigurationRequest, GetServerConfigurationResponse,
+    GetServerConfigurationRequest, GetServerConfigurationResponse, GetStreamsRequest,
+    GetStreamsResponse,
 };
 
 pub(crate) struct PlaneApi {
@@ -20,6 +21,8 @@ pub(crate) struct PlaneApi {
     /// The discovery document after `plane` and `state`, which are written in front of it when it
     /// is answered: the same text the HTTP well-known answers (WP-7.4a).
     pub(crate) rest: String,
+    /// The `/streams/v1` document.
+    pub(crate) streams: String,
 }
 
 #[tonic::async_trait]
@@ -43,6 +46,15 @@ impl ControlPlane for PlaneApi {
         // The same document the HTTP route answers, the phase as it is now (WP-7.4a).
         Ok(Response::new(GetServerConfigurationResponse {
             document_json: crate::service::plane_document(&self.rest, self.health.phase()),
+        }))
+    }
+
+    async fn get_streams(
+        &self,
+        _request: Request<GetStreamsRequest>,
+    ) -> Result<Response<GetStreamsResponse>, Status> {
+        Ok(Response::new(GetStreamsResponse {
+            document_json: self.streams.clone(),
         }))
     }
 
@@ -101,6 +113,7 @@ mod tests {
             commit: String::new(),
             health: PlaneHealth::new(health.clone(), "control"),
             rest: "\"jwks_uri\":\"http://plane/keys\"}".to_owned(),
+            streams: String::new(),
         };
         let ask = || async {
             let answer = api

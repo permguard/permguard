@@ -5,6 +5,32 @@ package permguard.data.v1;
 service DataPlane {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
   rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  // The plane's discovery document, the JSON the HTTP surface answers at
+  // /.well-known/server-configuration.
+  rpc GetServerConfiguration(GetServerConfigurationRequest) returns (GetServerConfigurationResponse);
+  // The plane's signing keys, the JWKS the HTTP surface answers at /data-plane/v1/keys.
+  rpc GetKeys(GetKeysRequest) returns (GetKeysResponse);
+  // Every evidence stream the plane declares, the JSON the HTTP surface answers at /streams/v1.
+  rpc GetStreams(GetStreamsRequest) returns (GetStreamsResponse);
+}
+
+message GetServerConfigurationRequest {}
+
+message GetServerConfigurationResponse {
+  string document_json = 1;
+}
+
+message GetKeysRequest {}
+
+message GetKeysResponse {
+  // The JWKS document, as JSON: the same bytes the HTTP endpoint serves.
+  bytes jwks = 1;
+}
+
+message GetStreamsRequest {}
+
+message GetStreamsResponse {
+  string document_json = 1;
 }
 
 message GetInfoRequest {}

@@ -15,7 +15,7 @@ use crate::v1::data_plane_server::DataPlaneServer;
 use crate::v1::policy_decision_point_server::PolicyDecisionPointServer;
 use crate::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPointServer;
 
-const COMPONENT: &str = "data-plane";
+pub(crate) const COMPONENT: &str = "data-plane";
 pub(crate) const PLANE: &str = "data";
 
 #[derive(Clone)]
@@ -324,12 +324,17 @@ impl PlaneModule for DataPlaneModule {
     fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
         let state = plane_state(context);
         let mut grpc = RoutesBuilder::default();
+        // The gRPC Health Checking Protocol, beside the plane's own services.
+        grpc.add_service(permguard_server::plane::health::service(context));
         grpc.add_service(DataPlaneServer::new(PlaneApi {
             plane: state.plane,
             product: state.product,
             version: state.version,
             commit: state.commit,
             health: state.health,
+            configuration: data_plane_configuration(context),
+            keys: crate::handles::public_keys(context),
+            streams: permguard_server::plane::streams_document(&self.streams(context.config())),
         }));
         // The evaluation interfaces over gRPC are served only where their partial parity with
         // REST is permitted (WP-7.5b, IFACE-06): a profile that requires the strict protobuf

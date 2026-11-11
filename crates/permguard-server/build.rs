@@ -20,5 +20,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_client(true)
         .build_server(true)
         .compile_protos(&protos, &["../../contracts/proto"])?;
+    // The gRPC Health Checking Protocol's `Check`, which every Plane's gRPC surface answers.
+    tonic_prost_build::configure()
+        .build_client(true)
+        .build_server(true)
+        .compile_protos(
+            &["../../contracts/proto/grpc/health/v1/health.proto"],
+            &["../../contracts/proto"],
+        )?;
     Ok(())
 }

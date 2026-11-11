@@ -3236,8 +3236,6 @@ async fn walk_grpc(
 enum Open {
     /// The same refusal to nobody, a stranger and the administrator: nothing is behind it.
     RefusedToEveryone,
-    /// `UNIMPLEMENTED` to every caller: not served by this build.
-    Unimplemented,
     /// Open by the deployment's own public grant, `keys.read` on the Host in this facade: to nobody,
     /// never to a token that holds no such scope.
     Public,
@@ -3301,41 +3299,6 @@ const OPEN_ROUTES: &[(&str, Open, &str)] = &[
         Open::Public,
         "keys.read is public in this facade",
     ),
-    (
-        "permguard.host.v1.KeyService/ListSecrets",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.KeyService/RotateSecret",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.EvidenceService/ShipStreamBatch",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.OperationsService/Drain",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.OperationsService/Maintenance",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.OperationsService/GetStorageQuota",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
-    (
-        "permguard.host.v1.OperationsService/ProbeStorage",
-        Open::Unimplemented,
-        "not served by this build",
-    ),
 ];
 
 /// Routes whose resource lies outside the administrator's selector, `under(host)`, in this facade:
@@ -3346,13 +3309,12 @@ const OUTSIDE_THE_ADMINISTRATOR: &[(&str, &str)] = &[(
 )];
 
 /// The offence, if any, of an open route's three answers. `refused` are the codes that turn a
-/// caller away for who it is; `unimplemented` is the binding's word for a route not served.
+/// caller away for who it is.
 fn open_offence(
     route: &str,
     open: Open,
     answers: [&Answered; 3],
     refused: [u16; 2],
-    unimplemented: u16,
 ) -> Option<String> {
     let [nobody, stranger, admin] = answers;
     let fine = match open {
@@ -3362,7 +3324,6 @@ fn open_offence(
                 && !(200..300).contains(&admin.0)
                 && admin.0 != 0
         }
-        Open::Unimplemented => answers.iter().all(|answer| answer.0 == unimplemented),
         // A public grant opens the route to nobody; a token decides alone, so the stranger's,
         // which holds no scope, is refused where the route authorizes at all.
         Open::Public => [nobody, admin]
@@ -3477,7 +3438,6 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
                     kind,
                     [&nobody, &stranger, &admin],
                     [401, 403],
-                    501,
                 ));
                 continue;
             }
@@ -3559,7 +3519,6 @@ async fn every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_th
                     kind,
                     [&nobody, &stranger, &admin],
                     [16, 7],
-                    12,
                 ));
                 continue;
             }

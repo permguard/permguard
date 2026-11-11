@@ -9,6 +9,14 @@ service ControlPlane {
   // at /.well-known/server-configuration, so a gRPC-only client discovers
   // the plane without ever speaking HTTP.
   rpc GetServerConfiguration(GetServerConfigurationRequest) returns (GetServerConfigurationResponse);
+  // Every evidence stream the plane declares, the JSON the HTTP surface answers at /streams/v1.
+  rpc GetStreams(GetStreamsRequest) returns (GetStreamsResponse);
+}
+
+message GetStreamsRequest {}
+
+message GetStreamsResponse {
+  string document_json = 1;
 }
 
 message GetInfoRequest {}

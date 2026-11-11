@@ -410,6 +410,8 @@ impl PlaneModule for ControlPlaneModule {
             .serving_events(&self.event_trust, context.config())
             .serving_decisions(&self.decision_state, context.config());
         let mut grpc = RoutesBuilder::default();
+        // The gRPC Health Checking Protocol, beside the plane's own services.
+        grpc.add_service(permguard_server::plane::health::service(context));
         grpc.add_service(ControlPlaneServer::new(PlaneApi {
             plane: state.plane,
             product: state.product,
@@ -421,6 +423,7 @@ impl PlaneModule for ControlPlaneModule {
                 self.event_facade(context).is_some(),
                 self.decision_facade(context).is_some(),
             ),
+            streams: permguard_server::plane::streams_document(&self.streams(context.config())),
         }));
 
         if let Some(catalog) = context.catalog() {

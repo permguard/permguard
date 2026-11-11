@@ -16,12 +16,21 @@ syntax = "proto3";
 package permguard.control.v1;
 
 service DecisionLog {
+  // What this plane offers of the decision log: the JSON the HTTP surface answers at
+  // /.well-known/permguard-decisions-native-v1-configuration.
+  rpc GetConfiguration(GetDecisionConfigurationRequest) returns (GetDecisionConfigurationResponse);
   // Read one page, from an offset the consumer keeps.
   rpc Read(ReadRequest) returns (ReadResponse);
   // Which key signed which stretch of one producer stream, public keys
   // included — what a verifier needs to check a range of records without
   // reaching the producer, which may be gone.
   rpc GetSigners(GetDecisionSignersRequest) returns (GetDecisionSignersResponse);
+}
+
+message GetDecisionConfigurationRequest {}
+
+message GetDecisionConfigurationResponse {
+  string document_json = 1;
 }
 
 message GetDecisionSignersRequest {

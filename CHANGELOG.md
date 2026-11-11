@@ -28,6 +28,10 @@ is cut.
 - **Every Plane and the Host verify tokens themselves.**
   `authority.url`, `authority.audience` and `authority.tls.ca` (`PERMGUARD_AUTHORITY_URL`, `_AUDIENCE`, `_TLS_CA`) name the Authority Plane a Server verifies tokens from: beside it, its keys and lists are handed over in-process; elsewhere they are fetched over HTTPS, the keys every five minutes or at once for an unknown key, the lists every half `ttl`.
   A token is checked for its signature, issuer, audience, validity, status and scopes, and decides alone: public grants never widen it.
+- **Everything the HTTP surfaces answer, gRPC answers too.**
+  `DataPlane` gains `GetServerConfiguration`, `GetKeys` and `GetStreams`, `ControlPlane` gains `GetStreams` and `DecisionLog` gains `GetConfiguration`, each the same JSON its HTTP route serves.
+  Every Plane's gRPC listener serves the standard `grpc.health.v1.Health/Check`, `SERVING` once the Plane accepts work.
+  The Authority Plane's keys and status lists stay open in every phase, over both transports, so a verifier can come back while the Plane starts.
   New metrics `permguard_token_status_list_age_seconds`, `permguard_token_status_lists_expired`, `permguard_authority_refresh_failures_total` and `permguard_token_status_list_rejected_total`.
 - **The first administrator is `admin`, made at the first start.**
   The Authority Plane's first start makes the service account `admin`, with every operation on the Host and every Plane, and writes its access key and secret key to `planes/authority/admin.key` on the volume, readable by its owner alone; the log names the access key, never the secret.

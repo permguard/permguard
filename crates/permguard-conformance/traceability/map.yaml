@@ -4163,7 +4163,7 @@ sections:
       - crates/permguard-host/src/api/keys/tests.rs::the_bundle_pages_keep_one_signed_frontier_and_verify_offline
       - crates/permguard-host/src/api/keys/tests.rs::the_bundle_needs_the_operations_ring_and_keys_read_on_the_resource
     gaps:
-      - "open (code): GET /host/v1/secrets and POST /host/v1/secrets/{ref}/rotate are not served; ListSecrets and RotateSecret answer UNIMPLEMENTED"
+      - "open (code): the secrets routes are not in the Host API of this build, neither REST nor gRPC; a secret rotates through operations.secrets"
   "7-contracts/8-contract-host-api.md#audit":
     paths:
       - crates/permguard-host/src/api/audit.rs
@@ -4203,7 +4203,7 @@ sections:
       - crates/permguard-host/src/api/plans/tests.rs::plans_are_listed_to_the_holders_of_their_operations_grant
       - crates/permguard-host/src/api/plans/tests.rs::the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per_principal
     gaps:
-      - "open (code): drain, maintenance, storage quota and storage probe answer UNIMPLEMENTED on the Host API"
+      - "open (code): drain, maintenance, storage quota and storage probe are not in the Host API of this build, neither REST nor gRPC"
   "7-contracts/8-contract-host-api.md#current-implementation-and-target":
     paths:
       - crates/permguard-server/src/host_api/mod.rs

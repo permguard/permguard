@@ -263,8 +263,8 @@
             }
           }
         },
-        "x-grpc-rpc": null,
-        "x-grpc-note": "The data plane serves no key-ring RPC (permguard.data.v1 has none); keys are HTTP-only there.",
+        "x-grpc-rpc": "permguard.data.v1.DataPlane/GetKeys",
+        "x-grpc-note": "gRPC returns the JWKS as its JSON bytes (`GetKeysResponse.jwks`).",
         "x-permguard-endpoint": {
           "plane": "data",
           "category": "public keys",
@@ -670,6 +670,13 @@
         "last_success",
         "next_attempt",
         "reason"
+      ]
+    },
+    {
+      "message": "permguard.data.v1.GetKeysResponse",
+      "note": "`jwks` holds the JSON bytes of the JWKS REST answers as the body",
+      "fields": [
+        "jwks"
       ]
     }
   ]

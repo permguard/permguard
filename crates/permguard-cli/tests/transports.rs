@@ -361,6 +361,13 @@ impl ControlPlane for Plane {
             document_json: DISCOVERY.into(),
         }))
     }
+
+    async fn get_streams(
+        &self,
+        _request: Request<proto::GetStreamsRequest>,
+    ) -> Result<Response<proto::GetStreamsResponse>, Status> {
+        unserved()
+    }
 }
 
 /// The data plane's own identity and health service: the same answers as `/version` and
@@ -388,6 +395,27 @@ impl pdp::data_plane_server::DataPlane for Plane {
             ready: true,
             ..Default::default()
         }))
+    }
+
+    async fn get_server_configuration(
+        &self,
+        _request: Request<pdp::GetServerConfigurationRequest>,
+    ) -> Result<Response<pdp::GetServerConfigurationResponse>, Status> {
+        unserved()
+    }
+
+    async fn get_keys(
+        &self,
+        _request: Request<pdp::GetKeysRequest>,
+    ) -> Result<Response<pdp::GetKeysResponse>, Status> {
+        unserved()
+    }
+
+    async fn get_streams(
+        &self,
+        _request: Request<pdp::GetStreamsRequest>,
+    ) -> Result<Response<pdp::GetStreamsResponse>, Status> {
+        unserved()
     }
 }
 
@@ -641,6 +669,13 @@ impl PolicyDecisionPoint for Plane {
 
 #[tonic::async_trait]
 impl DecisionLog for Plane {
+    async fn get_configuration(
+        &self,
+        _request: Request<proto::GetDecisionConfigurationRequest>,
+    ) -> Result<Response<proto::GetDecisionConfigurationResponse>, Status> {
+        unserved()
+    }
+
     async fn read(
         &self,
         _request: Request<proto::ReadRequest>,

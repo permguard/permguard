@@ -371,14 +371,13 @@ pub mod grpc {
     pub const HOST_IDENTITY_SERVICE: &str = "permguard.host.v1.IdentityService";
     pub const HOST_KEY_SERVICE: &str = "permguard.host.v1.KeyService";
     pub const HOST_OPERATIONS_SERVICE: &str = "permguard.host.v1.OperationsService";
-    /// The directory services the IAM Host serves (WP-11.1).
-    pub const IAM_GRANT_SERVICE: &str = "permguard.iam.v1.GrantService";
-    pub const IAM_ROLE_SERVICE: &str = "permguard.iam.v1.RoleService";
-    pub const IAM_USER_SERVICE: &str = "permguard.iam.v1.UserService";
-    pub const IAM_PROVIDER_SERVICE: &str = "permguard.iam.v1.ProviderService";
-    pub const IAM_RECOVERY_SERVICE: &str = "permguard.iam.v1.RecoveryService";
-    pub const IAM_SERVICE_ACCOUNT_SERVICE: &str = "permguard.iam.v1.ServiceAccountService";
-    pub const IAM_TOKEN_SERVICE: &str = "permguard.iam.v1.TokenService";
+    /// The Authority Plane's services (`2-security/8`).
+    pub const AUTHORITY_PLANE: &str = "permguard.authority.v1.AuthorityPlane";
+    pub const AUTHORITY_TOKEN_SERVICE: &str = "permguard.authority.v1.TokenService";
+    pub const AUTHORITY_SERVICE_ACCOUNT_SERVICE: &str =
+        "permguard.authority.v1.ServiceAccountService";
+    /// The gRPC Health Checking Protocol, on every Plane's gRPC surface.
+    pub const HEALTH: &str = "grpc.health.v1.Health";
 }
 
 /// Labels inside HKDF `info` tuples.
@@ -741,6 +740,16 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("kdf.MFA_SEAL", kdf::MFA_SEAL),
         ("grpc.CONTROL_PLANE", grpc::CONTROL_PLANE),
         ("grpc.DATA_PLANE", grpc::DATA_PLANE),
+        ("grpc.AUTHORITY_PLANE", grpc::AUTHORITY_PLANE),
+        (
+            "grpc.AUTHORITY_TOKEN_SERVICE",
+            grpc::AUTHORITY_TOKEN_SERVICE,
+        ),
+        (
+            "grpc.AUTHORITY_SERVICE_ACCOUNT_SERVICE",
+            grpc::AUTHORITY_SERVICE_ACCOUNT_SERVICE,
+        ),
+        ("grpc.HEALTH", grpc::HEALTH),
         ("grpc.GIT_LIKE_STORE", grpc::GIT_LIKE_STORE),
         ("grpc.EVENT_LOG", grpc::EVENT_LOG),
         ("grpc.DECISION_LOG", grpc::DECISION_LOG),
@@ -755,16 +764,6 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "grpc.HOST_OPERATIONS_SERVICE",
             grpc::HOST_OPERATIONS_SERVICE,
         ),
-        ("grpc.IAM_GRANT_SERVICE", grpc::IAM_GRANT_SERVICE),
-        ("grpc.IAM_ROLE_SERVICE", grpc::IAM_ROLE_SERVICE),
-        ("grpc.IAM_USER_SERVICE", grpc::IAM_USER_SERVICE),
-        ("grpc.IAM_PROVIDER_SERVICE", grpc::IAM_PROVIDER_SERVICE),
-        ("grpc.IAM_RECOVERY_SERVICE", grpc::IAM_RECOVERY_SERVICE),
-        (
-            "grpc.IAM_SERVICE_ACCOUNT_SERVICE",
-            grpc::IAM_SERVICE_ACCOUNT_SERVICE,
-        ),
-        ("grpc.IAM_TOKEN_SERVICE", grpc::IAM_TOKEN_SERVICE),
     ]
 }
 

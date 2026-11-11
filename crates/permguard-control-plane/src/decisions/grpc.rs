@@ -30,12 +30,29 @@ use super::store::Scope;
 use super::{measure, read};
 use crate::v1::decision_log_server::DecisionLog;
 use crate::v1::{
-    DecisionSignerSpan, GetDecisionSignersRequest, GetDecisionSignersResponse, ReadRequest,
-    ReadResponse,
+    DecisionSignerSpan, GetDecisionConfigurationRequest, GetDecisionConfigurationResponse,
+    GetDecisionSignersRequest, GetDecisionSignersResponse, ReadRequest, ReadResponse,
 };
 
 #[tonic::async_trait]
 impl DecisionLog for DecisionFacade {
+    /// The same document the HTTP well-known answers, as JSON text.
+    async fn get_configuration(
+        &self,
+        _request: Request<GetDecisionConfigurationRequest>,
+    ) -> Result<Response<GetDecisionConfigurationResponse>, Status> {
+        let header = self
+            .describer
+            .header(permguard_core::domains::interface::DECISIONS_NATIVE_V1)
+            .map_err(|refused| api_status(&refused, self.disclosure))?;
+        let document = super::configuration::document(&self.base_url, &self.base_url, header);
+        let document_json = serde_json::to_string(&document)
+            .map_err(|error| Status::internal(format!("the document did not render: {error}")))?;
+        Ok(Response::new(GetDecisionConfigurationResponse {
+            document_json,
+        }))
+    }
+
     /// The same signers document the HTTP binding serves, field for field.
     async fn get_signers(
         &self,

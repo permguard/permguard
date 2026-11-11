@@ -449,8 +449,8 @@
             }
           }
         },
-        "x-grpc-rpc": null,
-        "x-grpc-note": "REST-only: the gRPC DecisionLog service names Ship, Read and GetSigners (WP-6.3b).",
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetConfiguration",
+        "x-grpc-note": "gRPC returns the document as a JSON string (`GetDecisionConfigurationResponse.document_json`).",
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "discovery",
@@ -1667,6 +1667,13 @@
         "from_seq",
         "kid",
         "jwk"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.GetDecisionConfigurationResponse",
+      "note": "`document_json` holds the JSON text of the document REST answers as the body",
+      "fields": [
+        "document_json"
       ]
     }
   ]

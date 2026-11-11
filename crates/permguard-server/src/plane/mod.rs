@@ -39,12 +39,14 @@ use crate::{App, DefaultServerHost};
 
 pub mod discovery;
 pub mod factories;
+pub mod health;
 pub mod listeners;
 pub mod settings;
 
 pub use discovery::{
     DiscoveredPlane, InterfaceLink, PlaneConfiguration, PlaneId, discovered_planes,
-    plane_configuration, plane_http_base, server_configuration_document, streams_route,
+    plane_configuration, plane_http_base, server_configuration_document, streams_document,
+    streams_route,
 };
 pub use factories::build_settings;
 pub use settings::*;
@@ -971,6 +973,15 @@ fn always_open(path: &str, grpc: bool) -> bool {
         };
         return service == services::CONTROL_PLANE
             || service == services::DATA_PLANE
+            || service == services::AUTHORITY_PLANE
+            || service == services::HEALTH
+            || matches!(
+                (service, method),
+                (
+                    services::AUTHORITY_TOKEN_SERVICE,
+                    "GetMetadata" | "GetKeys" | "ListStatusLists" | "GetStatusList"
+                )
+            )
             || matches!(
                 (service, method),
                 (services::GIT_LIKE_STORE, "GetKeyRing")
@@ -987,6 +998,9 @@ fn always_open(path: &str, grpc: bool) -> bool {
     // The exact templates, `*` one segment: a suffix would let a ledger or an event named `keys`
     // or `signers` past the gate (WP-13.1).
     const OPEN: &[&str] = &[
+        "/authority/v1/keys",
+        "/authority/v1/status-lists",
+        "/authority/v1/status-lists/*",
         "/control-plane/v1/keys",
         "/data-plane/v1/keys",
         "/server-host/v1/keys",
@@ -1124,6 +1138,9 @@ mod tests {
             "/.well-known/server-configuration",
             "/data-plane/v1/keys",
             "/decisions/v1/streams/p/i/signers",
+            "/authority/v1/keys",
+            "/authority/v1/status-lists",
+            "/authority/v1/status-lists/l0",
         ] {
             assert!(always_open(path, false), "{path}");
         }
@@ -1131,6 +1148,8 @@ mod tests {
             "/catalog/v1/zones",
             "/decisions/v1/batches",
             "/v1/decide",
+            "/authority/v1/token",
+            "/authority/v1/service-accounts",
             // A domain route whose last segment happens to read `keys` or `signers`.
             "/catalog/v1/zones/keys",
             "/events/v1alpha1/zones/z/ledgers/l/records/signers",
@@ -1158,6 +1177,9 @@ mod tests {
             "/permguard.data.v1.PolicyDecisionPoint/GetConfiguration",
             "/permguard.data.v1.TemporalPolicyDecisionPoint/GetTemporalConfiguration",
             "/permguard.data.v1.TemporalPolicyDecisionPoint/GetSigners",
+            "/grpc.health.v1.Health/Check",
+            "/permguard.authority.v1.TokenService/GetKeys",
+            "/permguard.authority.v1.TokenService/GetStatusList",
         ] {
             assert!(always_open(open, true), "{open}");
         }
@@ -1166,6 +1188,8 @@ mod tests {
             "/permguard.control.v1.ZoneCatalog/GetKeyRing",
             "/permguard.control.v1.DecisionLog/GetConfiguration",
             "/permguard.control.v1.GitLikeStore/GetRef",
+            "/permguard.authority.v1.TokenService/IssueToken",
+            "/permguard.authority.v1.ServiceAccountService/ListServiceAccounts",
             "/malformed",
         ] {
             assert!(!always_open(closed, true), "{closed}");
