@@ -6,7 +6,7 @@
 //! significant bits of each byte, the bytes compressed with DEFLATE in the ZLIB format at the
 //! highest level, then base64url without padding.
 //!
-//! The IAM Host encodes; a member decodes, bounded before and during decompression, never after:
+//! The Authority Plane encodes; a Plane decodes, bounded before and during decompression, never after:
 //! a list that would decompress past what its entries can take is refused while it is read.
 
 use std::io::{Read as _, Write as _};
@@ -17,7 +17,7 @@ use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 
-/// The entries of every list the IAM Host opens: `2^20`.
+/// The entries of every list the Authority Plane opens: `2^20`.
 pub const ENTRIES: usize = 1 << 20;
 
 /// Why a list was not encoded or decoded.

@@ -45,6 +45,10 @@ x-mounts:
   - &lab-volume-ro lab:/lab:ro
   - &lab-scripts ./lab/compose:/opt/permguard/lab:ro
   - &lab-examples ./examples:/opt/permguard/examples:ro
+  # The coordinators' volumes, read-only, for the lab's tools: where the Authority Plane's first
+  # start wrote `admin`'s key, which the lab's operator acts with. Another lab's concession.
+  - &coordinator-all-in-one all-in-one-state:/coordinators/all-in-one:ro
+  - &coordinator-control-plane control-plane-state:/coordinators/control-plane:ro
 
 # A Host: healthy once it answers discovery on its Server Host listener.
 x-healthcheck: &healthcheck
@@ -75,7 +79,7 @@ services:
     <<: *lab
     profiles: [all-in-one, split-plane, multi-data-plane, multi-group, temporal-replicas]
     command: ["catalog", "${COMPOSE_PROFILES:-}"]
-    volumes: [*lab-volume, *lab-scripts, *lab-examples]
+    volumes: [*lab-volume, *lab-scripts, *lab-examples, *coordinator-all-in-one, *coordinator-control-plane]
     depends_on:
       control-plane: { condition: service_healthy, required: false }
       all-in-one: { condition: service_healthy, required: false }
@@ -84,7 +88,7 @@ services:
     <<: *lab
     profiles: [split-plane, multi-data-plane, multi-group, temporal-replicas]
     command: ["enroll", "${COMPOSE_PROFILES:-}"]
-    volumes: [*lab-volume, *lab-scripts]
+    volumes: [*lab-volume, *lab-scripts, *coordinator-all-in-one, *coordinator-control-plane]
     depends_on:
       data-plane: { condition: service_healthy, required: false }
       data-plane-a: { condition: service_healthy, required: false }
@@ -99,7 +103,7 @@ services:
   lab:
     <<: *lab
     profiles: [tools]
-    volumes: [*lab-volume, *lab-scripts, *lab-examples]
+    volumes: [*lab-volume, *lab-scripts, *lab-examples, *coordinator-all-in-one, *coordinator-control-plane]
 
   # ---------------------------------------------------------------------------------------------
   # The Hosts. Each runs `permguard-lab serve`: its claim moved forward, the lab's operator granted

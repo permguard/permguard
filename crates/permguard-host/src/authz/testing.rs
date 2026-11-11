@@ -20,6 +20,8 @@ use super::authority::{AuthorityTrust, DEFAULT_AUDIENCE};
 
 /// The issuer every test token names.
 pub const ISSUER: &str = "https://authority.test:8443";
+/// The one status list's id, as the index names it.
+pub const LIST_ID: &str = "0198f2aa-0000-7000-8000-000000000001";
 const KID: &str = "authority.tokens:test";
 
 /// A test Authority Plane.
@@ -27,6 +29,8 @@ pub struct TestAuthority {
     pair: Ed25519KeyPair,
     trust: Arc<AuthorityTrust>,
     list: std::sync::Mutex<StatusList>,
+    /// The list token last published, as the Authority Plane serves it.
+    published: std::sync::Mutex<String>,
     next: AtomicU64,
     iat: AtomicU64,
 }
@@ -48,19 +52,18 @@ impl TestAuthority {
     pub fn new() -> Self {
         let pair = Ed25519KeyPair::from_seed_unchecked(&[7; 32]).expect("a key");
         let trust = Arc::new(AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE));
-        trust
-            .accept_keys(&serde_json::json!({"keys": [{
-                "kid": KID, "kty": "OKP", "crv": "Ed25519", "alg": "EdDSA", "use": "sig",
-                "x": URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()),
-            }]}))
-            .expect("the key set is held");
         let authority = Self {
             pair,
             trust,
             list: std::sync::Mutex::new(StatusList::new(2, ENTRIES).expect("a list")),
+            published: std::sync::Mutex::new(String::new()),
             next: AtomicU64::new(0),
             iat: AtomicU64::new(now().saturating_sub(10)),
         };
+        authority
+            .trust
+            .accept_keys(&authority.key_set())
+            .expect("the key set is held");
         authority.publish();
         authority
     }
@@ -76,7 +79,23 @@ impl TestAuthority {
     }
 
     fn uri() -> String {
-        format!("{ISSUER}/authority/v1/status-lists/0198f2aa-0000-7000-8000-000000000001")
+        format!("{ISSUER}/authority/v1/status-lists/{LIST_ID}")
+    }
+
+    /// The key set, as `GET /authority/v1/keys` answers it.
+    pub fn key_set(&self) -> serde_json::Value {
+        serde_json::json!({"keys": [{
+            "kid": KID, "kty": "OKP", "crv": "Ed25519", "alg": "EdDSA", "use": "sig",
+            "x": URL_SAFE_NO_PAD.encode(self.pair.public_key().as_ref()),
+        }]})
+    }
+
+    /// The list token last published, as `GET /authority/v1/status-lists/{id}` answers it.
+    pub fn list_token(&self) -> String {
+        self.published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Signs the list as it stands and hands it to the trust.
@@ -98,6 +117,10 @@ impl TestAuthority {
         self.trust
             .accept_list(&token, now())
             .expect("the list is held");
+        *self
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = token;
     }
 
     /// The trust a Host verifies this authority's tokens with.

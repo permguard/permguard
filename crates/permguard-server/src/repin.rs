@@ -82,7 +82,8 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress)
                     "this Host's import tasks brought the origins' batches"
                 );
             }
-            // The IAM Host's status lists are fetched on their own cadence (`token_status`).
+            // The Authority Plane's status lists are fetched on their own cadence
+            // (`authority_refresh`).
             // The audit checkpoints after the streams, then whether they left in time (WP-5.9).
             let exported = api.export_checkpoints_due().await;
             if exported > 0 {

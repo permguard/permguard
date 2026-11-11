@@ -436,7 +436,212 @@ where
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
+    use permguard_core::authz::{Actor, Authenticator as _};
+    use permguard_host::authz::access_tokens::{TokenAuthenticator, Trust};
+    use permguard_host::authz::authority::DEFAULT_AUDIENCE;
+    use permguard_host::authz::testing::{ISSUER, LIST_ID, TestAuthority};
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    fn now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs())
+    }
+
+    /// A private authority and a server certificate it issued for `localhost`: the authority's
+    /// PEM, written into `directory`, and the server's TLS configuration.
+    fn pki(directory: &std::path::Path) -> (std::path::PathBuf, Arc<rustls::ServerConfig>) {
+        let mut params = rcgen::CertificateParams::new(Vec::new()).expect("parameters");
+        params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        let authority_key = rcgen::KeyPair::generate().expect("a key");
+        let authority = params.self_signed(&authority_key).expect("self-signed");
+        let issuer = rcgen::Issuer::from_params(&params, &authority_key);
+        let server_key = rcgen::KeyPair::generate().expect("a key");
+        let server = rcgen::CertificateParams::new(vec!["localhost".to_owned()])
+            .expect("parameters")
+            .signed_by(&server_key, &issuer)
+            .expect("signed");
+        let ca = directory.join("ca.pem");
+        std::fs::write(&ca, authority.pem()).expect("written");
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .expect("versions")
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![server.der().clone()],
+            rustls::pki_types::PrivateKeyDer::Pkcs8(server_key.serialize_der().into()),
+        )
+        .expect("the server's certificate");
+        (ca, Arc::new(config))
+    }
+
+    /// Serves `authority`'s documents over HTTPS on a loopback port, as the Authority Plane's
+    /// listener does: the key set, the list index and the list, and one route that redirects.
+    async fn serve(authority: Arc<TestAuthority>, config: Arc<rustls::ServerConfig>) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let port = listener.local_addr().expect("bound").port();
+        let acceptor = tokio_rustls::TlsAcceptor::from(config);
+        tokio::spawn(async move {
+            loop {
+                let Ok((tcp, _)) = listener.accept().await else {
+                    return;
+                };
+                let acceptor = acceptor.clone();
+                let authority = Arc::clone(&authority);
+                tokio::spawn(async move {
+                    let Ok(mut stream) = acceptor.accept(tcp).await else {
+                        return;
+                    };
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !head.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte).await {
+                            Ok(1) => head.push(byte[0]),
+                            _ => return,
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&head);
+                    let path = head.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                    let (status, body) = if path == KEYS_PATH {
+                        ("200 OK", authority.key_set().to_string())
+                    } else if path == LISTS_PATH {
+                        (
+                            "200 OK",
+                            serde_json::json!({"lists": [LIST_ID]}).to_string(),
+                        )
+                    } else if path == format!("{LISTS_PATH}/{LIST_ID}") {
+                        ("200 OK", authority.list_token())
+                    } else if path.starts_with("/moved") {
+                        ("302 Found", String::new())
+                    } else {
+                        ("404 Not Found", String::new())
+                    };
+                    let answer = format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nLocation: {KEYS_PATH}\r\n\
+                         Connection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(answer.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        port
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "permguard-authority-refresh-{name}-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        std::fs::create_dir_all(&directory).expect("the scratch directory");
+        directory
+    }
+
+    /// `2-security/8` Keys and lists on a Plane: a Host with nothing held fetches the key set and
+    /// every list over HTTPS, under the authority `authority.tls.ca` names, and then verifies the
+    /// Authority Plane's tokens; a token revoked there is refused here once the lists are fetched
+    /// again.
+    #[tokio::test]
+    async fn the_keys_and_the_lists_are_fetched_over_https_and_a_revocation_reaches_the_host() {
+        let directory = scratch("fetch");
+        let (ca, config) = pki(&directory);
+        let authority = Arc::new(TestAuthority::new());
+        let port = serve(Arc::clone(&authority), config).await;
+        let source = Source {
+            url: format!("https://localhost:{port}"),
+            ca: Some(ca.clone()),
+            allow_http: false,
+        };
+        let tls = connector(Some(&ca)).expect("the connector");
+
+        let trust = Arc::new(AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE));
+        assert!(trust.anchor().is_none(), "nothing held before the fetch");
+        fetch_keys(&trust, &source, &tls)
+            .await
+            .expect("the key set");
+        assert!(trust.anchor().is_some(), "the key set is held");
+        let cadence = fetch_lists(&trust, &source, &tls, now())
+            .await
+            .expect("the lists");
+        // The list's ttl is 30 seconds: fetched again in half of it, within the bounds.
+        assert_eq!(cadence, LISTS_AT_LEAST);
+        assert!(trust.standing(now()).expired.is_empty());
+
+        let authenticator = TokenAuthenticator {
+            trust: Arc::clone(&trust) as Arc<dyn Trust>,
+            inner: Arc::new(permguard_host::authz::PrincipalMapper::empty()),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
+        };
+        let (token, index) =
+            authority.token_with_index("billing", &[(&["decision.evaluate"], "plane/data/*")]);
+        assert!(matches!(
+            authenticator.authenticate(None, Some(&token)),
+            Ok(Actor::Authenticated(_))
+        ));
+        authority.revoke(index);
+        fetch_lists(&trust, &source, &tls, now())
+            .await
+            .expect("the lists again");
+        assert!(
+            authenticator.authenticate(None, Some(&token)).is_err(),
+            "the revoked token is refused once the new list is held"
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    /// A fetch the transport rules refuse holds nothing: an authority the Host does not trust, a
+    /// redirect, and plain HTTP outside `development`.
+    #[tokio::test]
+    async fn a_fetch_the_transport_refuses_holds_nothing() {
+        let directory = scratch("refused");
+        let (ca, config) = pki(&directory);
+        let authority = Arc::new(TestAuthority::new());
+        let port = serve(authority, config).await;
+        let trust = AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE);
+        let https = |path: &str| Source {
+            url: format!("https://localhost:{port}{path}"),
+            ca: Some(ca.clone()),
+            allow_http: false,
+        };
+
+        // Another authority: the handshake fails, whatever the server answers.
+        let elsewhere = scratch("elsewhere");
+        let (other, _) = pki(&elsewhere);
+        let untrusted = connector(Some(&other)).expect("the connector");
+        let refused = fetch_keys(&trust, &https(""), &untrusted)
+            .await
+            .expect_err("an untrusted certificate");
+        assert!(refused.contains("TLS handshake"), "{refused}");
+
+        // A redirect is never followed.
+        let tls = connector(Some(&ca)).expect("the connector");
+        let refused = fetch_keys(&trust, &https("/moved"), &tls)
+            .await
+            .expect_err("a redirect");
+        assert!(refused.contains("redirects are not followed"), "{refused}");
+
+        // Plain HTTP, outside `development`.
+        let clear = Source {
+            url: format!("http://localhost:{port}"),
+            ca: None,
+            allow_http: false,
+        };
+        assert!(fetch_keys(&trust, &clear, &tls).await.is_err());
+        assert!(trust.anchor().is_none(), "nothing refused is held");
+        let _ = std::fs::remove_dir_all(&directory);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
 
     #[test]
     fn a_list_id_names_no_path() {

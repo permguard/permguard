@@ -39,7 +39,7 @@ data:
     {{- $_ := set $config $section $public }}
     {{- if $plane.authority.enabled }}
     {{- /* The Authority Plane beside the control plane, under the public listener's TLS. */ -}}
-    {{- $authority := include "permguard.authorityListener" (dict "port" $plane.ports.authority "tls" (include "permguard.publicTls" $plane.tls | fromYaml)) | fromYaml }}
+    {{- $authority := include "permguard.authorityListener" (dict "port" $plane.ports.authority "tls" (include "permguard.publicTls" $plane.tls | fromYaml) "advertised" (include "permguard.authorityUrl" $)) | fromYaml }}
     {{- $_ := set $config "authorityPlane" $authority }}
     {{- $_ := set $config "authority" (dict "url" (include "permguard.authorityUrl" $)) }}
     {{- $_ := set $config "runtime" (dict "planes" (list "authority" "control")) }}
@@ -83,7 +83,7 @@ data:
     {{- end }}
     {{- $_ := set $config $section (dict "public" (dict "http" $http "grpc" $grpc)) }}
     {{- end }}
-    {{- $_ := set $config "authorityPlane" (include "permguard.authorityListener" (dict "port" .Values.allInOne.ports.authority "tls" $tls) | fromYaml) }}
+    {{- $_ := set $config "authorityPlane" (include "permguard.authorityListener" (dict "port" .Values.allInOne.ports.authority "tls" $tls "advertised" (include "permguard.authorityUrl" .)) | fromYaml) }}
     {{- $_ := set $config "authority" (dict "url" (include "permguard.authorityUrl" .)) }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" . | fromYaml) $merged }}

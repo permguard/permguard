@@ -91,6 +91,7 @@ docker create --name "${NAME}" -v "${NAME}:/var/lib/permguard" \
     -p 127.0.0.1:18443:8443 \
     -e PERMGUARD_CONTROL_HTTP_ADVERTISED_URL="${CONTROL}" \
     -e PERMGUARD_DATA_HTTP_ADVERTISED_URL="${DATA}" \
+    -e PERMGUARD_AUTHORITY_HTTP_ADVERTISED_URL="${AUTHORITY}" \
     -e PERMGUARD_ADMIN_ADVERTISED_URL="${HOST_API}" \
     "${IMAGE}" /etc/permguard/config.yml >/dev/null
 docker cp "${WORK}/config/." "${NAME}:/etc/permguard"

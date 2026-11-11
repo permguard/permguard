@@ -58,16 +58,43 @@ pg_cert() {
 # The access key a key file names.
 access_key_of() { sed -n 's/^access_key: //p' "$1"; }
 
+# The coordinators' volumes, which the lab's tools mount read-only: where the Authority Plane's
+# first start wrote `admin`'s key. A lab's concession; a deployment moves the key off the volume.
+coordinators="${LAB_COORDINATORS:-/coordinators}"
+
+# The coordinator that runs the Authority Plane and `admin`'s key file on its volume, once its first
+# start wrote it: `<host> <file>`.
+admin_key() {
+    local host key
+    for host in all-in-one control-plane; do
+        key="${coordinators}/${host}/volume/planes/authority/admin.key"
+        if [ -s "${key}" ]; then
+            printf '%s %s\n' "${host}" "${key}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Where the coordinator's Authority Plane is reached.
+authority_endpoint() {
+    local held
+    held="$(admin_key)" || fail "no coordinator wrote admin's key"
+    printf 'https://%s:8443' "${held%% *}"
+}
+
 # The CLI as the lab's operator: the connection its certificate's, every call the Authority Plane's
-# `admin`'s, by the key its first start wrote, once the coordinator wrote it.
+# `admin`'s, by the key its first start wrote, once the coordinator wrote it. The Authority Plane's
+# endpoint is the environment's, so a call naming `--authority-endpoint` (gRPC) states its own.
 pg() {
-    local auth=()
-    if [ -s "${state}/admin.key" ]; then
-        auth=(--authority-endpoint "$(cat "${state}/authority")"
-            --access-key "$(access_key_of "${state}/admin.key")"
-            --secret-key-file "${state}/admin.key")
+    local held key
+    if held="$(admin_key)"; then
+        key="${held#* }"
+        local -x PERMGUARD_AUTHORITY_ENDPOINT="https://${held%% *}:8443"
+        pg_cert --access-key "$(access_key_of "${key}")" --secret-key-file "${key}" "$@"
+    else
+        pg_cert "$@"
     fi
-    pg_cert ${auth[@]+"${auth[@]}"} "$@"
 }
 host_endpoint() { printf 'https://%s:5444' "$1"; }
 control_endpoint() { printf 'https://%s:6443' "$1"; }
@@ -155,6 +182,7 @@ listener_env() {
     # certificate asked, a client proving itself by its access key or its token.
     case "${host}" in
     control-plane | all-in-one)
+        export "PERMGUARD_AUTHORITY_HTTP_ADVERTISED_URL=https://${host}:8443"
         export "PERMGUARD_AUTHORITY_HTTP_TLS_CERT=${pki}/${host}.crt"
         export "PERMGUARD_AUTHORITY_HTTP_TLS_KEY=${pki}/${host}.key"
         export "PERMGUARD_AUTHORITY_GRPC_TLS_CERT=${pki}/${host}.crt"
@@ -175,19 +203,6 @@ listener_env() {
     done
 }
 
-# The coordinator's `admin` key, copied to the lab's state once its first start wrote it: what the
-# lab's operator acts with. A lab's concession; a deployment moves the key off the volume itself.
-keep_admin_key() {
-    local host="$1" key="${volume}/planes/authority/admin.key"
-    (
-        until [ -s "${key}" ]; do sleep 1; done
-        umask 077
-        cp "${key}" "${state}/admin.key.tmp"
-        mv "${state}/admin.key.tmp" "${state}/admin.key"
-        printf 'https://%s:8443\n' "${host}" >"${state}/authority"
-    ) &
-}
-
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
 # The claim moves forward on every start (TD-1); the operator's certificate is bootstrapped once,
 # offline, before the Host first serves; the listeners carry the certificate the lab's authority
@@ -203,7 +218,6 @@ cmd_serve() {
         log "${host}: the lab operator's certificate is this volume's bootstrap principal"
     fi
     listener_env "${host}" "${binary}"
-    case "${host}" in control-plane | all-in-one) keep_admin_key "${host}" ;; esac
     # TD-5: a member whose invitations the catalog step wrote joins its coordinator by itself, its
     # coordinator pinned apart from them; the enroll step then approves the fingerprint it expects.
     local invited="${state}/join/${host}"
@@ -263,7 +277,7 @@ data_planes_of() {
 # Waits until the coordinator's Authority Plane wrote `admin`'s key and answers with it.
 wait_admin() {
     local deadline=$((SECONDS + 180))
-    until [ -s "${state}/admin.key" ] && pg authority service-accounts get admin >/dev/null 2>&1; do
+    until admin_key >/dev/null && pg authority service-accounts get admin >/dev/null 2>&1; do
         [ "${SECONDS}" -lt "${deadline}" ] || fail "the Authority Plane's admin key was never written"
         sleep 2
     done
@@ -291,7 +305,7 @@ token_for() {
     mkdir -p "${dir}"
     chmod 0700 "${dir}"
     rm -f "${file}"
-    pg_cert --authority-endpoint "$(cat "${state}/authority")" \
+    pg_cert --authority-endpoint "$(authority_endpoint)" \
         --access-key "$(access_key_of "${state}/lab-client.key")" \
         --secret-key-file "${state}/lab-client.key" authority token \
         --scope "decision.evaluate event.submit" --out "${file}" >/dev/null ||

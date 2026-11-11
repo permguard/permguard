@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The bootstrap principal on a joined member (iteration 02, WP-12.4, `2-security/8` Before a
-//! member joins): the one credential a member admits besides its IAM Host's access tokens. It
+//! member joins): the one credential a member admits besides the Authority Plane's access tokens. It
 //! brings a Host into a cluster and reaches it when its coordinator is lost; once the Host is a
 //! member, every use is a break-glass: audited `host.authz.bootstrap`, and reported by health as
 //! `degraded: bootstrap` until [`DEGRADED_FOR`] after the last one.

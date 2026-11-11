@@ -332,10 +332,12 @@ is verified first, by its own `verify-cli` (TD-4).
 {{- end }}
 
 {{/*
-The Authority Plane's listener (`2-security/8`): REST and gRPC on one port, under `tls` when given.
+The Authority Plane's listener (`2-security/8`): REST and gRPC on one port, under `tls` when given,
+published as `advertised`, the URL every token names as its issuer, so discovery leads a client to
+the Service rather than to the pod's `0.0.0.0`.
 */}}
 {{- define "permguard.authorityListener" -}}
-{{- $http := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .port)) }}
+{{- $http := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .port)) "advertised_url" .advertised }}
 {{- $grpc := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .port)) }}
 {{- with .tls }}
 {{- $_ := set $http "tls" . }}

@@ -2417,6 +2417,12 @@ fn the_host_listener_serves_tls_from_its_secret_and_admits_tokens() {
         rendered.config("permguard-control-plane")["admin"]["advertised_url"],
         "https://permguard-control-plane-host:5444"
     );
+    // The Authority Plane is published as the URL its tokens name as their issuer, never as the
+    // address the pod binds.
+    assert_eq!(
+        rendered.config("permguard-control-plane")["authorityPlane"]["public"]["http"]["advertised_url"],
+        "https://authority.example:8443"
+    );
     let service = rendered.get("Service", "permguard-control-plane-host");
     assert_eq!(service["spec"]["ports"][0]["port"], 5444);
     let headless = rendered.get("Service", "permguard-data-plane-billing-headless");
