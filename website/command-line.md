@@ -34,4 +34,4 @@ The CLI keeps editable files local and transfers content-addressed objects over 
 
 Start with [Install](./how-it-works/install), then run the complete [Getting Started](./how-it-works/getting-started) flow.
 
-Operators sign in with a client certificate, an identity provider's token or `permguard login`, and the Host's roles decide what they may do: see [Identity & Access](./how-it-works/identity-and-access).
+The CLI acts as a service account, by its access key, and its token's scopes decide what it may do: see [Authority Plane](./how-it-works/authority-plane).

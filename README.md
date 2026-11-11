@@ -786,7 +786,7 @@ Operate a Host:
 ```sh
 permguard host members --help    # membership enrollment, approval and lifecycle, on the Host listener
 permguard host streams --help    # the streams the Host produces and consumes
-permguard iam grants --help      # the IAM Host's authorization store; `host grants bootstrap` is the offline recovery
+permguard authority --help       # the Authority Plane's service accounts, keys and tokens; `host grants bootstrap` is the offline recovery
 permguard host identity --help   # the Host identity; provisioning and emergency reset are offline
 permguard host holds --help      # legal and incident holds that keep ledgers from garbage collection
 permguard host keys --help       # the key rings: keys, rotation, revocation and the verification bundle

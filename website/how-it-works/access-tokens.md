@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Access Tokens & Clusters
-description: One Control Plane issues the access tokens every Data Plane of the cluster decides by, offline, revocable within a bound you choose.
+description: The Authority Plane issues the access tokens every Plane of the cluster decides by, offline, revocable within a bound you choose.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -9,243 +9,47 @@ description: One Control Plane issues the access tokens every Data Plane of the 
 
 <div class="pgx-doc-hero">
   <div class="pgx-kicker">Access tokens</div>
-  <h1>One IAM Host. Every Data Plane decides by its tokens.</h1>
-  <p>The Control Plane's Host keeps the users, roles, grants and service accounts and issues short-lived access tokens; each Data Plane checks them offline, against keys and revocation lists it holds.</p>
+  <h1>One Authority Plane. Every Plane decides by its tokens.</h1>
+  <p>The Authority Plane keeps the service accounts and issues short-lived access tokens; each Plane and Host checks them offline, against keys and revocation lists it fetched itself.</p>
 </div>
 
 ## The cluster
 
-| Host             | Runs                           | Holds                                                                                  | Decides by                                              |
-| ---------------- | ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| the **IAM Host** | a Control Plane                | users, roles, grants, providers, service accounts, the `iam.tokens` keys, status lists | its grants; a token caller is also bounded by the token |
-| a **member**     | a Data Plane, no Control Plane | its memberships with the IAM Host, the keys and lists they pin                         | the IAM Host's access tokens, and nothing else          |
+| Server                       | Runs                                 | Holds                                                    | Decides by         |
+| ---------------------------- | ------------------------------------ | -------------------------------------------------------- | ------------------ |
+| the Authority Plane's Server | the Authority Plane, a Control Plane | the service accounts, the `authority.tokens` keys, lists | the tokens' scopes |
+| any other Server             | a Control or Data Plane, or both     | the keys and lists it fetched from `authority.url`       | the tokens' scopes |
 
-A member keeps no users, roles or grants and offers no sign-in: everything it accepts comes from the IAM Host it joined.
-Its own bootstrap certificate administers it only when its IAM Host is lost, and never decides a request; every use of it once joined is audited and reported as `degraded: bootstrap`.
+A Server without the Authority Plane fetches its keys every five minutes, and at once for a key it does not know, at most once a minute; it fetches each status list every half of its `ttl`.
+What it fetched is kept on its volume, so a restart without the Authority Plane still decides.
 
-## Service accounts
+## Verifying a token
 
-A program acts as a service account, `sa:<name>`, which holds grants as a user does.
+Every request with a bearer token is checked, in order, before anything is decided:
 
-```sh
-permguard iam service-accounts create billing --owner payments-team
-permguard iam grants issue --principal sa:billing \
-  --operations decision.evaluate,event.submit --selector "plane/data/zone/<zone-id>/*"
-permguard iam credentials create billing --secret-out ./billing.secret      # written once, 0600
-permguard iam credentials create billing --public-key ./billing.pub.pem     # a signed assertion instead
-permguard iam credentials create billing --certificate ./billing.crt        # or its TLS certificate
-```
+1. its shape and size, and that it is an `at+jwt`;
+2. its signature, under a key of the held `authority.tokens` set;
+3. its issuer, `authority.url`, and its audience, `permguard` unless `authority.audience` says otherwise;
+4. its validity, within the Host's clock skew;
+5. its status, `VALID` in the list it names;
+6. its scopes, against the operation and the resource the request names.
 
-A grant names only selectors its operations apply to: the IAM Host refuses one that could never allow anything.
-A secret is shown once, in the file it is written to; the IAM Host keeps only its hash.
-Suspending an account, or revoking one of its credentials, refuses every token it obtained.
-
-## Obtaining a token
-
-| Who                           | How                                                                                       | Token         |
-| ----------------------------- | ----------------------------------------------------------------------------------------- | ------------- |
-| a program, by its secret      | `client_credentials` with Basic authentication                                            | `application` |
-| a program, by its key         | `client_credentials` with an RFC 7523 assertion addressed to the published token endpoint | `application` |
-| a program, by its certificate | `client_credentials` over mutual TLS (RFC 8705)                                           | `application` |
-| a person                      | their session from `permguard login`, exchanged (RFC 8693)                                | either family |
-| either, elevated to a role    | the same, with `role:<name>` in the scope                                                 | the role's    |
-
-```sh
-# A service account: the command line obtains, caches and renews its own token, addressed to
-# the member it decides on.
-PERMGUARD_CLIENT_AUDIENCE=member:<member-id> \
-permguard --data-endpoint https://data-plane.example:7443 \
-  --iam-endpoint https://iam.example:5444 --client-id billing \
-  --client-secret-file ./billing.secret \
-  check -f request.json --zone <zone-id> --ledger <ledger-id>
-
-# A person: an administration token for one member, from the session `login` wrote.
-permguard --host-endpoint https://iam.example:5444 --token-file ./alice.session \
-  iam token --scope membership.read,identity.read \
-  --audience member:<member-id> --target host --out ./admin.token
-```
-
-Programs embedding the client library use `permguard_control_client::token_source::TokenSource`, which obtains the token, keeps it in memory and renews it a minute before it expires.
-
-| Family           | Allows                                                                                    | Addressed to                    | Lifetime                                  |
-| ---------------- | ----------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------- |
-| `application`    | `decision.evaluate`, `event.submit` on the members' Planes                                | `member:<id>` or `group:<name>` | 1 hour by default, at most 24 hours       |
-| `administration` | a member's per-Host operations: identity, keys, membership, configuration, backups, audit | exactly one `member:<id>`       | 10 minutes by default, at most 15 minutes |
-
-A token carries one family: one obtained for an application never administers a Host.
-Under `regulated`, an administration token is bound to the certificate of the connection that asked for it and is refused over any other.
-
-## Elevating to a role
-
-A subject can also elevate to one of its roles, as with a security token service: it asks `scope=role:<name>` and receives a token that carries that role's permissions alone, never its own grants nor its other roles'.
-A token without a role stays served, within everything the subject holds: elevation is an option, never a requirement.
-
-| Role             | Made                                                          | Elevation gives                                                    | Addressed to                      |
-| ---------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------- |
-| `dp.<member_id>` | by the IAM Host, when a member's first membership is approved | `decision.evaluate` and `event.submit` on that member's Data Plane | that member alone, without asking |
-| `data-planes`    | by the IAM Host, with the first member's role                 | the same on every member                                           | the members or groups asked       |
-| any other        | by an operator, `permguard iam roles create`                  | the role's own grants, for the operations asked                    | as asked                          |
-
-The IAM Host keeps the system roles, `dp.<member_id>` and `data-planes`, in step with its live members: a member's role ends with its last membership, and a Host that joins again is a new member with a new role, so no assignment passes to it.
-They hold no grants, so a member of one gains nothing until it elevates; an operator assigns users, provider subjects and service accounts to them, one by one, and never makes, describes, deletes or grants to them.
-A service account elevates to decide only: administration stays its own grants'.
-A token issued under a role names it in its `roles` claim (RFC 9068), the audit's `iam.token.issued` records it, and it is refused once the role ends or its subject leaves it: `INVALID` at once on the IAM Host, and on each member once it holds the list that says so.
-An operator's role can bound how long its tokens live: `permguard iam roles create deciders --max-lifetime 900`, or `update` it later, `--max-lifetime 0` clearing it; a token elevated to it lives at most that long, and `permguard iam tokens list` names the role each token was elevated to.
-An all-in-one's own Data Plane decides a token elevated to a system role as a member does, by the token alone, while its subject holds the role.
-
-```sh
-# The operator assigns the service account to the member's role.
-permguard iam roles members add dp.<member-id> --principal sa:billing
-
-# The service account elevates: no audience and no target, the IAM Host addresses the role.
-permguard --iam-endpoint https://iam.example:5444 --client-id billing \
-  --client-secret-file ./billing.secret \
-  iam token --role dp.<member-id> --out ./billing-eu.token
-
-# A Data Plane command elevates by its configuration, auth.client.role.
-PERMGUARD_CLIENT_ROLE=dp.<member-id> \
-permguard --data-endpoint https://data-plane.example:7443 \
-  --iam-endpoint https://iam.example:5444 --client-id billing \
-  --client-secret-file ./billing.secret \
-  check -f request.json --zone <zone-id> --ledger <ledger-id>
-```
-
-The operations beside a role narrow it, `--scope decision.evaluate`; `data-planes` needs the audience, and a role an operator made the audience, the operations and the targets, as without a role.
-A program asks the same through the client library:
-
-```rust
-use permguard_control_client::token_source::{Asked, Proof, TokenSource};
-
-let asked = Asked { scope: "decision.evaluate".into(), ..Asked::default() }
-    .elevated("dp.0198f2aa-0000-7000-8000-000000000002")?;
-let source = TokenSource::new(iam_endpoint, "billing", Proof::Secret(secret), asked, tls, timeout)?;
-let token = source.token()?; // renewed a minute before it expires
-```
-
-## The token endpoint and RFC 8693
-
-`POST /iam/v1/token` is RFC 6749's, and its token exchange RFC 8693's, to the letter:
-
-| Parameter                                  | Served                                                                                                                                   |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `subject_token_type`                       | `urn:ietf:params:oauth:token-type:access_token` for a session of this IAM Host; `…:jwt` or `…:id_token` for an identity provider's token |
-| `requested_token_type`                     | on a token exchange, absent or `urn:ietf:params:oauth:token-type:access_token`; any other type is `invalid_request`                      |
-| `actor_token`, `actor_token_type`          | on a token exchange, refused `invalid_request`: delegation is not served                                                                 |
-| `resource`                                 | an absolute URI without fragment, else `invalid_request`; refused `invalid_target`, since no resource indicator is served                |
-| `scope`                                    | the operations, and at most one `role:<name>` to elevate to                                                                              |
-| `audience`, `target`, `requested_lifetime` | the members or groups the token is for; `target` and `requested_lifetime` are Permguard's own parameters, which RFC 8693 leaves room for |
-
-An exchange answers `issued_token_type: urn:ietf:params:oauth:token-type:access_token` (§2.2.1), and a subject token that is not valid is `invalid_request` (§2.2.2).
-An exchange needs no client authentication, as §2.1 leaves to the deployment: whoever holds a person's session or provider token can exchange it, within that person's grants, so keep sessions as private as the tokens they obtain.
-
-## On a member
-
-A member verifies each token in memory, with no call to the IAM Host: its size and shape, its type and key, the signature, the issuer and tenant, its times, its audience, its entry in the status list it holds, and its certificate binding.
-Token verification adds a few tens of microseconds to a decision: `task bench:tokens` measures it and fails past a hundredth of the decision objective.
+A token refused at any step is `401` with `WWW-Authenticate: Bearer error="invalid_token"`; a token without the scope is `403` with `error="insufficient_scope"`.
 
 ## Revocation
 
-```sh
-permguard iam tokens list --subject sa:billing        # by jti; a token is never shown
-permguard iam tokens revoke <jti>
-```
-
-The IAM Host refuses a revoked token at once.
-A member refuses it once it holds the status list that says so: the IAM Host signs a new list at every change and the members fetch it over their membership.
-While a member cannot reach its IAM Host it keeps deciding with the list it holds, until that list expires; then it refuses every token of that list.
-
-| Profile       | Lists renewed at least every | A list expires after | `application` at most |
-| ------------- | ---------------------------- | -------------------- | --------------------- |
-| `development` | 15 minutes                   | 24 hours             | 24 hours              |
-| `production`  | 5 minutes                    | 1 hour               | 24 hours              |
-| `regulated`   | 1 minute                     | 10 minutes           | 1 hour                |
-
-A member past half its list's lifetime without a fresher one reports `degraded: token-status`; past its expiry, `not ready: token-status`.
-
-## Deploying Data Planes
-
-A Data Plane joins its IAM Host over membership: an invitation, a join, and the coordinator's approval.
-In Kubernetes and Compose the join is automated from an invitation file; the approval stays the operator's.
-
-A Data Plane holds two memberships, since a membership's tasks stay inside its selector: `control`, on the Control Plane's tree, to mirror its ledgers, and `data`, on its own, to ship the decisions and events it records.
-The group's `-membership` ConfigMap states both.
+A token revoked, an account suspended or deleted, a key deleted: the Authority Plane marks each token in its status list, and every Plane refuses it once it holds the new list, within half the list's `ttl`.
 
 ```sh
-# On the IAM Host: per replica, one invitation per membership the group's ConfigMap states.
-# `--coordinator-address`: where the replicas reach it, when you came through a port-forward.
-for kind in control data; do
-  kubectl get configmap pg-permguard-data-plane-billing-membership \
-    -o jsonpath="{.data.${kind}\.tasks\.json}" > ${kind}-tasks.json
-  permguard --host-endpoint https://iam.example:5444 host members invite create \
-    --selector "$(kubectl get configmap pg-permguard-data-plane-billing-membership -o jsonpath="{.data.${kind}\.selector}")" \
-    --tasks ${kind}-tasks.json --name billing-0 --group billing \
-    --coordinator-address https://iam.internal:5444 > ${kind}-0
-done
-kubectl create secret generic billing-invitations --from-file=control-0 --from-file=data-0   # and -1 …
+permguard authority tokens list --account billing
+permguard authority tokens revoke <jti>
 ```
 
-```yaml
-dataPlane:
-  hostListener: { enabled: true, tls: { secretName: data-plane-host } }
-  groups:
-    - name: billing
-      selector: plane/data/zone/<zone-id>/*
-      replicas: 2
-      join:
-        secret: billing-invitations
-        pinFingerprint: sha256:<the IAM Host's fingerprint>
-```
+## Signals
 
-Each replica reads the invitations of its ordinal, `control-<ordinal>` and `data-<ordinal>`, checks that they name the pinned IAM Host, and joins; it mirrors what its memberships grant.
-Each membership waits for its approval: list them with `permguard host members pending`, check each one's Host, and approve it with `permguard host members approve`.
-The replica picks up its approvals by itself within a minute, and never reads its invitations again: the Secret can then be removed.
-A join needs Kubernetes 1.28 or later, where a Pod's index names its invitations.
-Outside Kubernetes, set `PERMGUARD_HOST_JOIN_INVITATION_FILE`, `PERMGUARD_HOST_JOIN_PIN_FINGERPRINT` and, when the invitation leaves them open, `PERMGUARD_HOST_JOIN_NAME` and `PERMGUARD_HOST_JOIN_GROUPS`.
-
-### The Host identity under `production`
-
-From `production` up a Host never makes its identity as it starts: it is made offline, once, and the Host starts only with the witness that was printed then, kept outside its volume.
-A volume replaced or rolled back holds another identity, and is refused.
-The chart runs that step in every Pod, an init container `identity` on the release's `cli` image, and the first install is attended:
-
-```sh
-# 1. Install: each Host makes its identity and waits for its witness.
-helm install pg charts/permguard -f values.yaml
-kubectl logs deploy/pg-permguard-control-plane -c identity     # witness  sha256:…
-kubectl logs pg-permguard-data-plane-billing-0 -c identity     # one per replica
-```
-
-```yaml
-# 2. Record each witness in the values, then upgrade: the Hosts start.
-controlPlane:
-  identity: { witness: "sha256:…" }
-dataPlane:
-  groups:
-    - name: billing
-      identity: { witnesses: ["sha256:… replica 0", "sha256:… replica 1"] }
-```
-
-The witness is printed once: a later Pod on the same volume says the identity is there and prints nothing.
-It is not a secret, only what checks that the volume is still the one provisioned; keep it in the values, under review like the rest.
-A replica waiting for its witness reads it at its next restart: delete its Pod to start it now.
-A replica added later prints its own, recorded the same way before it starts, and the witnesses of ordinals scaled away stay in the values while their claims are kept: a drain reads them.
-A group's replicas need Kubernetes 1.28 or later, where a Pod's index names its witness.
-
-A witness lost before it was recorded cannot be printed again: if that volume never served, delete its claim, and the next Pod provisions a new identity on a new one.
-A witness printed where one is already recorded means the volume was replaced: find out why before you record the new one.
-With `imageVerification` on, `cli.digest` names the `cli` image, verified before it runs.
-Outside Kubernetes, run `permguard host identity provision --volume <path>` before the first start, and set `PERMGUARD_HOST_IDENTITY_WITNESS`, or `PERMGUARD_HOST_IDENTITY_WITNESS_FILE` for a file holding it.
-
-## Observing
-
-| Signal                                        | Meaning                                                                             |
-| --------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `degraded: token-status`                      | a held list is past half its lifetime without a fresher one, or held in memory only |
-| not ready, `degraded: objective.token-status` | a held list expired: tokens of that list are refused                                |
-| `degraded: token-sync`                        | on the IAM Host, tokens' statuses could not follow a directory change               |
-| `degraded: token-custody`                     | under `production`, the IAM Host keeps `iam.tokens` in files                        |
-| `degraded: bootstrap`                         | a member's bootstrap certificate was used while it is joined                        |
-| `degraded: join`                              | a configured join has made no membership yet, or was refused                        |
-| `permguard_token_status_list_age_seconds`     | the oldest list a member holds, since it was issued                                 |
-| `host.authz.token` in the trail               | an administration call a token allowed, with the token's `jti`                      |
-| `iam.token.*` in the trail                    | every token issued, exchanged, revoked or refused at the IAM Host                   |
+| Metric                                       | Meaning                                                     |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| `permguard_token_status_list_age_seconds`    | how old each held list is                                   |
+| `permguard_token_status_lists_expired`       | lists held past their expiry: every token they name refused |
+| `permguard_authority_refresh_failures_total` | fetches of the keys or lists that failed                    |
+| `permguard_token_status_list_rejected_total` | lists refused for their signature, issuer or time           |

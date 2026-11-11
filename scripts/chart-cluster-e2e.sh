@@ -2,20 +2,21 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 #
-# The chart as a cluster (iteration 02, TD-5 and WP-14.1): one Control Plane, the IAM Host, and two
+# The chart as a cluster (iteration 02, TD-5 and WP-14.1): one Control Plane with the Authority Plane, and two
 # Data Planes in two groups that join it by themselves from invitation Secrets, on kind. Each step is
 # named as it runs:
 #
 #   under `production`, each Host's identity made offline, its witness recorded before it starts
-#   the operator is the Control Plane's recovery administrator, bootstrapped offline on its volume
+#   the operator is the Control Plane's recovery administrator, bootstrapped offline on its volume,
+#   and acts as the Authority Plane's `admin`, whose key its first start wrote there
 #   the catalog holds a ledger, its policies applied
 #   each group's replica joins by itself from its Secret, and waits for its approval
 #   the operator approves the exact Host each pending membership names (by its host id)
-#   a service account's token decides on the member it is addressed to, and on no other
+#   a service account's token decides on every member, its scopes alone
 #   the operator's certificate never decides on a member
 #   a revoked token is refused once the member holds the list that says so
 #   the evaluation latency on a member, token verification on, within the TS-5 objective
-#   a service account elevated to eu-0's role decides on eu-0 alone, and on no other's role
+#   a token narrowed to another scope decides nowhere
 #
 #   scripts/chart-cluster-e2e.sh                       every Host under `development`
 #   PROFILE=production scripts/chart-cluster-e2e.sh    under `production`, the chart's default
@@ -178,7 +179,7 @@ values() { # pin, replicas, acme zone id, beta zone id
     # `production` generates nothing: the secrets come from a Secret, as an operator supplies
     # them, and every ring is envelope-encrypted under its key-encryption key.
     if [ "${profile}" = production ]; then
-        # Who may reach each Host listener: the operator, and on the IAM Host its members.
+        # Who may reach each Host listener: the operator, and on the coordinator its members.
         cp_allow=", allow: [\"sha256:$(cat "${work}/operator.fp")\", \"sha256:$(cat "${work}/data-plane.fp")\"]"
         dp_allow=", allow: [\"sha256:$(cat "${work}/operator.fp")\"]"
         secrets_directory=", directory: /etc/permguard-secrets"
@@ -268,7 +269,7 @@ witness_of() { # a pod selector
 placeholder="sha256:$(printf '0%.0s' $(seq 64))"
 values "${placeholder}" 0 >"${work}/values.yaml"
 
-step "the Control Plane, the IAM Host"
+step "the Control Plane, with the Authority Plane"
 cp="${release}-permguard-control-plane"
 if [ "${profile}" = production ]; then
     # It refuses to start until its witness is recorded: installed without waiting for it.
@@ -294,13 +295,16 @@ k get "deployment/${cp}" -o json | jq --arg fp "$(cat "${work}/operator.fp")" '{
         | .containers = [.containers[0] | {
             name: "bootstrap", image: "permguard/lab:local", imagePullPolicy: "Never",
             securityContext, env, volumeMounts,
-            command: ["permguard", "-o", "json", "host", "grants", "bootstrap",
-                "--volume", "/var/lib/permguard/volume", "--server-config", "/etc/permguard/config.yml",
-                "--fingerprint", $fp]
+            command: ["sh", "-c", ("permguard -o json host grants bootstrap --volume /var/lib/permguard/volume --server-config /etc/permguard/config.yml --fingerprint " + $fp + " >/dev/null && cat /var/lib/permguard/volume/planes/authority/admin.key")]
         }]) } }
 }' | k apply -f - >/dev/null
 k wait --for=condition=complete job/bootstrap-operator --timeout 120s ||
     { k logs job/bootstrap-operator >&2; fail "the offline bootstrap did not complete"; }
+# `admin`'s key, which the Authority Plane wrote at its first start: read off the volume by the same
+# Job, kept owner-only, and the Job deleted with its log. A disposable cluster's concession.
+(umask 077 && k logs job/bootstrap-operator | grep -E '^(access|secret)_key: ' >"${work}/admin.key")
+k delete job bootstrap-operator --wait=false >/dev/null
+grep -q '^access_key: pgak_' "${work}/admin.key" || fail "the Authority Plane wrote no admin key"
 k scale "deployment/${cp}" --replicas 1
 k rollout status "deployment/${cp}" --timeout 300s
 log "granted offline on the control plane's volume"
@@ -318,19 +322,19 @@ forward() { # target, local port, remote port
 }
 forward "svc/${cp}-host" 15444 5444
 forward "svc/${cp}" 16443 6443
+forward "svc/${cp}" 18443 8443
+authority=https://localhost:18443
+# The operator: its certificate on the connection, `admin`'s token on every call.
 pg() {
     "${cli}" -o json --tls-ca-file "${work}/ca.crt" --tls-cert-file "${work}/operator.crt" \
-        --tls-key-file "${work}/operator.key" "$@"
+        --tls-key-file "${work}/operator.key" --authority-endpoint "${authority}" \
+        --access-key "$(sed -n 's/^access_key: //p' "${work}/admin.key")" \
+        --secret-key-file "${work}/admin.key" "$@"
 }
 host_api=https://localhost:15444
 control=https://localhost:16443
-principal="cert:sha256:$(cat "${work}/operator.fp")"
-pg --host-endpoint "${host_api}" iam grants issue --principal "${principal}" \
-    --operations membership.admin,membership.read,identity.read --selector host >/dev/null
-pg --host-endpoint "${host_api}" iam grants issue --principal "${principal}" \
-    --operations catalog.read,catalog.write,policy.push --selector "plane/control/*" >/dev/null
 pin="$(pg --host-endpoint "${host_api}" host identity show | jq -er '.fingerprint')"
-log "the IAM Host is ${pin}"
+log "the coordinator is ${pin}"
 
 step "the catalog holds a ledger in each group's zone, its policies applied"
 for name in acme beta; do
@@ -437,17 +441,16 @@ eu="$(member_of eu-0)"
 us="$(member_of us-0)"
 log "members eu-0 ${eu}, us-0 ${us}"
 
-step "a service account's token decides on the member it is addressed to, and on no other"
-pg --host-endpoint "${host_api}" iam service-accounts create e2e --owner e2e >/dev/null
-pg --host-endpoint "${host_api}" iam grants issue --principal sa:e2e \
-    --operations decision.evaluate --selector "plane/data/*" >/dev/null
-(umask 077 && pg --host-endpoint "${host_api}" iam credentials create e2e --secret-out "${work}/e2e.secret" >/dev/null)
-token_for() { # member, file
-    rm -f "$2"
-    pg --iam-endpoint "${host_api}" --client-id e2e --client-secret-file "${work}/e2e.secret" \
-        iam token --scope decision.evaluate --audience "member:$1" --target "plane/data/*" --out "$2" >/dev/null
+step "a service account's token decides on every member, its scopes alone"
+pg authority service-accounts create e2e --scope "decision.evaluate@plane/data/*" >/dev/null
+(umask 077 && pg authority keys create e2e --secret-out "${work}/e2e.key" >/dev/null)
+token_for() { # file, [scope]
+    rm -f "$1"
+    "${cli}" -o json --tls-ca-file "${work}/ca.crt" --authority-endpoint "${authority}" \
+        --access-key "$(sed -n 's/^access_key: //p' "${work}/e2e.key")" --secret-key-file "${work}/e2e.key" \
+        authority token --scope "${2:-decision.evaluate}" --out "$1" >/dev/null
 }
-token_for "${eu}" "${work}/eu.jwt"
+token_for "${work}/eu.jwt"
 forward "pod/${release}-permguard-data-plane-eu-0" 27443 7443
 forward "pod/${release}-permguard-data-plane-us-0" 27444 7443
 decide() { # port, token file or none
@@ -459,12 +462,15 @@ decide() { # port, token file or none
 }
 deadline=$((SECONDS + 240))
 until jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"$(decide 27443 "${work}/eu.jwt")"; do
-    [ "${SECONDS}" -lt "${deadline}" ] || fail "eu-0 does not decide on its token: $(decide 27443 "${work}/eu.jwt")"
+    [ "${SECONDS}" -lt "${deadline}" ] || fail "eu-0 does not decide on the token: $(decide 27443 "${work}/eu.jwt")"
     sleep 3
 done
-log "eu-0 decides on a token addressed to it"
-grep -q unauthenticated <<<"$(decide 27444 "${work}/eu.jwt")" || fail "us-0 decided on eu-0's token: $(decide 27444 "${work}/eu.jwt")"
-log "us-0 refuses eu-0's token"
+deadline=$((SECONDS + 240))
+until jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"$(decide 27444 "${work}/eu.jwt")"; do
+    [ "${SECONDS}" -lt "${deadline}" ] || fail "us-0 does not decide on the token: $(decide 27444 "${work}/eu.jwt")"
+    sleep 3
+done
+log "eu-0 and us-0 decide on e2e's token, verified under the keys each fetched from the Authority Plane"
 
 step "the operator's certificate never decides on a member"
 answer="$(decide 27443 none)"
@@ -498,7 +504,7 @@ claims_of() { # token file
     cut -d. -f2 "$1" | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null
 }
 jti="$(claims_of "${work}/eu.jwt" | jq -er '.jti')"
-pg --host-endpoint "${host_api}" iam tokens revoke "${jti}" >/dev/null
+pg authority tokens revoke "${jti}" >/dev/null
 started=${SECONDS}
 until grep -q unauthenticated <<<"$(decide 27443 "${work}/eu.jwt")"; do
     [ $((SECONDS - started)) -lt 240 ] || fail "eu-0 still decides on the revoked ${jti}"
@@ -506,30 +512,9 @@ until grep -q unauthenticated <<<"$(decide 27443 "${work}/eu.jwt")"; do
 done
 log "eu-0 refuses ${jti} $((SECONDS - started)) s after its revocation"
 
-step "a service account elevated to eu-0's role decides on eu-0 alone, and on no other's role"
-# The member's role, dp.<member_id>, is the IAM Host's own since eu-0's approval: the operator only
-# assigns it. Elevated, the token is addressed by the IAM Host to eu-0 and carries the role alone.
-pg --host-endpoint "${host_api}" iam roles list | jq -e --arg eu "dp.${eu}" --arg us "dp.${us}" \
-    '[.roles[].name] | index($eu) != null and index($us) != null and index("data-planes") != null' >/dev/null ||
-    fail "the members' roles do not follow the live members: $(pg --host-endpoint "${host_api}" iam roles list)"
-pg --host-endpoint "${host_api}" iam roles members add "dp.${eu}" --principal sa:e2e >/dev/null
-elevate() { # role, file
-    rm -f "$2"
-    pg --iam-endpoint "${host_api}" --client-id e2e --client-secret-file "${work}/e2e.secret" \
-        iam token --role "$1" --out "$2"
-}
-elevate "dp.${eu}" "${work}/eu-role.jwt" >/dev/null || fail "sa:e2e does not elevate to dp.${eu}"
-claims_of "${work}/eu-role.jwt" | jq -e --arg eu "${eu}" \
-    '.roles == ["dp." + $eu] and .aud == ["member:" + $eu] and .permguard_target == ["plane/data/*"]' >/dev/null ||
-    fail "the elevated token is not eu-0's role alone: $(claims_of "${work}/eu-role.jwt" | jq -c '{roles, aud, permguard_target, scope}')"
-jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"$(decide 27443 "${work}/eu-role.jwt")" ||
-    fail "eu-0 does not decide on its role's token: $(decide 27443 "${work}/eu-role.jwt")"
-log "eu-0 decides on a token elevated to dp.${eu}"
-grep -q unauthenticated <<<"$(decide 27444 "${work}/eu-role.jwt")" ||
-    fail "us-0 decided on eu-0's role's token: $(decide 27444 "${work}/eu-role.jwt")"
-log "us-0 refuses it"
-refused="$(elevate "dp.${us}" "${work}/us-role.jwt" 2>&1)" && fail "sa:e2e elevated to dp.${us}, a role it is not a member of"
-grep -q invalid_scope <<<"${refused}" || fail "dp.${us} was refused for another reason: ${refused}"
-log "sa:e2e is refused us-0's role, which it was never assigned (invalid_scope)"
+step "a token narrowed to another scope decides nowhere"
+refused="$(token_for "${work}/narrow.jwt" "catalog.read" 2>&1)" && fail "e2e obtained a scope it does not hold"
+grep -q invalid_scope <<<"${refused}" || fail "the scope was refused for another reason: ${refused}"
+log "e2e is refused catalog.read, which its scopes do not hold (invalid_scope)"
 
 printf '\nok: chart-cluster-e2e\n'

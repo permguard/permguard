@@ -7,14 +7,14 @@
 #   scripts/cli-tour.sh            the tour, then everything it made removed
 #   KEEP=1 scripts/cli-tour.sh     the container and the workspace kept, to go on by hand
 #
-#   1. the all-in-one started          5. a zone, a ledger, the policies applied
-#   2. the first administrator         6. decisions asked
-#   3. a user, a role, its grant       7. the decisions read back from the control plane
-#   4. a service account and a secret  8. everything removed (unless KEEP=1)
+#   1. the all-in-one started              5. a zone, a ledger, the policies applied
+#   2. the administrator's key             6. decisions asked
+#   3. a service account, its scopes       7. the decisions read back from the control plane
+#   4. its access key and its token        8. everything removed (unless KEEP=1)
 #
 # Needs Docker and the `permguard` CLI of the image's version (PG names another binary, a build of
 # this checkout among them). The policies are this repository's examples/basics (EXAMPLE names
-# another workspace). Ports 15443 to 17443 on 127.0.0.1, never a lab's.
+# another workspace). Ports 15443 to 18443 on 127.0.0.1, never a lab's.
 set -euo pipefail
 
 IMAGE="${IMAGE:-ghcr.io/permguard/permguard/all-in-one:0.1.26}"
@@ -22,13 +22,11 @@ PG="${PG:-permguard}"
 EXAMPLE="${EXAMPLE:-$(cd "$(dirname "$0")/.." && pwd)/examples/basics}"
 NAME="${NAME:-permguard-tour}"
 WORK="${WORK:-$(mktemp -d -t permguard-tour)}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-a long administrator password}"
-ALICE_PASSWORD="${ALICE_PASSWORD:-alice has a long password}"
-
-HOST=https://127.0.0.1:15443     # Server Host, over TLS: discovery, setup, sign-in
-IAM=https://127.0.0.1:15444      # Host API, over TLS: grants, roles, users, service accounts
-CONTROL=http://127.0.0.1:16443   # control plane: zones, ledgers, policies, decision log
-DATA=http://127.0.0.1:17443      # data plane: decisions
+HOST=https://127.0.0.1:15443       # Server Host, over TLS: discovery
+HOST_API=https://127.0.0.1:15444   # Host API, over TLS: keys, memberships, lifecycle
+CONTROL=http://127.0.0.1:16443     # control plane: zones, ledgers, policies, decision log
+DATA=http://127.0.0.1:17443        # data plane: decisions
+AUTHORITY=https://127.0.0.1:18443  # Authority Plane, over TLS: service accounts and tokens
 
 step() { printf '\n== %s\n' "$*"; }
 cleanup() {
@@ -49,17 +47,7 @@ assurance: { profile: development }
 log: { level: info, format: terminal }
 host:
   addr: 0.0.0.0:5443
-  # A password signs in over TLS only, outside a loopback address.
   tls: { cert: tls/server.pem, key: tls/server.key }
-  # Local users sign in with a password; their sessions are the CLI's `--token-file`.
-  authentication:
-    methods: [password]
-    password:
-      min_length: 12
-      mfa: optional
-      factor_key: { ref: mfa-seal, version: "v1" }
-      lockout: { attempts: 5, window: 15m, duration: 15m }
-    sessions: { lifetime: 8h, idle: 1h }
   authz:
     public:
       - operations: [catalog.read, catalog.write, policy.push, evidence.read]
@@ -68,9 +56,15 @@ host:
         selector: "plane/data/*"
 admin:
   addr: 0.0.0.0:5444
-  # A session's bearer token is enough; a client certificate under the Host's authority too.
+  # An access token is enough; a client certificate under the Host's authority too.
   tls: { cert: tls/server.pem, key: tls/server.key, client_ca: tls/ca.pem, client_auth: optional }
-runtime: { planes: [control, data] }
+runtime: { planes: [authority, control, data] }
+# The Authority Plane: its first start makes `admin`, its key in planes/authority/admin.key.
+authority: { url: "https://127.0.0.1:18443" }
+authorityPlane:
+  public:
+    http: { enabled: true, addr: 0.0.0.0:8443, tls: { cert: tls/server.pem, key: tls/server.key } }
+    grpc: { enabled: true, addr: 0.0.0.0:8443, tls: { cert: tls/server.pem, key: tls/server.key } }
 controlPlane:
   public:
     http: { enabled: true, addr: 0.0.0.0:6443 }
@@ -94,9 +88,10 @@ YAML
 docker volume create "${NAME}" >/dev/null
 docker create --name "${NAME}" -v "${NAME}:/var/lib/permguard" \
     -p 127.0.0.1:15443:5443 -p 127.0.0.1:15444:5444 -p 127.0.0.1:16443:6443 -p 127.0.0.1:17443:7443 \
+    -p 127.0.0.1:18443:8443 \
     -e PERMGUARD_CONTROL_HTTP_ADVERTISED_URL="${CONTROL}" \
     -e PERMGUARD_DATA_HTTP_ADVERTISED_URL="${DATA}" \
-    -e PERMGUARD_ADMIN_ADVERTISED_URL="${IAM}" \
+    -e PERMGUARD_ADMIN_ADVERTISED_URL="${HOST_API}" \
     "${IMAGE}" /etc/permguard/config.yml >/dev/null
 docker cp "${WORK}/config/." "${NAME}:/etc/permguard"
 docker start "${NAME}" >/dev/null
@@ -107,31 +102,29 @@ for _ in $(seq 1 60); do "${PG}" "${CA[@]}" discover "${HOST}" >/dev/null 2>&1 &
 "${PG}" "${CA[@]}" discover "${HOST}"
 
 # ---------------------------------------------------------------------------------------------
-step "2. the first administrator, with the setup code the Host wrote on its volume"
-"${PG}" "${CA[@]}" setup "${HOST}" --check
-docker cp "${NAME}:/var/lib/permguard/host/setup/code" "${WORK}/setup-code"
-printf '%s' "${ADMIN_PASSWORD}" | "${PG}" "${CA[@]}" setup "${HOST}" --code-file "${WORK}/setup-code" --name admin --password-stdin
-printf '%s' "${ADMIN_PASSWORD}" | "${PG}" "${CA[@]}" --token-file "${WORK}/admin.session" login "${HOST}" --user admin
-
-# Every `iam` command below: the administrator's session, over TLS, to the Host API.
-iam() { "${PG}" --host-endpoint "${IAM}" "${CA[@]}" --token-file "${WORK}/admin.session" iam "$@"; }
-
-# ---------------------------------------------------------------------------------------------
-step "3. a user, a role and the role's grant"
-printf '%s' "${ALICE_PASSWORD}" | iam users create alice --email alice@example.com --password-stdin
-iam roles create deciders --description "ask the data planes for decisions" --max-lifetime 900
-iam roles members add deciders --local alice
-iam roles grant deciders --operations decision.evaluate --selector 'plane/data/*'
-iam roles get deciders
-iam roles of --local alice
+step "2. the administrator's key, which the Authority Plane wrote at its first start"
+for _ in $(seq 1 60); do docker cp "${NAME}:/var/lib/permguard/planes/authority/admin.key" "${WORK}/admin.key" 2>/dev/null && break; sleep 1; done
+chmod 0600 "${WORK}/admin.key"
+# Every `authority` command below acts as `admin`: its token obtained with its key, over TLS.
+authority() {
+    "${PG}" "${CA[@]}" --authority-endpoint "${AUTHORITY}" --secret-key-file "${WORK}/admin.key" authority "$@"
+}
+authority service-accounts get admin
 
 # ---------------------------------------------------------------------------------------------
-step "4. a service account and its secret, never printed"
-iam service-accounts create billing --owner payments --description "the billing service"
-iam credentials create billing --secret-out "${WORK}/billing.secret"
-iam grants issue --principal sa:billing --operations decision.evaluate --selector 'plane/data/*'
-iam service-accounts get billing
-iam grants list
+step "3. a service account and its scopes"
+authority service-accounts create billing --description "the billing service" \
+    --scope 'decision.evaluate@plane/data/*'
+authority scopes get billing
+authority service-accounts list
+
+# ---------------------------------------------------------------------------------------------
+step "4. its access key, the secret written once and never printed, and a token"
+authority keys create billing --secret-out "${WORK}/billing.key"
+authority keys list billing
+"${PG}" "${CA[@]}" --authority-endpoint "${AUTHORITY}" --secret-key-file "${WORK}/billing.key" \
+    authority token --out "${WORK}/billing.jwt"
+authority tokens list --account billing
 
 # ---------------------------------------------------------------------------------------------
 step "5. a zone, a ledger, and the basics workspace's policies applied to it"
@@ -143,6 +136,8 @@ mkdir -p "${WORK}/basics"
 # The workspace reaches the control plane through its remote `origin`, and asks the data plane
 # named on `check`.
 ws() { "${PG}" -w "${WORK}/basics" "$@"; }
+# The data plane serves in the clear here, where no token travels: its decisions are public, a
+# development convenience; over TLS billing's token would ask them.
 check() { "${PG}" -w "${WORK}/basics" --data-endpoint "${DATA}" check "$@"; }
 ws init basics --language cedar,rego
 ws remote add origin "${CONTROL}"
