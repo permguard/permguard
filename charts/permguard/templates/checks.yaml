@@ -597,6 +597,16 @@ The Host listener (TD-2): mutual TLS from a Secret, and one source for it.
 {{- end }}
 
 {{- /*
+A Host listener names no operators' certificates any more: callers present the Authority Plane's
+tokens, peer Hosts their membership's certificates.
+*/ -}}
+{{- range $unit := list "controlPlane" "dataPlane" "allInOne" }}
+{{- if (dig "hostListener" "allow" nil (get $.Values $unit)) }}
+{{- fail (printf "%s.hostListener.allow is gone: an operator presents the Authority Plane's token, not a certificate the listener names; remove it and give the operator a service account." $unit) }}
+{{- end }}
+{{- end }}
+
+{{- /*
 The drain controller (TD-2): what it reaches and what it needs.
 */ -}}
 {{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}
@@ -604,8 +614,14 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- if not .Values.dataPlane.hostListener.enabled }}
 {{- fail "dataPlane.drainController needs dataPlane.hostListener: a replica without its Host listener holds no membership and issues no drain receipt, so no claim of it could ever be reclaimed." }}
 {{- end }}
+{{- if not $dc.credential.secretName }}
+{{- fail "dataPlane.drainController.credential.secretName names no Secret: the controller acts on the coordinator as a service account, by the key file in the Secret's secret.key." }}
+{{- end }}
 {{- if not $dc.tls.secretName }}
-{{- fail "dataPlane.drainController.tls.secretName names no Secret: the controller presents an operator's client certificate to the coordinator's Host listener, and verifies it against the Secret's ca.crt." }}
+{{- fail "dataPlane.drainController.tls.secretName names no Secret: the controller verifies the coordinator's Host listener and the Authority Plane against the Secret's ca.crt." }}
+{{- end }}
+{{- if not (hasPrefix "https://" (include "permguard.authorityUrl" $)) }}
+{{- fail (printf "dataPlane.drainController obtains its tokens at %q: a secret key is sent over https only, so the Authority Plane must serve TLS (controlPlane.tls.secretName, or dataPlane.authority.url)." (include "permguard.authorityUrl" $)) }}
 {{- end }}
 {{- if and (not $dc.coordinator) (not (and .Values.controlPlane.enabled .Values.controlPlane.hostListener.enabled)) }}
 {{- fail "dataPlane.drainController names no coordinator and this release's control plane serves no Host listener: set dataPlane.drainController.coordinator to the coordinator's Host listener, or enable controlPlane.hostListener." }}

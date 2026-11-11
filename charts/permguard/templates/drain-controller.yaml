@@ -14,13 +14,16 @@ the Job's receipt verifies under the member's pin the coordinator holds and the 
 acknowledges every stream it names. A Job that fails, or that its deadline ends, keeps the claim.
 
 Its ServiceAccount may do exactly that, in this namespace: read the group workloads, list and
-delete claims, create, read and delete Jobs, read Pods and their logs.
+delete claims, create, read and delete Jobs, read Pods and their logs. On the coordinator it acts as
+a Permguard service account, its key file mounted from `credential.secretName`, by the tokens it
+obtains at the Authority Plane.
 */}}
 {{- if and .Values.dataPlane.enabled .Values.dataPlane.drainController.enabled }}
 {{- $dp := .Values.dataPlane }}
 {{- $dc := $dp.drainController }}
 {{- $account := printf "%s-reclaim" (include "permguard.fullname" .) }}
 {{- $coordinator := $dc.coordinator | default (printf "https://%s-control-plane-host:%d" (include "permguard.fullname" .) (int .Values.controlPlane.hostListener.port)) }}
+{{- $authority := include "permguard.authorityUrl" . }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -165,10 +168,10 @@ spec:
                 - {{ $coordinator | quote }}
                 - "--tls-ca-file"
                 - "/etc/permguard-reclaim-tls/ca.crt"
-                - "--tls-cert-file"
-                - "/etc/permguard-reclaim-tls/tls.crt"
-                - "--tls-key-file"
-                - "/etc/permguard-reclaim-tls/tls.key"
+                - "--authority-endpoint"
+                - {{ $authority | quote }}
+                - "--secret-key-file"
+                - "/etc/permguard-reclaim-key/secret.key"
                 - "reclaim"
                 - "run"
                 - "--selector"
@@ -187,6 +190,9 @@ spec:
                 - name: tls
                   mountPath: /etc/permguard-reclaim-tls
                   readOnly: true
+                - name: credential
+                  mountPath: /etc/permguard-reclaim-key
+                  readOnly: true
                 - name: tmp
                   mountPath: /tmp
           volumes:
@@ -197,6 +203,18 @@ spec:
             - name: tls
               secret:
                 secretName: {{ $dc.tls.secretName }}
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+            # The key file root's, readable by the pod's group alone (0440): what the command line
+            # reads a mounted secret key from.
+            - name: credential
+              secret:
+                secretName: {{ $dc.credential.secretName }}
+                defaultMode: 288
+                items:
+                  - key: secret.key
+                    path: secret.key
             - name: tmp
               emptyDir: {}
 ---

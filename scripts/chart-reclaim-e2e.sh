@@ -7,18 +7,22 @@
 #   scripts/chart-reclaim-e2e.sh [data-plane image] [control-plane image] [cli image]
 #
 # Defaults `permguard/{data-plane,control-plane,cli}:e2e`, built from the repository's Dockerfile
-# with PACKAGE and BIN. A control plane and one group of two replicas that keep evidence, each with
-# its Host listener (mutual TLS from Secrets this script mints), and the drain controller's CronJob
-# every minute. The group scales `2 → 1`, and each step is named as it runs:
+# with PACKAGE and BIN. A control plane running the Authority Plane and one group of two replicas
+# that keep evidence, each with its Host listener and its public listener over TLS from Secrets this
+# script mints, and the drain controller's CronJob every minute, acting as the service account
+# `reclaim`. The group scales `2 → 1`, and each step is named as it runs:
 #
+#   admin's key read out of the control plane's volume, as the chart's notes say
+#   the service account `reclaim`, scoped to read the memberships and the streams, its key a Secret
 #   the controller creates a fenced drain Job for the retained claim
 #   the drain Job claims a new generation, recovers and prints a signed drain receipt
 #   a receipt the coordinator cannot vouch for keeps the claim (it holds no membership of the replica)
 #   a forced timeout never deletes an evidence claim (the Job held by an unschedulable Pod until
 #     its deadline ends it; the controller keeps the claim and the Job)
 #
-# It needs docker, kind, kubectl, helm, jq and openssl. The cluster is deleted at the end unless
-# KEEP=1.
+# It needs docker, kind, kubectl, helm, jq, openssl and cargo (the command line that makes the
+# service account is built from this checkout; PG names another), and pulls busybox for the
+# ephemeral container that reads admin's key. The cluster is deleted at the end unless KEEP=1.
 set -euo pipefail
 
 data_plane="${1:-permguard/data-plane:e2e}"
@@ -32,7 +36,7 @@ workload="${release}-permguard-data-plane-${group}"
 claim="state-${workload}-1"
 job="${workload}-drain-1"
 
-for tool in docker kind kubectl helm jq openssl; do
+for tool in docker kind kubectl helm jq openssl cargo; do
     command -v "${tool}" >/dev/null || { echo "chart-reclaim-e2e: ${tool} is required" >&2; exit 2; }
 done
 cd "$(git rev-parse --show-toplevel)"
@@ -44,7 +48,9 @@ k() { kubectl --namespace "${namespace}" "$@"; }
 # under `pipefail` a match would read as a failure.
 log_of() { k logs "$@" 2>/dev/null || true; }
 
+forwarded=""
 cleanup() {
+    [ -n "${forwarded}" ] && kill "${forwarded}" 2>/dev/null || true
     if [ "${KEEP:-0}" != "1" ]; then kind delete cluster --name "${cluster}" >/dev/null 2>&1 || true; rm -f "${TMPDIR:-/tmp}/kubeconfig-${cluster}"; fi
 }
 trap cleanup EXIT
@@ -80,7 +86,16 @@ issue control-plane-host "${release}-permguard-control-plane-host" \
 issue data-plane-host "${workload}" \
     "DNS:*.${workload}-headless.${namespace}.svc.cluster.local,DNS:*.${workload}-headless" \
     "serverAuth,clientAuth"
-issue reclaim-operator "reclaim" "URI:spiffe://permguard-e2e/reclaim" "clientAuth"
+# The public listeners: the control plane's names its Authority Plane, reached here through a
+# port-forward on 127.0.0.1; the group's, which fetches the Authority Plane's keys and lists itself.
+issue control-plane-tls "${release}-permguard-control-plane" \
+    "DNS:${release}-permguard-control-plane,DNS:${release}-permguard-control-plane.${namespace}.svc,DNS:${release}-permguard-control-plane.${namespace}.svc.cluster.local,IP:127.0.0.1" \
+    "serverAuth"
+issue data-plane-tls "${workload}" \
+    "DNS:${workload},DNS:${workload}.${namespace}.svc,DNS:*.${workload}-headless.${namespace}.svc.cluster.local,DNS:*.${workload}-headless" \
+    "serverAuth"
+# What the drain controller verifies the coordinator and the Authority Plane against.
+k create secret generic reclaim-ca --from-file=ca.crt="${pki}/ca.crt" >/dev/null
 
 values="$(mktemp)"
 cat >"${values}" <<EOF
@@ -90,26 +105,20 @@ image: { registry: "", pullPolicy: IfNotPresent, tag: e2e }
 controlPlane:
   repository: "${control_plane%:*}"
   assurance: { profile: development }
+  tls: { secretName: control-plane-tls }
   hostListener: { enabled: true, tls: { secretName: control-plane-host } }
-  # A lab-only shortcut: the coordinator's memberships and frontiers are readable by anybody, so the
-  # controller reaches its verdict without an operator grant. Never in a deployment.
-  extraConfig:
-    host:
-      principals:
-        - san_uri: spiffe://permguard-e2e/reclaim
-      authz:
-        public:
-          - { operations: [membership.read], selector: host }
-          - { operations: [streams.read], selector: "plane/data/*" }
 dataPlane:
   repository: "${data_plane%:*}"
+  tls: { secretName: data-plane-tls }
   hostListener: { enabled: true, tls: { secretName: data-plane-host } }
+  # Enabled once its key is a Secret, below.
   drainController:
-    enabled: true
+    enabled: false
     repository: "${cli%:*}"
     schedule: "* * * * *"
     jobDeadlineSeconds: 90
-    tls: { secretName: reclaim-operator }
+    credential: { secretName: reclaim-key }
+    tls: { secretName: reclaim-ca }
   groups:
     - name: ${group}
       selector: plane/data/*
@@ -127,6 +136,35 @@ EOF
 step "a control plane and a group of two replicas that keep evidence"
 helm install "${release}" charts/permguard --namespace "${namespace}" --values "${values}" --wait --timeout 6m
 k rollout status "statefulset/${workload}" --timeout 300s
+
+step "admin's key read out of the control plane's volume, as the chart's notes say"
+pod="$(k get pod -l "app.kubernetes.io/instance=${release},app.kubernetes.io/component=control-plane" -o jsonpath='{.items[0].metadata.name}')"
+k patch pod "${pod}" --subresource ephemeralcontainers --type strategic -p '{"spec":{"ephemeralContainers":[{"name":"admin-key","image":"busybox:1.36","command":["sleep","600"],"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"runAsGroup":65532,"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},"volumeMounts":[{"name":"state","mountPath":"/v"}]}]}}' >/dev/null
+k wait pod "${pod}" --for=jsonpath='{.status.ephemeralContainerStatuses[0].state.running}' --timeout=180s >/dev/null
+(umask 077; k exec "${pod}" -c admin-key -- cat /v/volume/planes/authority/admin.key >"${pki}/admin.key")
+k exec "${pod}" -c admin-key -- rm /v/volume/planes/authority/admin.key
+grep -q '^access_key: pgak_' "${pki}/admin.key" || fail "the volume held no key for admin"
+echo "admin's key read and removed from the volume"
+
+step "the service account reclaim, scoped to read the memberships and the streams, its key a Secret"
+cargo build --locked --quiet -p permguard-cli --bin permguard
+pg="${PG:-${CARGO_TARGET_DIR:-target}/debug/permguard}"
+port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+k port-forward "svc/${release}-permguard-control-plane" "${port}:8443" >/dev/null 2>&1 &
+forwarded=$!
+as_admin() {
+    "${pg}" --workdir "${pki}" --tls-ca-file "${pki}/ca.crt" --authority-endpoint "https://127.0.0.1:${port}" \
+        --secret-key-file "${pki}/admin.key" authority "$@"
+}
+for _ in $(seq 30); do as_admin service-accounts get admin >/dev/null 2>&1 && break; sleep 2; done
+as_admin service-accounts create reclaim --description "the drain controller" \
+    --scope "membership.read@host" --scope "streams.read@plane/data/*"
+as_admin keys create reclaim --secret-out "${pki}/reclaim.key"
+k create secret generic reclaim-key --from-file=secret.key="${pki}/reclaim.key" >/dev/null
+helm upgrade "${release}" charts/permguard --namespace "${namespace}" --values "${values}" \
+    --set dataPlane.drainController.enabled=true --wait --timeout 6m
+k get cronjob "${workload}-reclaim" >/dev/null || fail "no drain controller after the upgrade"
+echo "the drain controller acts as reclaim"
 
 step "the controller creates a fenced drain Job for the retained claim"
 k scale "statefulset/${workload}" --replicas 1

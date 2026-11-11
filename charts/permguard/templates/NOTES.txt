@@ -38,6 +38,35 @@ invitation per replica.
 {{- end }}
 {{- end }}
 
+{{- $authority := or .Values.allInOne.enabled (and .Values.controlPlane.enabled .Values.controlPlane.authority.enabled) }}
+{{- if $authority }}
+{{- $component := ternary "all-in-one" "control-plane" .Values.allInOne.enabled }}
+
+The Authority Plane made the service account `admin` at its first start. Its access key and secret
+key are in `volume/planes/authority/admin.key` of the {{ $component }} pod's `state` volume, readable
+by the volume's user alone, and never in the log. Read it with an ephemeral container that mounts
+that volume as that user, keep it where only you read it, then delete the file:
+
+  POD=$(kubectl --namespace {{ .Release.Namespace }} get pod -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component={{ $component }} -o jsonpath='{.items[0].metadata.name}')
+  kubectl --namespace {{ .Release.Namespace }} patch pod "$POD" --subresource ephemeralcontainers --type strategic -p '{"spec":{"ephemeralContainers":[{"name":"admin-key","image":"busybox:1.36","command":["sleep","600"],"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"runAsGroup":65532,"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},"volumeMounts":[{"name":"state","mountPath":"/v"}]}]}}'
+  kubectl --namespace {{ .Release.Namespace }} wait pod "$POD" --for=jsonpath='{.status.ephemeralContainerStatuses[0].state.running}' --timeout=120s
+  (umask 077; kubectl --namespace {{ .Release.Namespace }} exec "$POD" -c admin-key -- cat /v/volume/planes/authority/admin.key > admin.key)
+  kubectl --namespace {{ .Release.Namespace }} exec "$POD" -c admin-key -- rm /v/volume/planes/authority/admin.key
+
+{{- $port := ternary .Values.allInOne.ports.authority .Values.controlPlane.ports.authority .Values.allInOne.enabled }}
+{{- $scheme := (include "permguard.authorityUrl" .) | splitList ":" | first }}
+
+Then act as `admin` through the Authority Plane's port{{ if eq $scheme "https" }}, its certificate checked against your
+authority (`--tls-ca-file`) and naming 127.0.0.1{{ end }}:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-{{ $component }} {{ $port }}:{{ $port }} &
+  permguard --authority-endpoint {{ $scheme }}://127.0.0.1:{{ $port }} --secret-key-file admin.key authority service-accounts list
+{{- if not (include "permguard.persists" (dict "root" . "plane" (ternary .Values.allInOne .Values.controlPlane .Values.allInOne.enabled))) }}
+
+With persistence off the volume is an emptyDir: a restart makes `admin` anew, with another key.
+{{- end }}
+{{- end }}
+
 The Server Host operations surface has a service of its own and is never part of the public plane
 service. It answers process discovery, liveness, readiness, version and metrics on
 {{ if .Values.allInOne.enabled }}{{ .Values.allInOne.ports.telemetry }}{{ else }}{{ .Values.controlPlane.ports.telemetry }}{{ end }}; metrics are under `/metrics`.

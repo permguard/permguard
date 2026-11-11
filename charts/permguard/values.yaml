@@ -110,17 +110,17 @@ controlPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
-  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
-  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
-  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
-  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
-  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, over TLS.
+  # Off by default; a Host without it holds no membership, ships no evidence and issues no drain
+  # receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key` the
+  # listener presents and whose `ca.crt` a presented client certificate is verified against. A
+  # client certificate is optional (`client_auth: optional`): operators and the drain controller
+  # present the Authority Plane's tokens, peer Hosts their membership's certificates.
   hostListener:
     enabled: false
     port: 5444
     tls:
       secretName: ""
-    allow: []
   service:
     type: ClusterIP
     annotations: {}
@@ -353,26 +353,32 @@ dataPlane:
   tls:
     secretName: ""
     terminatedUpstream: false
-  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
-  # only. Off by default, and shared by every group; a Host without it holds no membership, ships no evidence and issues no
-  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
-  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
-  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, over TLS.
+  # Off by default, and shared by every group; a Host without it holds no membership, ships no
+  # evidence and issues no drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose
+  # `tls.crt` and `tls.key` the listener presents and whose `ca.crt` a presented client certificate
+  # is verified against. A client certificate is optional (`client_auth: optional`): operators and
+  # the drain controller present the Authority Plane's tokens, peer Hosts their membership's
+  # certificates.
   hostListener:
     enabled: false
     port: 5444
     tls:
       secretName: ""
-    allow: []
   # The drain controller (TD-2): a CronJob per group that keeps a volume, running
   # `permguard reclaim run` with the CLI image. A retained claim of an ordinal above the replicas
   # gets a fenced drain Job on its own claim; the claim is deleted only when that Job prints a drain
   # receipt that verifies under the member's pin the coordinator holds and the coordinator's
   # frontier acknowledges every stream it names. A Job that fails or reaches `jobDeadlineSeconds`
   # (a forced timeout) never authorizes it. Needs the data plane's Host listener, the coordinator's
-  # (`coordinator`, or this release's control plane Host listener when empty) and `tls.secretName`,
-  # a `kubernetes.io/tls` Secret holding the client certificate of an operator granted
-  # `membership.read` and `streams.read` there, and the authority (`ca.crt`) to verify it against.
+  # (`coordinator`, or this release's control plane Host listener when empty), and:
+  #   credential.secretName: a Secret whose `secret.key` is the key file of a service account
+  #     scoped `membership.read` and `streams.read` on `host`, as `permguard authority keys create
+  #     --secret-out` writes it (`access_key: pgak_…` and `secret_key: pgsk_…`); mounted read-only,
+  #     root's and readable by the pod's group alone. Its tokens are obtained at the Authority
+  #     Plane (`dataPlane.authority.url`, or this release's), which is reached over https only.
+  #   tls.secretName: a Secret whose `ca.crt` verifies the coordinator's Host listener and the
+  #     Authority Plane (a bundle when two authorities sign them).
   # A record no required subscription acknowledges keeps the claim: decisions recorded before the
   # replica enrolled, and events of a group whose memberships have no `events.ship` task, whose
   # temporal history is then kept on the claim rather than reclaimed.
@@ -386,6 +392,8 @@ dataPlane:
     # The CLI image's digest, under `imageVerification`.
     digest: ""
     coordinator: ""
+    credential:
+      secretName: ""
     tls:
       secretName: ""
     jobDeadlineSeconds: 600
@@ -478,17 +486,17 @@ allInOne:
   tls:
     secretName: ""
     terminatedUpstream: false
-  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, mutual TLS
-  # only. Off by default; a Host without it holds no membership, ships no evidence and issues no
-  # drain receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key`
-  # the listener presents and whose `ca.crt` its clients' certificates are verified against;
-  # `allow` names the operators' certificates, as `admin.allow` does (`cn:<name>`, `san:<uri>`).
+  # The Server Host listener (WP-2.5): what operators, peer Hosts and memberships reach, over TLS.
+  # Off by default; a Host without it holds no membership, ships no evidence and issues no drain
+  # receipt. `tls.secretName` is a `kubernetes.io/tls` Secret whose `tls.crt` and `tls.key` the
+  # listener presents and whose `ca.crt` a presented client certificate is verified against. A
+  # client certificate is optional (`client_auth: optional`): operators and the drain controller
+  # present the Authority Plane's tokens, peer Hosts their membership's certificates.
   hostListener:
     enabled: false
     port: 5444
     tls:
       secretName: ""
-    allow: []
   service:
     type: ClusterIP
     annotations: {}

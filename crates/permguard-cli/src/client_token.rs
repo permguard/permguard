@@ -112,7 +112,7 @@ pub fn source(
              --secret-key-file or auth.client.secret_file",
         )
     })?;
-    let held = private_file(&secret_file, "the secret key file")?;
+    let held = read_secret_file(&secret_file)?;
     let text = Zeroizing::new(
         String::from_utf8(held.expose().to_vec())
             .map_err(|_| Failure::usage("the secret key file is not text"))?,
@@ -237,6 +237,78 @@ fn private_file(path: &Path, what: &str) -> Result<Credential, Failure> {
     Ok(Credential::new(bytes))
 }
 
+/// Why a secret key file is refused, by its owner, its mode, the reader's user and whether the path
+/// named a link; `None` when it is read. As PostgreSQL decides for its key files: the reader's own
+/// file, which nobody else reads and which is named, not linked to; or a file root owns that its
+/// group may only read, which is how an orchestrator mounts a secret for a process that is not
+/// root (a Kubernetes Secret volume under `fsGroup`, reached through the volume's own links). Only
+/// root places such a file, and what is read must still be a `pgsk_` secret.
+fn secret_file_refusal(owner: u32, mode: u32, reader: u32, linked: bool) -> Option<&'static str> {
+    if owner == reader {
+        if linked {
+            return Some("is a link: name the file itself");
+        }
+        if mode & 0o077 != 0 {
+            return Some("may be read by others than its owner: chmod 600 it");
+        }
+        return None;
+    }
+    if owner == 0 {
+        if mode & 0o037 != 0 {
+            return Some(
+                "is root's and may be written by its group or read by others: chmod 440 it",
+            );
+        }
+        return None;
+    }
+    Some("belongs to another user")
+}
+
+/// The secret key file, read as [`secret_file_refusal`] allows: a regular file of at most
+/// [`FILE_MAX`] bytes, the file read being the file checked.
+fn read_secret_file(path: &Path) -> Result<Credential, Failure> {
+    use std::io::Read as _;
+
+    let refused =
+        |why: String| Failure::usage(format!("the secret key file {}: {why}", path.display()));
+    let named = std::fs::symlink_metadata(path).map_err(|error| refused(error.to_string()))?;
+    let linked = named.file_type().is_symlink();
+    if !linked && !named.is_file() {
+        return Err(refused("is not a regular file".to_owned()));
+    }
+    let target = std::fs::metadata(path).map_err(|error| refused(error.to_string()))?;
+    let file = std::fs::File::open(path).map_err(|error| refused(error.to_string()))?;
+    let opened = file
+        .metadata()
+        .map_err(|error| refused(error.to_string()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if (opened.dev(), opened.ino()) != (target.dev(), target.ino()) {
+            return Err(refused("changed while it was read".to_owned()));
+        }
+        let reader = rustix::process::getuid().as_raw();
+        if let Some(why) = secret_file_refusal(opened.uid(), opened.mode(), reader, linked) {
+            return Err(refused(why.to_owned()));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = target;
+        if linked {
+            return Err(refused("is a link: name the file itself".to_owned()));
+        }
+    }
+    if !opened.is_file() || opened.len() > FILE_MAX {
+        return Err(refused("is not a file of at most 64 KiB".to_owned()));
+    }
+    let mut bytes = Vec::new();
+    file.take(FILE_MAX + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| refused(error.to_string()))?;
+    Ok(Credential::new(bytes))
+}
+
 /// Whether `directory` is the user's own and only theirs: a cache anybody else could write or
 /// read is not used.
 fn private_directory(directory: &Path) -> bool {
@@ -320,5 +392,92 @@ fn write_cached(path: &Path, issued: &Issued) {
         .and_then(|()| std::fs::rename(&aside, path));
     if written.is_err() {
         let _ = std::fs::remove_file(&aside);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_secret_file, secret_file_refusal};
+
+    const READER: u32 = 65532;
+
+    /// The reader's own file: only its owner reads it, and it is named, never linked to.
+    #[test]
+    fn the_readers_own_secret_file_is_read_only_when_nobody_else_reads_it() {
+        assert_eq!(secret_file_refusal(READER, 0o100600, READER, false), None);
+        assert_eq!(secret_file_refusal(READER, 0o100400, READER, false), None);
+        for mode in [0o100640, 0o100604, 0o100660, 0o100644] {
+            assert!(
+                secret_file_refusal(READER, mode, READER, false).is_some(),
+                "{mode:o}"
+            );
+        }
+        assert!(secret_file_refusal(READER, 0o100600, READER, true).is_some());
+    }
+
+    /// A file root owns, as an orchestrator mounts a secret: its group may read it, nobody may
+    /// write it but root, and others may not read it, linked to or not.
+    #[test]
+    fn a_secret_file_root_mounts_may_be_read_by_its_group_alone() {
+        for linked in [false, true] {
+            assert_eq!(secret_file_refusal(0, 0o100440, READER, linked), None);
+            assert_eq!(secret_file_refusal(0, 0o100400, READER, linked), None);
+            assert_eq!(secret_file_refusal(0, 0o100640, READER, linked), None);
+            for mode in [0o100444, 0o100460, 0o100644, 0o100470, 0o100441] {
+                assert!(
+                    secret_file_refusal(0, mode, READER, linked).is_some(),
+                    "{mode:o} linked {linked}"
+                );
+            }
+        }
+    }
+
+    /// Anybody else's file is never read, whatever its mode.
+    #[test]
+    fn a_secret_file_of_another_user_is_refused() {
+        assert_eq!(
+            secret_file_refusal(1000, 0o100400, READER, false),
+            Some("belongs to another user")
+        );
+        assert!(secret_file_refusal(1000, 0o100440, READER, true).is_some());
+    }
+
+    /// Root reading its own file is held to the owner's rule: nobody else, and no link.
+    #[test]
+    fn root_reading_its_own_file_follows_the_owners_rule() {
+        assert_eq!(secret_file_refusal(0, 0o100600, 0, false), None);
+        assert!(secret_file_refusal(0, 0o100640, 0, false).is_some());
+        assert!(secret_file_refusal(0, 0o100600, 0, true).is_some());
+    }
+
+    /// On the filesystem: the reader's own key file is read when only its owner reads it, and
+    /// refused when its group may read it or when the path is a link to it.
+    #[cfg(unix)]
+    #[test]
+    fn the_reader_reads_its_own_key_file_named_and_private_only() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let folder = std::env::temp_dir().join(format!(
+            "permguard-secret-file-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_nanos())
+        ));
+        std::fs::create_dir_all(&folder).expect("the folder");
+        let file = folder.join("secret.key");
+        std::fs::write(&file, "secret_key: pgsk_test\n").expect("written");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("0600");
+        assert!(read_secret_file(&file).is_ok());
+
+        let link = folder.join("linked.key");
+        std::os::unix::fs::symlink(&file, &link).expect("the link");
+        let refused = read_secret_file(&link).expect_err("a link to the reader's own file");
+        assert!(refused.message.contains("is a link"), "{}", refused.message);
+
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o640)).expect("0640");
+        let refused = read_secret_file(&file).expect_err("readable by its group");
+        assert!(refused.message.contains("chmod 600"), "{}", refused.message);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

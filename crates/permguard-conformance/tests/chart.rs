@@ -1596,8 +1596,9 @@ controlPlane:
   hostListener: {{ enabled: true, tls: {{ secretName: control-plane-host }} }}
 dataPlane:
   digest: \"{DIGEST}\"
+  authority: {{ url: \"https://authority.example:8443\" }}
   hostListener: {{ enabled: true, tls: {{ secretName: data-plane-host }} }}
-  drainController: {{ enabled: true, digest: \"{DIGEST}\", tls: {{ secretName: reclaim-operator }} }}
+  drainController: {{ enabled: true, digest: \"{DIGEST}\", credential: {{ secretName: reclaim-key }}, tls: {{ secretName: reclaim-ca }} }}
   groups:
     - name: billing
       selector: plane/data/zone/billing/*
@@ -2079,13 +2080,15 @@ dataPlane:
     assert!(people[0].get("from").is_none() && people[1].get("from").is_none());
 }
 
-/// The values the drain controller needs (TD-2): the Host listeners and the controller's Secret.
+/// The values the drain controller needs (TD-2): the Host listeners, the Authority Plane over
+/// https, the controller's key file and the authority it verifies them against.
 const CONTROLLER: &str = "\
 controlPlane:
   hostListener: { enabled: true, tls: { secretName: control-plane-host } }
 dataPlane:
+  authority: { url: \"https://authority.example:8443\" }
   hostListener: { enabled: true, tls: { secretName: data-plane-host } }
-  drainController: { enabled: true, tls: { secretName: reclaim-operator } }
+  drainController: { enabled: true, credential: { secretName: reclaim-key }, tls: { secretName: reclaim-ca } }
 ";
 
 fn with_controller(groups: &str) -> String {
@@ -2287,6 +2290,40 @@ fn the_drain_controller_renders_a_fenced_recovery_job_and_least_privilege() {
         "app.kubernetes.io/instance=permguard,app.kubernetes.io/component=data-plane,permguard.com/group=billing"
     );
     assert!(args.windows(2).any(|pair| pair == ["reclaim", "run"]));
+    // A service account on the coordinator: its key file, its tokens from the Authority Plane, and
+    // no client certificate, which grants nothing there.
+    assert_eq!(
+        after("--authority-endpoint"),
+        "https://authority.example:8443"
+    );
+    assert_eq!(
+        after("--secret-key-file"),
+        "/etc/permguard-reclaim-key/secret.key"
+    );
+    assert_eq!(after("--tls-ca-file"), "/etc/permguard-reclaim-tls/ca.crt");
+    assert!(!args.contains(&"--tls-cert-file") && !args.contains(&"--tls-key-file"));
+    let volumes = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["volumes"]
+        .as_array()
+        .unwrap();
+    let named = |name: &str| {
+        volumes
+            .iter()
+            .find(|volume| volume["name"] == name)
+            .unwrap()
+    };
+    // The key file root's and its group's to read alone, 0440: what the command line accepts.
+    assert_eq!(
+        named("credential")["secret"],
+        json!({
+            "secretName": "reclaim-key",
+            "defaultMode": 288,
+            "items": [{ "key": "secret.key", "path": "secret.key" }]
+        })
+    );
+    assert_eq!(
+        named("tls")["secret"],
+        json!({ "secretName": "reclaim-ca", "items": [{ "key": "ca.crt", "path": "ca.crt" }] })
+    );
     assert_eq!(
         cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["serviceAccountName"],
         "permguard-reclaim"
@@ -2317,8 +2354,20 @@ fn the_drain_controller_prerequisites_are_refused() {
         "needs dataPlane.hostListener",
     );
     refused(
-        &with_controller(groups).replace("tls: { secretName: reclaim-operator }", ""),
-        "names no Secret",
+        &with_controller(groups).replace(", tls: { secretName: reclaim-ca }", ""),
+        "tls.secretName names no Secret",
+    );
+    refused(
+        &with_controller(groups).replace(" credential: { secretName: reclaim-key },", ""),
+        "credential.secretName names no Secret",
+    );
+    // A secret key is never sent in the clear: the Authority Plane must serve TLS.
+    refused(
+        &with_controller(groups).replace(
+            "url: \"https://authority.example:8443\"",
+            "url: \"http://authority.example:8443\"",
+        ),
+        "a secret key is sent over https only",
     );
     refused(
         &with_controller(groups).replace(
@@ -2343,7 +2392,7 @@ fn the_drain_controller_prerequisites_are_refused() {
 }
 
 #[test]
-fn the_host_listener_serves_mutual_tls_from_its_secret() {
+fn the_host_listener_serves_tls_from_its_secret_and_admits_tokens() {
     let rendered = render(&with_controller(
         "  groups:\n    - name: billing\n      selector: plane/data/*\n",
     ));
@@ -2358,9 +2407,11 @@ fn the_host_listener_serves_mutual_tls_from_its_secret() {
             json!({
                 "cert": "/etc/permguard-host-tls/tls.crt",
                 "key": "/etc/permguard-host-tls/tls.key",
-                "client_ca": "/etc/permguard-host-tls/ca.crt"
+                "client_ca": "/etc/permguard-host-tls/ca.crt",
+                "client_auth": "optional"
             })
         );
+        assert!(admin.get("allow").is_none());
     }
     assert_eq!(
         rendered.config("permguard-control-plane")["admin"]["advertised_url"],
@@ -2383,6 +2434,15 @@ fn the_host_listener_serves_mutual_tls_from_its_secret() {
         "controlPlane:\n  hostListener: { enabled: true }\n",
         "names no tls.secretName",
     );
+    // Operators present the Authority Plane's tokens: a list of their certificates is refused.
+    for unit in ["controlPlane", "dataPlane"] {
+        refused(
+            &format!(
+                "{unit}:\n  hostListener: {{ enabled: true, tls: {{ secretName: h }}, allow: [\"cn:ops\"] }}\n"
+            ),
+            &format!("{unit}.hostListener.allow is gone"),
+        );
+    }
     refused(
         "\
 controlPlane:

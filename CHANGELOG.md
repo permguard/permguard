@@ -48,6 +48,13 @@ is cut.
 - **The Host listener admits an operator by an access token.**
   `admin.tls.client_auth: optional` lets an operator in with a token and no certificate; peer Hosts and the bootstrap principal still present a certificate the client CA verifies.
   `admin.allow` is no longer required outside `development`: a certificate grants nothing by itself.
+- **The chart's Host listeners admit tokens, and the drain controller is a service account.** *(Breaking for the chart.)*
+  Every `hostListener` renders `client_auth: optional`; `hostListener.allow` is refused by name, since an operator presents a token, not a certificate the listener names.
+  `dataPlane.drainController.credential.secretName` names a Secret whose `secret.key` is the key file of a service account scoped `membership.read` on `host` and `streams.read` on `plane/data/*`; the controller obtains its tokens at the Authority Plane over https, and `tls.secretName` now gives only the `ca.crt` it verifies the coordinator and the Authority Plane against.
+  The chart's notes say how to read `admin`'s first key out of the control plane's volume with an ephemeral container.
+- **A secret key file may be one an orchestrator mounts.**
+  `--secret-key-file` reads, as PostgreSQL reads its key files, the reader's own file that nobody else reads, or a file root owns that its group may only read, linked to or not: a Kubernetes Secret volume under `fsGroup` with `defaultMode: 0440`.
+  A link to the reader's own file is refused, and what is read must still be a `pgsk_` secret.
 
 ### Removed
 

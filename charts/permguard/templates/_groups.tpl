@@ -371,19 +371,19 @@ Every Host this release configures, for the checks a configuration answers whate
 
 {{/*
 The `admin` section of a Host whose `hostListener` is on (TD-2): every interface, the mounted
-Secret's certificate and key, its `ca.crt` as the authority client certificates are verified
-against, and the operators `allow` names. Takes `(dict "listener" $hostListener "advertised" url)`;
-answers YAML, empty when the listener is off.
+Secret's certificate and key, and its `ca.crt` as the authority a presented client certificate is
+verified against, the certificate optional since callers present the Authority Plane's tokens.
+Takes `(dict "listener" $hostListener "advertised" url)`; answers YAML, empty when the listener is
+off.
 */}}
 {{- define "permguard.hostListenerConfig" -}}
 {{- $l := .listener | default dict -}}
 {{- if $l.enabled -}}
 {{- $admin := dict
       "addr" (printf "0.0.0.0:%d" (int $l.port))
-      "tls" (dict "cert" "/etc/permguard-host-tls/tls.crt" "key" "/etc/permguard-host-tls/tls.key" "client_ca" "/etc/permguard-host-tls/ca.crt")
+      "tls" (dict "cert" "/etc/permguard-host-tls/tls.crt" "key" "/etc/permguard-host-tls/tls.key" "client_ca" "/etc/permguard-host-tls/ca.crt" "client_auth" "optional")
 -}}
 {{- with .advertised }}{{ $_ := set $admin "advertised_url" . }}{{ end -}}
-{{- with $l.allow }}{{ $_ := set $admin "allow" . }}{{ end -}}
 {{- toYaml (dict "admin" $admin) -}}
 {{- end -}}
 {{- end -}}
