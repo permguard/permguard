@@ -84,12 +84,13 @@ fn a_fresh_host_makes_its_administrator_once_and_its_key_administers() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("the scratch directory is created");
     let port = free_port();
+    let host_port = free_port();
     std::fs::write(
         dir.join("config.yml"),
         format!(
             "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
              log:\n  level: info\n  format: json\n\
-             host:\n  addr: 127.0.0.1:0\n\
+             host:\n  addr: 127.0.0.1:{host_port}\n\
              runtime:\n  planes: [authority]\n\
              authority:\n  url: http://127.0.0.1:{port}\n\
              authorityPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{port} }}\n"
@@ -140,11 +141,28 @@ fn a_fresh_host_makes_its_administrator_once_and_its_key_administers() {
             &["-H", &format!("authorization: Bearer {token}")],
         );
         let anonymous = curl("GET", &format!("{base}/authority/v1/service-accounts"), &[]);
-        Ok::<_, String>((access_key, secret_key, refused, issued, accounts, anonymous))
+        // The Server Host verifies the token as every Plane does: a client sending it to
+        // discovery is read as itself, and a token that does not verify is refused there too.
+        let discovery = format!("http://127.0.0.1:{host_port}/.well-known/server-configuration");
+        let discovered = curl(
+            "GET",
+            &discovery,
+            &["-H", &format!("authorization: Bearer {token}")],
+        );
+        let forged = curl(
+            "GET",
+            &discovery,
+            &["-H", "authorization: Bearer not.a.token"],
+        );
+        Ok::<_, String>((
+            access_key, secret_key, refused, issued, accounts, anonymous, discovered, forged,
+        ))
     })();
     stop(child);
-    let (access_key, secret_key, refused, issued, accounts, anonymous) =
+    let (access_key, secret_key, refused, issued, accounts, anonymous, discovered, forged) =
         outcome.unwrap_or_else(|reason| panic!("{reason}: {seen}"));
+    assert_eq!(discovered.0, 200, "{}", discovered.1);
+    assert_eq!(forged.0, 401, "{}", forged.1);
 
     assert!(seen.contains("authority.admin_created"), "{seen}");
     assert!(seen.contains(&access_key), "the log names the access key");

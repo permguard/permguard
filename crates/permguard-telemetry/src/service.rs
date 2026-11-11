@@ -158,20 +158,14 @@ impl Service for TelemetryService {
                         None => host::keys_route(std::sync::Arc::clone(keys)),
                     });
                 }
-                // What the composition adds: the password sign-in, when the Host admits one.
-                if let Some(extra) = context.extension::<host::HostRoutes>() {
-                    routes = routes.merge(extra.0.clone());
-                }
                 routes
             })
             .tls(secured.as_ref())
             .limits(context.config().limits())
             .metrics(context.metrics().clone())
-            .authenticator(
-                context
-                    .extension::<host::HostAuthenticator>()
-                    .map(|authenticator| std::sync::Arc::clone(&authenticator.0)),
-            )
+            // The Authority Plane's tokens, as every Plane verifies them: a client that sends its
+            // token to discovery is read as itself, never refused for carrying one.
+            .authenticator(context.authenticator())
             .start()
             .await
             .context("starting the telemetry surface")?;
