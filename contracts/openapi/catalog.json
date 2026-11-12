@@ -101,7 +101,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control"
         }
@@ -206,7 +206,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control"
         }
@@ -291,7 +291,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -407,7 +407,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -532,7 +532,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -654,7 +654,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -769,7 +769,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -864,7 +864,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -980,7 +980,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -1105,7 +1105,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -1244,7 +1244,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -1383,7 +1383,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -1510,7 +1510,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }
@@ -1627,7 +1627,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.read",
           "target": "plane/control/zone/<zone_id>"
         }
@@ -1762,7 +1762,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "catalog",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "catalog.write + policy.push",
           "target": "plane/control/zone/<zone_id>"
         }

@@ -109,7 +109,7 @@
         "x-permguard-endpoint": {
           "plane": "data",
           "category": "temporal events",
-          "credential": "application token",
+          "credential": "access token",
           "operation": "event.submit",
           "target": "plane/data/zone/<zone_id>/ledger/<ledger_id>"
         }

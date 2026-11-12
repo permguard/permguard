@@ -48,6 +48,13 @@ is cut.
 
 ### Changed
 
+- **A closed route is refused before it is read.**
+  Every surface admits a route from the contract the binary carries, before the request's body or the names in its path are read: a caller holding the route's operation nowhere under the plane of its target is refused there, nobody `401`, a token without the scope `403`.
+  Before, a body that did not parse was answered `400` and a zone or ledger that did not exist `404` to a caller the surface did not know, so a name's existence could be told without a token; now neither is told apart from a refusal, over REST and gRPC alike.
+  `permguard-all-in-one/tests/every_route.rs` walks every REST route of every contract on a running all-in-one and proves it.
+- **The contracts name the credentials as they are.**
+  `x-permguard-endpoint.credential` is `no`, `access token`, `access key and secret key` or `peer session`: `credential or access token` and `application token`, the IAM Host's words, are gone, and `contracts/endpoints.csv` with them.
+  `POST /host/v1/plans/{id}/approve` names the operations an approver may hold, any one of them, as the route admits; the plan's own operation decides within.
 - **A refusal says what was refused.**
   A `forbidden` names the caller's principal and the operation, on every Plane and the Host: ``the token of `sa:billing` carries no scope for `accounts.read` on the resource asked``; never the resource, so an unknown name and a foreign one are still refused alike.
   A refused token request names the access key and every cause `invalid_client` covers, since the Authority Plane never says which.

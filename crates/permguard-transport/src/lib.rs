@@ -45,6 +45,7 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 mod actor;
+mod admission;
 mod digest;
 mod gate;
 mod guard;
@@ -57,6 +58,7 @@ mod request;
 mod surface;
 
 pub use actor::{ActorLayer, ActorOf, actor_of};
+pub use admission::{AdmissionLayer, AdmittedRoute, Requirement};
 pub use digest::digest;
 pub use gate::PeerGateLayer;
 pub use guard::LimitedAcceptor;

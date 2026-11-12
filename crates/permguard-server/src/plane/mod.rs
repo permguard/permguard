@@ -37,6 +37,7 @@ use permguard_transport::Surface;
 
 use crate::{App, DefaultServerHost};
 
+pub mod admission;
 pub mod discovery;
 pub mod factories;
 pub mod health;
@@ -421,6 +422,15 @@ impl Service for PlaneService {
                 }
                 _ => {}
             }
+            // Every closed route of the plane, as its contract states it, is asked only by a
+            // caller with standing under it, before the route reads anything: the Host's
+            // authorization decides, a closed one for a plane the Host did not register.
+            let admission: Arc<dyn permguard_core::authz::Admission> = plane_context
+                .handles::<permguard_host::composition::Registration>()
+                .map_or_else(
+                    || Arc::new(permguard_host::composition::Authorization::closed()),
+                    |registration| registration.authorization(),
+                );
             let surfaces: Vec<_> = endpoints
                 .into_iter()
                 .map(|endpoint| {
@@ -432,6 +442,8 @@ impl Service for PlaneService {
                         listeners::HTTP => self.module.http_routes(&plane_context),
                         _ => self.module.grpc_routes(&plane_context),
                     };
+                    let router =
+                        admission::admitted(router, self.module.id(), Arc::clone(&admission));
                     (endpoint.addr, endpoint.protocol, router, endpoint.tls)
                 })
                 .collect();

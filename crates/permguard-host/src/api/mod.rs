@@ -283,6 +283,11 @@ impl std::fmt::Debug for HostApi {
 }
 
 impl HostApi {
+    /// The Host's authorization, what every route of the Host API decides with.
+    pub fn authorization(&self) -> Arc<Authorization> {
+        Arc::clone(&self.authorization)
+    }
+
     /// Builds the facade. For composition roots and tests only.
     pub fn new(composition: Composition) -> Self {
         Self {
@@ -934,8 +939,8 @@ pub(crate) mod testing {
                     &volume,
                     provider,
                     crate::identity::Suite::Ed25519Sha256V1,
-                    crate::authz::store::now(),
-                    crate::authz::store::now() * 1000,
+                    permguard_core::time::unix_now(),
+                    permguard_core::time::unix_now() * 1000,
                 )
             }
             .expect("the identity opens")
@@ -976,8 +981,8 @@ pub(crate) mod testing {
         mutations
             .recover(&crate::membership::Memberships(&memberships))
             .expect("the membership mutations recover");
-        let (replay, _) =
-            Replay::open(&volume, crate::authz::store::now()).expect("the replay journal opens");
+        let (replay, _) = Replay::open(&volume, permguard_core::time::unix_now())
+            .expect("the replay journal opens");
         mutations
             .recover(&replay)
             .expect("the plans' mutations recover");

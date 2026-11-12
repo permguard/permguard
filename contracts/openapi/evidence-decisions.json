@@ -165,7 +165,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "evidence (producer stream)",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "evidence.read",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id> | plane/control (a legacy stream mixing tenants)"
         }
@@ -329,7 +329,7 @@
         "x-permguard-endpoint": {
           "plane": "control",
           "category": "evidence",
-          "credential": "credential or access token",
+          "credential": "access token",
           "operation": "evidence.read",
           "target": "plane/control/zone/<zone_id>/ledger/<ledger_id>"
         }

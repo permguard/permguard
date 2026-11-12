@@ -1,40 +1,40 @@
 PLANE,CATEGORY,HTTP VERB,ENDPOINT,AUTH,AZ SCOPE,AZ TARGET
-data,decisions,POST,/access/v1/evaluation,application token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
-data,decisions,POST,/access/v1/evaluations,application token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,decisions,POST,/access/v1/evaluation,access token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,decisions,POST,/access/v1/evaluations,access token,decision.evaluate,plane/data/zone/<zone_id>/ledger/<ledger_id>
 data,discovery,GET,/.well-known/permguard-pdp-temporal-v1alpha1-configuration,no,,
 data,discovery,GET,/.well-known/permguard-pdp-v1-configuration,no,,
 data,public keys,GET,/data-plane/v1/keys,no,,
-data,temporal events,POST,/temporal/v1alpha1/events,application token,event.submit,plane/data/zone/<zone_id>/ledger/<ledger_id>
+data,temporal events,POST,/temporal/v1alpha1/events,access token,event.submit,plane/data/zone/<zone_id>/ledger/<ledger_id>
 data,temporal events,GET,/temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers,no,,
-control,catalog,GET,/catalog/v1/zones,credential or access token,catalog.read,plane/control
-control,catalog,POST,/catalog/v1/zones,credential or access token,catalog.write,plane/control
-control,catalog,GET,/catalog/v1/zones/{zone},credential or access token,catalog.read,plane/control/zone/<zone_id>
-control,catalog,PATCH,/catalog/v1/zones/{zone},credential or access token,catalog.write,plane/control/zone/<zone_id>
-control,catalog,DELETE,/catalog/v1/zones/{zone},credential or access token,catalog.write,plane/control/zone/<zone_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/export,credential or access token,catalog.read,plane/control/zone/<zone_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/import,credential or access token,catalog.write + policy.push,plane/control/zone/<zone_id>
-control,catalog,GET,/catalog/v1/zones/{zone}/ledgers,credential or access token,catalog.read,plane/control/zone/<zone_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/ledgers,credential or access token,catalog.write,plane/control/zone/<zone_id>
-control,catalog,GET,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,catalog,PATCH,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,catalog,DELETE,/catalog/v1/zones/{zone}/ledgers/{ledger},credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/archive,credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/export,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/restore,credential or access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,GET,/catalog/v1/zones,access token,catalog.read,plane/control
+control,catalog,POST,/catalog/v1/zones,access token,catalog.write,plane/control
+control,catalog,GET,/catalog/v1/zones/{zone},access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,PATCH,/catalog/v1/zones/{zone},access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,DELETE,/catalog/v1/zones/{zone},access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/export,access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/import,access token,catalog.write + policy.push,plane/control/zone/<zone_id>
+control,catalog,GET,/catalog/v1/zones/{zone}/ledgers,access token,catalog.read,plane/control/zone/<zone_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers,access token,catalog.write,plane/control/zone/<zone_id>
+control,catalog,GET,/catalog/v1/zones/{zone}/ledgers/{ledger},access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,PATCH,/catalog/v1/zones/{zone}/ledgers/{ledger},access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,DELETE,/catalog/v1/zones/{zone}/ledgers/{ledger},access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/archive,access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/export,access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,catalog,POST,/catalog/v1/zones/{zone}/ledgers/{ledger}/restore,access token,catalog.write,plane/control/zone/<zone_id>/ledger/<ledger_id>
 control,discovery,GET,/.well-known/permguard-decisions-native-v1-configuration,no,,
 control,discovery,GET,/.well-known/permguard-events-native-v1alpha1-configuration,no,,
-control,evidence,GET,/decisions/v1/zones/{zone}/ledgers/{ledger}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event_id},credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/decisions/v1/zones/{zone}/ledgers/{ledger}/records,access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records,access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/records/{event_id},access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
 control,evidence,GET,/events/v1alpha1/zones/{zone}/ledgers/{ledger}/signers,no,,
-control,evidence (producer stream),GET,/decisions/v1/streams/{pdp}/{instance}/records,credential or access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id> | plane/control (a legacy stream mixing tenants)
+control,evidence (producer stream),GET,/decisions/v1/streams/{pdp}/{instance}/records,access token,evidence.read,plane/control/zone/<zone_id>/ledger/<ledger_id> | plane/control (a legacy stream mixing tenants)
 control,evidence (producer stream),GET,/decisions/v1/streams/{pdp}/{instance}/signers,no,,
-control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate,credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate,credential or access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
-control,policy (notp),GET,/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{name},credential or access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects,access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch,access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate,access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/commit,access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),POST,/notp/v1/zones/{zone}/ledgers/{ledger}/push/negotiate,access token,policy.push,plane/control/zone/<zone_id>/ledger/<ledger_id>
+control,policy (notp),GET,/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{name},access token,catalog.read,plane/control/zone/<zone_id>/ledger/<ledger_id>
 control,public keys,GET,/control-plane/v1/keys,no,,
 authority,access keys,GET,/authority/v1/service-accounts/{name}/keys,access token,accounts.read,plane/authority
 authority,access keys,POST,/authority/v1/service-accounts/{name}/keys,access token,accounts.write,plane/authority
@@ -55,9 +55,9 @@ authority,tokens,GET,/authority/v1/status-lists/{id},no,,
 authority,tokens,POST,/authority/v1/token,access key and secret key,,
 authority,tokens,GET,/authority/v1/tokens,access token,tokens.read,plane/authority
 authority,tokens,POST,/authority/v1/tokens/{jti}/revoke,access token,tokens.revoke,plane/authority
-host,audit,GET,/host/v1/audit/{class}/checkpoints,access token,audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
-host,audit,GET,/host/v1/audit/{class}/export,access token,audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
-host,audit,GET,/host/v1/audit/{class}/records,access token,audit.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,GET,/host/v1/audit/{class}/checkpoints,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,GET,/host/v1/audit/{class}/export,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,GET,/host/v1/audit/{class}/records,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,backup,POST,/host/v1/backup/abort,access token,backup.manage,host
 host,backup,POST,/host/v1/backup/finalize,access token,backup.manage,host
 host,backup,POST,/host/v1/backup/prepare,access token,backup.manage,host
@@ -100,8 +100,8 @@ host,peer,POST,/host/v1/members/enroll,peer session,peer session only,host
 host,peer,POST,/host/v1/sessions/hello,peer session,peer session only,host
 host,peer,POST,/host/v1/sessions/prove,peer session,peer session only,host
 host,peer,POST,/host/v1/tasks/{task}/session,peer session,peer session only,host
-host,plans,GET,/host/v1/plans,access token,authz.admin | identity.admin | keys.admin | membership.admin,host
-host,plans,POST,/host/v1/plans/{id}/approve,access token,the plan's own operation,host
+host,plans,GET,/host/v1/plans,access token,gc.manage | identity.admin | keys.admin | membership.admin,host
+host,plans,POST,/host/v1/plans/{id}/approve,access token,gc.manage | identity.admin | keys.admin | membership.admin,host
 host,streams,GET,/host/v1/streams,access token,streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,streams,GET,/host/v1/streams/{plane}/{stream_type}/anchors,access token,streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,streams,GET,/host/v1/streams/{plane}/{stream_type}/frontier,access token,streams.read,host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]

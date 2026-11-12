@@ -3976,7 +3976,7 @@
           "category": "audit",
           "credential": "access token",
           "operation": "audit.read",
-          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+          "target": "host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]"
         }
       }
     },
@@ -4082,7 +4082,7 @@
           "category": "audit",
           "credential": "access token",
           "operation": "audit.read",
-          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+          "target": "host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]"
         }
       }
     },
@@ -4211,7 +4211,7 @@
           "category": "audit",
           "credential": "access token",
           "operation": "audit.read",
-          "target": "host | plane/<data|control>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+          "target": "host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]"
         }
       }
     },
@@ -5105,7 +5105,7 @@
           "plane": "host",
           "category": "plans",
           "credential": "access token",
-          "operation": "authz.admin | identity.admin | keys.admin | membership.admin",
+          "operation": "gc.manage | identity.admin | keys.admin | membership.admin",
           "target": "host"
         }
       }
@@ -5232,7 +5232,7 @@
           "plane": "host",
           "category": "plans",
           "credential": "access token",
-          "operation": "the plan's own operation",
+          "operation": "gc.manage | identity.admin | keys.admin | membership.admin",
           "target": "host"
         }
       }

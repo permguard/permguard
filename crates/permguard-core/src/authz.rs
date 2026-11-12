@@ -846,6 +846,19 @@ pub trait Authenticator: Send + Sync {
     ) -> Result<Actor, AccessDenial>;
 }
 
+/// The first stage of every route's authorization, asked by the transport before a request's body
+/// or the names in its path are read (`2-security/8` Authorization): whether the actor holds
+/// `operation` anywhere at or under `scope`. The handler then decides precisely, on the resource
+/// it resolves; this only keeps a caller with no standing from being answered anything else.
+pub trait Admission: Send + Sync {
+    fn may_act_under(
+        &self,
+        actor: &Actor,
+        operation: &str,
+        scope: &Resource,
+    ) -> Result<(), AccessDenial>;
+}
+
 /// Checks a URL a Host fetches from, the Authority Plane's: `https`, or `http` where plain HTTP is
 /// allowed; a host; no credentials, no fragment. Answers why it is not one.
 pub fn check_service_url(url: &str, allow_http: bool) -> Result<(), String> {

@@ -266,6 +266,17 @@ impl Authorization {
     }
 }
 
+impl permguard_core::authz::Admission for Authorization {
+    fn may_act_under(
+        &self,
+        actor: &Actor,
+        operation: &str,
+        scope: &Resource,
+    ) -> Result<(), AccessDenial> {
+        Self::may_act_under(self, actor, operation, scope)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
