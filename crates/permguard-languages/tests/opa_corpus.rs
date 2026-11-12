@@ -21,6 +21,7 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
+use permguard_core::encoding::hex;
 use regorus::{Engine, Value};
 use serde_json::Value as Json;
 use sha2::{Digest as _, Sha256};
@@ -32,10 +33,6 @@ fn root() -> std::path::PathBuf {
 fn source() -> Json {
     serde_json::from_str(&std::fs::read_to_string(root().join("SOURCE.json")).expect("SOURCE"))
         .expect("JSON")
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[test]

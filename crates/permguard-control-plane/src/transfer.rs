@@ -45,6 +45,7 @@
 //! |    19 | `pins`              | array of digests, sorted, unique          |
 //! |    20 | `result`            | bytes, a committed answer, optional       |
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::MutexGuard;
@@ -325,10 +326,6 @@ fn invalid(detail: impl Into<String>) -> StoreError {
     StoreError::Backend {
         detail: detail.into(),
     }
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// What one sweep of a ledger's sessions did.

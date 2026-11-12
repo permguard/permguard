@@ -57,7 +57,7 @@ fn timed_coordinator(tag: &str) -> (Arc<ManualClock>, Arc<ManualMonotonic>, Side
     // A few seconds ahead of the real clock, so a binding the member signs just after is not in
     // this coordinator's future; well inside the 30 s skew.
     let wall = Arc::new(ManualClock::at(
-        i64::try_from(crate::authz::store::now() + 3).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now() + 3).expect("in range"),
     ));
     let mono = Arc::new(ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(
@@ -312,7 +312,7 @@ async fn an_unknown_epoch_holds_the_membership_until_it_is_revoked() {
                 &id,
                 to,
                 None,
-                crate::authz::store::now()
+                permguard_core::time::unix_now()
             ),
             Err(MembershipError::Held(_))
         ));
@@ -817,7 +817,7 @@ async fn a_lease_runs_no_longer_than_its_binding_or_its_manifest() {
     let approvals = [crate::membership::appraisal::Approval {
         control: Control::OperationsDualControl,
         reason: "witnessed".to_owned(),
-        expires_at: crate::authz::store::now() + 120,
+        expires_at: permguard_core::time::unix_now() + 120,
     }];
     let id =
         crate::membership::tests::protocol::active_with(&c, &m, requiring, &[], &approvals).await;
@@ -999,7 +999,7 @@ async fn a_hold_committed_after_a_fence_was_checked_stops_the_fence_and_holds_on
 {
     let (c, m) = (Side::new("race-c", true), Side::new("race-m", false));
     let id = active(&c, &m, None).await;
-    let now = crate::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let fenced = c
         .host
         .store

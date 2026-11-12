@@ -28,6 +28,7 @@
 //! under `host.operations` over {1 `plan_digest`, 2 `principal`, 3 `approved_at`, 4 `host_id`};
 //! operators authenticate by mTLS and hold no signing key.
 
+use permguard_core::encoding::hex;
 use std::time::Duration;
 
 use permguard_core::domains::digest::OPERATION_PLAN_BODY;
@@ -39,7 +40,7 @@ use permguard_objects::digest::Digest;
 use sha2::{Digest as _, Sha256};
 
 use crate::audit::checkpoint::Keys;
-use crate::audit::record::{Labelled, RecordError, hex, id16, uint};
+use crate::audit::record::{Labelled, RecordError, id16, uint};
 use crate::keys::ring::{HOST_OPERATIONS, Ring};
 
 /// An operator's revocation of a ring key.

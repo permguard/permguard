@@ -49,6 +49,7 @@
 //! order. `append` marks a storage journal segment and a CBOR sequence, which a snapshot may hold
 //! longer than the inventory, never different.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -690,10 +691,6 @@ impl std::fmt::Debug for Backups {
             .field("dir", &self.dir.path())
             .finish_non_exhaustive()
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Two digests compared in time that does not depend on where they differ.

@@ -96,6 +96,19 @@ pub fn is_access_token(token: &str) -> bool {
             .is_some_and(|typ| typ == permguard_core::domains::jwt::ACCESS_TOKEN)
 }
 
+/// The claims a token carries, read without verifying anything: what a client shows of the token
+/// it holds, never what a Plane decides by. `None` for anything that is not a compact JWS of at
+/// most [`MAX_TOKEN_BYTES`] whose payload is an object.
+pub fn claims_of(token: &str) -> Option<serde_json::Value> {
+    if token.len() > MAX_TOKEN_BYTES {
+        return None;
+    }
+    let payload = token.trim().split('.').nth(1)?;
+    let claims: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
+    claims.is_object().then_some(claims)
+}
+
 /// The `kid` a token's header names, read without verifying anything: what tells a Host that the
 /// Authority Plane rotated to a key it does not hold yet.
 pub fn key_id_of(token: &str) -> Option<String> {
@@ -428,6 +441,12 @@ mod tests {
         let pair = pair();
         let token = sign(&pair, header(), claims(json!({})));
         assert!(is_access_token(&token));
+        assert_eq!(
+            claims_of(&token).and_then(|claims| claims["sub"].as_str().map(str::to_owned)),
+            Some("sa:billing".to_owned())
+        );
+        assert_eq!(claims_of("not.a.token"), None);
+        assert_eq!(claims_of(&"x".repeat(MAX_TOKEN_BYTES + 1)), None);
         assert_eq!(key_id_of(&token).as_deref(), Some("authority.tokens:k1"));
         let verified = verify(&token, &anchor(&pair), &lists(NOW + 60), NOW).expect("verified");
         assert_eq!(verified.subject.as_str(), "sa:billing");

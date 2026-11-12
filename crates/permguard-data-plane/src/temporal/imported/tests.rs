@@ -5,6 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use permguard_core::encoding::hex;
 use permguard_host::composition::{ConsumedPage, ConsumedRun, StreamConsumerReads};
 use permguard_host::membership::import::{Checkpoint, CheckpointOrigin, CheckpointRun, Gap};
 use serde_json::json;

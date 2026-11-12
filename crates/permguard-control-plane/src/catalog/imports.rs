@@ -25,6 +25,7 @@
 //! window, each ledger's create replayed and its objects landed write-once; after it, the
 //! ledgers already created are the operator's to delete or keep.
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 
 use permguard_core::authz::{Actor, operations};
@@ -159,10 +160,6 @@ fn internal(detail: impl std::fmt::Display) -> ApiError {
         codes::common::INTERNAL,
         detail.to_string(),
     )
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// What verifies an archive's manifest envelope: [`permguard_host::exports::verify`] from the
@@ -450,7 +447,7 @@ fn keep(
     let record = ArchiveRecord {
         id: id.clone(),
         name,
-        imported_at: permguard_host::authz::store::now(),
+        imported_at: permguard_core::time::unix_now(),
         manifest_digest: verified.manifest_digest.clone(),
         source_host_id: hex(&manifest.host_id),
         source_zone_id: manifest.zone_id.clone(),

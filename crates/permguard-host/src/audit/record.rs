@@ -7,6 +7,7 @@
 //! The digest is never stored: it is SHA-256 over `digest::AUDIT_RECORD` and the record's
 //! canonical bytes, recomputed by every reader, and the next record carries it as `previous`.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -234,10 +235,6 @@ impl TrailMeta {
         map.finish()?;
         Ok(meta)
     }
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 pub(crate) fn id16(bytes: Vec<u8>) -> Result<[u8; 16]> {

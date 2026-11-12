@@ -21,6 +21,7 @@
 //! module derived for one registered purpose, and a Plane gets a non-displayable handle that MACs,
 //! never the bytes. Versions are integers written `vN` (owner decision of 2026-10-08).
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
@@ -841,10 +842,6 @@ fn equal(left: &[u8], right: &[u8]) -> bool {
             .zip(right)
             .fold(0u8, |difference, (l, r)| difference | (l ^ r))
             == 0
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]

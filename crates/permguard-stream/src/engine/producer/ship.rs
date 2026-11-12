@@ -28,6 +28,7 @@
 //! a complete run acknowledged under an earlier incarnation is probed once, its last retained
 //! batch sent again. A stream is probed in its next session, once it has something to ship.
 
+use permguard_core::encoding::hex;
 use std::sync::PoisonError;
 
 use permguard_core::authz::Resource;
@@ -42,7 +43,7 @@ use super::super::batch::SealedBatch;
 use super::super::codec::{Map, encode, uint};
 use super::super::ingest::{Answer, Outcome, Ship};
 use super::super::state::Unshipped;
-use super::super::{RecordCodec, StreamError, hex};
+use super::super::{RecordCodec, StreamError};
 use super::seal::{batches_of, pruned_of};
 use super::{Physical, Producer, RECORDS, decode_group};
 

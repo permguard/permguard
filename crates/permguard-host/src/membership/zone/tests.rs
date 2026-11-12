@@ -116,7 +116,7 @@ fn serving(tag: &str) -> Side {
 /// A membership of `m` with `c` granting `task`, approved under the Host's own contracts and
 /// synced: active on both sides.
 async fn zoned(c: &Side, m: &Side, task: Task) -> [u8; 16] {
-    let now = crate::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let (invitation, token) = c
         .host
         .store

@@ -212,8 +212,8 @@ fn launch_host(
                         directories(&volume).expect("identity directories").1,
                     )),
                     Suite::Ed25519Sha256V1,
-                    permguard_host::authz::store::now(),
-                    permguard_host::authz::store::now() * 1000,
+                    permguard_core::time::unix_now(),
+                    permguard_core::time::unix_now() * 1000,
                 )
                 .expect("provisioned"),
             );
@@ -240,8 +240,8 @@ fn launch_host(
                 )
                 .expect("the mutation journal opens"),
             );
-            let (replay, _) = Replay::open(&volume, permguard_host::authz::store::now())
-                .expect("the replay opens");
+            let (replay, _) =
+                Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay opens");
             let open_ring = |id: &'static str| {
                 let ring = Arc::new(
                     Ring::open(

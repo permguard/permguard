@@ -19,6 +19,7 @@
 //! | another boot id holds a session     | `clone_suspected`, the membership suspended, a clone alarm |
 //! | the clock in anomaly                | no new lease (`unavailable`)                              |
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -455,10 +456,6 @@ fn ended(code: &'static str, reason: impl Into<String>) -> TaskRefusal {
 
 fn of(error: MembershipError) -> Refusal {
     refusal(super::service::code_of(&error), error.to_string())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl super::service::Coordinating {

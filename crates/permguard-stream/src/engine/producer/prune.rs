@@ -20,6 +20,7 @@
 //! a rollover does: the anchor and the record that make a deletion accountable are never refused
 //! for space the deletion is about to return.
 
+use permguard_core::encoding::hex;
 use permguard_host::storage::format;
 use permguard_host::storage::write::{allocate, read_view, release, replace_view};
 
@@ -29,7 +30,7 @@ use super::super::codec::{encode, uint};
 use super::super::retention::{Audit, MAX_PRUNE_BATCHES, Pruned};
 use super::super::run::RunStatement;
 use super::super::state::Base;
-use super::super::{RecordCodec, Retention, StreamError, hex, record_digest};
+use super::super::{RecordCodec, Retention, StreamError, record_digest};
 use super::seal::{PRUNED, batches_of, below_mark, pruned_of, spans_of};
 use super::ship::{acknowledged_by, keep_subscription, subscriptions_of, truncate_safe_of};
 use super::{

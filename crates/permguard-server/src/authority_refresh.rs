@@ -445,12 +445,6 @@ mod tests {
     use permguard_host::authz::testing::{ISSUER, LIST_ID, TestAuthority};
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
-    fn now() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_secs())
-    }
-
     /// A private authority and a server certificate it issued for `localhost`: the authority's
     /// PEM, written into `directory`, and the server's TLS configuration.
     fn pki(directory: &std::path::Path) -> (std::path::PathBuf, Arc<rustls::ServerConfig>) {
@@ -540,7 +534,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "permguard-authority-refresh-{name}-{}-{}",
             std::process::id(),
-            now()
+            permguard_core::time::unix_now()
         ));
         std::fs::create_dir_all(&directory).expect("the scratch directory");
         directory
@@ -569,12 +563,17 @@ mod tests {
             .await
             .expect("the key set");
         assert!(trust.anchor().is_some(), "the key set is held");
-        let cadence = fetch_lists(&trust, &source, &tls, now())
+        let cadence = fetch_lists(&trust, &source, &tls, permguard_core::time::unix_now())
             .await
             .expect("the lists");
         // The list's ttl is 30 seconds: fetched again in half of it, within the bounds.
         assert_eq!(cadence, LISTS_AT_LEAST);
-        assert!(trust.standing(now()).expired.is_empty());
+        assert!(
+            trust
+                .standing(permguard_core::time::unix_now())
+                .expired
+                .is_empty()
+        );
 
         let authenticator = TokenAuthenticator {
             trust: Arc::clone(&trust) as Arc<dyn Trust>,
@@ -590,7 +589,7 @@ mod tests {
             Ok(Actor::Authenticated(_))
         ));
         authority.revoke(index);
-        fetch_lists(&trust, &source, &tls, now())
+        fetch_lists(&trust, &source, &tls, permguard_core::time::unix_now())
             .await
             .expect("the lists again");
         assert!(

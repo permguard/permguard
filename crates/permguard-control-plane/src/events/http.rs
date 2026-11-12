@@ -295,8 +295,8 @@ impl EventFacade {
             for run in host.signers(&resource).map_err(unavailable)? {
                 let view = StreamSignersView {
                     producer_class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
-                    producer: crate::decisions::read::hex(&run.producer),
-                    instance: crate::decisions::read::hex(&run.run),
+                    producer: permguard_core::encoding::hex(&run.producer),
+                    instance: permguard_core::encoding::hex(&run.run),
                     acked: run.acked,
                     spans: Vec::new(),
                 };

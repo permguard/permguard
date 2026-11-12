@@ -560,7 +560,7 @@ async fn a_coordinator_ring_activates_only_once_every_member_holds_its_new_pin()
 async fn a_streamless_cutover_retires_the_replaced_pin_once_the_key_activated() {
     let c = Side::new("streamless-c", true);
     let wall = Arc::new(crate::time::ManualClock::at(
-        i64::try_from(crate::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(crate::time::ManualMonotonic::default());
     let time = Arc::new(crate::time::TimeGuard::new(
@@ -654,7 +654,7 @@ impl crate::composition::StreamCutovers for Engine {
 async fn a_member_sends_its_streams_cutover_from_the_engine() {
     let c = Side::new("streams-c", true);
     let wall = Arc::new(crate::time::ManualClock::at(
-        i64::try_from(crate::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(crate::time::ManualMonotonic::default());
     let time = Arc::new(crate::time::TimeGuard::new(

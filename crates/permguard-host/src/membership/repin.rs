@@ -21,13 +21,14 @@
 //! every membership it coordinates (a successor re-pins its rings as they are), and its ring
 //! activates the new key only once each member received that revision, by a lease or a sync.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::record::{
     Acknowledgement, Cutover, Delivered, Kind, Manifest, RingPin, RingStatement, Role, Status,
 };
-use super::{Coordinator, Held, MembershipError, Store, hex, verify_statement};
+use super::{Coordinator, Held, MembershipError, Store, verify_statement};
 use crate::identity::Verified;
 use crate::identity::record::RecordError;
 use crate::operations::mutation::Applying;

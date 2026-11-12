@@ -93,7 +93,7 @@ impl TaskHandler for Mirror {
         }
         let caller = format!(
             "membership:{}",
-            crate::transfer::hex(&context.membership_id)
+            permguard_core::encoding::hex(&context.membership_id)
         );
         let encoded = |result: Result<Vec<u8>, permguard_notp::WireError>| {
             result.map_err(|error| Refusal {

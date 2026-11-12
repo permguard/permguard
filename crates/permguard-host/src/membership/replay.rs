@@ -17,12 +17,13 @@
 //! back from its slot when a repeat asks for it. A temporary a crash left is swept, and a slot
 //! that does not read is skipped and logged rather than closing the task.
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 
 use sha2::{Digest as _, Sha256};
 
 use super::record::ReplayEntry;
-use super::{MembershipError, Store, hex};
+use super::{MembershipError, Store};
 use crate::storage::dir::{Dir, TEMP_PREFIX};
 use crate::storage::format;
 use crate::storage::write::{read_view, replace_view};

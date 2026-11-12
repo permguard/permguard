@@ -19,6 +19,7 @@
 //! is only ever appended. Under a fence, a key other than the stream's last one seals nothing
 //! until the cutover naming the stream's next sequence is journaled by the coordinator (WP-4.5).
 
+use permguard_core::encoding::hex;
 use permguard_core::keys::Jwk;
 use permguard_host::keys::ring::Ring;
 use permguard_host::storage::write::{publish_immutable, read_view, replace_view};
@@ -28,7 +29,7 @@ use permguard_objects::cbor::Value;
 use super::super::batch::{Envelope, GENESIS_HEAD, KeyView, SealedBatch, digest_string};
 use super::super::codec::{Map, encode, uint};
 use super::super::run::{Fence, RunStatement, statement_digest};
-use super::super::{Descriptor, StreamError, hex};
+use super::super::{Descriptor, StreamError};
 use super::{Context, Physical, RECORDS, RUN_OPEN, decode_group};
 
 const BATCHES: &str = "batches";

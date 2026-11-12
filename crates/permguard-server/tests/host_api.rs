@@ -198,14 +198,14 @@ fn facade(tag: &str) -> Arc<HostApi> {
                     .1,
             )),
             permguard_host::identity::Suite::Ed25519Sha256V1,
-            permguard_host::authz::store::now(),
-            permguard_host::authz::store::now() * 1000,
+            permguard_core::time::unix_now(),
+            permguard_core::time::unix_now() * 1000,
         )
         .expect("the identity is provisioned")
         .with_provisioner(provisioner),
     );
     let (replay, _) =
-        Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay opens");
+        Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay opens");
     // The operations ring, on the volume and bound by the identity (WP-3.1).
     let ring = Arc::new(
         permguard_host::keys::ring::Ring::open(

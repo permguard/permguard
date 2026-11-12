@@ -287,13 +287,6 @@ impl FileCatalog {
     }
 }
 
-/// Seconds since the Unix epoch.
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
-}
-
 /// An id `mint` gives that `buried` does not hold: one that has a tombstone is minted again, at
 /// most [`MINT_ATTEMPTS`] times (WP-7.3b).
 fn fresh(
@@ -366,7 +359,7 @@ impl Catalog for FileCatalog {
             });
         }
 
-        let at = now();
+        let at = permguard_core::time::unix_now();
         let id = fresh(guid, |id| {
             Ok(Self::read_tombstone(self.zone_tombstone_path(id))?.is_some())
         })?;
@@ -447,7 +440,7 @@ impl Catalog for FileCatalog {
             })?;
 
         found.name = name.to_owned();
-        found.updated_at = now();
+        found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;
         found.operation = write.operation.map(str::to_owned);
 
@@ -501,7 +494,7 @@ impl Catalog for FileCatalog {
             id: found.id.clone(),
             zone_id: None,
             name: found.name.clone(),
-            deleted_at: now(),
+            deleted_at: permguard_core::time::unix_now(),
             revision: found.revision,
             operation: write.operation.map(str::to_owned),
         };
@@ -538,7 +531,7 @@ impl Catalog for FileCatalog {
             });
         }
 
-        let at = now();
+        let at = permguard_core::time::unix_now();
         let id = fresh(guid, |id| {
             Ok(Self::read_tombstone(self.ledger_tombstone_path(&owner.id, id))?.is_some())
         })?;
@@ -638,7 +631,7 @@ impl Catalog for FileCatalog {
             })?;
 
         found.name = name.to_owned();
-        found.updated_at = now();
+        found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;
         found.operation = write.operation.map(str::to_owned);
 
@@ -682,7 +675,7 @@ impl Catalog for FileCatalog {
             id: found.id.clone(),
             zone_id: Some(owner.id.clone()),
             name: found.name.clone(),
-            deleted_at: now(),
+            deleted_at: permguard_core::time::unix_now(),
             revision: found.revision,
             operation: write.operation.map(str::to_owned),
         };
@@ -730,7 +723,7 @@ impl Catalog for FileCatalog {
         }
 
         found.state = state;
-        found.updated_at = now();
+        found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;
         found.operation = write.operation.map(str::to_owned);
 

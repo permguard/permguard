@@ -30,6 +30,7 @@
 //! order batch file, span, records, STATE, and the answer follows them all: a crash between them
 //! leaves what the next delivery of the batch finds and completes.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -46,7 +47,7 @@ use super::batch::{GENESIS_HEAD, KeyView, SealedBatch, digest_string};
 use super::codec::{Map, encode, uint};
 use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
 use super::producer::{RECORDS, Span, Spans, canonical_jwk, decode_group};
-use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex};
+use super::{Descriptor, RecordCodec, StreamError, StreamKey};
 
 mod import;
 mod inspect;

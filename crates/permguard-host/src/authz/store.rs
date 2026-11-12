@@ -198,13 +198,6 @@ impl BootstrapStore {
     }
 }
 
-/// Seconds since the Unix epoch, for the offline commands.
-pub fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]

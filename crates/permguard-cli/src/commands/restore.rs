@@ -19,6 +19,7 @@
 //! resolves must be the one the snapshot's manifest binds (TS-5). A forensic volume is terminal: no later restore but a forensic one,
 //! and no offline command that writes, works on it.
 
+use permguard_core::encoding::hex;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -180,10 +181,6 @@ fn mode_of(text: &str) -> Result<Mode, Failure> {
     })
 }
 
-pub(super) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 pub(super) fn unhex16(text: &str) -> Option<[u8; 16]> {
     if text.len() != 32 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
@@ -338,7 +335,7 @@ fn plan(
             "--reason is printable text of 1 to 256 bytes",
         ));
     }
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let volume = volume_of(globals)?;
     let held = hold(&volume, trace)?;
     not_restored(&held, mode)?;
@@ -457,7 +454,7 @@ fn run(
 ) -> Result<(), Failure> {
     use permguard_host::operations::plan::RESTORE;
 
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let volume = volume_of(globals)?;
     let held = hold(&volume, trace)?;
     not_restored(&held, mode)?;

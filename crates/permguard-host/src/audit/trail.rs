@@ -25,6 +25,7 @@
 //! only, writing `ANCHOR.cbor` first, through the storage library's tombstones; a trail without
 //! a retention keeps every day.
 
+use permguard_core::encoding::hex;
 use std::io::Write as _;
 use std::time::Duration;
 
@@ -39,7 +40,7 @@ use super::checkpoint::{
     ANCHOR, Anchor, Checkpoint, CheckpointSigner, envelope_digest, file_name, no_checkpoint,
     order_of, ordered, parse_name, read_unverified,
 };
-use super::record::{AuditRecord, MAX_RECORD_BYTES, TrailMeta, digest_of, genesis, hex};
+use super::record::{AuditRecord, MAX_RECORD_BYTES, TrailMeta, digest_of, genesis};
 
 /// The file holding the trail's class and resource.
 pub const META: &str = "META.cbor";

@@ -50,6 +50,7 @@ pub mod task;
 pub mod watch;
 pub mod zone;
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
@@ -682,10 +683,6 @@ fn token_proof_verifies(
     ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public)
         .verify(&token_message(coordinator, member, exporter), proof)
         .is_ok()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Verifies a ring statement presented by `owner` (a verified identity chain) at `now`: the

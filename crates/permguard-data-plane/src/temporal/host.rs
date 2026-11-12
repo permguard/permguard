@@ -23,6 +23,7 @@
 //! entries follow, and a crash between the two is caught up from the producer when the ledger is
 //! opened again, so a durable record is never invisible and never recorded twice.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -56,10 +57,6 @@ pub fn directory(root: &Path, zone: &str, ledger: &str) -> PathBuf {
 
 fn io(error: impl std::fmt::Display) -> JournalError {
     JournalError::Io(error.to_string())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn unhex16(text: &str) -> Option<[u8; 16]> {

@@ -7,6 +7,7 @@
 
 #![allow(clippy::expect_used, dead_code)]
 
+use permguard_core::encoding::hex;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -63,10 +64,6 @@ pub fn ledger(n: u8) -> Resource {
     Resource::ledger("data", "zone-a", format!("ledger-{n}"))
 }
 
-pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 pub fn unhex(text: &str) -> [u8; 16] {
     let bytes: Vec<u8> = (0..text.len())
         .step_by(2)
@@ -105,8 +102,8 @@ impl Host {
                 &volume,
                 provider,
                 Suite::Ed25519Sha256V1,
-                permguard_host::authz::store::now(),
-                permguard_host::authz::store::now() * 1000,
+                permguard_core::time::unix_now(),
+                permguard_core::time::unix_now() * 1000,
             )
             .expect("provisioned")
         });

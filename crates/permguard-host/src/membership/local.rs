@@ -581,8 +581,8 @@ mod tests {
                     identity::directories(&volume).expect("the identity").1,
                 )),
                 Suite::Ed25519Sha256V1,
-                crate::authz::store::now(),
-                crate::authz::store::now() * 1000,
+                permguard_core::time::unix_now(),
+                permguard_core::time::unix_now() * 1000,
             )
             .expect("provisioned"),
         );

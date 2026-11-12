@@ -15,6 +15,7 @@
 //! A rollover writes the successor into STATE first, then TERMINAL, then RUN_OPEN, then STATE
 //! again: whatever step a crash stops at, opening completes it with the same signed bytes.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
@@ -29,7 +30,7 @@ use permguard_objects::cbor::Value;
 use super::codec::{Map, encode, uint};
 use super::run::{Fence, RunEnd, RunStatement, statement_digest};
 use super::state::{Base, State};
-use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
+use super::{Descriptor, RecordCodec, StreamError, StreamKey, record_digest};
 
 mod inspect;
 mod prune;

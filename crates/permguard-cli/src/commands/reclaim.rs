@@ -23,6 +23,7 @@
 //! The receipt says what the volume held; the coordinator's frontier says it arrived. Anything
 //! short of both keeps the claim, and the line printed for it says which check failed.
 
+use permguard_core::encoding::hex;
 use std::path::PathBuf;
 
 use base64::Engine as _;
@@ -383,10 +384,6 @@ pub fn check(
         }
     }
     Ok((host_id, receipt.streams.len()))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// A 16-byte id as a UUID's text.

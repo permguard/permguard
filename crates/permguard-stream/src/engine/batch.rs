@@ -21,11 +21,12 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+use permguard_core::encoding::hex;
 use permguard_core::keys::Jwk;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{StreamError, StreamKey, hex, record_digest};
+use super::{StreamError, StreamKey, record_digest};
 
 /// The head before a run's first batch.
 pub const GENESIS_HEAD: &str =

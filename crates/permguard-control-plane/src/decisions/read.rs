@@ -20,6 +20,7 @@
 //! has not been altered* without handing over anything of anybody else's.
 
 use anyhow::Result;
+use permguard_core::encoding::hex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -282,10 +283,6 @@ pub(crate) fn unhex16(text: &str) -> Option<[u8; 16]> {
         *byte = u8::from_str_radix(text.get(at * 2..at * 2 + 2)?, 16).ok()?;
     }
     Some(bytes)
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Reads one bounded block of `scope` from the legacy store alone.

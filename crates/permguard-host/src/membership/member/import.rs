@@ -18,6 +18,7 @@
 //! Imported records keep their origin's bytes, signer, host, run and sequence; this Host signs
 //! none of them and ships none of them: they live in its consumer, never in its producer.
 
+use permguard_core::encoding::hex;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -54,10 +55,6 @@ fn request_id(boot: &[u8; 16], what: &str, at: u64) -> String {
         hex(boot),
         REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1
     )
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl Member<'_> {

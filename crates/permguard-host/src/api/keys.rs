@@ -19,6 +19,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use permguard_core::encoding::hex;
 use serde::{Deserialize, Serialize};
 
 use permguard_core::authz::{Actor, operations};
@@ -778,10 +779,6 @@ fn failure_of(error: RingError) -> Failure<Refusal> {
     } else {
         Failure::Refused(refusal_of(error))
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]

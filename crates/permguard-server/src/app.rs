@@ -3365,7 +3365,7 @@ pub fn migrate_keys_on(
             .with_context(|| format!("`{ring}` is not a ring with a legacy directory"))?;
         held.1 = std::path::PathBuf::from(directory);
     }
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     for (ring, directory) in directories {
         if !needs_migration(volume, ring, Some(&directory))
             .with_context(|| format!("reading the layout of {ring}"))?
@@ -3432,7 +3432,7 @@ pub fn migrate_audit_on(
         Some(&directory),
         permguard_core::assurance::AssuranceProfile::Production,
         Some(backup.to_owned()),
-        permguard_host::authz::store::now(),
+        permguard_core::time::unix_now(),
     )
     .with_context(|| {
         format!(
@@ -3485,7 +3485,7 @@ pub fn migrate_on(
 ) -> Result<()> {
     use permguard_host::storage::migrate::{self, Layout};
 
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let volume_root = volume.root();
     let subsystem = match what {
         MigrateCommand::Status { .. } => None,

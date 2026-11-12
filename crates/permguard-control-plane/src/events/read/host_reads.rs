@@ -5,6 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use permguard_core::encoding::hex;
 use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
@@ -19,10 +20,6 @@ const ROOT: &[u8] = b"a-test-cursor-key-of-32-bytes!!!!";
 const ZONE: &str = "zone-1";
 const LEDGER: &str = "ledger-1";
 const LOGIN: &str = permguard_core::domains::event::DOGWOOD_V1;
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(

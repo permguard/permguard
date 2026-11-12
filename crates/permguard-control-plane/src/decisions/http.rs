@@ -1269,7 +1269,10 @@ mod strict {
     #[tokio::test]
     async fn the_signers_of_a_host_run_come_from_the_consumer() {
         let router = routes(signing("host-signers"));
-        let (pdp, instance) = (read::hex(&[0xa1; 16]), read::hex(&[0x01; 16]));
+        let (pdp, instance) = (
+            permguard_core::encoding::hex(&[0xa1; 16]),
+            permguard_core::encoding::hex(&[0x01; 16]),
+        );
         let (status, body) = get(
             &router,
             &format!("/decisions/v1/streams/{pdp}/{instance}/signers"),
@@ -1346,8 +1349,8 @@ mod strict {
             &router,
             &format!(
                 "/decisions/v1/streams/{}/{}/signers",
-                read::hex(&[0xa1; 16]),
-                read::hex(&[0x09; 16])
+                permguard_core::encoding::hex(&[0xa1; 16]),
+                permguard_core::encoding::hex(&[0x09; 16])
             ),
         )
         .await;
@@ -1383,8 +1386,8 @@ mod strict {
 
         let answered = signing("host-signers-grpc")
             .get_signers(tonic::Request::new(crate::v1::GetDecisionSignersRequest {
-                pdp: read::hex(&[0xa1; 16]),
-                instance: read::hex(&[0x01; 16]),
+                pdp: permguard_core::encoding::hex(&[0xa1; 16]),
+                instance: permguard_core::encoding::hex(&[0x01; 16]),
                 from_seq: 0,
                 until_seq: 0,
             }))
@@ -1537,8 +1540,8 @@ mod strict {
     async fn a_decision_stream_read_takes_the_runs_ledger_or_the_whole_plane() {
         let host_run = format!(
             "/decisions/v1/streams/{}/{}/records",
-            read::hex(&[0xa1; 16]),
-            read::hex(&[0x01; 16])
+            permguard_core::encoding::hex(&[0xa1; 16]),
+            permguard_core::encoding::hex(&[0x01; 16])
         );
         let legacy = "/decisions/v1/streams/plane-a/i-1/records";
         let ledger = as_actor(
@@ -1621,8 +1624,8 @@ mod strict {
             &router,
             &format!(
                 "/decisions/v1/streams/{}/{}/signers",
-                read::hex(&[0xa1; 16]),
-                read::hex(&[0x01; 16])
+                permguard_core::encoding::hex(&[0xa1; 16]),
+                permguard_core::encoding::hex(&[0x01; 16])
             ),
         )
         .await;

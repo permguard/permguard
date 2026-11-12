@@ -3315,8 +3315,8 @@ mod host_log {
                         directories(&volume).expect("the identity directory").1,
                     )),
                     Suite::Ed25519Sha256V1,
-                    permguard_host::authz::store::now(),
-                    permguard_host::authz::store::now() * 1000,
+                    permguard_core::time::unix_now(),
+                    permguard_core::time::unix_now() * 1000,
                 )
                 .expect("provisioned"),
             );

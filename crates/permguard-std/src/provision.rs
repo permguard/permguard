@@ -46,6 +46,7 @@
 //! Everything it writes is `0600`, in directories that are `0700`. Nothing is ever overwritten: a
 //! file that exists is a file somebody meant to put there.
 
+use permguard_core::encoding::hex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -468,11 +469,6 @@ fn restrict(path: &Path, mode: u32) -> Result<()> {
 #[cfg(not(unix))]
 fn restrict(_path: &Path, _mode: u32) -> Result<()> {
     Ok(())
-}
-
-/// Renders bytes as hexadecimal, which is what a key in a file looks like everywhere else.
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]

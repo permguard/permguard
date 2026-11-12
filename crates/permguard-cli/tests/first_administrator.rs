@@ -132,7 +132,7 @@ fn the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret()
         let (held, _) =
             accounts::Accounts::open(&dir, permguard_host::storage::journal::Options::default())
                 .expect("the accounts open");
-        admin::ensure(&held, &plane_dir, permguard_host::authz::store::now())
+        admin::ensure(&held, &plane_dir, permguard_core::time::unix_now())
             .expect("made")
             .expect("the first start makes it")
     };

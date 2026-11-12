@@ -19,6 +19,7 @@
 //! key signs. Checkpoints are never deleted; the anchor binds the deleted prefix to the seal of
 //! its last day.
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 
 use permguard_core::domains::digest::AUDIT_CHECKPOINT as CHECKPOINT_DIGEST;
@@ -32,7 +33,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::keys::ring::{HOST_OPERATIONS, Ring};
 
-use super::record::{Labelled, RecordError, genesis, hex, id16, uint};
+use super::record::{Labelled, RecordError, genesis, id16, uint};
 
 /// The ending of a checkpoint file.
 pub const CHECKPOINT_SUFFIX: &str = ".cose";

@@ -62,13 +62,13 @@ fn joined(api: &HostApi, coordinator: &Host) -> [u8; 16] {
                 tasks: vec![decisions("plane/data/*")],
                 member_assurance: permguard_core::assurance::AssuranceProfile::Production,
                 ring_statements: Vec::new(),
-                requested_at: crate::authz::store::now(),
+                requested_at: permguard_core::time::unix_now(),
                 coordinator_address: Some("https://coordinator.invalid:7443".to_owned()),
                 identity: None,
                 groups: None,
                 name: None,
             },
-            crate::authz::store::now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined");
     membership_id

@@ -35,12 +35,6 @@ pub struct TestAuthority {
     iat: AtomicU64,
 }
 
-fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
 impl Default for TestAuthority {
     fn default() -> Self {
         Self::new()
@@ -58,7 +52,7 @@ impl TestAuthority {
             list: std::sync::Mutex::new(StatusList::new(2, ENTRIES).expect("a list")),
             published: std::sync::Mutex::new(String::new()),
             next: AtomicU64::new(0),
-            iat: AtomicU64::new(now().saturating_sub(10)),
+            iat: AtomicU64::new(permguard_core::time::unix_now().saturating_sub(10)),
         };
         authority
             .trust
@@ -115,7 +109,7 @@ impl TestAuthority {
             }),
         );
         self.trust
-            .accept_list(&token, now())
+            .accept_list(&token, permguard_core::time::unix_now())
             .expect("the list is held");
         *self
             .published
@@ -146,7 +140,7 @@ impl TestAuthority {
     /// beside it, for [`Self::revoke`].
     pub fn token_with_index(&self, account: &str, scopes: &[(&[&str], &str)]) -> (String, u64) {
         let index = self.next.fetch_add(1, Ordering::SeqCst);
-        let issued = now();
+        let issued = permguard_core::time::unix_now();
         let scopes: Vec<serde_json::Value> = scopes
             .iter()
             .map(|(operations, selector)| {

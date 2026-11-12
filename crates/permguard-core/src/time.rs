@@ -108,6 +108,13 @@ impl Date {
     }
 }
 
+/// Seconds since the Unix epoch, now: what every record and token is stamped and checked with.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
 /// Returns which day a timestamp falls on, counting from the Unix epoch.
 ///
 /// Floor division, so timestamps before the epoch land on the day they belong to rather than the one

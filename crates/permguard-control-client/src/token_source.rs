@@ -8,7 +8,7 @@
 //! one masks it.
 
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use zeroize::Zeroizing;
 
@@ -75,29 +75,6 @@ fn refused(detail: impl Into<String>) -> Failure {
     }
 }
 
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
-/// Whether `token` reads as an `at+jwt`: what the endpoint must issue, nothing else.
-fn is_access_token(token: &str) -> bool {
-    use base64::Engine as _;
-    token
-        .split('.')
-        .next()
-        .and_then(|header| {
-            base64::engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(header)
-                .ok()
-        })
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .is_some_and(|header| {
-            header["typ"].as_str() == Some(permguard_core::domains::jwt::ACCESS_TOKEN)
-        })
-}
-
 impl TokenSource {
     /// A source for `access_key` at the Authority Plane `url` (`https://` or `grpcs://`), its
     /// secret `secret_key`, asking `scope`, the account's whole when `None`. The TLS options name
@@ -151,7 +128,7 @@ impl TokenSource {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(issued) = held.as_ref()
-            && issued.expires_at > now() + REFRESH_AHEAD.as_secs()
+            && issued.expires_at > permguard_core::time::unix_now() + REFRESH_AHEAD.as_secs()
         {
             return Ok(issued.clone());
         }
@@ -170,7 +147,7 @@ impl TokenSource {
 
     /// Holds `issued`, a token obtained before and kept by the caller, when it still serves.
     pub fn hold(&self, issued: Issued) {
-        if issued.expires_at > now() + REFRESH_AHEAD.as_secs() {
+        if issued.expires_at > permguard_core::time::unix_now() + REFRESH_AHEAD.as_secs() {
             *self
                 .held
                 .lock()
@@ -189,7 +166,7 @@ impl TokenSource {
             lifetime: None,
         })?;
         if !answer.token_type.eq_ignore_ascii_case("bearer")
-            || !is_access_token(&answer.access_token)
+            || !permguard_host::authz::access_tokens::is_access_token(&answer.access_token)
         {
             return Err(refused(
                 "the token endpoint issued something other than an access token",
@@ -197,7 +174,7 @@ impl TokenSource {
         }
         Ok(Issued {
             token: Credential::new(answer.access_token.into_bytes()),
-            expires_at: now().saturating_add(answer.expires_in),
+            expires_at: permguard_core::time::unix_now().saturating_add(answer.expires_in),
         })
     }
 }
@@ -246,6 +223,5 @@ mod tests {
         .unwrap_or_else(|_| unreachable!("a source"));
         assert_eq!(source.access_key(), "pgak_A");
         assert!(!format!("{source:?}").contains("pgsk_"));
-        assert!(!is_access_token("eyJ0eXAiOiJKV1QifQ.e30.x"));
     }
 }

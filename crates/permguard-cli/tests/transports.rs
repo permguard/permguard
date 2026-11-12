@@ -1287,13 +1287,12 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
                     .1,
             )),
             permguard_host::identity::Suite::Ed25519Sha256V1,
-            permguard_host::authz::store::now(),
-            permguard_host::authz::store::now() * 1000,
+            permguard_core::time::unix_now(),
+            permguard_core::time::unix_now() * 1000,
         )
         .expect("provisioned"),
     );
-    let (replay, _) =
-        Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay");
+    let (replay, _) = Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay");
     let api = Arc::new(HostApi::new(Composition {
         authorization: Arc::new(Authorization::closed()),
         replay,

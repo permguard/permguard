@@ -401,7 +401,7 @@ impl Sweep {
         let started = Instant::now();
         let mut pass = Pass::default();
         let outcome = &mut pass.outcome;
-        let now = permguard_host::authz::store::now();
+        let now = permguard_core::time::unix_now();
         // The holds first, once: a pass that cannot know what is held removes nothing.
         let listed = match &self.holds {
             Ok(None) => Ok(Vec::new()),
@@ -611,7 +611,7 @@ impl Sweep {
     ) -> Result<Swept> {
         // The holds read again under the ledger's lock, right before its removals (WP-7.11).
         let held_now = || -> Result<bool> {
-            let now = permguard_host::authz::store::now();
+            let now = permguard_core::time::unix_now();
             match &self.holds {
                 Ok(None) => Ok(false),
                 Ok(Some(holds)) => holds
@@ -1175,9 +1175,9 @@ mod tests {
                 resource,
                 owner: "legal".to_owned(),
                 reason: "litigation".to_owned(),
-                deadline: Deadline::Review(permguard_host::authz::store::now() + 3_600),
+                deadline: Deadline::Review(permguard_core::time::unix_now() + 3_600),
             },
-            permguard_host::authz::store::now(),
+            permguard_core::time::unix_now(),
         )
         .expect("held")
         .id
@@ -1547,7 +1547,7 @@ mod tests {
         use permguard_host::gc::{GcJob as _, Kept};
         let fixture = fixture("job-session");
         let (_, store, digest) = &fixture.ledgers[0];
-        let now = permguard_host::authz::store::now();
+        let now = permguard_core::time::unix_now();
         store
             .transfers()
             .expect("the transfers")

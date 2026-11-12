@@ -60,7 +60,7 @@ impl Clocks {
 /// signs just after is not in its future.
 fn timed_coordinator(tag: &str) -> (Clocks, Side) {
     let wall = Arc::new(ManualClock::at(
-        i64::try_from(crate::authz::store::now() + 3).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now() + 3).expect("in range"),
     ));
     let mono = Arc::new(ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(

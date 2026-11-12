@@ -30,6 +30,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use hmac::{Hmac, KeyInit, Mac};
+use permguard_core::encoding::hex;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -428,10 +429,6 @@ pub fn filter_digest(normalized: &serde_json::Value) -> String {
     let digest = hasher.finalize();
 
     format!("sha256:{}", hex(&digest))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Compares two tags without leaking where they first differ.

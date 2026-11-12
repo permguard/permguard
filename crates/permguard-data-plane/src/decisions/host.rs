@@ -20,6 +20,7 @@
 //! whether the stream holds more than its bounds allow unacknowledged or the engine refuses the
 //! append.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -309,10 +310,6 @@ fn previous(position: &StreamPosition) -> String {
     } else {
         format!("sha256:{}", hex(&position.prev))
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The `host_id`, 32 hex digits, in its canonical UUID form: lowercase, hyphenated.

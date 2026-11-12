@@ -261,43 +261,17 @@ fn cache_path(
     )))
 }
 
-/// A file only its owner reads, of at most [`FILE_MAX`] bytes: never a link or a FIFO, and the file
-/// read is the file checked.
-fn private_file(path: &Path, what: &str) -> Result<Credential, Failure> {
-    use std::io::Read as _;
+/// Why a file is refused by its owner, its mode, the reader's user and whether the path named a
+/// link; `None` when it is read.
+type Refusal = fn(u32, u32, u32, bool) -> Option<&'static str>;
 
-    let refused = |why: String| Failure::usage(format!("{what} {}: {why}", path.display()));
-    let named = std::fs::symlink_metadata(path).map_err(|error| refused(error.to_string()))?;
-    if !named.is_file() {
-        return Err(refused("is not a regular file".to_owned()));
+/// The reader's own file, which nobody else reads and which is named, not linked to: the rule of
+/// the token cache.
+fn own_file_refusal(owner: u32, mode: u32, reader: u32, linked: bool) -> Option<&'static str> {
+    if owner != reader {
+        return Some("belongs to another user");
     }
-    let file = std::fs::File::open(path).map_err(|error| refused(error.to_string()))?;
-    let opened = file
-        .metadata()
-        .map_err(|error| refused(error.to_string()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        if (opened.dev(), opened.ino()) != (named.dev(), named.ino()) {
-            return Err(refused("changed while it was read".to_owned()));
-        }
-        if opened.mode() & 0o077 != 0 {
-            return Err(refused(
-                "may be read by others than its owner: chmod 600 it".to_owned(),
-            ));
-        }
-        if opened.uid() != rustix::process::getuid().as_raw() {
-            return Err(refused("belongs to another user".to_owned()));
-        }
-    }
-    if !opened.is_file() || opened.len() > FILE_MAX {
-        return Err(refused("is not a file of at most 64 KiB".to_owned()));
-    }
-    let mut bytes = Vec::new();
-    file.take(FILE_MAX + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| refused(error.to_string()))?;
-    Ok(Credential::new(bytes))
+    secret_file_refusal(owner, mode, reader, linked)
 }
 
 /// Why a secret key file is refused, by its owner, its mode, the reader's user and whether the path
@@ -327,13 +301,13 @@ fn secret_file_refusal(owner: u32, mode: u32, reader: u32, linked: bool) -> Opti
     Some("belongs to another user")
 }
 
-/// The secret key file, read as [`secret_file_refusal`] allows: a regular file of at most
-/// [`FILE_MAX`] bytes, the file read being the file checked.
-fn read_secret_file(path: &Path) -> Result<Credential, Failure> {
+/// A regular file of at most [`FILE_MAX`] bytes, read as `allowed` decides by its owner, mode,
+/// the reader and whether `path` is a link; the file read is the file checked, and `what` names
+/// it in a refusal.
+fn read_checked(path: &Path, what: &str, allowed: Refusal) -> Result<Credential, Failure> {
     use std::io::Read as _;
 
-    let refused =
-        |why: String| Failure::usage(format!("the secret key file {}: {why}", path.display()));
+    let refused = |why: String| Failure::usage(format!("{what} {}: {why}", path.display()));
     let named = std::fs::symlink_metadata(path).map_err(|error| refused(error.to_string()))?;
     let linked = named.file_type().is_symlink();
     if !linked && !named.is_file() {
@@ -351,13 +325,13 @@ fn read_secret_file(path: &Path) -> Result<Credential, Failure> {
             return Err(refused("changed while it was read".to_owned()));
         }
         let reader = rustix::process::getuid().as_raw();
-        if let Some(why) = secret_file_refusal(opened.uid(), opened.mode(), reader, linked) {
+        if let Some(why) = allowed(opened.uid(), opened.mode(), reader, linked) {
             return Err(refused(why.to_owned()));
         }
     }
     #[cfg(not(unix))]
     {
-        let _ = target;
+        let _ = (target, allowed);
         if linked {
             return Err(refused("is a link: name the file itself".to_owned()));
         }
@@ -370,6 +344,16 @@ fn read_secret_file(path: &Path) -> Result<Credential, Failure> {
         .read_to_end(&mut bytes)
         .map_err(|error| refused(error.to_string()))?;
     Ok(Credential::new(bytes))
+}
+
+/// A file only its owner reads, named, never linked to: the token cache's.
+fn private_file(path: &Path, what: &str) -> Result<Credential, Failure> {
+    read_checked(path, what, own_file_refusal)
+}
+
+/// The secret key file, read as [`secret_file_refusal`] allows.
+fn read_secret_file(path: &Path) -> Result<Credential, Failure> {
+    read_checked(path, "the secret key file", secret_file_refusal)
 }
 
 /// Whether `directory` is the user's own and only theirs: a cache anybody else could write or
@@ -465,7 +449,7 @@ fn write_cached(path: &Path, issued: &Issued) {
 
 #[cfg(test)]
 mod tests {
-    use super::{cache_name, read_secret_file, secret_file_refusal};
+    use super::{cache_name, own_file_refusal, read_secret_file, secret_file_refusal};
 
     const READER: u32 = 65532;
 
@@ -508,6 +492,19 @@ mod tests {
             Some("belongs to another user")
         );
         assert!(secret_file_refusal(1000, 0o100440, READER, true).is_some());
+    }
+
+    /// The token cache is the reader's own file alone: root's group-readable file is a secret an
+    /// orchestrator mounts, never a cache.
+    #[test]
+    fn a_cache_file_is_the_readers_own_alone() {
+        assert_eq!(own_file_refusal(READER, 0o100600, READER, false), None);
+        assert_eq!(
+            own_file_refusal(0, 0o100440, READER, false),
+            Some("belongs to another user")
+        );
+        assert!(own_file_refusal(READER, 0o100640, READER, false).is_some());
+        assert!(own_file_refusal(READER, 0o100600, READER, true).is_some());
     }
 
     /// Root reading its own file is held to the owner's rule: nobody else, and no link.

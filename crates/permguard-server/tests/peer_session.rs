@@ -178,8 +178,8 @@ fn host(root: &Path) -> Host {
             &volume,
             provider,
             Suite::Ed25519Sha256V1,
-            permguard_host::authz::store::now(),
-            permguard_host::authz::store::now() * 1000,
+            permguard_core::time::unix_now(),
+            permguard_core::time::unix_now() * 1000,
         )
         .expect("provisioned")
     };
@@ -231,7 +231,7 @@ impl Host {
     /// Serves this Host's API on a loopback mutual-TLS listener, peer sessions as `report` says.
     async fn listen(&self, pki: &Pki, peers: &[&Identity], report: PeerSessionsReport) -> Surface {
         let (replay, _) =
-            Replay::open(&self.volume, permguard_host::authz::store::now()).expect("the replay");
+            Replay::open(&self.volume, permguard_core::time::unix_now()).expect("the replay");
         let api = Arc::new(HostApi::new(Composition {
             authorization: Arc::new(Authorization::closed()),
             replay,
@@ -684,7 +684,7 @@ async fn side_with(
         .expect("the mutation journal opens"),
     );
     let (replay, _) =
-        Replay::open(&host.volume, permguard_host::authz::store::now()).expect("the replay");
+        Replay::open(&host.volume, permguard_core::time::unix_now()).expect("the replay");
     let open_ring = |id: &'static str| {
         let ring = Arc::new(
             permguard_host::keys::ring::Ring::open(

@@ -166,7 +166,7 @@ pub fn migrate_events_on(
             working_dir.display()
         );
     }
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let horizon = horizon(bounds, i64::try_from(now).unwrap_or(i64::MAX));
     let reading = || {
         format!(

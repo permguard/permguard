@@ -199,7 +199,7 @@ pub fn identity_of(certificate: &CertificateDer<'_>) -> Option<PeerIdentity> {
             parsed.subject().to_string(),
             common_name,
             fingerprint(certificate),
-            crate::digest::hex(parsed.raw_serial()),
+            permguard_core::encoding::hex(parsed.raw_serial()),
         )
         .with_san_uris(san_uris)
         .with_spki_sha256(crate::digest::digest(parsed.public_key().raw)),

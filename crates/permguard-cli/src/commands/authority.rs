@@ -98,19 +98,11 @@ fn no_client() -> Failure {
 /// What a token says of itself, read from its payload, unverified: the Authority Plane and every
 /// Plane verify it, this only names it.
 fn claims_of(token: &Credential) -> Result<serde_json::Value, Failure> {
-    use base64::Engine as _;
-
     let unreadable = || Failure::usage("the token in use is not a JWT this command can read");
     let token = std::str::from_utf8(token.expose()).map_err(|_| unreadable())?;
-    let payload = token.trim().split('.').nth(1).ok_or_else(unreadable)?;
-    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload)
-        .map_err(|_| unreadable())?;
-    let claims: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
-    if claims["jti"].as_str().is_none() {
-        return Err(unreadable());
-    }
-    Ok(claims)
+    permguard_host::authz::access_tokens::claims_of(token)
+        .filter(|claims| claims["jti"].as_str().is_some())
+        .ok_or_else(unreadable)
 }
 
 /// A claim's time as RFC 3339, when the token states it.
@@ -481,7 +473,7 @@ fn admin_key(globals: &Globals, secret_out: &Path, trace: &Trace) -> Result<Exit
         &accounts,
         &plane_dir,
         &out,
-        permguard_host::authz::store::now(),
+        permguard_core::time::unix_now(),
     )
     .map_err(Failure::unavailable)?;
     drop(held);

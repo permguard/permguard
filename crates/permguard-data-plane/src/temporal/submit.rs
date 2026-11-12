@@ -2261,15 +2261,14 @@ impl Submitter {
                 .iter()
                 .filter(|origin| {
                     stale
-                        || shared
-                            .behind
-                            .iter()
-                            .any(|(behind, _, _, _)| super::imported::hex(behind) == **origin)
+                        || shared.behind.iter().any(|(behind, _, _, _)| {
+                            permguard_core::encoding::hex(behind) == **origin
+                        })
                         || shared.state.as_ref().is_some_and(|state| {
                             state
                                 .gaps
                                 .iter()
-                                .any(|gap| super::imported::hex(&gap.origin) == **origin)
+                                .any(|gap| permguard_core::encoding::hex(&gap.origin) == **origin)
                         })
                 })
                 .map(String::as_str)
@@ -2289,7 +2288,7 @@ impl Submitter {
             origin_set_revision: shared
                 .state
                 .as_ref()
-                .map(|state| super::imported::hex(&state.revision)),
+                .map(|state| permguard_core::encoding::hex(&state.revision)),
             max_staleness_seconds: Some(self.max_staleness.as_secs()),
             degraded,
             quarantined: quarantined.len() as u64,

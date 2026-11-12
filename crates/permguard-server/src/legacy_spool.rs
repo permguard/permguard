@@ -151,7 +151,7 @@ pub fn migrate_decisions_on(
                 &spool,
                 AssuranceProfile::Production,
                 Some(backup.to_owned()),
-                permguard_host::authz::store::now(),
+                permguard_core::time::unix_now(),
             )
             .with_context(|| {
                 format!("archiving the legacy decision spool at {}", spool.display())

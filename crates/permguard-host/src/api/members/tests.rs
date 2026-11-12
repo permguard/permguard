@@ -11,10 +11,7 @@ use crate::membership::record::{EnrollRequest, Pending};
 use crate::membership::tests::{EXPORTER, Host, decisions};
 use crate::membership::{Enrolling, token_proof};
 use crate::operations::mutation::Applying;
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
+use permguard_core::encoding::hex;
 
 fn json_of(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).expect("serializes")
@@ -22,10 +19,6 @@ fn json_of(value: &impl serde::Serialize) -> String {
 
 fn code(refusal: &Refusal) -> &str {
     refusal.error().expect("a domain refusal").code()
-}
-
-fn now() -> u64 {
-    crate::authz::store::now()
 }
 
 pub(crate) fn task_view() -> TaskView {
@@ -97,7 +90,7 @@ async fn member_verification_replays_and_validates_the_request_before_contacting
                 coordinator_address: Some("https://coordinator:7443".to_owned()),
                 ..pending
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined");
     member
@@ -108,7 +101,7 @@ async fn member_verification_replays_and_validates_the_request_before_contacting
                 coordinator_address: Some("https://coordinator:7443".to_owned()),
                 ..other_pending
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined twice");
     let down = Arc::new(DownConnector::default());
@@ -295,11 +288,15 @@ pub(crate) async fn enrolled_requiring(
                 exporter: &EXPORTER,
             },
             &request,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     store
-        .enroll(&Applying::for_tests(70), &pending, now())
+        .enroll(
+            &Applying::for_tests(70),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     (uuid_text(&pending.membership_id), pending)
 }
@@ -595,7 +592,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                 coordinator_address: Some("https://coordinator:7443".to_owned()),
                 ..pending
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined");
     let identity = api.identity.as_deref().expect("an identity");
@@ -624,7 +621,12 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
     .expect("the coordinator verifies");
     let accepted = member
         .store
-        .check_sync(&membership_id, &verified, &answer, now())
+        .check_sync(
+            &membership_id,
+            &verified,
+            &answer,
+            permguard_core::time::unix_now(),
+        )
         .expect("every manifest verifies");
     assert_eq!(accepted.len(), 5);
     for (manifest, envelope, digest) in accepted {
@@ -635,7 +637,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                 &manifest,
                 &envelope,
                 &digest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("accepted");
     }
@@ -1333,7 +1335,7 @@ async fn an_approval_without_the_evidence_its_tasks_need_is_refused_and_audited(
                             permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL
                         ),
                         reason: "spaced".to_owned(),
-                        expires_at: rfc3339(now() + 600),
+                        expires_at: rfc3339(permguard_core::time::unix_now() + 600),
                     }],
                     evidence: Vec::new(),
                 }),
@@ -1362,7 +1364,7 @@ async fn an_approval_without_the_evidence_its_tasks_need_is_refused_and_audited(
     );
 
     let reason = "dual control witnessed under change ticket 42";
-    let expires = now() + 7 * 86_400;
+    let expires = permguard_core::time::unix_now() + 7 * 86_400;
     let approved = api
         .approve_member(
             &admin(),
@@ -1742,7 +1744,12 @@ async fn a_held_membership_shows_the_epoch_it_was_held_at() {
         .as_deref()
         .expect("memberships")
         .store
-        .hold(&Applying::for_tests(74), &pending.membership_id, 4, now())
+        .hold(
+            &Applying::for_tests(74),
+            &pending.membership_id,
+            4,
+            permguard_core::time::unix_now(),
+        )
         .expect("held");
     let view = api.member(&admin(), &id).expect("read");
     assert_eq!(view.held_epoch, Some(4));
@@ -1805,12 +1812,16 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
                 groups: None,
                 name: None,
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     memberships
         .store
-        .enroll(&Applying::for_tests(71), &pending, now())
+        .enroll(
+            &Applying::for_tests(71),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     let id = uuid_text(&pending.membership_id);
     let revision = api.member(&admin(), &id).expect("read").revision;
@@ -2008,11 +2019,15 @@ async fn shipping_events(api: &HostApi, member: &Host, request_id: &str) -> Pend
                 groups: None,
                 name: None,
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     store
-        .enroll(&Applying::for_tests(72), &pending, now())
+        .enroll(
+            &Applying::for_tests(72),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     pending
 }
@@ -2110,7 +2125,12 @@ async fn a_held_member_is_no_origin_and_one_host_is_never_two() {
         .as_deref()
         .expect("memberships")
         .store
-        .hold(&Applying::for_tests(74), &first.membership_id, 4, now())
+        .hold(
+            &Applying::for_tests(74),
+            &first.membership_id,
+            4,
+            permguard_core::time::unix_now(),
+        )
         .expect("held");
     assert!(
         api.import_origins(&ledger)

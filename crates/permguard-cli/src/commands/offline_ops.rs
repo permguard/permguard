@@ -15,6 +15,7 @@
 //! The migrations are the server binary's own (`permguard_server::app::migrate`,
 //! `legacy_events::migrate_events`): one implementation, reached from both.
 
+use permguard_core::encoding::hex;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -32,7 +33,7 @@ use super::host::{
     rooted_file, volume_of,
 };
 use super::host_ops::BundleFile;
-use super::restore::{config_of, hex, planner};
+use super::restore::{config_of, planner};
 use crate::args::{BackupVerifyAction, Globals, MigrateAction};
 use crate::failure::Failure;
 use crate::output::Report;
@@ -386,7 +387,7 @@ fn plan(
 
     printable(backup, "--backup")?;
     checked_legacy(subsystem, legacy)?;
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let config = config_of(server_config)?;
     // An `events` plan binds where the history is, as the configuration names it now.
     let bound: Vec<String> = if subsystem == "events" {
@@ -495,7 +496,7 @@ fn run(
     use permguard_host::operations::plan::MIGRATE;
 
     let not_a_receipt = || Failure::usage("--confirm-file is not a migration's receipt");
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let receipt = crate::confirm::read_bytes(
         confirm_file,
         "migration receipt",

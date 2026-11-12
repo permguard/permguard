@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use permguard_core::encoding::hex;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -82,8 +83,8 @@ impl Host {
                     directories(&volume).expect("the identity directory").1,
                 )),
                 Suite::Ed25519Sha256V1,
-                permguard_host::authz::store::now(),
-                permguard_host::authz::store::now() * 1000,
+                permguard_core::time::unix_now(),
+                permguard_core::time::unix_now() * 1000,
             )
             .expect("provisioned"),
         );
@@ -834,7 +835,7 @@ fn a_producer_appends_and_a_consumer_reads_back_through_typed_handles() {
 #[test]
 fn a_stream_opens_after_the_key_of_its_first_run_is_gone() {
     let wall = Arc::new(permguard_host::time::ManualClock::at(
-        i64::try_from(permguard_host::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(permguard_host::time::ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(
@@ -1269,7 +1270,7 @@ fn manual_host(
     Arc<permguard_host::time::ManualMonotonic>,
 ) {
     let wall = Arc::new(permguard_host::time::ManualClock::at(
-        i64::try_from(permguard_host::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(permguard_host::time::ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(

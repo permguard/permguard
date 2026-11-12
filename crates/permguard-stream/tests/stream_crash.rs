@@ -20,6 +20,7 @@
 
 mod support;
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -33,7 +34,7 @@ use permguard_host::keys::ring::{DATA_ATTEST, Policy};
 use permguard_host::time::{ManualClock, ManualMonotonic, TimeGuard};
 use permguard_stream::engine::{Fence, Producer, Sealing};
 
-use support::{Host, every_batch, hex, ledger, unhex};
+use support::{Host, every_batch, ledger, unhex};
 
 const CHILD_DIRECTORY: &str = "PERMGUARD_STREAM_CRASH_DIRECTORY";
 /// The wall time, in seconds, the child's manual clock starts at.
@@ -185,7 +186,7 @@ fn a_hundred_crashes_under_load_leave_no_fork_gap_or_unverifiable_span() {
     let mut seed = Seeded(0x5eed_0502_f10a_b0cd);
     // The clock moves on from round to round as far as the child's moved it, so the rings never
     // have a long absence to catch up with.
-    let mut clock = i64::try_from(permguard_host::authz::store::now()).expect("in range");
+    let mut clock = i64::try_from(permguard_core::time::unix_now()).expect("in range");
     let mut kids = std::collections::BTreeSet::new();
     for round in 0..rounds() {
         let point = POINTS[(seed.next() % POINTS.len() as u64) as usize];

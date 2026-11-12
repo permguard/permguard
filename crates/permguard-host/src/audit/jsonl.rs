@@ -28,6 +28,7 @@
 //! opens at the first record kept, the absent prefix stated as a warning; a gap in the middle fails
 //! (owner decisions of 2026-10-11).
 
+use permguard_core::encoding::hex;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -604,10 +605,6 @@ pub fn lay_out(
     }
     layout.migrate(&Migration, Preflight::new(profile, &target(), backup, now))?;
     Ok(Laid::Migrated)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn unhex(text: &str) -> Option<Vec<u8>> {

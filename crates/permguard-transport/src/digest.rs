@@ -7,27 +7,13 @@
 //! reload logs, and the chain an audit trail is built from — and two implementations of the same
 //! digest eventually disagree about padding or case, at which point one of them is silently wrong.
 
-use std::fmt::Write;
+use permguard_core::encoding::hex;
 
 use sha2::{Digest, Sha256};
 
 /// Returns the SHA-256 of some bytes, lowercase hex — the form every other tool prints.
 pub fn digest(bytes: &[u8]) -> String {
     hex(Sha256::digest(bytes).as_slice())
-}
-
-/// Renders bytes as lowercase hexadecimal.
-///
-/// The primitive under [`digest`], and used on its own for the things that are already short enough
-/// to print whole — a certificate's serial number, for one.
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut out, byte| {
-        // Writing into a String cannot fail, and the alternative would be a fallible signature for
-        // something that formats a number.
-        let _ = write!(out, "{byte:02x}");
-
-        out
-    })
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used)]
 
+use permguard_core::encoding::hex;
 use std::time::Duration;
 
 use permguard_objects::cose::Sign1;
@@ -29,7 +30,7 @@ fn backed(tag: &str, lifetime: Option<Duration>) -> (HostApi, std::path::PathBuf
     let backups = Backups::open(&volume).expect("the backups open");
     assert!(
         backups
-            .cut(crate::authz::store::now())
+            .cut(permguard_core::time::unix_now())
             .expect("cut")
             .is_empty()
     );
@@ -83,10 +84,6 @@ fn manifest_of(prepared: &BackupPrepared) -> (Vec<u8>, SnapshotManifest) {
     )
     .expect("a manifest");
     (bytes, manifest)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Every action and phase the trail recorded.

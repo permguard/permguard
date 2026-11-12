@@ -37,6 +37,7 @@
 //! outside this process ever reads these frames. The journal frames themselves are the storage
 //! library's format, claim generation included.
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -800,14 +801,6 @@ pub fn mint_id() -> Result<String, Refusal> {
     Ok(hex(&bytes))
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut text = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -875,7 +868,7 @@ mod tests {
         }
         {
             let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let now = crate::authz::store::now();
+            let now = permguard_core::time::unix_now();
             let (replay, _) = Replay::open(&volume, now).expect("reopens");
             assert_eq!(replay.held(), 1, "the result is read back from the journal");
             assert_eq!(
@@ -887,7 +880,7 @@ mod tests {
         }
         {
             let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let far = crate::authz::store::now() + WINDOW.as_secs() + 1;
+            let far = permguard_core::time::unix_now() + WINDOW.as_secs() + 1;
             let (replay, _) = Replay::open(&volume, far).expect("reopens past the window");
             assert_eq!(replay.held(), 0, "past the window nothing is held");
             let state_dir = volume.host().subdir(DIRECTORY, false).expect("state");
@@ -1093,7 +1086,7 @@ mod tests {
             target: "g1".to_owned(),
             revision: 1,
             digest: "d".to_owned(),
-            expires: crate::authz::store::now() + 3_600,
+            expires: permguard_core::time::unix_now() + 3_600,
             principal: "alice".to_owned(),
             ..Plan::default()
         };
@@ -1110,7 +1103,7 @@ mod tests {
                 .expect("recorded");
         }
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let far = crate::authz::store::now() + WINDOW.as_secs() + 1;
+        let far = permguard_core::time::unix_now() + WINDOW.as_secs() + 1;
         let (replay, _) = Replay::open(&volume, far).expect("reopens and compacts");
         assert_eq!(replay.held(), 0);
         let again = replay
@@ -1126,7 +1119,7 @@ mod tests {
             .expect("the compacted journal takes a write");
         drop(replay);
         let (replay, _) =
-            Replay::open(&volume, crate::authz::store::now()).expect("reopens at the clock");
+            Replay::open(&volume, permguard_core::time::unix_now()).expect("reopens at the clock");
         assert_eq!(
             replay.held(),
             1,

@@ -5,6 +5,7 @@
 //! their records, signers and anchors, read without creating anything.
 
 use permguard_core::authz::Resource;
+use permguard_core::encoding::hex;
 use permguard_host::api::streams::{
     AnchorView, ConsumerRun, Frontier, RecordPage, ResourceState, RunSigners, StreamView,
     SubscriptionView,
@@ -12,7 +13,7 @@ use permguard_host::api::streams::{
 
 use super::super::anchor::anchor_in;
 use super::super::reads::{Inspect, anchor_view, page_view, span_view};
-use super::super::{RecordCodec, StreamError, StreamKey, hex};
+use super::super::{RecordCodec, StreamError, StreamKey};
 use super::{Consumer, FORKED};
 
 impl<C: RecordCodec> Consumer<C> {

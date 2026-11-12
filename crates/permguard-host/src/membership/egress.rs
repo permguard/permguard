@@ -33,6 +33,7 @@
 //! last kept is a fork of the trail, refused and kept nowhere. The first one kept may continue
 //! any checkpoint: the trail before the export is the member's own.
 
+use permguard_core::encoding::hex;
 use std::sync::Arc;
 
 use sha2::{Digest as _, Sha256};
@@ -86,10 +87,6 @@ fn bounded(bytes: &[u8], what: &str) -> Result<(), RecordError> {
 /// The digest of a checkpoint envelope, as the next checkpoint and an anchor cite it.
 pub fn envelope_digest(envelope: &[u8]) -> [u8; 32] {
     *crate::audit::checkpoint::envelope_digest(envelope).raw()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// What a member sends: one checkpoint of one trail.

@@ -78,7 +78,7 @@ fn grants_bootstrap(
     fingerprint: &str,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let volume = volume_of(globals)?;
     let (store, mutations) = open_mutable(&volume, server_config, trace)?;
     let (commitment, written) =
@@ -173,7 +173,7 @@ fn holds(
     let held = claim(&volume, trace)?;
     let store = HoldStore::open(&held)
         .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     match action {
         HoldsAction::List => {
             let listed = store.list().map_err(hold_refused)?;
@@ -510,7 +510,7 @@ fn identity(
 ) -> Result<ExitCode, Failure> {
     use permguard_host::identity::{self, Identity, Suite};
 
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     match action {
         IdentityAction::Provision { suite, if_missing } => {
             let volume = volume_of(globals)?;
@@ -1512,7 +1512,7 @@ fn reset(
     use permguard_host::identity;
     use permguard_host::membership::Store;
 
-    let now = permguard_host::authz::store::now();
+    let now = permguard_core::time::unix_now();
     let open_members = |held: &Volume| {
         Store::open(held)
             .map_err(|error| Failure::unavailable(format!("opening the memberships: {error}")))

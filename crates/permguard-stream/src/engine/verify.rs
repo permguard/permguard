@@ -19,6 +19,7 @@
 //! Records past the last batch are unsealed, and noted; a batch signed by a key the document
 //! revoked is noted too, since a retained key's old signatures still verify.
 
+use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -30,7 +31,7 @@ use permguard_host::storage::write::read_view;
 use super::anchor::{ANCHOR, Anchor, envelope_digest};
 use super::batch::{GENESIS_HEAD, KeyView, SealedBatch};
 use super::producer::{RECORDS, RUN_OPEN};
-use super::{Descriptor, StreamError, decode_group, hex};
+use super::{Descriptor, StreamError, decode_group};
 
 /// The keys a stream's batches are verified with: what `keys export` prints for their ring.
 #[derive(Debug, Clone, Default)]

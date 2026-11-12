@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used)]
 
+use permguard_core::encoding::hex;
 use std::time::Duration;
 
 use permguard_core::KeyManager as _;
@@ -19,10 +20,6 @@ pub(crate) struct Host {
     pub(crate) identity: Arc<Identity>,
     pub(crate) rings: Vec<Arc<Ring>>,
     pub(crate) store: Arc<Store>,
-}
-
-fn now() -> u64 {
-    crate::authz::store::now()
 }
 
 impl Host {
@@ -52,8 +49,8 @@ impl Host {
                 &volume,
                 provider,
                 Suite::Ed25519Sha256V1,
-                now(),
-                now() * 1000,
+                permguard_core::time::unix_now(),
+                permguard_core::time::unix_now() * 1000,
             )
             .expect("provisioned"),
         );
@@ -276,7 +273,7 @@ fn invite(coordinator: &Host, expected: Option<String>) -> (Invitation, [u8; 32]
                 name: None,
             },
             "operator",
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("invited")
 }
@@ -326,12 +323,16 @@ fn enroll(coordinator: &Host, member: &Host) -> Pending {
                 exporter: &EXPORTER,
             },
             &request,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     coordinator
         .store
-        .enroll(&Applying::for_tests(2), &pending, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     member
         .store
@@ -341,7 +342,7 @@ fn enroll(coordinator: &Host, member: &Host) -> Pending {
                 coordinator_address: Some("https://coordinator:7443".to_owned()),
                 ..pending.clone()
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined");
     pending
@@ -354,7 +355,7 @@ fn a_coordinator_verification_schedule_survives_reopen_replays_and_only_the_prov
     let member = Host::new("verify-schedule-m");
     let pending = enroll(&coordinator, &member);
     let id = pending.membership_id;
-    let scheduled_at = now();
+    let scheduled_at = permguard_core::time::unix_now();
 
     assert_eq!(
         coordinator
@@ -411,7 +412,7 @@ fn verification_recovery_keeps_the_exact_result_after_consumption_and_a_later_sc
     let member = Host::new("verify-recovery-m");
     let pending = enroll(&coordinator, &member);
     let id = pending.membership_id;
-    let first_at = now();
+    let first_at = permguard_core::time::unix_now();
     let first_result = "the exact first answer".to_owned();
     let first_revision = coordinator.store.membership(&id).expect("held").revision;
     let mutations = crate::operations::mutation::Mutations::open_offline(
@@ -535,7 +536,12 @@ fn sync(coordinator: &Host, member: &Host, id: &[u8; 16]) -> Status {
         .expect("answered");
     let accepted = member
         .store
-        .check_sync(id, &coordinator.verified(), &answer, now())
+        .check_sync(
+            id,
+            &coordinator.verified(),
+            &answer,
+            permguard_core::time::unix_now(),
+        )
         .expect("the manifests verify");
     for (manifest, envelope, digest) in accepted {
         member
@@ -545,7 +551,7 @@ fn sync(coordinator: &Host, member: &Host, id: &[u8; 16]) -> Status {
                 &manifest,
                 &envelope,
                 &digest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("accepted");
     }
@@ -573,11 +579,16 @@ fn the_lifecycle_between_two_hosts() {
             None,
             &offered_nothing(),
             Some(1),
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("approvable");
     c.store
-        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now())
+        .approve(
+            &Applying::for_tests(4),
+            &c.coordinator(),
+            &manifest,
+            permguard_core::time::unix_now(),
+        )
         .expect("approved");
     assert_eq!(sync(&c, &m, &id), Status::Active);
 
@@ -589,10 +600,21 @@ fn the_lifecycle_between_two_hosts() {
     ] {
         let next = c
             .store
-            .check_successor(&c.coordinator(), &id, to, None, now())
+            .check_successor(
+                &c.coordinator(),
+                &id,
+                to,
+                None,
+                permguard_core::time::unix_now(),
+            )
             .expect("a successor");
         c.store
-            .transition(&Applying::for_tests(op), &c.coordinator(), &next, now())
+            .transition(
+                &Applying::for_tests(op),
+                &c.coordinator(),
+                &next,
+                permguard_core::time::unix_now(),
+            )
             .expect("issued");
         assert_eq!(sync(&c, &m, &id), to);
     }
@@ -621,8 +643,13 @@ fn the_lifecycle_between_two_hosts() {
 
     // Terminal: nothing leaves `revoked`.
     assert!(matches!(
-        c.store
-            .check_successor(&c.coordinator(), &id, Status::Active, None, now()),
+        c.store.check_successor(
+            &c.coordinator(),
+            &id,
+            Status::Active,
+            None,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Transition { .. })
     ));
 
@@ -660,7 +687,7 @@ fn a_token_enrolls_once_and_its_proof_binds_the_connection() {
                 exporter,
             },
             request,
-            now(),
+            permguard_core::time::unix_now(),
         )
     };
     let good = request(&c, &m, &invitation, &token, &EXPORTER);
@@ -689,7 +716,11 @@ fn a_token_enrolls_once_and_its_proof_binds_the_connection() {
 
     let pending = check(&good, AssuranceProfile::Production, &EXPORTER).expect("checks");
     c.store
-        .enroll(&Applying::for_tests(2), &pending, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     assert!(
         matches!(
@@ -698,7 +729,10 @@ fn a_token_enrolls_once_and_its_proof_binds_the_connection() {
         ),
         "a second use"
     );
-    assert_eq!(c.store.invitations(now())[0].1, "consumed");
+    assert_eq!(
+        c.store.invitations(permguard_core::time::unix_now())[0].1,
+        "consumed"
+    );
 
     // The token never reaches the volume.
     for entry in walk(&c.root) {
@@ -749,7 +783,7 @@ fn an_expected_fingerprint_refuses_another_member() {
             exporter: &EXPORTER,
         },
         &request(&c, &other, &invitation, &token, &EXPORTER),
-        now(),
+        permguard_core::time::unix_now(),
     );
     assert!(matches!(refused, Err(MembershipError::Enrollment(_))));
 }
@@ -767,7 +801,7 @@ fn approval_narrows_and_never_widens() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
     };
     let wider = Narrow {
@@ -833,14 +867,23 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
     };
     task.assurance_requirements = vec!["hsm".to_owned()];
     assert!(matches!(
-        c.store
-            .invite(&Applying::for_tests(1), offer(&task), "operator", now()),
+        c.store.invite(
+            &Applying::for_tests(1),
+            offer(&task),
+            "operator",
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Invalid(_))
     ));
     task.assurance_requirements = vec![permguard_core::domains::assurance::CUSTODY_HSM.to_owned()];
     let (invitation, token) = c
         .store
-        .invite(&Applying::for_tests(1), offer(&task), "operator", now())
+        .invite(
+            &Applying::for_tests(1),
+            offer(&task),
+            "operator",
+            permguard_core::time::unix_now(),
+        )
         .expect("invited");
     let mut asked = request(&c, &m, &invitation, &token, &EXPORTER);
     asked.tasks = vec![task];
@@ -856,11 +899,15 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
                 exporter: &EXPORTER,
             },
             &asked,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("checks");
     c.store
-        .enroll(&Applying::for_tests(2), &pending, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     m.store
         .join(
@@ -869,7 +916,7 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
                 coordinator_address: Some("https://coordinator:7443".to_owned()),
                 ..pending.clone()
             },
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("joined");
     let id = pending.membership_id;
@@ -882,7 +929,7 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
             None,
             offered,
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
     };
     // A policy that appraises nothing: unapprovable.
@@ -919,7 +966,12 @@ fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants(
     let binding = manifest.assurance_binding.clone().expect("a binding");
     assert_eq!(binding.task_ids, ["decisions"]);
     c.store
-        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now())
+        .approve(
+            &Applying::for_tests(4),
+            &c.coordinator(),
+            &manifest,
+            permguard_core::time::unix_now(),
+        )
         .expect("approved");
     // The member verifies and keeps the manifest with its binding.
     assert_eq!(sync(&c, &m, &id), Status::Active);
@@ -944,11 +996,16 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("approvable");
     c.store
-        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now())
+        .approve(
+            &Applying::for_tests(4),
+            &c.coordinator(),
+            &manifest,
+            permguard_core::time::unix_now(),
+        )
         .expect("approved");
     assert_eq!(sync(&c, &m, &id), Status::Active);
 
@@ -972,7 +1029,12 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
         ..answer.clone()
     };
     assert!(matches!(
-        m.store.check_sync(&id, &c.verified(), &forged, now()),
+        m.store.check_sync(
+            &id,
+            &c.verified(),
+            &forged,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Equivocation(_))
     ));
 
@@ -987,7 +1049,12 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
         ..answer.clone()
     };
     assert!(matches!(
-        m.store.check_sync(&id, &c.verified(), &skipped, now()),
+        m.store.check_sync(
+            &id,
+            &c.verified(),
+            &skipped,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::NotSuccessor(_))
     ));
 
@@ -1002,7 +1069,12 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
         ..answer
     };
     assert!(matches!(
-        m.store.check_sync(&id, &c.verified(), &foreign, now()),
+        m.store.check_sync(
+            &id,
+            &c.verified(),
+            &foreign,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Unverified(_))
     ));
 }
@@ -1025,13 +1097,25 @@ fn a_member_may_be_orphaned_and_a_terminal_membership_may_not() {
     let (c, m) = (Host::new("orphan-c"), Host::new("orphan-m"));
     let id = enroll(&c, &m).membership_id;
     m.store
-        .orphan(&Applying::for_tests(5), &id, now())
+        .orphan(
+            &Applying::for_tests(5),
+            &id,
+            permguard_core::time::unix_now(),
+        )
         .expect("orphaned");
     assert_eq!(
         m.store.membership(&id).expect("held").status,
         Status::Orphaned
     );
-    assert!(m.store.orphan(&Applying::for_tests(6), &id, now()).is_err());
+    assert!(
+        m.store
+            .orphan(
+                &Applying::for_tests(6),
+                &id,
+                permguard_core::time::unix_now()
+            )
+            .is_err()
+    );
     assert!(
         m.store.pins().is_empty(),
         "an orphaned membership pins nobody"
@@ -1457,7 +1541,7 @@ pub(crate) mod protocol {
                 lease_policy,
                 &offered_nothing(),
                 None,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approvable");
         c.host
@@ -1466,7 +1550,7 @@ pub(crate) mod protocol {
                 &Applying::for_tests(41),
                 &c.host.coordinator(),
                 &manifest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approved");
         member.sync(who(), &id).await.expect("synced");
@@ -1510,7 +1594,7 @@ pub(crate) mod protocol {
                     name: None,
                 },
                 "operator",
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("invited");
         let loopback = Loopback {
@@ -1562,7 +1646,7 @@ pub(crate) mod protocol {
                     principal: "operator",
                 },
                 None,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approvable");
         c.host
@@ -1571,7 +1655,7 @@ pub(crate) mod protocol {
                 &Applying::for_tests(43),
                 &c.host.coordinator(),
                 &manifest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approved");
         member.sync(who(), &id).await.expect("synced");
@@ -1583,7 +1667,13 @@ pub(crate) mod protocol {
         let manifest = c
             .host
             .store
-            .check_successor(&c.host.coordinator(), id, to, None, now())
+            .check_successor(
+                &c.host.coordinator(),
+                id,
+                to,
+                None,
+                permguard_core::time::unix_now(),
+            )
             .expect("a successor");
         c.host
             .store
@@ -1591,7 +1681,7 @@ pub(crate) mod protocol {
                 &Applying::for_tests(operation),
                 &c.host.coordinator(),
                 &manifest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("issued");
     }
@@ -1670,7 +1760,7 @@ pub(crate) mod protocol {
                 None,
                 &offered_nothing(),
                 None,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approvable");
         c.host
@@ -1679,7 +1769,7 @@ pub(crate) mod protocol {
                 &Applying::for_tests(40),
                 &c.host.coordinator(),
                 &manifest,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("approved");
         assert_eq!(
@@ -1689,7 +1779,13 @@ pub(crate) mod protocol {
         let fenced = c
             .host
             .store
-            .check_successor(&c.host.coordinator(), &id, Status::Active, None, now())
+            .check_successor(
+                &c.host.coordinator(),
+                &id,
+                Status::Active,
+                None,
+                permguard_core::time::unix_now(),
+            )
             .expect("a fence");
         c.host
             .store
@@ -1697,7 +1793,7 @@ pub(crate) mod protocol {
                 &Applying::for_tests(41),
                 &c.host.coordinator(),
                 &fenced,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("fenced");
         let synced = member.sync(who(), &id).await.expect("synced");
@@ -1747,7 +1843,7 @@ pub(crate) mod protocol {
             "{refused}"
         );
         assert_eq!(
-            c.host.store.invitations(now())[0].1,
+            c.host.store.invitations(permguard_core::time::unix_now())[0].1,
             "issued",
             "nothing consumed"
         );
@@ -1830,7 +1926,7 @@ fn an_invitation_lives_at_most_seven_days_and_an_expired_one_enrolls_nobody() {
         groups: None,
         name: None,
     };
-    let at = now();
+    let at = permguard_core::time::unix_now();
     for expires in [Some(at), Some(at + INVITE_MAX_SECONDS + 1)] {
         assert!(matches!(
             c.store
@@ -1936,17 +2032,35 @@ fn two_enrollments_racing_for_one_invitation_leave_one_and_a_store_that_opens() 
     // Both checked before either writes, as two sessions would.
     let first = c
         .store
-        .check_enroll(&c.coordinator(), &enrolling(), &request, now())
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling(),
+            &request,
+            permguard_core::time::unix_now(),
+        )
         .expect("checks");
     let second = c
         .store
-        .check_enroll(&c.coordinator(), &enrolling(), &request, now())
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling(),
+            &request,
+            permguard_core::time::unix_now(),
+        )
         .expect("checks too");
     c.store
-        .enroll(&Applying::for_tests(2), &first, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &first,
+            permguard_core::time::unix_now(),
+        )
         .expect("the first enrolls");
     assert!(matches!(
-        c.store.enroll(&Applying::for_tests(3), &second, now()),
+        c.store.enroll(
+            &Applying::for_tests(3),
+            &second,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Enrollment(_))
     ));
     assert_eq!(c.store.memberships().len(), 1);
@@ -1970,13 +2084,13 @@ fn an_invitation_naming_a_task_twice_is_refused_before_anything_is_written() {
             name: None,
         },
         "operator",
-        now(),
+        permguard_core::time::unix_now(),
     );
     assert!(matches!(refused, Err(MembershipError::Invalid(_))));
     assert!(
         Store::open(&c._volume)
             .expect("reopens")
-            .invitations(now())
+            .invitations(permguard_core::time::unix_now())
             .is_empty()
     );
 }
@@ -2005,11 +2119,16 @@ fn a_membership_pins_its_peer_as_far_as_its_status_lets_it() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("approvable");
     c.store
-        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now())
+        .approve(
+            &Applying::for_tests(4),
+            &c.coordinator(),
+            &manifest,
+            permguard_core::time::unix_now(),
+        )
         .expect("approved");
     // Active: for every session.
     assert_eq!(c.store.pin(&member, Some(Operation::Task)), fingerprint);
@@ -2020,11 +2139,16 @@ fn a_membership_pins_its_peer_as_far_as_its_status_lets_it() {
             &pending.membership_id,
             Status::Suspended,
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("a successor");
     c.store
-        .transition(&Applying::for_tests(5), &c.coordinator(), &next, now())
+        .transition(
+            &Applying::for_tests(5),
+            &c.coordinator(),
+            &next,
+            permguard_core::time::unix_now(),
+        )
         .expect("suspended");
     // Suspended: only to read.
     assert_eq!(c.store.pin(&member, Some(Operation::Task)), None);
@@ -2049,7 +2173,7 @@ fn a_member_refuses_a_genesis_wider_than_its_request() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("approvable");
     // Signed by the coordinator's real key, but wider than the member asked.
@@ -2074,7 +2198,12 @@ fn a_member_refuses_a_genesis_wider_than_its_request() {
         ring_statements: statements,
     };
     assert!(matches!(
-        m.store.check_sync(&id, &c.verified(), &answer, now()),
+        m.store.check_sync(
+            &id,
+            &c.verified(),
+            &answer,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Widened(_))
     ));
 }
@@ -2094,7 +2223,7 @@ fn a_member_refuses_a_manifest_already_past_its_not_after() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("approvable");
     let envelope = sign_manifest(
@@ -2169,8 +2298,12 @@ fn an_enrollment_too_large_to_keep_is_refused_before_anything_is_written() {
         " ".repeat(record::MAX_RECORD_BYTES)
     ) + "}";
     assert!(matches!(
-        c.store
-            .check_enroll(&c.coordinator(), &enrolling, &request, now()),
+        c.store.check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &request,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Enrollment(_))
     ));
     assert!(c.store.memberships().is_empty());
@@ -2204,7 +2337,7 @@ fn enroll_task(
                 name: None,
             },
             "operator",
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("invited");
     let statements = rings_needed(std::slice::from_ref(&task))
@@ -2240,12 +2373,16 @@ fn enroll_task(
                 exporter: &EXPORTER,
             },
             &request,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     coordinator
         .store
-        .enroll(&Applying::for_tests(2), &pending, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     pending.membership_id
 }
@@ -2276,7 +2413,7 @@ fn a_host_without_the_policy_mirror_provider_is_refused_at_approval() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
     };
     // The Host's own contracts and a Data Plane's: nothing provides `policy.mirror`.
@@ -2324,7 +2461,7 @@ fn approval_refuses_a_member_without_the_matching_client_contract() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         ));
         assert!(
             refused.contains("the member registered no provider of `decisions.ship` version 1"),
@@ -2347,7 +2484,7 @@ fn approval_refuses_a_member_without_the_matching_client_contract() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("both sides registered");
 }
@@ -2374,7 +2511,7 @@ fn approval_refuses_a_version_the_provider_did_not_register() {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
     };
     // The coordinator consumes version 1 only.
@@ -2487,10 +2624,15 @@ fn approve_named(
         None,
         &offered_nothing(),
         None,
-        now(),
+        permguard_core::time::unix_now(),
     )?;
     c.store
-        .approve(&Applying::for_tests(40), &c.coordinator(), &manifest, now())
+        .approve(
+            &Applying::for_tests(40),
+            &c.coordinator(),
+            &manifest,
+            permguard_core::time::unix_now(),
+        )
         .expect("approved");
     Ok(manifest)
 }
@@ -2542,14 +2684,25 @@ fn a_member_whose_memberships_all_ended_frees_its_name_and_returns_as_a_new_memb
     let old = approve_named(&c, &id, Some("dp-a"), None).expect("approvable");
     let revoked = c
         .store
-        .check_successor(&c.coordinator(), &id, Status::Revoked, None, now())
+        .check_successor(
+            &c.coordinator(),
+            &id,
+            Status::Revoked,
+            None,
+            permguard_core::time::unix_now(),
+        )
         .expect("a successor");
     assert_eq!(
         revoked.member_record, old.member_record,
         "a successor keeps its member"
     );
     c.store
-        .transition(&Applying::for_tests(41), &c.coordinator(), &revoked, now())
+        .transition(
+            &Applying::for_tests(41),
+            &c.coordinator(),
+            &revoked,
+            permguard_core::time::unix_now(),
+        )
         .expect("issued");
     assert!(c.store.live_member(&m1.identity.host_id()).is_none());
 
@@ -2582,7 +2735,7 @@ fn an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat() {
                 groups: Some(vec!["eu".to_owned()]),
             },
             "operator",
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("invited");
     let verified = m.verified();
@@ -2595,21 +2748,34 @@ fn an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat() {
     let mut asked = request(&c, &m, &invitation, &token, &EXPORTER);
     asked.name = Some("dp-other".to_owned());
     assert!(matches!(
-        c.store
-            .check_enroll(&c.coordinator(), &enrolling, &asked, now()),
+        c.store.check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &asked,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Enrollment(_))
     ));
     asked.name = None;
     asked.groups = Some(vec!["us".to_owned()]);
     assert!(matches!(
-        c.store
-            .check_enroll(&c.coordinator(), &enrolling, &asked, now()),
+        c.store.check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &asked,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::Enrollment(_))
     ));
     asked.groups = None;
     let pending = c
         .store
-        .check_enroll(&c.coordinator(), &enrolling, &asked, now())
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &asked,
+            permguard_core::time::unix_now(),
+        )
         .expect("what the invitation fixes is taken");
     assert_eq!(pending.name.as_deref(), Some("dp-fixed"));
     assert_eq!(pending.groups, Some(vec!["eu".to_owned()]));
@@ -2628,7 +2794,7 @@ fn an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat() {
                     groups: None,
                 },
                 "operator",
-                now(),
+                permguard_core::time::unix_now(),
             )
             .is_err()
     );
@@ -2654,7 +2820,7 @@ fn the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them()
                 exporter: &EXPORTER,
             },
             &asked,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the enrollment checks");
     assert_eq!(
@@ -2663,7 +2829,11 @@ fn the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them()
         "shown to the approver"
     );
     c.store
-        .enroll(&Applying::for_tests(2), &pending, now())
+        .enroll(
+            &Applying::for_tests(2),
+            &pending,
+            permguard_core::time::unix_now(),
+        )
         .expect("enrolled");
     let manifest = approve_named(&c, &pending.membership_id, None, None).expect("approvable");
     assert!(
@@ -2683,14 +2853,20 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
     // One of them suspended: a rename keeps each status as it is.
     let suspended = c
         .store
-        .check_successor(&c.coordinator(), &second, Status::Suspended, None, now())
+        .check_successor(
+            &c.coordinator(),
+            &second,
+            Status::Suspended,
+            None,
+            permguard_core::time::unix_now(),
+        )
         .expect("a successor");
     c.store
         .transition(
             &Applying::for_tests(50),
             &c.coordinator(),
             &suspended,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("issued");
     let other = enroll(&c, &m2).membership_id;
@@ -2702,7 +2878,7 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
             &first,
             Some("dp-b".to_owned()),
             None,
-            now()
+            permguard_core::time::unix_now()
         ),
         Err(MembershipError::NameTaken(_))
     ));
@@ -2713,7 +2889,7 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
             &first,
             Some("dp-renamed".to_owned()),
             Some(vec!["eu".to_owned(), "us".to_owned()]),
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("a change");
     assert_eq!(
@@ -2728,7 +2904,7 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
                 &Applying::for_tests(51 + u8::try_from(op).expect("small")),
                 &c.coordinator(),
                 next,
-                now(),
+                permguard_core::time::unix_now(),
             )
             .expect("issued");
     }
@@ -2747,7 +2923,7 @@ fn renaming_or_regrouping_a_member_revises_every_live_membership_of_its_host() {
                 &first,
                 Some("dp-renamed".to_owned()),
                 None,
-                now()
+                permguard_core::time::unix_now()
             )
             .expect("a change")
             .is_empty()
@@ -2773,7 +2949,7 @@ fn check_named(c: &Host, id: &[u8; 16], name: &str) -> Manifest {
             None,
             &offered_nothing(),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the check alone passes")
         .0
@@ -2790,11 +2966,16 @@ fn two_approvals_checked_together_never_give_one_name_to_two_hosts() {
         check_named(&c, &second, "edge"),
     );
     c.store
-        .approve(&Applying::for_tests(60), &c.coordinator(), &one, now())
+        .approve(
+            &Applying::for_tests(60),
+            &c.coordinator(),
+            &one,
+            permguard_core::time::unix_now(),
+        )
         .expect("the first issues");
     assert!(matches!(
         c.store
-            .approve(&Applying::for_tests(61), &c.coordinator(), &two, now()),
+            .approve(&Applying::for_tests(61), &c.coordinator(), &two, permguard_core::time::unix_now()),
         Err(MembershipError::NameTaken(name)) if name == "edge"
     ));
     assert_eq!(
@@ -2816,18 +2997,32 @@ fn two_approvals_of_one_host_checked_together_never_make_two_records() {
     );
     assert_ne!(one.member_record.member_id, two.member_record.member_id);
     c.store
-        .approve(&Applying::for_tests(62), &c.coordinator(), &one, now())
+        .approve(
+            &Applying::for_tests(62),
+            &c.coordinator(),
+            &one,
+            permguard_core::time::unix_now(),
+        )
         .expect("the first issues");
     assert!(matches!(
-        c.store
-            .approve(&Applying::for_tests(63), &c.coordinator(), &two, now()),
+        c.store.approve(
+            &Applying::for_tests(63),
+            &c.coordinator(),
+            &two,
+            permguard_core::time::unix_now()
+        ),
         Err(MembershipError::RecordConflict(_))
     ));
     // Checked again, the second carries the first's record.
     let again = check_named(&c, &second, "edge");
     assert_eq!(again.member_record, one.member_record);
     c.store
-        .approve(&Applying::for_tests(64), &c.coordinator(), &again, now())
+        .approve(
+            &Applying::for_tests(64),
+            &c.coordinator(),
+            &again,
+            permguard_core::time::unix_now(),
+        )
         .expect("issued");
 }
 
@@ -2846,18 +3041,23 @@ fn a_rename_racing_an_approval_never_leaves_a_name_on_two_hosts() {
             &first,
             Some("edge".to_owned()),
             None,
-            now(),
+            permguard_core::time::unix_now(),
         )
         .expect("the check alone passes");
     c.store
-        .approve(&Applying::for_tests(65), &c.coordinator(), &approval, now())
+        .approve(
+            &Applying::for_tests(65),
+            &c.coordinator(),
+            &approval,
+            permguard_core::time::unix_now(),
+        )
         .expect("the approval issues first");
     assert!(matches!(
         c.store.transition(
             &Applying::for_tests(66),
             &c.coordinator(),
             &renames[0],
-            now()
+            permguard_core::time::unix_now()
         ),
         Err(MembershipError::NameTaken(_))
     ));
@@ -2872,7 +3072,12 @@ fn a_member_with_a_held_membership_is_not_renamed_half_way() {
     let second = enroll(&c, &m).membership_id;
     approve_named(&c, &second, None, None).expect("approvable");
     c.store
-        .hold(&Applying::for_tests(67), &second, 99, now())
+        .hold(
+            &Applying::for_tests(67),
+            &second,
+            99,
+            permguard_core::time::unix_now(),
+        )
         .expect("held for review");
     assert!(matches!(
         c.store.check_member_record(
@@ -2880,7 +3085,7 @@ fn a_member_with_a_held_membership_is_not_renamed_half_way() {
             &first,
             Some("dp-b".to_owned()),
             None,
-            now()
+            permguard_core::time::unix_now()
         ),
         Err(MembershipError::Held(_))
     ));
@@ -2917,7 +3122,7 @@ fn an_enrollment_asking_for_a_name_another_host_holds_is_refused() {
                 exporter: &EXPORTER,
             },
             &asked,
-            now(),
+            permguard_core::time::unix_now(),
         ),
         Err(MembershipError::Enrollment(_))
     ));

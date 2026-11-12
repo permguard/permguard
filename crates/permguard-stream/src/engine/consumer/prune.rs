@@ -17,6 +17,7 @@
 //! again after.
 
 use permguard_core::authz::Resource;
+use permguard_core::encoding::hex;
 use permguard_host::storage::Dir;
 use permguard_host::storage::format;
 use permguard_host::storage::write::{allocate, read_view, release, replace_view};
@@ -25,7 +26,7 @@ use super::super::anchor::{ANCHOR, Anchor, envelope_digest};
 use super::super::batch::SealedBatch;
 use super::super::producer::{RECORDS, Spans, decode_group};
 use super::super::retention::{Audit, MAX_PRUNE_BATCHES, Pruned};
-use super::super::{RecordCodec, Retention, StreamError, StreamKey, hex};
+use super::super::{RecordCodec, Retention, StreamError, StreamKey};
 use super::{
     ADMITTED, BATCHES, Consumer, ConsumerState, Held, SIGNERS, STATE, child, encode_admitted,
     unhex16,

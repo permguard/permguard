@@ -101,7 +101,7 @@ impl TaskHandler for Provider {
                             pins: served.pins.clone(),
                         })
                         .collect(),
-                    issued_at: crate::authz::store::now(),
+                    issued_at: permguard_core::time::unix_now(),
                     channel_binding: if served.other_channel {
                         [0xEE; 32]
                     } else {
@@ -671,7 +671,7 @@ async fn a_suspended_or_expired_origin_manifest_is_left_out_and_each_pass_refres
 
     let world = world_of("import-suspended").await;
     let origin = world.served.lock().expect("lock").origins[0].clone();
-    let now = crate::authz::store::now();
+    let now = permguard_core::time::unix_now();
     for (status, expired, op) in [(Status::Suspended, false, 91), (Status::Active, true, 92)] {
         let mut next = world
             .c

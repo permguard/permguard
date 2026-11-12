@@ -3841,16 +3841,10 @@ fn imported_record(
     event_id: &str,
     variant: Option<&str>,
 ) -> Value {
-    let hex = |bytes: &[u8; 16]| {
-        bytes
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    };
     let mut record: permguard_events::record::Record =
         serde_json::from_value(template.clone()).expect("a durable record deserializes");
-    record.stream.producer.id = hex(&origin);
-    record.stream.producer.instance = hex(&run);
+    record.stream.producer.id = permguard_core::encoding::hex(&origin);
+    record.stream.producer.instance = permguard_core::encoding::hex(&run);
     record.seq = 1;
     record.prev = permguard_events::record::GENESIS.to_owned();
     record.event_id = event_id.to_owned();

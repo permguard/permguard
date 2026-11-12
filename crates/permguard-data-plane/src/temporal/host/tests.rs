@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use permguard_core::encoding::hex;
 use std::sync::Arc;
 
 use permguard_host::composition::StreamAppender;

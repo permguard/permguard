@@ -17,9 +17,10 @@
 //! `max_session_seconds`, or its epoch is no longer the membership's; silence changes nothing.
 
 use super::record::{KeptProgress, LastSession, Manifest, TaskProgress};
-use super::{MembershipError, Store, hex};
+use super::{MembershipError, Store};
 use crate::storage::format;
 use crate::storage::write::{read_view, replace_view};
+use permguard_core::encoding::hex;
 
 /// The directory below `host/members/`.
 pub const DIRECTORY: &str = "progress";

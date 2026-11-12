@@ -9,11 +9,12 @@
 //! first frame: each physical stream remembers, as far as a read has looked, where every run's
 //! groups sit, so a read opens the segment that holds them and not the ones before.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 
 use super::super::anchor::{Anchor, Gap, Page, anchor_in};
 use super::super::run::RunStatement;
-use super::super::{RecordCodec, StreamError, hex};
+use super::super::{RecordCodec, StreamError};
 use super::{Physical, Producer, RECORDS, RUN_OPEN, Writer, decode_group};
 use permguard_core::authz::Resource;
 

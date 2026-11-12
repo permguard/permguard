@@ -18,6 +18,7 @@
 //! The floor registered on the consumer is the last sequence of each imported run no loaded window
 //! reads any more; a run not measured is kept whole.
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -39,10 +40,6 @@ const IMPORTED_DIR: &str = "imported";
 
 fn io(error: impl std::fmt::Display) -> JournalError {
     JournalError::Io(error.to_string())
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The floor this plane registers on the consumer of `data/events`: per resource and run, the

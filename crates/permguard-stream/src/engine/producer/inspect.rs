@@ -4,6 +4,7 @@
 //! What a producer handle answers the Host API (WP-5.7a): its streams, runs, records, signers,
 //! subscriptions and anchors, read from the streams it already holds, never one it would create.
 
+use permguard_core::encoding::hex;
 use std::sync::Arc;
 
 use permguard_host::api::streams::{
@@ -13,7 +14,7 @@ use permguard_host::api::streams::{
 
 use super::super::anchor::{Anchor, anchor_in};
 use super::super::reads::{Inspect, anchor_view, page_view, span_view};
-use super::super::{RecordCodec, StreamError, hex};
+use super::super::{RecordCodec, StreamError};
 use super::seal::spans_of;
 use super::ship::{subscriptions_held, truncate_safe_of};
 use super::{Physical, Producer, SubscriptionState};

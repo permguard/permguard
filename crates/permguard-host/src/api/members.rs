@@ -1647,9 +1647,6 @@ impl HostApi {
             .store
             .membership(&membership_id)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
-        let hex = |bytes: &[u8; 16]| -> String {
-            bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-        };
         let now = self.time.now_secs();
         let mut sessions: Vec<SessionView> = memberships
             .live
@@ -1660,8 +1657,8 @@ impl HostApi {
             .map(|live| SessionView {
                 task_id: live.task_id,
                 epoch: live.epoch,
-                member_boot_id: hex(&live.member_boot_id),
-                coordinator_boot_id: hex(&live.coordinator_boot_id),
+                member_boot_id: permguard_core::encoding::hex(&live.member_boot_id),
+                coordinator_boot_id: permguard_core::encoding::hex(&live.coordinator_boot_id),
                 opened_at: rfc3339(live.opened_at),
                 expires_at: rfc3339(live.expires_at),
             })

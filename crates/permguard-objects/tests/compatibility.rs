@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used)]
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 
 use permguard_objects::manifest::{
@@ -72,10 +73,6 @@ fn v1_manifest_fixture_decodes_to_the_current_model() {
             .expect("fixture decodes"),
         fixture_manifest()
     );
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn from_hex(text: &str) -> Result<Vec<u8>, String> {

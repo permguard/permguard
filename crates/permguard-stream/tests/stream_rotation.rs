@@ -25,7 +25,7 @@ use support::{Host, every_batch, ledger, scratch};
 #[test]
 fn rotation_every_two_minutes_while_sealing_leaves_every_batch_verifiable() {
     let wall = Arc::new(ManualClock::at(
-        i64::try_from(permguard_host::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(

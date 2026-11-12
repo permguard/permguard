@@ -66,7 +66,7 @@ fn ship(host: &Host, consumer: &Consumer<Text>, membership: [u8; 16], batch: &[u
 #[test]
 fn two_producers_interleave_for_an_hour_and_no_record_disappears() {
     let wall = Arc::new(ManualClock::at(
-        i64::try_from(permguard_host::authz::store::now()).expect("in range"),
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
     ));
     let mono = Arc::new(ManualMonotonic::default());
     let time = Arc::new(TimeGuard::new(

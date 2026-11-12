@@ -5,6 +5,7 @@
 //! server serves, answering the Host's [`StreamReads`] by plane and type. A read never creates a
 //! stream, a directory or a run it does not find.
 
+use permguard_core::encoding::hex;
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -14,8 +15,8 @@ use permguard_host::api::streams::{
     StreamView, SubscriptionView,
 };
 
+use super::StreamError;
 use super::anchor::{Anchor, Page};
-use super::{StreamError, hex};
 
 /// What one producer or consumer handle answers of its streams.
 pub trait Inspect: Send + Sync {

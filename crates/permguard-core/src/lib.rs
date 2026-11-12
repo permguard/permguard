@@ -32,6 +32,7 @@ pub mod correlation;
 pub mod decisions;
 pub mod domains;
 pub mod egress;
+pub mod encoding;
 pub mod error;
 pub mod fault;
 pub mod frontier;

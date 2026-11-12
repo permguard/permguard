@@ -48,6 +48,7 @@ pub mod run;
 pub mod state;
 pub mod verify;
 
+use permguard_core::encoding::hex;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -778,10 +779,6 @@ fn name(text: &str, what: &str) -> Result<(), StreamError> {
         )));
     }
     Ok(())
-}
-
-pub(crate) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The digest of one record under its descriptor's domain.
