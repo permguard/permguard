@@ -22,7 +22,7 @@ use tonic::service::RoutesBuilder;
 
 use anyhow::Result;
 use permguard_core::{BoxFuture, PlaneContext, PlaneTask};
-use permguard_host::composition::{AccessTokenV1, Declaration, Registration, StatusListTokenV1};
+use permguard_host::composition::{AccessTokenV1, Declaration, StatusListTokenV1};
 use permguard_server::PlaneModule;
 use permguard_server::plane::{PlaneId, SETTING_AUTHORITY_AUDIENCE, SETTING_AUTHORITY_URL};
 
@@ -142,7 +142,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<(Arc<Authority>, Arc<PlaneInfo>
             "the Authority Plane serves nothing: {what}"
         );
     };
-    let Some(registration) = context.handles::<Registration>() else {
+    let Some(registration) = crate::handles::registration(context) else {
         fail("no Host registered it", &"no registration");
         return None;
     };

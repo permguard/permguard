@@ -657,6 +657,7 @@ Use `make`:
 ```sh
 make build
 make run-all
+make run-authority
 make run-control
 make run-data
 make run-as-tls-all
@@ -667,6 +668,7 @@ Use Cargo directly for the runtime binaries:
 
 ```sh
 cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/config.local.yml
+cargo run -p permguard-authority-plane --bin permguard-authority-plane -- crates/permguard-authority-plane/config.local.yml
 cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
 cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
 ```
@@ -688,7 +690,8 @@ cargo run -p permguard-control-plane --bin permguard-control-plane -- \
   --log-format terminal
 ```
 
-Each server crate (`permguard-all-in-one`, `permguard-control-plane`, `permguard-data-plane`) ships the same set of configurations beside its `Cargo.toml`:
+Each server crate (`permguard-all-in-one`, `permguard-control-plane`, `permguard-data-plane`) ships the same set of configurations beside its `Cargo.toml`.
+`permguard-authority-plane` ships `config.local.yml`, `config.local-tls.yml` and `config.docker-tls.yml`: its listener refuses a credential sent in clear off the loopback, and its callers hold keys and tokens rather than certificates, so it has no plain container, mutual TLS, lab or experimental variant.
 
 | Configuration                   | For                                               |
 | ------------------------------- | ------------------------------------------------- |
@@ -906,26 +909,27 @@ task bench:grafana
 The dependency direction is composition, then planes, then Host contracts and codecs, then core primitives.
 The Host never depends on a concrete plane.
 
-| Crate                      | Layer       | Purpose                                                                                             |
-| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
-| `permguard-core`           | contracts   | Stable traits, identifiers, errors, canonical codecs and crypto primitives.                         |
-| `permguard-host`           | Host        | Identity, authorization, keys and secrets, audit, membership, storage, lifecycle and the Host API.  |
-| `permguard-stream`         | codecs      | The Host stream engine: signed batches, acknowledgements, cursors, retention and recovery.          |
-| `permguard-objects`        | codecs      | Canonical policy objects, digests, manifests and signed head statements.                            |
-| `permguard-notp`           | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                            |
-| `permguard-decisions`      | codecs      | Decision evidence records, commitments and their verification.                                      |
-| `permguard-events`         | codecs      | Event evidence records for the temporal interface.                                                  |
-| `permguard-languages`      | planes      | Cedar, Rego and Dogwood integration, and the native request model.                                  |
-| `permguard-control-plane`  | planes      | Control Plane binary: ledgers, NOTP server, catalog, decision and event stores.                     |
-| `permguard-data-plane`     | planes      | Data Plane binary: mirrors, load gate, evaluation endpoints and decision recording.                 |
-| `permguard-control-client` | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.             |
-| `permguard-server`         | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.              |
-| `permguard-all-in-one`     | composition | Runs every enabled plane behind one Host, in one process.                                           |
-| `permguard-transport`      | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                              |
-| `permguard-telemetry`      | support     | Liveness, readiness and metrics.                                                                    |
-| `permguard-std`            | support     | Default implementations behind feature flags.                                                       |
-| `permguard-cli`            | clients     | `permguard`, the command-line interface, and the library Permguard Admin embeds.                     |
-| `permguard-conformance`    | tests       | REST/gRPC parity, fault injection, the `kill -9` crash harness and the untrusted-boundary registry. |
+| Crate                       | Layer       | Purpose                                                                                                   |
+| --------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| `permguard-core`            | contracts   | Stable traits, identifiers, errors, canonical codecs and crypto primitives.                               |
+| `permguard-host`            | Host        | Identity, authorization, keys and secrets, audit, membership, storage, lifecycle and the Host API.        |
+| `permguard-stream`          | codecs      | The Host stream engine: signed batches, acknowledgements, cursors, retention and recovery.                |
+| `permguard-objects`         | codecs      | Canonical policy objects, digests, manifests and signed head statements.                                  |
+| `permguard-notp`            | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                                  |
+| `permguard-decisions`       | codecs      | Decision evidence records, commitments and their verification.                                            |
+| `permguard-events`          | codecs      | Event evidence records for the temporal interface.                                                        |
+| `permguard-languages`       | planes      | Cedar, Rego and Dogwood integration, and the native request model.                                        |
+| `permguard-authority-plane` | planes      | Authority Plane binary: service accounts, access keys, scopes, the token endpoint, keys and status lists. |
+| `permguard-control-plane`   | planes      | Control Plane binary: ledgers, NOTP server, catalog, decision and event stores.                           |
+| `permguard-data-plane`      | planes      | Data Plane binary: mirrors, load gate, evaluation endpoints and decision recording.                       |
+| `permguard-control-client`  | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                   |
+| `permguard-server`          | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                    |
+| `permguard-all-in-one`      | composition | Runs every enabled plane behind one Host, in one process.                                                 |
+| `permguard-transport`       | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                    |
+| `permguard-telemetry`       | support     | Liveness, readiness and metrics.                                                                          |
+| `permguard-std`             | support     | Default implementations behind feature flags.                                                             |
+| `permguard-cli`             | clients     | `permguard`, the command-line interface, and the library Permguard Admin embeds.                          |
+| `permguard-conformance`     | tests       | REST/gRPC parity, fault injection, the `kill -9` crash harness and the untrusted-boundary registry.       |
 
 </details>
 

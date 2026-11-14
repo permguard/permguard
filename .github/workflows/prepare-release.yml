@@ -111,8 +111,9 @@ jobs:
             --package permguard-cli \
             --package permguard-all-in-one \
             --package permguard-control-plane \
-            --package permguard-data-plane
-          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+            --package permguard-data-plane \
+            --package permguard-authority-plane
+          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane; do
             output="$("target/debug/${binary}" version 2>&1)"
             if ! grep -Fq "${expected}" <<<"${output}"; then
               echo "${binary} does not report ${expected}:" >&2

@@ -24,6 +24,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/plane/factories.rs"
     "crates/permguard-control-plane/src/main.rs"
     "crates/permguard-data-plane/src/main.rs"
+    "crates/permguard-authority-plane/src/main.rs"
     "crates/permguard-cli/src/commands/host.rs"
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
@@ -82,6 +83,7 @@ fi
 PLANE_CRATES=(
     "crates/permguard-control-plane/src"
     "crates/permguard-data-plane/src"
+    "crates/permguard-authority-plane/src"
 )
 HOST_ONLY='ServerContext|(^|[^A-Za-z_])Health([^A-Za-z_]|$)|(context|ctx|cx|server)\.keys\(\)|\.realms\(\)|(context|ctx|cx|server)\.audit\(\)|\.maintained_rings\(\)|\.with_plane_handles\(|\.with_maintained_ring\(|\.lifecycle\(\)|\.set_ready\(|\.set_live\('
 

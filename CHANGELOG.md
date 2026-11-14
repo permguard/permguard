@@ -42,6 +42,10 @@ Nothing yet.
   The Authority Plane's first start makes the service account `admin`, with every operation on the Host and every Plane, and writes its access key and secret key to `planes/authority/admin.key` on the volume, readable by its owner alone; the log names the access key, never the secret.
   `admin` is never deleted and never left without a live key.
   When every key is lost, `permguard authority admin-key --volume <dir> --secret-out <file>` makes a new one on the stopped server's volume, and the next start records it in the audit trail.
+- **The Authority Plane as a binary and an image of its own.**
+  `permguard-authority-plane` registers the Authority Plane alone, for the Server of a cluster that issues the tokens every other verifies; it is archived for every platform and published as `ghcr.io/permguard/permguard/authority-plane` and `permguard/authority-plane`, built, attested and verified as every other image.
+  The all-in-one and control-plane images keep serving it beside their Planes when `runtime.planes` names `authority`; the chart runs it on the control plane's Server, unchanged.
+  The crate ships `config.local.yml`, `config.local-tls.yml` and `config.docker-tls.yml`, checked as every shipped configuration is, and `make run-authority` and `task run:authority` start it beside the other planes' targets.
 - **`permguard authority`: service accounts, scopes, access keys and tokens from the command line.**
   `authority service-accounts`, `scopes`, `keys` and `tokens` over REST or gRPC as `--authority-endpoint` says, `authority token` for the configured client, and `authority admin-key` offline.
   The command line acts as a service account with `--access-key` and `--secret-key-file` (`auth.client.access_key`, `auth.client.secret_file`), obtains its token at the Authority Plane and keeps it under `~/.permguard/tokens/`, apart for every access key, secret key, Authority Plane and scope, until a minute before it expires; a secret key is sent only over verified TLS.
@@ -56,6 +60,7 @@ Nothing yet.
   Every surface admits a route from the contract the binary carries, before the request's body or the names in its path are read: a caller holding the route's operation nowhere under the plane of its target is refused there, nobody `401`, a token without the scope `403`.
   Before, a body that did not parse was answered `400` and a zone or ledger that did not exist `404` to a caller the surface did not know, so a name's existence could be told without a token; now neither is told apart from a refusal, over REST and gRPC alike.
   `permguard-all-in-one/tests/every_route.rs` walks every REST route of every contract on a running all-in-one and proves it.
+  A refusal is answered once the request's body, bounded by the surface's limits, is read and dropped: before, a refusal answered with the body unread closed the connection with a reset, which a port published by Docker or a load balancer could hand the client in place of the `401`.
 - **The contracts name the credentials as they are.**
   `x-permguard-endpoint.credential` is `no`, `access token`, `access key and secret key` or `peer session`: `credential or access token` and `application token`, the IAM Host's words, are gone, and `contracts/endpoints.csv` with them.
   `POST /host/v1/plans/{id}/approve` names the operations an approver may hold, any one of them, as the route admits; the plan's own operation decides within.

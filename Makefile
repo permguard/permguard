@@ -76,6 +76,9 @@ lint: ## Run clippy over every crate and target.
 plane-run: ## Run a plane. PLANE is control or data.
 	cargo run $(profile) -p permguard-$(PLANE)-plane --bin permguard-$(PLANE)-plane -- crates/permguard-$(PLANE)-plane/$(CONFIG) $(ARGS)
 
+run-authority: ## Run the authority plane locally.
+	$(MAKE) plane-run PLANE=authority CONFIG=$(CONFIG) ARGS="$(ARGS)" RELEASE=$(RELEASE)
+
 run-control: ## Run the control plane locally.
 	$(MAKE) plane-run PLANE=control CONFIG=$(CONFIG) ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
@@ -93,6 +96,9 @@ run-experimental-data: ## Run the data plane with the temporal interface on.
 
 run-experimental: ## Run both planes in one process with every experimental runtime turned on.
 	$(MAKE) run-all CONFIG=config.local-experimental.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
+
+run-as-tls-authority: ## Run the authority plane locally, with TLS.
+	$(MAKE) plane-run PLANE=authority CONFIG=config.local-tls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
 run-as-tls-control: ## Run the control plane locally, with TLS.
 	$(MAKE) plane-run PLANE=control CONFIG=config.local-tls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)

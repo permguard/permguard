@@ -3,7 +3,7 @@
 
 # .goreleaser.yaml
 #
-# The release, described once: four binaries, six targets each, built by the release workflow's
+# The release, described once: five binaries, six targets each, built by the release workflow's
 # jobs that hold no secret and imported here as prebuilt. Archives, deb/rpm/apk packages,
 # checksums and container images all come from these builds — the same structure the Go
 # repository releases with, so one team runs one process.
@@ -63,6 +63,14 @@ builds:
     prebuilt:
       path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-data-plane
 
+  - id: permguard_authority_plane
+    builder: prebuilt
+    binary: permguard-authority-plane
+    goos: *cross_goos
+    goarch: *cross_goarch
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-authority-plane
+
   # The Apple binaries are not cross-compiled: they are built on macOS, by the `macos-binaries` job,
   # and imported here.
   #
@@ -103,6 +111,14 @@ builds:
     goarch: [amd64, arm64]
     prebuilt:
       path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-data-plane
+
+  - id: permguard_authority_plane_darwin
+    builder: prebuilt
+    binary: permguard-authority-plane
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-authority-plane
 
 checksum:
   name_template: "checksums.txt"
@@ -153,6 +169,14 @@ archives:
     ids: ["permguard_data_plane", "permguard_data_plane_darwin"]
     name_template: >-
       permguard_data_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_authority_plane
+    ids: ["permguard_authority_plane", "permguard_authority_plane_darwin"]
+    name_template: >-
+      permguard_authority_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -292,6 +316,34 @@ dockers_v2:
       BINARY_NAME: permguard-data-plane
     labels:
       org.opencontainers.image.title: "permguard-data-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
+  # The Authority Plane on its own (`2-security/8` Where it runs): one Server of the cluster
+  # issuing the tokens every other verifies; the control-plane image serves it beside the Control
+  # Plane when `runtime.planes` says so.
+  - id: permguard_authority_plane_image
+    dockerfile: ./docker/release/authority-plane.Dockerfile
+    ids:
+      - permguard_authority_plane
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "ghcr.io/permguard/permguard/authority-plane"
+      - "permguard/authority-plane"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-authority-plane
+    labels:
+      org.opencontainers.image.title: "permguard-authority-plane"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "github.com/permguard/permguard"

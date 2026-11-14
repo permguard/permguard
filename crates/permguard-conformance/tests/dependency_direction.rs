@@ -15,6 +15,7 @@ use std::process::Command;
 
 /// The crates a Plane is, or that compose one.
 const ABOVE_THE_HOST: &[&str] = &[
+    "permguard-authority-plane",
     "permguard-control-plane",
     "permguard-data-plane",
     "permguard-all-in-one",
@@ -130,7 +131,11 @@ fn the_host_and_the_crates_beneath_it_reach_no_plane() {
         problems.join("\n  ")
     );
     // The check reads a real graph: the Planes do reach the Host.
-    for plane in ["permguard-control-plane", "permguard-data-plane"] {
+    for plane in [
+        "permguard-authority-plane",
+        "permguard-control-plane",
+        "permguard-data-plane",
+    ] {
         assert!(
             closures[plane].contains("permguard-host"),
             "{plane} composes on the Host"

@@ -22,6 +22,7 @@ binary_of() {
         permguard_all_in_one) echo permguard-all-in-one ;;
         permguard_control_plane) echo permguard-control-plane ;;
         permguard_data_plane) echo permguard-data-plane ;;
+        permguard_authority_plane) echo permguard-authority-plane ;;
         *) return 1 ;;
     esac
 }
@@ -60,8 +61,8 @@ for archive in "${archives}"/*; do
     count=$((count + 1))
 done
 
-if [ "${count}" -ne 16 ]; then
-    printf 'error: extracted %s binaries; the release publishes 16 for Linux and Windows\n' "${count}" >&2
+if [ "${count}" -ne 20 ]; then
+    printf 'error: extracted %s binaries; the release publishes 20 for Linux and Windows\n' "${count}" >&2
     exit 1
 fi
-printf 'ok: 16 published binaries extracted into %s\n' "${out}"
+printf 'ok: 20 published binaries extracted into %s\n' "${out}"

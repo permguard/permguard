@@ -15,10 +15,10 @@ description: The Authority Plane issues the access tokens every Plane of the clu
 
 ## The cluster
 
-| Server                       | Runs                                 | Holds                                                    | Decides by         |
-| ---------------------------- | ------------------------------------ | -------------------------------------------------------- | ------------------ |
-| the Authority Plane's Server | the Authority Plane, a Control Plane | the service accounts, the `authority.tokens` keys, lists | the tokens' scopes |
-| any other Server             | a Control or Data Plane, or both     | the keys and lists it fetched from `authority.url`       | the tokens' scopes |
+| Server                       | Runs                                                                   | Holds                                                    | Decides by         |
+| ---------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------- | ------------------ |
+| the Authority Plane's Server | the Authority Plane, alone (`authority-plane`) or with a Control Plane | the service accounts, the `authority.tokens` keys, lists | the tokens' scopes |
+| any other Server             | a Control or Data Plane, or both                                       | the keys and lists it fetched from `authority.url`       | the tokens' scopes |
 
 A Server without the Authority Plane fetches its keys every five minutes, and at once for a key it does not know, at most once a minute; it fetches each status list every half of its `ttl`.
 What it fetched is kept on its volume, so a restart without the Authority Plane still decides.

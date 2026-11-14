@@ -1,0 +1,100 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The `authority-plane` image: the Authority Plane on its own, with TLS on every surface. There is
+# no plain variant of this file, because a container is never on its callers' loopback and this
+# listener refuses an access key or a token sent in clear from anywhere else.
+development_mode: true
+autogenerate: true
+
+# A developer's machine: every relaxation this file amounts to is permitted and published
+# (WP-2.8). A deployment serving real decisions states nothing here, which means `production`.
+assurance:
+  profile: development
+
+working_dir: /var/lib/permguard/authority-plane
+
+log:
+  level: debug
+  format: json
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # The Authority Plane serves no ledger, so nothing here is served either way; it is written
+    # out, as in every shipped configuration, so what a deployment has accepted is readable from
+    # the file rather than inferred from silence.
+    enabled: "false"
+
+host:
+  addr: 0.0.0.0:5443
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+  # The lab ships a Tempo beside the planes; spans go there. Fail-open: with
+  # Tempo down the planes serve unchanged and spans are dropped.
+  otel:
+    enabled: "true"
+    endpoint: "http://tempo:4317"
+    sample_rate: "1.0"
+
+runtime:
+  planes:
+    - authority
+
+# The issuer every token names (`2-security/8`): this container's URL, as every Server of the
+# cluster reaches it and states it in its own `authority.url`, checked against this listener's
+# certificate authority. The Server verifies the tokens its closed routes take under the keys and
+# status lists handed over in-process.
+authority:
+  url: "https://permguard-authority-plane:8443"
+
+# The Authority Plane: service accounts, their access keys and scopes, and the token endpoint.
+# Its first start makes `admin`, its access key and secret key in planes/authority/admin.key on
+# the volume, readable by the volume's owner alone: move them somewhere safe and delete the file.
+authorityPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:8443
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:8443
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+
+limits:
+  # Through Docker's port forwarding every connection from the host arrives as the compose
+  # network's gateway address — one address for all clients, which is exactly the NAT case the
+  # per-address bound documents: exempt the private range the network lives in, or the bound
+  # counts the gateway as one very greedy client. The pool limit still bounds the total.
+  peer_exempt:
+    - 172.16.0.0/12
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+    # The root the per-zone keys derive from: decision input tags and pseudonyms (WP-3.3).
+    coordinator_root_ref: zone-root
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

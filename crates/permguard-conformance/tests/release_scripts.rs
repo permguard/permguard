@@ -21,27 +21,31 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const BINARIES: [&str; 4] = [
+const BINARIES: [&str; 5] = [
     "permguard",
     "permguard-all-in-one",
     "permguard-control-plane",
     "permguard-data-plane",
+    "permguard-authority-plane",
 ];
-const ARCHIVE_IDS: [&str; 4] = [
+const ARCHIVE_IDS: [&str; 5] = [
     "permguard_cli",
     "permguard_all_in_one",
     "permguard_control_plane",
     "permguard_data_plane",
+    "permguard_authority_plane",
 ];
-const IMAGES: [&str; 8] = [
+const IMAGES: [&str; 10] = [
     "ghcr.io/permguard/permguard/cli",
     "ghcr.io/permguard/permguard/all-in-one",
     "ghcr.io/permguard/permguard/control-plane",
     "ghcr.io/permguard/permguard/data-plane",
+    "ghcr.io/permguard/permguard/authority-plane",
     "permguard/cli",
     "permguard/all-in-one",
     "permguard/control-plane",
     "permguard/data-plane",
+    "permguard/authority-plane",
 ];
 
 fn repository() -> PathBuf {
@@ -170,13 +174,13 @@ fn test_both_provenance_phases_pass_on_a_complete_release_and_name_the_builder()
     );
     assert!(images.status.success(), "{}", text(&images));
     assert!(
-        text(&images).contains("8 images"),
+        text(&images).contains("10 images"),
         "three tags of one image are one artifact: {}",
         text(&images)
     );
 
     let log = std::fs::read_to_string(root.join("gh.log")).expect("gh was called");
-    assert_eq!(log.lines().count(), 39, "31 files and 8 images, each once");
+    assert_eq!(log.lines().count(), 41, "31 files and 10 images, each once");
     assert!(
         log.lines().all(|line| line
             .contains("--signer-workflow permguard/permguard/.github/workflows/release-build.yml")
@@ -218,13 +222,17 @@ fn test_a_release_that_is_empty_malformed_or_short_is_not_verified() {
         text(&malformed)
     );
 
-    checksums(&dist, 23);
+    checksums(&dist, 29);
     let short = run("verify-provenance.sh", &["files", dist_arg], Some(&bin));
-    assert!(!short.status.success(), "23 files passed");
+    assert!(!short.status.success(), "29 files passed");
 
-    digests(&dist, &IMAGES[..6]);
-    let six = run("verify-provenance.sh", &["images", dist_arg], Some(&bin));
-    assert!(!six.status.success(), "six images passed: {}", text(&six));
+    digests(&dist, &IMAGES[..8]);
+    let eight = run("verify-provenance.sh", &["images", dist_arg], Some(&bin));
+    assert!(
+        !eight.status.success(),
+        "eight images passed: {}",
+        text(&eight)
+    );
 
     let unknown = run(
         "verify-provenance.sh",
@@ -240,7 +248,7 @@ fn test_an_attestation_not_yet_served_is_retried_and_a_missing_one_fails() {
     let bin = stand_in_gh(&root, 2);
     let dist = root.join("dist");
     std::fs::create_dir_all(&dist).expect("dist is created");
-    checksums(&dist, 24);
+    checksums(&dist, 30);
     let late = run(
         "verify-provenance.sh",
         &["files", dist.to_str().unwrap()],
@@ -256,7 +264,7 @@ fn test_an_attestation_not_yet_served_is_retried_and_a_missing_one_fails() {
     let bin = stand_in_gh(&root, 1_000);
     let dist = root.join("dist");
     std::fs::create_dir_all(&dist).expect("dist is created");
-    checksums(&dist, 24);
+    checksums(&dist, 30);
     let missing = run(
         "verify-provenance.sh",
         &["files", dist.to_str().unwrap()],
@@ -270,7 +278,7 @@ fn test_an_attestation_not_yet_served_is_retried_and_a_missing_one_fails() {
     );
 }
 
-/// Builds the 16 Linux and Windows archives a release publishes, each holding one binary, the
+/// Builds the 20 Linux and Windows archives a release publishes, each holding one binary, the
 /// files GoReleaser adds beside it, and returns the layout the build staged them from.
 fn published(root: &Path) -> (PathBuf, PathBuf) {
     let archives = root.join("published");
@@ -712,8 +720,8 @@ printf '{"digest":"sha256:%s"}\n' "$(printf '%s' "$4" | shasum -a 256 | cut -d' 
         );
         assert!(!reference.contains(' '), "{line}");
     }
-    // Four images in two registries, three tags each.
-    assert_eq!(lines.len(), 24, "{listing}");
+    // Five images in two registries, three tags each.
+    assert_eq!(lines.len(), 30, "{listing}");
     for image in IMAGES {
         for tag in ["1.2.3", "1.2", "latest"] {
             assert!(

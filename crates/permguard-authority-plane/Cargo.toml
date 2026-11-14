@@ -18,6 +18,13 @@ publish = false
 # The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
 build = "build.rs"
 
+# The Authority Plane on its own: the binary the `authority-plane` image runs (`2-security/8`
+# Where it runs). The all-in-one and control-plane binaries register this crate's module beside
+# their Planes.
+[[bin]]
+name = "permguard-authority-plane"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
 # Secret keys kept as Argon2id hashes, never in the clear.

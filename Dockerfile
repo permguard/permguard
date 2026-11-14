@@ -4,7 +4,7 @@
 
 # Where the binary comes from: `builder` compiles it here, from this checkout; `prebuilt` takes it
 # from `prebuilt/linux_<arch>/<BIN>` in the context, the layout `scripts/build-cross.sh` stages.
-# CI builds the four binaries once, natively and cached, and makes every image from them; a build
+# CI builds the five binaries once, natively and cached, and makes every image from them; a build
 # with no argument still compiles, so `docker build .` keeps working on any machine.
 ARG BINARY_SOURCE=builder
 

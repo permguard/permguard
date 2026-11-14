@@ -21,7 +21,7 @@ use permguard_server::plane::settings::{
     plane_settings, producer_keys,
 };
 
-/// Every `config.*.yml` beside the three server crates.
+/// Every `config.*.yml` beside the four server crates.
 fn shipped() -> Vec<PathBuf> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -29,6 +29,7 @@ fn shipped() -> Vec<PathBuf> {
         .to_path_buf();
     let mut files = Vec::new();
     for crate_name in [
+        "permguard-authority-plane",
         "permguard-control-plane",
         "permguard-data-plane",
         "permguard-all-in-one",
@@ -48,8 +49,8 @@ fn shipped() -> Vec<PathBuf> {
     }
     files.sort();
     assert!(
-        files.len() >= 27,
-        "the three crates ship every environment, plus the Dogwood variant: {files:?}"
+        files.len() >= 30,
+        "the four crates ship every environment, plus the Dogwood variant: {files:?}"
     );
 
     files
@@ -131,9 +132,10 @@ fn shipped_mtls_profiles_multiplex_each_plane_on_one_role_port() {
         }
     }
 
+    // The Authority Plane's callers hold keys and tokens, never certificates: no mTLS profile.
     assert_eq!(
         profiles, 6,
-        "local and Docker mTLS profile per server crate"
+        "local and Docker mTLS profile per server crate that takes certificates"
     );
     assert_eq!(
         planes, 8,

@@ -102,9 +102,10 @@ jobs:
             --package permguard-cli \
             --package permguard-all-in-one \
             --package permguard-control-plane \
-            --package permguard-data-plane
+            --package permguard-data-plane \
+            --package permguard-authority-plane
           mkdir -p "prebuilt/${STAGED}"
-          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane; do
             cp "target/${TARGET}/release/${binary}" "prebuilt/${STAGED}/${binary}"
           done
           chmod +x "prebuilt/${STAGED}"/*
@@ -208,7 +209,7 @@ jobs:
           chmod +x prebuilt/*/*
           incomplete=0
           for platform in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64 windows_amd64 windows_arm64; do
-            for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+            for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane; do
               path="prebuilt/${platform}/${binary}"
               if [ ! -s "${path}" ] || [ ! -x "${path}" ]; then
                 echo "missing, empty or not executable: ${path}" >&2

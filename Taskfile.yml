@@ -294,6 +294,12 @@ tasks:
         --bin permguard-{{.PLANE}}-plane
         -- crates/permguard-{{.PLANE}}-plane/{{.CONFIG}} {{.ARGS}}
 
+  run:authority:
+    desc: Run the authority plane locally.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: authority, CONFIG: '{{.CONFIG | default "config.local.yml"}}', ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
   run:control:
     desc: Run the control plane locally.
     cmds:
@@ -337,6 +343,12 @@ tasks:
     cmds:
       - task: run:all
         vars: { CONFIG: config.local-experimental.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-tls:authority:
+    desc: Run the authority plane locally, with TLS.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: authority, CONFIG: config.local-tls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
 
   run-as-tls:control:
     desc: Run the control plane locally, with TLS.

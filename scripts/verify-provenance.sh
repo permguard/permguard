@@ -38,13 +38,14 @@ builder_workflow="${repository}/.github/workflows/release-build.yml"
 case "${phase}" in
     files)
         listing=checksums.txt
-        # Four binaries on six platforms, at the least.
-        minimum=24
+        # Five binaries on six platforms, at the least.
+        minimum=30
         ;;
     images)
         listing=digests.txt
-        # Four images (cli, all-in-one, control plane, data plane) in each of two registries.
-        minimum=8
+        # Five images (cli, all-in-one, authority plane, control plane, data plane) in each of
+        # two registries.
+        minimum=10
         ;;
     *)
         printf '%s\n' "${usage}" >&2

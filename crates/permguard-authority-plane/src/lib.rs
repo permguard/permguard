@@ -16,6 +16,7 @@ pub mod admin;
 pub mod authority;
 pub mod cbor;
 mod grpc;
+mod handles;
 mod http;
 mod plane;
 pub mod tokens;

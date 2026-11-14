@@ -17,6 +17,7 @@ Releases up to and including `0.1.6` were attested by `release-pipeline.yml`: ve
 | --- | --- | --- |
 | CLI | `ghcr.io/permguard/permguard/cli` | `docker.io/permguard/cli` |
 | All-in-one | `ghcr.io/permguard/permguard/all-in-one` | `docker.io/permguard/all-in-one` |
+| Authority plane | `ghcr.io/permguard/permguard/authority-plane` | `docker.io/permguard/authority-plane` |
 | Control plane | `ghcr.io/permguard/permguard/control-plane` | `docker.io/permguard/control-plane` |
 | Data plane | `ghcr.io/permguard/permguard/data-plane` | `docker.io/permguard/data-plane` |
 

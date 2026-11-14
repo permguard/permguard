@@ -27,8 +27,8 @@ only=("${@:2}")
 export PERMGUARD_BUILD_VERSION="${PERMGUARD_BUILD_VERSION-${GITHUB_REF_NAME#v}}"
 export PERMGUARD_BUILD_COMMIT="${GITHUB_SHA}"
 
-binaries=(permguard permguard-all-in-one permguard-control-plane permguard-data-plane)
-packages=(--package permguard-cli --package permguard-all-in-one --package permguard-control-plane --package permguard-data-plane)
+binaries=(permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane)
+packages=(--package permguard-cli --package permguard-all-in-one --package permguard-control-plane --package permguard-data-plane --package permguard-authority-plane)
 
 # target  os_arch  extension
 while read -r target staged extension; do
