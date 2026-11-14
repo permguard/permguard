@@ -37,7 +37,7 @@ base64.workspace = true
 # (`full-opa`, `arc`, `rvm`); its `http` feature only registers an `http.send` that answers
 # `undefined`, and its `net` only parses addresses, so neither reaches the network.
 cedar-policy = { version = "=4.11.0", default-features = false, features = ["datetime", "decimal", "ipaddr"] }
-regorus = { version = "=0.12.0", default-features = false, features = [
+regorus = { version = "=0.14.0", default-features = false, features = [
     "arc",
     "ast",
     "base64",

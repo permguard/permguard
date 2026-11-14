@@ -1131,16 +1131,6 @@ dependencies = [
 
 [[package]]
 name = "fraction"
-version = "0.15.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e076045bb43dac435333ed5f04caf35c7463631d0dae2deb2638d94dd0a5b872"
-dependencies = [
- "lazy_static",
- "num",
-]
-
-[[package]]
-name = "fraction"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e246562084dde8ebbcc943b261c406ce4f68e5032ec28029a251a47d6a295500"
@@ -1717,25 +1707,24 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.49.9"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ec8a241beed129f06114aa68007e905ca350e7baeb6e17a7631bb7978d91b2"
+checksum = "f622c574a29fb3034a0a90645afee194dfedc75fc124228801b6e77041075bd1"
 dependencies = [
  "ahash",
  "bytecount",
  "data-encoding",
  "email_address",
  "fancy-regex",
- "fraction 0.15.4",
+ "fraction",
  "getrandom 0.3.4",
- "idna",
  "itoa",
- "jsonschema-regex 0.49.9",
- "jsonschema-value 0.49.9",
+ "jsonschema-regex 0.58.6",
+ "jsonschema-value 0.58.6",
  "num-cmp",
  "num-traits",
  "percent-encoding",
- "referencing 0.49.9",
+ "referencing 0.58.6",
  "regex",
  "serde",
  "serde_json",
@@ -1755,7 +1744,7 @@ dependencies = [
  "data-encoding",
  "email_address",
  "fancy-regex",
- "fraction 0.17.0",
+ "fraction",
  "getrandom 0.3.4",
  "itoa",
  "jsonschema-regex 0.59.0",
@@ -1774,9 +1763,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.49.9"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91994f45017ed5e66aa8e59b8415f4cb033a6380d7200387b7cf117595fbdf85"
+checksum = "a968fffd387b2ab005bf00c1851f5d26e90df05b6f7ad609ed0d620033cca5e7"
 dependencies = [
  "regex-syntax",
 ]
@@ -1792,16 +1781,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-value"
-version = "0.49.9"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ec7637f83e510868ae6ed625f7ebfbbde4554ee8ce49854caa5126a8b9b9ecb"
+checksum = "39b7670345e5ce87371339d13705dbb9276b7e3e934bbe1efa2c6734a1f65a96"
 dependencies = [
  "ahash",
  "bytecount",
- "fraction 0.15.4",
+ "fraction",
+ "getrandom 0.3.4",
  "num-cmp",
  "num-traits",
  "serde_json",
+ "zmij",
 ]
 
 [[package]]
@@ -1812,7 +1803,7 @@ checksum = "e5a7550a7a84787e715ead0b47e01fa8c6bb7c3413630f91a8f2094c06c2078a"
 dependencies = [
  "ahash",
  "bytecount",
- "fraction 0.17.0",
+ "fraction",
  "getrandom 0.3.4",
  "num-cmp",
  "num-traits",
@@ -2065,11 +2056,21 @@ dependencies = [
 
 [[package]]
 name = "msvc_spectre_libs"
-version = "0.1.3"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e871a9861f3664f18b7e04e9301d4edd55090c2dadb4b1c602e26ab32b1f5b"
+checksum = "ee5b811d1179acb6ebe2e04601d96dc1016ddf8cde1ca347f95ad8caf9009779"
+dependencies = [
+ "msvc_spectre_libs_build",
+]
+
+[[package]]
+name = "msvc_spectre_libs_build"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5460ca8a958df6557bd924f4ed5118c6cc9704b0c2e97e8b8226b7e0771b65b"
 dependencies = [
  "cc",
+ "ohno",
 ]
 
 [[package]]
@@ -2231,6 +2232,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ohno"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c44f98fe807a6f36dc124f40d4293be0e79becbc9f0eb872e8369093063f54e"
+dependencies = [
+ "ohno_macros",
+ "typeid",
+]
+
+[[package]]
+name = "ohno_macros"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5661077db6d7e20a1f0684eb8dbbd387a5b9e0e579cae56e654571826fdd9f8"
+dependencies = [
+ "ohno_macros_impl",
+]
+
+[[package]]
+name = "ohno_macros_impl"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c38e0868909494a94d368ab74c13384368b21af80bac5fe73d3d5883c5bb8eb9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -3325,9 +3356,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.49.9"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6efa2154ea6f5ce0fdecdd2a8d18f2fa1a39a8fbba91564f555a592e4dce8278"
+checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -3388,9 +3419,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "regorus"
-version = "0.12.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94d90cbdbc4d2900378cf7dbb0c8df85a28e6de07fad75c60cd4d73283eded23"
+checksum = "d4cf51c81dc169048940bdbb9a37c7a7a0a36444dcb9ba0de6eab9cf2952ffdb"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3399,7 +3430,7 @@ dependencies = [
  "globset",
  "indexmap 2.14.2",
  "ipnet",
- "jsonschema 0.49.9",
+ "jsonschema 0.58.6",
  "lazy_static",
  "lru",
  "msvc_spectre_libs",
@@ -4486,6 +4517,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4636,15 +4673,15 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-08-09-0044"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f2985ebd252c492375e32f2bfcff6e6a04523009a0d624785d3468f3729158"
+checksum = "856c9979b5ed3b75a2371d8667602da1839ab0cbb3720a2c1c8a182bcdb27cf7"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-08-23-0033"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f5b1ed2151955cfe25ebfc1382ab422ae004e5cda6c502871425cc9e2ad5f3"
+checksum = "466bb5ed102507ccbcd002410e73716c9eb27b602980d81bbd176860ace8a89b"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -4657,9 +4694,9 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-08-09-0044"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51fc115de5fb3806bc362060bb683024660ed2bc13c1183d1f01d464e4537139"
+checksum = "71956c0dcf55f57fd5a5335fff16981f7e0912d2e887914518c5a64fe36c063c"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -4667,9 +4704,9 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93f77ff8d121edb1bf2651335769a80a2f611da8573c3b498434a66b3162805f"
+checksum = "5f78ea16629331605a440e9e0a259dd3492a78212186ba82253ad0988127407f"
 dependencies = [
  "indexmap 2.14.2",
  "proc-macro2",
@@ -4679,9 +4716,9 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f17237ea6d267e457d53ce36f55b315fc9edd26eb88c765dd95e035c0b415869"
+checksum = "7d8b53574934e1f608dfccd809ce17f3733d6eb99c14ce8220326121929e1637"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4696,9 +4733,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vstd"
-version = "0.0.0-2026-08-23-0033"
+version = "0.0.0-2026-09-06-0133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93b32ef60c0a4ce7d85691135c15fada7ab84b2c1471322d320fba313190e2e9"
+checksum = "9e5391d6f656ab9a485169f7e9fe87d3db1f0a6aa116fcb630dd0bef224170e7"
 dependencies = [
  "verus_builtin",
  "verus_builtin_macros",
