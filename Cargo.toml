@@ -78,7 +78,7 @@ anyhow = "1"
 argon2 = { version = "0.6", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 async-stream = "0.3"
 axum = { version = "0.8", default-features = false, features = ["http1", "http2", "json", "tokio"] }
-axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+axum-server = { version = "0.9", features = ["tls-rustls-no-provider"] }
 base64 = "0.23"
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
