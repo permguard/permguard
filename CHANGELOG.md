@@ -91,6 +91,11 @@ Nothing yet.
 - **The operator's mutual TLS mapping is removed.** *(Breaking.)*
   A certificate maps to the bootstrap principal alone; an operator acts by an access token.
 
+### Security
+
+- **`rustix` 1.1.6 (RUSTSEC-2026-0486).**
+  The extended-attribute functions of `rustix::fs` marked unwritten bytes as initialized when handed a zero-length buffer; Permguard calls none of them, and the lockfile takes the fixed release so the advisory gate passes.
+
 ## [0.1.26] - 2026-11-09
 
 ### Fixed
