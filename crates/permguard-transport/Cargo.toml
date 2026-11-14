@@ -20,6 +20,7 @@ anyhow.workspace = true
 axum.workspace = true
 axum-server.workspace = true
 http.workspace = true
+http-body-util.workspace = true
 hyper-util.workspace = true
 permguard-core.workspace = true
 # Naming each request. The same generator `rustls` already links, rather than a second one.

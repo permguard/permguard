@@ -110,59 +110,20 @@ where
             .client_authentication
             .iter()
             .any(|path| path == request.uri().path());
-        let bearer = match request.headers().get(http::header::AUTHORIZATION) {
-            None => None,
-            Some(value)
-                if client_authenticates
-                    && value
-                        .to_str()
-                        .ok()
-                        .and_then(|value| value.split_once(' '))
-                        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("basic")) =>
-            {
-                // A client's secret travels only over TLS, as a bearer token does.
-                if self.clear_bearer_refused {
-                    return Box::pin(async move {
-                        Ok(bearer_refused(
-                            permguard_core::AccessDenial::unauthenticated(
-                                "a client secret travels only over TLS: this listener is in the clear",
-                            ),
-                            grpc,
-                        ))
-                    });
-                }
-                None
+        let bearer = match bearer_of(&request, client_authenticates, self.clear_bearer_refused) {
+            Ok(bearer) => bearer,
+            Err((denial, challenged)) => {
+                let body = request.into_body();
+                return Box::pin(async move {
+                    let refusal = if challenged {
+                        bearer_refused(denial, grpc)
+                    } else {
+                        crate::gate::refused(denial, grpc)
+                    };
+                    Ok(crate::gate::drained(body, refusal).await)
+                });
             }
-            Some(value) => match value
-                .to_str()
-                .ok()
-                .and_then(|value| value.split_once(' '))
-                .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-            {
-                Some((_, token)) => Some(token.trim().to_owned()),
-                None => {
-                    return Box::pin(async move {
-                        Ok(crate::gate::refused(
-                            permguard_core::AccessDenial::unauthenticated(
-                                "the Authorization header carries a scheme this surface does not read; use Bearer",
-                            ),
-                            grpc,
-                        ))
-                    });
-                }
-            },
         };
-        if bearer.is_some() && self.clear_bearer_refused {
-            return Box::pin(async move {
-                Ok(bearer_refused(
-                    permguard_core::AccessDenial::unauthenticated(
-                        "a bearer token travels only over TLS: this listener is in the clear, not on \
-                         a loopback address and behind no declared TLS terminator",
-                    ),
-                    grpc,
-                ))
-            });
-        }
         match self
             .authenticator
             .authenticate(peer.as_deref(), bearer.as_deref())
@@ -195,14 +156,70 @@ where
                     error.code = denial.code(),
                     "refused a credential that did not verify"
                 );
-                if bearer.is_some() {
-                    Box::pin(async move { Ok(bearer_refused(denial, grpc)) })
-                } else {
-                    Box::pin(async move { Ok(crate::gate::refused(denial, grpc)) })
-                }
+                let challenged = bearer.is_some();
+                let body = request.into_body();
+                Box::pin(async move {
+                    let refusal = if challenged {
+                        bearer_refused(denial, grpc)
+                    } else {
+                        crate::gate::refused(denial, grpc)
+                    };
+                    Ok(crate::gate::drained(body, refusal).await)
+                })
             }
         }
     }
+}
+
+/// The bearer token a request carries, read as RFC 7235 has it, or why it is refused unread and
+/// whether the refusal challenges for a bearer. Credentials the server does not understand are
+/// refused, not ignored: an `Authorization` header is a claim to be somebody, and only `Bearer`
+/// is a claim this boundary can read; on a path where a client proves itself with `Basic`, the
+/// token endpoint's, the header passes unread to the route. Nothing secret crosses a listener in
+/// the clear: a bearer or a client secret on one is refused before it is read.
+fn bearer_of(
+    request: &Request<Body>,
+    client_authenticates: bool,
+    clear_bearer_refused: bool,
+) -> Result<Option<String>, (permguard_core::AccessDenial, bool)> {
+    let Some(value) = request.headers().get(http::header::AUTHORIZATION) else {
+        return Ok(None);
+    };
+    let scheme_and_rest = value.to_str().ok().and_then(|value| value.split_once(' '));
+    if client_authenticates
+        && scheme_and_rest.is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("basic"))
+    {
+        // A client's secret travels only over TLS, as a bearer token does.
+        if clear_bearer_refused {
+            return Err((
+                permguard_core::AccessDenial::unauthenticated(
+                    "a client secret travels only over TLS: this listener is in the clear",
+                ),
+                true,
+            ));
+        }
+        return Ok(None);
+    }
+    let Some((_, token)) =
+        scheme_and_rest.filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+    else {
+        return Err((
+            permguard_core::AccessDenial::unauthenticated(
+                "the Authorization header carries a scheme this surface does not read; use Bearer",
+            ),
+            false,
+        ));
+    };
+    if clear_bearer_refused {
+        return Err((
+            permguard_core::AccessDenial::unauthenticated(
+                "a bearer token travels only over TLS: this listener is in the clear, not on a \
+                 loopback address and behind no declared TLS terminator",
+            ),
+            true,
+        ));
+    }
+    Ok(Some(token.trim().to_owned()))
 }
 
 /// A refused bearer token, answered like any denial plus, on an HTTP `401`, the RFC 6750 `Bearer`

@@ -197,7 +197,10 @@ where
                     error.code = denial.code(),
                     "refused a route to a caller holding nothing under its scope"
                 );
-                return Box::pin(async move { Ok(crate::gate::refused(denial, grpc)) });
+                let body = request.into_body();
+                return Box::pin(async move {
+                    Ok(crate::gate::drained(body, crate::gate::refused(denial, grpc)).await)
+                });
             }
         }
         Box::pin(self.inner.call(request))

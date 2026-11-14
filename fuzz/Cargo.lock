@@ -1324,6 +1324,7 @@ dependencies = [
  "axum",
  "axum-server",
  "http",
+ "http-body-util",
  "hyper-util",
  "permguard-core",
  "ring",

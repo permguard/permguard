@@ -99,8 +99,10 @@ where
             .map(Arc::clone);
         let grpc = speaks_grpc(&request);
 
-        match identity {
-            Some(peer) if peer.is_allowed_by(&self.allow) => Box::pin(self.inner.call(request)),
+        let denial = match identity {
+            Some(peer) if peer.is_allowed_by(&self.allow) => {
+                return Box::pin(self.inner.call(request));
+            }
             Some(peer) => {
                 tracing::warn!(
                     event.name = "transport.peer_refused",
@@ -109,13 +111,7 @@ where
                     peer.fingerprint = %peer.fingerprint(),
                     "refused an authenticated peer the allow list does not name"
                 );
-
-                Box::pin(async move {
-                    Ok(refused(
-                        AccessDenial::forbidden("this surface does not answer this peer"),
-                        grpc,
-                    ))
-                })
+                AccessDenial::forbidden("this surface does not answer this peer")
             }
             None => {
                 tracing::warn!(
@@ -123,18 +119,29 @@ where
                     component = COMPONENT,
                     "refused a request that arrived with no peer identity on a surface with an allow list"
                 );
-
-                Box::pin(async move {
-                    Ok(refused(
-                        AccessDenial::unauthenticated(
-                            "this surface answers only authenticated peers",
-                        ),
-                        grpc,
-                    ))
-                })
+                AccessDenial::unauthenticated("this surface answers only authenticated peers")
             }
+        };
+        let body = request.into_body();
+        Box::pin(async move { Ok(drained(body, refused(denial, grpc)).await) })
+    }
+}
+
+/// `response`, once the request's `body` is read and dropped. A refusal decided before the body
+/// is read is the point of every gate here; answering while the body still sits unread in the
+/// socket closes the connection with a reset, and a proxy in front, a port published by Docker
+/// or a load balancer, may hand the client that reset in place of the answer. The body was
+/// bounded by the surface's limits before it reached any gate, so reading it costs what a
+/// served request costs, and a body past the limit ends the read where the limit does.
+pub(crate) async fn drained(mut body: Body, response: Response<Body>) -> Response<Body> {
+    use http_body_util::BodyExt as _;
+
+    while let Some(frame) = body.frame().await {
+        if frame.is_err() {
+            break;
         }
     }
+    response
 }
 
 /// The answer a denial renders as, in the caller's own protocol.
@@ -298,6 +305,42 @@ mod tests {
 
     fn served(_request: Request<Body>) -> Served {
         std::future::ready(Ok(Response::new(Body::from("served"))))
+    }
+
+    /// A refusal is answered once the body is read to its end: nothing is left unread in the
+    /// socket to turn the answer into a reset at a proxy.
+    #[tokio::test]
+    async fn a_refusal_is_answered_after_the_body_is_read() {
+        let frames = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&frames);
+        let body = Body::new(
+            http_body_util::Full::new(axum::body::Bytes::from_static(b"{\"name\":\"x\"}"))
+                .map_frame(move |frame| {
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    frame
+                }),
+        );
+        let answered = drained(
+            body,
+            refused(AccessDenial::unauthenticated("nobody"), false),
+        )
+        .await;
+        assert_eq!(
+            frames.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the body's frame was read before the answer"
+        );
+        assert_eq!(answered.status(), StatusCode::UNAUTHORIZED);
+        let text = answered
+            .into_body()
+            .collect()
+            .await
+            .expect("a body")
+            .to_bytes();
+        assert!(
+            String::from_utf8_lossy(&text).contains("unauthenticated"),
+            "the answer is the refusal's"
+        );
     }
 
     fn gate() -> PeerGated<Inner> {
