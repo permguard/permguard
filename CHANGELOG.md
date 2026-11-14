@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.27] - 2026-11-14
+
 ### Added
 
 - **The Authority Plane: service accounts, access keys and the tokens every Plane verifies.**
