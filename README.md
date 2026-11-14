@@ -37,7 +37,7 @@ When nothing permits, the answer is deny, and every answer leaves evidence you c
 ## One Server, independent planes
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Control Plane on 6443, which publishes, the Data Plane on 7443, which decides, and the Trust Plane on 8443, which will continue authority and is in development. Deploy all-in-one, one process with every enabled plane, or split by plane, one Host per plane with its own volume." width="820">
+  <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Authority Plane on 8443, which authorizes: service accounts, access keys and the tokens every plane verifies; the Control Plane on 6443, which publishes; and the Data Plane on 7443, which decides. The Trust Plane, in development, will continue authority with Trust Anchors and the PIC hand-off. Deploy all-in-one, one process with every enabled plane, or as a cluster, one Host per role with its own volume." width="820">
 </p>
 
 A **Permguard Server** is one process with exactly one **Host** and zero or more **planes**.
@@ -48,9 +48,10 @@ A plane owns one business domain, and receives typed, least-privilege handles fr
 | ---------------------- | -----: | -------------------------------------------------------------- | -------------- |
 | Server Host operations | `5443` | discovery, health, readiness, version and metrics              | available      |
 | Host listener          | `5444` | the Host API (`/host/v1` and `permguard.host.v1`), over TLS    | available      |
+| Authority Plane        | `8443` | service accounts, access keys, the tokens every plane verifies | available      |
 | Control Plane          | `6443` | zones, ledgers, signed heads, NOTP, decision and event stores  | available      |
 | Data Plane             | `7443` | mirror, verify, compile, evaluate, record decisions            | available      |
-| Trust Plane            | `8443` | Trust Anchors and authority continuity with PIC; port reserved | in development |
+| Trust Plane            |      — | Trust Anchors and authority continuity with PIC                | in development |
 
 The role owns the port.
 HTTP and gRPC share it, and TLS changes the scheme, never the number.
@@ -61,7 +62,7 @@ Containers and pods have their own network namespaces; standalone binaries that 
 <summary><b>What the Host owns, and why it matters</b></summary>
 
 - **Identity.** A stable `host_id`, proof of possession, succession and rotation, kept in signed key rings.
-- **Authorization.** Grants per principal, operation and resource selector; absence of an allow is deny.
+- **Authorization.** Every call decides by the caller's access token: its scopes, operations on a resource selector; absence of an allow is deny.
 - **Keys and secrets.** Rings per purpose, published ahead of use, rotated and retained; custody in files, an HSM or a KMS.
 - **Audit.** Trails per class and resource, hash-chained, with signed checkpoints.
 - **Membership.** Host-to-Host trust is direct, never transitive: every remote action names one membership, task, scope and epoch.
@@ -74,6 +75,17 @@ It never follows a configured URL: the membership binds the coordinator, the sco
 In the other direction, an all-in-one ships its Data Plane's decisions and events to its own Control Plane in-process, verified under its own `data.attest` ring, so the Control Plane's reads answer what it decided.
 
 </details>
+
+### Who may call it: the Authority Plane
+
+Every caller is a **service account** of the cluster's one Authority Plane: a program, a pipeline, a person's tool, Permguard Admin among them.
+An account holds scopes, operations on a resource selector, and at most two live access keys; with one it obtains a short-lived RFC 9068 access token at `POST /authority/v1/token`, and every plane and the Host check that token themselves, offline, against the keys and the status lists the Authority Plane publishes.
+A revoked token, a suspended account or a deleted key reaches every plane at its next refresh of those lists.
+
+The Authority Plane's first start makes the service account `admin` and writes its access key and secret key to `planes/authority/admin.key` on the volume, readable by its owner alone: move it somewhere safe.
+The command line acts as an account with `--access-key` and `--secret-key-file`, obtains and renews its own token, and administers accounts, scopes, keys and tokens with `permguard authority`.
+The shipped development configurations also declare public grants, so the [Five minutes](#five-minutes) need no credential; a production deployment declares none.
+`task run:all` starts the Control and Data Planes; `task run:all PLANES=authority,control,data` adds the Authority Plane beside them.
 
 ## Where decisions run
 
@@ -965,6 +977,7 @@ See the organization-wide [contribution rules](https://github.com/permguard/.git
 | Decisions           | [Decision Lifecycle](https://docs.permguard.com/how-it-works/decision-lifecycle)               |
 | Evidence            | [Evidence](https://docs.permguard.com/how-it-works/evidence)                                   |
 | Your own data plane | [Bring Your Own Data Plane](https://docs.permguard.com/how-it-works/bring-your-own-data-plane) |
+| Who may call        | [Authority Plane](https://docs.permguard.com/how-it-works/authority-plane)                     |
 | Trust Plane         | [Trust Plane, in development](https://docs.permguard.com/trust-plane)                          |
 | Operations          | [Verify released container images](ops/container-verification.md)                              |
 
