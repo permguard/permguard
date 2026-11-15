@@ -241,6 +241,8 @@ All the endpoints below are up after `task run:all`, the first command of [Five 
 | `/.well-known/server-configuration` on a plane (`:6443`, `:7443`) | who is this plane, what keys, which interfaces   |
 | `/.well-known/permguard-pdp-v1-configuration`                     | what `permguard.api.pdp.native.v1` offers here   |
 
+Every document here answers over gRPC as well, the same JSON: the Server Host's registry names each plane's `grpc_endpoint` beside its document, so a client that speaks one transport alone finds every plane, and `permguard discover` follows a plane served over gRPC alone.
+
 ### The Server Host: which planes this process hosts
 
 ```sh
@@ -589,6 +591,7 @@ permguard decisions list --zone acme --ledger main-ledger --verify --keys data-p
 ```
 
 The `decision id` a caller gets back is the one the record carries: an answer and its evidence are joined by an identifier, not by a timestamp and a guess.
+Each line also names the data plane that answered, its member id and its name, resolved by the Control Plane from the Host id the record carries; the record itself is untouched, so what the data plane signed is what a reader verifies.
 
 ## Examples
 
