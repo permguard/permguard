@@ -298,6 +298,8 @@ impl EventLog for EventFacade {
             ]
             .into_iter()
             .collect(),
+            producer_classes: document.producer_classes,
+            filters: document.filters,
         }))
     }
 }

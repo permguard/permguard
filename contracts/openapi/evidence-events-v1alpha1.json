@@ -1226,8 +1226,7 @@
               "type": "string"
             },
             "description": "The producer classes accepted.",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+            "x-grpc-field": "producer_classes"
           },
           "filters": {
             "type": "array",
@@ -1235,8 +1234,7 @@
               "type": "string"
             },
             "description": "The filter names a read accepts.",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+            "x-grpc-field": "filters"
           },
           "limits": {
             "$ref": "#/components/schemas/Limits",

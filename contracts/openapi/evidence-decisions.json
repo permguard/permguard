@@ -1499,7 +1499,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only."
+        "x-grpc-note": "Carried as JSON text in `permguard.control.v1.GetDecisionConfigurationResponse.document_json`, not as structured fields."
       },
       "ConfigurationEndpoints": {
         "type": "object",
@@ -1525,7 +1525,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only."
+        "x-grpc-note": "Carried as JSON text in `permguard.control.v1.GetDecisionConfigurationResponse.document_json`, not as structured fields."
       },
       "ConfigurationOffsets": {
         "type": "object",
@@ -1551,7 +1551,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only."
+        "x-grpc-note": "Carried as JSON text in `permguard.control.v1.GetDecisionConfigurationResponse.document_json`, not as structured fields."
       },
       "ConfigurationLimits": {
         "type": "object",
@@ -1572,7 +1572,7 @@
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only."
+        "x-grpc-note": "Carried as JSON text in `permguard.control.v1.GetDecisionConfigurationResponse.document_json`, not as structured fields."
       },
       "FrontierRun": {
         "type": "object",

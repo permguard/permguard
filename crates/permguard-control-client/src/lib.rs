@@ -45,6 +45,7 @@ pub mod checkpoint;
 pub mod connect;
 pub mod decisions;
 pub mod decisions_grpc;
+pub mod documents;
 pub mod encode;
 pub mod endpoint;
 pub mod events;

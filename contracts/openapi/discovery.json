@@ -280,7 +280,7 @@
         "additionalProperties": false,
         "description": "The data plane's document (`PlaneConfiguration`, permguard-server).",
         "x-grpc-message": null,
-        "x-grpc-note": "The data plane serves no gRPC discovery method; REST-only (permguard.data.v1.DataPlane has GetInfo and GetHealth only)."
+        "x-grpc-note": "Carried as JSON text in `permguard.data.v1.GetServerConfigurationResponse.document_json`, not as structured fields."
       },
       "PlaneLink": {
         "type": "object",
@@ -421,7 +421,7 @@
         "additionalProperties": false,
         "description": "`StreamDescriptor::public_view`: never the directory.",
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only: no gRPC method lists streams."
+        "x-grpc-note": "Carried as JSON text in the `document_json` of `permguard.control.v1.GetStreamsResponse` and `permguard.data.v1.GetStreamsResponse`, not as structured fields."
       },
       "StreamsDocument": {
         "type": "object",
@@ -439,7 +439,7 @@
         "additionalProperties": false,
         "description": "The body of `/streams/v1`, built with `json!` in `streams_route`.",
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only: no gRPC method lists streams."
+        "x-grpc-note": "Carried as JSON text in the `document_json` of `permguard.control.v1.GetStreamsResponse` and `permguard.data.v1.GetStreamsResponse`, not as structured fields."
       },
       "Assurance": {
         "type": "object",
@@ -596,7 +596,7 @@
         "additionalProperties": false,
         "description": "One runtime of a data plane's discovery document (TL-6).",
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only, as the data plane's document is."
+        "x-grpc-note": "Part of the data plane's document, which gRPC carries as JSON text in `permguard.data.v1.GetServerConfigurationResponse.document_json`."
       },
       "ConformanceGate": {
         "type": "object",
@@ -635,7 +635,7 @@
         "additionalProperties": false,
         "description": "A runtime's conformance gate result (TL-6).",
         "x-grpc-message": null,
-        "x-grpc-note": "REST-only, as the data plane's document is."
+        "x-grpc-note": "Part of the data plane's document, which gRPC carries as JSON text in `permguard.data.v1.GetServerConfigurationResponse.document_json`."
       },
       "StorageReport": {
         "type": "object",

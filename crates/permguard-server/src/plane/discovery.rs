@@ -72,6 +72,15 @@ impl PlaneId {
         }
     }
 
+    /// Where this plane's gRPC is told to advertise itself.
+    pub const fn grpc_advertised_url_setting(self) -> &'static str {
+        match self {
+            Self::Control => crate::plane::SETTING_CONTROL_GRPC_ADVERTISED_URL,
+            Self::Data => crate::plane::SETTING_DATA_GRPC_ADVERTISED_URL,
+            Self::Authority => crate::plane::SETTING_AUTHORITY_GRPC_ADVERTISED_URL,
+        }
+    }
+
     /// The plane a module id names, or `None` for a name this build does not host.
     pub fn parse(id: &str) -> Option<Self> {
         match id {
@@ -157,8 +166,21 @@ fn grpc_planes(config: &Config) -> Vec<(&'static str, String)> {
         let Some(plane) = PlaneId::parse(id) else {
             continue;
         };
+        // Where it is reached, by the rule its HTTP follows (owner decision of 2026-11-15): what
+        // it was told to advertise; else, sharing the HTTP listener's address, what that listener
+        // advertises, the same port behind the same name; else where it binds.
+        let shared = matches!(addresses.http.resolve(config), Ok(Some(http)) if http == addr);
+        let advertised = config
+            .setting(plane.grpc_advertised_url_setting())
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(|url| url.trim_end_matches('/').to_owned())
+            .or_else(|| shared.then(|| advertised_url(config, plane)).flatten());
 
-        planes.push((plane.public_name(), format!("{scheme}://{addr}")));
+        planes.push((
+            plane.public_name(),
+            advertised.unwrap_or_else(|| format!("{scheme}://{addr}")),
+        ));
     }
 
     planes
@@ -204,16 +226,22 @@ pub fn is_wildcard_address(addr: &str) -> bool {
 
 /// The planes whose published address nobody can dial, for the warning at startup.
 pub fn unroutable_planes(config: &Config) -> Vec<&'static str> {
-    discovered_planes(config)
+    let wildcard = |url: &str| {
+        url.split_once("://")
+            .is_some_and(|(_, rest)| is_wildcard_address(rest))
+    };
+    let mut planes: Vec<&'static str> = discovered_planes(config)
         .into_iter()
-        .filter(|plane| {
-            plane
-                .http_base
-                .split_once("://")
-                .is_some_and(|(_, rest)| is_wildcard_address(rest))
-        })
+        .filter(|plane| wildcard(&plane.http_base))
         .map(|plane| plane.id)
-        .collect()
+        .collect();
+    // A gRPC endpoint nobody can dial is the same mistake (owner decision of 2026-11-15).
+    for (id, endpoint) in grpc_planes(config) {
+        if wildcard(&endpoint) && !planes.contains(&id) {
+            planes.push(id);
+        }
+    }
+    planes
 }
 
 /// The HTTP base URL (`scheme://addr`) the Server Host operations surface answers on.
@@ -1104,7 +1132,8 @@ mod advertisement_tests {
 
     use super::*;
     use crate::plane::{
-        SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_HTTP_ADDR, SETTING_DATA_HTTP_ADVERTISED_URL,
+        SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_GRPC_ADDR, SETTING_DATA_GRPC_ADVERTISED_URL,
+        SETTING_DATA_HTTP_ADDR, SETTING_DATA_HTTP_ADVERTISED_URL,
     };
 
     #[test]
@@ -1140,6 +1169,53 @@ mod advertisement_tests {
             plane_http_base(&config, PlaneId::Control).expect("the control plane is discovered"),
             "http://0.0.0.0:6443"
         );
+    }
+
+    /// The gRPC endpoint the registry names follows the rule its HTTP does (owner decision of
+    /// 2026-11-15): what it was told to advertise; sharing the HTTP listener's address, what that
+    /// listener advertises; and a wildcard bind told nothing is reported.
+    #[test]
+    fn a_grpc_endpoint_is_advertised_as_its_http_is() {
+        // Shared with HTTP: the HTTP listener's advertised URL, the same port behind the same name.
+        let shared = document_tests::config_with(&[
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
+            (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7443"),
+            (
+                SETTING_DATA_HTTP_ADVERTISED_URL,
+                "https://pdp.example.com:7443/",
+            ),
+        ]);
+        assert_eq!(
+            grpc_planes(&shared),
+            vec![("data-plane", "https://pdp.example.com:7443".to_owned())]
+        );
+        // Its own port: what it is told, which wins over the HTTP listener's.
+        let own = document_tests::config_with(&[
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
+            (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7444"),
+            (
+                SETTING_DATA_HTTP_ADVERTISED_URL,
+                "https://pdp.example.com:7443",
+            ),
+            (
+                SETTING_DATA_GRPC_ADVERTISED_URL,
+                "https://grpc.pdp.example.com:443",
+            ),
+        ]);
+        assert_eq!(
+            grpc_planes(&own),
+            vec![("data-plane", "https://grpc.pdp.example.com:443".to_owned())]
+        );
+        // Its own port and told nothing: where it binds, reported when nobody can dial it.
+        let untold = document_tests::config_with(&[
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
+            (SETTING_DATA_GRPC_ADDR, "0.0.0.0:7444"),
+        ]);
+        assert_eq!(
+            grpc_planes(&untold),
+            vec![("data-plane", "http://0.0.0.0:7444".to_owned())]
+        );
+        assert_eq!(unroutable_planes(&untold), vec!["data-plane"]);
     }
 
     /// The one that was not told is the one an operator has to hear about.

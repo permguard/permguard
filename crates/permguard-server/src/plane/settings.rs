@@ -30,6 +30,10 @@ pub const SETTING_RUNTIME_OPTIONAL_PLANES: &str = "PERMGUARD_RUNTIME_OPTIONAL_PL
 /// Runtime setting keys for control-plane public addresses.
 /// Where this plane tells the world to reach it. See [`SETTING_DATA_HTTP_ADVERTISED_URL`].
 pub const SETTING_CONTROL_HTTP_ADVERTISED_URL: &str = "PERMGUARD_CONTROL_HTTP_ADVERTISED_URL";
+/// Where this plane's gRPC is reached, when that is not where it binds: what the process registry
+/// names as its `grpc_endpoint` (owner decision of 2026-11-15). See
+/// [`SETTING_DATA_HTTP_ADVERTISED_URL`].
+pub const SETTING_CONTROL_GRPC_ADVERTISED_URL: &str = "PERMGUARD_CONTROL_GRPC_ADVERTISED_URL";
 pub const SETTING_CONTROL_HTTP_ENABLED: &str = "PERMGUARD_CONTROL_HTTP_ENABLED";
 pub const SETTING_CONTROL_HTTP_ADDR: &str = "PERMGUARD_CONTROL_HTTP_ADDR";
 pub const SETTING_CONTROL_HTTP_TLS_ENABLED: &str = "PERMGUARD_CONTROL_HTTP_TLS_ENABLED";
@@ -63,6 +67,9 @@ pub const SETTING_CONTROL_GRPC_TLS_TERMINATED_UPSTREAM: &str =
 /// address and nothing can dial it — a document naming it sends every client that follows a link
 /// nowhere.
 pub const SETTING_DATA_HTTP_ADVERTISED_URL: &str = "PERMGUARD_DATA_HTTP_ADVERTISED_URL";
+/// Where this plane's gRPC is reached, when that is not where it binds. See
+/// [`SETTING_CONTROL_GRPC_ADVERTISED_URL`].
+pub const SETTING_DATA_GRPC_ADVERTISED_URL: &str = "PERMGUARD_DATA_GRPC_ADVERTISED_URL";
 pub const SETTING_DATA_HTTP_ENABLED: &str = "PERMGUARD_DATA_HTTP_ENABLED";
 pub const SETTING_DATA_HTTP_ADDR: &str = "PERMGUARD_DATA_HTTP_ADDR";
 pub const SETTING_DATA_HTTP_TLS_ENABLED: &str = "PERMGUARD_DATA_HTTP_TLS_ENABLED";
@@ -90,6 +97,9 @@ pub const SETTING_DATA_GRPC_TLS_TERMINATED_UPSTREAM: &str =
 /// Runtime setting keys for authority-plane public addresses: its token endpoint, keys, lists and
 /// accounts, over HTTP and gRPC alike. See [`SETTING_DATA_HTTP_ADVERTISED_URL`].
 pub const SETTING_AUTHORITY_HTTP_ADVERTISED_URL: &str = "PERMGUARD_AUTHORITY_HTTP_ADVERTISED_URL";
+/// Where this plane's gRPC is reached, when that is not where it binds. See
+/// [`SETTING_CONTROL_GRPC_ADVERTISED_URL`].
+pub const SETTING_AUTHORITY_GRPC_ADVERTISED_URL: &str = "PERMGUARD_AUTHORITY_GRPC_ADVERTISED_URL";
 pub const SETTING_AUTHORITY_HTTP_ENABLED: &str = "PERMGUARD_AUTHORITY_HTTP_ENABLED";
 pub const SETTING_AUTHORITY_HTTP_ADDR: &str = "PERMGUARD_AUTHORITY_HTTP_ADDR";
 pub const SETTING_AUTHORITY_HTTP_TLS_ENABLED: &str = "PERMGUARD_AUTHORITY_HTTP_TLS_ENABLED";
@@ -119,14 +129,19 @@ pub const SETTING_AUTHORITY_GRPC_TLS_TERMINATED_UPSTREAM: &str =
 /// runs): its public URL, which every token names as `iss`. Set on the Authority Plane's Server
 /// too, it is the issuer it signs as.
 pub const SETTING_AUTHORITY_URL: &str = "PERMGUARD_AUTHORITY_URL";
+/// Where a Host fetches the Authority Plane's keys and lists, when not at `authority.url`:
+/// `https://` for its REST routes, `grpcs://` for its `TokenService` over gRPC (owner decision of
+/// 2026-11-15). The issuer stays `authority.url`: a name, whichever transport serves it.
+pub const SETTING_AUTHORITY_ENDPOINT: &str = "PERMGUARD_AUTHORITY_ENDPOINT";
 /// The audience every token names: one value per cluster, `permguard` unless stated.
 pub const SETTING_AUTHORITY_AUDIENCE: &str = "PERMGUARD_AUTHORITY_AUDIENCE";
 /// The authority the Authority Plane's certificate is checked against, beside the system's.
 pub const SETTING_AUTHORITY_TLS_CA: &str = "PERMGUARD_AUTHORITY_TLS_CA";
 
 /// Every setting of the `authority` section: read by every Server, whatever Planes it runs.
-pub const AUTHORITY_SETTINGS: [&str; 3] = [
+pub const AUTHORITY_SETTINGS: [&str; 4] = [
     SETTING_AUTHORITY_URL,
+    SETTING_AUTHORITY_ENDPOINT,
     SETTING_AUTHORITY_AUDIENCE,
     SETTING_AUTHORITY_TLS_CA,
 ];
@@ -197,7 +212,7 @@ impl PlaneSettingKeys {
         grpc: PlaneEndpointKeys {
             enabled: SETTING_CONTROL_GRPC_ENABLED,
             addr: SETTING_CONTROL_GRPC_ADDR,
-            advertised_url: None,
+            advertised_url: Some(SETTING_CONTROL_GRPC_ADVERTISED_URL),
             tls: PlaneTlsKeys {
                 enabled: SETTING_CONTROL_GRPC_TLS_ENABLED,
                 cert: SETTING_CONTROL_GRPC_TLS_CERT,
@@ -237,7 +252,7 @@ impl PlaneSettingKeys {
         grpc: PlaneEndpointKeys {
             enabled: SETTING_DATA_GRPC_ENABLED,
             addr: SETTING_DATA_GRPC_ADDR,
-            advertised_url: None,
+            advertised_url: Some(SETTING_DATA_GRPC_ADVERTISED_URL),
             tls: PlaneTlsKeys {
                 enabled: SETTING_DATA_GRPC_TLS_ENABLED,
                 cert: SETTING_DATA_GRPC_TLS_CERT,
@@ -277,7 +292,7 @@ impl PlaneSettingKeys {
         grpc: PlaneEndpointKeys {
             enabled: SETTING_AUTHORITY_GRPC_ENABLED,
             addr: SETTING_AUTHORITY_GRPC_ADDR,
-            advertised_url: None,
+            advertised_url: Some(SETTING_AUTHORITY_GRPC_ADVERTISED_URL),
             tls: PlaneTlsKeys {
                 enabled: SETTING_AUTHORITY_GRPC_TLS_ENABLED,
                 cert: SETTING_AUTHORITY_GRPC_TLS_CERT,
@@ -303,8 +318,12 @@ impl PlaneSettingKeys {
         if let Some((enabled, directory)) = self.keys {
             settings.extend([enabled, directory]);
         }
-        // HTTP only: a discovery document publishes HTTP addresses.
-        if let Some(key) = self.http.advertised_url {
+        // Where each transport is reached: the documents' links, and the registry's
+        // `grpc_endpoint`.
+        for key in [self.http.advertised_url, self.grpc.advertised_url]
+            .into_iter()
+            .flatten()
+        {
             settings.push(key);
         }
         settings
@@ -421,6 +440,8 @@ pub(crate) fn authority_settings(value: &Value) -> Result<Vec<(String, String)>>
         #[serde(default)]
         url: Option<String>,
         #[serde(default)]
+        endpoint: Option<String>,
+        #[serde(default)]
         audience: Option<String>,
         #[serde(default)]
         tls: AuthorityTls,
@@ -436,6 +457,7 @@ pub(crate) fn authority_settings(value: &Value) -> Result<Vec<(String, String)>>
         serde_norway::from_value(value.clone()).context("parsing the authority section")?;
     Ok([
         (SETTING_AUTHORITY_URL, section.url),
+        (SETTING_AUTHORITY_ENDPOINT, section.endpoint),
         (SETTING_AUTHORITY_AUDIENCE, section.audience),
         (SETTING_AUTHORITY_TLS_CA, section.tls.ca),
     ]

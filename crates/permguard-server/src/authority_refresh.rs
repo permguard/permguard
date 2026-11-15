@@ -9,7 +9,8 @@
 //! | key set     | `<url>/authority/v1/keys` every 5 minutes, and when a token names an unknown `kid`, at most once a minute |
 //! | lists       | `<url>/authority/v1/status-lists`, then each list, every half of the shortest `ttl`, between 15 and 30 seconds |
 //! | verified    | every list a signed `statuslist+jwt`, checked under the held key set and the issuer before it is held |
-//! | transport   | HTTPS with the system's authorities and `authority.tls.ca`; HTTP only under `development`; no redirect; 5 s to connect, 15 s in all |
+//! | source      | `authority.endpoint`, else `authority.url`: REST at `https://`, `TokenService` over gRPC at `grpcs://` (owner decision of 2026-11-15), the same bounds on either |
+//! | transport   | TLS with the system's authorities and `authority.tls.ca`; in the clear only under `development`; no redirect; 5 s to connect, 15 s in all |
 //! | size        | a key set over 256 KiB, a list over 1 MiB, refused                                         |
 //! | failure     | counted, retried from 5 s, doubling up to the cadence; what is held serves until a list's `exp` |
 //! | reported    | every 15 s: `degraded: token-status` on the Host while a held list has expired, and the metrics below |
@@ -65,10 +66,18 @@ pub const LISTS_REFUSED: permguard_core::Metric = permguard_core::Metric::counte
     "Status list tokens this Host refused, by reason: signature, rollback, expired, size.",
 );
 
+/// The generated `permguard.authority.v1`: the `TokenService` client a Host fetches the keys and
+/// lists with over gRPC, and the server half its tests stand up.
+#[allow(clippy::all, clippy::pedantic, missing_docs)]
+pub mod authority_v1 {
+    tonic::include_proto!("permguard.authority.v1");
+}
+
 /// Where the Authority Plane is.
 #[derive(Debug, Clone)]
 pub struct Source {
-    /// `authority.url`, without a trailing slash.
+    /// `authority.endpoint`, else `authority.url`, without a trailing slash: `https://` or
+    /// `grpcs://`, and their clear forms under `development`.
     pub url: String,
     /// `authority.tls.ca`, beside the system's authorities.
     pub ca: Option<std::path::PathBuf>,
@@ -100,7 +109,7 @@ pub fn drive(
     source: Source,
     observing: Observing,
 ) -> anyhow::Result<Refreshing> {
-    let tls = connector(source.ca.as_deref()).map_err(anyhow::Error::msg)?;
+    let tls = Fetcher::of(&source).map_err(anyhow::Error::msg)?;
     let fetching = tokio::spawn(run(
         Arc::clone(&trust),
         source,
@@ -156,7 +165,7 @@ pub fn report(trust: &AuthorityTrust, observing: &Observing) {
 async fn run(
     trust: Arc<AuthorityTrust>,
     source: Source,
-    tls: tokio_rustls::TlsConnector,
+    tls: Fetcher,
     metrics: permguard_core::Metrics,
     time: Arc<permguard_host::time::TimeGuard>,
 ) {
@@ -205,14 +214,224 @@ async fn run(
     }
 }
 
-/// Fetches the key set and holds it.
-async fn fetch_keys(
-    trust: &AuthorityTrust,
+/// How the keys and lists are fetched: REST over HTTP(S), or the Authority Plane's `TokenService`
+/// over gRPC, the scheme of the source deciding (owner decision of 2026-11-15). Both keep the same
+/// rules: TLS under the system's authorities and `authority.tls.ca`, the clear only under
+/// `development`, the egress gate, the time and size bounds.
+pub enum Fetcher {
+    Rest(tokio_rustls::TlsConnector),
+    Grpc(tokio_rustls::TlsConnector),
+}
+
+impl Fetcher {
+    /// The fetcher `source`'s scheme names.
+    pub fn of(source: &Source) -> Result<Self, String> {
+        if source.url.starts_with("grpc://") || source.url.starts_with("grpcs://") {
+            // HTTP/2, negotiated by ALPN, as gRPC over TLS is.
+            Ok(Self::Grpc(connector(source.ca.as_deref(), &[b"h2"])?))
+        } else {
+            Ok(Self::Rest(connector(source.ca.as_deref(), &[])?))
+        }
+    }
+
+    /// Where a read is made, as a message says it.
+    fn at(&self, source: &Source, rest: &str, rpc: &str) -> String {
+        match self {
+            Self::Rest(_) => format!("{}{rest}", source.url),
+            Self::Grpc(_) => format!("{} TokenService/{rpc}", source.url),
+        }
+    }
+
+    /// The key set, as the JSON the Authority Plane publishes.
+    async fn keys(&self, source: &Source) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Rest(tls) => {
+                get(
+                    &format!("{}{KEYS_PATH}", source.url),
+                    tls,
+                    source.allow_http,
+                    MAX_DOCUMENT_BYTES,
+                )
+                .await
+            }
+            Self::Grpc(tls) => {
+                let answer = grpc(
+                    source,
+                    tls,
+                    MAX_DOCUMENT_BYTES,
+                    "GetKeys",
+                    |mut client| async move {
+                        client
+                            .get_keys(authority_v1::GetKeysRequest {})
+                            .await
+                            .map(|answer| answer.into_inner().jwks_json.into_bytes())
+                    },
+                )
+                .await?;
+                bounded(
+                    answer,
+                    MAX_DOCUMENT_BYTES,
+                    &self.at(source, KEYS_PATH, "GetKeys"),
+                )
+            }
+        }
+    }
+
+    /// The list index, as the JSON the Authority Plane publishes: `{"lists": [...]}`.
+    async fn index(&self, source: &Source) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Rest(tls) => {
+                get(
+                    &format!("{}{LISTS_PATH}", source.url),
+                    tls,
+                    source.allow_http,
+                    MAX_DOCUMENT_BYTES,
+                )
+                .await
+            }
+            Self::Grpc(tls) => {
+                let lists = grpc(
+                    source,
+                    tls,
+                    MAX_DOCUMENT_BYTES,
+                    "ListStatusLists",
+                    |mut client| async move {
+                        client
+                            .list_status_lists(authority_v1::ListStatusListsRequest {})
+                            .await
+                            .map(|answer| answer.into_inner().lists)
+                    },
+                )
+                .await?;
+                let document = serde_json::to_vec(&serde_json::json!({ "lists": lists }))
+                    .map_err(|error| error.to_string())?;
+                bounded(
+                    document,
+                    MAX_DOCUMENT_BYTES,
+                    &self.at(source, LISTS_PATH, "ListStatusLists"),
+                )
+            }
+        }
+    }
+
+    /// One list, the compact `statuslist+jwt`.
+    async fn list(&self, source: &Source, id: &str) -> Result<Vec<u8>, String> {
+        let max = permguard_host::authz::status_lists::MAX_LIST_TOKEN_BYTES;
+        match self {
+            Self::Rest(tls) => {
+                get(
+                    &format!("{}{LISTS_PATH}/{id}", source.url),
+                    tls,
+                    source.allow_http,
+                    max,
+                )
+                .await
+            }
+            Self::Grpc(tls) => {
+                let id = id.to_owned();
+                let token = grpc(source, tls, max, "GetStatusList", |mut client| async move {
+                    client
+                        .get_status_list(authority_v1::GetStatusListRequest { id })
+                        .await
+                        .map(|answer| answer.into_inner().token.into_bytes())
+                })
+                .await?;
+                bounded(token, max, &self.at(source, LISTS_PATH, "GetStatusList"))
+            }
+        }
+    }
+}
+
+/// `bytes`, refused when over `max`.
+fn bounded(bytes: Vec<u8>, max: usize, at: &str) -> Result<Vec<u8>, String> {
+    if bytes.len() > max {
+        return Err(format!(
+            "{at}: {} bytes, over the {max} allowed",
+            bytes.len()
+        ));
+    }
+    Ok(bytes)
+}
+
+/// One `TokenService` call over gRPC, bounded: TLS unless `allow_http`, the egress gate, the
+/// connection and the whole call within their limits, an answer of at most `max` bytes.
+async fn grpc<T, F, Fut>(
     source: &Source,
     tls: &tokio_rustls::TlsConnector,
-) -> Result<(), String> {
-    let url = format!("{}{KEYS_PATH}", source.url);
-    let document = get(&url, tls, source.allow_http, MAX_DOCUMENT_BYTES).await?;
+    max: usize,
+    rpc: &str,
+    call: F,
+) -> Result<T, String>
+where
+    F: FnOnce(
+        authority_v1::token_service_client::TokenServiceClient<tonic::transport::Channel>,
+    ) -> Fut,
+    Fut: std::future::Future<Output = Result<T, tonic::Status>>,
+{
+    let at = format!("{} TokenService/{rpc}", source.url);
+    permguard_core::authz::check_authority_endpoint(&source.url, source.allow_http)?;
+    permguard_core::egress::check(permguard_core::egress::Target::Authority)
+        .map_err(|refused| refused.to_string())?;
+    let (scheme, rest) = source
+        .url
+        .split_once("://")
+        .ok_or_else(|| format!("`{}` is not a URL", source.url))?;
+    let address = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let uri: http::Uri = format!("http://{address}")
+        .parse()
+        .map_err(|error| format!("`{}` is not a URL: {error}", source.url))?;
+    let secure = scheme == "grpcs";
+    let host = uri
+        .host()
+        .ok_or_else(|| format!("`{}` names no host", source.url))?
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_owned();
+    let port = uri.port_u16().unwrap_or(if secure { 443 } else { 80 });
+    let exchange = async {
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+            .map_err(|error| format!("`{}`: {error}", source.url))?
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(FETCH_TIMEOUT);
+        let channel = if secure {
+            let tls = tls.clone();
+            endpoint
+                .connect_with_connector(tower::service_fn(move |_: http::Uri| {
+                    let (tls, host) = (tls.clone(), host.clone());
+                    async move {
+                        let tcp = tokio::net::TcpStream::connect((host.as_str(), port)).await?;
+                        let name = rustls::pki_types::ServerName::try_from(host)
+                            .map_err(std::io::Error::other)?;
+                        let stream = tls.connect(name, tcp).await?;
+                        Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+                    }
+                }))
+                .await
+        } else {
+            endpoint.connect().await
+        }
+        .map_err(|error| format!("connecting to {}: {error}", source.url))?;
+        // The answer's bound, with room for the message's own framing.
+        let client = authority_v1::token_service_client::TokenServiceClient::new(channel)
+            .max_decoding_message_size(max + 1024);
+        call(client)
+            .await
+            .map_err(|status| format!("{at} answered {:?}: {}", status.code(), status.message()))
+    };
+    tokio::time::timeout(FETCH_TIMEOUT, exchange)
+        .await
+        .map_err(|_| {
+            format!(
+                "{at}: no complete answer within {}s",
+                FETCH_TIMEOUT.as_secs()
+            )
+        })?
+}
+
+/// Fetches the key set and holds it.
+async fn fetch_keys(trust: &AuthorityTrust, source: &Source, tls: &Fetcher) -> Result<(), String> {
+    let url = tls.at(source, KEYS_PATH, "GetKeys");
+    let document = tls.keys(source).await?;
     let jwks: serde_json::Value = serde_json::from_slice(&document)
         .map_err(|error| format!("the key set at {url} is not JSON: {error}"))?;
     let held = trust
@@ -232,11 +451,11 @@ async fn fetch_keys(
 async fn fetch_lists(
     trust: &AuthorityTrust,
     source: &Source,
-    tls: &tokio_rustls::TlsConnector,
+    tls: &Fetcher,
     now: u64,
 ) -> Result<Duration, String> {
-    let url = format!("{}{LISTS_PATH}", source.url);
-    let document = get(&url, tls, source.allow_http, MAX_DOCUMENT_BYTES).await?;
+    let url = tls.at(source, LISTS_PATH, "ListStatusLists");
+    let document = tls.index(source).await?;
     let index: serde_json::Value = serde_json::from_slice(&document)
         .map_err(|error| format!("the list index at {url} is not JSON: {error}"))?;
     let ids: Vec<String> = index
@@ -250,14 +469,8 @@ async fn fetch_lists(
         .collect();
     let mut shortest = LISTS_AT_MOST;
     for id in &ids {
-        let list_url = format!("{url}/{id}");
-        let token = get(
-            &list_url,
-            tls,
-            source.allow_http,
-            permguard_host::authz::status_lists::MAX_LIST_TOKEN_BYTES,
-        )
-        .await?;
+        let list_url = format!("{} {id}", tls.at(source, LISTS_PATH, "GetStatusList"));
+        let token = tls.list(source, id).await?;
         let token =
             String::from_utf8(token).map_err(|_| format!("the list at {list_url} is not text"))?;
         match trust.accept_list(token.trim(), now) {
@@ -298,7 +511,10 @@ fn is_list_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
-fn connector(ca: Option<&std::path::Path>) -> Result<tokio_rustls::TlsConnector, String> {
+fn connector(
+    ca: Option<&std::path::Path>,
+    alpn: &[&[u8]],
+) -> Result<tokio_rustls::TlsConnector, String> {
     let mut roots = rustls::RootCertStore::empty();
     for certificate in rustls_native_certs::load_native_certs().certs {
         let _ = roots.add(certificate);
@@ -322,6 +538,8 @@ fn connector(ca: Option<&std::path::Path>) -> Result<tokio_rustls::TlsConnector,
     .map_err(|error| format!("the TLS versions: {error}"))?
     .with_root_certificates(roots)
     .with_no_client_auth();
+    let mut config = config;
+    config.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
     Ok(tokio_rustls::TlsConnector::from(Arc::new(config)))
 }
 
@@ -555,7 +773,7 @@ mod tests {
             ca: Some(ca.clone()),
             allow_http: false,
         };
-        let tls = connector(Some(&ca)).expect("the connector");
+        let tls = Fetcher::of(&source).expect("the fetcher");
 
         let trust = Arc::new(AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE));
         assert!(trust.anchor().is_none(), "nothing held before the fetch");
@@ -617,14 +835,14 @@ mod tests {
         // Another authority: the handshake fails, whatever the server answers.
         let elsewhere = scratch("elsewhere");
         let (other, _) = pki(&elsewhere);
-        let untrusted = connector(Some(&other)).expect("the connector");
+        let untrusted = Fetcher::Rest(connector(Some(&other), &[]).expect("the connector"));
         let refused = fetch_keys(&trust, &https(""), &untrusted)
             .await
             .expect_err("an untrusted certificate");
         assert!(refused.contains("TLS handshake"), "{refused}");
 
         // A redirect is never followed.
-        let tls = connector(Some(&ca)).expect("the connector");
+        let tls = Fetcher::Rest(connector(Some(&ca), &[]).expect("the connector"));
         let refused = fetch_keys(&trust, &https("/moved"), &tls)
             .await
             .expect_err("a redirect");
@@ -638,6 +856,173 @@ mod tests {
         };
         assert!(fetch_keys(&trust, &clear, &tls).await.is_err());
         assert!(trust.anchor().is_none(), "nothing refused is held");
+        let _ = std::fs::remove_dir_all(&directory);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    /// The Authority Plane's `TokenService`, answering the three reads from `authority` and
+    /// refusing the rest, as a fake of what its gRPC listener serves.
+    struct Tokens(Arc<TestAuthority>);
+
+    type Answer<T> = Result<tonic::Response<T>, tonic::Status>;
+
+    #[tonic::async_trait]
+    impl authority_v1::token_service_server::TokenService for Tokens {
+        async fn get_metadata(
+            &self,
+            _: tonic::Request<authority_v1::GetMetadataRequest>,
+        ) -> Answer<authority_v1::GetMetadataResponse> {
+            Err(tonic::Status::unimplemented("not here"))
+        }
+
+        async fn issue_token(
+            &self,
+            _: tonic::Request<authority_v1::IssueTokenRequest>,
+        ) -> Answer<authority_v1::IssueTokenResponse> {
+            Err(tonic::Status::unimplemented("not here"))
+        }
+
+        async fn get_keys(
+            &self,
+            _: tonic::Request<authority_v1::GetKeysRequest>,
+        ) -> Answer<authority_v1::GetKeysResponse> {
+            Ok(tonic::Response::new(authority_v1::GetKeysResponse {
+                jwks_json: self.0.key_set().to_string(),
+            }))
+        }
+
+        async fn list_status_lists(
+            &self,
+            _: tonic::Request<authority_v1::ListStatusListsRequest>,
+        ) -> Answer<authority_v1::ListStatusListsResponse> {
+            Ok(tonic::Response::new(
+                authority_v1::ListStatusListsResponse {
+                    lists: vec![LIST_ID.to_owned()],
+                },
+            ))
+        }
+
+        async fn get_status_list(
+            &self,
+            request: tonic::Request<authority_v1::GetStatusListRequest>,
+        ) -> Answer<authority_v1::GetStatusListResponse> {
+            if request.get_ref().id != LIST_ID {
+                return Err(tonic::Status::not_found("no such list"));
+            }
+            Ok(tonic::Response::new(authority_v1::GetStatusListResponse {
+                token: self.0.list_token(),
+            }))
+        }
+
+        async fn list_tokens(
+            &self,
+            _: tonic::Request<authority_v1::ListTokensRequest>,
+        ) -> Answer<authority_v1::ListTokensResponse> {
+            Err(tonic::Status::unimplemented("not here"))
+        }
+
+        async fn revoke_token(
+            &self,
+            _: tonic::Request<authority_v1::RevokeTokenRequest>,
+        ) -> Answer<authority_v1::RevokeTokenResponse> {
+            Err(tonic::Status::unimplemented("not here"))
+        }
+    }
+
+    /// Serves `authority`'s `TokenService` over TLS with HTTP/2 on a loopback port, as the
+    /// Authority Plane's gRPC listener does.
+    fn serve_grpc(authority: Arc<TestAuthority>, config: Arc<rustls::ServerConfig>) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let port = listener.local_addr().expect("bound").port();
+        listener.set_nonblocking(true).expect("non-blocking");
+        let mut config = (*config).clone();
+        config.alpn_protocols = vec![b"h2".to_vec()];
+        let rustls = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(config));
+        let routes = tonic::service::Routes::new(
+            authority_v1::token_service_server::TokenServiceServer::new(Tokens(authority)),
+        )
+        .into_axum_router();
+        let server = axum_server::from_tcp_rustls(listener, rustls).expect("the TLS server");
+        tokio::spawn(server.serve(routes.into_make_service()));
+        port
+    }
+
+    /// Owner decision of 2026-11-15: the same keys and lists, the same verification and the same
+    /// revocation, fetched from the Authority Plane's `TokenService` over gRPC with TLS, under the
+    /// authority `authority.tls.ca` names; and in the clear only under `development`.
+    #[tokio::test]
+    async fn the_keys_and_the_lists_are_fetched_over_grpc_and_a_revocation_reaches_the_host() {
+        let directory = scratch("grpc");
+        let (ca, config) = pki(&directory);
+        let authority = Arc::new(TestAuthority::new());
+        let port = serve_grpc(Arc::clone(&authority), config);
+        let source = Source {
+            url: format!("grpcs://localhost:{port}"),
+            ca: Some(ca.clone()),
+            allow_http: false,
+        };
+        let tls = Fetcher::of(&source).expect("the fetcher");
+        assert!(matches!(tls, Fetcher::Grpc(_)));
+
+        let trust = Arc::new(AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE));
+        fetch_keys(&trust, &source, &tls)
+            .await
+            .expect("the key set over gRPC");
+        assert!(trust.anchor().is_some(), "the key set is held");
+        let cadence = fetch_lists(&trust, &source, &tls, permguard_core::time::unix_now())
+            .await
+            .expect("the lists over gRPC");
+        assert_eq!(cadence, LISTS_AT_LEAST);
+
+        let authenticator = TokenAuthenticator {
+            trust: Arc::clone(&trust) as Arc<dyn Trust>,
+            inner: Arc::new(permguard_host::authz::PrincipalMapper::empty()),
+            time: Arc::new(permguard_host::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
+        };
+        let (token, index) =
+            authority.token_with_index("billing", &[(&["decision.evaluate"], "plane/data/*")]);
+        assert!(matches!(
+            authenticator.authenticate(None, Some(&token)),
+            Ok(Actor::Authenticated(_))
+        ));
+        authority.revoke(index);
+        fetch_lists(&trust, &source, &tls, permguard_core::time::unix_now())
+            .await
+            .expect("the lists again");
+        assert!(
+            authenticator.authenticate(None, Some(&token)).is_err(),
+            "the revoked token is refused once the new list is held"
+        );
+
+        // Another authority: the handshake fails, and nothing more is held.
+        let elsewhere = scratch("grpc-elsewhere");
+        let (other, _) = pki(&elsewhere);
+        let untrusted = Source {
+            ca: Some(other),
+            ..source.clone()
+        };
+        let fresh = AuthorityTrust::in_memory(Some(ISSUER), DEFAULT_AUDIENCE);
+        let refused = fetch_keys(
+            &fresh,
+            &untrusted,
+            &Fetcher::of(&untrusted).expect("a fetcher"),
+        )
+        .await
+        .expect_err("an untrusted certificate");
+        assert!(refused.contains("connecting"), "{refused}");
+        assert!(fresh.anchor().is_none());
+        // In the clear, outside `development`: refused before anything is sent.
+        let clear = Source {
+            url: format!("grpc://localhost:{port}"),
+            ca: None,
+            allow_http: false,
+        };
+        let refused = fetch_keys(&fresh, &clear, &Fetcher::of(&clear).expect("a fetcher"))
+            .await
+            .expect_err("in the clear");
+        assert!(refused.contains("development"), "{refused}");
         let _ = std::fs::remove_dir_all(&directory);
         let _ = std::fs::remove_dir_all(&elsewhere);
     }

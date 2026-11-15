@@ -604,6 +604,127 @@ struct Chain {
     process: Stub,
     plane: Stub,
     _interfaces: Stub,
+    /// The data plane serving gRPC alone: `host:port`.
+    grpc: String,
+}
+
+/// A data plane serving gRPC alone (owner decision of 2026-11-15): its document, naming the PDP's
+/// interface, and the PDP's configuration, on an ephemeral port; the address it is reached at.
+fn grpc_data_plane() -> String {
+    use permguard_control_client::pdp_v1 as data;
+    use tonic::{Request, Response, Status};
+
+    struct Plane;
+
+    #[tonic::async_trait]
+    impl data::data_plane_server::DataPlane for Plane {
+        async fn get_info(
+            &self,
+            _: Request<data::GetInfoRequest>,
+        ) -> Result<Response<data::GetInfoResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+
+        async fn get_health(
+            &self,
+            _: Request<data::GetHealthRequest>,
+        ) -> Result<Response<data::GetHealthResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+
+        async fn get_server_configuration(
+            &self,
+            _: Request<data::GetServerConfigurationRequest>,
+        ) -> Result<Response<data::GetServerConfigurationResponse>, Status> {
+            Ok(Response::new(data::GetServerConfigurationResponse {
+                document_json: serde_json::json!({
+                    "plane": "data-plane",
+                    "state": "serving",
+                    "interfaces": {
+                        "permguard.api.pdp.native.v1": {
+                            "configuration": "http://unserved/.well-known/permguard-pdp-v1-configuration",
+                            "stage": "v1"
+                        }
+                    }
+                })
+                .to_string(),
+            }))
+        }
+
+        async fn get_keys(
+            &self,
+            _: Request<data::GetKeysRequest>,
+        ) -> Result<Response<data::GetKeysResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+
+        async fn get_streams(
+            &self,
+            _: Request<data::GetStreamsRequest>,
+        ) -> Result<Response<data::GetStreamsResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+    }
+
+    struct Pdp;
+
+    #[tonic::async_trait]
+    impl data::policy_decision_point_server::PolicyDecisionPoint for Pdp {
+        async fn evaluate(
+            &self,
+            _: Request<data::EvaluateRequest>,
+        ) -> Result<Response<data::EvaluateResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+
+        async fn evaluate_many(
+            &self,
+            _: Request<data::EvaluateRequest>,
+        ) -> Result<Response<data::EvaluateResponse>, Status> {
+            Err(Status::unimplemented("not here"))
+        }
+
+        async fn get_configuration(
+            &self,
+            _: Request<data::GetConfigurationRequest>,
+        ) -> Result<Response<data::GetConfigurationResponse>, Status> {
+            Ok(Response::new(data::GetConfigurationResponse {
+                r#interface: "permguard.api.pdp.native.v1".to_owned(),
+                version: "0.1.0".to_owned(),
+                component: "data-plane".to_owned(),
+                state: "serving".to_owned(),
+                stage: "v1".to_owned(),
+                limits: [("max_evaluations".to_owned(), 64)].into_iter().collect(),
+                ..data::GetConfigurationResponse::default()
+            }))
+        }
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let address = listener
+        .local_addr()
+        .expect("the address is known")
+        .to_string();
+    listener
+        .set_nonblocking(true)
+        .expect("the listener goes non-blocking for tokio");
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the server runtime starts");
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).expect("tokio adopts it");
+            let _ = tonic::transport::Server::builder()
+                .add_service(data::data_plane_server::DataPlaneServer::new(Plane))
+                .add_service(
+                    data::policy_decision_point_server::PolicyDecisionPointServer::new(Pdp),
+                )
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener))
+                .await;
+        });
+    });
+    address
 }
 
 fn chain() -> Chain {
@@ -649,6 +770,7 @@ fn chain() -> Chain {
         (200, plane_document.to_string()),
     );
     let plane = serve_owned(routes);
+    let grpc = grpc_data_plane();
     let process_document = serde_json::json!({
         "host_id": "01a00000-0000-7000-8000-000000000001",
         "state": "serving",
@@ -657,7 +779,7 @@ fn chain() -> Chain {
                 "state": "ready",
                 "server_configuration": format!("http://{}/.well-known/server-configuration", plane.address)
             },
-            "data-plane": {"state": "load", "grpc_endpoint": "grpc://127.0.0.1:7444"}
+            "data-plane": {"state": "load", "grpc_endpoint": format!("http://{grpc}")}
         }
     });
     let mut routes = HashMap::new();
@@ -672,6 +794,7 @@ fn chain() -> Chain {
         process: serve_owned(routes),
         plane,
         _interfaces: interfaces,
+        grpc,
     }
 }
 
@@ -702,11 +825,22 @@ fn discover_walks_the_chain_from_the_process_document() {
     assert_eq!(events["retired"], true);
     assert_eq!(events["sunset"], "2027-06-30T00:00:00Z");
     assert!(events.get("unreachable").is_none());
+    // A plane serving gRPC alone is followed over gRPC (owner decision of 2026-11-15): its own
+    // phase from its own document, and its interface's header from its configuration method.
     let data = &report["planes"][1];
     assert_eq!(
-        (data["state"].as_str(), data["grpc_endpoint"].as_str()),
-        (Some("load"), Some("grpc://127.0.0.1:7444"))
+        data["grpc_endpoint"].as_str(),
+        Some(format!("http://{}", chain.grpc).as_str())
     );
+    assert_eq!(data["over"], "grpc");
+    assert_eq!(
+        data["state"], "serving",
+        "the plane's own document, over gRPC"
+    );
+    let pdp = &data["interfaces"][0];
+    assert_eq!(pdp["id"], "permguard.api.pdp.native.v1");
+    assert_eq!(pdp["header"]["stage"], "v1");
+    assert_eq!(pdp["header"]["limits"]["max_evaluations"], 64);
     assert_eq!(report["complete"], true);
 
     let text = run(&dir, &["discover", &url]);

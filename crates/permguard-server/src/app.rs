@@ -1530,13 +1530,20 @@ impl App {
             .setting(crate::plane::SETTING_AUTHORITY_URL)
             .map(str::trim)
             .filter(|url| !url.is_empty());
+        let development = config.assurance().profile()
+            == permguard_core::assurance::AssuranceProfile::Development;
         if let Some(url) = issuer {
-            permguard_core::authz::check_service_url(
-                url,
-                config.assurance().profile()
-                    == permguard_core::assurance::AssuranceProfile::Development,
-            )
-            .map_err(|error| anyhow::anyhow!("authority.url: {error}"))?;
+            permguard_core::authz::check_service_url(url, development)
+                .map_err(|error| anyhow::anyhow!("authority.url: {error}"))?;
+        }
+        // Where the keys and lists are fetched, when not at the issuer: either transport.
+        if let Some(endpoint) = config
+            .setting(crate::plane::SETTING_AUTHORITY_ENDPOINT)
+            .map(str::trim)
+            .filter(|endpoint| !endpoint.is_empty())
+        {
+            permguard_core::authz::check_authority_endpoint(endpoint, development)
+                .map_err(|error| anyhow::anyhow!("authority.endpoint: {error}"))?;
         }
         let audience = config
             .setting(crate::plane::SETTING_AUTHORITY_AUDIENCE)
@@ -2588,16 +2595,24 @@ impl App {
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =
             crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
-        // The Authority Plane's key set and lists, fetched from `authority.url` off the request
-        // path, when the Authority Plane runs in another process (`2-security/8` Keys and lists on
-        // a Plane). Beside it, the Authority Plane hands them over in-process.
+        // The Authority Plane's key set and lists, fetched from `authority.endpoint`, else from
+        // `authority.url`, off the request path, when the Authority Plane runs in another process
+        // (`2-security/8` Keys and lists on a Plane), over the transport its scheme names. Beside
+        // it, the Authority Plane hands them over in-process.
         let _authority = (!authority_host)
             .then(|| {
-                config
-                    .setting(crate::plane::SETTING_AUTHORITY_URL)
-                    .map(str::trim)
-                    .filter(|url| !url.is_empty())
-                    .map(str::to_owned)
+                [
+                    crate::plane::SETTING_AUTHORITY_ENDPOINT,
+                    crate::plane::SETTING_AUTHORITY_URL,
+                ]
+                .into_iter()
+                .find_map(|setting| {
+                    config
+                        .setting(setting)
+                        .map(str::trim)
+                        .filter(|url| !url.is_empty())
+                        .map(|url| url.trim_end_matches('/').to_owned())
+                })
             })
             .flatten()
             .map(|url| {

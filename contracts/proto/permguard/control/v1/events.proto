@@ -141,6 +141,11 @@ message GetEventConfigurationResponse {
   optional string sunset = 11;
   // The interface's ceilings, by name; empty when it publishes none.
   map<string, uint64> limits = 12;
+  // The producer classes the plane accepts (owner decision of 2026-11-15: every member of the
+  // JSON document, over gRPC too).
+  repeated string producer_classes = 13;
+  // The filter names a read accepts.
+  repeated string filters = 14;
 }
 
 message ListRecordsRequest {

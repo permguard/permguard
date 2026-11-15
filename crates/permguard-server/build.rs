@@ -20,6 +20,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build_client(true)
         .build_server(true)
         .compile_protos(&protos, &["../../contracts/proto"])?;
+    // The Authority Plane's `TokenService`, whose keys and lists a Host fetches over gRPC when
+    // `authority.endpoint` names `grpcs://` (owner decision of 2026-11-15).
+    tonic_prost_build::configure()
+        .build_client(true)
+        .build_server(true)
+        .compile_protos(
+            &["../../contracts/proto/permguard/authority/v1/authority.proto"],
+            &["../../contracts/proto"],
+        )?;
+    println!("cargo:rerun-if-changed=../../contracts/proto/permguard/authority/v1/authority.proto");
     // The gRPC Health Checking Protocol's `Check`, which every Plane's gRPC surface answers.
     tonic_prost_build::configure()
         .build_client(true)

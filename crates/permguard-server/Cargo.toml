@@ -81,6 +81,9 @@ pkcs11 = ["dep:cryptoki"]
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+# The Authority Plane's `TokenService` the gRPC fetch is tested against, served over TLS as the
+# listeners serve it.
+axum-server.workspace = true
 permguard-host = { workspace = true, features = ["test-support"] }
 # `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
 tokio = { workspace = true, features = ["test-util"] }

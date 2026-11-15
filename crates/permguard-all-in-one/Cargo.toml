@@ -28,6 +28,10 @@ permguard-data-plane.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 
 [dev-dependencies]
+# Transport parity (owner decision of 2026-11-15): every plane's documents read through the client
+# library's facade, over REST and over gRPC.
+permguard-control-client.workspace = true
+zeroize.workspace = true
 # The baseline volume's recovery (WP-7.7): the example requests and answers read as JSON, and the
 # evaluation path the Data Plane serves them at.
 permguard-languages.workspace = true

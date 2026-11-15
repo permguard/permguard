@@ -17,7 +17,26 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Every plane's documents over either transport.**
+  The client library's `documents` facade reads a plane's own document, its health, its streams, its keys, the Authority Plane's status lists and each interface's configuration over REST or over gRPC, the scheme of one URL deciding; a document gRPC carries as JSON is the REST document itself, and the three configurations it carries as fields are mapped back member for member.
+  An all-in-one test proves it on the running binary: with both transports served every document of every plane is the same JSON over REST and over gRPC; with HTTP off every plane is found from the registry and read over gRPC with TLS, and a token issued by the Authority Plane over gRPC admits a catalog write over gRPC; with gRPC off every plane is read over REST.
+- **`authority.endpoint`: the Authority Plane's keys and lists fetched over gRPC.**
+  A Host verifying the tokens of an Authority Plane in another process fetches its key set and status lists from `authority.endpoint` when it is set, else from `authority.url` as before: `https://` for the REST routes, `grpcs://` for `TokenService/GetKeys`, `ListStatusLists` and `GetStatusList`, the clear forms under `development` only, the same TLS, egress, time and size bounds either way (`PERMGUARD_AUTHORITY_ENDPOINT`).
+  `authority.url` stays the issuer every token names, a name whichever transport serves the Authority Plane.
+- **`permguard discover` follows a plane served over gRPC alone.**
+  Its document is read by its plane's `GetServerConfiguration` and each interface by its configuration method, under the same TLS flags, the client certificate to the start address's host alone and the operator's token never; `over` says which transport a plane was read over.
+
+### Fixed
+
+- **The registry names a gRPC endpoint a client can dial.**
+  A plane's `grpc_endpoint` in `/.well-known/server-configuration` was its bind address, `0.0.0.0` inside a container, where its document's link already followed `advertised_url`.
+  It now follows the same rule: `public.grpc.advertised_url` when set (`PERMGUARD_<PLANE>_GRPC_ADVERTISED_URL`), else, on the HTTP listener's address, what that listener advertises, else where it binds; a gRPC bind nobody can dial is reported at start as an HTTP one is.
+- **The events interface's configuration over gRPC carries every member of its JSON document.**
+  `EventLog/GetEventConfiguration` gains `producer_classes` and `filters`, which the REST document published and the gRPC answer did not, as its contract promised.
+- **The contracts no longer call REST-only what gRPC serves.**
+  The notes of the data plane's document, the streams document and the decisions interface's configuration name the `GetServerConfiguration`, `GetStreams` and `DecisionLog/GetConfiguration` that carry them.
 
 ## [0.1.30] - 2026-11-15
 

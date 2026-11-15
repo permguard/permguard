@@ -184,6 +184,10 @@ runtime:
 # are handed over in-process; a Server without it fetches them from here.
 authority:
   url: "https://localhost:8443"
+  # Where the keys and status lists are fetched, when not at `url`, which stays the issuer every
+  # token names: `https://` for the REST routes, or `grpcs://` for the Authority Plane's
+  # `TokenService` over gRPC, as when its HTTP listener is off.
+  # endpoint: "grpcs://localhost:8443"
 
 # The Authority Plane: service accounts, their access keys and scopes, and the token endpoint.
 # Its first start makes `admin`, its access key and secret key in planes/authority/admin.key on

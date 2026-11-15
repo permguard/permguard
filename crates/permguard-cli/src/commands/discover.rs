@@ -37,12 +37,15 @@ pub fn discover_command(
     away.key_pem = None;
     let within = Duration::from_secs(timeout.max(1));
     // TLS is made ready whatever the first address: a link may lead to an HTTPS one.
+    let (home_tls, away_tls) = (home.clone(), away.clone());
     let home = Client::new(within, home, true).map_err(Failure::usage)?;
     let away = Client::new(within, away, true).map_err(Failure::usage)?;
     let report = crate::discover::discover(
         Clients {
             home: &home,
             away: &away,
+            home_tls: &home_tls,
+            away_tls: &away_tls,
         },
         url,
         trace,

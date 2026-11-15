@@ -875,6 +875,31 @@ pub fn check_service_url(url: &str, allow_http: bool) -> Result<(), String> {
         }
         _ => return Err(format!("`{url}` is neither https nor http")),
     }
+    check_service_rest(url, rest)
+}
+
+/// Checks where a Host fetches the Authority Plane's keys and lists from (`authority.endpoint`,
+/// owner decision of 2026-11-15): `https` or `grpcs`, or `http` and `grpc` where plain transport
+/// is allowed; a host; no credentials, no fragment. Answers why it is not one.
+pub fn check_authority_endpoint(url: &str, allow_plain: bool) -> Result<(), String> {
+    let (scheme, rest) = url
+        .split_once("://")
+        .ok_or_else(|| format!("`{url}` is not an absolute URL"))?;
+    match scheme {
+        "https" | "grpcs" => {}
+        "http" | "grpc" if allow_plain => {}
+        "http" | "grpc" => {
+            return Err(format!(
+                "`{url}` is in the clear, accepted only under the `development` profile"
+            ));
+        }
+        _ => return Err(format!("`{url}` is neither https, grpcs, http nor grpc")),
+    }
+    check_service_rest(url, rest)
+}
+
+/// What follows the scheme of a service URL: a host, no credentials, no fragment, no whitespace.
+fn check_service_rest(url: &str, rest: &str) -> Result<(), String> {
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     if authority.is_empty() {
         return Err(format!("`{url}` names no host"));
@@ -937,6 +962,32 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// Where the Authority Plane's keys and lists are fetched (owner decision of 2026-11-15): over
+    /// TLS on either transport, in the clear on either under `development` alone, and never a URL
+    /// that carries credentials or names no host; the issuer stays an HTTP(S) URL.
+    #[test]
+    fn the_authority_endpoint_takes_either_transport_and_the_issuer_stays_http() {
+        for url in ["https://authority:8443", "grpcs://authority:8443"] {
+            assert!(check_authority_endpoint(url, false).is_ok(), "{url}");
+        }
+        for url in ["http://127.0.0.1:8443", "grpc://127.0.0.1:8443"] {
+            assert!(check_authority_endpoint(url, true).is_ok(), "{url}");
+            let refused = check_authority_endpoint(url, false).expect_err("in the clear");
+            assert!(refused.contains("development"), "{refused}");
+        }
+        for url in [
+            "ftp://authority",
+            "authority:8443",
+            "grpcs://",
+            "grpcs://user:secret@authority:8443",
+            "grpcs://authority:8443#x",
+        ] {
+            assert!(check_authority_endpoint(url, true).is_err(), "{url}");
+        }
+        assert!(check_service_url("grpcs://authority:8443", true).is_err());
+        assert!(check_service_url("https://authority:8443", false).is_ok());
+    }
 
     /// WP-11.6, `2-security/6` Grant coherence: each operation fits the selectors that contain a
     /// resource it applies to, and no other.

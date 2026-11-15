@@ -18,8 +18,10 @@
 //!
 //! A link that does not answer is a line of the report and makes the exit `69`, unavailable, as an
 //! address that answers nothing does; an interface refused `interface_retired` is shown as
-//! retired, never as a failure. A plane served only over gRPC is listed by its endpoint, which
-//! this walk does not follow. A hostile document cannot hold the walk: at most [`MAX_PLANES`]
+//! retired, never as a failure. A plane served only over gRPC is followed over gRPC (owner
+//! decision of 2026-11-15): its document read by its plane's `GetServerConfiguration`, each
+//! interface by its own configuration method, under the same TLS flags, the client certificate to
+//! the start address's host alone. A hostile document cannot hold the walk: at most [`MAX_PLANES`]
 //! planes and [`MAX_INTERFACES`] interfaces per plane are followed, the rest counted, and an
 //! address already read in the walk is not read again.
 
@@ -31,7 +33,9 @@ use serde::{Deserialize, Serialize};
 use crate::output::{Report, printable};
 use crate::trace::Trace;
 use permguard_control_client::Endpoint;
+use permguard_control_client::documents::{self, Documents, Interface, Plane};
 use permguard_control_client::http::Client;
+use permguard_control_client::tls::TlsOptions;
 
 /// The well-known path every layer of the chain starts from.
 const WELL_KNOWN: &str = "/.well-known/server-configuration";
@@ -86,9 +90,12 @@ pub struct PlaneView {
     /// Where its document lives, when it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub configuration: Option<String>,
-    /// Its gRPC endpoint, when it serves gRPC; not followed.
+    /// Its gRPC endpoint, when it serves gRPC; followed when it serves gRPC alone.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub grpc_endpoint: Option<String>,
+    /// The transport its document was read over: `http`, or `grpc` for a plane serving gRPC alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub over: Option<&'static str>,
     /// Why its document could not be read, when it could not.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unreachable: Option<String>,
@@ -180,10 +187,24 @@ pub fn start_address(url: &str) -> Result<String, String> {
 }
 
 /// The two clients a walk uses: one presenting the operator's client certificate, for the start
-/// address's host, and one presenting nothing, for every other host a document names.
+/// address's host, and one presenting nothing, for every other host a document names; and the TLS
+/// options of each, for a plane followed over gRPC.
 pub struct Clients<'a> {
     pub home: &'a Client,
     pub away: &'a Client,
+    pub home_tls: &'a TlsOptions,
+    pub away_tls: &'a TlsOptions,
+}
+
+/// The gRPC URL of an endpoint the process document names, by the scheme its TLS decides.
+fn grpc_url(endpoint: &str) -> String {
+    if let Some(rest) = endpoint.strip_prefix("https://") {
+        format!("grpcs://{rest}")
+    } else if let Some(rest) = endpoint.strip_prefix("http://") {
+        format!("grpc://{rest}")
+    } else {
+        endpoint.to_owned()
+    }
 }
 
 /// A walk in progress.
@@ -236,6 +257,100 @@ impl Walk<'_> {
             .map(|(id, link)| self.interface(id, link))
             .collect();
         (views, surplus)
+    }
+
+    /// A plane serving gRPC alone, followed over gRPC: its document, then every interface it lists,
+    /// each by its configuration method.
+    fn follow_grpc(&mut self, name: &str, endpoint: &str, view: &mut PlaneView) {
+        let url = grpc_url(endpoint);
+        if !self.visited.insert(url.clone()) {
+            return;
+        }
+        let Some(plane) = Plane::of_name(name) else {
+            view.unreachable = Some(format!("`{name}` is not a plane read over gRPC"));
+            return;
+        };
+        let tls = if authority(endpoint) == Some(self.home.as_str()) {
+            self.clients.home_tls
+        } else {
+            self.clients.away_tls
+        };
+        self.trace.say(format!("gRPC {url} GetServerConfiguration"));
+        let read = match documents::client(
+            &url,
+            plane,
+            tls,
+            Box::new(permguard_control_client::narrate::Silent),
+        ) {
+            Ok(read) => read,
+            Err(why) => {
+                view.unreachable = Some(format!("`{url}`: {why}"));
+                return;
+            }
+        };
+        view.over = Some("grpc");
+        match read.configuration() {
+            Ok(document) => {
+                view.state = text(&document, "state").or(view.state.take());
+                let Some(listed) = document
+                    .get("interfaces")
+                    .and_then(serde_json::Value::as_object)
+                else {
+                    return;
+                };
+                view.not_followed = listed.len().saturating_sub(MAX_INTERFACES);
+                view.interfaces = listed
+                    .iter()
+                    .take(MAX_INTERFACES)
+                    .map(|(id, link)| self.interface_grpc(read.as_ref(), &url, id, link))
+                    .collect();
+            }
+            Err(failure) => {
+                view.unreachable = Some(format!("`{url}` did not answer: {}", failure.detail));
+            }
+        }
+    }
+
+    /// One interface of a plane followed over gRPC, read by its configuration method.
+    fn interface_grpc(
+        &mut self,
+        read: &(dyn Documents + Send + Sync),
+        url: &str,
+        id: &str,
+        link: &serde_json::Value,
+    ) -> InterfaceView {
+        let mut view = InterfaceView {
+            id: id.to_owned(),
+            configuration: text(link, "configuration").unwrap_or_default(),
+            stage: text(link, "stage"),
+            sunset: text(link, "sunset"),
+            header: None,
+            retired: false,
+            repeated: false,
+            unreachable: None,
+        };
+        let Some(interface) = Interface::of_id(id) else {
+            view.unreachable = Some(format!("no gRPC method reads the configuration of `{id}`"));
+            return view;
+        };
+        self.trace.say(format!("gRPC {url} {id}"));
+        match read.interface(interface) {
+            Ok(document) => match serde_json::from_value::<Header>(document) {
+                Ok(header) => view.header = Some(header),
+                Err(error) => {
+                    view.unreachable = Some(format!(
+                        "`{url}` answered `{id}` with something unreadable: {error}"
+                    ));
+                }
+            },
+            Err(failure) if failure.reason == permguard_core::codes::common::INTERFACE_RETIRED => {
+                view.retired = true;
+            }
+            Err(failure) => {
+                view.unreachable = Some(format!("`{url}` `{id}`: {}", failure.detail));
+            }
+        }
+        view
     }
 
     fn interface(&mut self, id: &str, link: &serde_json::Value) -> InterfaceView {
@@ -332,20 +447,24 @@ pub fn discover(
                 state: text(link, "state"),
                 configuration: text(link, "server_configuration"),
                 grpc_endpoint: text(link, "grpc_endpoint"),
+                over: None,
                 unreachable: None,
                 interfaces: Vec::new(),
                 not_followed: 0,
             };
-            if let Some(configuration) = view.configuration.clone()
-                && walk.visited.insert(configuration.clone())
-            {
-                match walk.document(&configuration) {
-                    Ok(plane) => {
-                        view.state = text(&plane, "state").or(view.state);
-                        (view.interfaces, view.not_followed) = walk.interfaces(&plane);
+            if let Some(configuration) = view.configuration.clone() {
+                if walk.visited.insert(configuration.clone()) {
+                    view.over = Some("http");
+                    match walk.document(&configuration) {
+                        Ok(plane) => {
+                            view.state = text(&plane, "state").or(view.state);
+                            (view.interfaces, view.not_followed) = walk.interfaces(&plane);
+                        }
+                        Err(why) => view.unreachable = Some(why),
                     }
-                    Err(why) => view.unreachable = Some(why),
                 }
+            } else if let Some(endpoint) = view.grpc_endpoint.clone() {
+                walk.follow_grpc(name, &endpoint, &mut view);
             }
             report.planes.push(view);
         }
@@ -356,6 +475,7 @@ pub fn discover(
             state: text(&root, "state"),
             configuration: Some(root_url),
             grpc_endpoint: None,
+            over: Some("http"),
             unreachable: None,
             interfaces,
             not_followed,
@@ -394,7 +514,12 @@ impl Report for DiscoverReport {
                 writeln!(out, "  state:    {}", printable(state))?;
             }
             if let Some(endpoint) = &plane.grpc_endpoint {
-                writeln!(out, "  grpc:     {} (not followed)", printable(endpoint))?;
+                let followed = if plane.over == Some("grpc") {
+                    "followed"
+                } else {
+                    "not followed: its document is read over HTTP"
+                };
+                writeln!(out, "  grpc:     {} ({followed})", printable(endpoint))?;
             }
             if let Some(why) = &plane.unreachable {
                 writeln!(out, "  unreachable: {}", printable(why))?;

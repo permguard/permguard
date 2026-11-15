@@ -2383,6 +2383,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "permguard-authority-plane",
+ "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
@@ -2391,6 +2392,7 @@ dependencies = [
  "permguard-server",
  "serde_json",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -2716,6 +2718,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "axum-server",
  "base64 0.23.1",
  "bytes",
  "clap",
