@@ -131,10 +131,12 @@ pub fn discovered_planes(config: &Config) -> Vec<DiscoveredPlane> {
     planes
 }
 
-/// The planes this process serves over gRPC alone: enabled, a gRPC address, no HTTP one.
+/// The planes this process serves over gRPC, with or without HTTP beside it: enabled, a gRPC
+/// address (owner decision of 2026-11-15: a client that speaks gRPC alone finds every plane here,
+/// as a client that speaks HTTP alone finds every plane's document).
 ///
 /// The endpoint's scheme follows its own TLS settings, like every published address here.
-fn grpc_only_planes(config: &Config) -> Vec<(&'static str, String)> {
+fn grpc_planes(config: &Config) -> Vec<(&'static str, String)> {
     const KNOWN: [&str; 3] = ["authority", "control", "data"];
 
     let mut planes = Vec::new();
@@ -145,9 +147,6 @@ fn grpc_only_planes(config: &Config) -> Vec<(&'static str, String)> {
         let Some(addresses) = addresses_for_plane(id) else {
             continue;
         };
-        if matches!(addresses.http.resolve(config), Ok(Some(_))) {
-            continue;
-        }
         let Ok(Some(addr)) = addresses.grpc.resolve(config) else {
             continue;
         };
@@ -449,15 +448,20 @@ pub fn server_configuration_document(
         })
         .collect();
 
-    // A plane serving only gRPC carries no well-known of its own, and omitting it entirely
-    // would make the registry claim the process hosts less than it does. It is listed by its
-    // endpoint instead, which is everything there is to say about it.
-    for (id, endpoint) in grpc_only_planes(config) {
-        planes.entry(id.to_owned()).or_insert(PlaneLink {
-            state: phase_of(id),
-            server_configuration: None,
-            grpc_endpoint: Some(endpoint),
-        });
+    // Every plane serving gRPC is listed with its endpoint, beside its document when it serves
+    // HTTP too: a client speaking one transport alone finds every plane. A plane serving only
+    // gRPC carries no well-known of its own, and omitting it would make the registry claim the
+    // process hosts less than it does: it is listed by its endpoint, which is everything there is
+    // to say about it.
+    for (id, endpoint) in grpc_planes(config) {
+        planes
+            .entry(id.to_owned())
+            .and_modify(|link| link.grpc_endpoint = Some(endpoint.clone()))
+            .or_insert_with(|| PlaneLink {
+                state: phase_of(id),
+                server_configuration: None,
+                grpc_endpoint: Some(endpoint),
+            });
     }
 
     let registry = ServerConfiguration {
@@ -502,11 +506,11 @@ pub fn server_configuration_document(
     serde_json::to_string(&registry).unwrap_or_else(|_| String::from("{\"planes\":{}}"))
 }
 
-/// Where one plane publishes its own document.
+/// Where one plane publishes its own document, and where it answers gRPC.
 ///
-/// A plane serving HTTP points at its own well-known; a plane serving only gRPC has no document
-/// to point at, so the registry names its gRPC endpoint instead — served but unlisted would be a
-/// plane the discovery contract lies about.
+/// A plane serving HTTP points at its own well-known; a plane serving gRPC names its endpoint,
+/// beside the document when it serves both (owner decision of 2026-11-15), alone when it serves
+/// gRPC only — served but unlisted would be a plane the discovery contract lies about.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PlaneLink {
     /// The plane's lifecycle phase, read when the document is answered (WP-7.4a).
@@ -1019,9 +1023,8 @@ mod document_tests {
     }
 
     #[test]
-    fn a_plane_with_http_is_listed_by_its_document_not_its_grpc_endpoint() {
-        // The plane's own well-known already names its transports; the registry points, never
-        // copies.
+    fn a_plane_serving_both_is_listed_by_its_document_and_its_grpc_endpoint() {
+        // A client speaking one transport alone finds every plane (owner decision of 2026-11-15).
         let config = config_with(&[
             (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
             (SETTING_DATA_GRPC_ADDR, "127.0.0.1:7444"),
@@ -1031,7 +1034,7 @@ mod document_tests {
             server_configuration_document(&config, &permguard_core::lifecycle::Lifecycle::new());
         assert!(
             registry.contains(
-                "\"data-plane\":{\"state\":\"bootstrap\",\"server_configuration\":\"http://127.0.0.1:7443/.well-known/server-configuration\"}"
+                "\"data-plane\":{\"state\":\"bootstrap\",\"server_configuration\":\"http://127.0.0.1:7443/.well-known/server-configuration\",\"grpc_endpoint\":\"http://127.0.0.1:7444\"}"
             ),
             "{registry}"
         );

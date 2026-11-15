@@ -86,7 +86,7 @@ pub struct PlaneView {
     /// Where its document lives, when it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub configuration: Option<String>,
-    /// Its gRPC endpoint, when it is served only over gRPC; not followed.
+    /// Its gRPC endpoint, when it serves gRPC; not followed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub grpc_endpoint: Option<String>,
     /// Why its document could not be read, when it could not.

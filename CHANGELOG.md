@@ -27,6 +27,12 @@ Nothing yet.
   A page of `GET /decisions/v1/zones/{zone}/ledgers/{ledger}/records` and of `GET /v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records` carries `members` beside its block: each Host id of the page that a membership of the server's Host names, a decision's `stream.id` or an event's `stream.producer.id`, to `{member_id, name}`, the id the coordinator bound to that Host id at its first approval and the member's name.
   `DecisionLog/Read` and `EventLog/ListRecords` carry the same as `members[] {host_id, member_id, name}`.
   The records are untouched, so what the producer signed is what a reader verifies.
+
+### Changed
+
+- **The process registry names every plane's gRPC endpoint.**
+  `GET /.well-known/server-configuration` on the Server Host listener lists, for each plane serving gRPC, its `grpc_endpoint` beside its `server_configuration` when it serves HTTP too; before, the endpoint was named only for a plane serving gRPC alone.
+  A client that speaks one transport alone finds every plane in the registry.
   `permguard decisions list` and `permguard events list` add `member` and `member_name` to each line, and the terminal says the name where it said the Host id.
 
 ## [0.1.29] - 2026-11-15

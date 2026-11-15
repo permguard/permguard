@@ -305,14 +305,14 @@
           },
           "grpc_endpoint": {
             "type": "string",
-            "description": "For a plane serving only gRPC, its endpoint instead."
+            "description": "Its gRPC endpoint, when it serves gRPC: the address it is reached at, the scheme its own TLS decides; beside `server_configuration` when it serves both transports, alone when it serves gRPC only."
           }
         },
         "required": [
           "state"
         ],
         "additionalProperties": false,
-        "description": "Where one plane publishes its own document; at least one member is present.",
+        "description": "Where one plane publishes its own document and where it answers gRPC; at least one member is present.",
         "x-grpc-message": null,
         "x-grpc-note": "Sub-object of the process registry, REST-only on the telemetry listener."
       },
