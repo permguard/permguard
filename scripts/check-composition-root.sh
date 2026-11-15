@@ -25,6 +25,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
+    "crates/permguard-data-plane/src/embedded.rs"
     "crates/permguard-cli/src/commands/host.rs"
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
@@ -123,9 +124,21 @@ PLANE_CRATES=(
 )
 HOST_ONLY='ServerContext|(^|[^A-Za-z_])Health([^A-Za-z_]|$)|(context|ctx|cx|server)\.keys\(\)|\.realms\(\)|(context|ctx|cx|server)\.audit\(\)|\.maintained_rings\(\)|\.with_plane_handles\(|\.with_maintained_ring\(|\.lifecycle\(\)|\.set_ready\(|\.set_live\('
 
+# The composition root of an embedded process (`11-refactoring`, Embedded public API and
+# lifecycle): it builds the Host's context for the Plane, as a server's entry point does, and is
+# the one file of a Plane package that may.
+PLANE_COMPOSITION_ROOTS=(
+    "crates/permguard-data-plane/src/embedded.rs"
+)
+
 plane_violations=""
 for crate in "${PLANE_CRATES[@]}"; do
     while IFS= read -r file; do
+        for root in "${PLANE_COMPOSITION_ROOTS[@]}"; do
+            if [ "${file#"${ROOT}"/}" = "${root}" ]; then
+                continue 2
+            fi
+        done
         found="$(
             {
                 awk "${NON_TEST_CODE}" "${file}" | grep -E "${HOST_ONLY}"

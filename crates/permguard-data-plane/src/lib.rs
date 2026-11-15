@@ -10,6 +10,7 @@
 pub mod authz;
 pub mod blocking;
 pub mod decisions;
+pub mod embedded;
 pub mod evaluation;
 pub mod handles;
 pub mod mirrors;

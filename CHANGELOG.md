@@ -17,6 +17,14 @@ is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **The Data Plane embedded in a Rust application.**
+  `permguard_data_plane::embedded` starts a Data Plane inside another process, with no Plane listener and on the application's own Tokio runtime: the application composes the Host, its identity, rings, streams, zone keys and the `policy.mirror` tasks it serves, and hands it to `DataPlane::builder(..).start()`.
+  The running Data Plane decides through the same pipeline both transports use, authorized on the exact ledger before any policy is read, records its decisions on the Host's streams, mirrors over the Host's tasks, and reports its readiness from the same lifecycle a server does.
+  `shutdown` drains every service before stopping it and returns what it could not finish; a runtime dropped without it stops its services without draining.
+  One process embeds one Data Plane, since the evaluation path and the decision log are composed once per process.
+
 ### Changed
 
 - **Each Plane's binary is built from its server package.**
