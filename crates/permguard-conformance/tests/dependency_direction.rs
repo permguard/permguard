@@ -18,6 +18,7 @@ const ABOVE_THE_HOST: &[&str] = &[
     "permguard-authority-plane",
     "permguard-authority-plane-server",
     "permguard-control-plane",
+    "permguard-control-plane-server",
     "permguard-data-plane",
     "permguard-data-plane-server",
     "permguard-all-in-one",
@@ -188,6 +189,24 @@ const LAYERS: &[(&str, &[&str])] = &[
     // The Data Plane's domain listens nowhere and composes no server (RD-2); the network client it
     // synchronizes and ships through still links tonic until the client surfaces split (phase 3).
     ("permguard-data-plane", SERVER_ONLY),
+    // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
+    // Plane is registered beside it by its server package.
+    ("permguard-control-plane", CONTROL_PLANE_DOMAIN),
+];
+
+/// What the Control Plane's domain may not reach: the server stack, and the Authority Plane its
+/// binary registers beside it.
+const CONTROL_PLANE_DOMAIN: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+    "permguard-authority-plane",
+    "permguard-authority-plane-server",
 ];
 
 #[test]

@@ -1,0 +1,70 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-control-plane-server"
+description = "The Permguard control plane served: its HTTP and gRPC routes, its module and its binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+# The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
+build = "build.rs"
+
+# The Control Plane, with the Authority Plane registered beside it: the binary the
+# `control-plane` image runs (`runtime.planes` selects which of them serve).
+[[bin]]
+name = "permguard-control-plane"
+path = "src/main.rs"
+# The binary documents nothing of its own, and its name is the domain library's.
+doc = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+# The Authority Plane, registered beside this one by the binary (`runtime.planes` selects it).
+permguard-authority-plane-server.workspace = true
+permguard-control-plane.workspace = true
+permguard-core.workspace = true
+permguard-decisions.workspace = true
+permguard-events.workspace = true
+permguard-host.workspace = true
+# The engines' panic guard, the first call of the binary.
+permguard-languages.workspace = true
+permguard-notp.workspace = true
+permguard-objects.workspace = true
+permguard-server.workspace = true
+permguard-stream.workspace = true
+# The actor a request carries, read where a route authorizes (WP-2.4).
+permguard-transport.workspace = true
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+tonic.workspace = true
+tonic-prost.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+# The client half of the catalog's REST/gRPC parity, driven against these routes.
+permguard-control-client.workspace = true
+# Transport parity, fault injection and the boundary registry, shared by every plane.
+permguard-conformance.workspace = true
+permguard-data-plane.workspace = true
+# The file catalog and the key manager the tests compose stores and signers with.
+permguard-std = { workspace = true, features = ["catalog", "keys"] }
+ring.workspace = true
+tower.workspace = true
+http.workspace = true
+# Reading a router's answer, for the discovery chain walked the way a client walks it.
+http-body-util.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true

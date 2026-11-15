@@ -1,7 +1,6 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::Context as _;
 use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tonic::service::RoutesBuilder;
@@ -9,13 +8,12 @@ use tonic::service::RoutesBuilder;
 use permguard_core::{PlaneContext, PlaneHealth};
 use permguard_server::plane::PlaneModule;
 
+use crate::{COMPONENT, PLANE};
+use permguard_control_plane::plane::events_served;
+
 use crate::api::PlaneApi;
-use crate::catalog::CatalogFacade;
 use crate::v1::control_plane_server::ControlPlaneServer;
 use crate::v1::zone_catalog_server::ZoneCatalogServer;
-
-pub(crate) const COMPONENT: &str = "control-plane";
-pub(crate) const PLANE: &str = "control";
 
 #[derive(Clone)]
 struct PlaneState {
@@ -29,10 +27,10 @@ struct PlaneState {
     /// Carried so `/health` can say *which* part of the plane is not ready. A plane whose event
     /// trust set is empty accepts no batch, and reporting that as process-wide not-ready would take
     /// its decisions and its catalog out of rotation over a capability neither of them uses.
-    events: Option<std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>>,
+    events: Option<std::sync::Arc<std::sync::Mutex<Option<crate::events::facade::EventFacade>>>>,
     /// The decision capability actually composed for this process, when configured.
     decisions:
-        Option<std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>>,
+        Option<std::sync::Arc<std::sync::Mutex<Option<crate::decisions::facade::DecisionFacade>>>>,
 }
 
 #[derive(Serialize)]
@@ -70,177 +68,14 @@ fn degraded(capability: &str, reason: &str) -> Degraded {
     }
 }
 
-/// A facade composed once per store directory, for every surface that serves it.
-///
-/// Successful composition is cached so every transport shares one set of write gates. A failed
-/// attempt is not: HTTP and gRPC are assembled one after the other, and a transient filesystem
-/// failure during the first must not permanently suppress the second. Disabled capabilities never
-/// call this helper in the first place.
-type Composed<T> = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Option<T>>>;
-
-/// The control plane, and the stores it composed.
-///
-/// # Why the stores live here and not in `routes()`
-///
-/// [`PlaneModule::http_routes`] and [`PlaneModule::grpc_routes`] are both called for the same
-/// plane — always, in the shipped single-port shape, where the two surfaces share one address.
-/// Building a store inside each meant *two* [`crate::events::EventStore`] values over one
-/// directory, and a store is not a stateless handle: it carries the per-stream write gate that
-/// makes ingest's read-check-append atomic. Two gate maps are two locks that do not see each
-/// other, so an HTTP batch and a gRPC batch for the same producer stream could interleave the
-/// sequence the gate exists to serialise — a corruption reachable from the default configuration
-/// and invisible to a test that exercises one transport at a time.
-///
-/// So the composition root is here: resolved once, keyed by the directory it opened, and handed to
-/// both surfaces.
+/// The control plane, served over the stores its domain composed.
 #[derive(Default)]
 pub struct ControlPlaneModule {
-    events: Composed<crate::events::http::EventFacade>,
-    event_store:
-        std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
-    /// The composed facade, shared with the service that re-reads the producers' published keys.
-    /// The trust set lives behind an `Arc` inside it, so what that service reloads is what
-    /// ingestion admits under.
-    event_trust: std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
-    decisions: Composed<crate::decisions::http::DecisionFacade>,
-    decision_state:
-        std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
-    /// The NOTP facade, composed once: REST, gRPC and the `policy.mirror` task share its stores,
-    /// so one gate serializes a ledger's compare-and-swap and its transfer sessions (WP-7.12).
-    notp: Composed<crate::notp::NotpFacade>,
-    /// Whether the `events.import` handler was offered to the Host, once (WP-6.2c1).
-    import: std::sync::OnceLock<()>,
+    composition: permguard_control_plane::plane::Composition,
 }
 
 pub fn module() -> Box<dyn PlaneModule> {
     Box::new(ControlPlaneModule::default())
-}
-
-/// Reads a composed facade, or builds and remembers it.
-fn composed<T: Clone>(
-    held: &Composed<T>,
-    directory: std::path::PathBuf,
-    build: impl FnOnce() -> Option<T>,
-) -> Option<T> {
-    let mut held = match held.lock() {
-        Ok(held) => held,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    if let Some(Some(known)) = held.get(&directory) {
-        return Some(known.clone());
-    }
-    let built = build();
-    match &built {
-        Some(built) => {
-            held.insert(directory, Some(built.clone()));
-        }
-        None => {
-            held.remove(&directory);
-        }
-    }
-
-    built
-}
-
-impl ControlPlaneModule {
-    /// Serves `events.import` from the Host's event consumer, once, when the Host routes task
-    /// sessions, consumes the event stream and composes this plane's signing ring (WP-6.2c1).
-    fn serve_import(&self, context: &PlaneContext<'_>) {
-        self.import.get_or_init(|| {
-            let (Some(registration), Some(consumer), Some(signer), Some(coordinator)) = (
-                crate::handles::registration(context),
-                crate::handles::event_consumer(context),
-                crate::handles::import_signer(context),
-                crate::handles::host_id(context),
-            ) else {
-                tracing::warn!(
-                    event.name = "events.import_unserved",
-                    component = COMPONENT,
-                    "the events.import task is not served: this Host routes no task sessions, \
-                     consumes no event stream or composes no control.attest ring"
-                );
-                return;
-            };
-            let origins = std::sync::Arc::clone(&registration);
-            let import = std::sync::Arc::new(crate::events::import::Import {
-                consumer,
-                origins: std::sync::Arc::new(move |resource| {
-                    origins
-                        .import_origins(resource)
-                        .unwrap_or_else(|| Ok(Default::default()))
-                }),
-                signer,
-                coordinator,
-            });
-            if let Err(error) = registration.serve_task(
-                permguard_host::membership::record::TaskType::EventsImport,
-                crate::events::import::VERSION,
-                import,
-            ) {
-                tracing::error!(
-                    event.name = "events.import_unserved",
-                    component = COMPONENT,
-                    error = %error,
-                    "the events.import task is not served by this plane"
-                );
-            }
-        });
-    }
-
-    /// The event store's facade, composed once and shared by both surfaces.
-    fn event_facade(&self, context: &PlaneContext<'_>) -> Option<crate::events::http::EventFacade> {
-        let config = context.config();
-        if !events_served(config) {
-            return None;
-        }
-        let directory = config.event_store_directory();
-
-        composed(&self.events, directory.clone(), || {
-            build_event_facade(context, &directory, &self.event_store, &self.event_trust)
-        })
-    }
-
-    /// The NOTP facade, composed once; its first composition serves the `policy.mirror` task.
-    fn notp_facade(&self, context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
-        let directory = context.config().zones_directory();
-        composed(&self.notp, directory, || {
-            let facade = notp_facade(context)?;
-            if let Some(registration) = crate::handles::registration(context) {
-                let mirror = std::sync::Arc::new(crate::notp::mirror::Mirror {
-                    facade: std::sync::Arc::new(facade.clone()),
-                });
-                if let Err(error) = registration.serve_task(
-                    permguard_host::membership::record::TaskType::PolicyMirror,
-                    crate::notp::mirror::VERSION,
-                    mirror,
-                ) {
-                    tracing::error!(
-                        event.name = "notp.mirror_unserved",
-                        component = COMPONENT,
-                        error = %error,
-                        "the policy.mirror task is not served by this plane"
-                    );
-                }
-            }
-            Some(facade)
-        })
-    }
-
-    /// The decision log's facade, composed the same way and for the same reason.
-    fn decision_facade(
-        &self,
-        context: &PlaneContext<'_>,
-    ) -> Option<crate::decisions::http::DecisionFacade> {
-        let config = context.config();
-        if !config.decision_store_enabled() {
-            return None;
-        }
-        let directory = config.working_dir().join(config.decision_store_directory());
-
-        composed(&self.decisions, directory.clone(), || {
-            build_decision_facade(context, &directory, &self.decision_state)
-        })
-    }
 }
 
 impl PlaneModule for ControlPlaneModule {
@@ -263,84 +98,30 @@ impl PlaneModule for ControlPlaneModule {
         &self,
         _config: &permguard_core::Config,
     ) -> permguard_host::composition::Declaration {
-        crate::handles::declaration()
+        permguard_control_plane::plane::declaration()
     }
 
     fn verified_trees(&self) -> Vec<permguard_server::VerifiedTree> {
-        // `Config::zones_directory`, relative to the volume root: every ledger's objects.
-        vec![(
-            std::path::Path::new("data").join("zones"),
-            std::sync::Arc::new(crate::store::object_check),
-        )]
+        permguard_control_plane::plane::verified_trees()
     }
 
     fn services(&self) -> Vec<Box<dyn permguard_core::PlaneTask>> {
-        vec![
-            Box::new(crate::inventory::InventoryService::new()),
-            // What startup does not read: a sample of the objects, checked in the background.
-            Box::new(crate::verify::VerifyService::new()),
-            Box::new(crate::gc::GcService::new()),
-            Box::new(crate::decisions::retention::RetentionService::new()),
-            // The event store's own sweep. Registered beside the decision store's rather than
-            // relying on it: they are two stores with two windows, and the event one held a
-            // `sweep` nothing ever called.
-            Box::new(
-                crate::events::retention::EventRetentionService::new()
-                    .with_store(std::sync::Arc::clone(&self.event_store)),
-            ),
-        ]
+        permguard_control_plane::plane::services(&self.composition)
     }
 
     fn streams(&self, config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
-        let mut streams = Vec::new();
-
-        // Declared whether or not the deployment turned them on: "not here" and "here, turned
-        // off" are different answers, and discovery serves the second one too. Only enabled
-        // streams own their directories.
-
-        // The decision store: what the data planes ship, kept and served. The directory predates
-        // the versioned layout and stays where recorded evidence already is.
-        if let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "decisions") {
-            streams.push(permguard_stream::StreamDescriptor {
-                identity,
-                role: permguard_stream::Role::Consumer,
-                record_type: permguard_core::domains::record::DECISION_V1.to_owned(),
-                directory: config.working_dir().join(config.decision_store_directory()),
-                legacy: true,
-                enabled: config.decision_store_enabled(),
-            });
-        }
-
-        // The event store, likewise. Its default directory nests under the root the data plane
-        // journals in — the exact fragility the registry names at startup on an all-in-one.
-        if let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "events") {
-            streams.push(permguard_stream::StreamDescriptor {
-                identity,
-                role: permguard_stream::Role::Consumer,
-                record_type: permguard_events::RECORD_TYPE.to_owned(),
-                directory: config.event_store_directory(),
-                legacy: true,
-                enabled: events_served(config),
-            });
-        }
-
-        streams
+        permguard_control_plane::plane::streams(config)
     }
 
     fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
-        // The languages this binary carries, before anything is ingested against them (LANG-12).
-        permguard_languages::registry::check_registry().map_err(|collision| {
-            anyhow::anyhow!("this build's language catalogue is inconsistent: {collision}")
-        })?;
-        events_startup_check(config)?;
-        decisions_startup_check(config)
+        permguard_control_plane::plane::startup_check(config)
     }
 
     fn http_routes(&self, context: &PlaneContext<'_>) -> Router {
-        self.serve_import(context);
+        self.composition.serve_import(context);
         let state = plane_state(context)
-            .serving_events(&self.event_trust, context.config())
-            .serving_decisions(&self.decision_state, context.config());
+            .serving_events(self.composition.event_trust(), context.config())
+            .serving_decisions(self.composition.decision_state(), context.config());
 
         let routes = Router::new()
             .route("/", get(info))
@@ -353,19 +134,8 @@ impl PlaneModule for ControlPlaneModule {
 
         // The catalog is optional in the contract and composed by every shipped binary; a build
         // that leaves it out simply has no zone routes, rather than routes that answer 500.
-        let routes = match context.catalog() {
-            Some(catalog) => {
-                let facade = CatalogFacade {
-                    catalog: std::sync::Arc::clone(catalog),
-                    recorder: crate::handles::audit(context),
-                    disclosure: context.config().error_detail(),
-                    audit_refusals: context.config().audit_refusals(),
-                    metrics: context.metrics().clone(),
-                    authorization: crate::handles::authorization(context),
-                    host: crate::handles::registration(context),
-                    mutations: catalog_mutations(context, catalog),
-                    exports: exports_of(context),
-                };
+        let routes = match permguard_control_plane::plane::catalog_facade(context) {
+            Some(facade) => {
                 // The holdings gauges start truthful, not at zero.
                 facade.refresh_holdings();
                 routes.merge(crate::catalog::http::routes(facade))
@@ -376,7 +146,7 @@ impl PlaneModule for ControlPlaneModule {
         // NOTP needs both the catalog (to resolve ledgers) and the git-like
         // signing ring (every served head is attested). Fail-closed: a build
         // missing either simply has no ledger-content routes.
-        let routes = match self.notp_facade(context) {
+        let routes = match self.composition.notp_facade(context) {
             Some(facade) => routes.merge(crate::notp::http::routes(facade)),
             None => routes,
         };
@@ -385,30 +155,30 @@ impl PlaneModule for ControlPlaneModule {
         // everything else here: a plane with no signing ring cannot verify a
         // producer's batches, so it simply has no decision routes rather than
         // routes that accept what nobody checked.
-        let routes = match self.decision_facade(context) {
+        let routes = match self.composition.decision_facade(context) {
             Some(facade) => routes.merge(crate::decisions::http::routes(facade)),
             None => routes,
         };
         // The event store, when this deployment receives one. Merged rather than always mounted:
         // a plane that keeps no events must answer `404` for a submission route, not accept one
         // and then fail — a `404` says "not here" and a broken route says "here, and broken".
-        let routes = match self.event_facade(context) {
+        let routes = match self.composition.event_facade(context) {
             Some(facade) => routes.merge(crate::events::http::routes(facade)),
             None => routes,
         };
 
         routes.merge(discovery_routes(
             context,
-            self.event_facade(context).is_some(),
-            self.decision_facade(context).is_some(),
+            self.composition.event_facade(context).is_some(),
+            self.composition.decision_facade(context).is_some(),
         ))
     }
 
     fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
-        self.serve_import(context);
+        self.composition.serve_import(context);
         let state = plane_state(context)
-            .serving_events(&self.event_trust, context.config())
-            .serving_decisions(&self.decision_state, context.config());
+            .serving_events(self.composition.event_trust(), context.config())
+            .serving_decisions(self.composition.decision_state(), context.config());
         let mut grpc = RoutesBuilder::default();
         // The gRPC Health Checking Protocol, beside the plane's own services.
         grpc.add_service(permguard_server::plane::health::service(context));
@@ -420,24 +190,14 @@ impl PlaneModule for ControlPlaneModule {
             health: state.health,
             rest: control_configuration_document(
                 context,
-                self.event_facade(context).is_some(),
-                self.decision_facade(context).is_some(),
+                self.composition.event_facade(context).is_some(),
+                self.composition.decision_facade(context).is_some(),
             ),
             streams: permguard_server::plane::streams_document(&self.streams(context.config())),
         }));
 
-        if let Some(catalog) = context.catalog() {
-            grpc.add_service(ZoneCatalogServer::new(CatalogFacade {
-                catalog: std::sync::Arc::clone(catalog),
-                recorder: crate::handles::audit(context),
-                disclosure: context.config().error_detail(),
-                audit_refusals: context.config().audit_refusals(),
-                metrics: context.metrics().clone(),
-                authorization: crate::handles::authorization(context),
-                host: crate::handles::registration(context),
-                mutations: catalog_mutations(context, catalog),
-                exports: exports_of(context),
-            }));
+        if let Some(facade) = permguard_control_plane::plane::catalog_facade(context) {
+            grpc.add_service(ZoneCatalogServer::new(facade));
         }
 
         // The codec ceiling matches what this plane's own protocols advertise:
@@ -446,8 +206,9 @@ impl PlaneModule for ControlPlaneModule {
         // invited. The transport's body limit (see [`Self::limits`]) is raised
         // to the same line, so the three layers agree instead of the lowest
         // one silently winning.
-        let message_ceiling = grpc_message_ceiling(context.config());
-        if let Some(facade) = self.notp_facade(context) {
+        let message_ceiling =
+            permguard_control_plane::plane::grpc_message_ceiling(context.config());
+        if let Some(facade) = self.composition.notp_facade(context) {
             grpc.add_service(
                 crate::v1::git_like_store_server::GitLikeStoreServer::new(facade)
                     .max_decoding_message_size(message_ceiling),
@@ -456,14 +217,14 @@ impl PlaneModule for ControlPlaneModule {
 
         // The decision log, on the other transport: the same contract, the
         // same code behind it, so neither surface can drift from the other.
-        if let Some(facade) = self.decision_facade(context) {
+        if let Some(facade) = self.composition.decision_facade(context) {
             grpc.add_service(
                 crate::v1::decision_log_server::DecisionLogServer::new(facade)
                     .max_decoding_message_size(message_ceiling),
             );
         }
         // The same contract as the HTTP surface, over the same facade.
-        if let Some(facade) = self.event_facade(context) {
+        if let Some(facade) = self.composition.event_facade(context) {
             grpc.add_service(
                 crate::v1::event_log_server::EventLogServer::new(facade)
                     .max_decoding_message_size(message_ceiling),
@@ -485,26 +246,13 @@ impl PlaneModule for ControlPlaneModule {
     /// it.
     fn limits(&self, config: &permguard_core::Config) -> permguard_core::Limits {
         let limits = config.limits().clone();
-        let floor = body_floor(config);
+        let floor = permguard_control_plane::plane::body_floor(config);
         if limits.body_bytes() >= floor {
             return limits;
         }
 
         limits.with_body_bytes(floor)
     }
-}
-
-/// The smallest body ceiling under which every negotiated NOTP batch fits,
-/// with headroom for the request's own framing.
-fn body_floor(config: &permguard_core::Config) -> usize {
-    let batch = usize::try_from(config.notp_max_batch_bytes()).unwrap_or(usize::MAX);
-
-    batch.saturating_add(64 * 1024)
-}
-
-/// The gRPC codec ceiling: the same line the body limit holds.
-fn grpc_message_ceiling(config: &permguard_core::Config) -> usize {
-    body_floor(config).max(config.limits().body_bytes())
 }
 
 /// The service-config pattern on this plane's own port: the well-known
@@ -663,16 +411,6 @@ fn control_configuration_document(
     )
 }
 
-/// The catalog's mutation transaction (WP-7.3a), the operations a crash left open resolved
-/// before the catalog takes a change: `None`, and every change refused `unavailable`, when the
-/// Host composes none or the recovery fails.
-fn catalog_mutations(
-    context: &PlaneContext<'_>,
-    catalog: &std::sync::Arc<dyn permguard_core::catalog::Catalog>,
-) -> Option<permguard_host::composition::MutationHandle> {
-    crate::catalog::recovered(crate::handles::catalog_mutations(context)?, catalog)
-}
-
 /// The interfaces this plane serves, as the second layer of the discovery chain.
 ///
 /// Listed only when they are actually served. A discovery document is a promise about what answers
@@ -729,333 +467,6 @@ fn transport_enabled(context: &PlaneContext<'_>, setting: &str) -> bool {
         .unwrap_or(true)
 }
 
-/// Assembles the NOTP facade, when this build composes everything it needs:
-/// the catalog to resolve ledgers, and the git-like signing ring — never the
-/// audit ring — to attest every served head.
-/// The decision-log routes, when the deployment keeps a decision log.
-/// Whether this deployment serves the event store at all.
-///
-/// # Two switches, not one
-///
-/// `controlPlane.events.enabled` is the operator's: *this plane receives and keeps other planes'
-/// event history*. `experimental.dogwood.enabled` is a different statement: *this deployment
-/// accepts a contract whose shape is not yet stable*. The records this store holds and the API
-/// family that reads them are that contract, so it is served only where both have been said —
-/// matching the data plane's own gate, so a deployment cannot have a producer that ships and a
-/// receiver that does not, or the reverse, from one switch.
-fn events_served(config: &permguard_core::Config) -> bool {
-    config.event_store_enabled() && config.experimental_dogwood()
-}
-
-/// What this plane requires before it binds anything.
-///
-/// Said one of the two things and not the other is refused rather than quietly served as nothing:
-/// an operator who turned on an event store and finds nothing answering has a plane that looks
-/// configured and is not, and nothing in its logs to say which switch it is missing.
-fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
-    // Every `experimental.<name>` this deployment wrote down must name a runtime this build
-    // actually gates, or the operator has enabled nothing while believing otherwise.
-    permguard_languages::registry::check_opted_in(config.experimental_named())
-        .map_err(|error| anyhow::anyhow!(error))?;
-
-    if config.event_store_enabled() && !config.experimental_dogwood() {
-        anyhow::bail!(
-            "`controlPlane.events.enabled` is true and `experimental.dogwood.enabled` is not. The \
-             event store holds records whose shape is not yet stable, and is served only where a \
-             deployment has accepted that: set `experimental.dogwood.enabled: true` to serve it, \
-             or `controlPlane.events.enabled: false` if this plane should not receive events"
-        );
-    }
-    // Retired (WP-6.2b, owner decision of 2026-10-18): events arrive over the Host's
-    // `events.ship`, and the ingest route trusts only the ring of the plane sharing this process
-    // for its legacy journals. A configuration still naming key files is refused, so no
-    // deployment believes they are in force.
-    if config.event_producer_keys_declared() {
-        anyhow::bail!(
-            "`controlPlane.events.producer_keys` is retired: events arrive over the Host's \
-             `events.ship`, verified under the memberships' pinned rings. Remove it"
-        );
-    }
-
-    Ok(())
-}
-
-/// A configured decision store is a startup requirement, not an optional
-/// route that may disappear behind a ready health endpoint.
-fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
-    // Retired (iteration 02, WP-10.4): decisions arrive over the Host's `decisions.ship`, verified
-    // under the membership's pinned rings; no batch is accepted over a public route and no key
-    // file is read. A configuration still naming one is refused, the store on or off, so no
-    // deployment believes it is in force.
-    if !config.decision_producer_keys().is_empty() {
-        anyhow::bail!(
-            "`controlPlane.decisions.producer_keys` is retired: decisions arrive over the Host's \
-             `decisions.ship`, from the members of this plane's Host, verified under their \
-             memberships' pinned rings. Remove it"
-        );
-    }
-    if !config.decision_store_enabled() {
-        return Ok(());
-    }
-
-    let directory = config.working_dir().join(config.decision_store_directory());
-    // Open and drop as a preflight. The facade composed after startup owns the
-    // actual per-stream gates; this pass establishes that the configured path
-    // and its durable cursor key are usable before any listener reports ready.
-    crate::decisions::DecisionStore::open(&directory).with_context(|| {
-        format!(
-            "opening the configured decision store at {}",
-            directory.display()
-        )
-    })?;
-    crate::decisions::cursorkey::load_root(&directory).with_context(|| {
-        format!(
-            "loading the decision store cursor key at {}",
-            directory.display()
-        )
-    })?;
-
-    Ok(())
-}
-
-/// The event store's facade, when this deployment receives events.
-///
-/// Built the same way the decision store's is, and for the same reasons: the producers' published
-/// keys come from files rather than from dialling back, the offset key lives beside the store it
-/// issues positions into, and a store that cannot be opened means the surface is not served rather
-/// than served badly.
-fn build_event_facade(
-    context: &PlaneContext<'_>,
-    directory: &std::path::Path,
-    shared: &std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
-    facades: &std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
-) -> Option<crate::events::http::EventFacade> {
-    let config = context.config();
-    let store = match crate::events::EventStore::open(directory) {
-        Ok(store) => std::sync::Arc::new(store),
-        Err(error) => {
-            tracing::error!(
-                event.name = "events.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the event store is configured and could not be opened"
-            );
-            return None;
-        }
-    };
-    let cursor_key = match crate::handles::host_id(context)
-        .ok_or_else(|| {
-            anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
-        })
-        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "events"))
-        .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
-    {
-        Ok(key) => key,
-        Err(error) => {
-            tracing::error!(
-                event.name = "events.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the event store is configured and its read offsets cannot be signed: refusing to \
-                 serve offsets a consumer could edit"
-            );
-            return None;
-        }
-    };
-
-    let facade = crate::events::http::EventFacade {
-        catalog: context.catalog().map(std::sync::Arc::clone),
-        store,
-        host: crate::handles::event_consumer(context),
-        cursor_key,
-        disclosure: config.error_detail(),
-        metrics: context.metrics().clone(),
-        base_url: permguard_server::plane::plane_http_base(
-            config,
-            permguard_server::plane::PlaneId::Control,
-        )
-        .unwrap_or_default(),
-        describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
-        authorization: crate::handles::authorization(context),
-        members: crate::handles::member_names(
-            context,
-            permguard_host::membership::record::TaskType::EventsShip,
-        ),
-    };
-    if let Ok(mut held) = shared.lock() {
-        *held = Some(std::sync::Arc::clone(&facade.store));
-    }
-    if let Ok(mut held) = facades.lock() {
-        *held = Some(facade.clone());
-    }
-
-    Some(facade)
-}
-
-fn build_decision_facade(
-    context: &PlaneContext<'_>,
-    directory: &std::path::Path,
-    shared: &std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
-) -> Option<crate::decisions::http::DecisionFacade> {
-    let config = context.config();
-    let store = match crate::decisions::DecisionStore::open(directory) {
-        Ok(store) => std::sync::Arc::new(store),
-        Err(error) => {
-            tracing::error!(
-                event.name = "decisions.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the decision log is configured but its store could not be opened"
-            );
-            return None;
-        }
-    };
-
-    // The offset signing key lives beside the store it issues positions into, and is created on
-    // first use. A store that cannot hold one cannot issue a resumable offset, so the decision log
-    // is not served at all rather than served with offsets a consumer could edit.
-    let cursor_key = match crate::handles::host_id(context)
-        .ok_or_else(|| {
-            anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
-        })
-        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "decisions"))
-        .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
-    {
-        Ok(key) => key,
-        Err(error) => {
-            tracing::error!(
-                event.name = "decisions.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the decision log is configured and its read offsets cannot be signed: refusing to \
-                 serve offsets a consumer could edit"
-            );
-            return None;
-        }
-    };
-
-    let facade = crate::decisions::http::DecisionFacade {
-        store,
-        ceiling: config.decision_ceiling(),
-        cursor_key,
-        disclosure: config.error_detail(),
-        metrics: context.metrics().clone(),
-        host: crate::handles::decision_consumer(context),
-        catalog: context.catalog().map(std::sync::Arc::clone),
-        base_url: permguard_server::plane::plane_http_base(
-            config,
-            permguard_server::plane::PlaneId::Control,
-        )
-        .unwrap_or_default(),
-        describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
-        authorization: crate::handles::authorization(context),
-        members: crate::handles::member_names(
-            context,
-            permguard_host::membership::record::TaskType::DecisionsShip,
-        ),
-    };
-    if let Ok(mut held) = shared.lock() {
-        *held = Some(facade.clone());
-    }
-
-    Some(facade)
-}
-
-/// What exports a zone or a ledger (WP-7.10): `None` without the Host's `host.operations` signer
-/// or a Host identity to name as the source authority.
-fn exports_of(
-    context: &PlaneContext<'_>,
-) -> Option<std::sync::Arc<crate::catalog::exports::Exports>> {
-    let signer = crate::handles::export_signer(context)?;
-    let authority = crate::handles::host_id(context)?;
-    let config = context.config();
-    // The archive travels base64url in a JSON body and as bytes in a gRPC message: three quarters
-    // of the ceiling both share.
-    let max_bytes = grpc_message_ceiling(config) / 4 * 3;
-    Some(std::sync::Arc::new(crate::catalog::exports::Exports::new(
-        config.zones_directory(),
-        signer,
-        authority,
-        max_bytes,
-    )))
-}
-
-fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
-    let catalog = context.catalog()?;
-    let Some(keys) = crate::handles::head_signer(context) else {
-        tracing::warn!(
-            event.name = "notp.disabled",
-            component = COMPONENT,
-            "the git-like store is not served: no signing ring is composed (controlPlane.keys)"
-        );
-        return None;
-    };
-    // Every head statement names the Host that signs it (WP-7.1): without a `host_id` there is
-    // no authority to name, and the store is not served.
-    let Some(authority) = crate::handles::host_id(context) else {
-        tracing::warn!(
-            event.name = "notp.disabled",
-            component = COMPONENT,
-            "the git-like store is not served: no Host identity names the signing authority"
-        );
-        return None;
-    };
-    let config = context.config();
-    // Every ref update runs in the Host's mutation transaction (WP-3.6): without one the store is
-    // not served, and the operations a crash left open are resolved before it is.
-    let Some(mutations) = crate::handles::ref_mutations(context) else {
-        tracing::warn!(
-            event.name = "notp.disabled",
-            component = COMPONENT,
-            "the git-like store is not served: the Host composes no mutation transaction"
-        );
-        return None;
-    };
-    let domain = crate::store::RefDomain {
-        zones_root: config.zones_directory(),
-    };
-    if let Err(error) = mutations.recover(&domain) {
-        tracing::error!(
-            event.name = "notp.disabled",
-            component = COMPONENT,
-            error = %error,
-            "the git-like store is not served: the ref updates a crash left open could not be \
-             resolved"
-        );
-        return None;
-    }
-
-    Some(crate::notp::NotpFacade::new(
-        std::sync::Arc::clone(catalog),
-        config.zones_directory(),
-        keys,
-        authority,
-        crate::engine::EngineLimits {
-            max_batch_bytes: config.notp_max_batch_bytes(),
-            max_batch_objects: config.notp_max_batch_objects(),
-            max_push_objects: config.notp_max_push_objects(),
-            max_push_bytes: config.notp_max_push_bytes(),
-            ledger_quota_bytes: config.notp_ledger_quota_bytes(),
-        },
-        crate::engine::TransferPolicy {
-            ttl: config.notp_transfer_ttl(),
-            grace: config.gc_grace(),
-        },
-        mutations,
-        crate::handles::registration(context).and_then(|registration| registration.hints()),
-        // The ingest gate reads the deployment's opt-ins, not the build's: a plane that has not
-        // enabled a provisional runtime refuses the push rather than storing a ledger it would
-        // then refuse to serve.
-        permguard_languages::registry::Enabled::from_names(config.experimental_enabled_names()),
-        config.notp_compression(),
-        crate::handles::audit(context),
-        config.error_detail(),
-        config.audit_refusals(),
-        context.metrics().clone(),
-        crate::handles::authorization(context),
-    ))
-}
-
 /// What every answer about this plane is built from.
 ///
 /// The build details follow `public.disclose_build`: a deployment that turned it off answers with
@@ -1087,7 +498,7 @@ impl PlaneState {
     /// Reports the event capability's state alongside the process's, when this plane serves it.
     fn serving_events(
         mut self,
-        events: &std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
+        events: &std::sync::Arc<std::sync::Mutex<Option<crate::events::facade::EventFacade>>>,
         config: &permguard_core::Config,
     ) -> Self {
         if events_served(config) {
@@ -1102,7 +513,7 @@ impl PlaneState {
     fn serving_decisions(
         mut self,
         decisions: &std::sync::Arc<
-            std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>,
+            std::sync::Mutex<Option<crate::decisions::facade::DecisionFacade>>,
         >,
         config: &permguard_core::Config,
     ) -> Self {
@@ -1265,8 +676,14 @@ mod tests {
         let context = PlaneContext::new(&server, PLANE);
         let module = ControlPlaneModule::default();
 
-        let http = module.event_facade(&context).expect("the store opens");
-        let grpc = module.event_facade(&context).expect("the store opens");
+        let http = module
+            .composition
+            .event_facade(&context)
+            .expect("the store opens");
+        let grpc = module
+            .composition
+            .event_facade(&context)
+            .expect("the store opens");
 
         assert!(
             std::sync::Arc::ptr_eq(&http.store, &grpc.store),
@@ -1292,8 +709,8 @@ mod tests {
         let module = ControlPlaneModule::default();
 
         match (
-            module.decision_facade(&context),
-            module.decision_facade(&context),
+            module.composition.decision_facade(&context),
+            module.composition.decision_facade(&context),
         ) {
             (Some(http), Some(grpc)) => assert!(
                 std::sync::Arc::ptr_eq(&http.store, &grpc.store),
@@ -1355,6 +772,7 @@ mod tests {
             );
             let context = PlaneContext::new(&server, PLANE);
             ControlPlaneModule::default()
+                .composition
                 .decision_facade(&context)
                 .expect("the decision store composes")
                 .ceiling

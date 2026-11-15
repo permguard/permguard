@@ -21,7 +21,7 @@ path = "src/main.rs"
 
 [dependencies]
 permguard-authority-plane-server.workspace = true
-permguard-control-plane.workspace = true
+permguard-control-plane-server.workspace = true
 permguard-core.workspace = true
 permguard-server.workspace = true
 permguard-data-plane-server.workspace = true

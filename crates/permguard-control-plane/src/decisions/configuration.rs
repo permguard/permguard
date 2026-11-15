@@ -95,9 +95,9 @@ pub fn document(base: &str, store: &str, header: permguard_core::stages::Header)
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.
-            records: format!("{base}{}", super::http::RECORDS_PATH),
-            tenant_records: format!("{base}{}", super::http::TENANT_RECORDS_PATH),
-            signers: format!("{base}{}", super::http::SIGNERS_PATH),
+            records: format!("{base}{}", super::facade::RECORDS_PATH),
+            tenant_records: format!("{base}{}", super::facade::TENANT_RECORDS_PATH),
+            signers: format!("{base}{}", super::facade::SIGNERS_PATH),
         },
         capabilities: CAPABILITIES.iter().map(|held| (*held).to_owned()).collect(),
         offsets: Offsets {

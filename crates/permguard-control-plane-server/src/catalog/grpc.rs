@@ -84,8 +84,12 @@ fn wire_export(exported: exports::Exported) -> v1::ExportResponse {
     }
 }
 
-impl CatalogFacade {
-    /// Shapes a domain refusal the one way every rpc does.
+/// How a catalog rpc answers a domain refusal, the one way every rpc does.
+trait Refuses {
+    fn refuse(&self, refusal: wire::Refusal) -> Status;
+}
+
+impl Refuses for CatalogFacade {
     fn refuse(&self, refusal: wire::Refusal) -> Status {
         wire::grpc_refusal(&refusal, self.disclosure)
     }
@@ -468,7 +472,7 @@ mod tests {
         let facade = CatalogFacade {
             host: None,
             authorization: Arc::new(Authorization::permissive()),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root.join("zones"))),
@@ -558,7 +562,7 @@ mod tests {
         let facade = CatalogFacade {
             host: None,
             authorization: Arc::new(Authorization::closed()),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root.join("zones"))),
@@ -615,7 +619,7 @@ mod tests {
         let facade = CatalogFacade {
             host: None,
             authorization: Arc::new(Authorization::permissive()),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root.join("zones"))),
@@ -676,7 +680,7 @@ mod tests {
         let facade = CatalogFacade {
             host: None,
             catalog,
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             recorder: None,

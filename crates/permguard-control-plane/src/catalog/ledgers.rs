@@ -9,7 +9,7 @@ use permguard_core::catalog::{Selector, Write};
 use permguard_core::{Ledger, LedgerState};
 
 use super::{CatalogFacade, ledger_resource};
-use crate::wire::Refusal;
+use crate::refusal::Refusal;
 
 /// A retry learns the first answer before anything is resolved, which that answer may have
 /// renamed or deleted (after the review); the admission check comes first, as it does for a
@@ -29,7 +29,7 @@ async fn replayed(
 }
 
 #[tracing::instrument(name = "ledger.create", skip_all)]
-pub(crate) async fn create(
+pub async fn create(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -93,7 +93,7 @@ pub(crate) async fn create_rehomed(
 
 /// The ledgers of a zone the caller may read, windowed: a grant on one ledger is enough to name
 /// the zone and see that ledger, and no other.
-pub(crate) fn list(
+pub fn list(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -122,7 +122,7 @@ pub(crate) fn list(
 
 /// The ledger with the members this Host coordinates whose `policy.mirror` task covers it
 /// (WP-4.4): `GetLedger`'s answer, authorized as `get` is.
-pub(crate) fn get_served(
+pub fn get_served(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -146,7 +146,7 @@ pub(crate) fn get_served(
 }
 
 #[tracing::instrument(name = "ledger.rename", skip_all)]
-pub(crate) async fn rename(
+pub async fn rename(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -196,7 +196,7 @@ pub(crate) async fn rename(
 }
 
 #[tracing::instrument(name = "ledger.delete", skip_all)]
-pub(crate) async fn delete(
+pub async fn delete(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -245,7 +245,7 @@ pub(crate) async fn delete(
 /// Archives a ledger (WP-7.3b, owner decision of 2026-10-21): it stays readable, pulled and
 /// mirrored, and refuses a push.
 #[tracing::instrument(name = "ledger.archive", skip_all)]
-pub(crate) async fn archive(
+pub async fn archive(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -266,7 +266,7 @@ pub(crate) async fn archive(
 
 /// Restores an archived ledger: it takes pushes again.
 #[tracing::instrument(name = "ledger.restore", skip_all)]
-pub(crate) async fn restore(
+pub async fn restore(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,

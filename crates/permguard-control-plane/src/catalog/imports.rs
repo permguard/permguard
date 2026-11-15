@@ -41,8 +41,8 @@ use serde::{Deserialize, Serialize};
 
 use super::exports::{OBJECT, STATEMENT};
 use super::{CatalogFacade, zone_resource};
+use crate::refusal::Refusal;
 use crate::store::FileObjectStore;
-use crate::wire::Refusal;
 
 /// The archive file of an archive kept as foreign evidence.
 pub const ARCHIVE: &str = "ARCHIVE";
@@ -53,7 +53,7 @@ pub const ARCHIVES: &str = "archives";
 
 /// How an archive is imported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Mode {
+pub enum Mode {
     /// Kept verbatim as immutable foreign evidence, never served.
     Archive,
     /// New ledgers under this Host's authority, their provenance recorded.
@@ -62,7 +62,7 @@ pub(crate) enum Mode {
 
 impl Mode {
     /// The mode `text` names, as the wire spells it.
-    pub(crate) fn parse(text: &str) -> Option<Self> {
+    pub fn parse(text: &str) -> Option<Self> {
         match text {
             "archive" => Some(Self::Archive),
             "re-home" => Some(Self::ReHome),
@@ -70,7 +70,7 @@ impl Mode {
         }
     }
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Archive => "archive",
             Self::ReHome => "re-home",
@@ -79,17 +79,17 @@ impl Mode {
 }
 
 /// What an import is handed.
-pub(crate) struct Request<'a> {
-    pub(crate) mode: Mode,
+pub struct Request<'a> {
+    pub mode: Mode,
     /// The archive's name, or the one ledger's of a one-ledger archive re-homed.
-    pub(crate) name: Option<&'a str>,
-    pub(crate) request_id: &'a str,
-    pub(crate) archive: &'a [u8],
+    pub name: Option<&'a str>,
+    pub request_id: &'a str,
+    pub archive: &'a [u8],
     /// The source Host's keys bundle: its manifest and items.
-    pub(crate) bundle_manifest: &'a [u8],
-    pub(crate) bundle_items: &'a [Vec<u8>],
+    pub bundle_manifest: &'a [u8],
+    pub bundle_items: &'a [Vec<u8>],
     /// The source Host's identity pin.
-    pub(crate) pin: &'a str,
+    pub pin: &'a str,
 }
 
 /// An archive verified whole: its manifest, what its bundle carries per ledger, and the digest an
@@ -105,41 +105,41 @@ struct Verified {
 /// What an archive kept as evidence records of itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ArchiveRecord {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct ArchiveRecord {
+    pub id: String,
+    pub name: String,
     /// When it was imported, seconds since the Unix epoch.
-    pub(crate) imported_at: u64,
-    pub(crate) manifest_digest: String,
-    pub(crate) source_host_id: String,
-    pub(crate) source_zone_id: String,
-    pub(crate) source_zone_name: String,
-    pub(crate) ledgers: Vec<ArchivedLedger>,
+    pub imported_at: u64,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
+    pub source_zone_name: String,
+    pub ledgers: Vec<ArchivedLedger>,
 }
 
 /// One ledger an archive kept as evidence holds, by its source identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ArchivedLedger {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) refs: u64,
-    pub(crate) objects: u64,
-    pub(crate) statements: u64,
+pub struct ArchivedLedger {
+    pub id: String,
+    pub name: String,
+    pub refs: u64,
+    pub objects: u64,
+    pub statements: u64,
 }
 
 /// An import as both transports answer it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct Imported {
-    pub(crate) mode: &'static str,
-    pub(crate) manifest_digest: String,
-    pub(crate) source_host_id: String,
-    pub(crate) source_zone_id: String,
+pub struct Imported {
+    pub mode: &'static str,
+    pub manifest_digest: String,
+    pub source_host_id: String,
+    pub source_zone_id: String,
     /// The archive kept, for an `archive` import.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) archive: Option<ArchiveRecord>,
+    pub archive: Option<ArchiveRecord>,
     /// The ledgers created, for a `re-home` import.
-    pub(crate) ledgers: Vec<Ledger>,
+    pub ledgers: Vec<Ledger>,
 }
 
 fn invalid(detail: impl Into<String>) -> ApiError {
@@ -164,11 +164,11 @@ fn internal(detail: impl std::fmt::Display) -> ApiError {
 
 /// What verifies an archive's manifest envelope: [`permguard_host::exports::verify`] from the
 /// source Host's keys bundle and pin, or a test's own key.
-pub(crate) type Check<'a> = &'a (dyn Fn(&[u8]) -> Result<exports::Verified, String> + Sync);
+pub type Check<'a> = &'a (dyn Fn(&[u8]) -> Result<exports::Verified, String> + Sync);
 
 /// Imports an archive into `zone` under `catalog.write` and `policy.push` on it (WP-7.10).
 #[tracing::instrument(name = "zone.import", skip_all)]
-pub(crate) async fn import(
+pub async fn import(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -396,10 +396,7 @@ fn archives(zones_root: &std::path::Path, zone: &Zone) -> Result<Dir, ApiError> 
 }
 
 /// Every archive the zone keeps.
-pub(crate) fn archived(
-    zones_root: &std::path::Path,
-    zone: &Zone,
-) -> Result<Vec<ArchiveRecord>, ApiError> {
+pub fn archived(zones_root: &std::path::Path, zone: &Zone) -> Result<Vec<ArchiveRecord>, ApiError> {
     let dir = archives(zones_root, zone)?;
     let mut held = Vec::new();
     for id in dir.subdirs().map_err(internal)? {

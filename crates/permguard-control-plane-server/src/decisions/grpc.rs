@@ -258,8 +258,6 @@ impl DecisionLog for DecisionFacade {
     }
 }
 
-impl DecisionFacade {}
-
 fn render(value: &Value) -> Vec<u8> {
     serde_json::to_vec(value).unwrap_or_default()
 }

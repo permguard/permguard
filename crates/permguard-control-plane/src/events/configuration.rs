@@ -150,8 +150,8 @@ pub fn document(
         store: store.to_owned(),
         endpoints: Endpoints {
             // Built from the constants the router mounts, so the two cannot drift.
-            records: format!("{base}{}", super::http::RECORDS_PATH),
-            record: format!("{base}{}", super::http::RECORD_PATH),
+            records: format!("{base}{}", super::facade::RECORDS_PATH),
+            record: format!("{base}{}", super::facade::RECORD_PATH),
         },
         event_types: event_types.iter().map(|held| (*held).to_owned()).collect(),
         capabilities: CAPABILITIES.iter().map(|held| (*held).to_owned()).collect(),
@@ -208,11 +208,11 @@ mod tests {
 
         assert_eq!(
             document["endpoints"]["records"],
-            format!("http://host{}", super::super::http::RECORDS_PATH)
+            format!("http://host{}", super::super::facade::RECORDS_PATH)
         );
         assert_eq!(
             document["endpoints"]["record"],
-            format!("http://host{}", super::super::http::RECORD_PATH)
+            format!("http://host{}", super::super::facade::RECORD_PATH)
         );
         assert!(document["endpoints"].get("tenant_records").is_none());
         assert_eq!(document["interface"], super::super::read::API);

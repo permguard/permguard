@@ -26,8 +26,8 @@ use super::NotpFacade;
 pub const VERSION: u64 = 1;
 
 /// Serves `policy.mirror` reads from the facade.
-pub(crate) struct Mirror {
-    pub(crate) facade: Arc<NotpFacade>,
+pub struct Mirror {
+    pub facade: Arc<NotpFacade>,
 }
 
 fn refused(error: ApiError) -> Refusal {
@@ -77,7 +77,7 @@ impl TaskHandler for Mirror {
             ),
         };
         if !reading.contains(&Resource::ledger(
-            crate::service::PLANE,
+            crate::PLANE,
             &request.zone,
             &request.ledger,
         )) {
@@ -153,11 +153,7 @@ impl Mirror {
                 .list_ledgers(&permguard_core::catalog::Selector::Id(zone.id.clone()))
                 .map_err(|error| refused(crate::catalog::api_error(error)))?
             {
-                if under.contains(&Resource::ledger(
-                    crate::service::PLANE,
-                    &zone.id,
-                    &ledger.id,
-                )) {
+                if under.contains(&Resource::ledger(crate::PLANE, &zone.id, &ledger.id)) {
                     ledgers.push(ListedLedger {
                         zone_id: zone.id.clone(),
                         zone_name: zone.name.clone(),

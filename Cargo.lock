@@ -2384,7 +2384,7 @@ dependencies = [
  "base64 0.23.1",
  "permguard-authority-plane-server",
  "permguard-control-client",
- "permguard-control-plane",
+ "permguard-control-plane-server",
  "permguard-core",
  "permguard-data-plane-server",
  "permguard-host",
@@ -2546,6 +2546,32 @@ name = "permguard-control-plane"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
+ "permguard-conformance",
+ "permguard-control-client",
+ "permguard-core",
+ "permguard-data-plane",
+ "permguard-decisions",
+ "permguard-events",
+ "permguard-host",
+ "permguard-languages",
+ "permguard-notp",
+ "permguard-objects",
+ "permguard-std",
+ "permguard-stream",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "permguard-control-plane-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "axum",
  "base64 0.23.1",
  "http",
@@ -2553,6 +2579,7 @@ dependencies = [
  "permguard-authority-plane-server",
  "permguard-conformance",
  "permguard-control-client",
+ "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
  "permguard-decisions",
@@ -2575,7 +2602,6 @@ dependencies = [
  "tonic-prost-build",
  "tower",
  "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -2599,7 +2625,7 @@ dependencies = [
  "base64 0.23.1",
  "permguard-conformance",
  "permguard-control-client",
- "permguard-control-plane",
+ "permguard-control-plane-server",
  "permguard-core",
  "permguard-decisions",
  "permguard-events",

@@ -15,20 +15,10 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
-# The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
-build = "build.rs"
-
-[[bin]]
-name = "permguard-control-plane"
-path = "src/main.rs"
-
 [dependencies]
-# The Authority Plane, registered beside this one by the binary (`runtime.planes` selects it).
-permguard-authority-plane-server.workspace = true
 # The cursor keys derived from the store's root, erased on drop (WP-3.3).
 zeroize.workspace = true
 anyhow.workspace = true
-axum.workspace = true
 base64.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain, the signed envelope.
@@ -37,23 +27,16 @@ permguard-decisions.workspace = true
 # The event record, chain and signed batch contract this store keeps.
 permguard-events.workspace = true
 permguard-host.workspace = true
-# The actor a request carries, read where a route authorizes (WP-2.4).
-permguard-transport.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.
 ring.workspace = true
-permguard-server.workspace = true
 permguard-languages.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 serde_json.workspace = true
-prost.workspace = true
 serde.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
-tonic.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing.workspace = true
-tonic-prost.workspace = true
-
 
 [features]
 # The storage library's named crash points, for the crash test of a push (WP-7.12).
@@ -74,11 +57,5 @@ permguard-control-client.workspace = true
 permguard-conformance.workspace = true
 permguard-data-plane.workspace = true
 ring.workspace = true
-permguard-std.workspace = true
-tower.workspace = true
-http.workspace = true
-# Reading a router's answer, for the discovery chain walked the way a client walks it.
-http-body-util.workspace = true
-
-[build-dependencies]
-tonic-prost-build.workspace = true
+# The file catalog and the key manager the tests compose stores and Host handles with.
+permguard-std = { workspace = true, features = ["catalog", "keys"] }

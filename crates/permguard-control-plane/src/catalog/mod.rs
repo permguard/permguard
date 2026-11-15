@@ -22,7 +22,7 @@
 /// either narrows it: a page is 0-based, a size is clamped to
 /// [`MAX_PAGE_SIZE`] so no caller can turn a listing into a memory test.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ListWindow {
+pub struct ListWindow {
     pub page: Option<u32>,
     pub size: Option<u32>,
 }
@@ -37,7 +37,7 @@ pub(crate) const DEFAULT_PAGE_SIZE: u32 = 100;
 impl ListWindow {
     /// A window from wire inputs: an absent field is "not asked". Page 0 is
     /// the first page, so it is kept; a size of 0 is no size, so it is not.
-    pub(crate) fn of(page: Option<u32>, size: Option<u32>) -> Self {
+    pub fn of(page: Option<u32>, size: Option<u32>) -> Self {
         Self {
             page,
             size: size.filter(|size| *size > 0),
@@ -48,7 +48,7 @@ impl ListWindow {
     ///
     /// One function, used by HTTP and gRPC both, so the two transports cannot
     /// come to disagree about what page 3 holds.
-    pub(crate) fn apply<T>(self, items: Vec<T>) -> Vec<T> {
+    pub fn apply<T>(self, items: Vec<T>) -> Vec<T> {
         if self.page.is_none() && self.size.is_none() {
             return items;
         }
@@ -110,14 +110,11 @@ mod window_tests {
     }
 }
 
-pub(crate) mod exports;
-pub(crate) mod grpc;
-pub(crate) mod http;
-pub(crate) mod imports;
-pub(crate) mod ledgers;
-mod parity;
-pub(crate) mod serving;
-pub(crate) mod zones;
+pub mod exports;
+pub mod imports;
+pub mod ledgers;
+pub mod serving;
+pub mod zones;
 
 use std::sync::Arc;
 
@@ -144,26 +141,26 @@ const LEDGERS: Metric = Metric::gauge(
 
 /// What every catalog operation runs with: the store, the trail, and the disclosure posture.
 #[derive(Clone)]
-pub(crate) struct CatalogFacade {
-    pub(crate) catalog: Arc<dyn Catalog>,
-    pub(crate) recorder: Option<crate::handles::Audit>,
-    pub(crate) disclosure: Disclosure,
+pub struct CatalogFacade {
+    pub catalog: Arc<dyn Catalog>,
+    pub recorder: Option<crate::handles::Audit>,
+    pub disclosure: Disclosure,
     /// Whether refused operations go on the trail too — `audit.refusals`, off by default.
-    pub(crate) audit_refusals: bool,
+    pub audit_refusals: bool,
     /// Where the numbers go; a handle that may hold nothing, costing a branch.
-    pub(crate) metrics: Metrics,
+    pub metrics: Metrics,
     /// The Host's authorization, which every catalog operation decides with before it looks
     /// anything up (WP-2.4).
-    pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
+    pub authorization: Arc<permguard_host::composition::Authorization>,
     /// This plane's handles, through which the Host tells the members serving a ledger
     /// (WP-4.4); `None` when no Host registered the plane.
-    pub(crate) host: Option<Arc<permguard_host::composition::Registration>>,
+    pub host: Option<Arc<permguard_host::composition::Registration>>,
     /// The Host's security-mutation transaction every catalog mutation runs in (WP-7.3a); `None`
     /// when the Host composes none, and then every mutation is refused `unavailable`.
-    pub(crate) mutations: Option<permguard_host::composition::MutationHandle>,
+    pub mutations: Option<permguard_host::composition::MutationHandle>,
     /// What exports a zone or a ledger (WP-7.10); `None` when the Host composes no
     /// `host.operations` signer, and then every export is refused `unavailable`.
-    pub(crate) exports: Option<Arc<exports::Exports>>,
+    pub exports: Option<Arc<exports::Exports>>,
 }
 
 /// The domain of the catalog's mutations (WP-7.3a): what recovery asks of zones and ledgers.
@@ -172,10 +169,10 @@ pub const CATALOG_DOMAIN: &str = "catalog";
 /// One catalog mutation: its operation, the phased audit action the transaction writes, and the
 /// plain action its refusal is recorded under.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Mutation {
-    pub(crate) operation: &'static str,
-    pub(crate) action: &'static str,
-    pub(crate) refused: &'static str,
+pub struct Mutation {
+    pub operation: &'static str,
+    pub action: &'static str,
+    pub refused: &'static str,
 }
 
 pub(crate) const ZONE_CREATE: Mutation = Mutation {
@@ -222,22 +219,22 @@ pub(crate) const LEDGER_RESTORE: Mutation = Mutation {
 /// What a caller asks of one catalog mutation (WP-7.3a): its request id, and the request as it
 /// was sent, the selectors as given and the body, which a retry repeats byte for byte; the name a
 /// create or a rename gives, validated before any intent.
-pub(crate) struct Change<'a> {
-    pub(crate) request_id: &'a str,
-    pub(crate) request: serde_json::Value,
-    pub(crate) name: Option<&'a str>,
+pub struct Change<'a> {
+    pub request_id: &'a str,
+    pub request: serde_json::Value,
+    pub name: Option<&'a str>,
 }
 
 /// The intent target of a catalog operation (WP-7.3a): a record by its ids, or, for a create
 /// whose id the store mints inside the operation, the place it is created in, so no tenant name
 /// reaches the trail (after the review).
-pub(crate) mod target {
+pub mod target {
     pub(crate) const NEW_ZONE: &str = "zone-new";
 
-    pub(crate) fn zone(id: &str) -> String {
+    pub fn zone(id: &str) -> String {
         format!("zone/{id}")
     }
-    pub(crate) fn ledger(zone_id: &str, id: &str) -> String {
+    pub fn ledger(zone_id: &str, id: &str) -> String {
         format!("ledger/{zone_id}/{id}")
     }
     pub(crate) fn new_ledger(zone_id: &str) -> String {
@@ -247,7 +244,7 @@ pub(crate) mod target {
 
 /// A record a catalog mutation answers: its revision, the target that names it, and how to read
 /// it again by that target.
-pub(crate) trait Record: Sized {
+pub trait Record: Sized {
     fn revision(&self) -> u64;
     fn target(&self) -> String;
     fn at(catalog: &dyn Catalog, target: &str) -> Result<Self, CatalogError>;
@@ -371,7 +368,7 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
 /// `mutations` once the catalog operations a crash left open are resolved against `catalog`,
 /// before the catalog takes a change; `None`, and every change refused `unavailable`, when the
 /// recovery fails.
-pub(crate) fn recovered(
+pub fn recovered(
     mutations: permguard_host::composition::MutationHandle,
     catalog: &Arc<dyn Catalog>,
 ) -> Option<permguard_host::composition::MutationHandle> {
@@ -383,7 +380,7 @@ pub(crate) fn recovered(
         Err(error) => {
             tracing::error!(
                 event.name = "catalog.mutations_unrecovered",
-                component = crate::service::COMPONENT,
+                component = crate::COMPONENT,
                 error = %error,
                 "the catalog takes no change: the mutations a crash left open could not be resolved"
             );
@@ -394,15 +391,15 @@ pub(crate) fn recovered(
 
 /// The resource of this plane, and of its zones and ledgers, in the Host's tree.
 pub(crate) fn plane_resource() -> permguard_core::authz::Resource {
-    permguard_core::authz::Resource::plane(crate::service::PLANE)
+    permguard_core::authz::Resource::plane(crate::PLANE)
 }
 
-pub(crate) fn zone_resource(zone_id: &str) -> permguard_core::authz::Resource {
-    permguard_core::authz::Resource::zone(crate::service::PLANE, zone_id)
+pub fn zone_resource(zone_id: &str) -> permguard_core::authz::Resource {
+    permguard_core::authz::Resource::zone(crate::PLANE, zone_id)
 }
 
-pub(crate) fn ledger_resource(zone_id: &str, ledger_id: &str) -> permguard_core::authz::Resource {
-    permguard_core::authz::Resource::ledger(crate::service::PLANE, zone_id, ledger_id)
+pub fn ledger_resource(zone_id: &str, ledger_id: &str) -> permguard_core::authz::Resource {
+    permguard_core::authz::Resource::ledger(crate::PLANE, zone_id, ledger_id)
 }
 
 impl CatalogFacade {
@@ -421,7 +418,7 @@ impl CatalogFacade {
             &permguard_host::composition::MutationHandle,
             permguard_host::operations::mutation::Begin,
         ),
-        crate::wire::Refusal,
+        crate::refusal::Refusal,
     > {
         use permguard_host::operations::journal::{Initiator, RequestKey};
 
@@ -470,12 +467,12 @@ impl CatalogFacade {
     /// attempt may have renamed or deleted (after the review): `None` when the window holds
     /// none. The caller has passed the admission check on the plane, and the window is keyed by
     /// its own principal, so only its own earlier answer is ever handed back.
-    pub(crate) async fn replayed<T>(
+    pub async fn replayed<T>(
         &self,
         actor: &permguard_core::authz::Actor,
         mutation: Mutation,
         change: &Change<'_>,
-    ) -> Result<Option<T>, crate::wire::Refusal>
+    ) -> Result<Option<T>, crate::refusal::Refusal>
     where
         T: Record + serde::de::DeserializeOwned,
     {
@@ -499,14 +496,14 @@ impl CatalogFacade {
     /// A retry of the same `request_id` with the same request learns the first answer; the same
     /// id with another request is `request_id_reused`. A name is validated before the intent;
     /// `apply` writes, held to the revision the caller expects.
-    pub(crate) async fn mutate<T>(
+    pub async fn mutate<T>(
         &self,
         actor: &permguard_core::authz::Actor,
         mutation: Mutation,
         change: Change<'_>,
         target: String,
         apply: impl FnOnce(&permguard_core::catalog::Write<'_>) -> Result<T, CatalogError>,
-    ) -> Result<T, crate::wire::Refusal>
+    ) -> Result<T, crate::refusal::Refusal>
     where
         T: Record + serde::Serialize + serde::de::DeserializeOwned,
     {
@@ -560,7 +557,7 @@ impl CatalogFacade {
         &self,
         mutation: Mutation,
         error: permguard_host::operations::mutation::MutationError<CatalogError>,
-    ) -> crate::wire::Refusal {
+    ) -> crate::refusal::Refusal {
         use permguard_host::operations::mutation::MutationError;
 
         match error {
@@ -595,12 +592,12 @@ impl CatalogFacade {
     }
 
     /// Whether `actor` may do `operation` on exactly `resource`.
-    pub(crate) fn authorize(
+    pub fn authorize(
         &self,
         actor: &permguard_core::authz::Actor,
         operation: &str,
         resource: &permguard_core::authz::Resource,
-    ) -> Result<(), crate::wire::Refusal> {
+    ) -> Result<(), crate::refusal::Refusal> {
         self.authorization
             .authorize(actor, operation, resource)
             .map_err(Into::into)
@@ -615,7 +612,7 @@ impl CatalogFacade {
         actor: &permguard_core::authz::Actor,
         operation: &str,
         zone: &str,
-    ) -> Result<Zone, crate::wire::Refusal> {
+    ) -> Result<Zone, crate::refusal::Refusal> {
         let plane = plane_resource();
         self.authorization.may_act_under(actor, operation, &plane)?;
         match self.catalog.get_zone(&Selector::parse(zone)) {
@@ -639,7 +636,7 @@ impl CatalogFacade {
         actor: &permguard_core::authz::Actor,
         operation: &str,
         zone: &str,
-    ) -> Result<Zone, crate::wire::Refusal> {
+    ) -> Result<Zone, crate::refusal::Refusal> {
         let plane = plane_resource();
         self.authorization.may_act_under(actor, operation, &plane)?;
         match self.catalog.get_zone(&Selector::parse(zone)) {
@@ -666,7 +663,7 @@ impl CatalogFacade {
         operation: &str,
         zone: &str,
         ledger: &str,
-    ) -> Result<(Zone, Ledger), crate::wire::Refusal> {
+    ) -> Result<(Zone, Ledger), crate::refusal::Refusal> {
         let zone = self.resolve_zone_for_children(actor, operation, zone)?;
         let scope = zone_resource(&zone.id);
         match self
@@ -692,7 +689,7 @@ impl CatalogFacade {
     /// back rather than incremented, so the gauges cannot drift from disk.
     /// Called at composition and after every mutation; the catalog is local
     /// and the counts are a directory listing.
-    pub(crate) fn refresh_holdings(&self) {
+    pub fn refresh_holdings(&self) {
         if !self.metrics.is_recording() {
             return;
         }
@@ -718,7 +715,7 @@ impl CatalogFacade {
     /// as a success either: the caller is told `mutation_unrecorded` and reads the state before it
     /// retries (owner decision of 2026-10-07). `TODO(WP-17)`: the catalog's mutations become
     /// operations of the Host's security-mutation transaction (WP-3.6).
-    pub(crate) async fn record(&self, action: &'static str, target: &str) -> Result<(), ApiError> {
+    pub async fn record(&self, action: &'static str, target: &str) -> Result<(), ApiError> {
         // Every record is a mutation that happened: count it and refresh the
         // holdings gauges here, the one place all mutations pass through.
         // A refusal put on the trail (`audit.refusals`) arrives here too,
@@ -758,7 +755,7 @@ impl CatalogFacade {
     /// Only the caller-caused classes are trail material even then: an `internal` failure is a
     /// fault of ours, already in the operational log at full fidelity, and a trail entry saying
     /// "we broke" attests to nothing about anybody's conduct.
-    pub(crate) async fn refused(&self, operation: &'static str, error: CatalogError) -> ApiError {
+    pub async fn refused(&self, operation: &'static str, error: CatalogError) -> ApiError {
         self.metrics.count(
             &OPERATIONS,
             &[(labels::ACTION, operation), (labels::OUTCOME, "refused")],

@@ -298,17 +298,15 @@ impl Scope {
     fn of(resource: &permguard_core::authz::Resource) -> std::result::Result<Self, String> {
         use permguard_core::authz::Resource;
         match resource {
-            Resource::Plane { plane } if plane == crate::service::PLANE => Ok(Self::All),
-            Resource::Zone { plane, zone_id } if plane == crate::service::PLANE => {
+            Resource::Plane { plane } if plane == crate::PLANE => Ok(Self::All),
+            Resource::Zone { plane, zone_id } if plane == crate::PLANE => {
                 Ok(Self::Zone(zone_id.clone()))
             }
             Resource::Ledger {
                 plane,
                 zone_id,
                 ledger_id,
-            } if plane == crate::service::PLANE => {
-                Ok(Self::Ledger(zone_id.clone(), ledger_id.clone()))
-            }
+            } if plane == crate::PLANE => Ok(Self::Ledger(zone_id.clone(), ledger_id.clone())),
             other => Err(format!("`{other}` is not this Plane's to sweep")),
         }
     }
@@ -794,7 +792,7 @@ fn report_of(pass: &Pass) -> permguard_host::gc::Report {
             .collect()
     };
     let resource = |zone: &str, ledger: &str| {
-        permguard_core::authz::Resource::ledger(crate::service::PLANE, zone, ledger).to_string()
+        permguard_core::authz::Resource::ledger(crate::PLANE, zone, ledger).to_string()
     };
     let mut report = Report {
         resumes_at: pass.outcome.resumes_at.as_ref().map(|at| {
@@ -1044,13 +1042,13 @@ pub(crate) fn sweep_within(
 /// object a ref names and the store does not hold — stops the sweep for this
 /// ledger rather than being walked around: a store that cannot be fully read
 /// is not a store to delete from.
-pub(crate) fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
+pub fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
     let refs = store.list_refs().map_err(|error| anyhow!("{error}"))?;
     reachable_from(store, refs.into_iter().map(|(_, state)| state.head))
 }
 
 /// Everything `heads` reach in `store`; a hole in the closure is an error, as for [`reachable`].
-pub(crate) fn reachable_from(
+pub fn reachable_from(
     store: &FileObjectStore,
     heads: impl IntoIterator<Item = Digest>,
 ) -> Result<BTreeSet<Digest>> {
@@ -1460,7 +1458,7 @@ mod tests {
 
     fn ledger_resource(fixture: &Fixture, index: usize) -> permguard_core::authz::Resource {
         permguard_core::authz::Resource::ledger(
-            crate::service::PLANE,
+            crate::PLANE,
             &fixture.zone,
             &fixture.ledgers[index].0,
         )
@@ -1494,9 +1492,7 @@ mod tests {
         let job = job(&fixture);
         let temporary = temporary(&fixture);
         let planned = job
-            .plan(&permguard_core::authz::Resource::plane(
-                crate::service::PLANE,
-            ))
+            .plan(&permguard_core::authz::Resource::plane(crate::PLANE))
             .expect("planned");
         assert_eq!(planned.entries.len(), 2);
         for (index, entry) in planned.entries.iter().enumerate() {
@@ -1527,7 +1523,7 @@ mod tests {
 
         let replanned = job
             .plan(&permguard_core::authz::Resource::zone(
-                crate::service::PLANE,
+                crate::PLANE,
                 &fixture.zone,
             ))
             .expect("planned");
@@ -1637,10 +1633,8 @@ mod tests {
         let cursor = || fixture.sweep.cursor.lock().expect("the cursor").clone();
         assert_eq!(cursor().as_deref(), Some(at.as_str()));
         let job = job(&fixture);
-        job.plan(&permguard_core::authz::Resource::plane(
-            crate::service::PLANE,
-        ))
-        .expect("planned");
+        job.plan(&permguard_core::authz::Resource::plane(crate::PLANE))
+            .expect("planned");
         assert_eq!(cursor().as_deref(), Some(at.as_str()), "a plan leaves it");
         job.run(&ledger_resource(&fixture, 1), "plan-5")
             .expect("ran");
@@ -1651,18 +1645,14 @@ mod tests {
         );
         assert!(matches!(
             job.plan(&permguard_core::authz::Resource::zone(
-                crate::service::PLANE,
+                crate::PLANE,
                 "nothing"
             )),
             Err(GcError::NotFound(_))
         ));
         assert!(matches!(
             job.run(
-                &permguard_core::authz::Resource::ledger(
-                    crate::service::PLANE,
-                    &fixture.zone,
-                    "nothing"
-                ),
+                &permguard_core::authz::Resource::ledger(crate::PLANE, &fixture.zone, "nothing"),
                 "plan-6"
             ),
             Err(GcError::NotFound(_))
@@ -1693,7 +1683,7 @@ mod tests {
                 .expect("a blob"),
             )
             .expect("a young orphan");
-        let plane = permguard_core::authz::Resource::plane(crate::service::PLANE);
+        let plane = permguard_core::authz::Resource::plane(crate::PLANE);
         let planned = job(&fixture).plan(&plane).expect("planned");
         let held = Kept {
             reason: "held".to_owned(),
@@ -1745,7 +1735,7 @@ mod tests {
         let held = serial.lock().expect("the pass in progress");
         let running = std::thread::spawn(move || {
             job.run(
-                &permguard_core::authz::Resource::plane(crate::service::PLANE),
+                &permguard_core::authz::Resource::plane(crate::PLANE),
                 "plan-3",
             )
         });
@@ -1770,10 +1760,7 @@ mod tests {
             "ledger z/l"
         );
         assert_eq!(
-            Scope::of(&permguard_core::authz::Resource::zone(
-                crate::service::PLANE,
-                "z"
-            )),
+            Scope::of(&permguard_core::authz::Resource::zone(crate::PLANE, "z")),
             Ok(Scope::Zone("z".to_owned()))
         );
         assert!(Scope::Ledger("z".to_owned(), "l".to_owned()).covers("z", "l"));

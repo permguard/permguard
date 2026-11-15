@@ -272,11 +272,7 @@ impl EventStore {
         std::sync::Arc::clone(gates.entry(key).or_default())
     }
 
-    pub(crate) fn view_gate(
-        &self,
-        zone: &str,
-        ledger: &str,
-    ) -> std::sync::Arc<std::sync::Mutex<()>> {
+    pub fn view_gate(&self, zone: &str, ledger: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
         let key = format!("{zone}:{ledger}");
         let mut gates = match self.view_gates.lock() {
             Ok(gates) => gates,
@@ -1143,11 +1139,7 @@ pub(crate) fn portable_name(label: &str) -> String {
 
 /// Where a key archived before [`portable_name`] sits, on a platform whose names took it as it was:
 /// found, so it is never archived twice. Windows never held one.
-pub(crate) fn unencoded_key_path(
-    directory: &Path,
-    kid: &str,
-    fingerprint: &str,
-) -> Option<PathBuf> {
+pub fn unencoded_key_path(directory: &Path, kid: &str, fingerprint: &str) -> Option<PathBuf> {
     (cfg!(unix) && portable_name(kid) != kid)
         .then(|| directory.join(format!("{kid}-{fingerprint}.json")))
 }
@@ -1721,7 +1713,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .with_context(|| format!("replacing {}", path.display()))
 }
 
-pub(crate) fn sync_directory(directory: &Path) -> Result<()> {
+pub fn sync_directory(directory: &Path) -> Result<()> {
     Dir::open(directory)
         .and_then(|dir| dir.sync())
         .with_context(|| format!("flushing directory {}", directory.display()))

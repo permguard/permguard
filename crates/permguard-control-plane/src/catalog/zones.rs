@@ -16,10 +16,10 @@ use permguard_core::authz::{Actor, operations};
 use permguard_core::catalog::{Selector, Write};
 
 use super::{CatalogFacade, plane_resource, zone_resource};
-use crate::wire::Refusal;
+use crate::refusal::Refusal;
 
 #[tracing::instrument(name = "zone.create", skip_all)]
-pub(crate) async fn create(
+pub async fn create(
     facade: &CatalogFacade,
     actor: &Actor,
     name: &str,
@@ -45,7 +45,7 @@ pub(crate) async fn create(
 
 /// The zones the caller may read, windowed. A caller with no `catalog.read` anywhere under the
 /// plane is refused; one with grants on some zones sees those and no other.
-pub(crate) fn list(
+pub fn list(
     facade: &CatalogFacade,
     actor: &Actor,
     window: super::ListWindow,
@@ -69,14 +69,14 @@ pub(crate) fn list(
     Ok(window.apply(zones))
 }
 
-pub(crate) fn get(facade: &CatalogFacade, actor: &Actor, zone: &str) -> Result<Zone, Refusal> {
+pub fn get(facade: &CatalogFacade, actor: &Actor, zone: &str) -> Result<Zone, Refusal> {
     facade
         .resolve_zone(actor, operations::CATALOG_READ, zone)
         .map(Zone::public)
 }
 
 #[tracing::instrument(name = "zone.rename", skip_all)]
-pub(crate) async fn rename(
+pub async fn rename(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -125,7 +125,7 @@ pub(crate) async fn rename(
 }
 
 #[tracing::instrument(name = "zone.delete", skip_all)]
-pub(crate) async fn delete(
+pub async fn delete(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,

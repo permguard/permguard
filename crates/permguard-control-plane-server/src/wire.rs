@@ -84,26 +84,7 @@ pub fn with_refusal_metadata(mut status: Status, class: &str, code: &str) -> Sta
     status
 }
 
-/// What a route answers instead of its payload: a domain refusal in the `{class, code, message}`
-/// envelope, or an access denial in the closed `{code, message}` body the contract keeps apart
-/// from it (WP-2.4). One type, so a facade function has one error path for both.
-#[derive(Debug, Clone)]
-pub(crate) enum Refusal {
-    Api(ApiError),
-    Denied(AccessDenial),
-}
-
-impl From<ApiError> for Refusal {
-    fn from(error: ApiError) -> Self {
-        Self::Api(error)
-    }
-}
-
-impl From<AccessDenial> for Refusal {
-    fn from(denial: AccessDenial) -> Self {
-        Self::Denied(denial)
-    }
-}
+pub(crate) use permguard_control_plane::refusal::Refusal;
 
 /// Turns a denial into the HTTP answer: `401` with the `Mutual-TLS` challenge for nobody, `403`
 /// for somebody without a grant, the closed `{code, message}` body either way, identical for an

@@ -26,8 +26,8 @@ use permguard_host::exports::{self, ExportedLedger, ExportedRef, Manifest};
 use permguard_objects::cbor::{self, Value};
 
 use super::CatalogFacade;
+use crate::refusal::Refusal;
 use crate::store::FileObjectStore;
-use crate::wire::Refusal;
 
 /// A bundle entry holding an object.
 pub const OBJECT: i64 = 1;
@@ -39,7 +39,7 @@ pub const STATEMENT: i64 = 2;
 const ENTRY_FRAMING: usize = 32;
 
 /// What an export needs beyond the catalog.
-pub(crate) struct Exports {
+pub struct Exports {
     /// `<volume>/data/zones`: every ledger's store.
     zones_root: PathBuf,
     /// The capability to have the Host sign a manifest under `host.operations`.
@@ -52,11 +52,11 @@ pub(crate) struct Exports {
     /// One export at a time: the memory bound is per export.
     running: std::sync::Mutex<()>,
     /// One import at a time: a name checked free stays free until the import lands.
-    pub(crate) importing: tokio::sync::Mutex<()>,
+    pub importing: tokio::sync::Mutex<()>,
 }
 
 impl Exports {
-    pub(crate) fn new(
+    pub fn new(
         zones_root: PathBuf,
         signer: Signer<LedgerExportV1>,
         authority: [u8; 16],
@@ -73,43 +73,43 @@ impl Exports {
     }
 
     /// `<volume>/data/zones`: every ledger's store, and every zone's archives.
-    pub(crate) fn zones_root(&self) -> &std::path::Path {
+    pub fn zones_root(&self) -> &std::path::Path {
         &self.zones_root
     }
 }
 
 /// An archive and what its manifest binds.
 #[derive(Debug)]
-pub(crate) struct Exported {
-    pub(crate) archive: Vec<u8>,
-    pub(crate) manifest: Manifest,
+pub struct Exported {
+    pub archive: Vec<u8>,
+    pub manifest: Manifest,
 }
 
 /// An export as both transports answer it: the archive, base64url, and what its manifest binds.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct ExportView {
-    pub(crate) archive: String,
-    pub(crate) zone_id: String,
-    pub(crate) bundle_digest: String,
-    pub(crate) bundle_bytes: u64,
+pub struct ExportView {
+    pub archive: String,
+    pub zone_id: String,
+    pub bundle_digest: String,
+    pub bundle_bytes: u64,
     /// When the export was made, seconds since the Unix epoch.
-    pub(crate) exported_at: u64,
-    pub(crate) ledgers: Vec<ExportedLedgerView>,
+    pub exported_at: u64,
+    pub ledgers: Vec<ExportedLedgerView>,
 }
 
 /// One ledger an export holds.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct ExportedLedgerView {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) refs: u64,
-    pub(crate) objects: u64,
-    pub(crate) statements: u64,
+pub struct ExportedLedgerView {
+    pub id: String,
+    pub name: String,
+    pub refs: u64,
+    pub objects: u64,
+    pub statements: u64,
 }
 
 impl Exported {
     /// The answer both transports give.
-    pub(crate) fn view(&self) -> ExportView {
+    pub fn view(&self) -> ExportView {
         use base64::Engine as _;
         ExportView {
             archive: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&self.archive),
@@ -160,7 +160,7 @@ impl CatalogFacade {
 /// Exports one ledger under `catalog.read` on it (WP-7.10): the archive of a zone holding that
 /// ledger alone.
 #[tracing::instrument(name = "ledger.export", skip_all)]
-pub(crate) async fn ledger(
+pub async fn ledger(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
@@ -183,11 +183,7 @@ pub(crate) async fn ledger(
 /// it (WP-7.10): one the caller may not read refuses the export, never trims it, so an archive of
 /// a zone is always the whole zone.
 #[tracing::instrument(name = "zone.export", skip_all)]
-pub(crate) async fn zone(
-    facade: &CatalogFacade,
-    actor: &Actor,
-    zone: &str,
-) -> Result<Exported, Refusal> {
+pub async fn zone(facade: &CatalogFacade, actor: &Actor, zone: &str) -> Result<Exported, Refusal> {
     let zone = facade.resolve_zone(actor, operations::CATALOG_READ, zone)?;
     let ledgers = facade
         .catalog
@@ -209,7 +205,7 @@ pub(crate) async fn zone(
 
 impl Exports {
     /// The archive of `ledgers` of `zone`, its manifest signed now, by the Host's clock.
-    pub(crate) fn archive(&self, zone: &Zone, ledgers: &[Ledger]) -> Result<Exported, ApiError> {
+    pub fn archive(&self, zone: &Zone, ledgers: &[Ledger]) -> Result<Exported, ApiError> {
         let _running = self
             .running
             .lock()
@@ -339,7 +335,7 @@ impl Exports {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     #![allow(clippy::expect_used)]
 
     use std::collections::BTreeMap;
@@ -354,12 +350,12 @@ pub(crate) mod tests {
 
     use super::*;
 
-    pub(crate) struct Fixture {
-        pub(crate) catalog: Arc<FileCatalog>,
-        pub(crate) exports: Exports,
-        pub(crate) zone: Zone,
-        pub(crate) ledger: Ledger,
-        pub(crate) ring: crate::handles::TestRing,
+    pub struct Fixture {
+        pub catalog: Arc<FileCatalog>,
+        pub exports: Exports,
+        pub zone: Zone,
+        pub ledger: Ledger,
+        pub ring: crate::handles::TestRing,
         reached: std::collections::BTreeSet<Digest>,
         orphan: Digest,
         head: Digest,
@@ -406,7 +402,7 @@ pub(crate) mod tests {
         .expect("a blob")
     }
 
-    pub(crate) fn fixture(tag: &str, max_bytes: usize) -> Fixture {
+    pub fn fixture(tag: &str, max_bytes: usize) -> Fixture {
         let root = std::env::temp_dir().join(format!(
             "permguard-export-{tag}-{}-{:?}",
             std::process::id(),

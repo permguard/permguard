@@ -22,7 +22,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/app.rs"
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-server/src/plane/factories.rs"
-    "crates/permguard-control-plane/src/main.rs"
+    "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
     "crates/permguard-cli/src/commands/host.rs"
@@ -45,6 +45,35 @@ NON_TEST_CODE='
                                           { print FILENAME ":" FNR ": " $0 }
 '
 
+# The files a `#[cfg(test)] mod name;` loads are test code as a whole, as the durability check
+# reads them: `name.rs` or `name/mod.rs` beside a `lib.rs`, `main.rs` or `mod.rs`, under `stem/`
+# beside any other file.
+TEST_FILES="$(
+    find "${ROOT}/crates" -type f -name '*.rs' -path '*/src/*' | sort | while IFS= read -r file; do
+        case "$(basename "${file}")" in
+            lib.rs | main.rs | mod.rs) base="$(dirname "${file}")" ;;
+            *) base="${file%.rs}" ;;
+        esac
+        awk '
+            /^#\[cfg\(test\)\][[:space:]]*$/ { pending = 1; next }
+            pending && /^#\[/ { next }
+            pending && match($0, /^(pub(\([a-z]+\))? )?mod [A-Za-z_][A-Za-z0-9_]*;/) {
+                name = $0; sub(/^(pub(\([a-z]+\))? )?mod /, "", name); sub(/;.*$/, "", name); print name
+            }
+            { pending = 0 }
+            /^#\[cfg\(test\)\] *(pub(\([a-z]+\))? )?mod [A-Za-z_][A-Za-z0-9_]*;/ {
+                name = $0; sub(/^#\[cfg\(test\)\] *(pub(\([a-z]+\))? )?mod /, "", name); sub(/;.*$/, "", name); print name
+            }
+        ' "${file}" | while IFS= read -r name; do
+            for candidate in "${base}/${name}.rs" "${base}/${name}/mod.rs"; do
+                if [ -f "${candidate}" ]; then
+                    printf '%s\n' "${candidate}"
+                fi
+            done
+        done
+    done
+)"
+
 violations=""
 
 while IFS= read -r file; do
@@ -55,6 +84,10 @@ while IFS= read -r file; do
             continue 2
         fi
     done
+
+    if printf '%s\n' "${TEST_FILES}" | grep -qxF "${file}"; then
+        continue
+    fi
 
     found="$(
         awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" || true
@@ -82,6 +115,7 @@ fi
 # handles through its context; `plane_handles`, keyed by plane id, is the Host's.
 PLANE_CRATES=(
     "crates/permguard-control-plane/src"
+    "crates/permguard-control-plane-server/src"
     "crates/permguard-data-plane/src"
     "crates/permguard-data-plane-server/src"
     "crates/permguard-authority-plane/src"

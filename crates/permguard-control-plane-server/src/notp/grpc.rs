@@ -305,7 +305,7 @@ mod tests {
         ));
         keys.maintain().expect("the ring publishes");
         keys.maintain().expect("the ring activates");
-        let keys = crate::handles::head_signer_for_tests(keys);
+        let keys = crate::testing::head_signer_for_tests(keys);
         NotpFacade::new(
             Arc::new(FileCatalog::new(root.join("zones"))),
             root.join("zones"),
@@ -322,7 +322,7 @@ mod tests {
                 ttl: Duration::from_secs(900),
                 grace: Duration::from_secs(3600),
             },
-            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            crate::testing::ref_mutations_for_tests(&root.join("volume")),
             None,
             permguard_languages::registry::Enabled::everything(),
             true,

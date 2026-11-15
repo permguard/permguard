@@ -1092,7 +1092,7 @@ fn identify(
 /// resolved. `Stream` used to be returned untouched, which meant the privileged deployment-wide
 /// read — the one an auditor reaches for — answered a named scope with an empty page while the
 /// records sat under their identities.
-pub(crate) fn canonical(
+pub fn canonical(
     catalog: Option<&std::sync::Arc<dyn permguard_core::catalog::Catalog>>,
     scope: crate::events::store::Scope,
 ) -> Result<crate::events::store::Scope, ReadError> {

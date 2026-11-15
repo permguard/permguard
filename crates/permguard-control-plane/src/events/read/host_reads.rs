@@ -528,8 +528,8 @@ fn the_legacy_store_is_read_first_and_its_proof_entry_names_its_format() {
 }
 
 /// The facade a test serves its reads and signers from, over the fixture's store and consumer.
-fn facade(fixture: &Fixture) -> crate::events::http::EventFacade {
-    crate::events::http::EventFacade {
+fn facade(fixture: &Fixture) -> crate::events::facade::EventFacade {
+    crate::events::facade::EventFacade {
         members: None,
         store: Arc::clone(&fixture.store),
         host: Some(fixture.consumer.clone()),
@@ -553,7 +553,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
             LEDGER,
             0,
             0,
-            &crate::events::http::StreamsAsked::default(),
+            &crate::events::facade::StreamsAsked::default(),
         )
         .expect("answered");
     let streams: Vec<(String, String, u64)> = document
@@ -580,7 +580,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
             LEDGER,
             0,
             0,
-            &crate::events::http::StreamsAsked {
+            &crate::events::facade::StreamsAsked {
                 producer: Some(hex(&[2; 16])),
                 ..Default::default()
             },
@@ -593,7 +593,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
             LEDGER,
             0,
             0,
-            &crate::events::http::StreamsAsked {
+            &crate::events::facade::StreamsAsked {
                 after: Some(
                     permguard_stream::StreamPosition::new(
                         permguard_events::PRODUCER_CLASS_DATA_PLANE,
@@ -695,7 +695,7 @@ fn the_signers_read_narrows_the_consumer_runs_by_class() {
             LEDGER,
             0,
             0,
-            &crate::events::http::StreamsAsked {
+            &crate::events::facade::StreamsAsked {
                 producer_class: Some("another.class".to_owned()),
                 ..Default::default()
             },
@@ -708,7 +708,7 @@ fn the_signers_read_narrows_the_consumer_runs_by_class() {
             LEDGER,
             0,
             0,
-            &crate::events::http::StreamsAsked {
+            &crate::events::facade::StreamsAsked {
                 instance: Some(hex(&[7; 16])),
                 ..Default::default()
             },
@@ -833,96 +833,4 @@ fn an_export_reads_a_run_longer_than_two_examination_bounds_to_its_end() {
         "found on the third page, after two bounded ones"
     );
     assert_eq!(pages, 3);
-}
-
-/// Names the producer `[1; 16]` and nobody else.
-struct NamesOne;
-
-impl crate::members::NamesMembers for NamesOne {
-    fn member_named(&self, host_id: &[u8; 16]) -> Option<crate::members::MemberName> {
-        (*host_id == [1; 16]).then(|| crate::members::MemberName {
-            member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
-            name: "lab-a".to_owned(),
-        })
-    }
-}
-
-/// Owner decision of 2026-11-15: the members a page names are the same over REST and over gRPC,
-/// beside the records, and a producer no membership names is left out of both.
-#[tokio::test]
-async fn the_members_a_page_names_are_the_same_over_rest_and_grpc() {
-    use crate::v1::event_log_server::EventLog;
-    use http_body_util::BodyExt as _;
-    use tower::ServiceExt as _;
-
-    let fixture = Fixture::new("members");
-    let facade = crate::events::http::EventFacade {
-        members: Some(Arc::new(NamesOne)),
-        ..facade(&fixture)
-    };
-    let actor = Arc::new(permguard_core::authz::Actor::Anonymous);
-
-    let router =
-        crate::events::http::routes(facade.clone()).layer(axum::Extension(Arc::clone(&actor)));
-    let response = router
-        .oneshot(
-            axum::http::Request::builder()
-                .uri(format!(
-                    "/events/v1alpha1/zones/{ZONE}/ledgers/{LEDGER}/records"
-                ))
-                .body(axum::body::Body::empty())
-                .expect("a request"),
-        )
-        .await
-        .expect("answered");
-    assert_eq!(response.status(), axum::http::StatusCode::OK);
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("the body reads")
-        .to_bytes();
-    let rest: serde_json::Value = serde_json::from_slice(&bytes).expect("JSON");
-    let named = hex(&[1; 16]);
-    assert_eq!(rest["members"][&named]["name"], "lab-a", "{rest}");
-    assert_eq!(
-        rest["members"][&named]["member_id"],
-        "01a1b9de-8738-736e-9fff-609509b3fcbb"
-    );
-    assert!(
-        rest["members"].get(hex(&[2; 16])).is_none(),
-        "a producer nobody names is left out"
-    );
-    assert_eq!(
-        rest["records"].as_array().map(Vec::len),
-        Some(5),
-        "the records untouched"
-    );
-
-    let mut request = tonic::Request::new(crate::v1::ListRecordsRequest {
-        zone: ZONE.to_owned(),
-        ledger: LEDGER.to_owned(),
-        ..Default::default()
-    });
-    request.extensions_mut().insert(actor);
-    let grpc = EventLog::list_records(&facade, request)
-        .await
-        .expect("answered")
-        .into_inner();
-    let over_grpc: serde_json::Value = grpc
-        .members
-        .iter()
-        .map(|member| {
-            (
-                member.host_id.clone(),
-                json!({"member_id": member.member_id, "name": member.name}),
-            )
-        })
-        .collect::<serde_json::Map<_, _>>()
-        .into();
-    assert_eq!(
-        over_grpc, rest["members"],
-        "REST and gRPC name the same members"
-    );
-    assert_eq!(grpc.records.len(), 5);
 }

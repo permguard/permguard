@@ -110,7 +110,7 @@ jobs:
           cargo build --locked \
             --package permguard-cli \
             --package permguard-all-in-one \
-            --package permguard-control-plane \
+            --package permguard-control-plane-server \
             --package permguard-data-plane-server \
             --package permguard-authority-plane-server
           for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane; do

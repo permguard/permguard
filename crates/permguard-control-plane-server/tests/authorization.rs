@@ -139,7 +139,7 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
     );
     std::mem::forget(held);
 
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
     let registration = Host::builder()
         .ring(CONTROL_ATTEST, keys)
         // Every head statement names its Host (WP-7.1): NOTP is served only with one.

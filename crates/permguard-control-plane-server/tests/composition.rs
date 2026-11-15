@@ -82,7 +82,7 @@ fn host() -> Host {
 fn both_planes_register_on_one_host_without_colliding() {
     let host = host();
     let config = config();
-    host.register(permguard_control_plane::module().declaration(&config))
+    host.register(permguard_control_plane_server::module().declaration(&config))
         .expect("the control plane registers");
     host.register(permguard_data_plane::plane::declaration(&config))
         .expect("the data plane registers beside it");
@@ -91,7 +91,7 @@ fn both_planes_register_on_one_host_without_colliding() {
 #[test]
 fn the_control_plane_gets_what_it_declared_and_nothing_else() {
     let registration = host()
-        .register(permguard_control_plane::module().declaration(&config()))
+        .register(permguard_control_plane_server::module().declaration(&config()))
         .expect("registers");
 
     let signer = registration
@@ -122,11 +122,11 @@ fn the_control_plane_gets_what_it_declared_and_nothing_else() {
 fn a_declaration_colliding_with_the_control_planes_fails_registration() {
     let host = host();
     let config = config();
-    host.register(permguard_control_plane::module().declaration(&config))
+    host.register(permguard_control_plane_server::module().declaration(&config))
         .expect("registers");
 
     let twice = host
-        .register(permguard_control_plane::module().declaration(&config))
+        .register(permguard_control_plane_server::module().declaration(&config))
         .expect_err("a plane registers once");
     assert!(
         matches!(twice, CompositionError::AlreadyRegistered(_)),
@@ -165,7 +165,7 @@ fn a_clock_anomaly_stops_the_control_planes_head_statements() {
         .time(time)
         .build();
     let registration = host
-        .register(permguard_control_plane::module().declaration(&config()))
+        .register(permguard_control_plane_server::module().declaration(&config()))
         .expect("the control plane registers");
     let signer = registration
         .signer::<HeadStatementV1>()
@@ -220,7 +220,7 @@ fn the_control_plane_cannot_declare_what_only_the_host_identity_signs() {
     );
     assert!(HOST_RESERVED.contains(&permguard_core::domains::protected::HOST_RING_BINDING));
     host()
-        .register(permguard_control_plane::module().declaration(&config()))
+        .register(permguard_control_plane_server::module().declaration(&config()))
         .expect("the control plane declares nothing reserved");
 }
 
@@ -319,7 +319,7 @@ fn the_import_provider_reads_the_origins_and_signs_checkpoints_and_nothing_else_
         .build();
     let config = config();
     let control = host
-        .register(permguard_control_plane::module().declaration(&config))
+        .register(permguard_control_plane_server::module().declaration(&config))
         .expect("the control plane registers");
     let ledger = permguard_core::authz::Resource::ledger("data", "z", "l");
     control

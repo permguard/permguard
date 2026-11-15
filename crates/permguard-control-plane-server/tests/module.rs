@@ -3,7 +3,7 @@
 
 #[test]
 fn module_metadata_identifies_control_plane() {
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
 
     assert_eq!(module.id(), "control");
     assert_eq!(module.component(), "control-plane");
@@ -18,7 +18,7 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
         SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED, SETTING_WORKING_DIR,
     };
 
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
     let root =
         std::env::temp_dir().join(format!("permguard-decision-module-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -105,7 +105,7 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
 fn the_event_store_needs_both_switches_and_says_so_when_it_has_one() {
     use permguard_core::config::{SETTING_EVENT_STORE_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
 
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
 
     let settings = |extra: &[(&str, &str)]| {
         permguard_core::Config::from_layers(
@@ -146,7 +146,7 @@ fn the_event_store_needs_both_switches_and_says_so_when_it_has_one() {
 fn a_declared_event_producer_key_set_is_refused_as_retired() {
     use permguard_core::config::{SETTING_EVENT_STORE_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
 
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
     let base = permguard_core::Config::from_layers(
         permguard_server::plane::build_settings("0.0.0-test"),
         vec![permguard_server::plane::SETTING_RUNTIME_PLANES],

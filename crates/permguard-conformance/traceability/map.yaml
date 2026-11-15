@@ -28,7 +28,7 @@ sections:
     tests:
       - crates/permguard-host/src/composition.rs::a_plane_signs_what_it_declared_with_the_ring_the_artifact_names
       - crates/permguard-host/src/composition.rs::an_audit_handle_records_only_its_schemas_actions
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
       - crates/permguard-data-plane-server/tests/composition.rs::the_data_plane_signs_its_evidence_and_nothing_else
       - crates/permguard-host/src/membership/local.rs::a_local_session_calls_the_handler_in_process_under_the_hosts_own_ring
       - crates/permguard-host/src/composition.rs::a_task_contract_is_declared_by_one_plane_alone
@@ -44,7 +44,7 @@ sections:
       - crates/permguard-host/src/composition.rs::a_plane_signs_what_it_declared_with_the_ring_the_artifact_names
       - crates/permguard-host/src/composition.rs::a_plane_reads_only_the_stream_it_declared
       - crates/permguard-host/src/composition.rs::a_plane_narrows_its_resource_through_its_handle
-      - crates/permguard-control-plane/tests/composition.rs::a_declaration_colliding_with_the_control_planes_fails_registration
+      - crates/permguard-control-plane-server/tests/composition.rs::a_declaration_colliding_with_the_control_planes_fails_registration
       - crates/permguard-host/src/composition.rs::no_plane_claims_a_contract_the_host_serves
       - crates/permguard-conformance/tests/dependency_direction.rs::the_host_and_the_crates_beneath_it_reach_no_plane
   "1-architecture/1-architecture-server.md#resources-selectors-and-authorization":
@@ -154,7 +154,7 @@ sections:
       - crates/permguard-server/src/host_api/mod.rs
       - crates/permguard-host/src/storage/migrate.rs
     tests:
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
       - crates/permguard-host/src/composition.rs::a_plane_receives_the_producer_of_a_stream_it_declared
       - crates/permguard-host/src/identity/tests.rs::a_provisioned_identity_opens_again_as_itself_with_a_new_boot_id
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
@@ -969,7 +969,7 @@ sections:
       - crates/permguard-conformance/src/boundaries.rs
       - crates/permguard-host/src/operations/backup.rs
     tests:
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
       - crates/permguard-data-plane-server/tests/composition.rs::the_data_plane_signs_its_evidence_and_nothing_else
       - crates/permguard-conformance/tests/boundaries.rs::test_the_boundary_registry_matches_the_exported_decoders_and_the_fuzz_targets
       - crates/permguard-host/src/api/backups/tests.rs::a_snapshot_inside_the_barrier_verifies_and_one_outside_is_crash_consistent
@@ -1353,7 +1353,7 @@ sections:
       - crates/permguard-host/src/composition.rs
       - crates/permguard-server/src/app.rs
     tests:
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
       - crates/permguard-host/src/composition.rs::colliding_declarations_fail_registration
       - crates/permguard-data-plane-server/tests/composition.rs::the_data_plane_signs_its_evidence_and_nothing_else
       - crates/permguard-data-plane-server/tests/composition.rs::the_data_plane_cannot_declare_what_only_the_host_identity_signs
@@ -1458,7 +1458,7 @@ sections:
       - crates/permguard-data-plane-server/tests/proto_unknown_fields.rs::test_an_unknown_or_retired_protobuf_field_never_changes_the_canonical_question
       - crates/permguard-conformance/tests/cbor_registries.rs::test_manifest_refuses_unknown_labels
       - crates/permguard-server/tests/host_api.rs::both_transports_answer_the_same_vectors_and_replay_the_same_mutations
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-conformance/tests/versioned_contracts.rs::every_record_type_protected_type_and_contract_carries_its_version
       - crates/permguard-conformance/tests/versioned_contracts.rs::every_resource_path_of_every_openapi_document_carries_its_version
       - crates/permguard-conformance/tests/versioned_contracts.rs::every_protobuf_package_carries_its_version
@@ -1495,8 +1495,8 @@ sections:
       - crates/permguard-control-plane/src/notp/mod.rs
       - crates/permguard-control-plane/src/evidence.rs
     tests:
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
-      - crates/permguard-control-plane/tests/composition.rs::both_planes_register_on_one_host_without_colliding
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::both_planes_register_on_one_host_without_colliding
       - crates/permguard-control-plane/src/handles.rs::the_plane_declares_its_task_contracts
   "3-control-plane/1-control-plane.md#host-capabilities":
     paths:
@@ -1504,8 +1504,8 @@ sections:
       - crates/permguard-host/src/composition.rs
       - crates/permguard-control-plane/src/gc.rs
     tests:
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
-      - crates/permguard-control-plane/tests/composition.rs::the_control_plane_cannot_declare_what_only_the_host_identity_signs
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_cannot_declare_what_only_the_host_identity_signs
       - crates/permguard-control-plane/src/handles.rs::the_plane_declares_its_task_contracts
       - crates/permguard-control-plane/src/handles.rs::every_action_of_the_schema_is_registered_with_the_host_under_this_plane
       - crates/permguard-control-plane/src/handles.rs::the_plane_provides_the_object_sweep
@@ -1515,32 +1515,32 @@ sections:
     paths:
       - crates/permguard-std/src/catalog.rs
       - crates/permguard-core/src/catalog.rs
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
       - crates/permguard-control-plane/src/catalog/ledgers.rs
       - crates/permguard-control-plane/src/catalog/serving.rs
     tests:
       - crates/permguard-std/tests/catalog.rs::a_stale_revision_is_a_conflict_and_changes_nothing
       - crates/permguard-std/src/catalog.rs::a_minted_id_that_has_a_tombstone_is_never_used
-      - crates/permguard-control-plane/src/notp/http.rs::a_deleted_ledger_serves_no_ref
-      - crates/permguard-control-plane/src/catalog/http.rs::a_retry_with_the_same_request_id_learns_the_first_answer
+      - crates/permguard-control-plane-server/src/notp/http.rs::a_deleted_ledger_serves_no_ref
+      - crates/permguard-control-plane-server/src/catalog/http.rs::a_retry_with_the_same_request_id_learns_the_first_answer
       - crates/permguard-core/src/catalog.rs::test_what_a_name_may_be
-      - crates/permguard-control-plane/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
+      - crates/permguard-control-plane-server/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
     gaps:
       - "open (code): catalog records carry no authority_host_id"
   "3-control-plane/1-control-plane.md#api-surfaces":
     informative: "a heading that only groups the Plane public API and Host task API subsections and states nothing of its own"
   "3-control-plane/1-control-plane.md#plane-public-api":
     paths:
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
       - crates/permguard-control-plane/src/notp/mod.rs
       - crates/permguard-control-plane/src/evidence.rs
       - crates/permguard-core/src/authz.rs
     tests:
-      - crates/permguard-control-plane/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
-      - crates/permguard-control-plane/tests/authorization.rs::an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous
-      - crates/permguard-control-plane/src/decisions/http.rs::a_tenant_read_takes_evidence_read_on_its_ledger_and_nothing_else
-      - crates/permguard-control-plane/src/notp/grpc.rs::a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup
+      - crates/permguard-control-plane-server/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::an_explicit_public_grant_opens_exactly_what_it_names_to_anonymous
+      - crates/permguard-control-plane-server/src/decisions/http.rs::a_tenant_read_takes_evidence_read_on_its_ledger_and_nothing_else
+      - crates/permguard-control-plane-server/src/notp/grpc.rs::a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup
       - crates/permguard-core/src/authz.rs::evidence_read_is_a_registered_operation
   "3-control-plane/1-control-plane.md#host-task-api":
     paths:
@@ -1550,7 +1550,7 @@ sections:
       - crates/permguard-server/src/app.rs
       - crates/permguard-stream/src/engine/ingest.rs
     tests:
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
       - crates/permguard-control-plane/src/events/import/tests.rs::a_session_reads_one_data_ledger_and_a_malformed_message_is_refused
       - crates/permguard-control-plane/src/handles.rs::the_plane_declares_its_task_contracts
       - crates/permguard-server/tests/peer_session.rs::a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume
@@ -1585,13 +1585,13 @@ sections:
   "3-control-plane/1-control-plane.md#lifecycle":
     paths:
       - crates/permguard-server/src/plane/mod.rs
-      - crates/permguard-control-plane/src/service.rs
-      - crates/permguard-control-plane/src/api.rs
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/service.rs
+      - crates/permguard-control-plane-server/src/api.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
     tests:
       - crates/permguard-server/src/plane/mod.rs::a_domain_route_before_ready_is_refused_with_the_phase_and_health_is_not
-      - crates/permguard-control-plane/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
-      - crates/permguard-control-plane/src/catalog/http.rs::an_operation_a_crash_left_open_is_resolved_at_start
+      - crates/permguard-control-plane-server/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
+      - crates/permguard-control-plane-server/src/catalog/http.rs::an_operation_a_crash_left_open_is_resolved_at_start
     gaps:
       - "open (code): Load does not verify every ledger's FORMAT and ref state or the control.attest binding before Initialize; FORMAT is checked when a store opens"
   "3-control-plane/1-control-plane.md#operations":
@@ -1604,36 +1604,36 @@ sections:
     tests:
       - crates/permguard-control-plane/src/catalog/imports.rs::an_archive_import_keeps_the_archive_and_creates_no_ledger
       - crates/permguard-control-plane/src/catalog/imports.rs::a_rehome_import_creates_a_new_ledger_with_its_provenance_and_no_ref
-      - crates/permguard-control-plane/src/catalog/http.rs::a_backup_barrier_holds_a_catalog_change
+      - crates/permguard-control-plane-server/src/catalog/http.rs::a_backup_barrier_holds_a_catalog_change
       - crates/permguard-host/src/api/gc/tests.rs::a_run_that_fails_is_refused_and_a_plan_and_a_run_are_audited
       - crates/permguard-control-plane/src/gc.rs::a_held_ledger_is_not_swept
       - crates/permguard-host/src/holds/tests.rs::a_hold_is_written_listed_and_released
   "3-control-plane/1-control-plane.md#readiness":
     paths:
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
       - crates/permguard-server/src/plane/mod.rs
     tests:
-      - crates/permguard-control-plane/src/service.rs::health_names_a_decision_store_that_did_not_compose
-      - crates/permguard-control-plane/tests/module.rs::the_decision_store_is_preflighted_instead_of_disappearing_behind_health
-      - crates/permguard-control-plane/tests/module.rs::the_event_store_needs_both_switches_and_says_so_when_it_has_one
-      - crates/permguard-control-plane/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
+      - crates/permguard-control-plane-server/src/service.rs::health_names_a_decision_store_that_did_not_compose
+      - crates/permguard-control-plane-server/tests/module.rs::the_decision_store_is_preflighted_instead_of_disappearing_behind_health
+      - crates/permguard-control-plane-server/tests/module.rs::the_event_store_needs_both_switches_and_says_so_when_it_has_one
+      - crates/permguard-control-plane-server/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
     gaps:
       - "open (code): readiness does not require the control.attest active key and binding, catalog index consistency or verified ref closures of opened ledgers"
   "3-control-plane/1-control-plane.md#current-implementation-and-target":
     paths:
       - crates/permguard-std/src/catalog.rs
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
       - crates/permguard-control-plane/src/transfer.rs
       - crates/permguard-control-plane/src/evidence.rs
       - crates/permguard-control-plane/src/decisions/read.rs
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
     tests:
-      - crates/permguard-control-plane/src/catalog/http.rs::a_catalog_mutation_is_an_operation_of_the_transaction
+      - crates/permguard-control-plane-server/src/catalog/http.rs::a_catalog_mutation_is_an_operation_of_the_transaction
       - crates/permguard-std/tests/catalog.rs::a_deleted_ledger_leaves_a_tombstone_and_its_directory
       - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
-      - crates/permguard-control-plane/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
+      - crates/permguard-control-plane-server/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
       - crates/permguard-control-plane/src/decisions/read.rs::the_tenant_view_reads_the_host_runs_by_id_and_never_the_legacy_views
-      - crates/permguard-control-plane/src/service.rs::health_names_a_decision_store_that_did_not_compose
+      - crates/permguard-control-plane-server/src/service.rs::health_names_a_decision_store_that_did_not_compose
     gaps:
       - "open (code): the catalog journal and snapshot are not implemented"
   "3-control-plane/2-control-plane-ledger-notp.md#objects":
@@ -1693,22 +1693,22 @@ sections:
       - crates/permguard-control-plane/src/engine.rs
       - crates/permguard-control-plane/src/transfer.rs
       - crates/permguard-control-plane/src/notp/mod.rs
-      - crates/permguard-control-plane/src/notp/http.rs
-      - crates/permguard-control-plane/src/notp/grpc.rs
+      - crates/permguard-control-plane-server/src/notp/http.rs
+      - crates/permguard-control-plane-server/src/notp/grpc.rs
     tests:
       - crates/permguard-control-plane/tests/engine_flow.rs::multi_batch_transfer_lifecycle
       - crates/permguard-control-plane/tests/engine_flow.rs::the_quota_is_reserved_before_anything_lands
       - crates/permguard-control-plane/tests/engine_flow.rs::a_negotiation_naming_a_state_that_is_not_current_conflicts
       - crates/permguard-control-plane/tests/push_crash.rs::a_push_interrupted_at_every_step_recovers
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_push_is_recorded_by_its_mutation_transaction_not_the_planes_handle
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_transfer_negotiated_over_rest_commits_over_grpc
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_push_is_recorded_by_its_mutation_transaction_not_the_planes_handle
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_transfer_negotiated_over_rest_commits_over_grpc
   "3-control-plane/2-control-plane-ledger-notp.md#host-membership-pull":
     paths:
       - crates/permguard-control-plane/src/notp/mirror.rs
       - crates/permguard-notp/src/mirror.rs
       - crates/permguard-notp/src/pull.rs
     tests:
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
       - crates/permguard-server/tests/peer_session.rs::a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens
       - crates/permguard-notp/tests/closed_messages.rs::test_a_mirror_message_names_one_of_its_reads
       - crates/permguard-control-plane/src/notp/mirror.rs::a_listing_past_its_bound_keeps_the_first_and_says_it_is_not_complete
@@ -1724,7 +1724,7 @@ sections:
       - crates/permguard-control-plane/tests/engine_flow.rs::an_upload_past_the_ledger_quota_is_refused
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ref_update_the_audit_cannot_record_moves_nothing
       - crates/permguard-control-plane/tests/engine_flow.rs::a_commit_reaching_an_undeclared_unreached_object_is_refused
-      - crates/permguard-control-plane/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
+      - crates/permguard-control-plane-server/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
   "3-control-plane/2-control-plane-ledger-notp.md#store-durability":
     paths:
       - crates/permguard-control-plane/src/store.rs
@@ -1735,7 +1735,7 @@ sections:
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ref_update_names_its_operation_for_recovery
       - crates/permguard-control-plane/tests/engine_flow.rs::a_commit_flushes_the_objects_it_reaches_before_writing_the_ref
       - crates/permguard-control-plane/tests/engine_flow.rs::a_retried_commit_whose_statement_was_lost_is_signed_again
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_transfer_negotiated_over_grpc_commits_over_rest
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_transfer_negotiated_over_grpc_commits_over_rest
   "3-control-plane/2-control-plane-ledger-notp.md#transfer-sessions-and-garbage-collection":
     paths:
       - crates/permguard-control-plane/src/gc.rs
@@ -1767,12 +1767,12 @@ sections:
       - crates/permguard-control-plane/src/engine.rs
       - crates/permguard-control-plane/src/transfer.rs
     tests:
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
       - crates/permguard-objects/src/compress.rs::oversized_streams_are_refused_not_buffered
       - crates/permguard-control-plane/tests/engine_flow.rs::a_caller_keeps_a_bounded_number_of_pushes_open
       - crates/permguard-control-plane/tests/engine_flow.rs::the_quota_is_reserved_before_anything_lands
       - crates/permguard-objects/src/cbor.rs::the_deepest_legal_value_decodes_and_one_deeper_is_refused
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_deeply_nested_body_is_refused_rather_than_taking_the_process_down
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_deeply_nested_body_is_refused_rather_than_taking_the_process_down
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ledger_keeps_a_bounded_number_of_transfers_open_across_callers
       - crates/permguard-transport/tests/limits.rs::test_a_body_over_the_limit_is_refused_rather_than_read
     gaps:
@@ -1787,9 +1787,9 @@ sections:
       - crates/permguard-control-plane/src/gc.rs
     tests:
       - crates/permguard-notp/tests/notp_vectors.rs::the_messages_are_the_generators_bytes
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
       - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
   "3-control-plane/3-control-plane-evidence-stores.md#stream-registrations":
@@ -1843,12 +1843,12 @@ sections:
       - crates/permguard-control-plane/src/decisions/read.rs
       - crates/permguard-control-plane/src/events/read/host_reads.rs
       - crates/permguard-control-plane/src/events/import.rs
-      - crates/permguard-control-plane/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
     tests:
       - crates/permguard-control-plane/src/evidence.rs::nothing_granted_under_the_plane_is_refused_before_any_lookup
       - crates/permguard-control-plane/src/decisions/read.rs::a_stream_read_names_a_host_run
       - crates/permguard-control-plane/src/decisions/read.rs::a_host_position_behind_retention_is_answered
-      - crates/permguard-control-plane/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
+      - crates/permguard-control-plane-server/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
       - crates/permguard-control-plane/src/events/read/host_reads.rs::an_export_reads_the_consumer_runs_to_its_bound_and_no_further
       - crates/permguard-control-plane/src/events/import/tests.rs::a_session_reads_one_data_ledger_and_a_malformed_message_is_refused
   "3-control-plane/3-control-plane-evidence-stores.md#retention":
@@ -1888,7 +1888,7 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::the_ingest_refuses_what_its_task_does_not_pin
       - crates/permguard-stream/src/frontier.rs::a_merged_view_has_no_single_number_and_says_so
       - crates/permguard-stream/src/engine/tests.rs::a_pass_anchors_audits_then_deletes_what_was_acknowledged
-      - crates/permguard-control-plane/src/service.rs::both_surfaces_share_one_event_store_and_therefore_one_write_gate
+      - crates/permguard-control-plane-server/src/service.rs::both_surfaces_share_one_event_store_and_therefore_one_write_gate
   "4-data-plane/1-data-plane.md#responsibilities":
     paths:
       - crates/permguard-data-plane/src/lib.rs
@@ -3319,7 +3319,7 @@ sections:
       - crates/permguard-control-plane/src/decisions/configuration/tests.rs::the_served_interface_is_in_the_stage_registry
       - crates/permguard-control-plane/src/decisions/configuration/tests.rs::the_decision_document_names_its_interface_and_capabilities
       - crates/permguard-control-plane/src/events/configuration.rs::the_served_interface_is_in_the_stage_registry
-      - crates/permguard-control-plane/tests/event_discovery.rs::an_unserved_interface_is_neither_advertised_nor_answered
+      - crates/permguard-control-plane-server/tests/event_discovery.rs::an_unserved_interface_is_neither_advertised_nor_answered
   "7-contracts/0-interfaces-model.md#manifest-binding":
     paths:
       - crates/permguard-objects/src/manifest.rs
@@ -3407,7 +3407,7 @@ sections:
     tests:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_record_binds_its_interface_its_actor_apart_from_the_asserted_principal_and_its_question
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_evaluation_failure_is_recorded_indeterminate_with_its_causes
-      - crates/permguard-control-plane/src/decisions/http.rs::test_the_decision_wire_types_match_openapi_evidence_decisions
+      - crates/permguard-control-plane-server/src/decisions/http.rs::test_the_decision_wire_types_match_openapi_evidence_decisions
       - crates/permguard-decisions/tests/compatibility.rs::v1_decision_log_fixtures_replay_with_the_current_verifier
     gaps:
       - "recorded interpretation (owner decision): the binding is added to record version 1 rather than a new record version"
@@ -3658,8 +3658,8 @@ sections:
   "7-contracts/3-contract-evidence-decisions.md#ship":
     paths:
       - crates/permguard-control-plane/src/decisions/ingest.rs
-      - crates/permguard-control-plane/src/decisions/http.rs
-      - crates/permguard-control-plane/src/decisions/grpc.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/decisions/grpc.rs
     tests:
       - crates/permguard-stream/tests/stream_ingest.rs::two_producers_interleave_for_an_hour_and_no_record_disappears
       - crates/permguard-stream/src/engine/tests.rs::a_batch_ahead_is_out_of_order_and_stores_nothing
@@ -3669,25 +3669,25 @@ sections:
   "7-contracts/3-contract-evidence-decisions.md#read":
     paths:
       - crates/permguard-control-plane/src/decisions/read.rs
-      - crates/permguard-control-plane/src/decisions/http.rs
-      - crates/permguard-control-plane/src/decisions/grpc.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/decisions/grpc.rs
       - crates/permguard-control-plane/src/decisions/offset.rs
     tests:
       - crates/permguard-control-plane/src/decisions/read.rs::a_stream_read_names_a_host_run
       - crates/permguard-control-plane/src/decisions/read.rs::the_tenant_view_reads_the_host_runs_by_id_and_never_the_legacy_views
-      - crates/permguard-control-plane/src/decisions/http.rs::a_read_takes_only_its_parameters_and_only_its_own_cursors
+      - crates/permguard-control-plane-server/src/decisions/http.rs::a_read_takes_only_its_parameters_and_only_its_own_cursors
       - crates/permguard-control-plane/src/events/read/host_reads.rs::a_page_holds_to_its_record_and_byte_bounds
       - crates/permguard-control-plane/src/decisions/read.rs::a_host_proof_carries_the_sealed_batch_and_its_paths
       - crates/permguard-control-plane/src/events/read/host_reads.rs::an_export_reads_the_consumer_runs_to_its_bound_and_no_further
   "7-contracts/3-contract-evidence-decisions.md#signers":
     paths:
-      - crates/permguard-control-plane/src/decisions/http.rs
-      - crates/permguard-control-plane/src/decisions/grpc.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/decisions/grpc.rs
       - crates/permguard-stream/src/signers.rs
     tests:
-      - crates/permguard-control-plane/src/decisions/http.rs::the_signers_of_a_host_run_come_from_the_consumer
-      - crates/permguard-control-plane/src/decisions/http.rs::get_signers_answers_a_host_run_over_grpc
-      - crates/permguard-control-plane/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
+      - crates/permguard-control-plane-server/src/decisions/http.rs::the_signers_of_a_host_run_come_from_the_consumer
+      - crates/permguard-control-plane-server/src/decisions/http.rs::get_signers_answers_a_host_run_over_grpc
+      - crates/permguard-control-plane-server/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
   "7-contracts/3-contract-evidence-decisions.md#discontinuity-reasons":
     paths:
       - crates/permguard-decisions/src/spool.rs
@@ -3704,15 +3704,15 @@ sections:
   "7-contracts/3-contract-evidence-decisions.md#refusal-codes":
     paths:
       - crates/permguard-core/src/codes.rs
-      - crates/permguard-control-plane/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
       - crates/permguard-control-plane/src/decisions/ingest.rs
       - crates/permguard-stream/src/engine/ingest.rs
     tests:
       - crates/permguard-stream/src/engine/tests.rs::the_answers_carry_the_stable_codes
-      - crates/permguard-control-plane/src/decisions/http.rs::a_read_takes_only_its_parameters_and_only_its_own_cursors
-      - crates/permguard-control-plane/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
+      - crates/permguard-control-plane-server/src/decisions/http.rs::a_read_takes_only_its_parameters_and_only_its_own_cursors
+      - crates/permguard-control-plane-server/src/decisions/http.rs::the_signers_of_a_run_nobody_holds_are_not_found
       - crates/permguard-stream/src/engine/tests.rs::an_exact_replay_is_ok_and_a_differing_one_a_fork
-      - crates/permguard-control-plane/src/decisions/http.rs::test_the_stream_wire_types_match_openapi_stream_common
+      - crates/permguard-control-plane-server/src/decisions/http.rs::test_the_stream_wire_types_match_openapi_stream_common
   "7-contracts/3-contract-evidence-decisions.md#current-implementation-and-target":
     paths:
       - crates/permguard-data-plane/src/decisions/host.rs
@@ -3751,12 +3751,12 @@ sections:
       - crates/permguard-events/src/envelope.rs::a_payload_equal_in_value_but_not_canonical_in_bytes_is_refused
       - crates/permguard-events/src/envelope.rs::the_protected_header_declares_the_event_batch_type
       - crates/permguard-events/tests/evidence_vectors.rs::todays_event_batch_is_reproduced_byte_for_byte_and_verifies
-      - crates/permguard-control-plane/src/events/http.rs::test_the_event_wire_types_match_openapi_evidence_events
+      - crates/permguard-control-plane-server/src/events/http.rs::test_the_event_wire_types_match_openapi_evidence_events
   "7-contracts/4-contract-evidence-events.md#ingest":
     paths:
       - crates/permguard-control-plane/src/events/ingest.rs
-      - crates/permguard-control-plane/src/events/http.rs
-      - crates/permguard-control-plane/src/events/grpc.rs
+      - crates/permguard-control-plane-server/src/events/http.rs
+      - crates/permguard-control-plane-server/src/events/grpc.rs
       - crates/permguard-control-plane/src/events/store.rs
     tests:
       - crates/permguard-stream/tests/stream_ingest.rs::two_producers_interleave_for_an_hour_and_no_record_disappears
@@ -3768,10 +3768,10 @@ sections:
     paths:
       - crates/permguard-control-plane/src/events/read.rs
       - crates/permguard-control-plane/src/events/read/host_reads.rs
-      - crates/permguard-control-plane/src/events/http.rs
-      - crates/permguard-control-plane/src/events/grpc.rs
+      - crates/permguard-control-plane-server/src/events/http.rs
+      - crates/permguard-control-plane-server/src/events/grpc.rs
     tests:
-      - crates/permguard-control-plane/src/events/http.rs::a_read_of_events_takes_only_its_parameters
+      - crates/permguard-control-plane-server/src/events/http.rs::a_read_of_events_takes_only_its_parameters
       - crates/permguard-control-plane/src/events/read/host_reads.rs::the_filters_apply_to_the_consumers_records
       - crates/permguard-control-plane/src/events/read/host_reads.rs::a_stream_read_names_one_host_run
       - crates/permguard-control-plane/src/events/read/host_reads.rs::the_tenant_view_reads_every_consumer_run_of_its_ledger_in_order
@@ -3779,8 +3779,8 @@ sections:
       - crates/permguard-stream/src/cursor.rs::a_cursor_presented_under_other_filters_is_refused
   "7-contracts/4-contract-evidence-events.md#signers":
     paths:
-      - crates/permguard-control-plane/src/events/http.rs
-      - crates/permguard-control-plane/src/events/grpc.rs
+      - crates/permguard-control-plane-server/src/events/http.rs
+      - crates/permguard-control-plane-server/src/events/grpc.rs
       - crates/permguard-control-plane/src/events/store.rs
     tests:
       - crates/permguard-control-plane/src/events/read/host_reads.rs::the_signers_read_answers_each_consumer_run_in_stream_order
@@ -3795,31 +3795,31 @@ sections:
       - crates/permguard-control-plane/src/events/configuration.rs::the_published_producer_classes_are_the_ones_ingest_accepts
       - crates/permguard-control-plane/src/events/configuration.rs::every_filter_a_read_accepts_is_published
       - crates/permguard-control-plane/src/events/configuration.rs::the_published_limits_are_the_ones_a_read_is_clamped_to
-      - crates/permguard-control-plane/tests/event_discovery.rs::the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to
+      - crates/permguard-control-plane-server/tests/event_discovery.rs::the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to
   "7-contracts/4-contract-evidence-events.md#refusal-codes":
     paths:
       - crates/permguard-core/src/codes.rs
       - contracts/codes.json
-      - crates/permguard-control-plane/src/events/http.rs
-      - crates/permguard-control-plane/src/events/grpc.rs
+      - crates/permguard-control-plane-server/src/events/http.rs
+      - crates/permguard-control-plane-server/src/events/grpc.rs
     tests:
       - crates/permguard-conformance/tests/code_ownership.rs::test_every_registered_code_has_exactly_one_owner_and_nothing_else_does
       - crates/permguard-conformance/tests/code_ownership.rs::test_every_entry_names_a_contract_a_kind_and_the_class_it_is_answered_with
-      - crates/permguard-control-plane/src/events/grpc.rs::test_a_list_without_a_scope_is_a_typed_validation_refusal
-      - crates/permguard-control-plane/src/events/http.rs::an_offset_of_another_read_is_forged_over_rest
-      - crates/permguard-control-plane/src/events/grpc.rs::an_offset_of_another_read_is_forged_over_grpc
+      - crates/permguard-control-plane-server/src/events/grpc.rs::test_a_list_without_a_scope_is_a_typed_validation_refusal
+      - crates/permguard-control-plane-server/src/events/http.rs::an_offset_of_another_read_is_forged_over_rest
+      - crates/permguard-control-plane-server/src/events/grpc.rs::an_offset_of_another_read_is_forged_over_grpc
   "7-contracts/4-contract-evidence-events.md#current-implementation-and-target":
     paths:
       - crates/permguard-data-plane/src/temporal/host.rs
       - crates/permguard-data-plane/src/temporal/streams.rs
       - crates/permguard-control-plane/src/events/read/host_reads.rs
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
       - crates/permguard-stream/src/engine/producer/ship.rs
     tests:
       - crates/permguard-data-plane-server/tests/temporal_host.rs::an_event_names_the_host_and_its_run_on_the_real_engine
       - crates/permguard-data-plane/src/temporal/host/tests.rs::an_occurrence_is_keyed_by_its_source_and_its_answer_is_kept
       - crates/permguard-data-plane/src/temporal/streams.rs::one_id_from_two_sources_in_a_batch_is_two_occurrences
-      - crates/permguard-control-plane/tests/module.rs::a_declared_event_producer_key_set_is_refused_as_retired
+      - crates/permguard-control-plane-server/tests/module.rs::a_declared_event_producer_key_set_is_refused_as_retired
       - crates/permguard-host/src/membership/task/tests.rs::the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers
   "7-contracts/5-contract-stream-common.md#request":
     paths:
@@ -3832,7 +3832,7 @@ sections:
       - crates/permguard-stream/src/cursor.rs::a_cursor_presented_under_other_filters_is_refused
       - crates/permguard-stream/src/cursor.rs::the_filter_digest_does_not_depend_on_key_order
       - crates/permguard-stream/src/window.rs::an_export_finishes_against_its_own_bound_rather_than_a_moving_end
-      - crates/permguard-control-plane/src/events/http.rs::a_read_of_events_takes_only_its_parameters
+      - crates/permguard-control-plane-server/src/events/http.rs::a_read_of_events_takes_only_its_parameters
   "7-contracts/5-contract-stream-common.md#block":
     paths:
       - crates/permguard-stream/src/window.rs
@@ -3844,7 +3844,7 @@ sections:
       - crates/permguard-control-plane/src/events/read/host_reads.rs::a_host_proof_carries_the_sealed_batch_and_its_paths
       - crates/permguard-control-plane/src/events/read/host_reads.rs::a_page_holds_to_its_record_and_byte_bounds
       - crates/permguard-stream/src/window.rs::a_tail_is_measured_against_the_stream_rather_than_a_bound
-      - crates/permguard-control-plane/src/decisions/http.rs::test_the_stream_wire_types_match_openapi_stream_common
+      - crates/permguard-control-plane-server/src/decisions/http.rs::test_the_stream_wire_types_match_openapi_stream_common
       - crates/permguard-stream/src/engine/tests.rs::a_range_below_the_oldest_retained_is_gone
       - crates/permguard-control-plane/src/decisions/read.rs::pages_resume_across_sources_without_a_gap_or_a_repeat
   "7-contracts/5-contract-stream-common.md#cursor":
@@ -3900,16 +3900,16 @@ sections:
     paths:
       - crates/permguard-core/src/codes.rs
       - contracts/codes.json
-      - crates/permguard-control-plane/src/events/http.rs
-      - crates/permguard-control-plane/src/decisions/http.rs
+      - crates/permguard-control-plane-server/src/events/http.rs
+      - crates/permguard-control-plane-server/src/decisions/http.rs
       - crates/permguard-data-plane-server/src/temporal/http.rs
     tests:
       - crates/permguard-conformance/tests/code_ownership.rs::test_every_registered_code_has_exactly_one_owner_and_nothing_else_does
       - crates/permguard-conformance/tests/code_ownership.rs::test_every_entry_names_a_contract_a_kind_and_the_class_it_is_answered_with
       - crates/permguard-conformance/src/parity.rs::test_the_expected_statuses_follow_the_central_mapping
-      - crates/permguard-control-plane/src/events/grpc.rs::test_a_list_without_a_scope_is_a_typed_validation_refusal
-      - crates/permguard-control-plane/src/events/http.rs::an_offset_of_another_read_is_forged_over_rest
-      - crates/permguard-control-plane/src/events/http.rs::an_unknown_and_a_foreign_ledger_are_refused_alike
+      - crates/permguard-control-plane-server/src/events/grpc.rs::test_a_list_without_a_scope_is_a_typed_validation_refusal
+      - crates/permguard-control-plane-server/src/events/http.rs::an_offset_of_another_read_is_forged_over_rest
+      - crates/permguard-control-plane-server/src/events/http.rs::an_unknown_and_a_foreign_ledger_are_refused_alike
   "7-contracts/5-contract-stream-common.md#signer-span":
     paths:
       - crates/permguard-stream/src/signers.rs
@@ -3974,15 +3974,15 @@ sections:
       - crates/permguard-notp/src/codec.rs
       - crates/permguard-notp/src/push.rs
       - crates/permguard-notp/src/pull.rs
-      - crates/permguard-control-plane/src/notp/http.rs
-      - crates/permguard-control-plane/src/notp/grpc.rs
+      - crates/permguard-control-plane-server/src/notp/http.rs
+      - crates/permguard-control-plane-server/src/notp/grpc.rs
     tests:
       - crates/permguard-notp/tests/round_trip.rs::the_push_messages_round_trip
       - crates/permguard-notp/tests/round_trip.rs::the_pull_messages_round_trip
       - crates/permguard-notp/tests/closed_messages.rs::test_every_message_refuses_an_unknown_label
       - crates/permguard-notp/tests/notp_vectors.rs::the_messages_are_the_generators_bytes
-      - crates/permguard-control-plane/src/notp/http.rs::test_push_then_pull_over_http
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_transfer_negotiated_over_rest_commits_over_grpc
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_push_then_pull_over_http
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_transfer_negotiated_over_rest_commits_over_grpc
   "7-contracts/6-contract-ledger-notp.md#change-watch":
     paths:
       - crates/permguard-host/src/membership/watch.rs
@@ -3996,106 +3996,106 @@ sections:
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_ends_on_overflow_and_on_a_fence
       - crates/permguard-data-plane/src/mirrors/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
   "7-contracts/6-contract-ledger-notp.md#refusal-codes":
     paths:
       - crates/permguard-core/src/codes.rs
       - contracts/codes.json
       - crates/permguard-control-plane/src/engine.rs
-      - crates/permguard-control-plane/src/notp/http.rs
-      - crates/permguard-control-plane/src/notp/grpc.rs
+      - crates/permguard-control-plane-server/src/notp/http.rs
+      - crates/permguard-control-plane-server/src/notp/grpc.rs
     tests:
-      - crates/permguard-control-plane/src/notp/http.rs::test_refusals_speak_the_taxonomy
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_refusals_speak_the_taxonomy
       - crates/permguard-control-plane/tests/engine_flow.rs::the_refusals_hold
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_body_not_declared_notp_is_refused_before_it_is_read
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_body_not_declared_notp_is_refused_before_it_is_read
       - crates/permguard-conformance/tests/code_ownership.rs::test_every_entry_names_a_contract_a_kind_and_the_class_it_is_answered_with
   "7-contracts/6-contract-ledger-notp.md#current-implementation-and-target":
     paths:
       - crates/permguard-objects/src/statement.rs
       - crates/permguard-objects/src/manifest.rs
-      - crates/permguard-control-plane/src/notp/http.rs
+      - crates/permguard-control-plane-server/src/notp/http.rs
       - crates/permguard-control-plane/src/notp/mod.rs
       - crates/permguard-control-plane/src/transfer.rs
     tests:
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
       - crates/permguard-notp/tests/notp_vectors.rs::the_manifests_interfaces_are_frozen_with_their_refusals
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-control-plane/tests/engine_flow.rs::a_session_is_bound_to_its_request_and_direction
       - crates/permguard-objects/src/statement.rs::todays_six_field_statement_and_header_are_refused
   "7-contracts/7-contract-catalog-discovery.md#catalog":
     paths:
       - crates/permguard-core/src/catalog.rs
       - crates/permguard-control-plane/src/catalog/mod.rs
-      - crates/permguard-control-plane/src/catalog/http.rs
-      - crates/permguard-control-plane/src/catalog/grpc.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/grpc.rs
       - crates/permguard-control-plane/src/catalog/serving.rs
       - crates/permguard-std/src/catalog.rs
     tests:
       - crates/permguard-core/src/catalog.rs::test_what_a_name_may_be
       - crates/permguard-core/src/catalog.rs::test_a_reference_is_an_id_or_a_name_and_never_a_guess
       - crates/permguard-control-plane/src/catalog/mod.rs::pages_count_from_zero_and_partition_the_listing_without_overlap
-      - crates/permguard-control-plane/src/catalog/parity.rs::test_one_script_gets_the_same_outcome_at_every_step_over_rest_and_grpc
+      - crates/permguard-control-plane-server/src/catalog/parity.rs::test_one_script_gets_the_same_outcome_at_every_step_over_rest_and_grpc
       - crates/permguard-std/src/catalog.rs::a_minted_id_that_has_a_tombstone_is_never_used
-      - crates/permguard-control-plane/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
+      - crates/permguard-control-plane-server/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
   "7-contracts/7-contract-catalog-discovery.md#discovery-chain":
     paths:
       - crates/permguard-server/src/plane/discovery.rs
       - crates/permguard-control-plane/src/events/configuration.rs
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
     tests:
       - crates/permguard-server/src/plane/discovery.rs::the_process_document_names_the_host_and_every_state
       - crates/permguard-server/src/plane/discovery.rs::an_advertised_url_replaces_the_bind_address_everywhere
       - crates/permguard-server/src/plane/discovery.rs::a_wildcard_bind_without_an_advertised_url_is_reported
       - crates/permguard-server/src/plane/discovery.rs::discovery_advertises_no_interface_the_registry_does_not_serve
-      - crates/permguard-control-plane/src/service.rs::test_the_discovery_documents_match_openapi_discovery
-      - crates/permguard-control-plane/tests/event_discovery.rs::the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to
-      - crates/permguard-control-plane/src/decisions/http.rs::the_decision_document_is_served_beside_the_routes
-      - crates/permguard-control-plane/src/events/http.rs::the_event_document_carries_the_header_on_both_transports_and_a_retired_one_is_refused
+      - crates/permguard-control-plane-server/src/service.rs::test_the_discovery_documents_match_openapi_discovery
+      - crates/permguard-control-plane-server/tests/event_discovery.rs::the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to
+      - crates/permguard-control-plane-server/src/decisions/http.rs::the_decision_document_is_served_beside_the_routes
+      - crates/permguard-control-plane-server/src/events/http.rs::the_event_document_carries_the_header_on_both_transports_and_a_retired_one_is_refused
       - crates/permguard-data-plane-server/tests/temporal_events.rs::the_temporal_document_carries_the_header_on_both_transports
       - crates/permguard-data-plane/src/authz/configuration.rs::every_interface_document_carries_the_common_header
   "7-contracts/7-contract-catalog-discovery.md#health-and-version":
     paths:
-      - crates/permguard-control-plane/src/service.rs
-      - crates/permguard-control-plane/src/api.rs
+      - crates/permguard-control-plane-server/src/service.rs
+      - crates/permguard-control-plane-server/src/api.rs
       - crates/permguard-data-plane-server/src/service.rs
       - crates/permguard-telemetry/src/probes.rs
       - crates/permguard-telemetry/src/host.rs
     tests:
-      - crates/permguard-control-plane/src/service.rs::test_the_health_bodies_match_openapi_health
+      - crates/permguard-control-plane-server/src/service.rs::test_the_health_bodies_match_openapi_health
       - crates/permguard-data-plane-server/src/service.rs::test_the_data_plane_bodies_match_openapi_health
       - crates/permguard-telemetry/src/host.rs::the_version_body_matches_openapi_health
       - crates/permguard-data-plane-server/tests/module.rs::the_http_surface_answers_info_health_and_discovery
       - crates/permguard-telemetry/tests/probes.rs::test_a_live_process_that_is_not_ready_answers_the_two_questions_differently
-      - crates/permguard-control-plane/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
+      - crates/permguard-control-plane-server/src/api.rs::the_grpc_server_configuration_carries_the_plane_phase
   "7-contracts/7-contract-catalog-discovery.md#errors":
     paths:
       - crates/permguard-core/src/api.rs
       - crates/permguard-core/src/codes.rs
       - crates/permguard-transport/src/gate.rs
       - crates/permguard-server/src/plane/mod.rs
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
     tests:
       - crates/permguard-transport/src/gate.rs::test_no_identity_is_401_with_the_mutual_tls_challenge_and_the_closed_body
       - crates/permguard-transport/src/gate.rs::test_an_unlisted_peer_is_403_without_a_challenge
       - crates/permguard-core/src/api.rs::test_a_denial_tells_missing_credentials_from_missing_standing
-      - crates/permguard-control-plane/src/catalog/http.rs::test_every_refusal_is_the_shared_shape_with_the_promised_status
-      - crates/permguard-control-plane/src/catalog/parity.rs::test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/src/catalog/http.rs::test_every_refusal_is_the_shared_shape_with_the_promised_status
+      - crates/permguard-control-plane-server/src/catalog/parity.rs::test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
   "7-contracts/7-contract-catalog-discovery.md#current-implementation-and-target":
     paths:
-      - crates/permguard-control-plane/src/catalog/http.rs
+      - crates/permguard-control-plane-server/src/catalog/http.rs
       - crates/permguard-std/src/catalog.rs
       - crates/permguard-server/src/plane/discovery.rs
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
     tests:
-      - crates/permguard-control-plane/src/catalog/http.rs::a_stale_revision_over_rest_is_a_conflict_and_changes_nothing
-      - crates/permguard-control-plane/src/catalog/http.rs::test_a_name_body_is_closed_and_refused_in_the_shared_shape
-      - crates/permguard-control-plane/src/catalog/http.rs::an_unknown_duplicated_or_malformed_parameter_is_refused
+      - crates/permguard-control-plane-server/src/catalog/http.rs::a_stale_revision_over_rest_is_a_conflict_and_changes_nothing
+      - crates/permguard-control-plane-server/src/catalog/http.rs::test_a_name_body_is_closed_and_refused_in_the_shared_shape
+      - crates/permguard-control-plane-server/src/catalog/http.rs::an_unknown_duplicated_or_malformed_parameter_is_refused
       - crates/permguard-std/tests/catalog.rs::a_deleted_ledger_leaves_a_tombstone_and_its_directory
       - crates/permguard-server/src/plane/discovery.rs::the_process_document_names_the_host_and_every_state
-      - crates/permguard-control-plane/src/service.rs::test_the_health_bodies_match_openapi_health
+      - crates/permguard-control-plane-server/src/service.rs::test_the_health_bodies_match_openapi_health
   "7-contracts/8-contract-host-api.md#common-envelope":
     paths:
       - crates/permguard-host/src/api/mod.rs
@@ -4291,7 +4291,7 @@ sections:
     paths:
       - crates/permguard-authority-plane/src/plane.rs
       - crates/permguard-all-in-one/src/main_entry.rs
-      - crates/permguard-control-plane/src/main_entry.rs
+      - crates/permguard-control-plane-server/src/main_entry.rs
       - crates/permguard-server/src/plane/mod.rs
     tests:
       - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
@@ -4347,7 +4347,7 @@ sections:
       - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
       - crates/permguard-host/src/authz/mod.rs::the_bootstrap_holds_its_per_host_operations_and_nothing_more
       - crates/permguard-core/src/authz.rs::a_token_permits_only_what_its_scopes_name
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_token_caller_evaluates_within_its_scope_and_targets_alone
   "2-security/8-security-authority.md#verifying-a-token":
     paths:
@@ -4416,7 +4416,7 @@ sections:
     tests:
       - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
       - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
-      - crates/permguard-control-plane/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
+      - crates/permguard-control-plane-server/tests/authorization.rs::a_token_revoked_between_negotiation_and_commit_refuses_the_commit
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
   "2-security/9-security-token-status.md#evidence":
     paths:
@@ -4483,7 +4483,7 @@ sections:
       - crates/permguard-host/src/authz/mod.rs
     tests:
       - crates/permguard-server/tests/host_api.rs::every_route_on_both_bindings_refuses_nobody_and_strangers_and_admits_the_administrator
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_token_caller_evaluates_within_its_scope_and_targets_alone
   "2-security/6-security-api-protection.md#scope-coherence":
     paths:
@@ -4556,12 +4556,12 @@ sections:
   "3-control-plane/3-control-plane-evidence-stores.md#what-a-decision-store-accepts-in-clear":
     paths:
       - crates/permguard-decisions/src/ceiling.rs
-      - crates/permguard-control-plane/src/service.rs
+      - crates/permguard-control-plane-server/src/service.rs
     tests:
       - crates/permguard-decisions/src/ceiling.rs::a_record_within_the_ceiling_is_accepted
       - crates/permguard-decisions/src/ceiling.rs::a_member_beyond_the_ceiling_is_named
       - crates/permguard-decisions/src/ceiling.rs::every_member_is_accepted_under_the_star_and_none_under_an_empty_ceiling
-      - crates/permguard-control-plane/src/service.rs::the_decision_store_is_composed_with_its_ceiling
+      - crates/permguard-control-plane-server/src/service.rs::the_decision_store_is_composed_with_its_ceiling
   "4-data-plane/4-data-plane-decision-log.md#what-is-recorded-in-clear":
     paths:
       - crates/permguard-data-plane/src/authz/decide.rs
@@ -4651,7 +4651,7 @@ findings:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::every_request_from_a_stale_mirror_is_answered_and_counted
   "F-15":
     tests:
-      - crates/permguard-control-plane/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
+      - crates/permguard-control-plane-server/src/catalog/http.rs::get_ledger_lists_the_members_serving_it_with_their_reported_progress
       - crates/permguard-host/src/api/members/tests.rs::the_member_view_shows_member_reported_progress_apart_from_receipt
   "F-16":
     tests:
@@ -4674,7 +4674,7 @@ findings:
   "F-19":
     tests:
       - crates/permguard-data-plane/src/mirrors/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
-      - crates/permguard-control-plane/src/notp/http.rs::test_a_commit_hints_the_watches_of_its_ledger
+      - crates/permguard-control-plane-server/src/notp/http.rs::test_a_commit_hints_the_watches_of_its_ledger
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_hint_wakes_the_round_no_sooner_than_its_spacing
     gaps:
       - "open (test): revocation convergence is not measured end to end against a declared objective; the hint, wake and watch mechanics are tested"
@@ -4684,16 +4684,16 @@ findings:
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_wait_is_never_zero_however_the_numbers_fall
   "F-21":
     tests:
-      - crates/permguard-control-plane/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
+      - crates/permguard-control-plane-server/tests/authorization.rs::f21_the_catalog_answers_401_to_nobody_and_a_stranger_and_nothing_is_readable_without_a_grant
       - crates/permguard-data-plane-server/tests/authorization.rs::f21_an_evaluation_without_a_grant_is_401_before_any_policy_runs
-      - crates/permguard-control-plane/src/catalog/grpc.rs::f21_f22_over_grpc_the_actor_rides_the_request_extensions
-      - crates/permguard-control-plane/src/notp/grpc.rs::a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup
+      - crates/permguard-control-plane-server/src/catalog/grpc.rs::f21_f22_over_grpc_the_actor_rides_the_request_extensions
+      - crates/permguard-control-plane-server/src/notp/grpc.rs::a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup
   "F-22":
     tests:
       - crates/permguard-data-plane/src/authz/gate.rs::f22_a_ledger_outside_the_scope_is_403_and_indistinguishable_from_one_that_does_not_exist
-      - crates/permguard-control-plane/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
+      - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
-      - crates/permguard-control-plane/src/catalog/grpc.rs::f21_f22_over_grpc_the_actor_rides_the_request_extensions
+      - crates/permguard-control-plane-server/src/catalog/grpc.rs::f21_f22_over_grpc_the_actor_rides_the_request_extensions
       - crates/permguard-conformance/tests/chart.rs::a_task_selector_wider_than_its_group_is_refused
   "F-23":
     tests:
@@ -5000,7 +5000,7 @@ findings:
     tests:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_record_binds_its_interface_its_actor_apart_from_the_asserted_principal_and_its_question
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_evaluation_failure_is_recorded_indeterminate_with_its_causes
-      - crates/permguard-control-plane/src/decisions/http.rs::test_the_decision_wire_types_match_openapi_evidence_decisions
+      - crates/permguard-control-plane-server/src/decisions/http.rs::test_the_decision_wire_types_match_openapi_evidence_decisions
   "IFACE-06":
     tests:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::test_adversarial_payloads_get_the_same_answer_or_refusal_over_rest_and_grpc
@@ -5044,7 +5044,7 @@ legacy:
       - crates/permguard-decisions/tests/legacy_fixtures.rs::test_the_v1_decision_spool_fixture_migrates_into_its_archive
       - crates/permguard-events/tests/legacy_fixtures.rs::test_the_v1_event_journal_fixture_migrates_into_its_archive
       - crates/permguard-data-plane-server/tests/module.rs::a_decision_log_server_or_an_event_destination_is_refused_as_retired
-      - crates/permguard-control-plane/tests/module.rs::the_decision_store_is_preflighted_instead_of_disappearing_behind_health
+      - crates/permguard-control-plane-server/tests/module.rs::the_decision_store_is_preflighted_instead_of_disappearing_behind_health
   "configured-url-and-tls-trust-first-contact-rings-per-plane-key-endpoints-as-authority":
     paths:
       - crates/permguard-data-plane/src/mirrors/round.rs

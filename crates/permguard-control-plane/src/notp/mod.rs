@@ -10,9 +10,7 @@
 //! against one ledger contend exactly there and nowhere else. Pulls never
 //! wait.
 
-pub(crate) mod grpc;
-pub(crate) mod http;
-pub(crate) mod mirror;
+pub mod mirror;
 
 use permguard_core::keys::PublicSet as _;
 use std::collections::HashMap;
@@ -64,41 +62,40 @@ const WIRE_BYTES: Metric = Metric::counter(
 
 /// What every NOTP operation runs with.
 #[derive(Clone)]
-pub(crate) struct NotpFacade {
-    pub(crate) catalog: Arc<dyn Catalog>,
+pub struct NotpFacade {
+    pub catalog: Arc<dyn Catalog>,
     /// `<volume>/data/zones` — the same root the catalog keeps, so a ledger's
     /// store is always beside its record.
-    pub(crate) zones_root: PathBuf,
+    pub zones_root: PathBuf,
     /// The ring that signs head statements — the git-like ring, never the
     /// one sealing the audit trail.
-    pub(crate) keys:
-        permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
-    pub(crate) limits: EngineLimits,
+    pub keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
+    pub limits: EngineLimits,
     /// How long a transfer session stays open, and how long a closed one is kept (WP-7.12).
-    pub(crate) transfer: crate::engine::TransferPolicy,
+    pub transfer: crate::engine::TransferPolicy,
     /// The Host's mutation transaction, for the ref updates (WP-3.6).
-    pub(crate) mutations: permguard_host::composition::MutationHandle,
+    pub mutations: permguard_host::composition::MutationHandle,
     /// Where a commit's `WatchRefs` hint goes, when the Host keeps watches.
-    pub(crate) hints: Option<permguard_host::composition::Hints>,
+    pub hints: Option<permguard_host::composition::Hints>,
     /// The `host_id` of this Control Plane Host, the authority every head statement names (WP-7.1).
-    pub(crate) authority: [u8; 16],
+    pub authority: [u8; 16],
     /// What this deployment has opted into among the provisional contracts, for the ingest gate.
-    pub(crate) enabled: permguard_languages::registry::Enabled,
+    pub enabled: permguard_languages::registry::Enabled,
     /// Whether batches ride deflate-compressed — advertised at negotiation,
     /// echoed per batch; the engine below only ever sees canonical bytes.
-    pub(crate) compression: bool,
-    pub(crate) recorder: Option<crate::handles::Audit>,
-    pub(crate) disclosure: Disclosure,
-    pub(crate) audit_refusals: bool,
+    pub compression: bool,
+    pub recorder: Option<crate::handles::Audit>,
+    pub disclosure: Disclosure,
+    pub audit_refusals: bool,
     /// Where the numbers go; a handle that may hold nothing, costing a branch.
-    pub(crate) metrics: Metrics,
+    pub metrics: Metrics,
     /// One store per ledger, shared: the CAS lock must be process-wide.
     stores: Arc<Mutex<HashMap<String, Arc<FileObjectStore>>>>,
     /// The Host's authorization, before anything is resolved (WP-2.4): `policy.push` on the exact
     /// ledger for a push, `catalog.read` on it for a ref read, a pull or a fetch until the Host
     /// task transport of WP-4.x carries pulls for `policy.mirror` members; the key ring stays open,
     /// being the public keys.
-    pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
+    pub authorization: Arc<permguard_host::composition::Authorization>,
 }
 
 /// A head statement's `signed_at` is the signing ring's time: the Host's time guard for the ring
@@ -111,7 +108,7 @@ impl permguard_core::time::Clock for NotpFacade {
 
 impl NotpFacade {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         catalog: Arc<dyn Catalog>,
         zones_root: PathBuf,
         keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
@@ -156,7 +153,7 @@ impl NotpFacade {
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
-    ) -> Result<(), crate::wire::Refusal> {
+    ) -> Result<(), crate::refusal::Refusal> {
         self.authorize_as(
             actor,
             permguard_core::authz::operations::CATALOG_READ,
@@ -174,7 +171,7 @@ impl NotpFacade {
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
-    ) -> Result<(), crate::wire::Refusal> {
+    ) -> Result<(), crate::refusal::Refusal> {
         self.authorize_as(
             actor,
             permguard_core::authz::operations::POLICY_PUSH,
@@ -189,10 +186,10 @@ impl NotpFacade {
         operation: &str,
         zone: &str,
         ledger: &str,
-    ) -> Result<(), crate::wire::Refusal> {
+    ) -> Result<(), crate::refusal::Refusal> {
         use permguard_core::authz::Resource;
 
-        let plane = Resource::plane(crate::service::PLANE);
+        let plane = Resource::plane(crate::PLANE);
         self.authorization.may_act_under(actor, operation, &plane)?;
         let zone = match self.catalog.get_zone(&Selector::parse(zone)) {
             Ok(zone) => zone,
@@ -203,7 +200,7 @@ impl NotpFacade {
             }
             Err(error) => return Err(crate::catalog::api_error(error).into()),
         };
-        let scope = Resource::zone(crate::service::PLANE, &zone.id);
+        let scope = Resource::zone(crate::PLANE, &zone.id);
         self.authorization.may_act_under(actor, operation, &scope)?;
         match self
             .catalog
@@ -214,7 +211,7 @@ impl NotpFacade {
                 .authorize(
                     actor,
                     operation,
-                    &Resource::ledger(crate::service::PLANE, &zone.id, &found.id),
+                    &Resource::ledger(crate::PLANE, &zone.id, &found.id),
                 )
                 .map_err(Into::into),
             Err(error @ CatalogError::NotFound { .. }) => {
@@ -262,11 +259,7 @@ impl NotpFacade {
     }
 
     /// The ids of the zone and ledger a request names, by name or id.
-    pub(crate) fn ledger_ids(
-        &self,
-        zone: &str,
-        ledger: &str,
-    ) -> Result<(String, String), ApiError> {
+    pub fn ledger_ids(&self, zone: &str, ledger: &str) -> Result<(String, String), ApiError> {
         let zone = self
             .catalog
             .get_zone(&Selector::parse(zone))
@@ -384,13 +377,13 @@ impl NotpFacade {
     // ---- the six operations, each: resolve, run, audit, map ----
 
     #[tracing::instrument(name = "notp.ref", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn get_ref(
+    pub async fn get_ref(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         name: &str,
-    ) -> Result<GetRefResponse, crate::wire::Refusal> {
+    ) -> Result<GetRefResponse, crate::refusal::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
         self.get_ref_as(&Self::caller_of(actor), zone, ledger, name)
             .map_err(Into::into)
@@ -421,13 +414,13 @@ impl NotpFacade {
     }
 
     #[tracing::instrument(name = "notp.push_negotiate", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn negotiate_push(
+    pub async fn negotiate_push(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &NegotiatePushRequest,
-    ) -> Result<NegotiatePushResponse, crate::wire::Refusal> {
+    ) -> Result<NegotiatePushResponse, crate::refusal::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger, Access::Push) {
@@ -450,13 +443,13 @@ impl NotpFacade {
     }
 
     #[tracing::instrument(name = "notp.upload", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn upload(
+    pub async fn upload(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &UploadObjectsRequest,
-    ) -> Result<UploadObjectsResponse, crate::wire::Refusal> {
+    ) -> Result<UploadObjectsResponse, crate::refusal::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger, Access::Push) {
@@ -485,13 +478,13 @@ impl NotpFacade {
     }
 
     #[tracing::instrument(name = "notp.push_commit", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn commit_push(
+    pub async fn commit_push(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &CommitPushRequest,
-    ) -> Result<CommitPushResponse, crate::wire::Refusal> {
+    ) -> Result<CommitPushResponse, crate::refusal::Refusal> {
         self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger, Access::Push) {
@@ -517,13 +510,13 @@ impl NotpFacade {
     }
 
     #[tracing::instrument(name = "notp.pull_negotiate", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn negotiate_pull(
+    pub async fn negotiate_pull(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &NegotiatePullRequest,
-    ) -> Result<NegotiatePullResponse, crate::wire::Refusal> {
+    ) -> Result<NegotiatePullResponse, crate::refusal::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
         self.negotiate_pull_as(&Self::caller_of(actor), zone, ledger, request)
             .map_err(Into::into)
@@ -550,13 +543,13 @@ impl NotpFacade {
     }
 
     #[tracing::instrument(name = "notp.fetch", skip_all, fields(zone = %zone, ledger = %ledger))]
-    pub(crate) async fn fetch(
+    pub async fn fetch(
         &self,
         actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &FetchObjectsRequest,
-    ) -> Result<FetchObjectsResponse, crate::wire::Refusal> {
+    ) -> Result<FetchObjectsResponse, crate::refusal::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
         self.fetch_as(&Self::caller_of(actor), zone, ledger, request)
             .map_err(Into::into)
@@ -602,7 +595,7 @@ impl NotpFacade {
         if let Some(hints) = &self.hints {
             hints.publish(
                 permguard_host::membership::record::TaskType::PolicyMirror,
-                &permguard_core::authz::Resource::ledger(crate::service::PLANE, zone_id, ledger_id),
+                &permguard_core::authz::Resource::ledger(crate::PLANE, zone_id, ledger_id),
                 &permguard_host::membership::record::WatchHint {
                     key: format!("{zone_id}/{ledger_id}/{name}"),
                     head: committed.head.to_string(),
@@ -687,7 +680,7 @@ impl NotpFacade {
     }
 
     /// The key ring, as the JWKS document both surfaces serve.
-    pub(crate) fn keyring(&self) -> Result<Vec<u8>, ApiError> {
+    pub fn keyring(&self) -> Result<Vec<u8>, ApiError> {
         let keys = self
             .keys
             .public_keys()

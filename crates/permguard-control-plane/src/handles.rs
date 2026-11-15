@@ -23,7 +23,7 @@ use permguard_host::composition::{
     LedgerExportV1, Registration, Signer,
 };
 
-use crate::service::PLANE;
+use crate::PLANE;
 
 /// Every action this plane records to the audit trail.
 pub struct ControlPlaneAudit;
@@ -54,10 +54,10 @@ impl AuditSchema for ControlPlaneAudit {
 }
 
 /// This plane's audit handle.
-pub(crate) type Audit = AuditHandle<ControlPlaneAudit>;
+pub type Audit = AuditHandle<ControlPlaneAudit>;
 
 /// What this plane declares to the Host.
-pub(crate) fn declaration() -> Declaration {
+pub fn declaration() -> Declaration {
     use permguard_host::membership::record::TaskType;
 
     // The task contracts this plane serves at the Host's listener (WP-4.4, owner decision): their
@@ -86,7 +86,7 @@ pub(crate) fn declaration() -> Declaration {
         .reads_stream(permguard_events::stream::STREAM)
 }
 
-pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
+pub fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
 }
 
@@ -104,13 +104,13 @@ pub(crate) fn member_names(
 
 /// This Host's `host_id`, the salt of the cursor keys this plane derives from its stores' roots
 /// (WP-3.3); `None` when no Host registered the plane.
-pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
+pub fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
     registration(context)?.host_id()
 }
 
 /// The Host's consumer of the event stream, which the public event reads answer from (WP-6.2b);
 /// `None` when the Host composes no stream engine consuming it.
-pub(crate) fn event_consumer(
+pub fn event_consumer(
     context: &PlaneContext<'_>,
 ) -> Option<permguard_host::composition::StreamConsumer> {
     match registration(context)?.stream_consumer(permguard_events::stream::STREAM) {
@@ -129,7 +129,7 @@ pub(crate) fn event_consumer(
 
 /// The Host's consumer of the decision stream, which the public decision reads answer from
 /// (WP-6.1b); `None` when the Host composes no stream engine consuming it.
-pub(crate) fn decision_consumer(
+pub fn decision_consumer(
     context: &PlaneContext<'_>,
 ) -> Option<permguard_host::composition::StreamConsumer> {
     match registration(context)?.stream_consumer(permguard_decisions::stream::STREAM) {
@@ -150,7 +150,7 @@ pub(crate) fn decision_consumer(
 
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the
 /// Host did not register decides with a closed one: nothing is allowed.
-pub(crate) fn authorization(
+pub fn authorization(
     context: &PlaneContext<'_>,
 ) -> Arc<permguard_host::composition::Authorization> {
     registration(context).map_or_else(
@@ -160,7 +160,7 @@ pub(crate) fn authorization(
 }
 
 /// The mutation transaction the ref updates run in (WP-3.6), when the Host composes one.
-pub(crate) fn ref_mutations(
+pub fn ref_mutations(
     context: &PlaneContext<'_>,
 ) -> Option<permguard_host::composition::MutationHandle> {
     registration(context)?
@@ -195,7 +195,7 @@ pub(crate) fn catalog_mutations(
 /// A mutation transaction of the catalog over an offline engine of its own on a fresh volume
 /// under `directory`, for a test.
 #[cfg(test)]
-pub(crate) fn catalog_mutations_for_tests(
+pub fn catalog_mutations_for_tests(
     directory: &std::path::Path,
 ) -> permguard_host::composition::MutationHandle {
     let volume = permguard_host::storage::volume::Volume::claim(
@@ -214,7 +214,7 @@ pub(crate) fn catalog_mutations_for_tests(
 /// A mutation transaction of the catalog over `projection` instead of an audit engine, on the
 /// volume under `directory`, fresh or reopened: for a test that sees, or refuses, the phases.
 #[cfg(test)]
-pub(crate) fn catalog_mutations_over(
+pub fn catalog_mutations_over(
     directory: &std::path::Path,
     projection: std::sync::Arc<dyn permguard_host::operations::mutation::Projection>,
 ) -> permguard_host::composition::MutationHandle {
@@ -240,7 +240,7 @@ pub(crate) fn catalog_mutations_over(
 /// A mutation transaction of the ref updates over an offline engine of its own on a fresh volume
 /// under `directory`, for a test.
 #[cfg(test)]
-pub(crate) fn ref_mutations_for_tests(
+pub fn ref_mutations_for_tests(
     directory: &std::path::Path,
 ) -> permguard_host::composition::MutationHandle {
     crate::store::testing::offline_ref_mutations(directory)
@@ -248,7 +248,7 @@ pub(crate) fn ref_mutations_for_tests(
 }
 
 /// The audit handle, when an audit recorder is composed.
-pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
+pub fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
     registration(context)?
         .audit::<ControlPlaneAudit>()
         .ok()
@@ -282,7 +282,7 @@ pub(crate) fn import_signer(context: &PlaneContext<'_>) -> Option<Signer<ImportC
 
 /// A ring a test holds itself.
 #[cfg(test)]
-pub(crate) type TestRing = Arc<dyn permguard_core::KeyManager>;
+pub type TestRing = Arc<dyn permguard_core::KeyManager>;
 
 /// A test's ring that keeps no epoch, given one: epoch 1, the set digest over its published
 /// keys. A head statement binds a ring's epoch and set (WP-7.1), and a ring that names none
@@ -329,7 +329,7 @@ impl permguard_core::KeyManager for EpochOne {
 
 /// A head statement signer over `keys`, for a test that holds a ring of its own.
 #[cfg(test)]
-pub(crate) fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
+pub fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
     let keys: TestRing = Arc::new(EpochOne(keys));
     permguard_host::composition::Host::builder()
         .ring(permguard_host::composition::CONTROL_ATTEST, keys)
@@ -342,7 +342,7 @@ pub(crate) fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
 
 /// A ring on disk under `root`, published and active, for a test that signs with it.
 #[cfg(test)]
-pub(crate) fn ring_for_tests(root: &std::path::Path) -> TestRing {
+pub fn ring_for_tests(root: &std::path::Path) -> TestRing {
     use permguard_core::keys::KeyManager as _;
 
     let keys = Arc::new(permguard_std::keys::DirectoryKeyManager::new(
@@ -364,7 +364,7 @@ pub(crate) fn ring_for_tests(root: &std::path::Path) -> TestRing {
 /// An export manifest signer over `keys`, composed as the Host's `host.operations`, for a test
 /// that holds a ring of its own (WP-7.10).
 #[cfg(test)]
-pub(crate) fn export_signer_for_tests(keys: TestRing) -> Signer<LedgerExportV1> {
+pub fn export_signer_for_tests(keys: TestRing) -> Signer<LedgerExportV1> {
     let keys: TestRing = Arc::new(EpochOne(keys));
     permguard_host::composition::Host::builder()
         .ring(permguard_host::composition::HOST_OPERATIONS, keys)
@@ -389,7 +389,7 @@ pub(crate) fn import_signer_for_tests(keys: TestRing) -> Signer<ImportCheckpoint
 }
 
 /// This plane's own public set, to publish, when its signing ring is composed.
-pub(crate) fn own_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
+pub fn own_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
     let signer = registration(context)?
         .signer::<HeadStatementV1>()
         .ok()
@@ -399,7 +399,7 @@ pub(crate) fn own_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn Publ
 
 /// An audit handle over `recorder`, for a test that needs one without composing a server.
 #[cfg(test)]
-pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit {
+pub fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit {
     permguard_host::composition::Host::builder()
         .audit(recorder)
         .build()
@@ -492,6 +492,6 @@ mod task_contract_tests {
                 .expect("declared")
         );
         let (plane, _) = jobs.get(permguard_host::gc::OBJECTS).expect("provided");
-        assert_eq!(plane, crate::service::PLANE);
+        assert_eq!(plane, crate::PLANE);
     }
 }

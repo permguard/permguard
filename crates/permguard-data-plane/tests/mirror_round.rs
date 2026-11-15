@@ -91,7 +91,7 @@ mod plane {
         keys.maintain().expect("the ring activates");
 
         // The control plane signs through the handle the Host registers for it, as in a server.
-        let module = permguard_control_plane::module();
+        let module = permguard_control_plane_server::module();
         let registration = permguard_host::composition::Host::builder()
             .ring(permguard_host::composition::CONTROL_ATTEST, keys)
             // Every head statement names its Host (WP-7.1): NOTP is served only with one.

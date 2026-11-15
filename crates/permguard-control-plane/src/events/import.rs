@@ -35,12 +35,12 @@ pub const VERSION: u64 = permguard_host::membership::import::VERSION;
 pub(crate) type OriginsOf = dyn Fn(&Resource) -> Result<OriginSet, String> + Send + Sync;
 
 /// Serves `events.import` from the Host's consumer of the event stream.
-pub(crate) struct Import {
-    pub(crate) consumer: StreamConsumer,
-    pub(crate) origins: Arc<OriginsOf>,
-    pub(crate) signer: Signer<ImportCheckpointV1>,
+pub struct Import {
+    pub consumer: StreamConsumer,
+    pub origins: Arc<OriginsOf>,
+    pub signer: Signer<ImportCheckpointV1>,
     /// This coordinator's `host_id`.
-    pub(crate) coordinator: [u8; 16],
+    pub coordinator: [u8; 16],
 }
 
 fn refusal(code: &'static str, reason: impl Into<String>) -> Refusal {

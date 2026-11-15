@@ -570,7 +570,7 @@ mod tests {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root)),
@@ -791,11 +791,11 @@ mod tests {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root)),
-            recorder: Some(crate::handles::audit_for_tests(recorder)),
+            recorder: Some(crate::testing::audit_for_tests(recorder)),
             disclosure: Disclosure::Minimal,
             audit_refusals: true,
             metrics: permguard_core::metrics::Metrics::none(),
@@ -884,7 +884,7 @@ mod tests {
         catalog: Arc<dyn permguard_core::Catalog>,
         trail: &Arc<Trail>,
     ) -> Router {
-        let mutations = crate::handles::catalog_mutations_over(
+        let mutations = crate::testing::catalog_mutations_over(
             &root.join("host"),
             Arc::clone(trail) as Arc<dyn permguard_host::operations::mutation::Projection>,
         );
@@ -1226,7 +1226,7 @@ mod tests {
     async fn a_ledger_and_a_zone_are_exported_over_http() {
         use base64::Engine as _;
 
-        let fixture = super::super::exports::tests::fixture("http", 1 << 20);
+        let fixture = crate::testing::exports::fixture("http", 1 << 20);
         let facade = |exports: Option<Arc<super::super::exports::Exports>>| CatalogFacade {
             host: None,
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
@@ -1288,7 +1288,7 @@ mod tests {
 
         use super::super::exports;
 
-        let fixture = exports::tests::fixture("http-authz", 1 << 20);
+        let fixture = crate::testing::exports::fixture("http-authz", 1 << 20);
         let (zone, ledger) = (fixture.zone.id.clone(), fixture.ledger.id.clone());
         let shared = Arc::new(fixture.exports);
         let actor = Actor::Authenticated(ActorContext::new(
@@ -1357,7 +1357,7 @@ mod tests {
     /// transfer of ledgers it is `503`.
     #[tokio::test]
     async fn an_import_body_is_checked_before_anything_is_read() {
-        let fixture = super::super::exports::tests::fixture("http-import", 1 << 20);
+        let fixture = crate::testing::exports::fixture("http-import", 1 << 20);
         let facade = |exports: Option<Arc<super::super::exports::Exports>>| CatalogFacade {
             host: None,
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
@@ -2032,7 +2032,7 @@ mod tests {
         let refused = serde_json::json!({"ledger": "x"});
         assert!(!doc.accepts_json("ExportBody", &refused));
         assert!(serde_json::from_value::<ExportBody>(refused).is_err());
-        let fixture = super::super::exports::tests::fixture("openapi", 1 << 20);
+        let fixture = crate::testing::exports::fixture("openapi", 1 << 20);
         let exported = fixture
             .exports
             .archive(&fixture.zone, std::slice::from_ref(&fixture.ledger))
@@ -2184,7 +2184,7 @@ mod tests {
         let routes = routes(CatalogFacade {
             host: Some(Arc::new(provider)),
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             catalog: Arc::new(FileCatalog::new(root)),

@@ -33,8 +33,7 @@
 
 pub mod configuration;
 pub mod cursorkey;
-pub mod grpc;
-pub mod http;
+pub mod facade;
 pub mod ingest;
 pub mod measure;
 pub mod offset;

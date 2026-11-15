@@ -245,6 +245,10 @@ pub fn journal(
 /// objects and is not counted.
 pub type ObjectCheck = dyn Fn(&Path, &[u8]) -> Option<bool> + Send + Sync;
 
+/// A content-addressed tree on the volume and the check of its files: what `volume verify` reads,
+/// as a Plane declares it.
+pub type VerifiedTree = (std::path::PathBuf, std::sync::Arc<ObjectCheck>);
+
 /// Checks every file below `root` that `mode` selects against `check`, which is given the file's
 /// path relative to `root` and its bytes.
 pub fn objects(

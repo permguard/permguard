@@ -29,7 +29,7 @@ RUN case "${TARGETARCH}" in \
     esac > /target-triple \
  && rustup target add "$(cat /target-triple)"
 
-ARG PACKAGE=permguard-control-plane
+ARG PACKAGE=permguard-control-plane-server
 ARG BIN=permguard-control-plane
 ARG PERMGUARD_COPYRIGHT_YEAR=2022
 ARG PERMGUARD_COPYRIGHT_HOLDER="Nitro Agility S.r.l."

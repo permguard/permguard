@@ -28,9 +28,9 @@ fn parsed(base: &str) -> serde_json::Value {
 fn every_decision_endpoint_is_a_path_the_router_mounts() {
     let document = parsed("http://host/");
     for (member, path) in [
-        ("records", super::super::http::RECORDS_PATH),
-        ("tenant_records", super::super::http::TENANT_RECORDS_PATH),
-        ("signers", super::super::http::SIGNERS_PATH),
+        ("records", super::super::facade::RECORDS_PATH),
+        ("tenant_records", super::super::facade::TENANT_RECORDS_PATH),
+        ("signers", super::super::facade::SIGNERS_PATH),
     ] {
         assert_eq!(
             document["endpoints"][member],

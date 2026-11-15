@@ -236,7 +236,8 @@ mod tests {
             .join(&hex[2..]);
         std::fs::create_dir_all(file.parent().expect("fan")).expect("tree");
         std::fs::write(&file, b"rot").expect("a corrupted copy on the volume");
-        let trees: Vec<permguard_server::VerifiedTree> = crate::module().verified_trees();
+        let trees: Vec<permguard_host::storage::verify::VerifiedTree> =
+            crate::plane::verified_trees();
         let report = verify::volume(&root, None, &trees, Mode::Full, &mut Budget::unbounded())
             .expect("verified");
         assert_eq!(report.files_checked, 1);

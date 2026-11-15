@@ -24,7 +24,7 @@ pub trait NamesMembers: Send + Sync {
 }
 
 /// The Host's registration, naming the members this Plane coordinates under `task`.
-pub(crate) struct Registered {
+pub struct Registered {
     pub registration: Arc<Registration>,
     pub task: TaskType,
 }
@@ -86,18 +86,6 @@ pub fn members_of<'a>(
         }
     }
     members
-}
-
-/// The members as the gRPC page carries them, in Host id order.
-pub fn to_proto(members: BTreeMap<String, MemberName>) -> Vec<crate::v1::MemberName> {
-    members
-        .into_iter()
-        .map(|(host_id, member)| crate::v1::MemberName {
-            host_id,
-            member_id: member.member_id,
-            name: member.name,
-        })
-        .collect()
 }
 
 /// The page as JSON, `members` beside its block when any is named.
@@ -170,12 +158,6 @@ mod tests {
         assert!(
             bare.get("members").is_none(),
             "no member named, no key: {bare}"
-        );
-        let proto = to_proto(members_of(records.iter(), event_host, Some(&names)));
-        assert_eq!(proto.len(), 1);
-        assert_eq!(
-            (proto[0].host_id.as_str(), proto[0].name.as_str()),
-            (named.as_str(), "lab-a")
         );
     }
 

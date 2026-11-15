@@ -2,36 +2,37 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-mod api;
-mod catalog;
-mod notp;
+//! The Control Plane's domain: the catalog of zones and ledgers, the content-addressed ledger
+//! store and its NOTP engine, and the stores of the evidence the data planes ship. It serves
+//! nothing and listens nowhere; its routes over HTTP and gRPC, its module for the composition and
+//! its binary are `permguard-control-plane-server`'s (the crate boundaries refactoring, RD-3).
 
-// The server half of NOTP — the transfer engine with its commit acceptance
-// invariants, and the on-disk store of one ledger. Public, not `pub(crate)`,
-// for one reason only: the CLI's integration tests drive a real in-process
-// server through it. No production crate imports the control plane.
+pub mod catalog;
 pub mod decisions;
 pub mod engine;
 pub mod events;
-mod evidence;
+pub mod evidence;
 pub mod gc;
-mod handles;
+pub mod handles;
 pub mod inventory;
 pub mod members;
-mod query;
-mod service;
+pub mod notp;
+pub mod plane;
+pub mod query;
+pub mod refusal;
 pub mod store;
 pub mod transfer;
-mod v1;
 pub mod verify;
-mod wire;
 
-pub use service::{ControlPlaneModule, module};
+/// The Plane's id, as configuration spells it.
+pub const PLANE: &str = "control";
+/// The component name its logs and metrics carry.
+pub const COMPONENT: &str = "control-plane";
 
 /// The refusal of a catalog or ledger change that was made and whose `security` audit record
 /// could not be written: never answered as success, never undone (WP-3.6, owner decision of
 /// 2026-10-07). The caller reads the state before it retries.
-pub(crate) fn unrecorded(error: impl std::fmt::Display) -> permguard_core::ApiError {
+pub fn unrecorded(error: impl std::fmt::Display) -> permguard_core::ApiError {
     permguard_core::ApiError::new(
         permguard_core::ErrorClass::Internal,
         permguard_core::codes::host::MUTATION_UNRECORDED,

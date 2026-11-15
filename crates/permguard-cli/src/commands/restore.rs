@@ -231,7 +231,7 @@ fn not_restored(held: &Volume, mode: Mode) -> Result<(), Failure> {
 fn scan(held: &Volume, trace: &Trace) -> Result<u64, Failure> {
     use permguard_host::storage::verify::{self, Budget, Mode as ScanMode};
     // The trees the composed planes declare: the Control Plane's objects are the only ones.
-    let trees = permguard_control_plane::module().verified_trees();
+    let trees = permguard_control_plane::plane::verified_trees();
     let report = verify::volume(
         held.root(),
         Some(held.generation()),

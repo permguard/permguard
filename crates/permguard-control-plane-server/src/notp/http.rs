@@ -310,7 +310,7 @@ mod tests {
         ));
         keys.maintain().expect("the ring publishes");
         keys.maintain().expect("the ring activates");
-        let keys = crate::handles::head_signer_for_tests(keys);
+        let keys = crate::testing::head_signer_for_tests(keys);
 
         let facade = NotpFacade::new(
             catalog,
@@ -328,7 +328,7 @@ mod tests {
                 ttl: Duration::from_secs(900),
                 grace: Duration::from_secs(3600),
             },
-            crate::handles::ref_mutations_for_tests(&root.join("volume")),
+            crate::testing::ref_mutations_for_tests(&root.join("volume")),
             hints,
             permguard_languages::registry::Enabled::everything(),
             true,
@@ -1405,7 +1405,7 @@ mod tests {
             }
         }
 
-        let (routes, zone, ledger) = testing_routes_with(Some(crate::handles::audit_for_tests(
+        let (routes, zone, ledger) = testing_routes_with(Some(crate::testing::audit_for_tests(
             AuditRecorder::new(Arc::new(Refusing)),
         )));
         let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");

@@ -21,7 +21,7 @@ is cut.
 
 - **Each Plane's binary is built from its server package.**
   A Plane is now two packages: its domain, which serves nothing and listens nowhere, and its server, which holds its routes over HTTP and gRPC, its module and its binary.
-  Building from source names the server package: `cargo build -p permguard-authority-plane-server --bin permguard-authority-plane`, `-p permguard-data-plane-server --bin permguard-data-plane`.
+  Building from source names the server package: `cargo build -p permguard-authority-plane-server --bin permguard-authority-plane`, `-p permguard-data-plane-server --bin permguard-data-plane`, `-p permguard-control-plane-server --bin permguard-control-plane`.
   Every binary, image, archive and shipped configuration keeps its name and its place.
 
 ## [0.1.32] - 2026-11-15

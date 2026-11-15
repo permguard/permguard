@@ -160,10 +160,10 @@ pub struct Sources<'a> {
 }
 
 /// One run of the Host's consumer a read covers, and the name its position is kept under.
-pub(crate) struct HostRun {
-    pub(crate) resource: Resource,
-    pub(crate) run: ConsumedRun,
-    pub(crate) key: String,
+pub struct HostRun {
+    pub resource: Resource,
+    pub run: ConsumedRun,
+    pub key: String,
 }
 
 /// The cursor stream a consumer run's position is kept under.
@@ -224,7 +224,7 @@ fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun
 /// catalog holds the ledger or the consumer holds runs of it, so a deleted ledger's evidence stays
 /// readable by its ids; anything else `not_found`. A stream scope, and any scope with no catalog
 /// composed, is returned as it is.
-pub(crate) fn canonical(sources: &Sources<'_>, scope: Scope) -> Result<Scope, ReadError> {
+pub fn canonical(sources: &Sources<'_>, scope: Scope) -> Result<Scope, ReadError> {
     use permguard_core::catalog::{CatalogError, Selector};
 
     let Scope::Tenant { zone, ledger } = scope else {
@@ -274,7 +274,7 @@ pub(crate) fn canonical(sources: &Sources<'_>, scope: Scope) -> Result<Scope, Re
     }
 }
 
-pub(crate) fn unhex16(text: &str) -> Option<[u8; 16]> {
+pub fn unhex16(text: &str) -> Option<[u8; 16]> {
     if text.len() != 32 {
         return None;
     }
@@ -685,7 +685,7 @@ pub const HOST_FORMAT: &str = "host-batch-v1";
 /// The sealed batch of every consumer run's records in the page, each once, and each record's
 /// RFC 6962 path to the root its batch's envelope signs, its leaves digested under `domain`: what
 /// the decision and the event reads both prove a Host record with (WP-6.2b).
-pub(crate) fn host_proof(
+pub fn host_proof(
     host: Option<&StreamConsumer>,
     runs: &[HostRun],
     records: &[Value],

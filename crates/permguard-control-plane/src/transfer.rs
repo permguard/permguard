@@ -345,7 +345,7 @@ pub struct Transfers<'a> {
 }
 
 impl<'a> Transfers<'a> {
-    pub(crate) fn new(store: &'a FileObjectStore, guard: MutexGuard<'a, ()>) -> Self {
+    pub fn new(store: &'a FileObjectStore, guard: MutexGuard<'a, ()>) -> Self {
         Self {
             root: store.root().to_path_buf(),
             store,
@@ -532,7 +532,7 @@ mod tests {
         dir
     }
 
-    pub(crate) fn push(id: u8, principal: &str, request_id: &str) -> Session {
+    pub fn push(id: u8, principal: &str, request_id: &str) -> Session {
         Session {
             transfer_id: [id; 16],
             direction: Direction::Push,

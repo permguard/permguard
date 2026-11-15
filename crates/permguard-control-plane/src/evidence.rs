@@ -27,25 +27,25 @@ use permguard_host::composition::Authorization;
 /// What a gated read is refused with: an access denial, in its closed body, or the read's own
 /// refusal.
 #[derive(Debug)]
-pub(crate) enum Gated<E> {
+pub enum Gated<E> {
     Denied(AccessDenial),
     Refused(E),
 }
 
 /// The plane's resource, what nothing-granted is checked under.
-pub(crate) fn plane() -> Resource {
+pub fn plane() -> Resource {
     crate::catalog::plane_resource()
 }
 
 /// Refuses a caller granted nothing for `evidence.read` under the plane, before any lookup.
-pub(crate) fn admitted(authorization: &Authorization, actor: &Actor) -> Result<(), AccessDenial> {
+pub fn admitted(authorization: &Authorization, actor: &Actor) -> Result<(), AccessDenial> {
     authorization.may_act_under(actor, operations::EVIDENCE_READ, &plane())
 }
 
 /// What a scope that resolved to nothing is answered with: `Ok(())`, that is its own `not_found`,
 /// only to a caller whose grants cover the whole plane; the denial a foreign ledger gets to anyone
 /// else.
-pub(crate) fn unknown(authorization: &Authorization, actor: &Actor) -> Result<(), AccessDenial> {
+pub fn unknown(authorization: &Authorization, actor: &Actor) -> Result<(), AccessDenial> {
     authorization.not_found_or_forbidden(actor, operations::EVIDENCE_READ, &plane())
 }
 
@@ -72,14 +72,14 @@ pub(crate) fn on_plane(authorization: &Authorization, actor: &Actor) -> Result<(
 
 /// Every operation public, for a test about something other than authorization.
 #[cfg(test)]
-pub(crate) fn permissive() -> std::sync::Arc<Authorization> {
+pub fn permissive() -> std::sync::Arc<Authorization> {
     std::sync::Arc::new(Authorization::permissive())
 }
 
 /// A catalog no gate may consult before it admitted the caller: every lookup panics (after the
 /// review).
 #[cfg(test)]
-pub(crate) struct Untouchable;
+pub struct Untouchable;
 
 #[cfg(test)]
 impl permguard_core::catalog::Catalog for Untouchable {

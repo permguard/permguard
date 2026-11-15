@@ -37,8 +37,7 @@
 //! sign anything.
 
 pub mod configuration;
-pub mod grpc;
-pub mod http;
+pub mod facade;
 pub mod import;
 pub mod ingest;
 pub mod measure;

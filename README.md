@@ -672,7 +672,7 @@ Use Cargo directly for the runtime binaries:
 ```sh
 cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/config.local.yml
 cargo run -p permguard-authority-plane-server --bin permguard-authority-plane -- crates/permguard-authority-plane/config.local.yml
-cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
+cargo run -p permguard-control-plane-server --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
 cargo run -p permguard-data-plane-server --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
 ```
 
@@ -683,7 +683,7 @@ Run `permguard host members invite` there and `permguard host members join` here
 Server commands accept a config file and optional overrides:
 
 ```sh
-cargo run -p permguard-control-plane --bin permguard-control-plane -- \
+cargo run -p permguard-control-plane-server --bin permguard-control-plane -- \
   crates/permguard-control-plane/config.local.yml \
   --public-http-addr 127.0.0.1:6443 \
   --public-grpc-addr 127.0.0.1:6443 \
@@ -924,7 +924,8 @@ The Host never depends on a concrete plane.
 | `permguard-languages`              | planes      | Cedar, Rego and Dogwood integration, and the native request model.                                            |
 | `permguard-authority-plane`        | planes      | Authority Plane domain: service accounts, access keys, scopes, tokens, keys and status lists; serves nothing. |
 | `permguard-authority-plane-server` | planes      | Authority Plane served: its HTTP and gRPC routes, its module and the `permguard-authority-plane` binary.      |
-| `permguard-control-plane`          | planes      | Control Plane binary: ledgers, NOTP server, catalog, decision and event stores.                               |
+| `permguard-control-plane`          | planes      | Control Plane domain: catalog, ledger store and NOTP, decision and event stores; serves nothing.              |
+| `permguard-control-plane-server`   | planes      | Control Plane served: its HTTP and gRPC routes, its module and the `permguard-control-plane` binary.          |
 | `permguard-data-plane`             | planes      | Data Plane domain: mirrors, load gate, evaluation and its authorization, decision log, temporal history.      |
 | `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
 | `permguard-control-client`         | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                       |

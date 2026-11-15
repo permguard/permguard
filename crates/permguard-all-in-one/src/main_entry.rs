@@ -36,7 +36,7 @@ async fn serve() -> ExitCode {
             addresses_for_plane("authority").expect("authority plane addresses are known"),
         )
         .with_plane(
-            permguard_control_plane::module(),
+            permguard_control_plane_server::module(),
             addresses_for_plane("control").expect("control plane addresses are known"),
         )
         .with_plane(

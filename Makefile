@@ -167,10 +167,10 @@ bench-tokens: ## What token verification adds to a decision on a member (TS-9), 
 	cargo bench --locked -p permguard-host --bench token_verify
 
 bench-server: ## Run the control plane for capacity benchmarks: release build, limits out of the way (each PERMGUARD_LIMITS_* overridable).
-	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=$${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000} PERMGUARD_LIMITS_CONNECTIONS=$${PERMGUARD_LIMITS_CONNECTIONS:-20000} PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=$${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0} cargo run --release -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)
+	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=$${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000} PERMGUARD_LIMITS_CONNECTIONS=$${PERMGUARD_LIMITS_CONNECTIONS:-20000} PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=$${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0} cargo run --release -p permguard-control-plane-server --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)
 
 bench-server-shed: ## Run the control plane for the shed benchmark: a low request ceiling, per-address bound off.
-	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=8 PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=0 cargo run --release -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)
+	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=8 PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=0 cargo run --release -p permguard-control-plane-server --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)
 
 bench-decide: ## What a decision costs — the PDP path, cold and warm, single and boxcarred.
 	k6 run --tag testid=decide-$$(date +%Y%m%d-%H%M%S) $(K6_ARGS) bench/decide.js
@@ -259,7 +259,7 @@ test: ## Run tests.
 	cargo test $(scope) $(FEATURES) $(profile) $(ARGS) $(FILTER) $(if $(NOCAPTURE),-- --nocapture)
 
 version-control: ## Report the control plane version.
-	cargo run $(profile) -p permguard-control-plane --bin permguard-control-plane -- version
+	cargo run $(profile) -p permguard-control-plane-server --bin permguard-control-plane -- version
 
 llm-init: ## Initialize LLM agent workspace
 	@./scripts/llm-init.sh

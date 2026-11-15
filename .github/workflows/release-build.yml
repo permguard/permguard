@@ -101,7 +101,7 @@ jobs:
           cargo build --release --locked --target "${TARGET}" \
             --package permguard-cli \
             --package permguard-all-in-one \
-            --package permguard-control-plane \
+            --package permguard-control-plane-server \
             --package permguard-data-plane-server \
             --package permguard-authority-plane-server
           mkdir -p "prebuilt/${STAGED}"

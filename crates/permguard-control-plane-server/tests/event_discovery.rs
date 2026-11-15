@@ -121,7 +121,7 @@ async fn the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to() {
     let config = receiving("chain");
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
     // Registered on a Host that knows its `host_id`, the salt of the store's cursor keys (WP-3.3).
     let registration = permguard_host::composition::Host::builder()
         .host_id([1; 16])
@@ -193,7 +193,7 @@ async fn an_unserved_interface_is_neither_advertised_nor_answered() {
     let audit = RecordingAuditSink::new();
     let server = ServerContext::new(identity(), &config, &storage, &audit);
     let context = PlaneContext::new(&server, "control");
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
 
     let (status, plane) = get(
         module.http_routes(&context),
@@ -223,7 +223,7 @@ async fn the_event_routes_are_at_their_layout_paths_and_the_old_ones_are_gone() 
     let config = receiving("layout");
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let module = permguard_control_plane::module();
+    let module = permguard_control_plane_server::module();
     let registration = permguard_host::composition::Host::builder()
         .host_id([1; 16])
         .build()

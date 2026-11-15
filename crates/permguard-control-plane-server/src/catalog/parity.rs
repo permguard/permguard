@@ -61,7 +61,7 @@ mod tests {
                 permguard_host::composition::Authorization::permissive(),
             ),
             catalog: Arc::new(FileCatalog::new(&root)),
-            mutations: Some(crate::handles::catalog_mutations_for_tests(
+            mutations: Some(crate::testing::catalog_mutations_for_tests(
                 &root.join("host"),
             )),
             recorder: None,

@@ -27,7 +27,6 @@ use crate::v1::{
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal.
-pub use crate::wire::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 #[tonic::async_trait]
 impl EventLog for EventFacade {

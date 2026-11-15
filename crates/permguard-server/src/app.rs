@@ -247,10 +247,7 @@ type PlaneDeclarationFactory = Box<
 >;
 
 /// A content-addressed tree on the volume and the check of its files: what `volume verify` reads.
-pub type VerifiedTree = (
-    std::path::PathBuf,
-    Arc<permguard_host::storage::verify::ObjectCheck>,
-);
+pub use permguard_host::storage::verify::VerifiedTree;
 
 /// Reads a key ring on disk and returns its public keys as a JWKS document.
 ///
