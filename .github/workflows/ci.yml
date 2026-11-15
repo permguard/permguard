@@ -601,8 +601,11 @@ jobs:
           docker compose version
       - name: the lab image, built once by the `images` job
         run: gunzip -c lab-image.tar.gz | docker load
+      # The evaluation latency is measured through a Docker engine nested in a virtual machine on
+      # a shared Intel runner: twice the product's objective here, which the Linux job holds as
+      # stated (bench/slo.json); every other assertion is the same.
       - name: every profile
-        run: NO_BUILD=1 ./scripts/compose-lab.sh
+        run: NO_BUILD=1 LAB_P99_OBJECTIVE_SCALE=2 ./scripts/compose-lab.sh
       - name: the logs of a failed profile
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

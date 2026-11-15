@@ -109,7 +109,11 @@ run_profile() {
         step "${profile}: decisions by the Authority Plane's tokens"
         dc run --rm lab assert "${profile}" tokens || failed "a token assertion failed"
         step "${profile}: evaluation latency with token verification on (WP-14.1)"
-        dc run --rm -e "LAB_P99_OBJECTIVE_MS=$(jq -r '.p99_ms.required' bench/slo.json)" lab assert "${profile}" latency ||
+        # The objective is the product's (bench/slo.json), as stated on a Linux host. A job on an
+        # engine nested in a virtual machine says so with LAB_P99_OBJECTIVE_SCALE, a multiple of
+        # it, and the Linux job keeps proving the objective itself.
+        objective="$(jq -r --arg scale "${LAB_P99_OBJECTIVE_SCALE:-1}" '.p99_ms.required * ($scale | tonumber)' bench/slo.json)"
+        dc run --rm -e "LAB_P99_OBJECTIVE_MS=${objective}" lab assert "${profile}" latency ||
             failed "the evaluation latency passed its objective"
         step "${profile}: the Authority Plane rotates its token key, the members follow (WP-12.6)"
         dc run --rm lab assert "${profile}" rotation || failed "a member did not follow the token key's rotation"
