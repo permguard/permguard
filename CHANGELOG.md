@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.32] - 2026-11-15
+
 ### Added
 
 - **Every plane's documents over either transport.**
