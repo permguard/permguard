@@ -1557,6 +1557,16 @@ impl HostApi {
     /// The members this Host coordinates whose active `policy.mirror` task covers `resource`,
     /// with what it observed of them (WP-4.4): what the Control Plane's `GetLedger` answers
     /// beside a ledger, authorized there. Empty without a membership store.
+    /// The member whose Host id is `host_id`, active or suspended, as its record names it (owner
+    /// decision of 2026-11-15); `None` without memberships or for a Host id none of them names.
+    pub fn member_named(&self, host_id: &[u8; 16]) -> Option<crate::composition::MemberName> {
+        let record = self.memberships().ok()?.store.live_member(host_id)?;
+        Some(crate::composition::MemberName {
+            member_id: uuid_text(&record.member_id),
+            name: record.name,
+        })
+    }
+
     pub fn serving_members(
         &self,
         resource: &permguard_core::authz::Resource,

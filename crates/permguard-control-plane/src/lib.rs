@@ -17,6 +17,7 @@ mod evidence;
 pub mod gc;
 mod handles;
 pub mod inventory;
+pub mod members;
 mod query;
 mod service;
 pub mod store;

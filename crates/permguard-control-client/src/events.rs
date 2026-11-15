@@ -119,6 +119,10 @@ pub struct Coverage {
 pub struct Page {
     /// The records, verbatim, exactly as the producer signed them.
     pub records: Vec<Value>,
+    /// The members the page names: a record's `stream.producer.id` to the member's id and name,
+    /// for every producer a membership of the server's Host names, over REST and over gRPC alike.
+    #[serde(default)]
+    pub members: std::collections::BTreeMap<String, crate::decisions::MemberName>,
     /// The opaque offset to present next, even for an empty page.
     pub next: String,
     /// Whether there is more, against this read's `until` or the returned watermark.

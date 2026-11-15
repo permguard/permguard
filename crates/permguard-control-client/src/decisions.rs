@@ -126,11 +126,24 @@ impl ReadWindow {
     }
 }
 
+/// A member as the server names it beside a page (owner decision of 2026-11-15): the id its
+/// coordinator bound to the Host id at the first approval, and its name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+pub struct MemberName {
+    pub member_id: String,
+    pub name: String,
+}
+
 /// One page of records, and where to continue.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Page {
     /// The records, verbatim, exactly as the producer signed them.
     pub records: Vec<Value>,
+    /// The members the page names: a record's `stream.id`, the Host id of the data plane that
+    /// answered, to the member's id and name, for every Host id a membership of the server's Host
+    /// names, over REST and over gRPC alike.
+    #[serde(default)]
+    pub members: std::collections::BTreeMap<String, MemberName>,
     /// The opaque offset to present next.
     ///
     /// Present even for an empty page, because an empty page still advanced over the positions it

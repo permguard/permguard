@@ -64,6 +64,9 @@ pub struct DecisionFacade {
     /// The Host's authorization, every evidence read decides with before it looks anything up
     /// (WP-6.3c).
     pub authorization: Arc<permguard_host::composition::Authorization>,
+    /// Who names the member a record's Host id belongs to, for the page's `members` (owner
+    /// decision of 2026-11-15); `None` names nobody.
+    pub members: Option<Arc<dyn crate::members::NamesMembers>>,
 }
 
 /// One producer stream's signer history, with the receiver's durable frontier.
@@ -514,8 +517,16 @@ async fn serve(
                 &measure::READS,
                 &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
             );
-
-            (StatusCode::OK, Json(page)).into_response()
+            let members = crate::members::members_of(
+                page.records.iter(),
+                crate::members::decision_host,
+                facade.members.as_deref(),
+            );
+            (
+                StatusCode::OK,
+                Json(crate::members::with_members(&page, members)),
+            )
+                .into_response()
         }
         Err(
             ref expired @ read::ReadError::Expired {
@@ -959,6 +970,27 @@ mod openapi {
             },
         };
         doc.check("DecisionBlock", &page);
+        // The members the page names (owner decision of 2026-11-15), beside the block: a page that
+        // names one validates, and a member missing its name does not.
+        let named = crate::members::with_members(
+            &page,
+            [(
+                "ab".repeat(16),
+                crate::members::MemberName {
+                    member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
+                    name: "lab-a".to_owned(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        doc.check("DecisionBlock", &named);
+        let mut nameless = named.clone();
+        nameless["members"]["abababababababababababababababab"]
+            .as_object_mut()
+            .expect("an object")
+            .remove("name");
+        assert!(!doc.accepts_json("DecisionBlock", &nameless));
         // A proof entry naming no format, or the other format's members, is not one.
         let mut unnamed = serde_json::to_value(&page).expect("a page serialises");
         unnamed["proof"][0]
@@ -1007,6 +1039,19 @@ mod openapi {
         assert!(!doc.accepts_json(
             "Coverage",
             &json!({"contiguous": true, "examined": 1, "scan_bounded": false, "x": 1})
+        ));
+        // A member as a page names it (owner decision of 2026-11-15): its id and its name, nothing
+        // else.
+        doc.check(
+            "MemberName",
+            &crate::members::MemberName {
+                member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
+                name: "lab-a".to_owned(),
+            },
+        );
+        assert!(!doc.accepts_json(
+            "MemberName",
+            &json!({"member_id": "m", "name": "n", "host_id": "h"})
         ));
 
         let leaves = vec![
@@ -1212,6 +1257,7 @@ mod strict {
 
     fn signing(tag: &str) -> DecisionFacade {
         DecisionFacade {
+            members: None,
             host: Some(permguard_host::composition::StreamConsumer::over(Arc::new(
                 Signing,
             ))),
@@ -1412,6 +1458,7 @@ mod strict {
         ));
         let _ = std::fs::remove_dir_all(&root);
         DecisionFacade {
+            members: None,
             store: Arc::new(DecisionStore::open(root).expect("it opens")),
             ceiling: None,
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(

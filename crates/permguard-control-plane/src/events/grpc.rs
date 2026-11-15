@@ -70,6 +70,11 @@ impl EventLog for EventFacade {
 
         match page {
             Ok(page) => Ok(Response::new(ListRecordsResponse {
+                members: crate::members::to_proto(crate::members::members_of(
+                    page.records.iter(),
+                    crate::members::event_host,
+                    self.members.as_deref(),
+                )),
                 records: page.records.iter().map(render).collect(),
                 next: page.next,
                 more: page.more,

@@ -877,6 +877,10 @@ fn build_event_facade(
         .unwrap_or_default(),
         describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
         authorization: crate::handles::authorization(context),
+        members: crate::handles::member_names(
+            context,
+            permguard_host::membership::record::TaskType::EventsShip,
+        ),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(std::sync::Arc::clone(&facade.store));
@@ -945,6 +949,10 @@ fn build_decision_facade(
         .unwrap_or_default(),
         describer: permguard_core::stages::Describer::of_plane(context, "control-plane"),
         authorization: crate::handles::authorization(context),
+        members: crate::handles::member_names(
+            context,
+            permguard_host::membership::record::TaskType::DecisionsShip,
+        ),
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(facade.clone());

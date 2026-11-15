@@ -102,6 +102,11 @@ pub struct EventLine {
     pub producer: String,
     /// Which incarnation of it.
     pub instance: String,
+    /// The member the producer is among the Control Plane's Host's members (owner decision of
+    /// 2026-11-15): its id and its name as the server named them beside the page; empty when no
+    /// membership names it.
+    pub member: String,
+    pub member_name: String,
     /// The Dogwood history key's pins and values, when the schema derives one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history: Option<History>,
@@ -204,6 +209,9 @@ pub fn read(
 #[derive(Debug, Clone, Default)]
 pub struct Read {
     pub records: Vec<Value>,
+    /// The members the server named beside the records: a producer to the member's id and name.
+    pub members:
+        std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
     pub proof: Vec<Value>,
     pub inclusion: Vec<Value>,
     pub next: String,
@@ -226,6 +234,7 @@ impl Read {
         self.examined += page.coverage.examined;
         self.scan_bounded |= page.coverage.scan_bounded;
         self.records.extend(page.records);
+        self.members.extend(page.members);
         for envelope in page.proof {
             if !self.proof.contains(&envelope) {
                 self.proof.push(envelope);
@@ -251,7 +260,11 @@ pub fn report(scope: &ReadScope, read: Read, shape: &Shape, keys: Option<&[Jwk]>
                 ..
             } => format!("{zone}/{ledger} · {producer}/{instance}"),
         },
-        events: read.records.iter().map(line).collect(),
+        events: read
+            .records
+            .iter()
+            .map(|record| line_named(record, &read.members))
+            .collect(),
         next: read.next,
         oldest_available: read.oldest_available,
         high_watermark: read.high_watermark,
@@ -268,8 +281,16 @@ pub fn report(scope: &ReadScope, read: Read, shape: &Shape, keys: Option<&[Jwk]>
     }
 }
 
-/// One record, as a line.
+/// One record, as a line, no member named.
 pub fn line(record: &Value) -> EventLine {
+    line_named(record, &std::collections::BTreeMap::new())
+}
+
+/// One record, as a line, its producer named among `members` when the server named it.
+pub fn line_named(
+    record: &Value,
+    members: &std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
+) -> EventLine {
     let text = |path: &[&str]| -> String {
         let mut held = record;
         for segment in path {
@@ -305,6 +326,14 @@ pub fn line(record: &Value) -> EventLine {
             })
             .unwrap_or_default(),
         commit: text(&["commit"]),
+        member: members
+            .get(&text(&["stream", "producer", "id"]))
+            .map(|member| member.member_id.clone())
+            .unwrap_or_default(),
+        member_name: members
+            .get(&text(&["stream", "producer", "id"]))
+            .map(|member| member.name.clone())
+            .unwrap_or_default(),
         producer: text(&["stream", "producer", "id"]),
         instance: text(&["stream", "producer", "instance"]),
         history: record.get("history_key").and_then(|held| {

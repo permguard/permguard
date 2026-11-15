@@ -348,6 +348,7 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
     let scope = read_scope(&archive.scope_binding);
     let keys = verification_keys(globals, query)?;
     let read = Read {
+        members: Default::default(),
         records: archive.records,
         proof: archive.envelopes,
         inclusion: archive.inclusion,
@@ -702,6 +703,7 @@ mod host_verify {
             &bytes,
         );
         Read {
+            members: Default::default(),
             inclusion: (0..2)
                 .map(|at| {
                     json!({

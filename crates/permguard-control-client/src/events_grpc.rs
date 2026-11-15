@@ -105,6 +105,19 @@ impl EventReader for GrpcEventSink {
 
         match answer {
             Ok(answer) => Ok(Page {
+                members: answer
+                    .members
+                    .into_iter()
+                    .map(|member| {
+                        (
+                            member.host_id,
+                            crate::decisions::MemberName {
+                                member_id: member.member_id,
+                                name: member.name,
+                            },
+                        )
+                    })
+                    .collect(),
                 records: parse_all("record", &answer.records)?,
                 next: answer.next,
                 more: answer.more,

@@ -97,6 +97,7 @@ pub fn read(
         read.proof.extend(page.proof);
         read.inclusion.extend(page.inclusion);
         read.records.extend(page.records);
+        read.members.extend(page.members);
         // An empty page is not the end: filtering and scan bounds mean a page may match nothing
         // while still advancing. The export stops from `more` against its own bound, and nothing
         // else.
@@ -189,6 +190,11 @@ pub struct DecisionLine {
     pub pdp: String,
     /// The incarnation of that plane the record belongs to: the record's `stream.instance`.
     pub instance: String,
+    /// The member that plane is among the Control Plane's Host's members (owner decision of
+    /// 2026-11-15): the id bound to `pdp` at its first approval, and its name, as the server named
+    /// them beside the page; empty when no membership names it.
+    pub member: String,
+    pub member_name: String,
 }
 
 /// An object of members recorded in clear, or `None` when the record carries none: an empty
@@ -275,6 +281,9 @@ impl Verified {
 #[derive(Debug, Clone, Default)]
 pub struct Page {
     pub records: Vec<Value>,
+    /// The members the server named beside the records: a `pdp` to the member's id and name.
+    pub members:
+        std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
     pub proof: Vec<Value>,
     pub inclusion: Vec<Value>,
     pub next: String,
@@ -290,6 +299,7 @@ pub fn report(
 ) -> DecisionsReport {
     let Page {
         records,
+        members: named_members,
         proof,
         inclusion,
         next,
@@ -339,11 +349,22 @@ pub fn report(
             continue;
         }
 
+        let pdp = record
+            .get("stream")
+            .and_then(|stream| stream.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let named = named_members.get(&pdp);
         decisions.push(DecisionLine {
             seq,
             at,
             decision: permit,
             outcome,
+            member: named
+                .map(|member| member.member_id.clone())
+                .unwrap_or_default(),
+            member_name: named.map(|member| member.name.clone()).unwrap_or_default(),
             subject: party(&record, "subject"),
             action: record
                 .get("action")
@@ -388,12 +409,7 @@ pub fn report(
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             id: string(&record, "id"),
-            pdp: record
-                .get("stream")
-                .and_then(|stream| stream.get("id"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
+            pdp,
             instance: record
                 .get("stream")
                 .and_then(|stream| stream.get("instance"))

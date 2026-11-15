@@ -116,7 +116,17 @@ impl Report for DecisionsReport {
                 style::id(short(&line.commit)),
                 style::dim(&format!("[{} µs]", line.latency_us))
             )?;
-            if !line.pdp.is_empty() {
+            if !line.member_name.is_empty() {
+                writeln!(
+                    out,
+                    "         {} {} {} {} {}",
+                    style::dim("by"),
+                    style::id(&line.member_name),
+                    style::dim(short(&line.member)),
+                    style::dim("run"),
+                    style::id(short(&line.instance))
+                )?;
+            } else if !line.pdp.is_empty() {
                 writeln!(
                     out,
                     "         {} {} {} {}",
@@ -445,6 +455,8 @@ mod tests {
 
     fn line(seq: u64, decision: bool, outcome: &str) -> DecisionLine {
         DecisionLine {
+            member: String::new(),
+            member_name: String::new(),
             seq,
             at: "2026-10-03T10:00:00Z".to_owned(),
             decision,
@@ -469,7 +481,7 @@ mod tests {
     /// A line names the data plane that answered and its run, read from the record's stream.
     #[test]
     fn a_line_names_the_data_plane_that_answered() {
-        let record = json!({
+        let record_named = json!({
             "kind": "decision", "seq": 4, "at": "2026-11-15T10:00:00Z", "decision": true,
             "stream": {"id": "01a1dc5e77c8729483c24f91393b5c22", "instance": "run-7"},
             "subject": {"type": "User", "id": "u"}, "action": {"name": "read"},
@@ -482,7 +494,7 @@ mod tests {
                 ledger: "l".to_owned(),
             },
             crate::decisions::Page {
-                records: vec![record],
+                records: vec![record_named.clone()],
                 ..Default::default()
             },
             &crate::decisions::Filter::default(),
@@ -490,9 +502,44 @@ mod tests {
         );
         assert_eq!(report.decisions[0].pdp, "01a1dc5e77c8729483c24f91393b5c22");
         assert_eq!(report.decisions[0].instance, "run-7");
+        assert_eq!(
+            report.decisions[0].member, "",
+            "no member named, none claimed"
+        );
         let mut out = Vec::new();
         report.render_terminal(&mut out).expect("renders");
         assert!(String::from_utf8_lossy(&out).contains("by pdp"));
+        // The server named the member: the line carries it, and the terminal says the name.
+        let named = crate::decisions::report(
+            &permguard_control_client::decisions::ReadScope::Tenant {
+                zone: "z".to_owned(),
+                ledger: "l".to_owned(),
+            },
+            crate::decisions::Page {
+                records: vec![record_named.clone()],
+                members: [(
+                    "01a1dc5e77c8729483c24f91393b5c22".to_owned(),
+                    permguard_control_client::decisions::MemberName {
+                        member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
+                        name: "lab-a".to_owned(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                ..Default::default()
+            },
+            &crate::decisions::Filter::default(),
+            None,
+        );
+        assert_eq!(
+            named.decisions[0].member,
+            "01a1b9de-8738-736e-9fff-609509b3fcbb"
+        );
+        assert_eq!(named.decisions[0].member_name, "lab-a");
+        let mut out = Vec::new();
+        named.render_terminal(&mut out).expect("renders");
+        let text = String::from_utf8_lossy(&out);
+        assert!(text.contains("lab-a") && !text.contains("by pdp"), "{text}");
     }
 
     /// A record's outcome is its `outcome`, and a record written before the member existed reads

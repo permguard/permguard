@@ -893,6 +893,15 @@ pub struct Registration {
     volume: Option<(std::path::PathBuf, crate::storage::journal::Options)>,
 }
 
+/// A member as the reads of the Planes that coordinate it name it (owner decision of 2026-11-15):
+/// the id the coordinator bound to its Host id at the first approval, and its name. What a reader
+/// joins a record's Host id to, without a members list of its own.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct MemberName {
+    pub member_id: String,
+    pub name: String,
+}
+
 /// Who serves a resource under this Host's memberships, and what was observed of them: the Host
 /// API answers it (WP-4.4).
 pub trait ServingMembers: Send + Sync {
@@ -910,6 +919,13 @@ pub trait ServingMembers: Send + Sync {
     ) -> Result<crate::membership::import::OriginSet, String> {
         let _ = resource;
         Ok(crate::membership::import::OriginSet::default())
+    }
+
+    /// The member this Host coordinates whose Host id is `host_id`, active or suspended, by the
+    /// id and the name its record carries; `None` for a Host id no membership names.
+    fn member_named(&self, host_id: &[u8; 16]) -> Option<MemberName> {
+        let _ = host_id;
+        None
     }
 }
 
@@ -1038,6 +1054,10 @@ impl ServingMembers for crate::api::HostApi {
         resource: &permguard_core::authz::Resource,
     ) -> Result<crate::membership::import::OriginSet, String> {
         crate::api::HostApi::import_origins(self, resource)
+    }
+
+    fn member_named(&self, host_id: &[u8; 16]) -> Option<MemberName> {
+        crate::api::HostApi::member_named(self, host_id)
     }
 }
 
@@ -1293,6 +1313,20 @@ impl Registration {
         self.memberships
             .as_ref()
             .map(|memberships| memberships.import_origins(resource))
+    }
+
+    /// The member whose Host id answered a record this Plane coordinates under `task` (owner
+    /// decision of 2026-11-15): `None` for a Plane that does not provide `task`, a Host without
+    /// memberships, or a Host id no membership names.
+    pub fn member_named(
+        &self,
+        task: crate::membership::record::TaskType,
+        host_id: &[u8; 16],
+    ) -> Option<MemberName> {
+        if !self.provides(task) {
+            return None;
+        }
+        self.memberships.as_ref()?.member_named(host_id)
     }
 
     /// Whether the Plane declared it provides `task`, at any version.

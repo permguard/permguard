@@ -189,7 +189,13 @@ impl DecisionLog for DecisionFacade {
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
                 );
 
+                let members = crate::members::members_of(
+                    page.records.iter(),
+                    crate::members::decision_host,
+                    self.members.as_deref(),
+                );
                 Ok(Response::new(ReadResponse {
+                    members: crate::members::to_proto(members),
                     records: page.records.iter().map(render).collect(),
                     next: page.next,
                     more: page.more,

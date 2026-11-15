@@ -326,6 +326,32 @@
         "additionalProperties": false,
         "x-grpc-message": null,
         "x-grpc-note": "REST 410 body. gRPC answers an expired offset with a status and metadata (class, code) and no message; `oldest_available`, `oldest_sequence` and `requested_sequence` have no gRPC field."
+      },
+      "MemberName": {
+        "type": "object",
+        "description": "A member as the server names it beside a page (owner decision of 2026-11-15): the id the coordinator bound to the record's Host id at the first approval, and the member's name. The REST page keys it by that Host id; the gRPC message carries the Host id as a field.",
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "description": "The member id, a UUID the coordinator made at the Host's first approval, bound to its Host id for life.",
+            "x-grpc-field": "member_id"
+          },
+          "name": {
+            "type": "string",
+            "description": "The member's name, unique among the coordinator's active members.",
+            "x-grpc-field": "name"
+          }
+        },
+        "required": [
+          "member_id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.MemberName",
+        "x-grpc-only": [
+          "host_id"
+        ],
+        "x-grpc-note": "`host_id` is the key of the REST map, `members`, and a field of the repeated message over gRPC."
       }
     }
   }

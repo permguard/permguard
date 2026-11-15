@@ -18,6 +18,8 @@ syntax = "proto3";
 
 package permguard.control.v1;
 
+import "permguard/control/v1/decisions.proto";
+
 // Shipping events, and reading them back.
 service EventLog {
   // One bounded, filtered block of a scope.
@@ -218,6 +220,10 @@ message ListRecordsResponse {
   // One inclusion path per record, as JSON, when asked for.
   repeated bytes inclusion = 7;
   EventCoverage coverage = 8;
+  // The members the page names: each producer of the page a membership of the
+  // server's Host names, a record's `stream.producer.id`, to the member's id
+  // and name, as the decision read carries them (owner decision of 2026-11-15).
+  repeated MemberName members = 9;
 }
 
 message GetRecordRequest {

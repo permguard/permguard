@@ -90,6 +90,18 @@ pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registratio
     context.handles::<Registration>()
 }
 
+/// The members this Plane names on its reads (owner decision of 2026-11-15): those the Host
+/// coordinates under `task`, through its registration; `None` when no Host registered the plane.
+pub(crate) fn member_names(
+    context: &PlaneContext<'_>,
+    task: permguard_host::membership::record::TaskType,
+) -> Option<Arc<dyn crate::members::NamesMembers>> {
+    registration(context).map(|registration| {
+        Arc::new(crate::members::Registered { registration, task })
+            as Arc<dyn crate::members::NamesMembers>
+    })
+}
+
 /// This Host's `host_id`, the salt of the cursor keys this plane derives from its stores' roots
 /// (WP-3.3); `None` when no Host registered the plane.
 pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {

@@ -77,6 +77,9 @@ pub struct EventFacade {
     pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
     /// How much a refusal says about the inside.
     pub disclosure: Disclosure,
+    /// Who names the member a record's producer belongs to, for the page's `members` (owner
+    /// decision of 2026-11-15); `None` names nobody.
+    pub members: Option<Arc<dyn crate::members::NamesMembers>>,
     /// What to count.
     pub metrics: Metrics,
     /// The base URL this plane is reached at, for the configuration document.
@@ -781,7 +784,18 @@ async fn serve(
     };
 
     match page {
-        Ok(page) => (StatusCode::OK, Json(page)).into_response(),
+        Ok(page) => {
+            let members = crate::members::members_of(
+                page.records.iter(),
+                crate::members::event_host,
+                facade.members.as_deref(),
+            );
+            (
+                StatusCode::OK,
+                Json(crate::members::with_members(&page, members)),
+            )
+                .into_response()
+        }
         Err(error) => read_refusal(&facade, error),
     }
 }
@@ -1047,6 +1061,27 @@ mod openapi {
             },
         };
         doc.check("EventBlock", &page);
+        // The members the page names (owner decision of 2026-11-15), beside the block: a page that
+        // names one validates, and a member missing its name does not.
+        let named = crate::members::with_members(
+            &page,
+            [(
+                "ab".repeat(16),
+                crate::members::MemberName {
+                    member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
+                    name: "lab-a".to_owned(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        doc.check("EventBlock", &named);
+        let mut nameless = named.clone();
+        nameless["members"]["abababababababababababababababab"]
+            .as_object_mut()
+            .expect("an object")
+            .remove("name");
+        assert!(!doc.accepts_json("EventBlock", &nameless));
         // A proof entry naming no format, or the other format's members, is not one.
         let mut unnamed = serde_json::to_value(&page).expect("a page serialises");
         unnamed["proof"][0]
@@ -1189,6 +1224,7 @@ mod openapi {
             std::env::temp_dir().join(format!("permguard-events-refusal-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let facade = EventFacade {
+            members: None,
             host: None,
             catalog: None,
             store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
@@ -1257,6 +1293,7 @@ mod gate {
         ));
         let _ = std::fs::remove_dir_all(&root);
         EventFacade {
+            members: None,
             host: None,
             catalog: None,
             store: Arc::new(crate::events::EventStore::open(&root).expect("it opens")),

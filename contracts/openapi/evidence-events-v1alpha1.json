@@ -946,6 +946,14 @@
           "coverage": {
             "$ref": "stream-common.json#/components/schemas/Coverage",
             "x-grpc-field": "coverage"
+          },
+          "members": {
+            "type": "object",
+            "description": "The members the page names (owner decision of 2026-11-15): each Host id of the page a membership of the server's Host names, a record's `stream.producer.id`, to the member's id and name. Beside the records, never inside them; absent when the page names nobody. Over gRPC the same, as `members[]` with the Host id as a field.",
+            "additionalProperties": {
+              "$ref": "stream-common.json#/components/schemas/MemberName"
+            },
+            "x-grpc-field": "members"
           }
         },
         "required": [

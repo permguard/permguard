@@ -111,6 +111,20 @@ message ReadResponse {
   string high_watermark = 7;
   // What this block proves about what it covers.
   ReadCoverage coverage = 8;
+  // The members the page names (owner decision of 2026-11-15): each Host id of
+  // the page a membership of the server's Host names, a record's `stream.id`,
+  // to the member's id and name. Beside the records, never inside them: what
+  // the producer signed is what a reader verifies. The REST page carries the
+  // same as `members`, keyed by the Host id.
+  repeated MemberName members = 9;
+}
+
+// A member as the server names it beside a page: the Host id a record carries,
+// the id the coordinator bound to it at the first approval, and its name.
+message MemberName {
+  string host_id = 1;
+  string member_id = 2;
+  string name = 3;
 }
 
 // What a block proves about what it covers.

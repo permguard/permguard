@@ -381,6 +381,7 @@ fn verify_archive(
         &scope,
         Page {
             records: archive.records,
+            members: Default::default(),
             proof: Vec::new(),
             inclusion: Vec::new(),
             next: archive.summary.next,
@@ -428,6 +429,7 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
                 &scope,
                 Page {
                     records: page.records,
+                    members: page.members,
                     proof: page.proof,
                     inclusion: page.inclusion,
                     next: page.next,
