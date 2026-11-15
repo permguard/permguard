@@ -25,13 +25,18 @@ const TEXT_INDENT: &str = "    ";
 
 /// The banner shown by every help, by the bare `permguard`, and by `version`.
 ///
-/// Built once. It is stamped onto every command in the tree, and the tree is
-/// built on every invocation, so building it per command would be the same few
-/// hundred bytes of gradient computed fifty times to say one thing.
+/// Built once per colour depth. It is stamped onto every command in the tree, and the tree is
+/// built on every invocation, so building it per command would be the same few hundred bytes of
+/// gradient computed fifty times to say one thing. The depth is the run's, not the process's: a
+/// program embedding the CLI captures one run without colour and the next with it, and the
+/// banner of the second is as coloured as the rest of its output.
 pub fn banner() -> &'static str {
-    static BANNER: OnceLock<String> = OnceLock::new();
+    static BANNERS: [OnceLock<String>; 4] = [const { OnceLock::new() }; 4];
 
-    BANNER.get_or_init(|| render(style::depth())).as_str()
+    let depth = style::depth();
+    BANNERS[depth as usize]
+        .get_or_init(|| render(depth))
+        .as_str()
 }
 
 /// The banner with no colour at all.
@@ -134,5 +139,21 @@ mod tests {
     #[test]
     fn test_the_banner_is_plain_text_when_the_output_is_not_a_terminal() {
         assert!(!plain().contains('\x1b'));
+    }
+
+    /// A run captured with colour gets a coloured banner after one captured without, and the
+    /// other way round: the cache is the depth's, never the first caller's.
+    #[test]
+    fn test_the_banner_follows_the_colour_of_each_captured_run() {
+        let plain_run = crate::shell::run_captured(["help"], false);
+        let coloured_run = crate::shell::run_captured(["help"], true);
+        let plain_text = String::from_utf8_lossy(&plain_run.stdout);
+        let coloured_text = String::from_utf8_lossy(&coloured_run.stdout);
+        assert!(plain_text.contains(brand::PERMGUARD_TAGLINE));
+        assert!(!plain_text.contains('\x1b'), "no colour in a plain run");
+        assert!(
+            coloured_text.contains('\x1b'),
+            "the coloured run's banner carries colour: {coloured_text}"
+        );
     }
 }

@@ -17,7 +17,10 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The banner keeps the colour of the run that prints it.**
+  The banner above every help was rendered once per process, with the colour of the first run that asked for it: a program embedding the command line, Permguard Admin's terminal among them, captured one run without colour and every later run's help showed a plain banner beside coloured output. It is now rendered once per colour depth.
 
 ## [0.1.27] - 2026-11-14
 

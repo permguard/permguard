@@ -25,13 +25,13 @@ const RESET: &str = "\x1b[0m";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Depth {
     /// None at all — piped, `NO_COLOR`, or a dumb terminal.
-    None,
+    None = 0,
     /// The sixteen ANSI colors, and nothing more.
-    Basic,
+    Basic = 1,
     /// The 256-color cube.
-    Ansi256,
+    Ansi256 = 2,
     /// 24-bit color, which is the only tier the gradient renders faithfully.
-    True,
+    True = 3,
 }
 
 /// The colour decision, from stated conditions rather than from the process.
