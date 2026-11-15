@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.28] - 2026-11-15
+
 ### Fixed
 
 - **The banner keeps the colour of the run that prints it.**
