@@ -17,7 +17,10 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`permguard decisions list` names the data plane that answered.**
+  Each line carries `pdp`, the Host id of the data plane the record's stream belongs to, and `instance`, the run of it: what a reader joins to the members of the Control Plane's Host to say which plane decided. The terminal says it under the commit; a program keeping the lines keeps the two members.
 
 ## [0.1.28] - 2026-11-15
 

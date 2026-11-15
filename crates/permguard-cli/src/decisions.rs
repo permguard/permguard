@@ -184,6 +184,11 @@ pub struct DecisionLine {
     pub id: String,
     /// How long the plane took.
     pub latency_us: u64,
+    /// The data plane that answered: its Host id, the record's `stream.id`. What a reader joins to
+    /// the members of a Control Plane's Host to name the plane.
+    pub pdp: String,
+    /// The incarnation of that plane the record belongs to: the record's `stream.instance`.
+    pub instance: String,
 }
 
 /// An object of members recorded in clear, or `None` when the record carries none: an empty
@@ -383,6 +388,18 @@ pub fn report(
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             id: string(&record, "id"),
+            pdp: record
+                .get("stream")
+                .and_then(|stream| stream.get("id"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            instance: record
+                .get("stream")
+                .and_then(|stream| stream.get("instance"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
             latency_us: record
                 .get("latency_us")
                 .and_then(Value::as_u64)

@@ -116,6 +116,16 @@ impl Report for DecisionsReport {
                 style::id(short(&line.commit)),
                 style::dim(&format!("[{} µs]", line.latency_us))
             )?;
+            if !line.pdp.is_empty() {
+                writeln!(
+                    out,
+                    "         {} {} {} {}",
+                    style::dim("by pdp"),
+                    style::id(short(&line.pdp)),
+                    style::dim("run"),
+                    style::id(short(&line.instance))
+                )?;
+            }
             for policy in &line.policies {
                 writeln!(
                     out,
@@ -451,7 +461,38 @@ mod tests {
             context_commitment: None,
             id: format!("id-{seq}"),
             latency_us: 1,
+            pdp: "01a1dc5e77c8729483c24f91393b5c22".to_owned(),
+            instance: "run-1".to_owned(),
         }
+    }
+
+    /// A line names the data plane that answered and its run, read from the record's stream.
+    #[test]
+    fn a_line_names_the_data_plane_that_answered() {
+        let record = json!({
+            "kind": "decision", "seq": 4, "at": "2026-11-15T10:00:00Z", "decision": true,
+            "stream": {"id": "01a1dc5e77c8729483c24f91393b5c22", "instance": "run-7"},
+            "subject": {"type": "User", "id": "u"}, "action": {"name": "read"},
+            "resource": {"type": "Doc", "id": "d"}, "store": {"commit": "sha256:aa"},
+            "policies": [], "id": "x", "latency_us": 3,
+        });
+        let report = crate::decisions::report(
+            &permguard_control_client::decisions::ReadScope::Tenant {
+                zone: "z".to_owned(),
+                ledger: "l".to_owned(),
+            },
+            crate::decisions::Page {
+                records: vec![record],
+                ..Default::default()
+            },
+            &crate::decisions::Filter::default(),
+            None,
+        );
+        assert_eq!(report.decisions[0].pdp, "01a1dc5e77c8729483c24f91393b5c22");
+        assert_eq!(report.decisions[0].instance, "run-7");
+        let mut out = Vec::new();
+        report.render_terminal(&mut out).expect("renders");
+        assert!(String::from_utf8_lossy(&out).contains("by pdp"));
     }
 
     /// A record's outcome is its `outcome`, and a record written before the member existed reads
