@@ -22,7 +22,7 @@ async fn main() -> ExitCode {
 
     PlaneServer::new(identity, build_settings(build::VERSION))
         .with_plane(
-            permguard_authority_plane::module(),
+            permguard_authority_plane_server::module(),
             addresses_for_plane("authority").expect("authority plane addresses are known"),
         )
         .run()

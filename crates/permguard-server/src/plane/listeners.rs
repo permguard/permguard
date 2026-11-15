@@ -18,9 +18,9 @@ use permguard_core::assurance::AssuranceProfile;
 use permguard_core::listener::{ListenerClass, ListenerReport, is_loopback_bind};
 use permguard_core::{Config, TlsSettings};
 
-use super::PlaneAddresses;
 use super::discovery::{PlaneId, plane_enabled};
 use super::settings::addresses_for_plane;
+use super::{ListenerEndpoints as _, PlaneAddresses};
 
 /// The protocol label of a listener serving HTTP alone.
 pub(crate) const HTTP: &str = "http";

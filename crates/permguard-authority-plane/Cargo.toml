@@ -15,46 +15,23 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
-# The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
-build = "build.rs"
-
-# The Authority Plane on its own: the binary the `authority-plane` image runs (`2-security/8`
-# Where it runs). The all-in-one and control-plane binaries register this crate's module beside
-# their Planes.
-[[bin]]
-name = "permguard-authority-plane"
-path = "src/main.rs"
-
 [dependencies]
 anyhow.workspace = true
 # Secret keys kept as Argon2id hashes, never in the clear.
 argon2.workspace = true
-axum.workspace = true
 base64.workspace = true
 permguard-core.workspace = true
 permguard-host.workspace = true
 # The canonical CBOR of the accounts journal and the token registry.
 permguard-objects.workspace = true
-permguard-server.workspace = true
-# The actor a request carries, read where a route authorizes.
-permguard-transport.workspace = true
-prost.workspace = true
 # The OS CSPRNG: access keys, secret keys, salts, token ids and list entries.
 ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-tonic.workspace = true
-tonic-prost.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
-http.workspace = true
-http-body-util.workspace = true
-tower.workspace = true
-
-[build-dependencies]
-tonic-prost-build.workspace = true

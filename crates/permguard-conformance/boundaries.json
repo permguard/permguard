@@ -1686,6 +1686,11 @@
       "source": "crates/permguard-authority-plane/src/tokens.rs",
       "item": "TokenRegistry::open",
       "reason": "the token registry's own journal on the Authority Plane's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
+    },
+    {
+      "source": "crates/permguard-core/src/planes/discovery.rs",
+      "item": "PlaneId::parse",
+      "reason": "a Plane module's id, from the closed set this build registers; never received"
     }
   ]
 }

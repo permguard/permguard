@@ -612,7 +612,7 @@ pub struct Authority {
     inherited: BTreeSet<[u8; 16]>,
     limiter: Limiter,
     /// Every Argon2id verification, one bound.
-    pub(crate) hashing: Arc<tokio::sync::Semaphore>,
+    pub hashing: Arc<tokio::sync::Semaphore>,
 }
 
 impl std::fmt::Debug for Authority {

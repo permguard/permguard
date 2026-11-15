@@ -67,6 +67,8 @@ pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
+# The Authority Plane's module, composed by the Authority Plane test as a binary composes it.
+permguard-authority-plane-server.workspace = true
 # The storage and audit sink of the Server context the Authority Plane test composes.
 permguard-std.workspace = true
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).

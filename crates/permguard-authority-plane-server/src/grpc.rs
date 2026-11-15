@@ -24,7 +24,7 @@ type Answer<T> = Result<Response<T>, Status>;
 pub(crate) struct Served {
     pub(crate) authority: Arc<Authority>,
     pub(crate) disclosure: Disclosure,
-    pub(crate) plane: Arc<crate::plane::PlaneInfo>,
+    pub(crate) plane: Arc<crate::module::PlaneInfo>,
 }
 
 impl Served {

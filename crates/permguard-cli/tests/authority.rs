@@ -137,7 +137,7 @@ fn serve(
         )
         .expect("the configuration builds"),
     ));
-    let module = permguard_authority_plane::module();
+    let module = permguard_authority_plane_server::module();
     let registration = Host::builder()
         .ring(permguard_host::composition::AUTHORITY_TOKENS, ring)
         .host_id(identity.host_id())

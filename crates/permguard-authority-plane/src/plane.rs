@@ -1,8 +1,9 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Authority Plane as a Plane of the Host: what it declares, the handles it composes its
-//! facade from, its routes on both transports, and the pass that keeps its lists signed.
+//! The Authority Plane as a Plane of the Host: what it declares, how it composes its facade from
+//! the handles the Host registered, and the pass that keeps its lists signed. Its routes, on both
+//! transports, are `permguard-authority-plane-server`'s.
 //!
 //! | Declared                           | Handle                           | Used by                     |
 //! | ---------------------------------- | -------------------------------- | --------------------------- |
@@ -14,17 +15,13 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 
-use axum::extract::State;
-use axum::response::{IntoResponse as _, Response};
-use axum::routing::get;
-use axum::{Json, Router};
-use tonic::service::RoutesBuilder;
-
 use anyhow::Result;
+use permguard_core::planes::discovery::{PlaneId, plane_http_base};
+use permguard_core::planes::settings::{
+    SETTING_AUTHORITY_AUDIENCE, SETTING_AUTHORITY_GRPC_ADDR, SETTING_AUTHORITY_URL,
+};
 use permguard_core::{BoxFuture, PlaneContext, PlaneTask};
 use permguard_host::composition::{AccessTokenV1, Declaration, StatusListTokenV1};
-use permguard_server::PlaneModule;
-use permguard_server::plane::{PlaneId, SETTING_AUTHORITY_AUDIENCE, SETTING_AUTHORITY_URL};
 
 use crate::authority::{Authority, AuthorityAudit, Parts};
 use crate::{accounts, admin, tokens};
@@ -34,73 +31,18 @@ const FEED_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 /// How often the lists whose tokens all expired are retired.
 const RETIRE_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// What every answer about this plane is built from.
-pub(crate) struct PlaneInfo {
-    pub(crate) product: String,
-    pub(crate) version: String,
-    pub(crate) commit: String,
-    pub(crate) health: permguard_core::PlaneHealth,
-    /// The discovery document, without its first two members.
-    rest: String,
-}
-
-impl PlaneInfo {
-    fn of(context: &PlaneContext<'_>, issuer: &str) -> Self {
-        let disclose = context.config().disclose_build();
-        let rest = serde_json::json!({
-            "edition": crate::authority::EDITION,
-            "issuer": issuer,
-            "jwks_uri": format!("{issuer}/authority/v1/keys"),
-            "token_endpoint": format!("{issuer}/authority/v1/token"),
-            "status_lists_endpoint": format!("{issuer}/authority/v1/status-lists"),
-            "service_accounts_endpoint": format!("{issuer}/authority/v1/service-accounts"),
-            "authorization_server_metadata": format!("{issuer}/.well-known/oauth-authorization-server"),
-            "capabilities": ["service_accounts", "access_keys", "tokens", "status_lists"],
-            "transports": {"http": true, "grpc": true},
-        })
-        .to_string();
-        Self {
-            product: context.identity().product_name().to_owned(),
-            version: if disclose {
-                context.config().version().to_owned()
-            } else {
-                String::new()
-            },
-            commit: if disclose {
-                context.config().commit().to_owned()
-            } else {
-                String::new()
-            },
-            health: context.health(),
-            rest: rest.trim_start_matches('{').to_owned(),
-        }
-    }
-
-    /// The discovery document: who the plane is and its phase, then what it serves.
-    pub(crate) fn document(&self) -> String {
-        format!(
-            "{{\"plane\":\"authority-plane\",\"state\":\"{}\",{}",
-            self.health.phase().as_str(),
-            self.rest
-        )
-    }
-}
-
-/// The facade, composed once and shared by both surfaces and the plane's pass.
+/// The facade, composed once from the Host's handles and shared by whatever serves it and by the
+/// plane's pass: `None` when the plane is dormant or could not compose, as the log says why.
 #[derive(Default)]
-struct Composed {
-    authority: OnceLock<Option<(Arc<Authority>, Arc<PlaneInfo>)>>,
+pub struct Composition {
+    authority: OnceLock<Option<Arc<Authority>>>,
 }
 
-/// The Authority Plane module.
-#[derive(Default)]
-pub struct AuthorityPlaneModule {
-    composed: Arc<Composed>,
-}
-
-/// The module every binary that runs the Authority Plane registers.
-pub fn module() -> Box<dyn PlaneModule> {
-    Box::new(AuthorityPlaneModule::default())
+impl Composition {
+    /// The facade under `context`, composed at the first call.
+    pub fn authority(&self, context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
+        self.authority.get_or_init(|| compose(context)).clone()
+    }
 }
 
 /// The issuer the Authority Plane signs as: `authority.url`, or where its HTTP listener is
@@ -111,20 +53,20 @@ pub fn issuer_of(config: &permguard_core::Config) -> Option<String> {
         .map(str::trim)
         .filter(|url| !url.is_empty())
         .map(str::to_owned)
-        .or_else(|| permguard_server::plane::plane_http_base(config, PlaneId::Authority))
+        .or_else(|| plane_http_base(config, PlaneId::Authority))
         .map(|url| permguard_host::authz::authority::normalized(&url))
 }
 
 /// Whether the Authority Plane has a listener of its own: without one it is dormant, as every
 /// Plane is that is given no address, and serves and signs nothing.
 fn listening(config: &permguard_core::Config) -> bool {
-    permguard_server::plane::plane_http_base(config, PlaneId::Authority).is_some()
+    plane_http_base(config, PlaneId::Authority).is_some()
         || config
-            .setting(permguard_server::plane::SETTING_AUTHORITY_GRPC_ADDR)
+            .setting(SETTING_AUTHORITY_GRPC_ADDR)
             .is_some_and(|address| !address.trim().is_empty())
 }
 
-fn compose(context: &PlaneContext<'_>) -> Option<(Arc<Authority>, Arc<PlaneInfo>)> {
+fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let config = context.config();
     if !listening(config) {
         tracing::info!(
@@ -270,159 +212,70 @@ fn compose(context: &PlaneContext<'_>) -> Option<(Arc<Authority>, Arc<PlaneInfo>
         accounts = authority.accounts().len(),
         "the Authority Plane issues tokens"
     );
-    Some((authority, Arc::new(PlaneInfo::of(context, &issuer))))
+    Some(authority)
 }
 
-impl AuthorityPlaneModule {
-    fn authority(&self, context: &PlaneContext<'_>) -> Option<(Arc<Authority>, Arc<PlaneInfo>)> {
-        self.composed
-            .authority
-            .get_or_init(|| compose(context))
-            .clone()
-    }
+/// What the Authority Plane declares to the Host: the two artifacts it signs, its audit schema,
+/// the two domains it mutates, and the token trust it feeds.
+pub fn declaration(_config: &permguard_core::Config) -> Declaration {
+    Declaration::new(crate::PLANE)
+        .signs::<AccessTokenV1>()
+        .signs::<StatusListTokenV1>()
+        .audits::<AuthorityAudit>()
+        .mutates(accounts::DOMAIN)
+        .mutates(tokens::DOMAIN)
+        .feeds_token_trust()
 }
 
-async fn info(State(plane): State<Arc<PlaneInfo>>) -> Response {
-    Json(serde_json::json!({
-        "plane": crate::PLANE,
-        "product": plane.product,
-        "version": plane.version,
-        "commit": plane.commit,
-        "edition": crate::authority::EDITION,
-    }))
-    .into_response()
+/// Whether the Authority Plane, though selected, has nothing to serve under `config`.
+pub fn dormant(config: &permguard_core::Config) -> bool {
+    !listening(config)
 }
 
-async fn health(State(plane): State<Arc<PlaneInfo>>) -> Response {
-    let mut body = serde_json::to_value(plane.health.report()).unwrap_or_default();
-    if let Some(object) = body.as_object_mut() {
-        object.insert("live".to_owned(), plane.health.is_live().into());
-        object.insert("ready".to_owned(), plane.health.is_ready().into());
-    }
-    Json(body).into_response()
-}
+/// What the Authority Plane requires of a configuration before the process starts: an issuer, and
+/// TLS for every secret key outside `development`.
+pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::planes::settings::{
+        SETTING_AUTHORITY_HTTP_TLS_CERT, SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM,
+    };
 
-async fn configuration(State(plane): State<Arc<PlaneInfo>>) -> Response {
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        plane.document(),
-    )
-        .into_response()
-}
-
-impl PlaneModule for AuthorityPlaneModule {
-    fn id(&self) -> &'static str {
-        crate::PLANE
-    }
-
-    fn component(&self) -> &'static str {
-        crate::COMPONENT
-    }
-
-    fn description(&self) -> &'static str {
-        "authority plane"
-    }
-
-    fn declaration(&self, _config: &permguard_core::Config) -> Declaration {
-        Declaration::new(crate::PLANE)
-            .signs::<AccessTokenV1>()
-            .signs::<StatusListTokenV1>()
-            .audits::<AuthorityAudit>()
-            .mutates(accounts::DOMAIN)
-            .mutates(tokens::DOMAIN)
-            .feeds_token_trust()
-    }
-
-    fn dormant(&self, config: &permguard_core::Config) -> bool {
-        !listening(config)
-    }
-
-    fn client_authentication_paths(&self) -> Vec<String> {
-        vec![crate::http::TOKEN_PATH.to_owned()]
-    }
-
-    fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
-        use permguard_core::assurance::AssuranceProfile;
-        use permguard_server::plane::{
-            SETTING_AUTHORITY_HTTP_TLS_CERT, SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM,
-        };
-
-        if issuer_of(config).is_none() {
-            anyhow::bail!(
-                "the Authority Plane has no issuer: set authority.url, or give it an HTTP listener \
-                 (authorityPlane.public.http)"
-            );
-        }
-        // A secret key crosses only TLS outside `development` (`2-security/8` Profiles).
-        let profile = config.assurance().profile();
-        let tls = config.setting(SETTING_AUTHORITY_HTTP_TLS_CERT).is_some()
-            || config.public_tls().is_some()
-            || config
-                .setting(SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM)
-                .is_some_and(|value| value.trim() == "true")
-            || config.public_tls_terminated_upstream();
-        if profile != AssuranceProfile::Development && !tls {
-            anyhow::bail!(
-                "the `{}` profile sends a secret key over TLS only: give the Authority Plane TLS \
-                 material (authorityPlane.public.http.tls or public.tls)",
-                profile.as_str()
-            );
-        }
-        Ok(())
-    }
-
-    fn services(&self) -> Vec<Box<dyn PlaneTask>> {
-        vec![Box::new(ListsService {
-            composed: Arc::clone(&self.composed),
-            task: Mutex::new(None),
-        })]
-    }
-
-    fn http_routes(&self, context: &PlaneContext<'_>) -> Router {
-        let Some((authority, plane)) = self.authority(context) else {
-            return Router::new();
-        };
-        Router::new()
-            .route("/", get(info))
-            .route("/version", get(info))
-            .route("/health", get(health))
-            .route("/.well-known/server-configuration", get(configuration))
-            .with_state(plane)
-            .merge(crate::http::routes(crate::http::Served {
-                authority,
-                disclosure: context.config().error_detail(),
-            }))
-    }
-
-    fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
-        let Some((authority, plane)) = self.authority(context) else {
-            return Router::new();
-        };
-        let served = crate::grpc::Served {
-            authority,
-            disclosure: context.config().error_detail(),
-            plane,
-        };
-        let mut grpc = RoutesBuilder::default();
-        // The gRPC Health Checking Protocol, beside the plane's own services.
-        grpc.add_service(permguard_server::plane::health::service(context));
-        grpc.add_service(
-            crate::v1::authority_plane_server::AuthorityPlaneServer::new(served.clone()),
+    if issuer_of(config).is_none() {
+        anyhow::bail!(
+            "the Authority Plane has no issuer: set authority.url, or give it an HTTP listener \
+             (authorityPlane.public.http)"
         );
-        grpc.add_service(crate::v1::token_service_server::TokenServiceServer::new(
-            served.clone(),
-        ));
-        grpc.add_service(
-            crate::v1::service_account_service_server::ServiceAccountServiceServer::new(served),
-        );
-        grpc.routes().into_axum_router()
     }
+    // A secret key crosses only TLS outside `development` (`2-security/8` Profiles).
+    let profile = config.assurance().profile();
+    let tls = config.setting(SETTING_AUTHORITY_HTTP_TLS_CERT).is_some()
+        || config.public_tls().is_some()
+        || config
+            .setting(SETTING_AUTHORITY_HTTP_TLS_TERMINATED_UPSTREAM)
+            .is_some_and(|value| value.trim() == "true")
+        || config.public_tls_terminated_upstream();
+    if profile != AssuranceProfile::Development && !tls {
+        anyhow::bail!(
+            "the `{}` profile sends a secret key over TLS only: give the Authority Plane TLS \
+             material (authorityPlane.public.http.tls or public.tls)",
+            profile.as_str()
+        );
+    }
+    Ok(())
+}
+
+/// The Authority Plane's background work: the pass that keeps its lists signed.
+pub fn services(composition: &Arc<Composition>) -> Vec<Box<dyn PlaneTask>> {
+    vec![Box::new(ListsService {
+        composition: Arc::clone(composition),
+        task: Mutex::new(None),
+    })]
 }
 
 /// The pass that keeps the lists signed within their `ttl`, hands them to this Host, and retires
 /// the lists whose tokens all expired.
 struct ListsService {
-    composed: Arc<Composed>,
+    composition: Arc<Composition>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -433,12 +286,7 @@ impl PlaneTask for ListsService {
 
     fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            let Some((authority, _)) = self
-                .composed
-                .authority
-                .get_or_init(|| compose(context))
-                .clone()
-            else {
+            let Some(authority) = self.composition.authority(context) else {
                 return Ok(());
             };
             let task = tokio::spawn(async move {

@@ -20,7 +20,7 @@ name = "permguard-all-in-one"
 path = "src/main.rs"
 
 [dependencies]
-permguard-authority-plane.workspace = true
+permguard-authority-plane-server.workspace = true
 permguard-control-plane.workspace = true
 permguard-core.workspace = true
 permguard-server.workspace = true

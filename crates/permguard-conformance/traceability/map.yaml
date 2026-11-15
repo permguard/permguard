@@ -4331,11 +4331,11 @@ sections:
       - crates/permguard-host/src/authz/access_tokens.rs::a_valid_token_verifies_into_its_scopes
   "2-security/8-security-authority.md#token-endpoint":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
-      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane-server/src/http.rs
+      - crates/permguard-authority-plane-server/src/grpc.rs
       - crates/permguard-authority-plane/src/authority.rs
     tests:
-      - crates/permguard-authority-plane/src/http.rs::a_form_reads_once_and_takes_one_proof
+      - crates/permguard-authority-plane-server/src/http.rs::a_form_reads_once_and_takes_one_proof
       - crates/permguard-authority-plane/src/authority.rs::a_refusal_names_the_rule_never_the_cause
       - crates/permguard-control-client/src/authority.rs::the_token_form_carries_the_proof_in_basic_and_never_in_the_body
       - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
@@ -4401,7 +4401,7 @@ sections:
       - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
   "2-security/9-security-token-status.md#delivery":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
+      - crates/permguard-authority-plane-server/src/http.rs
       - crates/permguard-server/src/authority_refresh.rs
       - crates/permguard-host/src/authz/authority.rs
     tests:
@@ -4447,23 +4447,23 @@ sections:
     informative: "what the threat model leaves out, stating no rule of its own"
   "2-security/5-security-management-api.md#service-accounts":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
-      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane-server/src/http.rs
+      - crates/permguard-authority-plane-server/src/grpc.rs
       - contracts/openapi/authority.json
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
       - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
   "2-security/5-security-management-api.md#access-keys":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
-      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane-server/src/http.rs
+      - crates/permguard-authority-plane-server/src/grpc.rs
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
       - crates/permguard-authority-plane/src/access_keys.rs::keys_have_their_form_and_never_repeat
   "2-security/5-security-management-api.md#scopes":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
-      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane-server/src/http.rs
+      - crates/permguard-authority-plane-server/src/grpc.rs
       - crates/permguard-core/src/authz.rs
     tests:
       - crates/permguard-core/src/authz.rs::a_grant_fits_only_where_its_operation_applies
@@ -4471,8 +4471,8 @@ sections:
       - crates/permguard-authority-plane/src/accounts.rs::the_administrators_scopes_are_coherent_and_reach_every_plane
   "2-security/5-security-management-api.md#tokens":
     paths:
-      - crates/permguard-authority-plane/src/http.rs
-      - crates/permguard-authority-plane/src/grpc.rs
+      - crates/permguard-authority-plane-server/src/http.rs
+      - crates/permguard-authority-plane-server/src/grpc.rs
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
       - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
@@ -4663,7 +4663,7 @@ findings:
     tests:
       - crates/permguard-data-plane/tests/authz_decision.rs::two_coordinators_with_one_name_are_refused_until_an_alias_names_one
       - crates/permguard-data-plane/src/authz/gate.rs::the_gate_resolves_an_alias_as_the_decision_path_does
-      - crates/permguard-server/src/plane/settings.rs::mirror_aliases_come_from_the_file_and_a_pair_is_assigned_once
+      - crates/permguard-core/src/planes/settings.rs::mirror_aliases_come_from_the_file_and_a_pair_is_assigned_once
       - crates/permguard-data-plane/tests/module.rs::the_configured_aliases_are_what_the_plane_resolves_through
   "F-18":
     tests:

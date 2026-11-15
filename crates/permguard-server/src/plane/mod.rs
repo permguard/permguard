@@ -14,7 +14,6 @@
 //! well-known documents say about which planes are loaded), and
 //! [`factories`] (what the composition root builds: rings, catalogs, sinks).
 
-use std::env;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
@@ -50,6 +49,7 @@ pub use discovery::{
     streams_route,
 };
 pub use factories::build_settings;
+pub use permguard_core::planes::{PlaneAddress, PlaneAddresses, PlaneTls};
 pub use settings::*;
 
 use discovery::{plane_enabled, plane_required};
@@ -57,7 +57,6 @@ use factories::{
     audit_sink_for, catalog_for, control_signing_keys_for, data_signing_keys_for, key_manager_for,
     secret_store_for,
 };
-use settings::{parse_bool, tls_for};
 
 /// A plane API bundle that can be hosted alone or beside other planes.
 pub trait PlaneModule: Send + Sync + 'static {
@@ -161,158 +160,27 @@ pub trait PlaneModule: Send + Sync + 'static {
     }
 }
 
-/// Where a plane listener reads its address from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlaneAddress {
-    /// Use `public.http.addr` from the active config file.
-    ConfigPublicHttp,
-    /// Use `public.grpc.addr` from the active config file.
-    ConfigPublicGrpc,
-    /// Read an environment variable and fall back to a static default.
-    Env {
-        variable: &'static str,
-        default: &'static str,
-    },
-    /// Read a declared setting from the effective config.
-    Setting {
-        enabled_key: &'static str,
-        addr_key: &'static str,
-    },
-}
-
-impl PlaneAddress {
-    /// Builds an environment-backed address source.
-    pub const fn env(variable: &'static str, default: &'static str) -> Self {
-        Self::Env { variable, default }
-    }
-
-    pub const fn setting(enabled_key: &'static str, addr_key: &'static str) -> Self {
-        Self::Setting {
-            enabled_key,
-            addr_key,
-        }
-    }
-
-    fn resolve(self, config: &Config) -> Result<Option<String>> {
-        match self {
-            Self::ConfigPublicHttp => Ok(config.public_http_addr().map(ToOwned::to_owned)),
-            Self::ConfigPublicGrpc => Ok(config.public_grpc_addr().map(ToOwned::to_owned)),
-            Self::Env { variable, default } => Ok(Some(
-                env::var(variable)
-                    .ok()
-                    .map(|value| value.trim().to_owned())
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or_else(|| default.to_owned()),
-            )),
-            Self::Setting {
-                enabled_key,
-                addr_key,
-            } => {
-                if let Some(enabled) = config.setting(enabled_key)
-                    && !parse_bool(enabled).with_context(|| format!("reading {enabled_key}"))?
-                {
-                    return Ok(None);
-                }
-
-                Ok(config.setting(addr_key).map(ToOwned::to_owned))
-            }
-        }
-    }
-}
-
-/// Where a plane's HTTP and gRPC listeners read their addresses from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlaneAddresses {
-    http: PlaneAddress,
-    grpc: PlaneAddress,
-    http_tls: PlaneTls,
-    grpc_tls: PlaneTls,
-}
-
-impl PlaneAddresses {
-    /// Uses the configured public HTTP and gRPC addresses.
-    pub const fn config_public() -> Self {
-        Self {
-            http: PlaneAddress::ConfigPublicHttp,
-            grpc: PlaneAddress::ConfigPublicGrpc,
-            http_tls: PlaneTls::Public,
-            grpc_tls: PlaneTls::Public,
-        }
-    }
-
-    /// Uses environment-backed HTTP and gRPC addresses.
-    pub const fn env(
-        http_variable: &'static str,
-        http_default: &'static str,
-        grpc_variable: &'static str,
-        grpc_default: &'static str,
-    ) -> Self {
-        Self {
-            http: PlaneAddress::env(http_variable, http_default),
-            grpc: PlaneAddress::env(grpc_variable, grpc_default),
-            http_tls: PlaneTls::Public,
-            grpc_tls: PlaneTls::Public,
-        }
-    }
-
-    /// Uses declared settings for HTTP and gRPC addresses.
-    pub const fn settings(http: PlaneEndpointKeys, grpc: PlaneEndpointKeys) -> Self {
-        Self {
-            http: PlaneAddress::setting(http.enabled, http.addr),
-            grpc: PlaneAddress::setting(grpc.enabled, grpc.addr),
-            http_tls: PlaneTls::setting(http.tls),
-            grpc_tls: PlaneTls::setting(grpc.tls),
-        }
-    }
-}
-
-/// Where a plane listener reads TLS material from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlaneTls {
-    /// Use process-level `public.tls`, when configured.
-    Public,
-    /// Read plane/protocol-specific TLS settings and fall back to process-level `public.tls`.
-    Setting { keys: PlaneTlsKeys },
-}
-
-impl PlaneTls {
-    pub const fn setting(keys: PlaneTlsKeys) -> Self {
-        Self::Setting { keys }
-    }
-
-    fn resolve(self, config: &Config) -> Result<Option<TlsSettings>> {
-        match self {
-            Self::Public => Ok(config.public_tls()),
-            Self::Setting { keys } => tls_for(config, keys),
-        }
-    }
-
-    /// Whether the endpoint declares an upstream TLS termination (WP-2.11).
-    fn terminated_upstream(self, config: &Config) -> Result<bool> {
-        match self {
-            Self::Public => Ok(config.public_tls_terminated_upstream()),
-            Self::Setting { keys } => settings::terminated_upstream_for(config, keys),
-        }
-    }
-}
-
-impl PlaneAddresses {
+/// The listeners a plane's addresses resolve to: the server's question about addresses the core
+/// declares.
+pub(crate) trait ListenerEndpoints {
     /// The listeners these addresses resolve to under `config`: none, one serving HTTP and gRPC on
     /// a shared address, or one per protocol. `description` names the plane in a refusal.
-    pub(crate) fn endpoints(
-        &self,
-        config: &Config,
-        description: &str,
-    ) -> Result<Vec<listeners::Endpoint>> {
+    fn endpoints(&self, config: &Config, description: &str) -> Result<Vec<listeners::Endpoint>>;
+}
+
+impl ListenerEndpoints for PlaneAddresses {
+    /// The listeners these addresses resolve to under `config`: none, one serving HTTP and gRPC on
+    /// a shared address, or one per protocol. `description` names the plane in a refusal.
+    fn endpoints(&self, config: &Config, description: &str) -> Result<Vec<listeners::Endpoint>> {
         // Both protocols' TLS is read whether or not its address is bound, as the start always
         // did: a malformed setting stops the start even on an endpoint left off.
         let http_tls = (
-            self.http_tls.resolve(config)?,
-            self.http_tls.terminated_upstream(config)?,
+            self.http_tls().resolve(config)?,
+            self.http_tls().terminated_upstream(config)?,
         );
         let grpc_tls = (
-            self.grpc_tls.resolve(config)?,
-            self.grpc_tls.terminated_upstream(config)?,
+            self.grpc_tls().resolve(config)?,
+            self.grpc_tls().terminated_upstream(config)?,
         );
         let endpoint =
             |addr: String, protocol, policy: &(Option<TlsSettings>, bool)| listeners::Endpoint {
@@ -321,8 +189,8 @@ impl PlaneAddresses {
                 tls: policy.0.clone(),
                 terminated_upstream: policy.1,
             };
-        let http = self.http.resolve(config)?;
-        let grpc = self.grpc.resolve(config)?;
+        let http = self.http().resolve(config)?;
+        let grpc = self.grpc().resolve(config)?;
         Ok(match (http, grpc) {
             (None, None) => Vec::new(),
             (Some(addr), Some(grpc)) if addr == grpc => {

@@ -5,20 +5,7 @@
 
 use std::fmt;
 
-/// Whether `name` is one exact, portable filesystem segment.
-///
-/// Leading or trailing whitespace is refused rather than normalized: normalizing turns two wire
-/// identities into one directory. The stricter ASCII alphabet keeps decision producer names
-/// portable across every filesystem Permguard supports.
-pub fn is_portable_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 128
-        && name == name.trim()
-        && !name.starts_with('.')
-        && name.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
-        })
-}
+pub use permguard_core::names::is_portable_name;
 
 /// One position in the stable `(producer class, producer, instance)` stream order.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

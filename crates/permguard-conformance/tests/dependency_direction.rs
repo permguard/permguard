@@ -16,6 +16,7 @@ use std::process::Command;
 /// The crates a Plane is, or that compose one.
 const ABOVE_THE_HOST: &[&str] = &[
     "permguard-authority-plane",
+    "permguard-authority-plane-server",
     "permguard-control-plane",
     "permguard-data-plane",
     "permguard-all-in-one",
@@ -171,6 +172,9 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-events", SERVER_STACK),
     // The policy languages validate and evaluate; they serve nothing and call nobody.
     ("permguard-languages", SERVER_STACK),
+    // A Plane's domain serves nothing (RD-1): its routes, module and binary are its server
+    // package's.
+    ("permguard-authority-plane", SERVER_STACK),
 ];
 
 #[test]
