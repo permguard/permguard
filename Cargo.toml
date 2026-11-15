@@ -12,6 +12,7 @@ members = [
     "crates/permguard-control-plane",
     "crates/permguard-core",
     "crates/permguard-data-plane",
+    "crates/permguard-data-plane-server",
     "crates/permguard-decisions",
     "crates/permguard-events",
     "crates/permguard-host",
@@ -62,6 +63,7 @@ permguard-authority-plane-server = { path = "crates/permguard-authority-plane-se
 permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.0" }
 permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
 permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
+permguard-data-plane-server = { path = "crates/permguard-data-plane-server", version = "0.1.0" }
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
 permguard-host = { path = "crates/permguard-host", version = "0.1.0" }

@@ -673,7 +673,7 @@ Use Cargo directly for the runtime binaries:
 cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/config.local.yml
 cargo run -p permguard-authority-plane-server --bin permguard-authority-plane -- crates/permguard-authority-plane/config.local.yml
 cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
-cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
+cargo run -p permguard-data-plane-server --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
 ```
 
 The all-in-one mirrors its own Control Plane in-process and serves at once, and ships its decisions and events to that Control Plane the same way, so `permguard decisions list` and `permguard events list` read them within seconds.
@@ -925,7 +925,8 @@ The Host never depends on a concrete plane.
 | `permguard-authority-plane`        | planes      | Authority Plane domain: service accounts, access keys, scopes, tokens, keys and status lists; serves nothing. |
 | `permguard-authority-plane-server` | planes      | Authority Plane served: its HTTP and gRPC routes, its module and the `permguard-authority-plane` binary.      |
 | `permguard-control-plane`          | planes      | Control Plane binary: ledgers, NOTP server, catalog, decision and event stores.                               |
-| `permguard-data-plane`             | planes      | Data Plane binary: mirrors, load gate, evaluation endpoints and decision recording.                           |
+| `permguard-data-plane`             | planes      | Data Plane domain: mirrors, load gate, evaluation and its authorization, decision log, temporal history.      |
+| `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
 | `permguard-control-client`         | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                       |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |

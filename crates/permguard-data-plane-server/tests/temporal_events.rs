@@ -65,9 +65,12 @@ const MIRROR_AUTHORITY: &str = "11111111111111111111111111111111";
 /// The task the mirrors of these tests were listed by: the local task.
 const MIRROR_TASK: &str = "00000000-0000-0000-0000-000000000000/local";
 
-const POLICY: &str = include_str!("fixtures/read-login-not-logout.dw");
-const ACTION_SCHEMA: &str = include_str!("fixtures/read-login-not-logout.cedarschema");
-const EVENT_SCHEMA: &str = include_str!("fixtures/pinned.dwschema");
+const POLICY: &str =
+    include_str!("../../permguard-data-plane/tests/fixtures/read-login-not-logout.dw");
+const ACTION_SCHEMA: &str =
+    include_str!("../../permguard-data-plane/tests/fixtures/read-login-not-logout.cedarschema");
+const EVENT_SCHEMA: &str =
+    include_str!("../../permguard-data-plane/tests/fixtures/pinned.dwschema");
 
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
@@ -958,8 +961,8 @@ async fn one_event_id_with_different_content_is_a_conflict_resolved_by_neither()
 /// with the same class and code on both — not the `FAILED_PRECONDITION` other interfaces use.
 #[tokio::test]
 async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
-    use permguard_data_plane::temporal::grpc;
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::grpc;
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     let plane = plane("conflict-parity");
     let router = surface(&plane);
@@ -989,17 +992,19 @@ async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
     assert_eq!(answered["code"], "event_id_conflict", "{answered}");
 
     let body = occurrence("s3");
-    let proto = permguard_data_plane::v1::SubmitEventRequest {
-        store: Some(permguard_data_plane::v1::EventStore {
+    let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+        store: Some(permguard_data_plane_server::v1::EventStore {
             zone: ZONE.to_owned(),
             ledger: LEDGER.to_owned(),
             profile: PROFILE.to_owned(),
         }),
-        event: Some(permguard_data_plane::v1::TypedEvent {
+        event: Some(permguard_data_plane_server::v1::TypedEvent {
             r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-            data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                body["event"]["data"].as_object().expect("an object"),
-            )),
+            data: Some(
+                permguard_data_plane_server::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                ),
+            ),
         }),
     };
     let over_grpc = api
@@ -1272,8 +1277,8 @@ async fn the_discovery_document_names_the_route_this_plane_answers() {
 #[tokio::test]
 async fn the_temporal_document_carries_the_header_on_both_transports() {
     use permguard_core::stages::{Describer, Registered, Stage};
-    use permguard_data_plane::temporal::grpc;
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::grpc;
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     static RETIRED: &[Registered] = &[Registered {
         id: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,
@@ -1307,7 +1312,7 @@ async fn the_temporal_document_carries_the_header_on_both_transports() {
     };
     let over_grpc = api(Describer::detached("data-plane"))
         .get_temporal_configuration(tonic::Request::new(
-            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+            permguard_data_plane_server::v1::GetTemporalConfigurationRequest {},
         ))
         .await
         .expect("answered")
@@ -1323,7 +1328,7 @@ async fn the_temporal_document_carries_the_header_on_both_transports() {
 
     let refused = api(Describer::detached("data-plane").with_registry(RETIRED))
         .get_temporal_configuration(tonic::Request::new(
-            permguard_data_plane::v1::GetTemporalConfigurationRequest {},
+            permguard_data_plane_server::v1::GetTemporalConfigurationRequest {},
         ))
         .await
         .expect_err("retired");
@@ -1340,8 +1345,8 @@ async fn the_temporal_document_carries_the_header_on_both_transports() {
 /// The two transports are one interface: same request, same answer, same path underneath.
 #[tokio::test]
 async fn grpc_and_http_answer_the_same_submission_identically() {
-    use permguard_data_plane::temporal::grpc;
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::grpc;
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     let over_http = plane("http-parity");
     let over_grpc = plane("grpc-parity");
@@ -1362,17 +1367,19 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
         let (status, answered) = post(&http_router, body.clone()).await;
         assert_eq!(status, StatusCode::OK, "@{at}: {answered}");
 
-        let proto = permguard_data_plane::v1::SubmitEventRequest {
-            store: Some(permguard_data_plane::v1::EventStore {
+        let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane_server::v1::EventStore {
                 zone: ZONE.to_owned(),
                 ledger: LEDGER.to_owned(),
                 profile: PROFILE.to_owned(),
             }),
-            event: Some(permguard_data_plane::v1::TypedEvent {
+            event: Some(permguard_data_plane_server::v1::TypedEvent {
                 r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-                data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                    body["event"]["data"].as_object().expect("an object"),
-                )),
+                data: Some(
+                    permguard_data_plane_server::authz::translate::struct_from_map(
+                        body["event"]["data"].as_object().expect("an object"),
+                    ),
+                ),
             }),
         };
         let over_the_wire = api
@@ -1416,8 +1423,8 @@ async fn grpc_and_http_answer_the_same_submission_identically() {
 /// as a decimal read as the integer it is on both, 2^53 itself carried by both.
 #[tokio::test]
 async fn a_number_at_the_edge_of_the_domain_meets_the_same_outcome_over_both_transports() {
-    use permguard_data_plane::temporal::grpc;
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::grpc;
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     let over_http = plane("http-numbers");
     let over_grpc = plane("grpc-numbers");
@@ -1449,17 +1456,19 @@ async fn a_number_at_the_edge_of_the_domain_meets_the_same_outcome_over_both_tra
         } else {
             answered["code"].as_str().unwrap_or_default().to_owned()
         };
-        let proto = permguard_data_plane::v1::SubmitEventRequest {
-            store: Some(permguard_data_plane::v1::EventStore {
+        let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane_server::v1::EventStore {
                 zone: ZONE.to_owned(),
                 ledger: LEDGER.to_owned(),
                 profile: PROFILE.to_owned(),
             }),
-            event: Some(permguard_data_plane::v1::TypedEvent {
+            event: Some(permguard_data_plane_server::v1::TypedEvent {
                 r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-                data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                    body["event"]["data"].as_object().expect("an object"),
-                )),
+                data: Some(
+                    permguard_data_plane_server::authz::translate::struct_from_map(
+                        body["event"]["data"].as_object().expect("an object"),
+                    ),
+                ),
             }),
         };
         let over_rpc = match api.submit_event(anonymous(proto)).await {
@@ -2829,8 +2838,8 @@ mod adversarial_ids {
 mod indeterminate {
     use super::*;
 
-    use permguard_data_plane::temporal::{grpc, submit};
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::{grpc, submit};
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     /// A policy whose only condition calls a provider that throws: upstream reports the error in
     /// its diagnostics beside a fail-closed decision, which the adapter reports as `E`.
@@ -3141,17 +3150,19 @@ when { Boom::Fail(context.input.document).ok == true };
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
-        let proto = permguard_data_plane::v1::SubmitEventRequest {
-            store: Some(permguard_data_plane::v1::EventStore {
+        let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane_server::v1::EventStore {
                 zone: ZONE.to_owned(),
                 ledger: LEDGER.to_owned(),
                 profile: PROFILE.to_owned(),
             }),
-            event: Some(permguard_data_plane::v1::TypedEvent {
+            event: Some(permguard_data_plane_server::v1::TypedEvent {
                 r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-                data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                    body["event"]["data"].as_object().expect("an object"),
-                )),
+                data: Some(
+                    permguard_data_plane_server::authz::translate::struct_from_map(
+                        body["event"]["data"].as_object().expect("an object"),
+                    ),
+                ),
             }),
         };
         let answered = api
@@ -3244,17 +3255,19 @@ when { Boom::Fail(context.input.document).ok == true };
             authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
         };
         let body = read(200);
-        let proto = permguard_data_plane::v1::SubmitEventRequest {
-            store: Some(permguard_data_plane::v1::EventStore {
+        let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane_server::v1::EventStore {
                 zone: ZONE.to_owned(),
                 ledger: LEDGER.to_owned(),
                 profile: PROFILE.to_owned(),
             }),
-            event: Some(permguard_data_plane::v1::TypedEvent {
+            event: Some(permguard_data_plane_server::v1::TypedEvent {
                 r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-                data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                    body["event"]["data"].as_object().expect("an object"),
-                )),
+                data: Some(
+                    permguard_data_plane_server::authz::translate::struct_from_map(
+                        body["event"]["data"].as_object().expect("an object"),
+                    ),
+                ),
             }),
         };
 
@@ -3266,7 +3279,7 @@ when { Boom::Fail(context.input.document).ok == true };
 
         assert_eq!(
             answered.outcome,
-            permguard_data_plane::v1::SubmitOutcome::Indeterminate as i32
+            permguard_data_plane_server::v1::SubmitOutcome::Indeterminate as i32
         );
         assert_eq!(answered.decision, None, "no verdict is fabricated");
         assert!(
@@ -3287,10 +3300,10 @@ when { Boom::Fail(context.input.document).ok == true };
 /// nobody presents a credential here, so every request is anonymous and the permissive
 /// authorization admits it.
 mod http {
-    pub use permguard_data_plane::temporal::http::Surface;
+    pub use permguard_data_plane_server::temporal::http::Surface;
 
     pub fn routes(surface: Surface) -> axum::Router {
-        permguard_data_plane::temporal::http::routes(surface).layer(
+        permguard_data_plane_server::temporal::http::routes(surface).layer(
             permguard_transport::ActorLayer::new(std::sync::Arc::new(permguard_core::NoRules)),
         )
     }
@@ -3310,8 +3323,8 @@ fn anonymous<T>(inner: T) -> tonic::Request<T> {
 /// principal the gate authorized.
 #[tokio::test]
 async fn a_submission_without_event_submit_is_refused_before_anything_is_recorded() {
-    use permguard_data_plane::temporal::grpc;
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::grpc;
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     let plane = plane("ungranted");
     let closed = Arc::new(permguard_host::composition::Authorization::closed());
@@ -3341,17 +3354,19 @@ async fn a_submission_without_event_submit_is_refused_before_anything_is_recorde
         pdp: "test-plane".to_owned(),
         authorization: closed,
     };
-    let proto = permguard_data_plane::v1::SubmitEventRequest {
-        store: Some(permguard_data_plane::v1::EventStore {
+    let proto = permguard_data_plane_server::v1::SubmitEventRequest {
+        store: Some(permguard_data_plane_server::v1::EventStore {
             zone: ZONE.to_owned(),
             ledger: LEDGER.to_owned(),
             profile: PROFILE.to_owned(),
         }),
-        event: Some(permguard_data_plane::v1::TypedEvent {
+        event: Some(permguard_data_plane_server::v1::TypedEvent {
             r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
-            data: Some(permguard_data_plane::authz::translate::struct_from_map(
-                body["event"]["data"].as_object().expect("an object"),
-            )),
+            data: Some(
+                permguard_data_plane_server::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                ),
+            ),
         }),
     };
     let refused = api
@@ -3820,7 +3835,7 @@ async fn an_eventual_decision_names_each_degraded_origin_for_its_own_cause() {
             "{case}: what is held, and a required run held of nothing at zero: {answered}"
         );
         // The same answer over gRPC carries the same frontier and degraded origins.
-        let proto = permguard_data_plane::temporal::grpc::to_proto(
+        let proto = permguard_data_plane_server::temporal::grpc::to_proto(
             serde_json::from_value(answered.clone()).expect("an answer"),
         );
         let carried = proto.history.expect("a history");
@@ -4044,7 +4059,7 @@ async fn a_conflicting_occurrence_refuses_a_bounded_decision_and_degrades_an_eve
                     .find(|record| record["id"] == answered["decision_id"])
                     .expect("the decision is recorded");
                 assert_eq!(recorded["event"]["quarantined"], 1, "{tag}: {recorded}");
-                let proto = permguard_data_plane::temporal::grpc::to_proto(
+                let proto = permguard_data_plane_server::temporal::grpc::to_proto(
                     serde_json::from_value(answered.clone()).expect("an answer"),
                 );
                 assert_eq!(

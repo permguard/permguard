@@ -81,7 +81,7 @@ fn host() -> Host {
 #[test]
 fn the_data_plane_signs_its_evidence_and_nothing_else() {
     let registration = host()
-        .register(permguard_data_plane::module().declaration(&config(&[])))
+        .register(permguard_data_plane_server::module().declaration(&config(&[])))
         .expect("registers");
     for signer in [
         registration
@@ -155,7 +155,7 @@ fn the_zone_keys_are_held_by_the_host_and_never_shown() {
             coordinator.clone(),
         ))
         .build()
-        .register(permguard_data_plane::module().declaration(&logging))
+        .register(permguard_data_plane_server::module().declaration(&logging))
         .expect("registers");
     let tags = registration
         .zone_key(ZonePurpose::DecisionCommitment)
@@ -211,7 +211,7 @@ fn the_zone_keys_are_held_by_the_host_and_never_shown() {
 
     // Without the zone keys composed the handles are absent, never another purpose's.
     let without = host()
-        .register(permguard_data_plane::module().declaration(&logging))
+        .register(permguard_data_plane_server::module().declaration(&logging))
         .expect("registers");
     assert!(
         without
@@ -238,7 +238,7 @@ fn a_clock_anomaly_leaves_the_data_planes_evidence_signing() {
         .ring(DATA_ATTEST, Arc::new(Ring("data")))
         .time(Arc::clone(&time))
         .build()
-        .register(permguard_data_plane::module().declaration(&config(&[])))
+        .register(permguard_data_plane_server::module().declaration(&config(&[])))
         .expect("registers");
     wall.jump(-3_600);
     time.tick();
@@ -292,7 +292,7 @@ fn the_data_plane_cannot_declare_what_only_the_host_identity_signs() {
         assert!(reserved.starts_with("permguard.host."), "{reserved}");
     }
     host()
-        .register(permguard_data_plane::module().declaration(&config(&[])))
+        .register(permguard_data_plane_server::module().declaration(&config(&[])))
         .expect("the data plane declares nothing reserved");
 }
 
@@ -364,7 +364,7 @@ fn the_data_plane_reads_the_event_consumer_only_under_a_shared_mode() {
         ("shared-bounded", true),
     ] {
         let registration = host()
-            .register(permguard_data_plane::module().declaration(&config(&[
+            .register(permguard_data_plane_server::module().declaration(&config(&[
                 (SETTING_EVENTS_ENABLED, "true"),
                 (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
                 (SETTING_EVENTS_PULL_MODE, mode),
@@ -400,7 +400,7 @@ fn an_archived_legacy_history_is_not_opened_by_the_composed_plane() {
 
     // Declared exactly when the temporal interface is served.
     let quiet = host()
-        .register(permguard_data_plane::module().declaration(&config(&[])))
+        .register(permguard_data_plane_server::module().declaration(&config(&[])))
         .expect("registers");
     assert!(quiet.layout(permguard_events::archive::SUBSYSTEM).is_err());
 
@@ -442,7 +442,7 @@ fn an_archived_legacy_history_is_not_opened_by_the_composed_plane() {
             permguard_events::archive::TARGET_VERSION,
         )])
         .build()
-        .register(permguard_data_plane::module().declaration(&serving))
+        .register(permguard_data_plane_server::module().declaration(&serving))
         .expect("registers");
     assert_eq!(
         registration

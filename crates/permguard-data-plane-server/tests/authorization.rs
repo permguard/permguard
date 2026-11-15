@@ -57,7 +57,7 @@ fn router(tag: &str, public: &[PublicGrant]) -> axum::Router {
     ));
     let storage: &'static MemoryStorage = Box::leak(Box::new(MemoryStorage::new()));
     let audit: &'static RecordingAuditSink = Box::leak(Box::new(RecordingAuditSink::new()));
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
     let registration = Host::builder()
         .authorization(Arc::new(Authorization::public_only(public)))
         .build()
@@ -121,7 +121,7 @@ async fn a_router_without_the_authentication_boundary_is_closed_even_to_public_g
     ));
     let storage: &'static MemoryStorage = Box::leak(Box::new(MemoryStorage::new()));
     let audit: &'static RecordingAuditSink = Box::leak(Box::new(RecordingAuditSink::new()));
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
     let registration = Host::builder()
         .authorization(Arc::new(Authorization::permissive()))
         .build()

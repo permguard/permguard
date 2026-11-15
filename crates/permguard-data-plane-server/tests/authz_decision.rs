@@ -45,10 +45,10 @@ use permguard_data_plane::authz::{block, wire};
 /// nobody presents a credential here, so every request is anonymous and the permissive
 /// authorization admits it. These tests are about deciding, not about who may ask.
 mod http {
-    pub use permguard_data_plane::authz::http::Surface;
+    pub use permguard_data_plane_server::authz::http::Surface;
 
     pub fn routes(surface: Surface) -> axum::Router {
-        permguard_data_plane::authz::http::routes(surface).layer(
+        permguard_data_plane_server::authz::http::routes(surface).layer(
             permguard_transport::ActorLayer::new(std::sync::Arc::new(permguard_core::NoRules)),
         )
     }
@@ -77,15 +77,15 @@ type Anonymising = fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::S
 
 /// The decision service behind its boundary.
 type ServedPdp = tonic::service::interceptor::InterceptedService<
-    permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer<
-        permguard_data_plane::authz::grpc::PdpApi,
+    permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPointServer<
+        permguard_data_plane_server::authz::grpc::PdpApi,
     >,
     Anonymising,
 >;
 
 /// The decision service as a surface serves it: behind the boundary, every request anonymous.
-fn served(api: permguard_data_plane::authz::grpc::PdpApi) -> ServedPdp {
-    permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
+fn served(api: permguard_data_plane_server::authz::grpc::PdpApi) -> ServedPdp {
+    permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
         api,
         anonymous_interceptor as Anonymising,
     )
@@ -1871,7 +1871,7 @@ async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph()
 mod grpc_socket {
     use super::*;
 
-    use permguard_data_plane::authz::grpc::PdpApi;
+    use permguard_data_plane_server::authz::grpc::PdpApi;
 
     /// Serves a real PDP on an ephemeral port, and answers its `grpc://` URL.
     fn serve(root: &Path) -> String {
@@ -2238,8 +2238,8 @@ mod parity {
     use permguard_conformance::parity::{
         Outcome, assert_parity, expected_statuses, outcome, serve,
     };
-    use permguard_data_plane::authz::grpc::PdpApi;
-    use permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPoint as _;
+    use permguard_data_plane_server::authz::grpc::PdpApi;
+    use permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPoint as _;
 
     fn pdp(url: &str) -> Box<dyn permguard_control_client::pdp::Pdp> {
         permguard_control_client::pdp::client(
@@ -2524,11 +2524,11 @@ mod parity {
         for (case, request) in [
             (
                 "no store named over gRPC",
-                permguard_data_plane::v1::EvaluateRequest::default(),
+                permguard_data_plane_server::v1::EvaluateRequest::default(),
             ),
             (
                 "an unserved ledger over gRPC",
-                permguard_data_plane::v1::EvaluateRequest {
+                permguard_data_plane_server::v1::EvaluateRequest {
                     zone: "acme".to_owned(),
                     ledger: "other-ledger".to_owned(),
                     ..Default::default()
@@ -2787,7 +2787,7 @@ mod indeterminate {
     use super::*;
 
     use permguard_conformance::parity::{Outcome, assert_parity, outcome, serve};
-    use permguard_data_plane::authz::grpc::PdpApi;
+    use permguard_data_plane_server::authz::grpc::PdpApi;
 
     /// The wire payload: `audit` reaches `CEDAR_CLEARANCE`, which errors; anything else does not.
     fn asked(subject: &str, action: &str) -> Value {
@@ -5095,7 +5095,7 @@ mod signed_response {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = listener.local_addr().expect("the address");
         listener.set_nonblocking(true).expect("non-blocking");
-        let api = permguard_data_plane::authz::grpc::PdpApi {
+        let api = permguard_data_plane_server::authz::grpc::PdpApi {
             authorization: permissive(),
             decider,
             disclosure: Disclosure::Full,
@@ -5119,7 +5119,7 @@ mod signed_response {
                 };
                 let _ = tonic::transport::Server::builder()
                     .add_service(
-                        permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
+                        permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
                             api, boundary,
                         ),
                     )
@@ -5137,7 +5137,7 @@ mod signed_response {
     ) -> (StatusCode, Value) {
         // The bare routes: the actor is the one this request carries, as an authentication
         // boundary would have attached it.
-        let router = permguard_data_plane::authz::http::routes(http::Surface {
+        let router = permguard_data_plane_server::authz::http::routes(http::Surface {
             authorization: permissive(),
             decider,
             disclosure: Disclosure::Full,
@@ -5661,7 +5661,7 @@ async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
         )))
     };
     let ask = |actor: Arc<Actor>| {
-        let router = permguard_data_plane::authz::http::routes(http::Surface {
+        let router = permguard_data_plane_server::authz::http::routes(http::Surface {
             authorization: Arc::new(permguard_host::composition::Authorization::closed()),
             decider: Arc::clone(&decider),
             disclosure: Disclosure::Full,

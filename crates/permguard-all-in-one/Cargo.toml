@@ -24,7 +24,7 @@ permguard-authority-plane-server.workspace = true
 permguard-control-plane.workspace = true
 permguard-core.workspace = true
 permguard-server.workspace = true
-permguard-data-plane.workspace = true
+permguard-data-plane-server.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 
 [dev-dependencies]

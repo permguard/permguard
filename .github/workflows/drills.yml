@@ -78,7 +78,7 @@ jobs:
           echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  kind" | sha256sum --check
           sudo install -m 0755 kind /usr/local/bin/kind
       - name: the data plane image
-        run: docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
+        run: docker build --build-arg PACKAGE=permguard-data-plane-server --build-arg BIN=permguard-data-plane -t permguard/data-plane:e2e .
       - name: the replica killed while it writes, on a cluster
         run: ./scripts/chart-takeover.sh permguard/data-plane:e2e takeover-qualification.json
       - if: always()

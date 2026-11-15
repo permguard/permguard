@@ -9,9 +9,9 @@
 //! The interfaces model records the limit of this: a reader that skips cannot tell the caller
 //! that it skipped, which is why `regulated` needs a decoder that detects unknown fields.
 
-use permguard_data_plane::authz::translate::request_from_proto;
-use permguard_data_plane::temporal::grpc::from_proto;
-use permguard_data_plane::v1::{
+use permguard_data_plane_server::authz::translate::request_from_proto;
+use permguard_data_plane_server::temporal::grpc::from_proto;
+use permguard_data_plane_server::v1::{
     Action, Entity, EvaluateRequest, Evaluation, EventStore, SubmitEventRequest, TypedEvent,
 };
 use prost::Message;

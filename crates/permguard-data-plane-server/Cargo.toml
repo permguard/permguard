@@ -1,0 +1,70 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-data-plane-server"
+description = "The Permguard data plane served: its HTTP and gRPC routes, its module and its binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+# The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
+build = "build.rs"
+
+# The Data Plane on its own: the binary the `data-plane` image runs.
+[[bin]]
+name = "permguard-data-plane"
+path = "src/main.rs"
+# The binary documents nothing of its own, and its name is the domain library's.
+doc = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+permguard-control-client.workspace = true
+permguard-core.workspace = true
+permguard-data-plane.workspace = true
+permguard-decisions.workspace = true
+permguard-events.workspace = true
+# The handles this plane declares and gets from the Host (P1).
+permguard-host.workspace = true
+permguard-languages.workspace = true
+permguard-objects.workspace = true
+permguard-server.workspace = true
+permguard-stream.workspace = true
+# The actor a request carries, read where a route authorizes (WP-2.4).
+permguard-transport.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tonic.workspace = true
+tonic-prost.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+# Decoding a signed response's parts, as a PEP would (WP-6.6b).
+base64.workspace = true
+# Transport parity, fault injection and the boundary registry, shared by every plane.
+permguard-conformance.workspace = true
+# Capturing what a decision logs, to prove identifiers stay out of it (P10, H-13).
+tracing-subscriber.workspace = true
+permguard-control-plane.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+http.workspace = true
+http-body-util.workspace = true
+permguard-std.workspace = true
+tower.workspace = true
+# The PDP over a real socket: a listener already bound, handed to tonic.
+async-stream.workspace = true
+futures-core.workspace = true

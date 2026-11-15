@@ -40,7 +40,7 @@ async fn get(router: axum::Router, path: &str) -> (u16, String) {
 
 #[test]
 fn module_metadata_identifies_data_plane() {
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
 
     assert_eq!(module.id(), "data");
     assert_eq!(module.component(), "data-plane");
@@ -85,7 +85,7 @@ async fn the_http_surface_answers_info_health_and_discovery() {
     let audit = RecordingAuditSink::new();
     let server = ServerContext::new(identity(), &config, &storage, &audit);
     let context = PlaneContext::new(&server, "data");
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
 
     let (status, info) = get(module.http_routes(&context), "/").await;
     assert_eq!(status, 200);
@@ -189,7 +189,7 @@ async fn the_grpc_surface_mounts() {
     let context = PlaneContext::new(&server, "data");
 
     // Mounting is the assertion: a service that cannot compose panics here.
-    let _routes = permguard_data_plane::module().grpc_routes(&context);
+    let _routes = permguard_data_plane_server::module().grpc_routes(&context);
 }
 
 /// The same deployment, plus whatever settings a test wants to say.
@@ -239,7 +239,7 @@ fn deployed_with(extra: &[(&str, &str)]) -> Config {
 fn the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one() {
     use permguard_core::config::{SETTING_EVENTS_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
 
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
 
     // Neither: nothing to check and nothing served.
     let neither = deployed();
@@ -275,7 +275,7 @@ async fn a_plane_document_carries_its_phase() {
     let audit = RecordingAuditSink::new();
     let server = ServerContext::new(identity(), &config, &storage, &audit);
     let context = PlaneContext::new(&server, "data");
-    let routes = permguard_data_plane::module().http_routes(&context);
+    let routes = permguard_data_plane_server::module().http_routes(&context);
     let state = |document: &str| -> serde_json::Value {
         serde_json::from_str::<serde_json::Value>(document).expect("JSON")["state"].clone()
     };
@@ -325,7 +325,7 @@ async fn discovery_publishes_each_runtimes_gate_and_whether_it_is_served() {
     let server = ServerContext::new(identity(), &development, &storage, &audit);
     let context = PlaneContext::new(&server, "data");
     let (status, document) = get(
-        permguard_data_plane::module().http_routes(&context),
+        permguard_data_plane_server::module().http_routes(&context),
         "/.well-known/server-configuration",
     )
     .await;
@@ -385,7 +385,7 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     let server = ServerContext::new(identity(), &off, &storage, &audit);
     let context = PlaneContext::new(&server, "data");
     let (status, document) = get(
-        permguard_data_plane::module().http_routes(&context),
+        permguard_data_plane_server::module().http_routes(&context),
         "/.well-known/server-configuration",
     )
     .await;
@@ -402,7 +402,7 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     let server = ServerContext::new(identity(), &half, &storage, &audit);
     let context = PlaneContext::new(&server, "data");
     let (status, document) = get(
-        permguard_data_plane::module().http_routes(&context),
+        permguard_data_plane_server::module().http_routes(&context),
         "/.well-known/server-configuration",
     )
     .await;
@@ -422,7 +422,7 @@ fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
         SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
     };
 
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
     let shared = deployed_with(&[
         (SETTING_EVENTS_ENABLED, "true"),
         (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
@@ -536,7 +536,7 @@ fn the_configured_aliases_are_what_the_plane_resolves_through() {
 fn a_decision_log_server_or_an_event_destination_is_refused_as_retired() {
     use permguard_core::config::{SETTING_EVENTS_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
 
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
     let plain = deployed_with(&[]);
     module
         .startup_check(&plain)

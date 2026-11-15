@@ -102,8 +102,8 @@ jobs:
             --package permguard-cli \
             --package permguard-all-in-one \
             --package permguard-control-plane \
-            --package permguard-data-plane \
-            --package permguard-authority-plane
+            --package permguard-data-plane-server \
+            --package permguard-authority-plane-server
           mkdir -p "prebuilt/${STAGED}"
           for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane permguard-authority-plane; do
             cp "target/${TARGET}/release/${binary}" "prebuilt/${STAGED}/${binary}"

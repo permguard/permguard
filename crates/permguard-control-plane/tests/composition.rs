@@ -84,7 +84,7 @@ fn both_planes_register_on_one_host_without_colliding() {
     let config = config();
     host.register(permguard_control_plane::module().declaration(&config))
         .expect("the control plane registers");
-    host.register(permguard_data_plane::module().declaration(&config))
+    host.register(permguard_data_plane::plane::declaration(&config))
         .expect("the data plane registers beside it");
 }
 
@@ -335,7 +335,7 @@ fn the_import_provider_reads_the_origins_and_signs_checkpoints_and_nothing_else_
         [3; 32]
     );
     let data = host
-        .register(permguard_data_plane::module().declaration(&config))
+        .register(permguard_data_plane::plane::declaration(&config))
         .expect("the data plane registers");
     assert!(data.import_origins(&ledger).is_none(), "not its task");
     assert!(data.serving_members(&ledger).is_empty());

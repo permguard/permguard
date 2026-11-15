@@ -127,7 +127,7 @@ impl HostLog {
         if decided.zone_id.is_empty() || decided.ledger_id.is_empty() {
             return Err("the decision names no zone or ledger id to record it under".to_owned());
         }
-        let resource = Resource::ledger(crate::service::PLANE, decided.zone_id, decided.ledger_id);
+        let resource = Resource::ledger(crate::PLANE, decided.zone_id, decided.ledger_id);
         let key = resource.to_string();
         if let Some(reason) = self.pressure_of(&resource, &key) {
             return Ok((Written::Refused(reason.to_owned()), None));

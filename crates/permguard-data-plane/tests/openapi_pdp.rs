@@ -453,7 +453,7 @@ fn test_pdp_temporal_v1alpha1_document_describes_what_the_wire_types_serialise()
     );
 
     // GET /events/v1alpha1/signers: the body is built with `json!` in the handler
-    // (crates/permguard-data-plane/src/temporal/http.rs, `signers`), from the same types.
+    // (crates/permguard-data-plane-server/src/temporal/http.rs, `signers`), from the same types.
     let mut signers = permguard_stream::Signers::empty();
     let jwk = serde_json::to_value(permguard_core::keys::Jwk::okp(
         "k1", "Ed25519", "EdDSA", "AAAA",

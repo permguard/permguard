@@ -297,7 +297,7 @@ impl HostLedger {
         let runs = read_runs(&directory)?;
         let (index, loaded) = Index::detached(directory.join(INDEXES_DIR))?;
         let mut held = Self {
-            resource: Resource::ledger(crate::service::PLANE, zone, ledger),
+            resource: Resource::ledger(crate::PLANE, zone, ledger),
             producer,
             host_id: hex(&host_id),
             directory,

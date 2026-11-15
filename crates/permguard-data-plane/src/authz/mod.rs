@@ -43,14 +43,11 @@ pub mod cache;
 pub mod configuration;
 pub mod decide;
 pub mod gate;
-pub mod grpc;
-pub mod http;
 pub mod measure;
 pub mod quarantine;
 pub mod signing;
 pub mod snapshot;
 pub mod store;
-pub mod translate;
 pub mod wire;
 
 use std::path::PathBuf;
@@ -231,9 +228,9 @@ pub fn languages(config: &permguard_core::Config) -> Vec<serde_json::Value> {
 /// directly, so behind a Service it published `0.0.0.0`. Both are documents a client cannot
 /// follow, and neither failure shows up anywhere except in a caller that cannot connect.
 pub fn base_url(context: &PlaneContext<'_>) -> String {
-    permguard_server::plane::plane_http_base(
+    permguard_core::planes::discovery::plane_http_base(
         context.config(),
-        permguard_server::plane::PlaneId::Data,
+        permguard_core::planes::discovery::PlaneId::Data,
     )
     .unwrap_or_default()
 }

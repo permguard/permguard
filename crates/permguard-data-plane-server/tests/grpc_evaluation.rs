@@ -57,7 +57,7 @@ fn grpc_routes(tag: &str, profile: &str) -> axum::Router {
     ));
     let storage: &'static MemoryStorage = Box::leak(Box::new(MemoryStorage::new()));
     let audit: &'static RecordingAuditSink = Box::leak(Box::new(RecordingAuditSink::new()));
-    let module = permguard_data_plane::module();
+    let module = permguard_data_plane_server::module();
     let registration = Host::builder()
         .authorization(Arc::new(Authorization::permissive()))
         .build()

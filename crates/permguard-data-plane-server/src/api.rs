@@ -65,7 +65,7 @@ impl DataPlane for PlaneApi {
             Some(keys) => keys.public_keys().map_err(|error| {
                 tracing::warn!(
                     event.name = "plane.keys.unreadable",
-                    component = crate::service::COMPONENT,
+                    component = crate::COMPONENT,
                     error = %error,
                     "the plane signing ring could not be read"
                 );

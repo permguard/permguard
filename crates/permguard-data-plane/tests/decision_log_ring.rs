@@ -148,7 +148,7 @@ async fn the_decision_log_refuses_to_start_without_its_signing_ring() {
         };
         builder
             .build()
-            .register(permguard_data_plane::module().declaration(&logging))
+            .register(permguard_data_plane::plane::declaration(&logging))
             .expect("registers")
     };
     let identity =

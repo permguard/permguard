@@ -618,8 +618,8 @@ async fn ask(router: &axum::Router, method: &str, uri: &str) -> (u16, serde_json
 /// reading events is the Control Plane's surface.
 #[tokio::test]
 async fn the_plane_answers_its_own_signers_and_never_its_records() {
-    use permguard_data_plane::temporal::{grpc, http};
-    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+    use permguard_data_plane_server::temporal::{grpc, http};
+    use permguard_data_plane_server::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
 
     let host = HostVolume::new("signers");
     legacy_journal(&host.root, 3);
@@ -706,7 +706,7 @@ async fn the_plane_answers_its_own_signers_and_never_its_records() {
         authorization,
     }
     .get_signers(tonic::Request::new(
-        permguard_data_plane::v1::GetTemporalSignersRequest {
+        permguard_data_plane_server::v1::GetTemporalSignersRequest {
             zone: ZONE_ID.to_owned(),
             ledger: LEDGER_ID.to_owned(),
             from_seq: 0,

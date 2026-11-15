@@ -7,7 +7,7 @@
 #   scripts/chart-e2e.sh [image]
 #
 # `image` is a data plane image already built (default `permguard/data-plane:e2e`; build it with
-# `docker build --build-arg PACKAGE=permguard-data-plane --build-arg BIN=permguard-data-plane
+# `docker build --build-arg PACKAGE=permguard-data-plane-server --build-arg BIN=permguard-data-plane
 # -t permguard/data-plane:e2e .`). The script creates a disposable kind cluster, loads the image,
 # installs one stateful group of three replicas, and proves, each step named as it runs:
 #

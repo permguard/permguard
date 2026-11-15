@@ -23,7 +23,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-server/src/plane/factories.rs"
     "crates/permguard-control-plane/src/main.rs"
-    "crates/permguard-data-plane/src/main.rs"
+    "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
     "crates/permguard-cli/src/commands/host.rs"
     "crates/permguard-host/src/authz/mapper.rs"
@@ -83,6 +83,7 @@ fi
 PLANE_CRATES=(
     "crates/permguard-control-plane/src"
     "crates/permguard-data-plane/src"
+    "crates/permguard-data-plane-server/src"
     "crates/permguard-authority-plane/src"
     "crates/permguard-authority-plane-server/src"
 )

@@ -19,6 +19,7 @@ const ABOVE_THE_HOST: &[&str] = &[
     "permguard-authority-plane-server",
     "permguard-control-plane",
     "permguard-data-plane",
+    "permguard-data-plane-server",
     "permguard-all-in-one",
     "permguard-cli",
 ];
@@ -157,6 +158,15 @@ const SERVER_STACK: &[&str] = &[
     "opentelemetry",
 ];
 
+/// What only a server links: a listener, the server composition, telemetry endpoints and exporters.
+const SERVER_ONLY: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "tower-http",
+    "opentelemetry",
+];
+
 /// What each layer may not reach, through any normal or build dependency, with every feature on.
 /// A phase of the crate boundaries refactoring adds its rows when its split lands, so a boundary
 /// once drawn cannot be crossed again unnoticed.
@@ -175,6 +185,9 @@ const LAYERS: &[(&str, &[&str])] = &[
     // A Plane's domain serves nothing (RD-1): its routes, module and binary are its server
     // package's.
     ("permguard-authority-plane", SERVER_STACK),
+    // The Data Plane's domain listens nowhere and composes no server (RD-2); the network client it
+    // synchronizes and ships through still links tonic until the client surfaces split (phase 3).
+    ("permguard-data-plane", SERVER_ONLY),
 ];
 
 #[test]

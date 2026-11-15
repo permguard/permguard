@@ -54,9 +54,7 @@
 //! | [`measure`] | what it counts about itself |
 
 pub mod configuration;
-pub mod grpc;
 pub mod host;
-pub mod http;
 pub mod imported;
 pub mod imports;
 pub mod logical;

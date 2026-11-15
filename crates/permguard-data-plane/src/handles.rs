@@ -26,7 +26,7 @@ use permguard_host::composition::{
 };
 use permguard_host::secrets::{ZoneHandle, ZonePurpose};
 
-use crate::service::PLANE;
+use crate::PLANE;
 
 /// Every action this plane records to the audit trail.
 pub struct DataPlaneAudit;
@@ -106,7 +106,7 @@ pub(crate) fn holds(context: &PlaneContext<'_>) -> crate::mirrors::round::Holds 
 
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the
 /// Host did not register decides with a closed one: nothing is allowed.
-pub(crate) fn authorization(
+pub fn authorization(
     context: &PlaneContext<'_>,
 ) -> Arc<permguard_host::composition::Authorization> {
     registration(context).map_or_else(
@@ -164,7 +164,7 @@ pub(crate) fn event_signer(
 }
 
 /// This plane's public set, to publish, when its signing ring is composed.
-pub(crate) fn public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
+pub fn public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
     let signer = registration(context)?
         .signer::<DecisionBatchV1>()
         .ok()

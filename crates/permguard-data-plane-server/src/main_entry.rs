@@ -13,8 +13,8 @@ const PRODUCT_ABOUT: &str = "Permguard data plane";
 fn main() -> ExitCode {
     // A process started as a supervised evaluation worker answers frames and exits — before a
     // runtime starts a thread per core it would never use, each charged to its address-space limit.
-    permguard_data_plane::serve_if_worker();
-    permguard_data_plane::report_panics_without_their_words();
+    permguard_data_plane_server::serve_if_worker();
+    permguard_data_plane_server::report_panics_without_their_words();
 
     serve()
 }
@@ -31,7 +31,7 @@ async fn serve() -> ExitCode {
 
     PlaneServer::new(identity, build_settings(build::VERSION))
         .with_plane(
-            permguard_data_plane::module(),
+            permguard_data_plane_server::module(),
             addresses_for_plane("data").expect("data plane addresses are known"),
         )
         .run()

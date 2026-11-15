@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked \
         -p permguard-cli --bin permguard \
         -p permguard-control-plane --bin permguard-control-plane \
-        -p permguard-data-plane --bin permguard-data-plane \
+        -p permguard-data-plane-server --bin permguard-data-plane \
         -p permguard-all-in-one --bin permguard-all-in-one \
  && mkdir -p /out \
  && cp target/release/permguard target/release/permguard-control-plane \
