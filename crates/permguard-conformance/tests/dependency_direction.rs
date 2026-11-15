@@ -142,3 +142,61 @@ fn the_host_and_the_crates_beneath_it_reach_no_plane() {
         );
     }
 }
+
+/// The network and server stack: what only a server adapter, a listener or a network client links
+/// (`11-refactoring/1-dependencies.md`, Target dependency layers).
+const SERVER_STACK: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+];
+
+/// What each layer may not reach, through any normal or build dependency, with every feature on.
+/// A phase of the crate boundaries refactoring adds its rows when its split lands, so a boundary
+/// once drawn cannot be crossed again unnoticed.
+const LAYERS: &[(&str, &[&str])] = &[
+    // The headless protocol, Host and evidence crates: no listener, no network stack.
+    ("permguard-core", SERVER_STACK),
+    ("permguard-objects", SERVER_STACK),
+    ("permguard-notp", SERVER_STACK),
+    ("permguard-host", SERVER_STACK),
+    ("permguard-std", SERVER_STACK),
+    ("permguard-stream", SERVER_STACK),
+    ("permguard-decisions", SERVER_STACK),
+    ("permguard-events", SERVER_STACK),
+    // The policy languages validate and evaluate; they serve nothing and call nobody.
+    ("permguard-languages", SERVER_STACK),
+];
+
+#[test]
+fn each_layer_reaches_only_what_it_allows() {
+    let closures = reached();
+    let mut problems = Vec::new();
+    for (package, forbidden) in LAYERS {
+        let reached = closures
+            .get(*package)
+            .unwrap_or_else(|| panic!("{package} is a workspace member"));
+        for name in *forbidden {
+            if reached.contains(*name) {
+                problems.push(format!("{package} reaches {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a layer reaches what it may not (11-refactoring, Target dependency layers):\n  {}",
+        problems.join("\n  ")
+    );
+    // The check reads a real graph: a server composition does reach the stack it forbids.
+    for name in SERVER_STACK {
+        assert!(
+            closures["permguard-all-in-one"].contains(*name),
+            "the all-in-one reaches {name}"
+        );
+    }
+}
