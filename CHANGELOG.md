@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.30] - 2026-11-15
+
 ### Added
 
 - **A read names the member that answered.**
