@@ -1,7 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The policy decision point's kernel, over the contracts of `permguard-language-core`: how one
+//! The decision alone, for an application that embeds no Data Plane ([`Evaluator`], [`kernel`]),
+//! and the policy decision point's kernel a Data Plane is built on: how one
 //! question reaches the partitions of a profile ([`route::Route`]), and how their evaluations run,
 //! together, in order, bounded by the deadline, the panic boundary and the stack headroom
 //! ([`evaluate_all`], [`fanout`]).
@@ -16,6 +17,7 @@
 
 pub mod evaluate;
 pub mod fanout;
+pub mod kernel;
 pub mod route;
 
 /// The engine value, both halves of one language: `permguard-language-core`'s.
@@ -26,5 +28,11 @@ pub use permguard_language_core::remembering as temporal;
 pub use permguard_language_core::warm;
 
 pub use engine::Engine;
-pub use evaluate::{Answered, Evaluating, Evaluator, evaluate_all};
+pub use evaluate::{Answered, Evaluating, evaluate_all};
+pub use kernel::{Builder, Decision, Evaluator, Policies, Provenance, Refused, Request};
+/// What a request and an answer are made of, named here so an application that embeds the
+/// evaluator alone imports them from it: `permguard-language-core`'s.
+pub use permguard_language_core::artifact::Artifacts;
+pub use permguard_language_core::evaluate::{Action, Entity, EvaluationError, Outcome, Resolution};
+pub use permguard_language_core::input::PartitionData;
 pub use route::{PartitionTarget, Route};

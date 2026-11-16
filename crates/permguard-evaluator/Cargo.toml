@@ -19,6 +19,10 @@ publish = false
 cedar = ["dep:permguard-language-cedar"]
 dogwood = ["dep:permguard-language-dogwood"]
 rego = ["dep:permguard-language-rego"]
+# The pool the partitions of one question fan out on. Off by default: the kernel then starts no
+# thread and reaches no operating system interface, and decides on the caller's own thread. A Data
+# Plane, which answers many questions at once on a machine it shares, turns it on.
+threads = []
 
 [dependencies]
 permguard-core.workspace = true
@@ -32,3 +36,10 @@ serde_json.workspace = true
 permguard-language-cedar = { workspace = true, features = ["evaluate"], optional = true }
 permguard-language-dogwood = { workspace = true, features = ["evaluate"], optional = true }
 permguard-language-rego = { workspace = true, features = ["evaluate"], optional = true }
+
+[dev-dependencies]
+# The tests exercise the pool, and each engine through the kernel's own surface.
+permguard-evaluator = { path = ".", features = ["threads", "cedar", "rego", "dogwood"] }
+permguard-language-cedar = { workspace = true, features = ["evaluate"] }
+permguard-language-dogwood = { workspace = true, features = ["evaluate"] }
+permguard-language-rego = { workspace = true, features = ["evaluate"] }

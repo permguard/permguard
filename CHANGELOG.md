@@ -67,6 +67,8 @@ is cut.
 - **The decision point's kernel is `permguard-evaluator`.**
   `permguard-pdp-core` is renamed, with every consumer: one package, no shim, the same code.
   The evaluating contract, the engine value, the remembering role and the warm budget move beneath the languages, into `permguard-language-core`: a language package no longer links the kernel, and the kernel selects a language by a feature, `cedar`, `rego` or `dogwood`, none by default.
+  It gains the surface of an application that embeds no Data Plane: `Evaluator::builder().engine(..).load(policies)?.build()?` and `evaluate(&request)`, a decision with what permitted or refused it and why it failed, with no side effect and no Host, store, ledger or log in the build; what an application loads is `Provenance::Validated`, never a verified ledger, and a language that decides on history is refused by name.
+  The pool the partitions of a question fan out on is its `threads` feature, which a Plane selects: without it the kernel starts no thread and reaches no operating system interface.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.

@@ -2786,6 +2786,7 @@ name = "permguard-evaluator"
 version = "0.1.0"
 dependencies = [
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-cedar",
  "permguard-language-core",
  "permguard-language-dogwood",

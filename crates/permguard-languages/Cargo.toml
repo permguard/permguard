@@ -24,6 +24,8 @@ rego = ["dep:permguard-language-rego"]
 # supervised worker: what a decision point needs and a build that only validates does not.
 evaluate = [
     "dep:permguard-evaluator",
+    # A Plane fans the partitions of a question out on the kernel's pool.
+    "permguard-evaluator/threads",
     "permguard-language-cedar?/evaluate",
     "permguard-language-dogwood?/evaluate",
     "permguard-language-rego?/evaluate",
