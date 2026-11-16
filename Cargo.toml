@@ -19,7 +19,7 @@ members = [
     "crates/permguard-events",
     "crates/permguard-host",
     "crates/permguard-notp",
-    "crates/permguard-control-client",
+    "crates/permguard-client",
     "crates/permguard-objects",
     "crates/permguard-pdp-core",
     "crates/permguard-language-cedar",
@@ -77,7 +77,7 @@ permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
 permguard-host = { path = "crates/permguard-host", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
-permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
+permguard-client = { path = "crates/permguard-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
 permguard-pdp-core = { path = "crates/permguard-pdp-core", version = "0.1.0" }
 permguard-language-cedar = { path = "crates/permguard-language-cedar", version = "0.1.0" }

@@ -13,7 +13,7 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-use permguard_control_client::catalog::{Ledger, Zone};
+use permguard_client::catalog::{Ledger, Zone};
 
 use crate::check::CheckReport;
 
@@ -706,7 +706,7 @@ pub struct LedgerView {
     pub state: String,
     /// On `ledgers get`: the members assigned to serve it, and what they reported (TC-5).
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub serving_members: Vec<permguard_control_client::catalog::ServingMember>,
+    pub serving_members: Vec<permguard_client::catalog::ServingMember>,
 }
 
 impl From<Ledger> for LedgerView {

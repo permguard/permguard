@@ -21,7 +21,7 @@ use permguard_objects::digest::Digest;
 use permguard_objects::manifest::Manifest;
 
 use config::WorkspaceConfig;
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 pub use build::Snapshot;
 pub use sync::{ApplyOutcome, PullOutcome};

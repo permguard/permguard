@@ -2652,9 +2652,9 @@ fn semantic_named(semantic: permguard_languages::Semantic) -> &'static str {
 /// The commit a mirror stands at, read cheaply and without a gate: the block
 /// file has to name a commit even when the gate is what refused it.
 fn current_commit(mirror: &std::path::Path) -> String {
-    let store = permguard_control_client::store::FsStore::new(mirror);
+    let store = permguard_client::store::FsStore::new(mirror);
 
-    permguard_control_client::checkpoint::read(&store, "refs/main")
+    permguard_client::checkpoint::read(&store, "refs/main")
         .ok()
         .flatten()
         .map(|checkpoint| checkpoint.head)

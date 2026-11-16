@@ -11,7 +11,7 @@
 
 use permguard_objects::manifest::Manifest;
 
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 pub use permguard_languages::manifest_file::{
     InputSection, ManifestFile, MetadataSection, PartitionSection, ProfileSection,

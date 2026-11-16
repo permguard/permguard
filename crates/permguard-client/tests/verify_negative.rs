@@ -13,8 +13,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use base64::Engine as _;
-use permguard_control_client::checkpoint::Checkpoint;
-use permguard_control_client::verify::verify_statement;
+use permguard_client::checkpoint::Checkpoint;
+use permguard_client::verify::verify_statement;
 use permguard_objects::digest::Digest;
 use permguard_objects::statement::{HeadStatement, SignedHead};
 use ring::rand::SystemRandom;

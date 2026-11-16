@@ -21,7 +21,7 @@ use permguard_objects::policy_id::{
 use super::{PolicyRecord, Result, err};
 use crate::engine::workspace::inventory;
 use crate::engine::workspace::sync;
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 /// A built snapshot: the trees are stored, the closure is known.
 #[derive(Debug, Clone)]

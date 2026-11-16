@@ -8,8 +8,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use permguard_control_client::remote::Remote as _;
-use permguard_control_client::{AnyRemote, TlsOptions};
+use permguard_client::remote::Remote as _;
+use permguard_client::{AnyRemote, TlsOptions};
 use permguard_core::BoxFuture;
 use permguard_host::composition::{MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks};
 pub use permguard_host::membership::record::ProgressResource;
@@ -177,10 +177,10 @@ fn answer(
         .push((task.to_owned(), request.operation));
     let failed = |error: String| refused("notp_failed", error);
     if request.operation == MirrorOperation::ListLedgers {
-        let catalog = permguard_control_client::catalog::client(
+        let catalog = permguard_client::catalog::client(
             url,
             &TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            Box::new(permguard_client::narrate::Silent),
         )
         .map_err(failed)?;
         let mut ledgers = Vec::new();
@@ -216,7 +216,7 @@ fn answer(
     let remote = AnyRemote::connect(
         url,
         &TlsOptions::default(),
-        Box::new(permguard_control_client::narrate::Silent),
+        Box::new(permguard_client::narrate::Silent),
     )
     .map_err(failed)?;
     remote.bind(&request.zone, &request.ledger);

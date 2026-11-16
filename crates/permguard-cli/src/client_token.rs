@@ -10,8 +10,8 @@
 
 use std::path::{Path, PathBuf};
 
-use permguard_control_client::tls::{Credential, TlsOptions};
-use permguard_control_client::token_source::{Issued, REFRESH_AHEAD, TokenSource};
+use permguard_client::tls::{Credential, TlsOptions};
+use permguard_client::token_source::{Issued, REFRESH_AHEAD, TokenSource};
 use zeroize::Zeroizing;
 
 use crate::args::Globals;

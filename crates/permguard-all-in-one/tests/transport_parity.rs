@@ -17,9 +17,9 @@
 use std::io::Read as _;
 use std::process::{Child, Command};
 
-use permguard_control_client::documents::{self, Interface, Plane};
-use permguard_control_client::narrate::Silent;
-use permguard_control_client::tls::TlsOptions;
+use permguard_client::documents::{self, Interface, Plane};
+use permguard_client::narrate::Silent;
+use permguard_client::tls::TlsOptions;
 use serde_json::Value;
 
 fn binary() -> Command {
@@ -195,12 +195,11 @@ fn planes(registry: &Value) -> Vec<(Plane, Option<String>, Option<String>)> {
 fn every_document(plane: Plane, url: &str, tls: &TlsOptions) -> Vec<(String, Value)> {
     let read = documents::client(url, plane, tls, Box::new(Silent))
         .unwrap_or_else(|error| panic!("{url}: {error}"));
-    let answer =
-        |what: &str, answered: Result<Value, permguard_control_client::catalog::Failure>| {
-            answered.unwrap_or_else(|failure| {
-                panic!("{} `{what}` at {url}: {}", plane.name(), failure.detail)
-            })
-        };
+    let answer = |what: &str, answered: Result<Value, permguard_client::catalog::Failure>| {
+        answered.unwrap_or_else(|failure| {
+            panic!("{} `{what}` at {url}: {}", plane.name(), failure.detail)
+        })
+    };
     let configuration = answer("configuration", read.configuration());
     let mut held = vec![("keys".to_owned(), answer("keys", read.keys()))];
     // A plane's health moves with time: its liveness, readiness, phase and components compared,
@@ -306,14 +305,14 @@ fn with_http_off_every_plane_is_found_and_read_over_grpc() {
             .find_map(|line| line.strip_prefix(name).map(str::trim).map(str::to_owned))
             .unwrap_or_else(|| panic!("no {name} in the key file"))
     };
-    let authority = permguard_control_client::authority::client(
+    let authority = permguard_client::authority::client(
         &endpoints["authority-plane"],
         &verified,
         Box::new(Silent),
     )
     .expect("the Authority Plane's client");
     let token = authority
-        .issue_token(&permguard_control_client::authority::TokenAsk {
+        .issue_token(&permguard_client::authority::TokenAsk {
             access_key: field("access_key:"),
             secret_key: zeroize::Zeroizing::new(field("secret_key:")),
             scope: None,
@@ -322,17 +321,12 @@ fn with_http_off_every_plane_is_found_and_read_over_grpc() {
         .unwrap_or_else(|failure| panic!("a token over gRPC: {}", failure.detail))
         .access_token;
     let tls = TlsOptions {
-        token: Some(permguard_control_client::tls::Credential::new(
-            token.into_bytes(),
-        )),
+        token: Some(permguard_client::tls::Credential::new(token.into_bytes())),
         ..verified.clone()
     };
-    let catalog = permguard_control_client::catalog::client(
-        &endpoints["control-plane"],
-        &tls,
-        Box::new(Silent),
-    )
-    .expect("the catalog's client");
+    let catalog =
+        permguard_client::catalog::client(&endpoints["control-plane"], &tls, Box::new(Silent))
+            .expect("the catalog's client");
     let zone = catalog
         .create_zone("over-grpc")
         .unwrap_or_else(|failure| panic!("a zone created over gRPC: {}", failure.detail));

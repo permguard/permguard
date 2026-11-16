@@ -89,7 +89,7 @@ impl Failure {
     /// CLI's, and gets its own status: `ledger_empty` used to exit `70`
     /// beside a decode failure, and a data plane still syncing read as the CLI
     /// being broken.
-    pub fn from_client(failure: &permguard_control_client::catalog::Failure) -> Self {
+    pub fn from_client(failure: &permguard_client::catalog::Failure) -> Self {
         let failed = if failure.usage {
             Self::usage(&failure.detail)
         } else if failure.class == "unavailable" {
@@ -165,8 +165,8 @@ impl Failure {
 mod tests {
     use super::*;
 
-    fn reported(class: &str, usage: bool) -> permguard_control_client::catalog::Failure {
-        permguard_control_client::catalog::Failure {
+    fn reported(class: &str, usage: bool) -> permguard_client::catalog::Failure {
+        permguard_client::catalog::Failure {
             class: class.to_owned(),
             reason: "some_code".to_owned(),
             detail: "what happened".to_owned(),
@@ -204,7 +204,7 @@ mod tests {
     /// A denial carries a code and no class, as on the wire: never an empty `class`.
     #[test]
     fn a_denial_is_reported_without_a_class() {
-        let denied = Failure::from_client(&permguard_control_client::catalog::Failure {
+        let denied = Failure::from_client(&permguard_client::catalog::Failure {
             class: String::new(),
             reason: "forbidden".to_owned(),
             detail: "no scope".to_owned(),

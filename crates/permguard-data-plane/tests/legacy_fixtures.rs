@@ -17,9 +17,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use permguard_control_client::checkpoint::{self, Checkpoint};
-use permguard_control_client::objects;
-use permguard_control_client::store::FsStore;
+use permguard_client::checkpoint::{self, Checkpoint};
+use permguard_client::objects;
+use permguard_client::store::FsStore;
 use permguard_core::domains;
 use permguard_data_plane::mirrors::layout::{Mirror, on_disk};
 use permguard_objects::object::Blob;

@@ -27,7 +27,7 @@
 //! where to send a request and what to ask about are two different questions,
 //! and the flags that answer them are separate.
 
-use permguard_control_client::TlsOptions;
+use permguard_client::TlsOptions;
 
 use crate::args::Globals;
 use crate::engine::{FsStore, Workspace};
@@ -242,7 +242,7 @@ fn key_by_reference(
                     "`tls.key_ref` names the variable {name}, which is empty"
                 )));
             }
-            options.key_pem = Some(permguard_control_client::tls::Credential::new(pem));
+            options.key_pem = Some(permguard_client::tls::Credential::new(pem));
         }
         Some(("file", named)) if !named.is_empty() => {
             trace.say(format!("client key: {named} [tls.key_ref]"));
@@ -304,9 +304,7 @@ fn rooted_at(base: &std::path::Path, path: &std::path::Path) -> std::path::PathB
 }
 
 /// Reads the bearer token from `path`, by the library's rule (TC-1): a refusal is a usage error.
-pub fn read_token(
-    path: &std::path::Path,
-) -> Result<permguard_control_client::tls::Credential, Failure> {
+pub fn read_token(path: &std::path::Path) -> Result<permguard_client::tls::Credential, Failure> {
     crate::token::read(path).map_err(Failure::usage)
 }
 

@@ -25,7 +25,7 @@ rego = ["permguard-languages/rego"]
 
 [dependencies]
 anyhow.workspace = true
-permguard-control-client.workspace = true
+permguard-client.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain and the durable spool.
 permguard-decisions.workspace = true
@@ -68,7 +68,7 @@ permguard-transport.workspace = true
 # The release-pipeline example is read from disk, manifest included, so the test
 # cannot drift from the files the lab's README tells a reader to apply.
 serde_norway.workspace = true
-permguard-control-client.workspace = true
+permguard-client.workspace = true
 # `start_paused` lets the mirror service's wait be tested without waiting (WP-7.2c).
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 permguard-std.workspace = true

@@ -22,8 +22,8 @@ use crate::engine::verify;
 use crate::engine::workspace::config::{self, Checkpoint};
 use crate::engine::workspace::inventory;
 use crate::engine::workspace::manifest_file;
-use permguard_control_client::Store;
-use permguard_control_client::pull;
+use permguard_client::Store;
+use permguard_client::pull;
 
 /// What an apply reports.
 #[derive(Debug, Clone)]

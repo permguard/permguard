@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use permguard_control_client::tls::Credential;
+use permguard_client::tls::Credential;
 
 /// The most a token file may hold: a token is a line, not a document.
 const TOKEN_FILE_MAX: u64 = 64 * 1024;

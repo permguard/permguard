@@ -400,7 +400,7 @@ fn uuid_text(bytes: &[u8; 16]) -> String {
 }
 
 /// The coordinator, through its Host listener.
-pub struct HostCoordinator(pub Box<dyn permguard_control_client::host::Host>);
+pub struct HostCoordinator(pub Box<dyn permguard_client::host::Host>);
 
 impl Coordinator for HostCoordinator {
     fn pin_of(&self, host_id: &str) -> Result<Option<String>, String> {
@@ -432,7 +432,7 @@ impl Coordinator for HostCoordinator {
     ) -> Result<Option<u64>, String> {
         let frontier = self
             .0
-            .stream_frontier(&permguard_control_client::host::StreamName {
+            .stream_frontier(&permguard_client::host::StreamName {
                 plane,
                 stream_type,
                 resource,
@@ -448,8 +448,8 @@ impl Coordinator for HostCoordinator {
 
 /// The Kubernetes API of the namespace this command runs in, as its ServiceAccount.
 pub struct Kube {
-    client: permguard_control_client::http::Client,
-    endpoint: permguard_control_client::Endpoint,
+    client: permguard_client::http::Client,
+    endpoint: permguard_client::Endpoint,
     namespace: String,
 }
 
@@ -485,7 +485,7 @@ impl Kube {
                 .map_err(|_| "no namespace: name it with --namespace".to_owned())?,
         };
         let endpoint =
-            permguard_control_client::Endpoint::parse(&url).map_err(|error| error.to_string())?;
+            permguard_client::Endpoint::parse(&url).map_err(|error| error.to_string())?;
         let token_file = token_file.or_else(|| {
             let token = account.join("token");
             token.exists().then_some(token)
@@ -495,7 +495,7 @@ impl Kube {
             (endpoint.is_tls() && ca.exists()).then_some(ca)
         });
         let token = match token_file {
-            Some(path) => Some(permguard_control_client::tls::Credential::new(
+            Some(path) => Some(permguard_client::tls::Credential::new(
                 std::fs::read_to_string(&path)
                     .map_err(|error| format!("reading {}: {error}", path.display()))?
                     .trim()
@@ -504,12 +504,12 @@ impl Kube {
             )),
             None => None,
         };
-        let tls = permguard_control_client::tls::TlsOptions {
+        let tls = permguard_client::tls::TlsOptions {
             ca_file,
             token,
             ..Default::default()
         };
-        let client = permguard_control_client::http::Client::new(
+        let client = permguard_client::http::Client::new(
             std::time::Duration::from_secs(30),
             tls,
             endpoint.is_tls(),

@@ -13,7 +13,7 @@ use crate::inspect;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
 use crate::{EXIT_NOT_READY, EXIT_READY, EXIT_UNREACHABLE};
-use permguard_control_client::http::Client;
+use permguard_client::http::Client;
 
 pub fn inspect_command(
     globals: &Globals,

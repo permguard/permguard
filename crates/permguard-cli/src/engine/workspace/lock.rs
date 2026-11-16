@@ -9,7 +9,7 @@
 //! holds it, so the refusal can say something useful; a crash can leave it
 //! behind, and the message says exactly what to remove.
 
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 pub const LOCK_PATH: &str = ".permguard/lock";
 
@@ -50,7 +50,7 @@ impl Drop for LockGuard<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use permguard_control_client::FsStore;
+    use permguard_client::FsStore;
 
     fn scratch() -> FsStore {
         let dir = std::env::temp_dir().join(format!(

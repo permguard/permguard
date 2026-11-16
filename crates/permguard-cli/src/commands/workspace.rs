@@ -16,7 +16,7 @@ use crate::failure::{EXIT_NOT_READY, EXIT_READY, Failure};
 use crate::narrator;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
-use permguard_control_client::AnyRemote;
+use permguard_client::AnyRemote;
 
 use crate::engine::workspace::cases;
 use crate::reference;
@@ -30,7 +30,7 @@ enum Decider {
 
 /// A data plane, and what it took to name it.
 struct Plane {
-    client: Box<dyn permguard_control_client::pdp::Pdp>,
+    client: Box<dyn permguard_client::pdp::Pdp>,
     endpoint: String,
     zone: String,
     ledger: String,
@@ -52,7 +52,7 @@ impl Decider {
 
     fn decide(
         &self,
-        store: &dyn permguard_control_client::Store,
+        store: &dyn permguard_client::Store,
         located: &cases::Located,
     ) -> Result<cases::Outcome, crate::engine::workspace::WorkspaceError> {
         match self {
@@ -66,7 +66,7 @@ impl Plane {
     /// Asks the plane one case, and judges the answer the way the local run judges its own.
     fn decide(
         &self,
-        store: &dyn permguard_control_client::Store,
+        store: &dyn permguard_client::Store,
         located: &cases::Located,
     ) -> Result<cases::Outcome, crate::engine::workspace::WorkspaceError> {
         let (mut payload, profile) = cases::request_of(store, located)?;
@@ -359,7 +359,7 @@ fn remote_plane(
 
     trace.say(format!("asking {} about {zone}/{ledger}", target.endpoint));
 
-    let client = permguard_control_client::pdp::client(
+    let client = permguard_client::pdp::client(
         &target.endpoint,
         &crate::target::tls(globals, &settings, trace)?,
         crate::narrator::for_run(globals.verbose),

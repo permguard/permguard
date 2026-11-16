@@ -489,7 +489,7 @@ mod tests {
             "policies": [], "id": "x", "latency_us": 3,
         });
         let report = crate::decisions::report(
-            &permguard_control_client::decisions::ReadScope::Tenant {
+            &permguard_client::decisions::ReadScope::Tenant {
                 zone: "z".to_owned(),
                 ledger: "l".to_owned(),
             },
@@ -511,7 +511,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&out).contains("by pdp"));
         // The server named the member: the line carries it, and the terminal says the name.
         let named = crate::decisions::report(
-            &permguard_control_client::decisions::ReadScope::Tenant {
+            &permguard_client::decisions::ReadScope::Tenant {
                 zone: "z".to_owned(),
                 ledger: "l".to_owned(),
             },
@@ -519,7 +519,7 @@ mod tests {
                 records: vec![record_named.clone()],
                 members: [(
                     "01a1dc5e77c8729483c24f91393b5c22".to_owned(),
-                    permguard_control_client::decisions::MemberName {
+                    permguard_client::decisions::MemberName {
                         member_id: "01a1b9de-8738-736e-9fff-609509b3fcbb".to_owned(),
                         name: "lab-a".to_owned(),
                     },
@@ -625,7 +625,7 @@ mod tests {
     #[test]
     fn the_report_carries_the_recorded_context_and_its_commitment() {
         use crate::decisions::{Filter, Page, report};
-        use permguard_control_client::decisions::ReadScope;
+        use permguard_client::decisions::ReadScope;
 
         let decision = |seq: u64, extra: Value| {
             let mut record = json!({

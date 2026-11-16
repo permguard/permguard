@@ -16,10 +16,10 @@ use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::TcpListener;
 use std::sync::Arc;
 
-use permguard_control_client::narrate::Silent;
-use permguard_control_client::remote::Remote;
-use permguard_control_client::remote_http::HttpRemote;
-use permguard_control_client::tls::TlsOptions;
+use permguard_client::narrate::Silent;
+use permguard_client::remote::Remote;
+use permguard_client::remote_http::HttpRemote;
+use permguard_client::tls::TlsOptions;
 use permguard_notp::{
     CommitPushRequest, FetchObjectsRequest, NegotiatePullRequest, NegotiatePullResponse,
     NegotiatePushRequest, NegotiatePushResponse, ObjectClaim, UploadObjectsRequest,
@@ -492,7 +492,7 @@ fn a_token_never_travels_over_rest_in_the_clear() {
     let refused = HttpRemote::connect(
         &format!("http://{}", stub.address),
         &TlsOptions {
-            token: Some(permguard_control_client::tls::Credential::new(
+            token: Some(permguard_client::tls::Credential::new(
                 b"op-token-456".to_vec(),
             )),
             ..TlsOptions::default()
@@ -527,8 +527,8 @@ fn a_token_never_travels_over_rest_in_the_clear() {
 /// A JSON answer sent in chunks, as the Kubernetes API sends it (TD-2), reads as its whole body.
 #[test]
 fn a_chunked_json_answer_reads_as_its_body() {
-    use permguard_control_client::Endpoint;
-    use permguard_control_client::http::Client;
+    use permguard_client::Endpoint;
+    use permguard_client::http::Client;
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
     let address = listener.local_addr().expect("bound");
@@ -564,8 +564,8 @@ fn a_chunked_json_answer_reads_as_its_body() {
 /// never a panic: the body is whatever the remote end sent (after the review).
 #[test]
 fn a_truncated_or_absurd_chunked_answer_is_malformed() {
-    use permguard_control_client::Endpoint;
-    use permguard_control_client::http::Client;
+    use permguard_client::Endpoint;
+    use permguard_client::http::Client;
 
     for body in [
         &b"5\r\nabc"[..],

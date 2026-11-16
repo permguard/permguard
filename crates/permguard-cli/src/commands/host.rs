@@ -653,7 +653,7 @@ pub(super) fn online_host(
     globals: &Globals,
     trace: &Trace,
     invitation_token: bool,
-) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+) -> Result<Box<dyn permguard_client::host::Host>, Failure> {
     let store = crate::session::open_store(globals, trace)?;
     let url = crate::session::resolve_endpoint_url(
         "host.endpoint",
@@ -669,7 +669,7 @@ fn online_host_at(
     trace: &Trace,
     url: &str,
     invitation_token: bool,
-) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+) -> Result<Box<dyn permguard_client::host::Host>, Failure> {
     let store = crate::session::open_store(globals, trace)?;
     online_host_with_store(globals, trace, url, &store, invitation_token)
 }
@@ -680,18 +680,18 @@ fn online_host_with_store(
     url: &str,
     store: &crate::settings::Store,
     invitation_token: bool,
-) -> Result<Box<dyn permguard_control_client::host::Host>, Failure> {
+) -> Result<Box<dyn permguard_client::host::Host>, Failure> {
     let mut effective = globals.clone();
     if invitation_token {
         effective.token_file = None;
     }
     let tls = crate::target::tls(&effective, store, trace)?;
-    permguard_control_client::host::client(url, &tls, crate::narrator::for_run(globals.verbose))
+    permguard_client::host::client(url, &tls, crate::narrator::for_run(globals.verbose))
         .map_err(Failure::usage)
 }
 
 fn require_verified_tls_endpoint(url: &str, skip_verification: bool) -> Result<(), Failure> {
-    let endpoint = permguard_control_client::Endpoint::parse(url).map_err(Failure::usage)?;
+    let endpoint = permguard_client::Endpoint::parse(url).map_err(Failure::usage)?;
     if !endpoint.is_tls() || skip_verification {
         return Err(Failure::usage(
             "a membership invitation is read and sent only over verified TLS",
@@ -721,11 +721,10 @@ fn streams(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     use crate::args::StreamsAction;
-    use permguard_control_client::host::StreamName;
+    use permguard_client::host::StreamName;
 
     let host = online_host(globals, trace, false)?;
-    let failed =
-        |failure: permguard_control_client::catalog::Failure| Failure::from_client(&failure);
+    let failed = |failure: permguard_client::catalog::Failure| Failure::from_client(&failure);
     let args = match &action {
         StreamsAction::List => {
             render_json(&host.streams().map_err(failed)?, globals, trace)?;
@@ -883,7 +882,7 @@ fn peer_address(address: &str) -> Result<String, Failure> {
 }
 
 fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<ExitCode, Failure> {
-    use permguard_control_client::host::Change;
+    use permguard_client::host::Change;
     use permguard_host::api::members::{
         ApproveMember, AssuranceOffer, ChangeMemberRecord, CreateInvite, JoinMembership,
         PlanMemberRevoke, RunMemberRevoke, TaskView, VerifyMember,
@@ -1204,7 +1203,7 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
 fn change_member(
     globals: &Globals,
     trace: &Trace,
-    change: permguard_control_client::host::Change,
+    change: permguard_client::host::Change,
     args: MemberChangeArgs,
 ) -> Result<(), Failure> {
     let answer = online_host(globals, trace, false)?
@@ -1222,7 +1221,7 @@ fn change_member(
 }
 
 fn canonical_url(url: &str) -> Result<String, Failure> {
-    let endpoint = permguard_control_client::Endpoint::parse(url).map_err(Failure::usage)?;
+    let endpoint = permguard_client::Endpoint::parse(url).map_err(Failure::usage)?;
     let scheme = match (endpoint.is_grpc(), endpoint.is_tls()) {
         (false, false) => "http",
         (false, true) => "https",

@@ -45,7 +45,7 @@ use serde_json::{Map, Value};
 
 use crate::check::{self, CheckReport};
 use crate::engine::{FsStore, Workspace};
-use permguard_control_client::pdp;
+use permguard_client::pdp;
 
 use crate::args::{CheckArgs, Globals};
 use crate::failure::{EXIT_READY, Failure};

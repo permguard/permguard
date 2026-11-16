@@ -934,7 +934,7 @@ The Host never depends on a concrete plane.
 | `permguard-control-plane-server`   | planes      | Control Plane served: its HTTP and gRPC routes, its module and the `permguard-control-plane` binary.          |
 | `permguard-data-plane`             | planes      | Data Plane domain and its embedded facade: mirrors, evaluation and authorization, decision log, history.      |
 | `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
-| `permguard-control-client`         | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                       |
+| `permguard-client`         | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                       |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |

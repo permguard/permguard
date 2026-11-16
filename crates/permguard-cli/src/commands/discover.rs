@@ -11,7 +11,7 @@ use crate::discover::{Clients, DiscoverError};
 use crate::failure::{EXIT_READY, EXIT_UNAVAILABLE, Failure};
 use crate::session::{open_store, render};
 use crate::trace::{self, Trace};
-use permguard_control_client::http::Client;
+use permguard_client::http::Client;
 
 pub fn discover_command(
     globals: &Globals,

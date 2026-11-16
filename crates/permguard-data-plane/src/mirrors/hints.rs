@@ -56,9 +56,8 @@ pub fn positions(root: &std::path::Path, task: &MirrorTask) -> Vec<(String, u64)
             if identity.task.as_deref() != Some(label.as_str()) {
                 return None;
             }
-            let store = permguard_control_client::FsStore::new(&path);
-            let checkpoint =
-                permguard_control_client::checkpoint::read(&store, "refs/main").ok()??;
+            let store = permguard_client::FsStore::new(&path);
+            let checkpoint = permguard_client::checkpoint::read(&store, "refs/main").ok()??;
             Some((
                 format!("{}/{}/main", mirror.zone_id, mirror.ledger_id),
                 checkpoint.counter,
@@ -308,10 +307,10 @@ mod tests {
                 },
             )
             .expect("the identity");
-            permguard_control_client::checkpoint::write(
-                &permguard_control_client::FsStore::new(&path),
+            permguard_client::checkpoint::write(
+                &permguard_client::FsStore::new(&path),
                 "refs/main",
-                &permguard_control_client::checkpoint::Checkpoint {
+                &permguard_client::checkpoint::Checkpoint {
                     head: permguard_objects::digest::Digest::compute(b"head").to_string(),
                     counter,
                     ..Default::default()

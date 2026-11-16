@@ -16,14 +16,14 @@
 
 use std::net::TcpListener;
 
-use permguard_control_client::narrate::Silent;
-use permguard_control_client::remote::Remote;
-use permguard_control_client::tls::TlsOptions;
-use permguard_control_client::v1::control_plane_server::{ControlPlane, ControlPlaneServer};
-use permguard_control_client::v1::git_like_store_server::{GitLikeStore, GitLikeStoreServer};
-use permguard_control_client::v1::zone_catalog_server::{ZoneCatalog, ZoneCatalogServer};
-use permguard_control_client::v1::{self as proto};
-use permguard_control_client::{catalog, grpc};
+use permguard_client::narrate::Silent;
+use permguard_client::remote::Remote;
+use permguard_client::tls::TlsOptions;
+use permguard_client::v1::control_plane_server::{ControlPlane, ControlPlaneServer};
+use permguard_client::v1::git_like_store_server::{GitLikeStore, GitLikeStoreServer};
+use permguard_client::v1::zone_catalog_server::{ZoneCatalog, ZoneCatalogServer};
+use permguard_client::v1::{self as proto};
+use permguard_client::{catalog, grpc};
 use permguard_notp::{
     CommitPushRequest, FetchObjectsRequest, NegotiatePullRequest, NegotiatePushRequest,
     ObjectClaim, UploadObjectsRequest,
@@ -717,7 +717,7 @@ fn a_push_over_grpcs_carries_the_operators_token() {
         &format!("grpcs://localhost:{}", address.port()),
         &TlsOptions {
             ca_file: Some(ca),
-            token: Some(permguard_control_client::tls::Credential::new(
+            token: Some(permguard_client::tls::Credential::new(
                 b"op-token-123".to_vec(),
             )),
             ..TlsOptions::default()

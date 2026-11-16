@@ -16,7 +16,7 @@
 //! ```no_run
 //! # use permguard_conformance::parity::{assert_parity, outcome, serve};
 //! # fn routes() -> (axum::Router, tonic::service::Routes) { unimplemented!() }
-//! # fn ask(url: &str) -> Result<serde_json::Value, permguard_control_client::catalog::Failure> { unimplemented!() }
+//! # fn ask(url: &str) -> Result<serde_json::Value, permguard_client::catalog::Failure> { unimplemented!() }
 //! let (http, grpc) = routes();
 //! let served = serve(http, grpc);
 //! assert_parity("get an unknown zone", outcome(ask(&served.http)), outcome(ask(&served.grpc)));
@@ -24,7 +24,7 @@
 
 use std::net::SocketAddr;
 
-use permguard_control_client::catalog::Failure;
+use permguard_client::catalog::Failure;
 use permguard_core::ErrorClass;
 use serde::Serialize;
 use serde_json::Value;

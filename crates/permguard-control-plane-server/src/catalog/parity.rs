@@ -8,10 +8,10 @@
 mod tests {
     use std::sync::Arc;
 
+    use permguard_client::catalog::{Catalog, client};
     use permguard_conformance::parity::{
         Outcome, Served, assert_parity, assert_statuses, outcome, serve,
     };
-    use permguard_control_client::catalog::{Catalog, client};
     use permguard_core::Disclosure;
     use permguard_core::metrics::Metrics;
     use permguard_std::catalog::FileCatalog;
@@ -89,8 +89,8 @@ mod tests {
     fn connect(url: &str) -> Box<dyn Catalog> {
         client(
             url,
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses")
     }

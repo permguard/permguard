@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::{Report, printable};
 use crate::trace::Trace;
-use permguard_control_client::Endpoint;
-use permguard_control_client::http::Client;
+use permguard_client::Endpoint;
+use permguard_client::http::Client;
 
 /// What a plane reports itself to be.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
@@ -129,7 +129,7 @@ pub struct InspectReport {
 /// How a probe reaches a plane: the HTTP client, and what a gRPC endpoint needs (TC-1).
 pub struct Prober<'a> {
     pub client: &'a Client,
-    pub tls: &'a permguard_control_client::TlsOptions,
+    pub tls: &'a permguard_client::TlsOptions,
     pub timeout: std::time::Duration,
 }
 
@@ -363,24 +363,24 @@ fn read_plane_grpc(
     trace: &Trace,
 ) -> Result<PlaneAnswer, Unreachable> {
     trace.say(format!("GetInfo {endpoint}"));
-    let channel = permguard_control_client::grpc::GrpcChannel::connect(
+    let channel = permguard_client::grpc::GrpcChannel::connect(
         &endpoint.to_string(),
         prober.tls,
-        Box::new(permguard_control_client::narrate::Silent),
+        Box::new(permguard_client::narrate::Silent),
     )
     .map_err(|detail| Unreachable {
         reason: permguard_core::codes::client::CONNECT_FAILED,
         detail,
     })?;
     let service = if plane == "data" {
-        permguard_control_client::grpc::Plane::Data
+        permguard_client::grpc::Plane::Data
     } else {
-        permguard_control_client::grpc::Plane::Control
+        permguard_client::grpc::Plane::Control
     };
     let (info, health) = channel
         .probe(service, prober.timeout)
         .map_err(|status| Unreachable {
-            reason: permguard_control_client::grpc::reason_of(&status),
+            reason: permguard_client::grpc::reason_of(&status),
             detail: format!("`{endpoint}` did not answer GetInfo: {}", status.message()),
         })?;
     let health = match health {

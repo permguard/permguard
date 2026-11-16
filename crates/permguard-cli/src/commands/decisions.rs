@@ -23,7 +23,7 @@
 use std::process::ExitCode;
 
 use crate::decisions::{Filter, MAX_PAGES, Page, report, verify};
-use permguard_control_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
+use permguard_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
 use serde_json::Value;

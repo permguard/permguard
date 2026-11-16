@@ -132,10 +132,10 @@ fn identity() -> ProductIdentity {
 /// Creates the zones and ledgers a test needs, through the same client the
 /// product uses — so the fixture cannot drift from the API.
 pub fn provision(url: &str, zone: &str, ledgers: &[&str]) {
-    let catalog = permguard_control_client::catalog::client(
+    let catalog = permguard_client::catalog::client(
         url,
-        &permguard_control_client::TlsOptions::default(),
-        Box::new(permguard_control_client::narrate::Silent),
+        &permguard_client::TlsOptions::default(),
+        Box::new(permguard_client::narrate::Silent),
     )
     .expect("the catalog client connects");
     let created = catalog.create_zone(zone).expect("the zone is created");

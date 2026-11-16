@@ -29,9 +29,7 @@
 use std::process::ExitCode;
 
 use crate::events::{MAX_PAGES, Read, Shape, check, report};
-use permguard_control_client::events::{
-    self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow,
-};
+use permguard_client::events::{self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use serde_json::Value;
 
@@ -227,7 +225,7 @@ fn signers(
                 })
         })
         .transpose()?;
-    let ask = permguard_control_client::events::SignersAsk {
+    let ask = permguard_client::events::SignersAsk {
         from_seq: from_seq.unwrap_or(0),
         until_seq: until_seq.unwrap_or(0),
         producer_class: query.producer_class.clone(),

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 pub const CONFIG_PATH: &str = ".permguard/config";
 pub const HEAD_PATH: &str = ".permguard/HEAD";
@@ -105,7 +105,7 @@ pub fn write_head(store: &dyn Store, r#ref: &str) -> Result<(), String> {
 /// The persisted `(head, counter)` checkpoint of one ref — the client half
 /// of the rollback/equivocation protection. The type is the NOTP client's;
 /// the workspace only decides where it lives.
-pub use permguard_control_client::checkpoint::Checkpoint;
+pub use permguard_client::checkpoint::Checkpoint;
 
 /// Where one ref's checkpoint lives inside `.permguard`.
 pub fn checkpoint_path(r#ref: &str) -> String {
@@ -117,7 +117,7 @@ fn ref_path(r#ref: &str) -> String {
 }
 
 pub fn read_checkpoint(store: &dyn Store, r#ref: &str) -> Result<Option<Checkpoint>, String> {
-    permguard_control_client::checkpoint::read(store, &ref_path(r#ref))
+    permguard_client::checkpoint::read(store, &ref_path(r#ref))
 }
 
 pub fn write_checkpoint(
@@ -125,5 +125,5 @@ pub fn write_checkpoint(
     r#ref: &str,
     checkpoint: &Checkpoint,
 ) -> Result<(), String> {
-    permguard_control_client::checkpoint::write(store, &ref_path(r#ref), checkpoint)
+    permguard_client::checkpoint::write(store, &ref_path(r#ref), checkpoint)
 }

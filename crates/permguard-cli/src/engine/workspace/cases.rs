@@ -30,7 +30,7 @@ use serde_json::Value;
 
 use super::{Result, err};
 use crate::engine::workspace::build::Snapshot;
-use permguard_control_client::Store;
+use permguard_client::Store;
 
 /// The directory a workspace keeps its cases in, when none is named.
 pub const DEFAULT_DIRECTORY: &str = "tests";
@@ -1260,7 +1260,7 @@ mod tests {
     /// One file that is not a list of cases is reported, and the others still run.
     #[test]
     fn a_file_that_does_not_read_as_cases_does_not_stop_the_others() {
-        use permguard_control_client::store::FsStore;
+        use permguard_client::store::FsStore;
 
         let root = std::env::temp_dir().join(format!(
             "permguard-cases-unreadable-{}-{}",

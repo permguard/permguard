@@ -17,7 +17,7 @@ use serde::Serialize;
 
 use crate::output::Report;
 use crate::settings::{self, ConfigFile, Origin, Setting, Store};
-use permguard_control_client::Endpoint;
+use permguard_client::Endpoint;
 
 /// What went wrong doing something to the configuration.
 #[derive(Debug)]

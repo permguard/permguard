@@ -6,7 +6,7 @@
 //! the target, the export archive and the rendering; a program that embeds the CLI reads the same
 //! lines, so the JSON it keeps is the JSON the command prints.
 
-use permguard_control_client::decisions::{DecisionLog, ReadError, ReadScope, ReadWindow};
+use permguard_client::decisions::{DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
 use permguard_decisions::{chain, merkle, record};
@@ -282,8 +282,7 @@ impl Verified {
 pub struct Page {
     pub records: Vec<Value>,
     /// The members the server named beside the records: a `pdp` to the member's id and name.
-    pub members:
-        std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
+    pub members: std::collections::BTreeMap<String, permguard_client::decisions::MemberName>,
     pub proof: Vec<Value>,
     pub inclusion: Vec<Value>,
     pub next: String,

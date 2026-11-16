@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-name = "permguard-control-client"
+name = "permguard-client"
 description = "The client of a Permguard control plane: endpoints and trust material, both transports, the zone catalog and the NOTP verbs, and the verified local mirror — pull only. Consumed by the CLI and by the data plane, so the two speak the wire identically."
 version.workspace = true
 edition.workspace = true

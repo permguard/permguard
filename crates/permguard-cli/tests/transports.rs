@@ -10,7 +10,7 @@
 //! request of both transports, and never appears in what the command prints.
 //!
 //! Pull, push and clone are covered at the client by the wire tests of
-//! `permguard-control-client`, the Control Plane's NOTP routers being private (owner decision).
+//! `permguard-client`, the Control Plane's NOTP routers being private (owner decision).
 //! The Host facade of the client is run here against the real Host API on its own listener.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -23,15 +23,15 @@ use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::routing::{get, post};
-use permguard_control_client::pdp_v1 as pdp;
-use permguard_control_client::pdp_v1::policy_decision_point_server::{
+use permguard_client::pdp_v1 as pdp;
+use permguard_client::pdp_v1::policy_decision_point_server::{
     PolicyDecisionPoint, PolicyDecisionPointServer,
 };
-use permguard_control_client::v1 as proto;
-use permguard_control_client::v1::control_plane_server::{ControlPlane, ControlPlaneServer};
-use permguard_control_client::v1::decision_log_server::{DecisionLog, DecisionLogServer};
-use permguard_control_client::v1::event_log_server::{EventLog, EventLogServer};
-use permguard_control_client::v1::zone_catalog_server::{ZoneCatalog, ZoneCatalogServer};
+use permguard_client::v1 as proto;
+use permguard_client::v1::control_plane_server::{ControlPlane, ControlPlaneServer};
+use permguard_client::v1::decision_log_server::{DecisionLog, DecisionLogServer};
+use permguard_client::v1::event_log_server::{EventLog, EventLogServer};
+use permguard_client::v1::zone_catalog_server::{ZoneCatalog, ZoneCatalogServer};
 use permguard_core::TlsSettings;
 use serde_json::Value;
 use tonic::{Request, Response, Status};
@@ -1139,9 +1139,9 @@ fn the_token_travels_as_a_bearer_on_both_transports_and_never_in_a_report() {
 /// identity read the same over `https` and `grpcs`; an absent membership service refuses alike.
 #[test]
 fn the_host_facade_reads_the_same_over_https_and_grpcs() {
-    use permguard_control_client::host;
-    use permguard_control_client::narrate::Silent;
-    use permguard_control_client::tls::{Credential, TlsOptions};
+    use permguard_client::host;
+    use permguard_client::narrate::Silent;
+    use permguard_client::tls::{Credential, TlsOptions};
 
     let dir = scratch("host");
     let pki = pki(&dir);
@@ -1413,22 +1413,22 @@ fn cli_with(workdir: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
 /// wire test): the same writer every NOTP verb shares.
 #[test]
 fn a_push_over_https_carries_the_operators_token() {
-    use permguard_control_client::remote::Remote as _;
+    use permguard_client::remote::Remote as _;
 
     let dir = scratch("notp-https");
     let pki = pki(&dir);
     let seen = Seen::default();
     let address = serve(rest().merge(grpc()), &pki, Arc::clone(&seen));
-    let remote = permguard_control_client::remote_http::HttpRemote::connect(
+    let remote = permguard_client::remote_http::HttpRemote::connect(
         &format!("https://localhost:{}", address.port()),
-        &permguard_control_client::tls::TlsOptions {
+        &permguard_client::tls::TlsOptions {
             ca_file: Some(pki.authority.clone()),
-            token: Some(permguard_control_client::tls::Credential::new(
+            token: Some(permguard_client::tls::Credential::new(
                 TOKEN.as_bytes().to_vec(),
             )),
             ..Default::default()
         },
-        Box::new(permguard_control_client::narrate::Silent),
+        Box::new(permguard_client::narrate::Silent),
     )
     .expect("connects");
     remote.bind("z", "l");

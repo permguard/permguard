@@ -6,13 +6,13 @@
 //! situates every object — tracked by the remote head, staged by the last
 //! refresh, both, or orphaned.
 //!
-//! The primitives are [`permguard_control_client::objects`]; this module
+//! The primitives are [`permguard_client::objects`]; this module
 //! is where the workspace's root is decided, once.
 
 use permguard_objects::digest::Digest;
 
-use permguard_control_client::Store;
-use permguard_control_client::objects;
+use permguard_client::Store;
+use permguard_client::objects;
 
 /// Where a workspace keeps its mirror — the primitives are told, every time.
 pub const OBJECTS_DIR: &str = ".permguard/objects";

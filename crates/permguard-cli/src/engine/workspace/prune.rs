@@ -37,8 +37,8 @@
 
 use std::collections::BTreeSet;
 
-use permguard_control_client::Store;
-use permguard_control_client::objects;
+use permguard_client::Store;
+use permguard_client::objects;
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Object};
 
@@ -186,7 +186,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use permguard_control_client::FsStore;
+    use permguard_client::FsStore;
     use permguard_objects::object::Blob;
     use std::path::PathBuf;
 
@@ -250,7 +250,7 @@ mod tests {
         config::write_checkpoint(
             store,
             "main",
-            &permguard_control_client::checkpoint::Checkpoint {
+            &permguard_client::checkpoint::Checkpoint {
                 head: commit.to_string(),
                 counter: 1,
                 ref_digest: None,

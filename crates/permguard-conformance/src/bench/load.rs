@@ -74,17 +74,17 @@ pub enum Outcome {
 /// A client of one interface.
 enum Client {
     Http(HttpClient),
-    Grpc(Box<dyn permguard_control_client::pdp::Pdp>),
+    Grpc(Box<dyn permguard_client::pdp::Pdp>),
 }
 
 impl Client {
     fn new(interface: &str, http: &str, grpc: &str) -> Result<Self, String> {
         match interface {
             "http" => Ok(Self::Http(HttpClient::new(http)?)),
-            "grpc" => Ok(Self::Grpc(permguard_control_client::pdp::client(
+            "grpc" => Ok(Self::Grpc(permguard_client::pdp::client(
                 grpc,
-                &permguard_control_client::tls::TlsOptions::default(),
-                Box::new(permguard_control_client::narrate::Silent),
+                &permguard_client::tls::TlsOptions::default(),
+                Box::new(permguard_client::narrate::Silent),
             )?)),
             other => Err(format!("no interface `{other}`")),
         }

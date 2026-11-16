@@ -15,7 +15,7 @@ WORKDIR /src
 # `libprotobuf-dev` beside the compiler: `contracts/proto/permguard/data/v1/pdp.proto` imports the
 # well-known types (`google/protobuf/struct.proto`, `wrappers.proto`), and Debian ships those
 # `.proto` files in the -dev package, not with `protoc`. Without it a build from a clean clone —
-# or a clean BuildKit cache — fails in `permguard-control-client`'s `build.rs` before any Rust
+# or a clean BuildKit cache — fails in `permguard-client`'s `build.rs` before any Rust
 # source is compiled.
 RUN apt-get update \
  && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev musl-tools \

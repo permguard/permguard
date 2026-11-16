@@ -8,7 +8,7 @@
 //! which colour — is the CLI's business, which is why this lives here and
 //! not in the client crate.
 
-use permguard_control_client::narrate::{Narrator, Silent};
+use permguard_client::narrate::{Narrator, Silent};
 
 use crate::style;
 

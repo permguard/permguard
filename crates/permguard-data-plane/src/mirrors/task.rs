@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use permguard_control_client::remote::{RefAnswer, Remote};
+use permguard_client::remote::{RefAnswer, Remote};
 use permguard_host::composition::{MirrorSession, MirrorTask};
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
@@ -56,13 +56,13 @@ pub const RING_BINDING: &str = "RING-BINDING.cose";
 /// coordinator as its authority and the pin's epoch and key-set digest. The switch, the binding
 /// with it, is the caller's, through the mirror's journal (WP-7.2c).
 pub fn verified_pull(
-    store: &dyn permguard_control_client::store::Store,
-    tracked: &permguard_control_client::pull::TrackedRef,
+    store: &dyn permguard_client::store::Store,
+    tracked: &permguard_client::pull::TrackedRef,
     remote: &TaskRemote,
     ring: &permguard_host::composition::PinnedRing,
     coordinator: [u8; 16],
-) -> Result<permguard_control_client::pull::VerifiedHead, String> {
-    use permguard_control_client::pull;
+) -> Result<permguard_client::pull::VerifiedHead, String> {
+    use permguard_client::pull;
 
     let expected = pull::Expected {
         authority_host_id: coordinator,
@@ -242,8 +242,8 @@ mod tests {
     use std::sync::Mutex;
 
     use base64::Engine as _;
-    use permguard_control_client::pull::TrackedRef;
-    use permguard_control_client::store::Store as _;
+    use permguard_client::pull::TrackedRef;
+    use permguard_client::store::Store as _;
     use permguard_host::composition::{MirrorRefusal, PinnedRing};
     use permguard_objects::digest::Digest;
     use permguard_objects::object::{Blob, Commit, Tree};
@@ -604,7 +604,7 @@ mod tests {
         let signed_bytes = signed.clone();
         let (remote, _) = remote_with(1 << 20, &ring, serving(signed, statement, objects.clone()));
         let root = scratch("pinned");
-        let store = permguard_control_client::FsStore::new(&root);
+        let store = permguard_client::FsStore::new(&root);
 
         let verified =
             verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect("verified");
@@ -665,7 +665,7 @@ mod tests {
             let (remote, carried) =
                 remote_with(1 << 20, &ring, serving(signed, statement, objects.clone()));
             let root = scratch(&case.replace(' ', "-"));
-            let store = permguard_control_client::FsStore::new(&root);
+            let store = permguard_client::FsStore::new(&root);
             let refused =
                 verified_pull(&store, &tracked(), &remote, &ring, COORDINATOR).expect_err(case);
             assert!(refused.contains(says), "{case}: {refused}");
@@ -701,11 +701,11 @@ mod tests {
             ("equivocation", ring.epoch, Digest::compute(b"another set")),
         ] {
             let root = scratch(case);
-            let store = permguard_control_client::FsStore::new(&root);
-            permguard_control_client::checkpoint::write(
+            let store = permguard_client::FsStore::new(&root);
+            permguard_client::checkpoint::write(
                 &store,
                 "refs/main",
-                &permguard_control_client::checkpoint::Checkpoint {
+                &permguard_client::checkpoint::Checkpoint {
                     head: Digest::compute(b"held").to_string(),
                     counter: 1,
                     ring_epoch: Some(epoch),
@@ -911,8 +911,8 @@ mod tests {
             std::fs::read(mirror.join(super::super::state::CHECKPOINT)).expect("a view"),
             state.checkpoint().expect("encodes")
         );
-        let json = permguard_control_client::checkpoint::read(
-            &permguard_control_client::store::FsStore::new(&mirror),
+        let json = permguard_client::checkpoint::read(
+            &permguard_client::store::FsStore::new(&mirror),
             "refs/main",
         )
         .expect("reads")

@@ -33,8 +33,8 @@ use http_body_util::BodyExt as _;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
-use permguard_control_client::objects;
-use permguard_control_client::store::FsStore;
+use permguard_client::objects;
+use permguard_client::store::FsStore;
 use permguard_core::{Disclosure, Metrics, Recorder};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::{Decider, Warmed};
@@ -320,10 +320,10 @@ fn provision(
     let commit_bytes = commit.encode().expect("the commit encodes");
     let commit_digest = objects::put(&store, "objects", &commit_bytes).expect("stored");
 
-    permguard_control_client::checkpoint::write(
+    permguard_client::checkpoint::write(
         &store,
         "refs/main",
-        &permguard_control_client::checkpoint::Checkpoint {
+        &permguard_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
@@ -1866,7 +1866,7 @@ async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph()
 /// the request's defaults. The same payload was refused over HTTP and answered over gRPC.
 ///
 /// So this asks both transports the same two questions and requires the same two answers. Nothing
-/// is faked: the client is `permguard_control_client::pdp::client`, the one the CLI uses, and the
+/// is faked: the client is `permguard_client::pdp::client`, the one the CLI uses, and the
 /// server is `PdpApi` over the same `Decider` the HTTP surface holds.
 mod grpc_socket {
     use super::*;
@@ -1955,10 +1955,10 @@ mod grpc_socket {
         std::fs::create_dir_all(&root).expect("the root exists");
 
         let url = serve(&root);
-        let over_grpc = permguard_control_client::pdp::client(
+        let over_grpc = permguard_client::pdp::client(
             &url,
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses")
         .configuration()
@@ -2002,10 +2002,10 @@ mod grpc_socket {
         );
 
         let url = serve(&root);
-        let client = permguard_control_client::pdp::client(
+        let client = permguard_client::pdp::client(
             &url,
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses");
 
@@ -2069,10 +2069,10 @@ mod grpc_socket {
             &[("app", vec![&CEDAR_READ], None)],
         );
         let url = serve(&root);
-        let client = permguard_control_client::pdp::client(
+        let client = permguard_client::pdp::client(
             &url,
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses");
         let body = json!({
@@ -2241,11 +2241,11 @@ mod parity {
     use permguard_data_plane_server::authz::grpc::PdpApi;
     use permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPoint as _;
 
-    fn pdp(url: &str) -> Box<dyn permguard_control_client::pdp::Pdp> {
-        permguard_control_client::pdp::client(
+    fn pdp(url: &str) -> Box<dyn permguard_client::pdp::Pdp> {
+        permguard_client::pdp::client(
             url,
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses")
     }
@@ -2898,10 +2898,10 @@ mod indeterminate {
             })),
         );
         let pdp = |url: &str| {
-            permguard_control_client::pdp::client(
+            permguard_client::pdp::client(
                 url,
-                &permguard_control_client::tls::TlsOptions::default(),
-                Box::new(permguard_control_client::narrate::Silent),
+                &permguard_client::tls::TlsOptions::default(),
+                Box::new(permguard_client::narrate::Silent),
             )
             .expect("the endpoint parses")
         };
@@ -2963,10 +2963,10 @@ mod indeterminate {
             })),
         );
         let pdp = |url: &str| {
-            permguard_control_client::pdp::client(
+            permguard_client::pdp::client(
                 url,
-                &permguard_control_client::tls::TlsOptions::default(),
-                Box::new(permguard_control_client::narrate::Silent),
+                &permguard_client::tls::TlsOptions::default(),
+                Box::new(permguard_client::narrate::Silent),
             )
             .expect("the endpoint parses")
         };
@@ -5021,18 +5021,18 @@ mod signed_response {
         assert_eq!(refused.code(), "response_signing_unavailable");
 
         // A mirror pulled before it kept its head's authority signs nothing, refused unrecorded.
-        let store = permguard_control_client::store::FsStore::new(
+        let store = permguard_client::store::FsStore::new(
             permguard_data_plane::authz::store::find(&root, "acme", "main-ledger")
                 .expect("located")
                 .path,
         );
-        let held = permguard_control_client::checkpoint::read(&store, "refs/main")
+        let held = permguard_client::checkpoint::read(&store, "refs/main")
             .expect("reads")
             .expect("held");
-        permguard_control_client::checkpoint::write(
+        permguard_client::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_control_client::checkpoint::Checkpoint {
+            &permguard_client::checkpoint::Checkpoint {
                 authority_host_id: None,
                 reference: None,
                 ..held.clone()
@@ -5054,10 +5054,10 @@ mod signed_response {
 
         // An authority the payload could not name canonically: the payload is checked whole and
         // the answer refused rather than signed with a malformed state.
-        permguard_control_client::checkpoint::write(
+        permguard_client::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_control_client::checkpoint::Checkpoint {
+            &permguard_client::checkpoint::Checkpoint {
                 authority_host_id: Some("NOT-A-UUID".to_owned()),
                 reference: Some("main".to_owned()),
                 ..held.clone()
@@ -5228,10 +5228,10 @@ mod signed_response {
             "the id the answer echoes, even from the header"
         );
 
-        let client = permguard_control_client::pdp::client(
+        let client = permguard_client::pdp::client(
             &serve_signed(Arc::clone(&decider), authenticating as Anonymising),
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses");
         let over_grpc = client.evaluate(&body).expect("signed");
@@ -5243,13 +5243,13 @@ mod signed_response {
             host.attest().public_keys().expect("published")
         };
         let pep_verifies = |answer: &Value| {
-            let mut nonces = permguard_control_client::attestation::Outstanding::default();
+            let mut nonces = permguard_client::attestation::Outstanding::default();
             nonces.issue(NONCE);
-            permguard_control_client::attestation::verify(
+            permguard_client::attestation::verify(
                 &serde_json::to_vec(&body).unwrap(),
                 &serde_json::to_vec(answer).unwrap(),
                 &keys,
-                &permguard_control_client::attestation::Expectation {
+                &permguard_client::attestation::Expectation {
                     audience: AUDIENCE,
                     now: NOW + 10,
                     validity_seconds: 300,
@@ -5296,10 +5296,10 @@ mod signed_response {
         );
 
         // Nobody authenticated over gRPC: `UNAUTHENTICATED`, as REST answers `401`.
-        let anonymous = permguard_control_client::pdp::client(
+        let anonymous = permguard_client::pdp::client(
             &serve_signed(Arc::clone(&decider), anonymous_interceptor as Anonymising),
-            &permguard_control_client::tls::TlsOptions::default(),
-            Box::new(permguard_control_client::narrate::Silent),
+            &permguard_client::tls::TlsOptions::default(),
+            Box::new(permguard_client::narrate::Silent),
         )
         .expect("the endpoint parses");
         let refused = anonymous

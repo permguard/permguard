@@ -53,7 +53,7 @@ permguard-host = { workspace = true, features = ["test-support"] }
 base64.workspace = true
 # The producer half, so the shipping contract is exercised end to end rather
 # than against a stub that agrees with itself.
-permguard-control-client.workspace = true
+permguard-client.workspace = true
 # Transport parity, fault injection and the boundary registry, shared by every plane.
 permguard-conformance.workspace = true
 permguard-data-plane.workspace = true

@@ -7,9 +7,9 @@
 
 #![allow(clippy::expect_used)]
 
-use permguard_control_client::narrate::Silent;
-use permguard_control_client::pdp;
-use permguard_control_client::tls::TlsOptions;
+use permguard_client::narrate::Silent;
+use permguard_client::pdp;
+use permguard_client::tls::TlsOptions;
 
 fn payload() -> serde_json::Value {
     serde_json::json!({

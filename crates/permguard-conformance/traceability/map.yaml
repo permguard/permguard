@@ -992,14 +992,14 @@ sections:
       - crates/permguard-host/src/session/mod.rs
       - crates/permguard-host/src/membership/appraisal.rs
       - crates/permguard-host/src/keys/ring.rs
-      - crates/permguard-control-client/src/verify.rs
+      - crates/permguard-client/src/verify.rs
       - crates/permguard-stream/src/engine/ingest.rs
       - crates/permguard-host/src/restore.rs
     tests:
       - crates/permguard-host/src/session/tests.rs::a_relayed_session_fails_because_each_connection_has_its_exporter
       - crates/permguard-host/src/membership/appraisal/tests.rs::admission_takes_an_active_membership_one_task_and_a_resource_inside_it
       - crates/permguard-host/src/keys/ring/tests.rs::rollback_and_equivocation_are_refused_and_only_a_bound_higher_epoch_is_accepted
-      - crates/permguard-control-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
+      - crates/permguard-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
       - crates/permguard-stream/src/engine/tests.rs::a_batch_that_does_not_chain_or_signs_a_range_again_over_other_records_is_a_fork
       - crates/permguard-host/src/restore.rs::the_fence_needs_a_raised_claim_and_forensic_is_never_served
   "1-architecture/7-architecture-security.md#assurance-profiles":
@@ -1679,14 +1679,14 @@ sections:
       - crates/permguard-objects/src/refstate.rs
       - crates/permguard-objects/src/statement.rs
       - crates/permguard-control-plane/src/store.rs
-      - crates/permguard-control-client/src/verify.rs
+      - crates/permguard-client/src/verify.rs
     tests:
       - crates/permguard-objects/src/refstate.rs::a_ref_state_round_trips_and_chains_to_the_one_before
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-objects/src/statement.rs::freshness_table
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
-      - crates/permguard-control-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
-      - crates/permguard-control-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
+      - crates/permguard-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
+      - crates/permguard-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
   "3-control-plane/2-control-plane-ledger-notp.md#notp-flows":
     informative: "a heading that only groups the public operator push and Host membership pull subsections and states nothing of its own"
   "3-control-plane/2-control-plane-ledger-notp.md#public-operator-push":
@@ -1938,7 +1938,7 @@ sections:
       - crates/permguard-data-plane/src/temporal/submit.rs
       - crates/permguard-data-plane/src/blocking.rs
     tests:
-      - crates/permguard-control-client/tests/egress.rs::a_decision_reaches_no_plane_over_http_or_grpc
+      - crates/permguard-client/tests/egress.rs::a_decision_reaches_no_plane_over_http_or_grpc
       - crates/permguard-core/src/egress.rs::on_the_decision_path_a_call_is_refused_and_counted
       - crates/permguard-core/src/egress.rs::the_scope_follows_the_decision_onto_a_blocking_thread_and_leaves_it
       - crates/permguard-data-plane/src/blocking.rs::work_a_decision_hands_the_pool_stays_on_the_decision_path
@@ -2020,7 +2020,7 @@ sections:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_eventual_decision_names_each_degraded_origin_for_its_own_cause
       - crates/permguard-data-plane/src/temporal/imported/tests.rs::the_shared_view_names_what_is_behind_the_verified_checkpoint
-      - crates/permguard-control-client/src/temporal.rs::grpc_carries_the_frontier_and_what_a_decision_cites
+      - crates/permguard-client/src/temporal.rs::grpc_carries_the_frontier_and_what_a_decision_cites
   "4-data-plane/1-data-plane.md#current-implementation-and-target":
     paths:
       - crates/permguard-data-plane/src/handles.rs
@@ -2130,14 +2130,14 @@ sections:
       - crates/permguard-language-core/src/attestation.rs
       - crates/permguard-data-plane/src/authz/signing.rs
       - crates/permguard-data-plane/src/authz/decide.rs
-      - crates/permguard-control-client/src/attestation.rs
+      - crates/permguard-client/src/attestation.rs
     tests:
       - crates/permguard-language-core/src/attestation/tests.rs::a_nonce_is_canonical_base64url_of_16_to_64_bytes
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_signature_that_cannot_be_made_refuses_the_answer_and_never_downgrades
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_signed_response_binds_the_request_the_answer_and_the_policy_state
       - crates/permguard-data-plane-server/tests/authz_decision.rs::both_transports_sign_what_the_caller_can_recompute_and_refuse_nobody
       - crates/permguard-language-core/src/attestation/tests.rs::the_payload_is_closed_canonical_and_every_form_is_checked
-      - crates/permguard-control-client/src/attestation/tests.rs::every_binding_altered_alone_is_refused_by_name
+      - crates/permguard-client/src/attestation/tests.rs::every_binding_altered_alone_is_refused_by_name
   "4-data-plane/2-data-plane-pdp.md#current-implementation-and-target":
     paths:
       - crates/permguard-language-core/src/request.rs
@@ -2195,14 +2195,14 @@ sections:
   "4-data-plane/3-data-plane-mirrors-notp.md#verification-order":
     paths:
       - crates/permguard-data-plane/src/mirrors/task.rs
-      - crates/permguard-control-client/src/pull.rs
-      - crates/permguard-control-client/src/checkpoint.rs
+      - crates/permguard-client/src/pull.rs
+      - crates/permguard-client/src/checkpoint.rs
     tests:
       - crates/permguard-data-plane/src/mirrors/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
       - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
-      - crates/permguard-control-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
-      - crates/permguard-control-client/tests/verify_negative.rs::two_heads_for_one_counter_is_equivocation
-      - crates/permguard-control-client/tests/verify_negative.rs::seeing_the_same_head_again_is_not_an_attack
+      - crates/permguard-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
+      - crates/permguard-client/tests/verify_negative.rs::two_heads_for_one_counter_is_equivocation
+      - crates/permguard-client/tests/verify_negative.rs::seeing_the_same_head_again_is_not_an_attack
       - crates/permguard-data-plane/tests/mirror_round.rs::a_task_whose_membership_pins_no_ring_is_not_mirrored
   "4-data-plane/3-data-plane-mirrors-notp.md#atomic-checkpoint":
     paths:
@@ -2244,13 +2244,13 @@ sections:
     paths:
       - crates/permguard-data-plane/src/mirrors/round.rs
       - crates/permguard-data-plane/src/mirrors/task.rs
-      - crates/permguard-control-client/src/pull.rs
+      - crates/permguard-client/src/pull.rs
       - crates/permguard-data-plane/src/authz/store.rs
     tests:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
       - crates/permguard-conformance/tests/legacy_trust.rs::no_plane_reaches_a_control_plane_over_a_url_to_mirror_it
       - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_under_the_pinned_set_and_its_coordinator_pulls
-      - crates/permguard-control-client/src/pull.rs::the_checkpoint_keeps_the_statements_authority_and_ref
+      - crates/permguard-client/src/pull.rs::the_checkpoint_keeps_the_statements_authority_and_ref
       - crates/permguard-data-plane-server/tests/authz_decision.rs::two_coordinators_with_one_name_are_refused_until_an_alias_names_one
       - crates/permguard-data-plane/tests/mirror_round.rs::a_reap_candidate_waits_out_its_grace_and_a_listing_restores_it
     gaps:
@@ -2407,7 +2407,7 @@ sections:
     tests:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vouches_for_them
       - crates/permguard-data-plane/src/temporal/imported/tests.rs::a_window_bound_by_a_frontier_reads_exactly_what_it_cites
-      - crates/permguard-control-client/src/temporal.rs::grpc_carries_the_frontier_and_what_a_decision_cites
+      - crates/permguard-client/src/temporal.rs::grpc_carries_the_frontier_and_what_a_decision_cites
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_eventual_plane_decides_and_reports_and_a_legacy_gap_still_bounds
   "4-data-plane/5-data-plane-temporal.md#import":
     paths:
@@ -3051,8 +3051,8 @@ sections:
       - crates/permguard-cli/src/target.rs
       - crates/permguard-cli/src/args.rs
       - crates/permguard-cli/src/settings.rs
-      - crates/permguard-control-client/src/endpoint.rs
-      - crates/permguard-control-client/src/host.rs
+      - crates/permguard-client/src/endpoint.rs
+      - crates/permguard-client/src/host.rs
     tests:
       - crates/permguard-cli/tests/cli.rs::a_command_names_one_target_class_and_never_falls_back
       - crates/permguard-cli/tests/transports.rs::every_network_command_answers_the_same_over_https_and_grpcs
@@ -3061,7 +3061,7 @@ sections:
       - crates/permguard-cli/tests/transports.rs::the_host_facade_reads_the_same_over_https_and_grpcs
   "6-command-line/1-command-line.md#authentication-and-authorization":
     paths:
-      - crates/permguard-control-client/src/tls.rs
+      - crates/permguard-client/src/tls.rs
       - crates/permguard-cli/src/target.rs
       - crates/permguard-cli/src/config.rs
       - crates/permguard-cli/src/commands/catalog.rs
@@ -3155,7 +3155,7 @@ sections:
   "6-command-line/2-command-line-commands.md#catalog":
     paths:
       - crates/permguard-cli/src/commands/catalog.rs
-      - crates/permguard-control-client/src/catalog.rs
+      - crates/permguard-client/src/catalog.rs
     tests:
       - crates/permguard-cli/tests/stub_server.rs::zones_commands_speak_to_a_server_end_to_end
       - crates/permguard-cli/tests/stub_server.rs::ledgers_commands_speak_to_a_server_end_to_end
@@ -3977,7 +3977,7 @@ sections:
       - crates/permguard-notp/tests/notp_vectors.rs::the_ref_states_and_their_digests_are_the_generators
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
       - crates/permguard-objects/src/statement.rs::freshness_table
-      - crates/permguard-control-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
+      - crates/permguard-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
       - crates/permguard-data-plane/src/mirrors/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
   "7-contracts/6-contract-ledger-notp.md#messages":
     paths:
@@ -4245,11 +4245,11 @@ sections:
   "2-security/1-security-overview.md#methods-and-profiles":
     paths:
       - crates/permguard-authority-plane/src/plane.rs
-      - crates/permguard-control-client/src/token_source.rs
+      - crates/permguard-client/src/token_source.rs
       - crates/permguard-core/src/config_file.rs
       - crates/permguard-server/src/app.rs
     tests:
-      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
       - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
       - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
   "2-security/1-security-overview.md#documents":
@@ -4347,7 +4347,7 @@ sections:
     tests:
       - crates/permguard-authority-plane-server/src/http.rs::a_form_reads_once_and_takes_one_proof
       - crates/permguard-authority-plane/src/authority.rs::a_refusal_names_the_rule_never_the_cause
-      - crates/permguard-control-client/src/authority.rs::the_token_form_carries_the_proof_in_basic_and_never_in_the_body
+      - crates/permguard-client/src/authority.rs::the_token_form_carries_the_proof_in_basic_and_never_in_the_body
       - crates/permguard-all-in-one/tests/first_administrator.rs::a_fresh_host_makes_its_administrator_once_and_its_key_administers
   "2-security/8-security-authority.md#authorization":
     paths:
@@ -4382,9 +4382,9 @@ sections:
     paths:
       - crates/permguard-authority-plane/src/plane.rs
       - crates/permguard-authority-plane/src/authority.rs
-      - crates/permguard-control-client/src/token_source.rs
+      - crates/permguard-client/src/token_source.rs
     tests:
-      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
       - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
   "2-security/8-security-authority.md#editions":
     informative: "what each edition carries, a product statement with no rule a build checks"
@@ -4452,7 +4452,7 @@ sections:
       - crates/permguard-host/src/authz/access_tokens.rs::every_step_refuses_what_it_checks
       - crates/permguard-authority-plane/src/access_keys.rs::a_secret_is_kept_as_argon2id_and_verifies_only_itself
       - crates/permguard-authority-plane/src/authority.rs::a_refusal_names_the_rule_never_the_cause
-      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
   "2-security/10-security-threat-model.md#out-of-scope":
     informative: "what the threat model leaves out, stating no rule of its own"
   "2-security/5-security-management-api.md#service-accounts":
@@ -4513,9 +4513,9 @@ sections:
   "2-security/7-security-command-line.md#the-client":
     paths:
       - crates/permguard-cli/src/client_token.rs
-      - crates/permguard-control-client/src/token_source.rs
+      - crates/permguard-client/src/token_source.rs
     tests:
-      - crates/permguard-control-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
+      - crates/permguard-client/src/token_source.rs::a_source_refuses_the_clear_and_an_unverified_authority
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
   "2-security/7-security-command-line.md#tokens":
     paths:
@@ -4792,7 +4792,7 @@ findings:
       - crates/permguard-host/src/storage/write.rs::concurrent_equal_publishes_are_idempotent
       - crates/permguard-host/src/storage/write.rs::identical_content_is_idempotent_and_keeps_the_inode
       - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
-      - crates/permguard-control-client/src/objects.rs::local_objects_keep_the_immutable_storage_contract
+      - crates/permguard-client/src/objects.rs::local_objects_keep_the_immutable_storage_contract
   "H-07":
     tests:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_conflicting_occurrence_refuses_a_bounded_decision_and_degrades_an_eventual_one

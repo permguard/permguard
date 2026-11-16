@@ -208,7 +208,7 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-authority-plane", &["permguard-contracts"]),
     ("permguard-control-plane", &["permguard-contracts"]),
     // A client speaks the request model and compiles no policy language (RD-6).
-    ("permguard-control-client", NO_LANGUAGE),
+    ("permguard-client", NO_LANGUAGE),
 ];
 
 /// What the language contracts and the decision point's evaluating half may not reach: the server

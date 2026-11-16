@@ -611,7 +611,7 @@ struct Chain {
 /// A data plane serving gRPC alone (owner decision of 2026-11-15): its document, naming the PDP's
 /// interface, and the PDP's configuration, on an ephemeral port; the address it is reached at.
 fn grpc_data_plane() -> String {
-    use permguard_control_client::pdp_v1 as data;
+    use permguard_client::pdp_v1 as data;
     use tonic::{Request, Response, Status};
 
     struct Plane;

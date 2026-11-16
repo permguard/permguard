@@ -53,7 +53,7 @@ The head statement moved here from `evidence.json`: its target form replaces tod
 
 `signed-response.json` freezes signed native decision responses (WP-6.6): a single answer and a batch, each with the request sent, the response received with its `attestation`, and the payload the attestation decodes to, under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
 Beside them: the audience, the clock, the advertised validity and skew, and the exact policy state a PEP expects.
-`signed_response.py` computes them under the decisions of 2026-10-22 recorded in `status.md`; `crates/permguard-control-client/src/attestation/tests.rs` reproduces each payload and signature and verifies both responses with the verifier a PEP uses.
+`signed_response.py` computes them under the decisions of 2026-10-22 recorded in `status.md`; `crates/permguard-client/src/attestation/tests.rs` reproduces each payload and signature and verifies both responses with the verifier a PEP uses.
 
 `status-list.json` holds the four test vectors of `draft-ietf-oauth-status-list-21` appendix C, 1, 2, 4 and 8 bits over `2^20` entries, as the draft prints them (iteration 02, WP-11.5).
 `status_list.py` checks each with the standard library: its `lst` decodes to exactly the statuses listed, every other entry 0, and ZLIB at level 9 encodes those bytes back to the same `lst`.

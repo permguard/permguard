@@ -61,7 +61,7 @@ pub const ALLOWED: &[(&str, &str)] = &[
         "the trait: a plain method delegates to the one carrying a revision",
     ),
     (
-        "crates/permguard-control-client/src/",
+        "crates/permguard-client/src/",
         "the API's client: a request to the facade, not a write of the store",
     ),
     (

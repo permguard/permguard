@@ -32,10 +32,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::{Report, printable};
 use crate::trace::Trace;
-use permguard_control_client::Endpoint;
-use permguard_control_client::documents::{self, Documents, Interface, Plane};
-use permguard_control_client::http::Client;
-use permguard_control_client::tls::TlsOptions;
+use permguard_client::Endpoint;
+use permguard_client::documents::{self, Documents, Interface, Plane};
+use permguard_client::http::Client;
+use permguard_client::tls::TlsOptions;
 
 /// The well-known path every layer of the chain starts from.
 const WELL_KNOWN: &str = "/.well-known/server-configuration";
@@ -280,7 +280,7 @@ impl Walk<'_> {
             &url,
             plane,
             tls,
-            Box::new(permguard_control_client::narrate::Silent),
+            Box::new(permguard_client::narrate::Silent),
         ) {
             Ok(read) => read,
             Err(why) => {

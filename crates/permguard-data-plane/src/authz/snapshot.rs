@@ -46,8 +46,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use permguard_control_client::objects;
-use permguard_control_client::store::{FsStore, Store};
+use permguard_client::objects;
+use permguard_client::store::{FsStore, Store};
 use permguard_languages::Evaluator;
 use permguard_languages::registry;
 use permguard_objects::digest::Digest;
@@ -217,10 +217,8 @@ pub fn head_with(mirror: &Path, enabled: &registry::Enabled) -> Result<Head, Ref
 /// One small file, read on every request on purpose: it is what makes a synchronization that
 /// advanced a ledger visible *now*, without trusting a cache to notice. Everything expensive —
 /// the commit, the manifest, the load gate — hangs off the commit this names, and is cached by it.
-pub fn checkpoint_of(
-    mirror: &Path,
-) -> Result<permguard_control_client::checkpoint::Checkpoint, Refusal> {
-    permguard_control_client::checkpoint::read(&FsStore::new(mirror), "refs/main")
+pub fn checkpoint_of(mirror: &Path) -> Result<permguard_client::checkpoint::Checkpoint, Refusal> {
+    permguard_client::checkpoint::read(&FsStore::new(mirror), "refs/main")
         .map_err(Refusal::Damaged)?
         .ok_or(Refusal::Empty)
 }
@@ -232,7 +230,7 @@ pub fn checkpoint_of(
 /// commit does not.
 pub fn head_at(
     mirror: &Path,
-    checkpoint: &permguard_control_client::checkpoint::Checkpoint,
+    checkpoint: &permguard_client::checkpoint::Checkpoint,
     enabled: &registry::Enabled,
 ) -> Result<Head, Refusal> {
     let store = FsStore::new(mirror);

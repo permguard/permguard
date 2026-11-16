@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use permguard_control_client::{AnyRemote, FsStore, Store as _};
+use permguard_client::{AnyRemote, FsStore, Store as _};
 
 use super::config::{RemoteConfig, WorkspaceConfig};
 use super::{DEFAULT_IGNORES, DEFAULT_REF, PullOutcome, Result, Workspace, err};

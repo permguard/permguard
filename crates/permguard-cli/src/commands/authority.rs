@@ -9,8 +9,8 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use permguard_control_client::authority::{Authority, Scope, TokenAsk};
-use permguard_control_client::tls::Credential;
+use permguard_client::authority::{Authority, Scope, TokenAsk};
+use permguard_client::tls::Credential;
 
 use super::host::{Reserved, render_json, request_id, rooted_file, volume_of};
 use crate::args::{
@@ -75,16 +75,12 @@ fn authority_as(
              auth.client.authority_endpoint",
         )
     })?;
-    let tls = permguard_control_client::tls::TlsOptions {
+    let tls = permguard_client::tls::TlsOptions {
         token: bearer,
         ..crate::client_token::authority_tls(globals, store, trace)?
     };
-    permguard_control_client::authority::client(
-        &url,
-        &tls,
-        crate::narrator::for_run(globals.verbose),
-    )
-    .map_err(Failure::usage)
+    permguard_client::authority::client(&url, &tls, crate::narrator::for_run(globals.verbose))
+        .map_err(Failure::usage)
 }
 
 /// Without a client and without `--token-file`, there is no token in use.
@@ -209,7 +205,7 @@ fn revoke_in_use(globals: &Globals, trace: &Trace) -> Result<ExitCode, Failure> 
     Ok(ExitCode::from(EXIT_READY))
 }
 
-fn failed(failure: permguard_control_client::catalog::Failure) -> Failure {
+fn failed(failure: permguard_client::catalog::Failure) -> Failure {
     Failure::from_client(&failure)
 }
 
@@ -420,12 +416,9 @@ fn token(
         .ok_or_else(|| Failure::usage("the Authority Plane is reached at --authority-endpoint"))?;
     let tls = crate::client_token::authority_tls(globals, &store, trace)?;
     let reserved = Reserved::claim(&rooted_file(globals, out))?;
-    let authority = permguard_control_client::authority::client(
-        &url,
-        &tls,
-        crate::narrator::for_run(globals.verbose),
-    )
-    .map_err(Failure::usage)?;
+    let authority =
+        permguard_client::authority::client(&url, &tls, crate::narrator::for_run(globals.verbose))
+            .map_err(Failure::usage)?;
     let answer = authority
         .issue_token(&TokenAsk {
             access_key,

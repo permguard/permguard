@@ -15,7 +15,7 @@ use crate::failure::Failure;
 use crate::output::{OutputFormat, Report, emit};
 use crate::settings::{self, Origin, Store};
 use crate::trace::Trace;
-use permguard_control_client::Endpoint;
+use permguard_client::Endpoint;
 
 pub fn resolve_endpoint_url(
     key: &str,

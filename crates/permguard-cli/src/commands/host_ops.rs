@@ -11,7 +11,7 @@
 
 use std::process::ExitCode;
 
-use permguard_control_client::host::Operations;
+use permguard_client::host::Operations;
 use permguard_host::api::audit::{AuditCheckpointQuery, AuditExportQuery, AuditQuery};
 use permguard_host::api::keys::{KeyBundleQuery, PlanKeyRevoke, RotateRing, RunKeyRevoke};
 use permguard_host::api::plans::ApprovePlan;
@@ -28,7 +28,7 @@ use crate::trace::Trace;
 /// Host that never stops answering a cursor cannot keep the command running.
 const MAX_PAGES: usize = 100_000;
 
-fn failed(failure: permguard_control_client::catalog::Failure) -> Failure {
+fn failed(failure: permguard_client::catalog::Failure) -> Failure {
     Failure::from_client(&failure)
 }
 
@@ -602,7 +602,7 @@ pub fn evidence_command(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     use crate::args::EvidenceAction;
-    use permguard_control_client::host::StreamName;
+    use permguard_client::host::StreamName;
 
     let EvidenceAction::Anchors { zone, ledger } = action;
     if !component(&zone) || !component(&ledger) {
@@ -668,7 +668,7 @@ mod tests {
 
     use std::cell::RefCell;
 
-    use permguard_control_client::catalog::Failure as ClientFailure;
+    use permguard_client::catalog::Failure as ClientFailure;
     use permguard_host::api::Planned;
     use permguard_host::api::audit::{AuditCheckpoints, AuditExportPage, AuditRecordPage};
     use permguard_host::api::config::Effective;

@@ -32,8 +32,8 @@ use http_body_util::BodyExt as _;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
-use permguard_control_client::objects;
-use permguard_control_client::store::FsStore;
+use permguard_client::objects;
+use permguard_client::store::FsStore;
 use permguard_core::{Disclosure, Metrics};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::Decider;
@@ -306,10 +306,10 @@ fn provision_with(
     let commit_bytes = commit.encode().expect("the commit encodes");
     let commit_digest = objects::put(&store, "objects", &commit_bytes).expect("stored");
 
-    permguard_control_client::checkpoint::write(
+    permguard_client::checkpoint::write(
         &store,
         "refs/main",
-        &permguard_control_client::checkpoint::Checkpoint {
+        &permguard_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
@@ -1614,10 +1614,10 @@ mod shipped_example {
             &commit.encode().expect("the commit encodes"),
         )
         .expect("stored");
-        permguard_control_client::checkpoint::write(
+        permguard_client::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_control_client::checkpoint::Checkpoint {
+            &permguard_client::checkpoint::Checkpoint {
                 head: commit_digest.to_string(),
                 counter: 1,
                 ref_digest: None,

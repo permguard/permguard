@@ -26,8 +26,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use permguard_control_client::FsStore;
-use permguard_control_client::pull::TrackedRef;
+use permguard_client::FsStore;
+use permguard_client::pull::TrackedRef;
 use permguard_core::Metrics;
 
 use crate::authz::store::Identity;

@@ -25,7 +25,7 @@ doc = false
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-permguard-control-client.workspace = true
+permguard-client.workspace = true
 permguard-core.workspace = true
 # The standalone Data Plane selects its languages itself: all three.
 permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }

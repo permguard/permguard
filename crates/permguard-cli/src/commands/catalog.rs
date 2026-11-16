@@ -14,7 +14,7 @@
 
 use std::process::ExitCode;
 
-use permguard_control_client::catalog;
+use permguard_client::catalog;
 
 use crate::args::{Globals, LedgersAction, ZonesAction};
 use crate::failure::{EXIT_READY, Failure};

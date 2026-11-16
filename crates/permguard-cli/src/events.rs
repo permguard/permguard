@@ -6,7 +6,7 @@
 //! the export archive and the rendering; a program that embeds the CLI reads the same lines, so
 //! the JSON it keeps is the JSON the command prints.
 
-use permguard_control_client::events::{self, EventLog, ReadError, ReadScope, ReadWindow};
+use permguard_client::events::{self, EventLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_events::envelope::Signed;
 use permguard_events::{chain, merkle_of, record};
@@ -210,8 +210,7 @@ pub fn read(
 pub struct Read {
     pub records: Vec<Value>,
     /// The members the server named beside the records: a producer to the member's id and name.
-    pub members:
-        std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
+    pub members: std::collections::BTreeMap<String, permguard_client::decisions::MemberName>,
     pub proof: Vec<Value>,
     pub inclusion: Vec<Value>,
     pub next: String,
@@ -289,7 +288,7 @@ pub fn line(record: &Value) -> EventLine {
 /// One record, as a line, its producer named among `members` when the server named it.
 pub fn line_named(
     record: &Value,
-    members: &std::collections::BTreeMap<String, permguard_control_client::decisions::MemberName>,
+    members: &std::collections::BTreeMap<String, permguard_client::decisions::MemberName>,
 ) -> EventLine {
     let text = |path: &[&str]| -> String {
         let mut held = record;

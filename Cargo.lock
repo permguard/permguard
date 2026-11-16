@@ -2383,7 +2383,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "permguard-authority-plane-server",
- "permguard-control-client",
+ "permguard-client",
  "permguard-control-plane-server",
  "permguard-core",
  "permguard-data-plane-server",
@@ -2451,8 +2451,8 @@ dependencies = [
  "clap_complete",
  "permguard-authority-plane",
  "permguard-authority-plane-server",
+ "permguard-client",
  "permguard-contracts",
- "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
  "permguard-decisions",
@@ -2479,6 +2479,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-client"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "base64 0.23.1",
+ "futures-core",
+ "http",
+ "permguard-contracts",
+ "permguard-core",
+ "permguard-events",
+ "permguard-host",
+ "permguard-language-core",
+ "permguard-notp",
+ "permguard-objects",
+ "prost",
+ "prost-types",
+ "rcgen",
+ "ring",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "zeroize",
+]
+
+[[package]]
 name = "permguard-conformance"
 version = "0.1.0"
 dependencies = [
@@ -2490,8 +2519,8 @@ dependencies = [
  "hyper",
  "hyper-util",
  "permguard-authority-plane",
+ "permguard-client",
  "permguard-contracts",
- "permguard-control-client",
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
@@ -2526,42 +2555,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "permguard-control-client"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "base64 0.23.1",
- "futures-core",
- "http",
- "permguard-contracts",
- "permguard-core",
- "permguard-events",
- "permguard-host",
- "permguard-language-core",
- "permguard-notp",
- "permguard-objects",
- "prost",
- "prost-types",
- "rcgen",
- "ring",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "tokio",
- "tonic",
- "tonic-prost",
- "zeroize",
-]
-
-[[package]]
 name = "permguard-control-plane"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "permguard-client",
  "permguard-conformance",
- "permguard-control-client",
  "permguard-core",
  "permguard-data-plane",
  "permguard-decisions",
@@ -2590,9 +2590,9 @@ dependencies = [
  "http",
  "http-body-util",
  "permguard-authority-plane-server",
+ "permguard-client",
  "permguard-conformance",
  "permguard-contracts",
- "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
@@ -2636,8 +2636,8 @@ dependencies = [
  "anyhow",
  "axum",
  "base64 0.23.1",
+ "permguard-client",
  "permguard-conformance",
- "permguard-control-client",
  "permguard-control-plane-server",
  "permguard-core",
  "permguard-decisions",
@@ -2670,9 +2670,9 @@ dependencies = [
  "futures-core",
  "http",
  "http-body-util",
+ "permguard-client",
  "permguard-conformance",
  "permguard-contracts",
- "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
  "permguard-data-plane",
