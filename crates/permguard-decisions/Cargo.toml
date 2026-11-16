@@ -27,25 +27,33 @@ ring.workspace = true
 # Canonical JSON and the Merkle tree a batch is committed with.
 permguard-canonical.workspace = true
 permguard-core.workspace = true
-# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
-permguard-host.workspace = true
+# The JWS framing a batch is signed with and the key selection it is verified with.
+permguard-objects.workspace = true
+# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11),
+# and the typed signer a Plane holds. A runtime's, never the model's.
+permguard-host = { workspace = true, optional = true }
 # The Host stream engine, for the two halves that are a runtime and not the model: the spool reads
 # the stream's signers, and the registration names the engine's descriptor and codec.
 permguard-stream = { workspace = true, optional = true }
+# The decision point whose answer a record's is built from; with no feature of its own, so no
+# language, no engine and no thread.
+permguard-evaluator = { workspace = true, optional = true }
 
 [features]
 # The normative model, record, chain, envelope, commitment and ceiling, is always built and needs
 # none of these: a verifier links it alone.
 #
 # The durable local record a producer keeps, and the legacy archive read at a migration.
-storage = ["dep:permguard-stream"]
+storage = ["dep:permguard-host", "dep:permguard-stream"]
+# The record's answer from an evaluator's: the one mapping a Data Plane records with.
+evaluator = ["dep:permguard-evaluator"]
 # The decision log as the Host's stream engine registers it: its name, descriptor and codec.
-stream = ["dep:permguard-stream"]
+stream = ["dep:permguard-host", "dep:permguard-stream"]
 
 [dev-dependencies]
 # A real key ring, so signing and verification are exercised end to end rather
 # than against a stub that agrees with itself.
 permguard-std = { workspace = true, features = ["keys"] }
 # The tests exercise the storage and the registration with the model.
-permguard-decisions = { path = ".", features = ["storage", "stream"] }
+permguard-decisions = { path = ".", features = ["storage", "stream", "evaluator"] }
 proptest.workspace = true

@@ -839,6 +839,81 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     );
 }
 
+/// What a record, its chain and its signed batch do not need (phase 6): the Host and its runtime,
+/// the default implementations, the stream engine, a ledger, a Plane, a client and an
+/// asynchronous runtime.
+const NOT_A_RECORD: &[&str] = &[
+    "permguard-host",
+    "permguard-runtime",
+    "permguard-std",
+    "permguard-stream",
+    "permguard-offline",
+    "permguard-notp",
+    "permguard-mirror",
+    "permguard-sync",
+    "permguard-data-plane",
+    "permguard-control-plane",
+    "permguard-authority-plane",
+    "permguard-embedded",
+    "permguard-client",
+    "permguard-contracts",
+    "permguard-tls",
+    "permguard-languages",
+    "clap",
+    "tokio",
+    "rustls",
+];
+
+/// An evidence model is the record alone (phase 6): built with no feature it links no Host, no
+/// stream engine and no decision point, and neither model links the other. A decision record's
+/// answer from an evaluator's brings the kernel with no language, and still no Host. `storage` and
+/// `stream` are the only way either reaches a Host, and both do.
+#[test]
+fn an_evidence_model_links_no_host_until_a_runtime_is_selected() {
+    let mut problems = Vec::new();
+    for (package, features, other) in [
+        ("permguard-decisions", "", "permguard-events"),
+        ("permguard-decisions", "evaluator", "permguard-events"),
+        ("permguard-events", "", "permguard-decisions"),
+    ] {
+        let linked = carried_with(package, features);
+        for name in NOT_A_RECORD
+            .iter()
+            .chain(SERVER_STACK)
+            .chain(LANGUAGE_CORE)
+            .chain(&[other])
+        {
+            if linked.contains(*name) {
+                problems.push(format!("{package} built with `{features}` links {name}"));
+            }
+        }
+        let evaluates = linked.contains("permguard-evaluator");
+        if evaluates != (features == "evaluator") {
+            problems.push(format!(
+                "{package} built with `{features}`: linking the evaluator is {evaluates}"
+            ));
+        }
+    }
+    // The check reads a real graph: a runtime half does reach the Host and the stream engine.
+    for package in ["permguard-decisions", "permguard-events"] {
+        for features in ["storage", "stream"] {
+            let linked = carried_with(package, features);
+            for name in ["permguard-host", "permguard-stream"] {
+                if !linked.contains(name) {
+                    problems.push(format!(
+                        "{package} built with `{features}` does not link {name}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "an evidence model is the record alone:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// The kernel selects its language (phase 6): built with none it links no engine at all, and with
 /// one it links that language's package and engine and no other language's. Dogwood lowers to
 /// Cedar, so its upstream engine links `cedar-policy`; Permguard's own Cedar package it does not.

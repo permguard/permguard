@@ -24,6 +24,13 @@
 //! | `storage` | `spool`, the durable local record and the crash boundaries around it, and `archive` |
 //! | `stream` | `stream`, the decision log as the Host's stream engine registers it |
 //!
+//! The model links no Host: an envelope is framed and its key selected by `permguard-objects`,
+//! and only those two features reach a Host. A third feature joins the model to a decision point:
+//!
+//! | Feature | What it adds |
+//! | --- | --- |
+//! | `evaluator` | `answer`, the record's answer from an evaluator's |
+//!
 //! The two primitives that carry no decision domain at all — [`jcs`], the canonical bytes every
 //! digest is taken over, and [`merkle`], the per-batch inclusion tree — live in
 //! `permguard-canonical` and are re-exported here unchanged: every evidence stream needs them, and a
@@ -34,6 +41,8 @@
 //! them. None of that is visible from here — which is what lets every side
 //! compute the same digests without agreeing on anything else.
 
+#[cfg(feature = "evaluator")]
+pub mod answer;
 #[cfg(feature = "storage")]
 pub mod archive;
 pub mod ceiling;

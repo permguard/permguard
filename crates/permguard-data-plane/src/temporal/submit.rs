@@ -688,7 +688,7 @@ impl Submitter {
                 ),
                 action: occurrence.action.as_str(),
                 context: serde_json::to_value(&record.event).ok(),
-                outcome: crate::authz::decide::recorded_outcome(outcome.resolution),
+                outcome: outcome.resolution.into(),
                 causes: &outcome.causes(),
                 policies: outcome.determining(),
                 reason: &reason.code,

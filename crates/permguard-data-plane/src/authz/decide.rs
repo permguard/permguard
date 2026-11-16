@@ -1841,35 +1841,6 @@ pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
     )
 }
 
-/// The record's spelling of a resolution.
-pub(crate) fn recorded_outcome(
-    resolution: permguard_languages::Resolution,
-) -> permguard_decisions::record::Outcome {
-    use permguard_decisions::record::Outcome;
-    use permguard_languages::Resolution;
-
-    match resolution {
-        Resolution::Permit => Outcome::Permit,
-        Resolution::Deny => Outcome::Deny,
-        Resolution::DenyByDefault => Outcome::DenyByDefault,
-        Resolution::Indeterminate => Outcome::Indeterminate,
-    }
-}
-
-/// The record's `reason.code` for a stateless decision: the codes the record has always carried
-/// for a permit and a deny, and the native contract's for an indeterminate result.
-fn recorded_reason(resolution: permguard_languages::Resolution) -> String {
-    use permguard_languages::Resolution;
-
-    match resolution {
-        Resolution::Permit => "200".to_owned(),
-        Resolution::Deny | Resolution::DenyByDefault => "403".to_owned(),
-        Resolution::Indeterminate => {
-            permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE.to_owned()
-        }
-    }
-}
-
 /// One evaluation's answer: what the wire carries, and the resolution it cannot.
 ///
 /// `Decision` is a boolean because the native contract's is; the algebra's four results live
@@ -2035,7 +2006,7 @@ impl Decider {
                     .map(|context| context.absent_inputs.clone())
                     .unwrap_or_default(),
                 permit: decision.decision,
-                outcome: recorded_outcome(held.resolution),
+                outcome: held.resolution.into(),
                 causes: held.causes.clone(),
                 policies: context
                     .map(|context| context.policies.clone())
@@ -2044,7 +2015,7 @@ impl Decider {
                 // deny as they have always been written, an indeterminate result as the native
                 // contract's refusal code — never `403`, which would make a failure read as a
                 // policy deny.
-                reason: recorded_reason(held.resolution),
+                reason: permguard_decisions::answer::reason_code(held.resolution),
                 trace: trace.map(|trace| (trace.trace_id.clone(), trace.span_id.clone())),
                 // The caller's own handle for *this* evaluation, when it
                 // boxcarred: `request_id` per evaluation is how a PEP joins one

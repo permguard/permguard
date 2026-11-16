@@ -32,7 +32,7 @@ permguard-mirror.workspace = true
 permguard-sync.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain and the durable spool.
-permguard-decisions = { workspace = true, features = ["storage", "stream"] }
+permguard-decisions = { workspace = true, features = ["storage", "stream", "evaluator"] }
 # The durable event journal and the record contract the temporal interface writes.
 permguard-events = { workspace = true, features = ["storage", "stream"] }
 permguard-stream.workspace = true

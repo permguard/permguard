@@ -5,8 +5,9 @@
 #
 # Runs the packages whose features select what a build carries, in every profile, each resolved
 # on its own: the policy languages, the client library's surfaces and transports, the two
-# evidence models, the headless runtime with the offline package it links, and the reference
-# embedding application, which is built outside the workspace.
+# evidence models, the headless runtime with the offline package it links, and the two reference
+# applications, the embedded Data Plane's and the evaluator's, which are built outside the
+# workspace.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -85,6 +86,9 @@ for package in permguard-decisions permguard-events; do
     done
     run "${package}, the model with its storage and its registration" -p "${package}"
 done
+# A decision record's answer from an evaluator's, with the model and no Host.
+printf '==> permguard-decisions built with `evaluator`\n'
+cargo check --locked -p permguard-decisions --no-default-features --features evaluator
 
 # Offline volume administration: a remote custody is an adapter a build selects. Without one, the
 # package builds with no network client and refuses that custody by name, which its test proves;
@@ -106,5 +110,9 @@ run "permguard-evaluation-worker, the dedicated worker" -p permguard-evaluation-
 # The embedded Data Plane as an application outside this workspace links it: every named profile
 # resolved, built and tested for that application alone.
 ./scripts/check-embedded-fixture.sh
+
+# The evaluator alone as an application outside this workspace links it: no language, each
+# language, and each evidence model beside it, with no Host anywhere in the build.
+./scripts/check-evaluator-fixture.sh
 
 printf 'ok: every profile compiles and passes its tests on its own\n'
