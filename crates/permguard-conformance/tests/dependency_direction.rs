@@ -198,6 +198,8 @@ const LAYERS: &[(&str, &[&str])] = &[
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
     ("permguard-control-plane", CONTROL_PLANE_DOMAIN),
+    // A client speaks the request model and compiles no policy language (RD-6).
+    ("permguard-control-client", NO_LANGUAGE),
 ];
 
 /// What the language contracts may not reach: the server stack, any engine package, the catalogue,
@@ -275,6 +277,19 @@ const DOGWOOD_ENGINE: &[&str] = &[
     "permguard-language-rego",
     "regorus",
     "jsonschema",
+];
+
+/// What a package that only speaks the request model may not reach: any policy language.
+const NO_LANGUAGE: &[&str] = &[
+    "permguard-languages",
+    "permguard-language-cedar",
+    "permguard-language-rego",
+    "permguard-language-dogwood",
+    "cedar-policy",
+    "cedar-policy-core",
+    "regorus",
+    "jsonschema",
+    "dogwood-language",
 ];
 
 /// What the Control Plane's domain may not reach: the server stack, and the Authority Plane its

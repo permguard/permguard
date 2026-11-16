@@ -27,7 +27,7 @@
 //! It does **not** fetch the discovery document to find out where to post. It is a *versioned*
 //! client: it implements `permguard.api.pdp.native.v1`, and the paths of that interface are part of what
 //! `v1` means — they come from the same constants the server mounts its routes from, in
-//! [`permguard_languages::request`], so the two cannot drift apart. A round trip to be told a
+//! [`permguard_language_core::request`], so the two cannot drift apart. A round trip to be told a
 //! constant it already links against would buy nothing, and following a URL out of a document
 //! would mean deciding what to do when that URL points at another origin.
 //!
@@ -131,9 +131,9 @@ impl Pdp for HttpPdp {
             .and_then(Value::as_array)
             .is_some_and(|evaluations| !evaluations.is_empty())
         {
-            permguard_languages::request::EVALUATIONS_PATH
+            permguard_language_core::request::EVALUATIONS_PATH
         } else {
-            permguard_languages::request::EVALUATION_PATH
+            permguard_language_core::request::EVALUATION_PATH
         };
 
         self.call("POST", path, Some(&payload.to_string()))
@@ -144,7 +144,7 @@ impl Pdp for HttpPdp {
         // mount — and cannot keep asking for one it used to.
         self.call(
             "GET",
-            permguard_languages::request::CONFIGURATION_PATH,
+            permguard_language_core::request::CONFIGURATION_PATH,
             None,
         )
     }

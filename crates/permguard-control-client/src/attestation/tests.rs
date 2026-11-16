@@ -14,7 +14,7 @@
 use serde_json::json;
 
 use super::*;
-use permguard_languages::attestation::{request_digest, response_value_digest};
+use permguard_language_core::attestation::{request_digest, response_value_digest};
 use permguard_objects::crypto::suite::SigningKey;
 
 /// RFC 8032 section 7.1, test 1: the secret seed.
@@ -78,7 +78,7 @@ fn header() -> Value {
 
 /// `answer` with an attestation over `payload` and `header`, both written as JCS, signed.
 fn signed(answer: &Value, header: &Value, payload: &Value) -> Value {
-    let jcs = |value: &Value| permguard_languages::attestation::jcs(value).expect("JCS");
+    let jcs = |value: &Value| permguard_language_core::attestation::jcs(value).expect("JCS");
     let protected = b64(&jcs(header));
     let payload = b64(&jcs(payload));
     let signature = key()
@@ -141,7 +141,7 @@ fn the_frozen_vectors_are_reproduced_and_verify() {
         let attestation: Value = held["response"]["attestation"].clone();
         let mut answer = held["response"].clone();
         answer.as_object_mut().unwrap().remove("attestation");
-        let sent: permguard_languages::CheckRequest =
+        let sent: permguard_language_core::CheckRequest =
             serde_json::from_value(held["request"].clone()).expect("a request");
         let payload: Payload = serde_json::from_value(held["payload"].clone()).expect("closed");
         assert_eq!(
@@ -154,7 +154,7 @@ fn the_frozen_vectors_are_reproduced_and_verify() {
             response_value_digest(&answer).expect("a digest"),
             "{case}"
         );
-        let protected = b64(&permguard_languages::attestation::jcs(&header()).expect("JCS"));
+        let protected = b64(&permguard_language_core::attestation::jcs(&header()).expect("JCS"));
         assert_eq!(
             attestation["protected"],
             json!(protected),
@@ -615,7 +615,7 @@ fn a_payload_is_its_jcs_bytes_and_names_the_nonce_this_request_sent() {
     let payload = payload_for(&request, &answer);
 
     // Valid JSON of the same value, pretty-printed, and signed: not the payload's one form.
-    let protected = b64(&permguard_languages::attestation::jcs(&header()).expect("JCS"));
+    let protected = b64(&permguard_language_core::attestation::jcs(&header()).expect("JCS"));
     let pretty = b64(serde_json::to_string_pretty(&payload).unwrap().as_bytes());
     let signature = key()
         .sign(format!("{protected}.{pretty}").as_bytes())

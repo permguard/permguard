@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 
 use base64::Engine as _;
 use permguard_core::Jwk;
-use permguard_languages::attestation::{Payload, Policy};
+use permguard_language_core::attestation::{Payload, Policy};
 use permguard_objects::crypto::suite::Suite;
 use serde::Deserialize;
 use serde_json::Value;
@@ -129,16 +129,16 @@ pub fn verify(
     nonces: &mut dyn Nonces,
 ) -> Result<Payload, Refused> {
     // Strict JSON both ways: one value, no duplicated member at any level.
-    let sent = permguard_languages::attestation::strict_json(request).map_err(|error| {
+    let sent = permguard_language_core::attestation::strict_json(request).map_err(|error| {
         failed_at(
             "request_digest",
             format!("the request is not strict JSON: {error}"),
         )
     })?;
-    let sent: permguard_languages::CheckRequest = serde_json::from_value(sent)
+    let sent: permguard_language_core::CheckRequest = serde_json::from_value(sent)
         .map_err(|error| failed_at("request_digest", format!("the request is not one: {error}")))?;
     let mut received =
-        permguard_languages::attestation::strict_json(response).map_err(|error| {
+        permguard_language_core::attestation::strict_json(response).map_err(|error| {
             failed_at(
                 "response",
                 format!("the response is not strict JSON: {error}"),
@@ -165,7 +165,7 @@ pub fn verify(
     let signature = decoded(&flattened.signature)?;
 
     // The header: exactly its JCS bytes, closed, this type, this algorithm.
-    let header = permguard_languages::attestation::canonical_json(&protected)
+    let header = permguard_language_core::attestation::canonical_json(&protected)
         .map_err(|error| failed_at("header", format!("not a JCS object: {error}")))?;
     let header: Header = serde_json::from_value(header)
         .map_err(|error| failed_at("header", format!("not the closed header: {error}")))?;
@@ -219,7 +219,7 @@ pub fn verify(
         .map_err(|error| failed_at("signature", error.to_string()))?;
 
     // The payload: its JCS bytes, closed, every form exact.
-    let payload = permguard_languages::attestation::canonical_json(&payload_bytes)
+    let payload = permguard_language_core::attestation::canonical_json(&payload_bytes)
         .map_err(|error| failed_at("payload", format!("not a JCS object: {error}")))?;
     let payload: Payload = serde_json::from_value(payload)
         .map_err(|error| failed_at("payload", format!("not the closed payload: {error}")))?;
@@ -233,7 +233,7 @@ pub fn verify(
             format!("addressed to `{}`", payload.audience),
         ));
     }
-    let request_digest = permguard_languages::attestation::request_digest(&sent)
+    let request_digest = permguard_language_core::attestation::request_digest(&sent)
         .map_err(|error| failed_at("request_digest", error.to_string()))?;
     if payload.request_digest != request_digest {
         return Err(failed_at(
@@ -247,7 +247,7 @@ pub fn verify(
             "the payload names another nonce than the one sent",
         ));
     }
-    let response_digest = permguard_languages::attestation::response_value_digest(&received)
+    let response_digest = permguard_language_core::attestation::response_value_digest(&received)
         .map_err(|error| failed_at("response_digest", error.to_string()))?;
     if payload.response_digest != response_digest {
         return Err(failed_at(
@@ -281,9 +281,9 @@ pub fn verify(
     }
 
     // The lifetime: no longer than advertised, and current within the advertised skew.
-    let issued = permguard_languages::attestation::instant(&payload.issued_at, "issued_at")
+    let issued = permguard_language_core::attestation::instant(&payload.issued_at, "issued_at")
         .map_err(|error| failed_at("lifetime", error))?;
-    let expires = permguard_languages::attestation::instant(&payload.expires_at, "expires_at")
+    let expires = permguard_language_core::attestation::instant(&payload.expires_at, "expires_at")
         .map_err(|error| failed_at("lifetime", error))?;
     let skew = i64::from(expected.clock_skew_seconds);
     if expires - issued > i64::from(expected.validity_seconds) {

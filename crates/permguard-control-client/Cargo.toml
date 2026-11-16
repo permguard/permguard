@@ -26,7 +26,9 @@ permguard-core.workspace = true
 # The batch a shipper sends: one definition, so producer and receiver render it identically.
 permguard-events.workspace = true
 permguard-host.workspace = true
-permguard-languages.workspace = true
+# The request model, its attestation and the temporal wire types: the language contracts, which
+# link no engine, so a client compiles no policy language to send a request.
+permguard-language-core.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 base64.workspace = true

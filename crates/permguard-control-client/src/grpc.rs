@@ -1521,7 +1521,7 @@ pub(crate) fn header_json(
 ///
 /// # One validation, not two
 ///
-/// The payload is first read into `permguard_languages::request::CheckRequest` — **the very type
+/// The payload is first read into `permguard_language_core::request::CheckRequest` — **the very type
 /// the data plane deserializes an HTTP body into** — and only then mapped onto the generated
 /// message. That ordering is the whole point. This function used to walk the JSON itself, and a
 /// hand-written walk is partial by construction: it answered a payload it could not represent by
@@ -1535,9 +1535,9 @@ pub(crate) fn header_json(
 /// so an integer past 2^53 cannot cross and come back as itself.
 fn request_of(
     payload: &serde_json::Value,
-) -> Result<pdp::EvaluateRequest, permguard_languages::Malformed> {
-    let request: permguard_languages::CheckRequest = serde_json::from_value(payload.clone())
-        .map_err(|error| permguard_languages::Malformed {
+) -> Result<pdp::EvaluateRequest, permguard_language_core::Malformed> {
+    let request: permguard_language_core::CheckRequest = serde_json::from_value(payload.clone())
+        .map_err(|error| permguard_language_core::Malformed {
             code: permguard_core::codes::notp::PAYLOAD_MALFORMED,
             message: error.to_string(),
         })?;
@@ -1548,14 +1548,16 @@ fn request_of(
 
     // `to_proto` fails only on a number the transport cannot carry exactly: refused with the
     // code both servers answer for it (WP-7.5b, IFACE-06), so the client says what REST says.
-    to_proto(&request).map_err(|message| permguard_languages::Malformed {
+    to_proto(&request).map_err(|message| permguard_language_core::Malformed {
         code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
         message,
     })
 }
 
 /// The generated message a contract request means. Total, and fallible only on numbers.
-fn to_proto(request: &permguard_languages::CheckRequest) -> Result<pdp::EvaluateRequest, String> {
+fn to_proto(
+    request: &permguard_language_core::CheckRequest,
+) -> Result<pdp::EvaluateRequest, String> {
     Ok(pdp::EvaluateRequest {
         zone: text(&request.zone),
         ledger: text(&request.ledger),
@@ -1651,7 +1653,7 @@ pub(crate) fn structure(
 }
 
 fn entity_of(
-    entity: Option<&permguard_languages::request::EntityBody>,
+    entity: Option<&permguard_language_core::request::EntityBody>,
 ) -> Result<Option<pdp::Entity>, String> {
     let Some(entity) = entity else {
         return Ok(None);
@@ -1665,7 +1667,7 @@ fn entity_of(
 }
 
 fn action_of(
-    action: Option<&permguard_languages::request::ActionBody>,
+    action: Option<&permguard_language_core::request::ActionBody>,
 ) -> Result<Option<pdp::Action>, String> {
     let Some(action) = action else {
         return Ok(None);
@@ -1682,7 +1684,7 @@ fn action_of(
 /// Carried whole, because a transport that dropped one would change which world a partition
 /// decides against — the same request answered differently depending on how it travelled.
 fn inputs_of(
-    inputs: &std::collections::BTreeMap<String, permguard_languages::PartitionInputBody>,
+    inputs: &std::collections::BTreeMap<String, permguard_language_core::PartitionInputBody>,
 ) -> Result<std::collections::HashMap<String, pdp::PartitionInput>, String> {
     inputs
         .iter()
@@ -1699,7 +1701,7 @@ fn inputs_of(
 }
 
 fn evaluation_of(
-    evaluation: &permguard_languages::request::EvaluationBody,
+    evaluation: &permguard_language_core::request::EvaluationBody,
 ) -> Result<pdp::Evaluation, String> {
     Ok(pdp::Evaluation {
         subject: entity_of(evaluation.subject.as_ref())?,
@@ -1719,19 +1721,19 @@ fn evaluation_of(
     })
 }
 
-fn semantic_of(request: &permguard_languages::CheckRequest) -> i32 {
+fn semantic_of(request: &permguard_language_core::CheckRequest) -> i32 {
     match request
         .options
         .as_ref()
         .and_then(|options| options.evaluations_semantic)
     {
-        Some(permguard_languages::Semantic::DenyOnFirstDeny) => {
+        Some(permguard_language_core::Semantic::DenyOnFirstDeny) => {
             pdp::EvaluationsSemantic::DenyOnFirstDeny as i32
         }
-        Some(permguard_languages::Semantic::PermitOnFirstPermit) => {
+        Some(permguard_language_core::Semantic::PermitOnFirstPermit) => {
             pdp::EvaluationsSemantic::PermitOnFirstPermit as i32
         }
-        Some(permguard_languages::Semantic::ExecuteAll) => {
+        Some(permguard_language_core::Semantic::ExecuteAll) => {
             pdp::EvaluationsSemantic::ExecuteAll as i32
         }
         // Absent, which the server reads as the default. An unknown spelling never reaches here:

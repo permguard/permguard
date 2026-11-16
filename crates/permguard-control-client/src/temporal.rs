@@ -3,7 +3,7 @@
 
 //! Client for the stateful PDP interface, over either transport.
 
-use permguard_languages::temporal::{
+use permguard_language_core::temporal::{
     HistoryScope, Outcome, PartitionEvaluation, Reason, SubmitRequest, SubmitResponse, Watermark,
 };
 use serde_json::Value;
@@ -92,7 +92,7 @@ impl TemporalPdp for HttpTemporal {
         })?;
         let answer = self.call(
             "POST",
-            permguard_languages::temporal::SUBMISSION_PATH,
+            permguard_language_core::temporal::SUBMISSION_PATH,
             Some(&payload.to_string()),
         )?;
 
@@ -102,7 +102,7 @@ impl TemporalPdp for HttpTemporal {
     fn configuration(&self) -> Result<Value, Failure> {
         self.call(
             "GET",
-            permguard_languages::temporal::CONFIGURATION_PATH,
+            permguard_language_core::temporal::CONFIGURATION_PATH,
             None,
         )
     }
