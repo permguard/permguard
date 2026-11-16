@@ -4371,11 +4371,11 @@ sections:
   "2-security/8-security-authority.md#keys-and-lists-on-a-plane":
     paths:
       - crates/permguard-host/src/authz/authority.rs
-      - crates/permguard-server/src/authority_refresh.rs
+      - crates/permguard-client/src/authority_refresh.rs
     tests:
       - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
       - crates/permguard-host/src/authz/authority.rs::an_announced_issuer_and_an_unknown_key_are_taken_in_turn
-      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+      - crates/permguard-client/src/authority_refresh.rs::a_list_id_names_no_path
     gaps:
       - "open (test): the fetch from authority.url over HTTPS, its schedule and its metrics are proven by the lab, not by a Rust test"
   "2-security/8-security-authority.md#profiles":
@@ -4412,11 +4412,11 @@ sections:
   "2-security/9-security-token-status.md#delivery":
     paths:
       - crates/permguard-authority-plane-server/src/http.rs
-      - crates/permguard-server/src/authority_refresh.rs
+      - crates/permguard-client/src/authority_refresh.rs
       - crates/permguard-host/src/authz/authority.rs
     tests:
       - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
-      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+      - crates/permguard-client/src/authority_refresh.rs::a_list_id_names_no_path
     gaps:
       - "open (test): the fetch of the lists over HTTPS on a Plane without the Authority Plane is proven by the lab, not by a Rust test"
   "2-security/9-security-token-status.md#checking-a-token":
@@ -4436,9 +4436,9 @@ sections:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_assertion
   "2-security/9-security-token-status.md#signals":
     paths:
-      - crates/permguard-server/src/authority_refresh.rs
+      - crates/permguard-client/src/authority_refresh.rs
     tests:
-      - crates/permguard-server/src/authority_refresh.rs::a_list_id_names_no_path
+      - crates/permguard-client/src/authority_refresh.rs::a_list_id_names_no_path
     gaps:
       - "open (test): the age, expiry, failure and rejection metrics are read from the lab's Prometheus, not by a Rust test"
   "2-security/10-security-threat-model.md#assets":

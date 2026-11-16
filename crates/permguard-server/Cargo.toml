@@ -22,6 +22,8 @@ base64.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
+# The Authority surface's refresh of the key set and status lists a Host verifies tokens with.
+permguard-client = { workspace = true, features = ["authority-refresh"] }
 permguard-core.workspace = true
 # The volume's ownership: the claim `serve` takes first, and the `volume claim` command.
 permguard-host.workspace = true
@@ -37,7 +39,7 @@ permguard-telemetry.workspace = true
 permguard-transport.workspace = true
 # The Host listener's gRPC half, `permguard.host.v1`, compiled by `build.rs` from `contracts/proto`.
 # The contracts this package speaks, generated once for the workspace.
-permguard-contracts = { workspace = true, features = ["host-client", "host-server", "authority-client", "authority-server", "health-client", "health-server"] }
+permguard-contracts = { workspace = true, features = ["host-client", "host-server", "health-client", "health-server"] }
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true

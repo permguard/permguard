@@ -73,7 +73,14 @@ pub mod http;
 pub(crate) mod rest;
 
 // The generated contracts the gRPC transport speaks, where the surfaces name them.
-#[cfg(all(feature = "grpc", any(feature = "authority", feature = "documents")))]
+#[cfg(all(
+    feature = "grpc",
+    any(
+        feature = "authority",
+        feature = "documents",
+        feature = "authority-refresh"
+    )
+))]
 pub mod authority_v1;
 #[cfg(all(feature = "grpc", feature = "host"))]
 pub mod host_v1;
@@ -87,6 +94,8 @@ pub mod v1;
 pub mod attestation;
 #[cfg(feature = "authority")]
 pub mod authority;
+#[cfg(feature = "authority-refresh")]
+pub mod authority_refresh;
 #[cfg(feature = "catalog")]
 pub mod catalog;
 #[cfg(feature = "notp")]

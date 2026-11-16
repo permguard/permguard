@@ -66,13 +66,6 @@ pub const LISTS_REFUSED: permguard_core::Metric = permguard_core::Metric::counte
     "Status list tokens this Host refused, by reason: signature, rollback, expired, size.",
 );
 
-/// The generated `permguard.authority.v1`: the `TokenService` client a Host fetches the keys and
-/// lists with over gRPC, and the server half its tests stand up.
-#[allow(clippy::all, clippy::pedantic, missing_docs)]
-pub mod authority_v1 {
-    pub use permguard_contracts::authority::v1::*;
-}
-
 /// Where the Authority Plane is.
 #[derive(Debug, Clone)]
 pub struct Source {
@@ -262,7 +255,7 @@ impl Fetcher {
                     "GetKeys",
                     |mut client| async move {
                         client
-                            .get_keys(authority_v1::GetKeysRequest {})
+                            .get_keys(crate::authority_v1::GetKeysRequest {})
                             .await
                             .map(|answer| answer.into_inner().jwks_json.into_bytes())
                     },
@@ -297,7 +290,7 @@ impl Fetcher {
                     "ListStatusLists",
                     |mut client| async move {
                         client
-                            .list_status_lists(authority_v1::ListStatusListsRequest {})
+                            .list_status_lists(crate::authority_v1::ListStatusListsRequest {})
                             .await
                             .map(|answer| answer.into_inner().lists)
                     },
@@ -331,7 +324,7 @@ impl Fetcher {
                 let id = id.to_owned();
                 let token = grpc(source, tls, max, "GetStatusList", |mut client| async move {
                     client
-                        .get_status_list(authority_v1::GetStatusListRequest { id })
+                        .get_status_list(crate::authority_v1::GetStatusListRequest { id })
                         .await
                         .map(|answer| answer.into_inner().token.into_bytes())
                 })
@@ -364,7 +357,7 @@ async fn grpc<T, F, Fut>(
 ) -> Result<T, String>
 where
     F: FnOnce(
-        authority_v1::token_service_client::TokenServiceClient<tonic::transport::Channel>,
+        crate::authority_v1::token_service_client::TokenServiceClient<tonic::transport::Channel>,
     ) -> Fut,
     Fut: std::future::Future<Output = Result<T, tonic::Status>>,
 {
@@ -412,7 +405,7 @@ where
         }
         .map_err(|error| format!("connecting to {}: {error}", source.url))?;
         // The answer's bound, with room for the message's own framing.
-        let client = authority_v1::token_service_client::TokenServiceClient::new(channel)
+        let client = crate::authority_v1::token_service_client::TokenServiceClient::new(channel)
             .max_decoding_message_size(max + 1024);
         call(client)
             .await
@@ -867,36 +860,36 @@ mod tests {
     type Answer<T> = Result<tonic::Response<T>, tonic::Status>;
 
     #[tonic::async_trait]
-    impl authority_v1::token_service_server::TokenService for Tokens {
+    impl crate::authority_v1::token_service_server::TokenService for Tokens {
         async fn get_metadata(
             &self,
-            _: tonic::Request<authority_v1::GetMetadataRequest>,
-        ) -> Answer<authority_v1::GetMetadataResponse> {
+            _: tonic::Request<crate::authority_v1::GetMetadataRequest>,
+        ) -> Answer<crate::authority_v1::GetMetadataResponse> {
             Err(tonic::Status::unimplemented("not here"))
         }
 
         async fn issue_token(
             &self,
-            _: tonic::Request<authority_v1::IssueTokenRequest>,
-        ) -> Answer<authority_v1::IssueTokenResponse> {
+            _: tonic::Request<crate::authority_v1::IssueTokenRequest>,
+        ) -> Answer<crate::authority_v1::IssueTokenResponse> {
             Err(tonic::Status::unimplemented("not here"))
         }
 
         async fn get_keys(
             &self,
-            _: tonic::Request<authority_v1::GetKeysRequest>,
-        ) -> Answer<authority_v1::GetKeysResponse> {
-            Ok(tonic::Response::new(authority_v1::GetKeysResponse {
+            _: tonic::Request<crate::authority_v1::GetKeysRequest>,
+        ) -> Answer<crate::authority_v1::GetKeysResponse> {
+            Ok(tonic::Response::new(crate::authority_v1::GetKeysResponse {
                 jwks_json: self.0.key_set().to_string(),
             }))
         }
 
         async fn list_status_lists(
             &self,
-            _: tonic::Request<authority_v1::ListStatusListsRequest>,
-        ) -> Answer<authority_v1::ListStatusListsResponse> {
+            _: tonic::Request<crate::authority_v1::ListStatusListsRequest>,
+        ) -> Answer<crate::authority_v1::ListStatusListsResponse> {
             Ok(tonic::Response::new(
-                authority_v1::ListStatusListsResponse {
+                crate::authority_v1::ListStatusListsResponse {
                     lists: vec![LIST_ID.to_owned()],
                 },
             ))
@@ -904,27 +897,29 @@ mod tests {
 
         async fn get_status_list(
             &self,
-            request: tonic::Request<authority_v1::GetStatusListRequest>,
-        ) -> Answer<authority_v1::GetStatusListResponse> {
+            request: tonic::Request<crate::authority_v1::GetStatusListRequest>,
+        ) -> Answer<crate::authority_v1::GetStatusListResponse> {
             if request.get_ref().id != LIST_ID {
                 return Err(tonic::Status::not_found("no such list"));
             }
-            Ok(tonic::Response::new(authority_v1::GetStatusListResponse {
-                token: self.0.list_token(),
-            }))
+            Ok(tonic::Response::new(
+                crate::authority_v1::GetStatusListResponse {
+                    token: self.0.list_token(),
+                },
+            ))
         }
 
         async fn list_tokens(
             &self,
-            _: tonic::Request<authority_v1::ListTokensRequest>,
-        ) -> Answer<authority_v1::ListTokensResponse> {
+            _: tonic::Request<crate::authority_v1::ListTokensRequest>,
+        ) -> Answer<crate::authority_v1::ListTokensResponse> {
             Err(tonic::Status::unimplemented("not here"))
         }
 
         async fn revoke_token(
             &self,
-            _: tonic::Request<authority_v1::RevokeTokenRequest>,
-        ) -> Answer<authority_v1::RevokeTokenResponse> {
+            _: tonic::Request<crate::authority_v1::RevokeTokenRequest>,
+        ) -> Answer<crate::authority_v1::RevokeTokenResponse> {
             Err(tonic::Status::unimplemented("not here"))
         }
     }
@@ -939,7 +934,7 @@ mod tests {
         config.alpn_protocols = vec![b"h2".to_vec()];
         let rustls = axum_server::tls_rustls::RustlsConfig::from_config(Arc::new(config));
         let routes = tonic::service::Routes::new(
-            authority_v1::token_service_server::TokenServiceServer::new(Tokens(authority)),
+            crate::authority_v1::token_service_server::TokenServiceServer::new(Tokens(authority)),
         )
         .into_axum_router();
         let server = axum_server::from_tcp_rustls(listener, rustls).expect("the TLS server");

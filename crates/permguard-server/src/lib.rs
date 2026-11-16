@@ -13,7 +13,9 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod app;
-pub mod authority_refresh;
+/// The Authority Plane's key set and status lists, fetched by the client library's Authority
+/// surface (RD-11); named here where the composition wires it.
+pub use permguard_client::authority_refresh;
 pub mod banner;
 pub mod checkpoints;
 pub mod command;

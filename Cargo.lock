@@ -2482,10 +2482,17 @@ dependencies = [
 name = "permguard-client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
+ "axum",
+ "axum-server",
  "base64 0.23.1",
+ "bytes",
  "futures-core",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "permguard-client",
  "permguard-contracts",
  "permguard-core",
@@ -2504,8 +2511,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
  "tonic",
  "tonic-prost",
+ "tower",
+ "tracing",
  "zeroize",
 ]
 
@@ -2904,6 +2914,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "permguard-client",
  "permguard-conformance",
  "permguard-contracts",
  "permguard-core",

@@ -36,6 +36,21 @@ temporal = []
 host = ["permguard-contracts?/host-client"]
 authority = ["permguard-contracts?/authority-client"]
 documents = ["permguard-contracts?/authority-client"]
+# The Authority Plane's key set and status lists, fetched into the trust a Host verifies tokens
+# with: one task, never a request. Over REST and over gRPC, the scheme of the source deciding.
+authority-refresh = [
+    "http",
+    "grpc",
+    "permguard-contracts?/authority-client",
+    "dep:anyhow",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:http-body-util",
+    "dep:tokio-rustls",
+    "dep:tracing",
+    "dep:bytes",
+    "dep:tower",
+]
 # Every surface over both transports: what the command line and Permguard Admin link.
 full = [
     "http",
@@ -49,6 +64,7 @@ full = [
     "host",
     "authority",
     "documents",
+    "authority-refresh",
 ]
 
 [dependencies]
@@ -74,6 +90,15 @@ http.workspace = true
 ring.workspace = true
 rustls.workspace = true
 rustls-native-certs.workspace = true
+# The asynchronous fetch of the Authority refresh.
+anyhow = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+http-body-util = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
+tower = { workspace = true, features = ["util"], optional = true }
 serde = { workspace = true }
 serde_json.workspace = true
 tokio = { workspace = true, optional = true }
@@ -96,4 +121,8 @@ permguard-host = { workspace = true, features = ["test-support"] }
 async-stream.workspace = true
 futures-core.workspace = true
 rcgen.workspace = true
+# The fake Authority Plane the refresh is tested against, over REST and gRPC.
+axum.workspace = true
+axum-server.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 
