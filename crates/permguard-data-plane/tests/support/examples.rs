@@ -42,6 +42,9 @@ pub const EXAMPLES: &[&str] = &["basics", "release-pipeline"];
 pub struct Case {
     pub name: String,
     pub request: String,
+    /// The occurrences that happened first, in order: a temporal case is a claim about order.
+    #[serde(default)]
+    pub events: Vec<String>,
     #[serde(default)]
     pub profile: Option<String>,
     pub expect: Expectation,
@@ -111,6 +114,8 @@ pub fn manifest(name: &str) -> Manifest {
 /// on it. The alias is the identity here too, so an assertion can name a policy
 /// the way the README does instead of by a digest.
 pub struct Policy {
+    /// The file it was read from, by name.
+    pub file: String,
     pub alias: String,
     pub media_type: &'static str,
     pub source: Vec<u8>,
@@ -141,9 +146,20 @@ pub fn split(source: &str, extension: &str) -> Vec<String> {
     found
 }
 
-/// `@alias("x")` for Cedar, `#   alias: x` in the Rego metadata header. The
-/// same two places the CLI reads them from.
+/// `@alias("x")` for Cedar, `#   alias: x` in the Rego metadata header, `@id("x")` for Dogwood.
+/// The same places the CLI reads them from.
 pub fn alias_of(path: &Path, source: &str) -> String {
+    if path.extension().is_some_and(|extension| extension == "dw") {
+        return match source.split("@id(\"").nth(1) {
+            Some(rest) => rest.split('"').next().expect("an id is closed").to_owned(),
+            // A reserved artifact, a macro library say, is no policy: named by its file.
+            None => path
+                .file_stem()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("a name")
+                .to_owned(),
+        };
+    }
     if let Some(rest) = source.split("@alias(\"").nth(1) {
         return rest
             .split('"')
@@ -188,6 +204,11 @@ pub fn policies(
         // parse. A Rego module is indivisible, and stays one.
         for text in split(&source, extension) {
             found.push(Policy {
+                file: name
+                    .file_name()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .expect("a name")
+                    .to_owned(),
                 alias: alias_of(&name, &text),
                 media_type,
                 source: text.into_bytes(),
@@ -281,6 +302,18 @@ pub fn provision_manifest(
     zone_id: &str,
     ledger_id: &str,
 ) -> Manifest {
+    provision_named(root, name, manifest, (zone_id, ZONE), (ledger_id, LEDGER))
+}
+
+/// [`provision_manifest`], the zone and the ledger under the names a request addresses them by:
+/// an example whose requests name their store carries its own.
+pub fn provision_named(
+    root: &Path,
+    name: &str,
+    manifest: Manifest,
+    (zone_id, zone_name): (&str, &str),
+    (ledger_id, ledger_name): (&str, &str),
+) -> Manifest {
     let path = root.join(MIRROR_AUTHORITY).join(zone_id).join(ledger_id);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
@@ -314,11 +347,42 @@ pub fn provision_manifest(
         let (extension, media_type) = match language.as_str() {
             "cedar" => ("cedar", registry::MEDIA_TYPE_POLICY_CEDAR),
             "rego" => ("rego", registry::MEDIA_TYPE_POLICY_REGO),
+            "dogwood" => ("dw", permguard_languages::MEDIA_TYPE_POLICY_DOGWOOD),
             other => panic!("the example runs `{other}`, which this test cannot read"),
         };
 
         let mut entries = Vec::new();
-        for policy in policies(name, partition_name, extension, media_type) {
+        // The typed artifacts a partition declares, each under the file name its type reserves:
+        // found by that name, and never read as a policy, whatever its extension.
+        let mut reserved = Vec::new();
+        for contract in &partition.artifacts {
+            let artifact = permguard_languages::artifact::artifact_type(&contract.r#type)
+                .unwrap_or_else(|| panic!("`{}` is a registered artifact", contract.r#type));
+            let Some(file_name) = artifact.canonical_filename() else {
+                continue;
+            };
+            reserved.push(file_name.to_owned());
+            let file = example(name).join(partition_name).join(file_name);
+            if !file.is_file() {
+                assert!(
+                    !contract.required,
+                    "{partition_name} requires `{}` and carries no {file_name}",
+                    contract.r#type
+                );
+                continue;
+            }
+            let source = std::fs::read(&file).expect("the artifact reads");
+            entries.push(TreeEntry {
+                kind: Kind::Blob,
+                digest: put(artifact.media_type(), &source),
+                name: file_name.to_owned(),
+                annotations: BTreeMap::new(),
+            });
+        }
+        for policy in policies(name, partition_name, extension, media_type)
+            .into_iter()
+            .filter(|policy| !reserved.contains(&policy.file))
+        {
             let digest = put(policy.media_type, &policy.source);
             let mut annotations = BTreeMap::new();
             annotations.insert(ANNOTATION_POLICY_ID.to_owned(), policy.alias.clone());
@@ -399,7 +463,7 @@ pub fn provision_manifest(
         predecessors: Vec::new(),
         author: "tests".to_owned(),
         author_at: 1_700_000_000,
-        message: "the release-pipeline example".to_owned(),
+        message: format!("the {name} example"),
     };
     let head = objects::put(
         &store,
@@ -426,9 +490,9 @@ pub fn provision_manifest(
             task: Some(MIRROR_TASK.to_owned()),
             authority: Some(MIRROR_AUTHORITY.to_owned()),
             zone_id: zone_id.to_owned(),
-            zone_name: ZONE.to_owned(),
+            zone_name: zone_name.to_owned(),
             ledger_id: ledger_id.to_owned(),
-            ledger_name: LEDGER.to_owned(),
+            ledger_name: ledger_name.to_owned(),
             server: "http://127.0.0.1:6443".to_owned(),
         },
     )
@@ -465,4 +529,121 @@ pub fn request(example_name: &str, case: &Case) -> wire::CheckRequest {
 
     serde_json::from_value(payload)
         .unwrap_or_else(|error| panic!("{}: not a decision request: {error}", case.name))
+}
+
+/// Seconds since the epoch of a `YYYY-MM-DDTHH:MM:SSZ` instant, as the examples write them.
+fn epoch_of(instant: &str) -> i64 {
+    let number = |range: std::ops::Range<usize>| -> i64 {
+        instant
+            .get(range)
+            .and_then(|digits| digits.parse().ok())
+            .unwrap_or_else(|| panic!("`{instant}` is an instant of the examples"))
+    };
+    let (year, month, day) = (number(0..4), number(5..7), number(8..10));
+    // Days from the civil date, the proleptic Gregorian calendar.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let of_era = year.rem_euclid(400);
+    let of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let days = era * 146_097 + of_era * 365 + of_era / 4 - of_era / 100 + of_year - 719_468;
+    days * 86_400 + number(11..13) * 3_600 + number(14..16) * 60 + number(17..19)
+}
+
+/// The `YYYY-MM-DDTHH:MM:SSZ` instant of seconds since the epoch.
+fn instant_of(epoch: i64) -> String {
+    let days = epoch.div_euclid(86_400);
+    let of_day = epoch.rem_euclid(86_400);
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let of_era = shifted.rem_euclid(146_097);
+    let year_of_era = (of_era - of_era / 1_460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        of_day / 3_600,
+        of_day % 3_600 / 60,
+        of_day % 60
+    )
+}
+
+/// One occurrence of a temporal example's timeline.
+pub struct Occurrence {
+    /// The file it was read from, relative to the example's cases.
+    pub file: String,
+    /// The submission, its instant moved as the whole timeline was.
+    pub submission: Value,
+    /// What the example's cases say it decides; `None` for an occurrence that is history alone.
+    pub decision: Option<bool>,
+}
+
+/// A temporal example as one history: every occurrence its cases name, once, in the order they
+/// happened, with what each decides where a case says so.
+///
+/// The fixtures keep fixed instants, for reproducible offline cases; a live plane accepts an
+/// occurrence only near its own clock. So the whole timeline is moved, every interval kept, to end
+/// `ends_before_now` seconds before now: the order and the windows are the example's.
+pub fn timeline(name: &str, ends_before_now: i64) -> Vec<Occurrence> {
+    let mut decisions: BTreeMap<String, Option<bool>> = BTreeMap::new();
+    for (_, case) in cases(name) {
+        for event in &case.events {
+            decisions.entry(event.clone()).or_insert(None);
+        }
+        let Some(wanted) = case.expect.decision.as_deref() else {
+            continue;
+        };
+        let held = decisions.entry(case.request.clone()).or_insert(None);
+        let wanted = Some(wanted == "permit");
+        assert!(
+            held.is_none() || *held == wanted,
+            "{name}: two cases decide {} differently",
+            case.request
+        );
+        *held = wanted;
+    }
+
+    let mut found: Vec<(i64, Occurrence)> = decisions
+        .into_iter()
+        .map(|(file, decision)| {
+            let path = example(name).join("tests").join(&file);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("{} is readable", path.display()));
+            let submission: Value = serde_json::from_str(&text).expect("an occurrence is JSON");
+            let at = submission["event"]["data"]["occurred_at"]
+                .as_str()
+                .map(epoch_of)
+                .unwrap_or_else(|| panic!("{file} states when it occurred"));
+            (
+                at,
+                Occurrence {
+                    file,
+                    submission,
+                    decision,
+                },
+            )
+        })
+        .collect();
+    found.sort_by_key(|(at, _)| *at);
+
+    let last = found.last().map_or(0, |(at, _)| *at);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock after the epoch")
+        .as_secs() as i64;
+    let moved = now - ends_before_now - last;
+    found
+        .into_iter()
+        .map(|(at, mut occurrence)| {
+            occurrence.submission["event"]["data"]["occurred_at"] =
+                Value::String(instant_of(at + moved));
+            occurrence
+        })
+        .collect()
 }

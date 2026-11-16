@@ -63,6 +63,7 @@ is cut.
   `fixtures/embedded-application` is an application of its own workspace that names `permguard-data-plane` alone; `scripts/check-embedded-fixture.sh`, run by `task test:profiles`, resolves, builds and tests it with no language, with each one alone and with the three.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
+  The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
 - **The command line links no server.**
   Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
   The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.

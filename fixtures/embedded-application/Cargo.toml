@@ -35,6 +35,8 @@ permguard-std = { path = "../../crates/permguard-std", default-features = false,
 # The repository's examples as verified mirrors, read by the Data Plane's own test support.
 # No language is named here: the tests decide with what the profile selected, and no more.
 permguard-languages = { path = "../../crates/permguard-languages", default-features = false }
+# The name of the event history's stream, which the composed Host serves with a producer of its own.
+permguard-events = { path = "../../crates/permguard-events", features = ["stream"] }
 permguard-mirror = { path = "../../crates/permguard-mirror" }
 permguard-objects = { path = "../../crates/permguard-objects" }
 serde = { version = "1", features = ["derive"] }

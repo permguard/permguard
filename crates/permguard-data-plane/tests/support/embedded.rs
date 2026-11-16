@@ -106,12 +106,19 @@ impl StreamAppender for Recording {
     }
 }
 
-/// The engine hands the one recording appender to every stream it serves.
-pub struct Engine(Arc<Recording>);
+/// The engine hands the one recording appender to every stream it serves but the event history's,
+/// whose producer keeps the floor a loaded window reads from: the Plane refuses one that does not.
+pub struct Engine {
+    recording: Arc<Recording>,
+    events: Arc<permguard_data_plane::temporal::testing::MemoryProducer>,
+}
 
 impl StreamEngine for Engine {
-    fn producer(&self, _: &str) -> Option<Arc<dyn StreamAppender>> {
-        Some(Arc::clone(&self.0) as Arc<dyn StreamAppender>)
+    fn producer(&self, stream: &str) -> Option<Arc<dyn StreamAppender>> {
+        if stream == permguard_events::stream::STREAM {
+            return Some(Arc::clone(&self.events) as Arc<dyn StreamAppender>);
+        }
+        Some(Arc::clone(&self.recording) as Arc<dyn StreamAppender>)
     }
 }
 
@@ -162,7 +169,10 @@ pub fn host(streams: Arc<Recording>) -> Host {
     );
     Host::builder()
         .host_id([1; 16])
-        .streams(Arc::new(Engine(streams)))
+        .streams(Arc::new(Engine {
+            recording: streams,
+            events: Arc::default(),
+        }))
         .ring(DATA_ATTEST, Arc::new(Ring))
         .zone_key(ZoneHandle::coordinated(
             ZonePurpose::DecisionCommitment,
