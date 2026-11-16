@@ -67,8 +67,8 @@ use regorus::utils::limits::ExecutionTimerConfig;
 use regorus::{Engine, Value as RegoValue};
 use serde_json::{Value, json};
 
+use permguard_evaluator::evaluate::{Evaluating, Evaluator};
 use permguard_language_core::evaluate::{Query, StoredPolicy, Verdict};
-use permguard_pdp_core::evaluate::{Evaluating, Evaluator};
 
 use super::Rego;
 

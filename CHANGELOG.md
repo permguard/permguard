@@ -35,7 +35,7 @@ is cut.
   Every binary, image, archive and shipped configuration keeps its name and its place.
   `task plane:run` and `make plane-run` build the server package accordingly.
 - **Each policy language is a package, and a build chooses the languages it carries.**
-  `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-pdp-core` holds the evaluating half.
+  `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-evaluator` holds the evaluating half.
   `permguard-languages` is the catalogue, with one feature per language (`cedar`, `rego`, `dogwood`, all on by default) and an `evaluate` feature for the evaluating halves, the routing and the supervised worker; every path it offered before is where it was.
   The Control Plane builds every language without `evaluate`, so it validates what a push carries and links no evaluating half: Dogwood validates a partition with the analysis its evaluating half is built on.
   A build with one language runs that language's golden vectors and corpora without the other engines, and its startup check accepts it: the catalogue offers a manifest only the inputs of the languages it carries (`task test:profiles` runs every profile, each built apart).
@@ -64,6 +64,8 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **The decision point's kernel is `permguard-evaluator`.**
+  `permguard-pdp-core` is renamed, with every consumer: one package, no shim, the same code.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.

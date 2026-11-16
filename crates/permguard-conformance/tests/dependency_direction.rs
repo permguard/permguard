@@ -178,8 +178,8 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-languages", SERVER_STACK),
     ("permguard-language-core", LANGUAGE_CORE),
     // The decision point's evaluating half links no engine either: the engines link it.
-    ("permguard-pdp-core", LANGUAGE_CORE),
-    ("permguard-language-core", &["permguard-pdp-core"]),
+    ("permguard-evaluator", LANGUAGE_CORE),
+    ("permguard-language-core", &["permguard-evaluator"]),
     ("permguard-language-cedar", CEDAR_ENGINE),
     ("permguard-language-rego", REGO_ENGINE),
     ("permguard-language-dogwood", DOGWOOD_ENGINE),
@@ -201,7 +201,7 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-sync", NO_LANGUAGE),
     (
         "permguard-sync",
-        &["permguard-pdp-core", "permguard-language-core"],
+        &["permguard-evaluator", "permguard-language-core"],
     ),
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
@@ -224,7 +224,7 @@ const LAYERS: &[(&str, &[&str])] = &[
         &["permguard-core", "permguard-host", "permguard-objects"],
     ),
     ("permguard-language-core", EVIDENCE_RUNTIME),
-    ("permguard-pdp-core", EVIDENCE_RUNTIME),
+    ("permguard-evaluator", EVIDENCE_RUNTIME),
     // The dedicated evaluation worker evaluates and nothing else: no server, no listener, no
     // client, no Host runtime and no async runtime of its own.
     ("permguard-evaluation-worker", SERVER_STACK),
@@ -464,7 +464,7 @@ fn a_build_links_only_the_engines_it_carries() {
                 "regorus",
                 "jsonschema",
                 "dogwood-language",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
@@ -476,12 +476,12 @@ fn a_build_links_only_the_engines_it_carries() {
                 "cedar-policy",
                 "cedar-policy-core",
                 "dogwood-language",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
             "cedar,rego,evaluate",
-            &["permguard-pdp-core", "regorus", "cedar-policy"][..],
+            &["permguard-evaluator", "regorus", "cedar-policy"][..],
             &["permguard-language-dogwood", "dogwood-language"][..],
         ),
         (
@@ -492,12 +492,12 @@ fn a_build_links_only_the_engines_it_carries() {
                 "permguard-language-rego",
                 "regorus",
                 "jsonschema",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
             "dogwood,evaluate",
-            &["permguard-language-dogwood", "permguard-pdp-core"][..],
+            &["permguard-language-dogwood", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-rego",
@@ -572,7 +572,7 @@ fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
 
 /// The Control Plane validates what a push carries and evaluates nothing (RD-6): its own build, the
 /// domain's and the server's, carries every language and neither the decision point's evaluating
-/// half (`permguard-pdp-core`) nor the `evaluate` feature that brings it, the routing and the
+/// half (`permguard-evaluator`) nor the `evaluate` feature that brings it, the routing and the
 /// supervised worker. The Data Plane's build carries both.
 #[test]
 fn the_control_plane_validates_without_evaluating() {
@@ -580,12 +580,12 @@ fn the_control_plane_validates_without_evaluating() {
     let data = features_of("permguard-data-plane-server");
     let mut problems = Vec::new();
     for package in ["permguard-control-plane", "permguard-control-plane-server"] {
-        if features_of(package).contains_key("permguard-pdp-core") {
-            problems.push(format!("{package} links permguard-pdp-core"));
+        if features_of(package).contains_key("permguard-evaluator") {
+            problems.push(format!("{package} links permguard-evaluator"));
         }
     }
-    if !data.contains_key("permguard-pdp-core") {
-        problems.push("the Data Plane does not link permguard-pdp-core".to_owned());
+    if !data.contains_key("permguard-evaluator") {
+        problems.push("the Data Plane does not link permguard-evaluator".to_owned());
     }
     for package in [
         "permguard-languages",
@@ -871,7 +871,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
     for (features, carried, absent) in [
         (
             "",
-            &["permguard-language-core", "permguard-pdp-core"][..],
+            &["permguard-language-core", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-rego",
@@ -886,7 +886,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
             &[
                 "permguard-language-cedar",
                 "cedar-policy",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
             &[
                 "permguard-language-rego",
@@ -898,7 +898,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
         ),
         (
             "rego",
-            &["permguard-language-rego", "regorus", "permguard-pdp-core"][..],
+            &["permguard-language-rego", "regorus", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-dogwood",

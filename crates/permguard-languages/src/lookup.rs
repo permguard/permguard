@@ -45,7 +45,7 @@ fn rank(name: &str) -> (usize, &str) {
 /// The engines an application registered, until the catalogue is sealed.
 #[cfg(feature = "evaluate")]
 struct Pending {
-    engines: Vec<permguard_pdp_core::Engine>,
+    engines: Vec<permguard_evaluator::Engine>,
     sealed: bool,
 }
 
@@ -103,7 +103,7 @@ fn built_in() -> Vec<&'static dyn Language> {
 /// before anything is loaded or decided: once the catalogue was read it is sealed. A language
 /// already held is refused, whoever put it there.
 #[cfg(feature = "evaluate")]
-pub fn register(engine: permguard_pdp_core::Engine) -> Result<(), Unregistered> {
+pub fn register(engine: permguard_evaluator::Engine) -> Result<(), Unregistered> {
     let mut pending = PENDING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -124,13 +124,13 @@ pub fn register(engine: permguard_pdp_core::Engine) -> Result<(), Unregistered> 
 struct Catalogue {
     languages: Vec<&'static dyn Language>,
     #[cfg(feature = "evaluate")]
-    evaluators: Vec<(&'static str, &'static dyn permguard_pdp_core::Evaluating)>,
+    evaluators: Vec<(&'static str, &'static dyn permguard_evaluator::Evaluating)>,
 }
 
 static CATALOGUE: LazyLock<Catalogue> = LazyLock::new(|| {
     let mut languages = built_in();
     #[cfg(feature = "evaluate")]
-    let mut evaluators: Vec<(&'static str, &'static dyn permguard_pdp_core::Evaluating)> = vec![
+    let mut evaluators: Vec<(&'static str, &'static dyn permguard_evaluator::Evaluating)> = vec![
         #[cfg(feature = "cedar")]
         (
             permguard_language_cedar::NAME,
@@ -187,13 +187,13 @@ pub fn languages() -> &'static [&'static dyn Language] {
 /// Only with the `evaluate` feature: a build that validates, as the Control Plane's ingest does,
 /// carries no evaluator. Each is behind the same panic boundary as its language.
 #[cfg(feature = "evaluate")]
-pub fn evaluators() -> &'static [(&'static str, &'static dyn permguard_pdp_core::Evaluating)] {
+pub fn evaluators() -> &'static [(&'static str, &'static dyn permguard_evaluator::Evaluating)] {
     CATALOGUE.evaluators.as_slice()
 }
 
 /// The evaluating half of the language `name`, when this build carries and evaluates it.
 #[cfg(feature = "evaluate")]
-pub fn evaluating(name: &str) -> Option<&'static dyn permguard_pdp_core::Evaluating> {
+pub fn evaluating(name: &str) -> Option<&'static dyn permguard_evaluator::Evaluating> {
     evaluators()
         .iter()
         .find(|(held, _)| *held == name)

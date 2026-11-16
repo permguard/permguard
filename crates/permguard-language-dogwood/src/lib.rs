@@ -96,15 +96,15 @@ pub fn language() -> &'static dyn Language {
 /// Plane's ingest does, carries no evaluator. Validation reads the same analysis the evaluating
 /// half builds its runtime over.
 #[cfg(feature = "evaluate")]
-pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
+pub fn evaluating() -> &'static dyn permguard_evaluator::evaluate::Evaluating {
     &GUARDED
 }
 
 /// Both halves as one engine: what an application that links this package itself registers with
 /// the Data Plane it embeds.
 #[cfg(feature = "evaluate")]
-pub fn engine() -> permguard_pdp_core::Engine {
-    permguard_pdp_core::Engine::new(language(), evaluating())
+pub fn engine() -> permguard_evaluator::Engine {
+    permguard_evaluator::Engine::new(language(), evaluating())
 }
 
 /// The language, guarded: the one value both halves hand out.

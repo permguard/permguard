@@ -18,13 +18,13 @@ publish = false
 # The evaluating half, off unless asked for: a build that only validates, as the Control Plane's
 # ingest does, compiles no evaluator.
 [features]
-evaluate = ["dep:permguard-pdp-core"]
+evaluate = ["dep:permguard-evaluator"]
 
 [dependencies]
 permguard-core.workspace = true
 permguard-language-core.workspace = true
 # The evaluating half: only with the `evaluate` feature.
-permguard-pdp-core = { workspace = true, optional = true }
+permguard-evaluator = { workspace = true, optional = true }
 # Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
 cedar-policy.workspace = true
 serde_json.workspace = true

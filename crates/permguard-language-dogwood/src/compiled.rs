@@ -28,11 +28,11 @@ use cedar_policy::{Entities, EntityUid, Schema};
 use dogwood_language::Authorizer;
 use permguard_language_core::value::Value;
 
+use permguard_evaluator::evaluate::{Evaluating, Evaluator};
+use permguard_evaluator::temporal::{Applied, Checked, Refused};
 use permguard_language_core::artifact::Artifacts;
 use permguard_language_core::evaluate::{Query, StoredPolicy, Verdict};
 use permguard_language_core::temporal::{Contract, Pin, PinSource, Signature};
-use permguard_pdp_core::evaluate::{Evaluating, Evaluator};
-use permguard_pdp_core::temporal::{Applied, Checked, Refused};
 
 use super::analysis::*;
 use super::occurrence::Occurrence;
@@ -117,7 +117,7 @@ fn event_bytes(occurrence: &Occurrence) -> u64 {
 /// A schema that pins the caller has one history per caller, and each engine holds a lowered
 /// policy set and the events it observed: memory grows with the tenant's callers and with what
 /// they record — a caller-controlled allocation. The bound is therefore bytes, charged to a
-/// [`permguard_pdp_core::warm::Budget`] per partition, per zone and per Host (DOGWOOD-02), never a count.
+/// [`permguard_evaluator::warm::Budget`] per partition, per zone and per Host (DOGWOOD-02), never a count.
 ///
 /// Evicting one costs a rebuild and changes no answer: the durable journal is the authority, and a
 /// history that is asked for again is replayed from it before it decides.
@@ -138,7 +138,7 @@ impl Shelf {
 
 /// The budget evicts through this: it drops the engine, and any caller still holding the `Arc`
 /// finishes with it.
-impl permguard_pdp_core::warm::Evict for Shelf {
+impl permguard_evaluator::warm::Evict for Shelf {
     fn evict(&self, history: &str) {
         if let Ok(mut histories) = self.lock() {
             histories.held.remove(history);
@@ -148,7 +148,7 @@ impl permguard_pdp_core::warm::Evict for Shelf {
 
 /// Where this partition's warm histories are charged.
 struct Warm {
-    budget: Arc<permguard_pdp_core::warm::Budget>,
+    budget: Arc<permguard_evaluator::warm::Budget>,
     zone: String,
     owner: u64,
 }
@@ -296,15 +296,16 @@ impl CompiledDogwood {
     fn warm(&self) -> &Warm {
         self.warm.get_or_init(|| {
             self.bound(
-                permguard_pdp_core::warm::Budget::new(permguard_pdp_core::warm::Limits::default()),
+                permguard_evaluator::warm::Budget::new(permguard_evaluator::warm::Limits::default()),
                 "",
             )
         })
     }
 
-    fn bound(&self, budget: Arc<permguard_pdp_core::warm::Budget>, zone: &str) -> Warm {
-        let evictor: std::sync::Weak<dyn permguard_pdp_core::warm::Evict> =
-            Arc::downgrade(&self.histories) as std::sync::Weak<dyn permguard_pdp_core::warm::Evict>;
+    fn bound(&self, budget: Arc<permguard_evaluator::warm::Budget>, zone: &str) -> Warm {
+        let evictor: std::sync::Weak<dyn permguard_evaluator::warm::Evict> =
+            Arc::downgrade(&self.histories)
+                as std::sync::Weak<dyn permguard_evaluator::warm::Evict>;
         let owner = budget.register(evictor);
 
         Warm {
@@ -338,7 +339,7 @@ impl CompiledDogwood {
             history,
             engine.bytes.load(std::sync::atomic::Ordering::Relaxed),
         );
-        permguard_pdp_core::warm::evict_all(victims);
+        permguard_evaluator::warm::evict_all(victims);
     }
 }
 
@@ -382,12 +383,12 @@ impl Evaluator for CompiledDogwood {
         self.identities.clone()
     }
 
-    fn temporal(&self) -> Option<&dyn permguard_pdp_core::temporal::Temporal> {
+    fn temporal(&self) -> Option<&dyn permguard_evaluator::temporal::Temporal> {
         Some(self)
     }
 }
 
-impl permguard_pdp_core::temporal::Temporal for CompiledDogwood {
+impl permguard_evaluator::temporal::Temporal for CompiledDogwood {
     fn contract(&self) -> &Contract {
         &self.contract
     }
@@ -590,7 +591,7 @@ impl permguard_pdp_core::temporal::Temporal for CompiledDogwood {
         )
     }
 
-    fn bind_warm(&self, budget: &Arc<permguard_pdp_core::warm::Budget>, zone: &str) {
+    fn bind_warm(&self, budget: &Arc<permguard_evaluator::warm::Budget>, zone: &str) {
         // The first binding wins: the plane binds a partition before it hands it any work, and
         // one used unbound keeps the budget of its own it started with. A compiled partition
         // belongs to one ledger and so to one zone: a later call naming another zone is a no-op
@@ -2219,7 +2220,7 @@ when { Run::Away(context.input.document).ok == true };
         let temporal = compiled.temporal().expect("it remembers");
         // A partition bound that holds three engines and not four (DOGWOOD-02).
         let engine = 2 * compiled.footprint() as u64;
-        let budget = permguard_pdp_core::warm::Budget::new(permguard_pdp_core::warm::Limits {
+        let budget = permguard_evaluator::warm::Budget::new(permguard_evaluator::warm::Limits {
             host: u64::MAX,
             zone: u64::MAX,
             partition: engine * 3 + engine / 2,
@@ -2290,11 +2291,11 @@ when { Run::Away(context.input.document).ok == true };
         let compiled = example();
         let temporal = compiled.temporal().expect("it remembers");
         let budget =
-            permguard_pdp_core::warm::Budget::new(permguard_pdp_core::warm::Limits::default());
+            permguard_evaluator::warm::Budget::new(permguard_evaluator::warm::Limits::default());
         temporal.bind_warm(&budget, "acme");
         // A second binding is a no-op: the first wins.
         temporal.bind_warm(
-            &permguard_pdp_core::warm::Budget::new(permguard_pdp_core::warm::Limits::default()),
+            &permguard_evaluator::warm::Budget::new(permguard_evaluator::warm::Limits::default()),
             "other",
         );
 

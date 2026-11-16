@@ -16,7 +16,7 @@
 //! | a Dogwood bundle          | upstream's example accepted; a broken policy, a wrong artifact and  |
 //! |                           | a history scope the schema contradicts refused                      |
 //!
-//! `dependency_direction.rs` proves the Control Plane's build links no `permguard-pdp-core`; this
+//! `dependency_direction.rs` proves the Control Plane's build links no `permguard-evaluator`; this
 //! proves that build still validates.
 
 #![allow(clippy::expect_used, clippy::panic)]

@@ -926,7 +926,7 @@ The Host never depends on a concrete plane.
 | `permguard-decisions`              | codecs      | Decision evidence records, commitments and their verification.                                                |
 | `permguard-events`                 | codecs      | Event evidence records for the temporal interface.                                                            |
 | `permguard-language-core`          | languages   | What a language is: roles, artifacts, descriptors, the request model and the shared evaluation path.          |
-| `permguard-pdp-core`               | languages   | The evaluating half: the evaluator contract, routing, the evaluation path, its pool and the warm budget.      |
+| `permguard-evaluator`               | languages   | The evaluating half: the evaluator contract, routing, the evaluation path, its pool and the warm budget.      |
 | `permguard-language-cedar`         | languages   | Cedar, through the official `cedar-policy` crate.                                                             |
 | `permguard-language-rego`          | languages   | Rego, through the `regorus` interpreter.                                                                      |
 | `permguard-language-dogwood`       | languages   | Dogwood, the temporal governance language, through `dogwood-language`.                                        |

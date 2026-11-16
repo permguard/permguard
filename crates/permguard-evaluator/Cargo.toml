@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-name = "permguard-pdp-core"
+name = "permguard-evaluator"
 description = "The policy decision point's evaluating half over the language contracts: the evaluator contract, routing, the evaluation path, its pool and the warm budget."
 version.workspace = true
 edition.workspace = true

@@ -2042,7 +2042,7 @@ sections:
       - crates/permguard-data-plane/src/authz/wire.rs
       - crates/permguard-data-plane/src/authz/gate.rs
     tests:
-      - crates/permguard-pdp-core/src/route.rs::the_old_entities_field_is_refused_and_not_ignored
+      - crates/permguard-evaluator/src/route.rs::the_old_entities_field_is_refused_and_not_ignored
       - crates/permguard-language-core/src/request.rs::the_top_level_fields_are_the_defaults_each_evaluation_inherits
       - crates/permguard-language-core/src/request.rs::a_batch_larger_than_the_plane_accepts_is_refused_not_attempted
       - crates/permguard-language-core/src/request.rs::a_field_this_interface_does_not_know_is_refused_rather_than_ignored
@@ -2506,8 +2506,8 @@ sections:
       - crates/permguard-language-core/src/evaluate.rs::an_error_carries_a_registered_code_and_no_policy
       - crates/permguard-language-cedar/src/evaluate.rs::golden_results_hold_across_a_recompile
       - crates/permguard-language-rego/src/parsed.rs::a_built_in_outside_the_allow_list_is_refused
-      - crates/permguard-pdp-core/src/route.rs::an_input_beyond_the_bounds_is_refused_before_it_is_walked
-      - crates/permguard-pdp-core/src/route.rs::a_type_written_for_another_runtime_is_refused_even_when_the_ledger_declared_it
+      - crates/permguard-evaluator/src/route.rs::an_input_beyond_the_bounds_is_refused_before_it_is_walked
+      - crates/permguard-evaluator/src/route.rs::a_type_written_for_another_runtime_is_refused_even_when_the_ledger_declared_it
       - crates/permguard-languages/tests/descriptor_vectors.rs::test_every_engine_is_the_one_cargo_lock_pins
   "5-languages/0-languages-model.md#roles-and-ownership":
     paths:
@@ -2579,11 +2579,11 @@ sections:
       - crates/permguard-language-core/src/input.rs
       - crates/permguard-language-cedar/src/evaluate.rs
     tests:
-      - crates/permguard-pdp-core/src/route.rs::each_partition_reads_the_input_addressed_to_it_and_no_other
-      - crates/permguard-pdp-core/src/route.rs::a_type_written_for_another_runtime_is_refused_even_when_the_ledger_declared_it
-      - crates/permguard-pdp-core/src/route.rs::an_input_beyond_the_bounds_is_refused_before_it_is_walked
-      - crates/permguard-pdp-core/src/route.rs::a_request_addressing_more_partitions_than_the_bound_is_refused
-      - crates/permguard-pdp-core/src/route.rs::an_input_the_partitions_schema_refuses_never_reaches_a_policy
+      - crates/permguard-evaluator/src/route.rs::each_partition_reads_the_input_addressed_to_it_and_no_other
+      - crates/permguard-evaluator/src/route.rs::a_type_written_for_another_runtime_is_refused_even_when_the_ledger_declared_it
+      - crates/permguard-evaluator/src/route.rs::an_input_beyond_the_bounds_is_refused_before_it_is_walked
+      - crates/permguard-evaluator/src/route.rs::a_request_addressing_more_partitions_than_the_bound_is_refused
+      - crates/permguard-evaluator/src/route.rs::an_input_the_partitions_schema_refuses_never_reaches_a_policy
       - crates/permguard-language-cedar/src/evaluate.rs::one_value_has_one_authority_between_the_store_and_the_properties
   "5-languages/0-languages-model.md#typed-decision-algebra":
     paths:
@@ -2599,15 +2599,15 @@ sections:
   "5-languages/0-languages-model.md#execution-contract":
     paths:
       - crates/permguard-language-core/src/evaluate.rs
-      - crates/permguard-pdp-core/src/fanout.rs
+      - crates/permguard-evaluator/src/fanout.rs
       - crates/permguard-language-core/src/headroom.rs
       - crates/permguard-language-core/src/guard.rs
       - crates/permguard-languages/src/worker.rs
     tests:
-      - crates/permguard-pdp-core/src/evaluate.rs::panics_on_workers_and_on_the_overflowing_caller_are_each_their_partitions_failure
-      - crates/permguard-pdp-core/src/evaluate.rs::a_partition_that_finishes_after_the_deadline_fails_closed
+      - crates/permguard-evaluator/src/evaluate.rs::panics_on_workers_and_on_the_overflowing_caller_are_each_their_partitions_failure
+      - crates/permguard-evaluator/src/evaluate.rs::a_partition_that_finishes_after_the_deadline_fails_closed
       - crates/permguard-language-core/src/headroom.rs::an_engine_is_entered_with_room_to_recurse_in
-      - crates/permguard-pdp-core/src/fanout.rs::no_more_than_the_pool_plus_the_caller_ever_run_at_once
+      - crates/permguard-evaluator/src/fanout.rs::no_more_than_the_pool_plus_the_caller_ever_run_at_once
       - crates/permguard-language-core/src/guard.rs::every_guarded_entry_refuses_instead_of_panicking
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_rego_partition_runs_isolated_from_production_or_not_at_all
     gaps:
@@ -2720,7 +2720,7 @@ sections:
       - crates/permguard-language-cedar/src/evaluate.rs::with_a_schema_a_well_typed_request_is_answered_and_a_wrong_one_is_refused
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_schema_is_enforced_at_load_and_a_request_outside_it_is_refused
       - crates/permguard-language-cedar/src/evaluate.rs::a_request_missing_its_parts_is_an_input_the_engine_rejects
-      - crates/permguard-pdp-core/src/route.rs::an_actions_properties_reach_cedar_as_context_and_rego_as_themselves
+      - crates/permguard-evaluator/src/route.rs::an_actions_properties_reach_cedar_as_context_and_rego_as_themselves
       - crates/permguard-language-cedar/src/evaluate.rs::properties_and_context_reach_the_policy
   "5-languages/1-language-cedar.md#one-value-one-authority":
     paths:
@@ -2729,7 +2729,7 @@ sections:
     tests:
       - crates/permguard-language-cedar/src/evaluate.rs::one_value_has_one_authority_between_the_store_and_the_properties
       - crates/permguard-language-cedar/src/evaluate.rs::the_entity_graph_a_caller_states_is_traversed
-      - crates/permguard-pdp-core/src/route.rs::a_caller_may_not_write_the_reserved_context_key
+      - crates/permguard-evaluator/src/route.rs::a_caller_may_not_write_the_reserved_context_key
   "5-languages/1-language-cedar.md#verdict-mapping":
     paths:
       - crates/permguard-language-cedar/src/evaluate.rs
@@ -2749,7 +2749,7 @@ sections:
     tests:
       - crates/permguard-language-cedar/src/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits
       - crates/permguard-language-cedar/src/evaluate.rs::a_partition_reached_past_its_deadline_fails_closed
-      - crates/permguard-pdp-core/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure
+      - crates/permguard-evaluator/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure
       - crates/permguard-language-core/src/headroom.rs::an_engine_is_entered_with_room_to_recurse_in
       - crates/permguard-languages/tests/footprint.rs::test_every_runtimes_footprint_is_at_least_what_its_engine_retains
   "5-languages/1-language-cedar.md#required-conformance-cases":
@@ -2819,8 +2819,8 @@ sections:
     tests:
       - crates/permguard-language-rego/src/evaluate.rs::the_document_arrives_at_input_partition_and_an_absent_one_is_empty
       - crates/permguard-language-rego/src/evaluate.rs::the_entity_graph_arrives_as_data
-      - crates/permguard-pdp-core/src/route.rs::each_partition_reads_the_input_addressed_to_it_and_no_other
-      - crates/permguard-pdp-core/src/route.rs::an_actions_properties_reach_cedar_as_context_and_rego_as_themselves
+      - crates/permguard-evaluator/src/route.rs::each_partition_reads_the_input_addressed_to_it_and_no_other
+      - crates/permguard-evaluator/src/route.rs::an_actions_properties_reach_cedar_as_context_and_rego_as_themselves
   "5-languages/2-language-rego.md#schema":
     paths:
       - crates/permguard-language-rego/src/evaluate.rs
@@ -2983,13 +2983,13 @@ sections:
       - crates/permguard-events/src/journal.rs::a_retention_shorter_than_the_loaded_policies_need_is_refused
   "5-languages/3-language-dogwood.md#warm-state-and-replay":
     paths:
-      - crates/permguard-pdp-core/src/warm.rs
+      - crates/permguard-evaluator/src/warm.rs
       - crates/permguard-language-dogwood/src/compiled.rs
       - crates/permguard-data-plane/src/temporal/submit.rs
     tests:
-      - crates/permguard-pdp-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
-      - crates/permguard-pdp-core/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
-      - crates/permguard-pdp-core/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
+      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-evaluator/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
+      - crates/permguard-evaluator/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-data-plane-server/tests/temporal_events.rs::prewarm_replays_recent_histories_before_a_submission_needs_them
       - crates/permguard-languages/tests/warm_footprint.rs::test_a_warm_history_is_charged_at_least_what_its_engine_retains
@@ -3033,13 +3033,13 @@ sections:
   "5-languages/3-language-dogwood.md#current-gaps":
     paths:
       - crates/permguard-language-dogwood/src/lib.rs
-      - crates/permguard-pdp-core/src/warm.rs
+      - crates/permguard-evaluator/src/warm.rs
       - crates/permguard-language-dogwood/src/annotations.rs
       - crates/permguard-language-dogwood/src/projection.rs
       - crates/permguard-data-plane/src/temporal/submit.rs
     tests:
       - crates/permguard-language-dogwood/src/lib.rs::providers_are_refused_from_production_and_nothing_else_is
-      - crates/permguard-pdp-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_id_this_build_reads_is_the_one_upstream_parses
       - crates/permguard-language-dogwood/src/compiled.rs::a_pin_this_build_cannot_write_refuses_the_load
@@ -3472,11 +3472,11 @@ sections:
       - contracts/proto/permguard/data/v1/pdp.proto
     tests:
       - crates/permguard-language-core/src/request.rs::a_field_this_interface_does_not_know_is_refused_rather_than_ignored
-      - crates/permguard-pdp-core/src/route.rs::the_old_entities_field_is_refused_and_not_ignored
-      - crates/permguard-pdp-core/src/route.rs::a_caller_may_not_write_the_reserved_context_key
-      - crates/permguard-pdp-core/src/route.rs::a_principal_is_stated_whole_or_refused
-      - crates/permguard-pdp-core/src/route.rs::a_type_is_stated_registered_and_the_one_the_ledger_declares
-      - crates/permguard-pdp-core/src/route.rs::a_batch_inherits_an_action_whole_and_overrides_it_whole
+      - crates/permguard-evaluator/src/route.rs::the_old_entities_field_is_refused_and_not_ignored
+      - crates/permguard-evaluator/src/route.rs::a_caller_may_not_write_the_reserved_context_key
+      - crates/permguard-evaluator/src/route.rs::a_principal_is_stated_whole_or_refused
+      - crates/permguard-evaluator/src/route.rs::a_type_is_stated_registered_and_the_one_the_ledger_declares
+      - crates/permguard-evaluator/src/route.rs::a_batch_inherits_an_action_whole_and_overrides_it_whole
   "7-contracts/1-contract-pdp-native-v1.md#response":
     paths:
       - crates/permguard-data-plane/src/authz/decide.rs
@@ -4853,11 +4853,11 @@ findings:
       - "proven by harness-less tests on Linux: the hard memory bound is the worker's RLIMIT_AS (tests/worker.rs, tests/rego_supervised.rs); macOS does not enforce it"
   "LANG-05":
     tests:
-      - crates/permguard-pdp-core/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure
-      - crates/permguard-pdp-core/src/evaluate.rs::panics_on_workers_and_on_the_overflowing_caller_are_each_their_partitions_failure
-      - crates/permguard-pdp-core/src/evaluate.rs::a_panic_beside_a_deny_does_not_take_the_deny_with_it
+      - crates/permguard-evaluator/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure
+      - crates/permguard-evaluator/src/evaluate.rs::panics_on_workers_and_on_the_overflowing_caller_are_each_their_partitions_failure
+      - crates/permguard-evaluator/src/evaluate.rs::a_panic_beside_a_deny_does_not_take_the_deny_with_it
       - crates/permguard-language-core/src/guard.rs::every_guarded_entry_refuses_instead_of_panicking
-      - crates/permguard-pdp-core/src/route.rs::an_input_check_that_panics_is_indeterminate_not_a_bad_request
+      - crates/permguard-evaluator/src/route.rs::an_input_check_that_panics_is_indeterminate_not_a_bad_request
   "LANG-06":
     tests:
       - crates/permguard-language-cedar/src/lib.rs::the_alias_is_the_parsed_annotation_and_nothing_that_looks_like_one
@@ -4875,7 +4875,7 @@ findings:
       - crates/permguard-languages/tests/descriptor_vectors.rs::test_every_descriptor_equals_its_golden_vector
   "LANG-09":
     tests:
-      - crates/permguard-pdp-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-language-dogwood/src/compiled.rs::a_replay_past_its_deadline_stops_and_keeps_the_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::prewarm_replays_recent_histories_before_a_submission_needs_them
@@ -4948,9 +4948,9 @@ findings:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_partition_carrying_providers_is_refused_from_production
   "DOGWOOD-02":
     tests:
-      - crates/permguard-pdp-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
-      - crates/permguard-pdp-core/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
-      - crates/permguard-pdp-core/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
+      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-evaluator/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
+      - crates/permguard-evaluator/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
       - crates/permguard-language-dogwood/src/compiled.rs::evicting_a_cold_history_costs_a_replay_and_never_an_answer
       - crates/permguard-core/tests/config.rs::the_warm_budgets_and_the_replay_plan_are_read_and_bounded
   "DOGWOOD-03":

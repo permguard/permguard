@@ -10,7 +10,7 @@
 
 #![allow(clippy::expect_used)]
 
-use permguard_pdp_core::fanout::Fanout;
+use permguard_evaluator::fanout::Fanout;
 
 #[test]
 fn test_a_process_bound_to_one_evaluation_decides_on_the_calling_thread_alone() {

@@ -5,7 +5,7 @@
 //! answers ([`Language`], [`Authoring`]), the artifacts a partition carries, the descriptor that
 //! pins an engine build, the request model — the queries, verdicts and their combination, the
 //! attestation, the temporal interface's wire model — and the occurrence that interface takes.
-//! The evaluating half, and the path every evaluation takes, are `permguard-pdp-core`'s.
+//! The evaluating half, and the path every evaluation takes, are `permguard-evaluator`'s.
 //!
 //! An engine (`permguard-language-cedar`, `-rego`, `-dogwood`) implements these roles and nothing
 //! else; `permguard-languages` holds the catalogue of the engines a build carries and every rule

@@ -2782,6 +2782,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-evaluator"
+version = "0.1.0"
+dependencies = [
+ "permguard-core",
+ "permguard-language-core",
+ "permguard-objects",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "permguard-events"
 version = "0.1.0"
 dependencies = [
@@ -2822,8 +2834,8 @@ version = "0.1.0"
 dependencies = [
  "cedar-policy",
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-core",
- "permguard-pdp-core",
  "serde_json",
  "sha2",
 ]
@@ -2851,9 +2863,9 @@ dependencies = [
  "dogwood-language",
  "permguard-canonical",
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-core",
  "permguard-objects",
- "permguard-pdp-core",
  "serde",
  "serde_json",
  "sha2",
@@ -2865,8 +2877,8 @@ version = "0.1.0"
 dependencies = [
  "jsonschema 0.59.0",
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-core",
- "permguard-pdp-core",
  "regorus",
  "serde_json",
  "serde_norway",
@@ -2882,12 +2894,12 @@ dependencies = [
  "libc",
  "permguard-canonical",
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-cedar",
  "permguard-language-core",
  "permguard-language-dogwood",
  "permguard-language-rego",
  "permguard-objects",
- "permguard-pdp-core",
  "regorus",
  "serde",
  "serde_json",
@@ -2962,18 +2974,6 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "zeroize",
-]
-
-[[package]]
-name = "permguard-pdp-core"
-version = "0.1.0"
-dependencies = [
- "permguard-core",
- "permguard-language-core",
- "permguard-objects",
- "serde",
- "serde_json",
- "tracing",
 ]
 
 [[package]]
