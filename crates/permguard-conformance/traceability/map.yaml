@@ -1784,14 +1784,14 @@ sections:
       - crates/permguard-control-plane/src/notp/mirror.rs
       - crates/permguard-objects/src/refstate.rs
       - crates/permguard-control-plane/src/notp/mod.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
       - crates/permguard-control-plane/src/gc.rs
     tests:
       - crates/permguard-notp/tests/notp_vectors.rs::the_messages_are_the_generators_bytes
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
+      - crates/permguard-sync/src/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
       - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
   "3-control-plane/3-control-plane-evidence-stores.md#stream-registrations":
     paths:
@@ -1897,7 +1897,7 @@ sections:
       - crates/permguard-data-plane-server/src/service.rs
       - crates/permguard-data-plane/src/authz/decide.rs
       - crates/permguard-data-plane/src/temporal/submit.rs
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/round.rs
     tests:
       - crates/permguard-data-plane/src/handles.rs::the_plane_declares_its_task_contracts
       - crates/permguard-data-plane-server/tests/composition.rs::the_data_plane_signs_its_evidence_and_nothing_else
@@ -1974,19 +1974,19 @@ sections:
       - "open (code): no blocks/<commit>-<engine-build>.cbor; a refusal is kept as <mirror>/BLOCKED"
   "4-data-plane/1-data-plane.md#lifecycle":
     paths:
-      - crates/permguard-data-plane/src/mirrors/readiness.rs
+      - crates/permguard-sync/src/readiness.rs
       - crates/permguard-core/src/lifecycle.rs
       - crates/permguard-server/src/plane/mod.rs
       - crates/permguard-data-plane-server/src/service.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::f13_the_coordinator_down_and_no_checkpoint_keeps_the_plane_in_load
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::a_checkpoint_past_expire_after_does_not_satisfy_and_an_unverified_mirror_never_does
+      - crates/permguard-sync/src/readiness.rs::f13_the_coordinator_down_and_no_checkpoint_keeps_the_plane_in_load
+      - crates/permguard-sync/src/readiness.rs::a_checkpoint_past_expire_after_does_not_satisfy_and_an_unverified_mirror_never_does
       - crates/permguard-server/src/plane/mod.rs::a_domain_route_before_ready_is_refused_with_the_phase_and_health_is_not
       - crates/permguard-data-plane-server/tests/module.rs::a_plane_document_carries_its_phase
       - crates/permguard-core/src/lifecycle.rs::a_plane_waiting_for_a_requirement_stays_in_load_until_it_is_satisfied
   "4-data-plane/1-data-plane.md#operations":
     paths:
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/round.rs
       - crates/permguard-stream/src/engine/retention.rs
       - crates/permguard-data-plane/src/temporal/imported.rs
       - crates/permguard-host/src/gc.rs
@@ -1999,14 +1999,14 @@ sections:
       - "open (code): no gc mirrors, imports or streams plan/run jobs and no quota report; only objects is a Host gc job"
   "4-data-plane/1-data-plane.md#readiness":
     paths:
-      - crates/permguard-data-plane/src/mirrors/readiness.rs
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/readiness.rs
+      - crates/permguard-sync/src/round.rs
       - crates/permguard-data-plane/src/decisions/service.rs
       - crates/permguard-data-plane/src/temporal/mod.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::f13_the_coordinator_down_with_a_fresh_checkpoint_is_ready
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::a_successful_round_satisfies_and_an_optional_coordinator_never_gates
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::only_a_mirror_under_its_own_authority_satisfies_a_coordinator
+      - crates/permguard-sync/src/readiness.rs::f13_the_coordinator_down_with_a_fresh_checkpoint_is_ready
+      - crates/permguard-sync/src/readiness.rs::a_successful_round_satisfies_and_an_optional_coordinator_never_gates
+      - crates/permguard-sync/src/readiness.rs::only_a_mirror_under_its_own_authority_satisfies_a_coordinator
       - crates/permguard-data-plane/tests/decision_log_ring.rs::the_decision_log_refuses_to_start_without_its_signing_ring
       - crates/permguard-data-plane-server/tests/module.rs::the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one
       - crates/permguard-data-plane-server/tests/authz_decision.rs::an_unserveable_ledger_is_a_503_which_is_not_a_deny
@@ -2024,7 +2024,7 @@ sections:
   "4-data-plane/1-data-plane.md#current-implementation-and-target":
     paths:
       - crates/permguard-data-plane/src/handles.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
       - crates/permguard-data-plane/src/decisions/host.rs
       - crates/permguard-data-plane/src/temporal/host.rs
       - crates/permguard-data-plane/src/authz/gate.rs
@@ -2074,11 +2074,11 @@ sections:
   "4-data-plane/2-data-plane-pdp.md#load-gate":
     paths:
       - crates/permguard-data-plane/src/authz/decide.rs
-      - crates/permguard-data-plane/src/authz/block.rs
+      - crates/permguard-mirror/src/block.rs
       - crates/permguard-data-plane/src/authz/snapshot.rs
     tests:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::an_engine_outside_the_manifests_range_refuses_and_stays_refused
-      - crates/permguard-data-plane/src/authz/block.rs::a_block_stops_the_commit_it_names_and_nothing_else
+      - crates/permguard-mirror/src/block.rs::a_block_stops_the_commit_it_names_and_nothing_else
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_schema_is_enforced_at_load_and_a_request_outside_it_is_refused
       - crates/permguard-data-plane/tests/examples.rs::a_corrupted_mirror_fails_a_cold_load_and_never_changes_a_warm_answer
       - crates/permguard-data-plane-server/tests/authz_decision.rs::a_ledger_with_no_history_is_unavailable_not_a_deny
@@ -2155,8 +2155,8 @@ sections:
       - "open (code, deferred by the owner): best-effort evidence mode"
   "4-data-plane/3-data-plane-mirrors-notp.md#source-identity":
     paths:
-      - crates/permguard-data-plane/src/mirrors/round.rs
-      - crates/permguard-data-plane/src/mirrors/source.rs
+      - crates/permguard-sync/src/round.rs
+      - crates/permguard-sync/src/source.rs
       - crates/permguard-mirror/src/layout.rs
       - crates/permguard-mirror/src/held.rs
       - crates/permguard-core/src/mirrors.rs
@@ -2164,29 +2164,29 @@ sections:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
       - crates/permguard-data-plane/tests/mirror_round.rs::a_ledger_two_coordinators_list_is_served_from_neither_by_its_names
       - crates/permguard-data-plane/tests/mirror_round.rs::the_file_narrows_the_tasks_followed_by_membership_task_and_pattern
-      - crates/permguard-data-plane/src/mirrors/source.rs::patterns_describe_whole_names
+      - crates/permguard-sync/src/source.rs::patterns_describe_whole_names
       - crates/permguard-conformance/tests/legacy_trust.rs::the_configuration_carries_no_server_list
   "4-data-plane/3-data-plane-mirrors-notp.md#round":
     paths:
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/round.rs
       - crates/permguard-data-plane/src/mirrors/mod.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
       - crates/permguard-mirror/src/tombstone.rs
     tests:
       - crates/permguard-data-plane/src/mirrors/mod.rs::jitter_spreads_the_whole_fraction_over_both_halves
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_round_skips_every_tick_it_outlasts
       - crates/permguard-data-plane/tests/mirror_round.rs::a_stalled_ledger_is_abandoned_at_its_deadline_and_its_permit_stays_with_the_work
       - crates/permguard-data-plane/tests/mirror_round.rs::a_cut_coordinator_leaves_its_mirrors_alarmed_stale_at_the_bound
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_read_is_sent_up_to_the_task_bound_and_never_past_it
+      - crates/permguard-sync/src/task.rs::a_read_is_sent_up_to_the_task_bound_and_never_past_it
       - crates/permguard-data-plane/tests/mirror_round.rs::only_a_complete_listing_of_its_own_task_removes_a_task_mirror
   "4-data-plane/3-data-plane-mirrors-notp.md#change-signal":
     paths:
-      - crates/permguard-data-plane/src/mirrors/hints.rs
+      - crates/permguard-sync/src/hints.rs
       - crates/permguard-data-plane/src/mirrors/mod.rs
       - crates/permguard-host/src/membership/task.rs
       - crates/permguard-core/src/config.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
+      - crates/permguard-sync/src/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_hint_wakes_the_round_no_sooner_than_its_spacing
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_coalesces_by_key_and_sends_heartbeats_while_quiet
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_ends_on_overflow_and_on_a_fence
@@ -2194,12 +2194,12 @@ sections:
       - crates/permguard-core/tests/config.rs::test_the_reap_grace_and_the_revocation_objective
   "4-data-plane/3-data-plane-mirrors-notp.md#verification-order":
     paths:
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
       - crates/permguard-mirror/src/pull.rs
       - crates/permguard-mirror/src/checkpoint.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
+      - crates/permguard-sync/src/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
+      - crates/permguard-sync/src/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
       - crates/permguard-client/tests/verify_negative.rs::a_replayed_older_head_is_rollback
       - crates/permguard-client/tests/verify_negative.rs::two_heads_for_one_counter_is_equivocation
       - crates/permguard-client/tests/verify_negative.rs::seeing_the_same_head_again_is_not_an_attack
@@ -2207,17 +2207,17 @@ sections:
   "4-data-plane/3-data-plane-mirrors-notp.md#atomic-checkpoint":
     paths:
       - crates/permguard-mirror/src/state.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
     tests:
       - crates/permguard-mirror/src/state.rs::the_journal_is_the_switch_and_the_views_follow_it
       - crates/permguard-mirror/src/state.rs::a_state_round_trips_and_is_closed
       - crates/permguard-mirror/src/state.rs::a_checkpoint_ahead_of_the_journal_is_never_rewound
       - crates/permguard-mirror/src/state.rs::the_closure_digest_names_the_set
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_round_over_a_task_switches_the_mirror_through_its_journal
+      - crates/permguard-sync/src/task.rs::a_round_over_a_task_switches_the_mirror_through_its_journal
   "4-data-plane/3-data-plane-mirrors-notp.md#contention-and-reaping":
     paths:
       - crates/permguard-mirror/src/held.rs
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/round.rs
       - crates/permguard-mirror/src/tombstone.rs
       - crates/permguard-mirror/src/layout.rs
     tests:
@@ -2242,14 +2242,14 @@ sections:
       - "open (code): no blocks/<commit>-<engine-build>.cbor; compiled partitions are memory-only"
   "4-data-plane/3-data-plane-mirrors-notp.md#current-implementation-and-target":
     paths:
-      - crates/permguard-data-plane/src/mirrors/round.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/round.rs
+      - crates/permguard-sync/src/task.rs
       - crates/permguard-mirror/src/pull.rs
       - crates/permguard-mirror/src/held.rs
     tests:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
       - crates/permguard-conformance/tests/legacy_trust.rs::no_plane_reaches_a_control_plane_over_a_url_to_mirror_it
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_under_the_pinned_set_and_its_coordinator_pulls
+      - crates/permguard-sync/src/task.rs::a_statement_under_the_pinned_set_and_its_coordinator_pulls
       - crates/permguard-mirror/src/pull.rs::the_checkpoint_keeps_the_statements_authority_and_ref
       - crates/permguard-data-plane-server/tests/authz_decision.rs::two_coordinators_with_one_name_are_refused_until_an_alias_names_one
       - crates/permguard-data-plane/tests/mirror_round.rs::a_reap_candidate_waits_out_its_grace_and_a_listing_restores_it
@@ -2640,7 +2640,7 @@ sections:
     paths:
       - crates/permguard-data-plane/src/authz/cache.rs
       - crates/permguard-data-plane/src/authz/decide.rs
-      - crates/permguard-data-plane/src/authz/block.rs
+      - crates/permguard-mirror/src/block.rs
       - crates/permguard-language-cedar/src/evaluate.rs
       - crates/permguard-language-rego/src/evaluate.rs
     tests:
@@ -3971,14 +3971,14 @@ sections:
       - crates/permguard-objects/src/refstate.rs
       - crates/permguard-objects/src/statement.rs
       - crates/permguard-control-plane/src/store.rs
-      - crates/permguard-data-plane/src/mirrors/task.rs
+      - crates/permguard-sync/src/task.rs
     tests:
       - crates/permguard-objects/src/refstate.rs::a_ref_state_round_trips_and_chains_to_the_one_before
       - crates/permguard-notp/tests/notp_vectors.rs::the_ref_states_and_their_digests_are_the_generators
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
       - crates/permguard-objects/src/statement.rs::freshness_table
       - crates/permguard-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
-      - crates/permguard-data-plane/src/mirrors/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
+      - crates/permguard-sync/src/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
   "7-contracts/6-contract-ledger-notp.md#messages":
     paths:
       - crates/permguard-notp/src/codec.rs
@@ -3997,14 +3997,14 @@ sections:
     paths:
       - crates/permguard-host/src/membership/watch.rs
       - crates/permguard-host/src/membership/record.rs
-      - crates/permguard-data-plane/src/mirrors/hints.rs
+      - crates/permguard-sync/src/hints.rs
       - crates/permguard-control-plane/src/store.rs
       - crates/permguard-objects/src/compress.rs
     tests:
       - crates/permguard-host/src/membership/record/tests.rs::a_watch_request_and_its_hints_round_trip
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_coalesces_by_key_and_sends_heartbeats_while_quiet
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_ends_on_overflow_and_on_a_fence
-      - crates/permguard-data-plane/src/mirrors/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
+      - crates/permguard-sync/src/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
   "7-contracts/6-contract-ledger-notp.md#refusal-codes":
@@ -4651,9 +4651,9 @@ findings:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::every_recorded_decision_is_durable_at_its_sequence
   "F-13":
     tests:
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::f13_the_coordinator_down_and_no_checkpoint_keeps_the_plane_in_load
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::f13_the_coordinator_down_with_a_fresh_checkpoint_is_ready
-      - crates/permguard-data-plane/src/mirrors/readiness.rs::a_checkpoint_past_expire_after_does_not_satisfy_and_an_unverified_mirror_never_does
+      - crates/permguard-sync/src/readiness.rs::f13_the_coordinator_down_and_no_checkpoint_keeps_the_plane_in_load
+      - crates/permguard-sync/src/readiness.rs::f13_the_coordinator_down_with_a_fresh_checkpoint_is_ready
+      - crates/permguard-sync/src/readiness.rs::a_checkpoint_past_expire_after_does_not_satisfy_and_an_unverified_mirror_never_does
       - crates/permguard-server/tests/host.rs::test_a_required_plane_waiting_for_a_remote_keeps_readiness_off_and_liveness_on
   "F-14":
     tests:
@@ -4683,7 +4683,7 @@ findings:
       - crates/permguard-conformance/tests/chart.rs::overlapping_group_selectors_are_refused
   "F-19":
     tests:
-      - crates/permguard-data-plane/src/mirrors/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
+      - crates/permguard-sync/src/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_commit_hints_the_watches_of_its_ledger
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_hint_wakes_the_round_no_sooner_than_its_spacing
     gaps:
@@ -5057,7 +5057,7 @@ legacy:
       - crates/permguard-control-plane-server/tests/module.rs::the_decision_store_is_preflighted_instead_of_disappearing_behind_health
   "configured-url-and-tls-trust-first-contact-rings-per-plane-key-endpoints-as-authority":
     paths:
-      - crates/permguard-data-plane/src/mirrors/round.rs
+      - crates/permguard-sync/src/round.rs
       - crates/permguard-core/src/mirrors.rs
     tests:
       - crates/permguard-data-plane/tests/legacy_fixtures.rs::test_the_v1_mirror_fixture_is_never_served_and_the_first_round_removes_it

@@ -28,6 +28,8 @@ anyhow.workspace = true
 # The verified local mirror: its store, its checkpoint and the pull that proves before it moves.
 # No network client: the mirror is filled over the sessions of the tasks the Host serves.
 permguard-mirror.workspace = true
+# The round over the Host's `policy.mirror` tasks, which this plane runs on its cadence.
+permguard-sync.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain and the durable spool.
 permguard-decisions.workspace = true

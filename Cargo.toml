@@ -31,6 +31,7 @@ members = [
     "crates/permguard-server",
     "crates/permguard-std",
     "crates/permguard-stream",
+    "crates/permguard-sync",
     "crates/permguard-telemetry",
     "crates/permguard-transport",
 ]
@@ -91,6 +92,7 @@ permguard-languages = { path = "crates/permguard-languages", version = "0.1.0", 
 permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
 permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
 permguard-stream = { path = "crates/permguard-stream", version = "0.1.0" }
+permguard-sync = { path = "crates/permguard-sync", version = "0.1.0" }
 permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.0" }
 permguard-transport = { path = "crates/permguard-transport", version = "0.1.0" }
 

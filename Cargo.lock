@@ -2650,6 +2650,7 @@ dependencies = [
  "permguard-objects",
  "permguard-std",
  "permguard-stream",
+ "permguard-sync",
  "permguard-transport",
  "regex",
  "ring",
@@ -2966,6 +2967,24 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tracing",
+]
+
+[[package]]
+name = "permguard-sync"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "permguard-core",
+ "permguard-host",
+ "permguard-mirror",
+ "permguard-notp",
+ "permguard-objects",
+ "regex",
+ "ring",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

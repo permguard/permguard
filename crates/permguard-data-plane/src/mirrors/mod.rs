@@ -40,13 +40,9 @@
 // The layout, the verified state and the reap candidacy of a mirror are `permguard-mirror`'s.
 pub use permguard_mirror::{layout, state, tombstone};
 
-pub mod hints;
-pub mod measure;
-pub mod progress;
-pub mod readiness;
-pub mod round;
-pub mod source;
-pub mod task;
+// The round, its tasks, what they report and count are `permguard-sync`'s; the service that
+// runs them on this plane's cadence, with this plane's handles, is here.
+pub use permguard_sync::{hints, measure, progress, readiness, round, source, task};
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

@@ -1,0 +1,35 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-sync"
+description = "The synchronization of the mirrors a Host follows: the round over its policy.mirror tasks, each ledger pulled over the task's own session into its verified mirror. Client-neutral, no network."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+permguard-core.workspace = true
+# The tasks, their sessions, the membership and the holds a round reads.
+permguard-host.workspace = true
+# The verified mirror a round fills.
+permguard-mirror.workspace = true
+permguard-notp.workspace = true
+permguard-objects.workspace = true
+base64.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+ring.workspace = true
+# `start_paused` lets a round's waits be tested without waiting.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

@@ -56,28 +56,11 @@ use super::{block, store};
 
 const COMPONENT: &str = "data-plane";
 
-/// What warming one mirror concluded.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Warmed {
-    /// Compiled and held; `compiled` counts what this call had to build.
-    Ready { compiled: usize },
-    /// Nothing to serve yet: a ledger nobody has applied to.
-    Empty,
-    /// This engine may not serve it, and the block file says so.
-    Blocked(String),
-    /// The mirror is unreadable — a missing or corrupt object.
-    Damaged(String),
-}
+pub use permguard_sync::Warmed;
 
-impl Warmed {
-    /// One word, for the log line and the metric label.
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Ready { .. } => "ready",
-            Self::Empty => "empty",
-            Self::Blocked(_) => "blocked",
-            Self::Damaged(_) => "damaged",
-        }
+impl permguard_sync::Warm for Decider {
+    fn warm(&self, mirror: &store::Mirror) -> Warmed {
+        Decider::warm(self, mirror)
     }
 }
 

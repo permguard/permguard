@@ -22,7 +22,7 @@ use std::time::{Duration, SystemTime};
 use permguard_core::PlaneHealth;
 
 use super::round::Outcome;
-use crate::authz::store;
+use permguard_mirror::held as store;
 
 /// Reports every coordinator from `outcome` and what `root` holds: a required one as satisfied or
 /// awaited; an optional one never awaited, but named as degraded once the plane serves without it.

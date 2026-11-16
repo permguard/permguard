@@ -193,6 +193,16 @@ const LAYERS: &[(&str, &[&str])] = &[
     // The verified mirror opens no connection: who answers its pull is handed to it.
     ("permguard-mirror", SERVER_STACK),
     ("permguard-mirror", NO_CLIENT),
+    ("permguard-mirror", NO_LANGUAGE),
+    // Nor does the synchronization of the mirrors, which is client-neutral, and decides nothing:
+    // what decides against a mirror hears of an advance through a trait.
+    ("permguard-sync", SERVER_STACK),
+    ("permguard-sync", NO_CLIENT),
+    ("permguard-sync", NO_LANGUAGE),
+    (
+        "permguard-sync",
+        &["permguard-pdp-core", "permguard-language-core"],
+    ),
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
     ("permguard-control-plane", CONTROL_PLANE_DOMAIN),

@@ -69,7 +69,7 @@ pub fn resources(
         .filter(|mirror| mirror.authority.as_deref() == Some(authority.as_str()))
         .filter_map(|mirror| {
             let path = mirror.path(root);
-            let identity = crate::authz::store::identity_of(&path)?;
+            let identity = permguard_mirror::held::identity_of(&path)?;
             (identity.task.as_deref() == Some(label.as_str()))
                 .then(|| one(&path, &mirror, &plane, stale_after))
         })
@@ -121,10 +121,10 @@ fn one(
     };
     let head = state.head.to_string();
     let (state_name, reason) = if let Some(block) =
-        crate::authz::block::read(path).filter(|block| block.commit == head)
+        permguard_mirror::block::read(path).filter(|block| block.commit == head)
     {
         (BLOCKED, Some(block.reason))
-    } else if let (Some(bound), Some(age)) = (stale_after, crate::authz::store::synced_age(path))
+    } else if let (Some(bound), Some(age)) = (stale_after, permguard_mirror::held::synced_age(path))
         && age >= bound
     {
         (
@@ -189,9 +189,9 @@ mod tests {
     use permguard_objects::digest::Digest;
 
     use super::*;
-    use crate::authz::store::{Identity, record};
-    use crate::mirrors::state::{MirrorState, commit};
-    use crate::mirrors::tombstone::{Tombstone, write};
+    use crate::state::{MirrorState, commit};
+    use crate::tombstone::{Tombstone, write};
+    use permguard_mirror::held::{Identity, record};
 
     fn scratch(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -262,7 +262,7 @@ mod tests {
                 },
             )
             .expect("switched");
-            crate::authz::store::touch_synced(&path);
+            permguard_mirror::held::touch_synced(&path);
         }
         path
     }
@@ -278,7 +278,7 @@ mod tests {
         mirror(&root, [0x11; 16], &label, "verified-old", Some(100));
         mirror(&root, [0x11; 16], &label, "unverified", None);
         let blocked = mirror(&root, [0x11; 16], &label, "blocked", Some(300));
-        crate::authz::block::write(
+        permguard_mirror::block::write(
             &blocked,
             &Digest::compute(b"blocked").to_string(),
             "this engine may not serve it",
@@ -332,7 +332,7 @@ mod tests {
             .join(layout::authority_name(&[0x11; 16]))
             .join("zone")
             .join("verified-new")
-            .join(crate::authz::store::SYNCED_FILE);
+            .join(permguard_mirror::held::SYNCED_FILE);
         std::fs::File::options()
             .write(true)
             .open(&aged)

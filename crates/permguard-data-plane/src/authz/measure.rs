@@ -116,13 +116,8 @@ pub const CACHE_BYTES: Metric = Metric::gauge(
     "Bytes of compiled partitions held in memory.",
 );
 
-/// Ledgers this engine refuses to serve, by zone and ledger: the load gate
-/// said no, and the block file remembers it. Anything above zero is somebody's
-/// upgrade waiting to happen.
-pub const BLOCKED: Metric = Metric::gauge(
-    "permguard_authz_blocked_ledgers",
-    "Ledgers this engine cannot serve.",
-);
+/// Ledgers this engine refuses to serve: the gauge of the block file, `permguard-mirror`'s.
+pub use permguard_mirror::block::BLOCKED;
 
 /// Decision audit records handled by the asynchronous audit worker.
 pub const AUDIT_RECORDS: Metric = Metric::counter(

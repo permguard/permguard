@@ -30,11 +30,11 @@ use permguard_core::Metrics;
 use permguard_mirror::FsStore;
 use permguard_mirror::pull::TrackedRef;
 
-use crate::authz::store::Identity;
+use permguard_mirror::held::Identity;
 use tracing::{debug, info, warn};
 
-use crate::mirrors::layout::{self, Mirror};
-use crate::mirrors::measure;
+use crate::layout::{self, Mirror};
+use crate::measure;
 
 const COMPONENT: &str = "data-plane";
 
@@ -62,7 +62,7 @@ pub struct Outcome {
     pub sources: Vec<SourceOutcome>,
     /// Failures by the coordinator that listed the mirror, folded into `sources`
     /// once the round is over; of no interest after that.
-    pub(super) failed_by_server: std::collections::BTreeMap<String, usize>,
+    pub failed_by_server: std::collections::BTreeMap<String, usize>,
     /// The coordinators this round's `policy.mirror` tasks named, by source key, and whether any
     /// of their tasks is required (WP-7.2a): what readiness waits for.
     pub coordinators: Vec<(String, bool)>,
@@ -144,7 +144,7 @@ pub struct Context {
     /// The decision path, so a ledger that just arrived is checked and
     /// compiled here — off the request path, where it belongs. `None` in a
     /// test that is only about mirroring.
-    pub decider: Option<Arc<crate::authz::decide::Decider>>,
+    pub decider: Option<Arc<dyn crate::Warm>>,
     pub deadline: Duration,
     pub parallelism: usize,
     /// The deployment's staleness bound, when it set one: a mirror whose last
@@ -309,7 +309,7 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     outcome.candidacy = candidacy;
     // Two mirrors answering to one name are refused at the decision path: said here too, every
     // round, so the contest is seen before a request is refused over it (WP-7.2a).
-    for ((zone, ledger), claimants) in crate::authz::store::contests(&context.root) {
+    for ((zone, ledger), claimants) in permguard_mirror::held::contests(&context.root) {
         outcome.contested += 1;
         warn!(
             event.name = "sync.ledger_contested",
@@ -628,7 +628,7 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
         std::fs::create_dir_all(&path).map_err(|error| format!("creating the mirror: {error}"))?;
         // What this mirror is called, beside what it is. Written every round,
         // so a rename upstream reaches this plane with the next sync.
-        crate::authz::store::record(&path, &identity)?;
+        permguard_mirror::held::record(&path, &identity)?;
         let store = FsStore::new(&path);
         // The pull and its verification on the task's session (WP-7.2a), its statements verified
         // under the pinned `control.attest` set (WP-7.2b), switched through the mirror's journal
@@ -688,7 +688,7 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
             context
                 .metrics
                 .add(&measure::FETCHED_OBJECTS, &[], fetched as f64);
-            crate::authz::store::touch_synced(&mirror_path);
+            permguard_mirror::held::touch_synced(&mirror_path);
             context.metrics.set_aggregated(
                 &measure::MIRROR_AGE,
                 permguard_core::Aggregate::Max,
@@ -727,7 +727,7 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
             );
             // A verified "nothing yet" is still a confirmation: the server
             // answered, and the emptiness is its answer.
-            crate::authz::store::touch_synced(&mirror_path);
+            permguard_mirror::held::touch_synced(&mirror_path);
             context.metrics.set_aggregated(
                 &measure::MIRROR_AGE,
                 permguard_core::Aggregate::Max,
@@ -794,7 +794,7 @@ fn staleness(
     };
     for mirror in present {
         let path = mirror.path(&context.root);
-        let Some(age) = crate::authz::store::synced_age(&path) else {
+        let Some(age) = permguard_mirror::held::synced_age(&path) else {
             continue;
         };
         context.metrics.set_aggregated(
@@ -809,7 +809,7 @@ fn staleness(
         if age < bound {
             continue;
         }
-        let identity = crate::authz::store::identity_of(&path);
+        let identity = permguard_mirror::held::identity_of(&path);
         let source = identity
             .as_ref()
             .map(|held| held.task.clone().unwrap_or_else(|| held.server.clone()))
@@ -839,19 +839,19 @@ fn staleness(
 ///
 /// A ledger this engine may not serve is **not** a failed mirror: the mirror is
 /// exactly what the server holds. It is a ledger that answers `unavailable`
-/// until it changes, and [`crate::authz::block`] is what remembers that so the
+/// until it changes, and [`permguard_mirror::block`] is what remembers that so the
 /// next round costs one file read.
 async fn warm(context: &Context, served: &Served) -> Attempt {
     let Some(decider) = context.decider.clone() else {
         return Attempt::Current;
     };
-    let held = crate::authz::store::Mirror {
+    let held = permguard_mirror::held::Mirror {
         path: served.mirror.path(&context.root),
         identity: served.identity.clone(),
     };
     let warmed = match blocking(move || Ok(decider.warm(&held))).await {
         Ok(warmed) => warmed,
-        Err(error) => crate::authz::decide::Warmed::Damaged(error),
+        Err(error) => crate::Warmed::Damaged(error),
     };
     context.metrics.count(
         &measure::WARMED,
@@ -859,7 +859,7 @@ async fn warm(context: &Context, served: &Served) -> Attempt {
     );
 
     match &warmed {
-        crate::authz::decide::Warmed::Ready { compiled } => {
+        crate::Warmed::Ready { compiled } => {
             if *compiled > 0 {
                 info!(
                     event.name = "sync.ledger_ready",
@@ -872,9 +872,9 @@ async fn warm(context: &Context, served: &Served) -> Attempt {
 
             Attempt::Current
         }
-        crate::authz::decide::Warmed::Empty => Attempt::Current,
-        crate::authz::decide::Warmed::Blocked(_) => Attempt::Blocked,
-        crate::authz::decide::Warmed::Damaged(detail) => {
+        crate::Warmed::Empty => Attempt::Current,
+        crate::Warmed::Blocked(_) => Attempt::Blocked,
+        crate::Warmed::Damaged(detail) => {
             warn!(
                 event.name = "sync.ledger_damaged",
                 component = COMPONENT,
@@ -954,7 +954,7 @@ fn reap(
         // Without this, a partition towards one of several control planes
         // would delete that control plane's policies from this plane, which is
         // exactly the failure the unreachable-server rule exists to prevent.
-        let identity = crate::authz::store::identity_of(&path);
+        let identity = permguard_mirror::held::identity_of(&path);
         // A task's mirror is attributed to that task, not to its coordinator: another task of
         // the same coordinator listing whole says nothing of it, and a task this round did not
         // list — its membership suspended, its listing cut short — removes nothing (WP-7.2a).
@@ -1158,7 +1158,7 @@ fn holdings(context: &Context) {
     for (metric, how) in [
         (&measure::MIRROR_AGE, permguard_core::Aggregate::Max),
         (
-            &crate::authz::measure::BLOCKED,
+            &permguard_mirror::block::BLOCKED,
             permguard_core::Aggregate::Sum,
         ),
     ] {

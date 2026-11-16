@@ -108,6 +108,14 @@ pub fn clear_if_present(mirror: &Path) {
     }
 }
 
+/// Ledgers this engine refuses to serve, by zone and ledger: the load gate
+/// said no, and the block file remembers it. Anything above zero is somebody's
+/// upgrade waiting to happen.
+pub const BLOCKED: permguard_core::metrics::Metric = permguard_core::metrics::Metric::gauge(
+    "permguard_authz_blocked_ledgers",
+    "Ledgers this engine cannot serve.",
+);
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]

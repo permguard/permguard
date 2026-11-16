@@ -920,6 +920,8 @@ The Host never depends on a concrete plane.
 | `permguard-objects`                | codecs      | Canonical policy objects, digests, manifests and signed head statements.                                      |
 | `permguard-notp`                   | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                                      |
 | `permguard-contracts`              | codecs      | The messages and gRPC stubs of `contracts/proto`, generated once: a feature per contract and side.            |
+| `permguard-mirror`                 | codecs      | The verified local mirror of a ledger: store, proof, checkpoint, layout and state. No network.                |
+| `permguard-sync`                   | codecs      | The round over a Host's `policy.mirror` tasks, each ledger pulled into its mirror. Client-neutral.            |
 | `permguard-decisions`              | codecs      | Decision evidence records, commitments and their verification.                                                |
 | `permguard-events`                 | codecs      | Event evidence records for the temporal interface.                                                            |
 | `permguard-language-core`          | languages   | What a language is: roles, artifacts, descriptors, the request model and the shared evaluation path.          |
@@ -934,7 +936,7 @@ The Host never depends on a concrete plane.
 | `permguard-control-plane-server`   | planes      | Control Plane served: its HTTP and gRPC routes, its module and the `permguard-control-plane` binary.          |
 | `permguard-data-plane`             | planes      | Data Plane domain and its embedded facade: mirrors, evaluation and authorization, decision log, history.      |
 | `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
-| `permguard-client`         | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors.                       |
+| `permguard-client`                 | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions, events and tokens.                |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |

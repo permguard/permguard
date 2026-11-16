@@ -52,7 +52,7 @@ pub fn positions(root: &std::path::Path, task: &MirrorTask) -> Vec<(String, u64)
         .filter(|mirror| mirror.authority.as_deref() == Some(authority.as_str()))
         .filter_map(|mirror| {
             let path = mirror.path(root);
-            let identity = crate::authz::store::identity_of(&path)?;
+            let identity = permguard_mirror::held::identity_of(&path)?;
             if identity.task.as_deref() != Some(label.as_str()) {
                 return None;
             }
@@ -294,9 +294,9 @@ mod tests {
         ] {
             let path = root.join(&authority).join("zone-z").join(ledger);
             std::fs::create_dir_all(&path).expect("the mirror");
-            crate::authz::store::record(
+            permguard_mirror::held::record(
                 &path,
-                &crate::authz::store::Identity {
+                &permguard_mirror::held::Identity {
                     zone_id: "zone-z".into(),
                     zone_name: "acme".into(),
                     ledger_id: ledger.into(),

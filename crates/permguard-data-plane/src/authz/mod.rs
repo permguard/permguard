@@ -38,7 +38,8 @@
 //! PEP has to tell "no" from "ask somebody else".
 
 pub mod audit;
-pub mod block;
+/// The memory of a refusal, beside the mirror it is about: `permguard-mirror`'s.
+pub use permguard_mirror::block;
 pub mod cache;
 pub mod configuration;
 pub mod decide;
