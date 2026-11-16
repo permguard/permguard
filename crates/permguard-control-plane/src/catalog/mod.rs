@@ -8,8 +8,8 @@
 //! | file | owns | knows about |
 //! | --- | --- | --- |
 //! | [`zones`] / [`ledgers`] | the domain: what an operation *means*, auditing it, its errors | the [`Catalog`] contract — no axum, no tonic |
-//! | [`http`] | routes and extraction | the domain modules and [`crate::wire`] |
-//! | [`grpc`] | the tonic service impl | the same two |
+//! | `http`, in `permguard-control-plane-server` | routes and extraction | the domain modules and its `wire` |
+//! | `grpc`, in `permguard-control-plane-server` | the tonic service impl | the same two |
 //!
 //! Both transports are deliberately too thin to be wrong: extract, call the domain, shape the
 //! answer. Everything that could disagree between HTTP and gRPC — semantics, uniqueness, audit,

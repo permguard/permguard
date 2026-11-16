@@ -5,7 +5,7 @@
 //!
 //! Every function here is the single implementation both transports call, so HTTP and gRPC cannot
 //! drift apart on semantics, auditing or errors. Anything a transport needs beyond `Result` — a
-//! status code, a metadata key — is [`crate::wire`]'s business.
+//! status code, a metadata key — is the server package's `wire`'s business.
 //!
 //! Authorization comes first (WP-2.4): `catalog.read` or `catalog.write` on the plane for what
 //! creates or lists, on the exact zone for what names one; the facade resolves a name only after

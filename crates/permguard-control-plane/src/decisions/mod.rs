@@ -18,8 +18,8 @@
 //! | --- | --- |
 //! | [`configuration`] | what this plane publishes about the decision log interface |
 //! | [`ingest`] | verifies a batch and answers with a contiguous durable sequence |
-//! | [`http`] | the shipping and reading routes |
-//! | [`grpc`] | the same contract, over the other transport |
+//! | `http`, in `permguard-control-plane-server` | the shipping and reading routes |
+//! | `grpc`, in `permguard-control-plane-server` | the same contract, over the other transport |
 //! | [`store`] | keeps the legacy producers' records verbatim, per producer stream |
 //! | [`offset`] | where a consumer stands, opaque and bound to its scope |
 //! | [`read`] | serving a page of records, and the proofs that go with them |

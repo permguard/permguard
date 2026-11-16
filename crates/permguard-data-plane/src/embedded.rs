@@ -47,20 +47,26 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use permguard_core::authz::Actor;
 use permguard_core::lifecycle::{HOST, Kind, Phase, ServiceState};
 use permguard_core::{
-    AuditSink, Config, Drained, Health, Metrics, PlaneContext, PlaneTask, ProductIdentity,
-    ServerContext, Storage,
+    AuditSink, Config, Drained, Metrics, PlaneContext, PlaneTask, ProductIdentity, ServerContext,
+    Storage,
 };
 use permguard_host::composition::{Authorization, Host, Registration};
-use permguard_languages::temporal::{SubmitRequest, SubmitResponse};
 
 use crate::authz::decide::Decider;
-use crate::authz::wire::{CheckRequest, CheckResponse, TraceContext};
-use crate::evaluation::{Answer, EvaluationRequest, Refused, Services};
+use crate::evaluation::{Answer, EvaluationRequest, Services};
 use crate::temporal::submit::Submitter;
 use crate::{COMPONENT, PLANE};
+
+// The types the facade's signatures name, from the one place an application imports them: the
+// request and its answer, the refusal, the temporal submission, the caller and the health.
+pub use permguard_core::Health;
+pub use permguard_core::authz::Actor;
+pub use permguard_languages::temporal::{SubmitRequest, SubmitResponse};
+
+pub use crate::authz::wire::{CheckRequest, CheckResponse, TraceContext};
+pub use crate::evaluation::Refused;
 
 /// What the embedding application supplies: who it is, the effective configuration, the Host it
 /// composed, and the storage and audit sink the Host writes through.

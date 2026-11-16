@@ -21,7 +21,7 @@
 //! | [`cache`] | what stays compiled in memory, inside the two bounds a deployment sets |
 //! | [`decide`] | the decision itself: one path, whatever transport arrived |
 //! | [`configuration`] | what this PDP publishes about the interface it serves |
-//! | [`http`] / [`grpc`] / [`translate`] | the two bindings, and the mapping that keeps them identical |
+//! | `http` / `grpc` / `translate`, in `permguard-data-plane-server` | the two bindings, and the mapping that keeps them identical |
 //! | [`measure`] | what it counts about itself |
 //!
 //! # The two properties that matter

@@ -50,7 +50,7 @@
 //! | [`mod@imports`] | what the retired HTTP pull imported, read-only until it is archived |
 //! | [`submit`] | the one path both transports call |
 //! | [`configuration`] | what this plane publishes about the interface |
-//! | [`http`] / [`grpc`] | the two bindings, which share the path above and add nothing to it |
+//! | `http` / `grpc`, in `permguard-data-plane-server` | the two bindings, which share the path above and add nothing to it |
 //! | [`measure`] | what it counts about itself |
 
 pub mod configuration;

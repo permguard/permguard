@@ -26,7 +26,7 @@
 //! | [`ingest`] | verifying a signed batch and making it durable before acknowledging it |
 //! | [`read`] | the bounded, filtered read, over the shared stream-window contract |
 //! | [`retention`] | dropping sealed segments while keeping what proves the rest |
-//! | [`http`] / [`grpc`] | the two transports, over one facade and one validation path |
+//! | `http` / `grpc`, in `permguard-control-plane-server` | the two transports, over one facade and one validation path |
 //! | [`import`] | the `events.import` task: the required origins' history, served to a member's Host |
 //! | [`measure`] | what it counts about itself |
 //!
