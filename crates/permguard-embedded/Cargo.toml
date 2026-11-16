@@ -1,0 +1,55 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-embedded"
+description = "The Data Plane embedded in an application over a Host composed for it: the headless runtime, the default implementations a configuration names and the Data Plane with no listener, started from the configuration file a server reads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[features]
+# The languages the Data Plane decides with: none by default, as for the Data Plane itself. An
+# application may register an engine it links itself instead.
+cedar = ["permguard-data-plane/cedar"]
+dogwood = ["permguard-data-plane/dogwood"]
+rego = ["permguard-data-plane/rego"]
+# The adapters that reach outside the process, each one a client an application selects.
+#
+# The Authority Plane's key set and status lists, fetched over REST or gRPC by the scheme of its
+# URL, for an application whose callers present access tokens.
+authority-refresh = ["dep:permguard-client"]
+# The remote custodies of the Host's keys.
+kms = ["permguard-offline/kms"]
+pkcs11 = ["permguard-offline/pkcs11"]
+
+[dependencies]
+anyhow.workspace = true
+permguard-core.workspace = true
+permguard-data-plane.workspace = true
+permguard-host.workspace = true
+# The engine an application registers, and the catalogue it is registered in.
+permguard-languages = { workspace = true, features = ["evaluate"] }
+# The implementations a configuration names: the secret stores, the key rings, the audit sink.
+permguard-offline.workspace = true
+# The headless composition of the Host, and the host that runs its services.
+permguard-runtime.workspace = true
+# The default storage and audit sink the composition is handed.
+permguard-std = { workspace = true, features = ["audit", "storage"] }
+permguard-client = { workspace = true, features = ["authority-refresh"], optional = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
+permguard-events = { workspace = true, features = ["stream"] }
+permguard-mirror.workspace = true
+permguard-objects.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

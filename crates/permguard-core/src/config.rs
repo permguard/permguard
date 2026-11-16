@@ -1545,6 +1545,8 @@ pub struct Config {
     mirrors_revocation_objective: Option<Duration>,
     mirror_local: Option<crate::mirrors::MirrorLocal>,
     storage_report: Option<crate::volume::StorageReport>,
+    /// Whether this process is embedded in an application: reached by it, never by a listener.
+    embedded: bool,
     objectives_report: Option<crate::objectives::ObjectivesReport>,
     mirror_task_selections: Vec<crate::mirrors::MirrorTaskSelection>,
     mirror_aliases: Vec<crate::mirrors::MirrorAlias>,
@@ -1758,6 +1760,7 @@ impl Default for Config {
             mirrors_revocation_objective: None,
             mirror_local: None,
             storage_report: None,
+            embedded: false,
             objectives_report: None,
             mirror_task_selections: Vec::new(),
             mirror_aliases: Vec::new(),
@@ -1907,6 +1910,20 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    /// Says this process is embedded in an application, which reaches it through typed calls: it
+    /// binds no listener, so the rule that a server defines at least one listen address does not
+    /// hold for it. Stated by the composition that embeds, never by a setting: a server cannot be
+    /// configured out of being reachable.
+    pub fn embedded(mut self) -> Self {
+        self.embedded = true;
+        self
+    }
+
+    /// Whether this process is embedded in an application and binds no listener.
+    pub fn is_embedded(&self) -> bool {
+        self.embedded
     }
 
     /// Attaches where the volume stands, as Bootstrap qualified it (TS-5): what discovery
@@ -2226,7 +2243,10 @@ produce: use `EdDSA` or `ES256`"
         // (WP-2.5), is a legal deployment — it answers its operational contract and authorizes
         // nothing a plane would. What is refused is a process with no listener at all: nothing
         // could ever reach it, so starting it can only be a mistake.
-        if self.public_http_addr().is_none()
+        // An embedded process is the one exception, and says so itself: its application reaches
+        // it, and it binds none of the addresses a configuration may still name.
+        if !self.embedded
+            && self.public_http_addr().is_none()
             && self.public_grpc_addr().is_none()
             && self.declared_extra_addresses()?.is_empty()
             && self.telemetry_addr().is_none()

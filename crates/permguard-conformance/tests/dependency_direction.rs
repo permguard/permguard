@@ -726,6 +726,59 @@ fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
     );
 }
 
+/// The Data Plane embedded over a Host composed for it (`permguard-embedded`) links the headless
+/// runtime and no server: built by itself, no listener, no transport, no telemetry exporter, no
+/// network client, no generated contract, no TLS stack and no argument parser. A client arrives
+/// only with the adapter an application selects, the Authority refresh, and never a server's.
+#[test]
+fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
+    let alone = carried_with("permguard-embedded", "");
+    let refreshing = carried_with("permguard-embedded", "authority-refresh");
+    let mut problems = Vec::new();
+    for name in SERVER_STACK.iter().copied().chain([
+        "permguard-client",
+        "permguard-contracts",
+        "rustls",
+        "clap",
+    ]) {
+        if alone.contains(name) {
+            problems.push(format!("permguard-embedded, built by itself, links {name}"));
+        }
+    }
+    for name in [
+        "permguard-runtime",
+        "permguard-data-plane",
+        "permguard-host",
+    ] {
+        if !alone.contains(name) {
+            problems.push(format!("permguard-embedded does not link {name}"));
+        }
+    }
+    if !refreshing.contains("permguard-client") {
+        problems.push("with `authority-refresh`, it does not link permguard-client".to_owned());
+    }
+    for name in [
+        "permguard-server",
+        "permguard-transport",
+        "permguard-telemetry",
+    ] {
+        if refreshing.contains(name) {
+            problems.push(format!("with `authority-refresh`, it links {name}"));
+        }
+    }
+    if features_of("permguard-embedded")
+        .get("permguard-std")
+        .is_some_and(|enabled| enabled.contains("provision"))
+    {
+        problems.push("permguard-embedded builds permguard-std with `provision`".to_owned());
+    }
+    assert!(
+        problems.is_empty(),
+        "an embedded Host links no server:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// A decision record and an event record are a normative model first (RD-14): built with no
 /// feature, each package links no Host stream engine, which is what a verifier links; the durable
 /// storage and the stream registration are features that bring it. The Control Plane's domain

@@ -9,6 +9,8 @@
 //! | Module          | What it runs                                                                  |
 //! | --------------- | ----------------------------------------------------------------------------- |
 //! | [`composition`] | the Host opened on its volume, its Planes registered, the server host run     |
+//! | [`host`]        | the server host that starts every service, waits, and ends them in order      |
+//! | [`planes`]      | the configuration sections and the streams of the Planes a composition runs   |
 //! | [`banner`]      | the text a start announces the build with                                     |
 //! | [`time`]        | the clock's observer and its periodic pass, and the key rings' clock          |
 //! | [`checkpoints`] | the audit trails' sealing sweep, and the legacy audit chain laid out at start |
@@ -29,8 +31,10 @@ pub mod banner;
 pub mod checkpoints;
 pub mod composition;
 pub mod dormancy;
+pub mod host;
 pub mod join;
 pub mod objectives;
+pub mod planes;
 pub mod repin;
 pub mod shipping;
 pub mod stream_gc;

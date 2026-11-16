@@ -842,3 +842,23 @@ fn a_join_names_its_invitation_and_its_pin_from_any_layer() {
         "a name with no join"
     );
 }
+
+/// A server with no listener at all can only be a mistake, and is refused. A process embedded in
+/// an application is reached by it and binds none: the composition that embeds says so, and no
+/// setting can.
+#[test]
+fn test_a_process_with_no_listener_is_refused_unless_a_composition_embeds_it() {
+    let unreachable = config(&[
+        (SETTING_ASSURANCE_PROFILE, "development"),
+        (SETTING_TELEMETRY_ADDR, "off"),
+    ]);
+
+    assert!(refusal(&unreachable).contains("defines no listen address at all"));
+    assert!(!unreachable.is_embedded());
+
+    let embedded = unreachable.embedded();
+    assert!(embedded.is_embedded());
+    embedded
+        .validate()
+        .expect("an embedded process binds no listener by design");
+}

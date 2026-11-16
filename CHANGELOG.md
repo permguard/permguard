@@ -64,6 +64,11 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **An application embeds the Data Plane without composing a Host.**
+  `permguard-embedded` composes it: the headless runtime opens the Host on its volume from the configuration file a server reads, with the implementations that file names, and runs the Data Plane as its one Plane, with no listener.
+  The application drives one future, the Host's life, and is handed a handle to decide, submit and read health; its own future ends the Host, drained and stopped in order.
+  `permguard_data_plane::embedded::Hosted` is the Plane as a service any host runs, the server host itself moved to `permguard-runtime`, and a composition that embeds says so in the configuration it reads: the rule that a server defines a listen address holds for servers alone.
+  A client reaches the build only with the adapter an application selects, `authority-refresh`; a Host with no listener joins no coordinator, so this profile decides against a verified local mirror.
 - **An engine is registered through the builder.**
   A language package hands out both its halves as one `engine()`, and `DataPlane::builder(..).engine(..)` registers it: an application that links `permguard-language-cedar` itself needs no language feature of the Data Plane.
   A feature and a registration are one implementation reached two ways, never both for one language: the catalogue is the process's, in one fixed order, sealed when first read, and it refuses a language it already holds and an engine registered after that read.

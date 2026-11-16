@@ -94,6 +94,15 @@ printf '==> permguard-offline built with `kms`\n'
 cargo check --locked -p permguard-offline --features kms
 run "permguard-runtime, headless" -p permguard-runtime
 
+# The Data Plane embedded over a Host composed for it: by itself, with each language and with the
+# adapter that fetches the Authority Plane's keys; its tests start a Host from a configuration file.
+for selection in "" cedar rego dogwood authority-refresh; do
+    printf '==> permguard-embedded built with `%s`\n' "${selection}"
+    cargo check --locked -p permguard-embedded --no-default-features --features "${selection}"
+done
+run "permguard-embedded, a Host composed for the application" -p permguard-embedded
+run "permguard-evaluation-worker, the dedicated worker" -p permguard-evaluation-worker
+
 # The embedded Data Plane as an application outside this workspace links it: every named profile
 # resolved, built and tested for that application alone.
 ./scripts/check-embedded-fixture.sh

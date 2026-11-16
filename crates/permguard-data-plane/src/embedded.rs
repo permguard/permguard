@@ -193,9 +193,89 @@ impl Parts {
 /// A running embedded Data Plane.
 pub struct Runtime {
     parts: Option<Parts>,
+    handle: Handle,
+}
+
+/// What an application asks a running Data Plane: a decision, a temporal submission, its health.
+/// Cheap to clone, and the same whoever composed the Host the Plane runs over.
+#[derive(Clone)]
+pub struct Handle {
     authorization: Arc<Authorization>,
     decider: Arc<Decider>,
     submitter: Option<Arc<Submitter>>,
+    health: Health,
+}
+
+impl Handle {
+    /// The surfaces the Plane was granted, read once from the context it runs in.
+    fn over(context: &PlaneContext<'_>, health: Health) -> Self {
+        Self {
+            authorization: crate::handles::authorization(context),
+            decider: crate::authz::decider(context),
+            submitter: crate::temporal::served(context.config())
+                .then(|| crate::temporal::submitter(context))
+                .flatten(),
+            health,
+        }
+    }
+
+    /// Decides `request` for `actor`, the context the application authenticated: authorized on
+    /// the exact ledger before any policy is read, then decided against the verified mirror,
+    /// recorded in the decision log when the configuration keeps one. The same pipeline both
+    /// network transports call.
+    pub async fn evaluate(
+        &self,
+        actor: &Actor,
+        request: CheckRequest,
+        trace: Option<TraceContext>,
+    ) -> Result<CheckResponse, Refused> {
+        let services = Services {
+            authorization: &self.authorization,
+            decider: &self.decider,
+            submitter: None,
+        };
+        let request_id = request.request_id.clone();
+        match crate::evaluation::evaluate(
+            &services,
+            actor,
+            EvaluationRequest::native(request, request_id, trace),
+        )
+        .await?
+        {
+            Answer::Native(answered) => Ok(*answered),
+            Answer::Temporal(_) => Err(Refused::Failed(crate::evaluation::mismatched(
+                "the embedded native evaluation",
+            ))),
+        }
+    }
+
+    /// Submits a temporal occurrence for `actor`, when the configuration serves the temporal
+    /// interface: authorized, then recorded durably and idempotently.
+    pub async fn submit(
+        &self,
+        actor: &Actor,
+        request: SubmitRequest,
+    ) -> Result<SubmitResponse, Refused> {
+        let services = Services {
+            authorization: &self.authorization,
+            decider: &self.decider,
+            submitter: self.submitter.as_ref(),
+        };
+        match crate::evaluation::evaluate(&services, actor, EvaluationRequest::temporal(request))
+            .await?
+        {
+            Answer::Temporal(answered) => Ok(*answered),
+            Answer::Native(_) => Err(Refused::Failed(crate::evaluation::mismatched(
+                "the embedded temporal submission",
+            ))),
+        }
+    }
+
+    /// The lifecycle the Plane's readiness is derived from: live, ready, and what each component
+    /// and service reports.
+    pub fn health(&self) -> Health {
+        self.health.clone()
+    }
 }
 
 impl Builder {
@@ -326,16 +406,10 @@ impl Runtime {
     /// The running Data Plane over its started services: the surfaces the Plane was granted, read
     /// once, and the Host and the Plane marked ready.
     fn over(parts: Parts) -> Self {
-        let (authorization, decider, submitter) = {
+        let handle = {
             let server = parts.server();
             let context = PlaneContext::new(&server, PLANE);
-            (
-                crate::handles::authorization(&context),
-                crate::authz::decider(&context),
-                crate::temporal::served(context.config())
-                    .then(|| crate::temporal::submitter(&context))
-                    .flatten(),
-            )
+            Handle::over(&context, parts.health.clone())
         };
         // The Host the application composed is up, and the Plane's services are: both take work.
         let lifecycle = parts.health.lifecycle();
@@ -350,72 +424,41 @@ impl Runtime {
 
         Self {
             parts: Some(parts),
-            authorization,
-            decider,
-            submitter,
+            handle,
         }
     }
 }
 
 impl Runtime {
-    /// Decides `request` for `actor`, the context the application authenticated: authorized on
-    /// the exact ledger before any policy is read, then decided against the verified mirror,
-    /// recorded in the decision log when the configuration keeps one. The same pipeline both
-    /// network transports call.
+    /// Decides `request` for `actor`: [`Handle::evaluate`].
     pub async fn evaluate(
         &self,
         actor: &Actor,
         request: CheckRequest,
         trace: Option<TraceContext>,
     ) -> Result<CheckResponse, Refused> {
-        let services = Services {
-            authorization: &self.authorization,
-            decider: &self.decider,
-            submitter: None,
-        };
-        let request_id = request.request_id.clone();
-        match crate::evaluation::evaluate(
-            &services,
-            actor,
-            EvaluationRequest::native(request, request_id, trace),
-        )
-        .await?
-        {
-            Answer::Native(answered) => Ok(*answered),
-            Answer::Temporal(_) => Err(Refused::Failed(crate::evaluation::mismatched(
-                "the embedded native evaluation",
-            ))),
-        }
+        self.handle.evaluate(actor, request, trace).await
     }
 
-    /// Submits a temporal occurrence for `actor`, when the configuration serves the temporal
-    /// interface: authorized, then recorded durably and idempotently.
+    /// Submits a temporal occurrence for `actor`: [`Handle::submit`].
     pub async fn submit(
         &self,
         actor: &Actor,
         request: SubmitRequest,
     ) -> Result<SubmitResponse, Refused> {
-        let services = Services {
-            authorization: &self.authorization,
-            decider: &self.decider,
-            submitter: self.submitter.as_ref(),
-        };
-        match crate::evaluation::evaluate(&services, actor, EvaluationRequest::temporal(request))
-            .await?
-        {
-            Answer::Temporal(answered) => Ok(*answered),
-            Answer::Native(_) => Err(Refused::Failed(crate::evaluation::mismatched(
-                "the embedded temporal submission",
-            ))),
-        }
+        self.handle.submit(actor, request).await
     }
 
     /// The lifecycle the Plane's readiness is derived from: live, ready, and what each component
     /// and service reports.
     pub fn health(&self) -> Health {
-        self.parts
-            .as_ref()
-            .map_or_else(Health::new, |parts| parts.health.clone())
+        self.handle.health()
+    }
+
+    /// What the application asks the running Plane, as a value it may clone and hand to its
+    /// request handlers.
+    pub fn handle(&self) -> Handle {
+        self.handle.clone()
     }
 
     /// Ends the embedded Data Plane in order, within `budget`: every service finishes its work in
@@ -553,6 +596,194 @@ impl Drop for Runtime {
             return;
         };
         runtime.spawn(abandon(parts));
+    }
+}
+
+/// The Data Plane as a service of a Host composed for the application, with no listener: what
+/// `permguard-runtime`'s composition, or any server host, starts, drains and stops with the Host's
+/// own services. The application composes no Host by hand; it is handed a [`Handle`] once the
+/// Plane is up.
+///
+/// The Host that runs it declares the Plane ([`declaration`]) and checks its configuration
+/// ([`startup_check`]) before it starts anything, as for a served Plane.
+pub struct Hosted {
+    /// The dedicated evaluation worker, when the application named one.
+    worker: Option<std::path::PathBuf>,
+    started: Mutex<Option<tokio::sync::oneshot::Sender<Handle>>>,
+    running: Mutex<Vec<Box<dyn PlaneTask>>>,
+}
+
+/// The promise of a hosted Plane's [`Handle`].
+pub struct Started(tokio::sync::oneshot::Receiver<Handle>);
+
+impl Started {
+    /// The handle, once the Plane's services are up; `None` when the Host ended before they were,
+    /// which the Host's own result says why.
+    pub async fn handle(self) -> Option<Handle> {
+        self.0.await.ok()
+    }
+}
+
+impl Hosted {
+    /// A hosted Data Plane, and the promise of its handle.
+    pub fn new() -> (Self, Started) {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        (
+            Self {
+                worker: None,
+                started: Mutex::new(Some(sender)),
+                running: Mutex::new(Vec::new()),
+            },
+            Started(receiver),
+        )
+    }
+
+    /// Names the dedicated evaluation worker, as [`Builder::worker_executable`] does.
+    pub fn worker_executable(mut self, executable: impl Into<std::path::PathBuf>) -> Self {
+        self.worker = Some(executable.into());
+        self
+    }
+}
+
+/// What the Plane declares to the Host under `config`: the capabilities it asks for.
+pub fn declaration(config: &Config) -> permguard_host::composition::Declaration {
+    crate::plane::declaration(config)
+}
+
+/// The evidence streams the Plane declares under `config`, enabled or not: what a Host registers
+/// before any of them serves.
+pub fn streams(config: &Config) -> Vec<permguard_stream::StreamDescriptor> {
+    crate::plane::streams(config)
+}
+
+/// What the Plane requires of `config` before anything starts: a language, a consistent
+/// catalogue, no retired setting.
+pub fn startup_check(config: &Config) -> anyhow::Result<()> {
+    crate::plane::startup_check(config)
+}
+
+impl permguard_core::Service for Hosted {
+    fn name(&self) -> &'static str {
+        "data-plane-embedded"
+    }
+
+    fn plane(&self) -> Option<&'static str> {
+        Some(PLANE)
+    }
+
+    fn start<'a>(
+        &'a self,
+        server: &'a ServerContext<'a>,
+    ) -> permguard_core::BoxFuture<'a, anyhow::Result<()>> {
+        Box::pin(async move {
+            // Before anything decides: the decision path is built on the worker named here.
+            if let Some(worker) = &self.worker {
+                crate::authz::name_worker(worker)?;
+            }
+            let context = PlaneContext::new(server, PLANE);
+            let lifecycle = server.health().lifecycle().clone();
+            lifecycle.initialize(PLANE);
+            let mut started: Vec<Box<dyn PlaneTask>> = Vec::new();
+            for service in crate::plane::services() {
+                if let Err(error) = service.start(&context).await {
+                    // Those started before it are stopped: a Plane that did not start runs nothing.
+                    for running in started.iter().rev() {
+                        if let Err(stop) = running.stop(&context).await {
+                            tracing::warn!(
+                                event.name = "embedded.stop_failed",
+                                component = COMPONENT,
+                                service = running.name(),
+                                error = %stop,
+                                "a service started before a failed one did not stop cleanly"
+                            );
+                        }
+                    }
+                    return Err(error.context(format!(
+                        "starting the `{}` service of the embedded Data Plane",
+                        service.name()
+                    )));
+                }
+                if lifecycle.component(service.name()).is_none() {
+                    lifecycle.service(service.name(), ServiceState::Running, None, None, None);
+                }
+                started.push(service);
+            }
+            let handle = Handle::over(&context, server.health().clone());
+            *self.running.lock().map_err(|_| {
+                anyhow::anyhow!("the embedded Data Plane's services are poisoned")
+            })? = started;
+            // Ready now, or as soon as its services report the last requirement satisfied.
+            lifecycle.settle(PLANE);
+            if let Some(sender) = self.started.lock().ok().and_then(|mut held| held.take()) {
+                // An application that dropped the promise asks nothing: the Plane still runs.
+                let _ = sender.send(handle);
+            }
+            tracing::info!(
+                event.name = "embedded.started",
+                component = COMPONENT,
+                "the embedded Data Plane is ready on the Host composed for it"
+            );
+            Ok(())
+        })
+    }
+
+    fn drain<'a>(
+        &'a self,
+        server: &'a ServerContext<'a>,
+        deadline: Instant,
+    ) -> permguard_core::BoxFuture<'a, anyhow::Result<Drained>> {
+        Box::pin(async move {
+            let running =
+                std::mem::take(&mut *self.running.lock().map_err(|_| {
+                    anyhow::anyhow!("the embedded Data Plane's services are poisoned")
+                })?);
+            let context = PlaneContext::new(server, PLANE);
+            let mut unfinished = Vec::new();
+            for service in running.iter().rev() {
+                match service.drain(&context, deadline).await {
+                    Ok(Drained::Complete) => {}
+                    Ok(Drained::Incomplete(reason)) => {
+                        unfinished.push(format!("{}: {reason}", service.name()));
+                    }
+                    Err(error) => unfinished.push(format!("{}: {error:#}", service.name())),
+                }
+            }
+            // Handed back for the stop, which the host calls after every drain.
+            if let Ok(mut held) = self.running.lock() {
+                *held = running;
+            }
+            Ok(if unfinished.is_empty() {
+                Drained::Complete
+            } else {
+                Drained::Incomplete(unfinished.join("; "))
+            })
+        })
+    }
+
+    fn stop<'a>(
+        &'a self,
+        server: &'a ServerContext<'a>,
+    ) -> permguard_core::BoxFuture<'a, anyhow::Result<()>> {
+        Box::pin(async move {
+            let running =
+                std::mem::take(&mut *self.running.lock().map_err(|_| {
+                    anyhow::anyhow!("the embedded Data Plane's services are poisoned")
+                })?);
+            let context = PlaneContext::new(server, PLANE);
+            let mut failures = Vec::new();
+            // Every service is stopped, whatever an earlier one answered.
+            for service in running.iter().rev() {
+                if let Err(error) = service.stop(&context).await {
+                    failures.push(format!("{}: {error:#}", service.name()));
+                }
+            }
+            anyhow::ensure!(
+                failures.is_empty(),
+                "services of the embedded Data Plane did not stop: {}",
+                failures.join("; ")
+            );
+            Ok(())
+        })
     }
 }
 

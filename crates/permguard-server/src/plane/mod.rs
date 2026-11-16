@@ -564,32 +564,17 @@ impl PlaneServer {
             // layers: they are attached as structured configuration, and their
             // shape is checked while somebody is watching.
             if section.name == "controlPlane" {
-                app = app.with_structured_section(section.name, |config, value| {
-                    let config =
-                        config.with_decision_producer_keys(settings::producer_keys(value)?);
-                    let config = config.with_decision_accept(settings::decision_accept(value)?)?;
-
-                    Ok(config.with_event_producer_keys(settings::event_producer_keys(value)?))
-                });
+                app = app.with_structured_section(
+                    section.name,
+                    permguard_runtime::planes::control_plane_section,
+                );
             }
 
             if section.name == "dataPlane" {
-                app = app.with_structured_section(section.name, |config, value| {
-                    let config = config.with_mirror_local(settings::mirror_local(value)?);
-                    let config = config
-                        .with_mirror_task_selections(settings::mirror_task_selections(value)?)?;
-                    let config = config.with_mirror_aliases(settings::mirror_aliases(value)?)?;
-                    // The subscriptions this plane imports history from: a list of three-part
-                    // entries, so it travels here rather than through the setting layers.
-                    let config = config.with_pull_ledgers(settings::pull_ledgers(value)?);
-                    let config =
-                        config.with_pull_producer_keys(settings::pull_producer_keys(value)?);
-                    let config =
-                        config.with_events_destination(settings::events_destination(value)?)?;
-                    let (destination, include) = settings::log_destination(value)?;
-
-                    config.with_log_destination(destination, include)
-                });
+                app = app.with_structured_section(
+                    section.name,
+                    permguard_runtime::planes::data_plane_section,
+                );
             }
         }
 
@@ -619,47 +604,18 @@ impl PlaneServer {
         let modules: Vec<std::sync::Arc<dyn PlaneModule>> =
             self.planes.iter().map(PlaneService::module).collect();
         app = app.with_startup_check(move |config| {
-            let mut registry = permguard_stream::StreamRegistry::new();
-            let mut serving_any = false;
-            for module in &modules {
-                if !plane_enabled(config, module.id()) {
-                    continue;
-                }
-                for descriptor in module.streams(config) {
-                    // A disabled stream is declared — discovery lists it as disabled — but it
-                    // owns no directory and registers nothing: only writers can collide.
-                    if !descriptor.enabled {
-                        continue;
-                    }
-                    serving_any = true;
-                    let identity = descriptor.identity.to_string();
-                    match registry.register(descriptor) {
-                        Ok(permguard_stream::Registered::Clean) => {}
-                        Ok(permguard_stream::Registered::Tolerated { with }) => warn!(
-                            event.name = "streams.legacy_nesting",
-                            component = module.component(),
-                            stream = %identity,
-                            beside = %with,
-                            "two pre-layout streams nest their directories; the versioned \
-                             layout under data/streams separates what a future migration moves"
-                        ),
-                        Err(refused) => anyhow::bail!(
-                            "registering the streams of the {}: {refused}",
-                            module.description()
-                        ),
-                    }
-                }
-            }
-
-            // The versioned layout is claimed before any stream serves: the marker under
-            // `data/streams` says which rule the directories below it follow, and a root laid
-            // out by a rule this build does not know is refused rather than guessed at.
-            if serving_any {
-                permguard_stream::layout::claim(&config.data_directory())
-                    .map_err(|error| anyhow::anyhow!("claiming the stream layout: {error}"))?;
-            }
-
-            Ok(())
+            permguard_runtime::planes::register_streams(
+                config,
+                modules
+                    .iter()
+                    .filter(|module| plane_enabled(config, module.id()))
+                    .map(|module| permguard_runtime::planes::DeclaredStreams {
+                        component: module.component(),
+                        description: module.description(),
+                        streams: module.streams(config),
+                    })
+                    .collect(),
+            )
         });
 
         // Every Plane public listener against its class, before anything binds (WP-2.11): the
