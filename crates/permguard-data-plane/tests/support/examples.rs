@@ -311,8 +311,22 @@ pub fn provision_named(
     root: &Path,
     name: &str,
     manifest: Manifest,
+    zone: (&str, &str),
+    ledger: (&str, &str),
+) -> Manifest {
+    provision_with_artifacts(root, name, manifest, zone, ledger, &[])
+}
+
+/// [`provision_named`], with typed artifacts the example's directory does not carry, each by its
+/// registered type: what a stricter assurance profile requires of a partition, supplied by the
+/// test that asks for that profile.
+pub fn provision_with_artifacts(
+    root: &Path,
+    name: &str,
+    manifest: Manifest,
     (zone_id, zone_name): (&str, &str),
     (ledger_id, ledger_name): (&str, &str),
+    supplied: &[(&str, &[u8])],
 ) -> Manifest {
     let path = root.join(MIRROR_AUTHORITY).join(zone_id).join(ledger_id);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
@@ -358,24 +372,37 @@ pub fn provision_named(
         for contract in &partition.artifacts {
             let artifact = permguard_languages::artifact::artifact_type(&contract.r#type)
                 .unwrap_or_else(|| panic!("`{}` is a registered artifact", contract.r#type));
-            let Some(file_name) = artifact.canonical_filename() else {
-                continue;
+            let given = supplied
+                .iter()
+                .find(|(supplied_type, _)| *supplied_type == contract.r#type)
+                .map(|(_, source)| source.to_vec());
+            // A type that reserves no file name is found by its media type, under any name: the
+            // example's directory cannot say which file it is, so only a test supplies one.
+            let (file_name, source) = match (artifact.canonical_filename(), given) {
+                (Some(file_name), Some(source)) => (file_name.to_owned(), source),
+                (None, Some(source)) => (format!("{}.artifact", contract.r#type), source),
+                (Some(file_name), None) => {
+                    let file = example(name).join(partition_name).join(file_name);
+                    if !file.is_file() {
+                        assert!(
+                            !contract.required,
+                            "{partition_name} requires `{}` and carries no {file_name}",
+                            contract.r#type
+                        );
+                        continue;
+                    }
+                    (
+                        file_name.to_owned(),
+                        std::fs::read(&file).expect("the artifact reads"),
+                    )
+                }
+                (None, None) => continue,
             };
-            reserved.push(file_name.to_owned());
-            let file = example(name).join(partition_name).join(file_name);
-            if !file.is_file() {
-                assert!(
-                    !contract.required,
-                    "{partition_name} requires `{}` and carries no {file_name}",
-                    contract.r#type
-                );
-                continue;
-            }
-            let source = std::fs::read(&file).expect("the artifact reads");
+            reserved.push(file_name.clone());
             entries.push(TreeEntry {
                 kind: Kind::Blob,
                 digest: put(artifact.media_type(), &source),
-                name: file_name.to_owned(),
+                name: file_name,
                 annotations: BTreeMap::new(),
             });
         }

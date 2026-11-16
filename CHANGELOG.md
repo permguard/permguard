@@ -64,6 +64,10 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **An embedding application keeps its entry point.**
+  `permguard-evaluation-worker` is the supervised evaluation worker as an executable of its own, and `DataPlane::builder(..).worker_executable(path)` names it: a runtime the assurance profile requires isolated is then evaluated there, and the application no longer calls `serve_if_worker` first in `main`.
+  The path is absolute and names a regular file, not a link, that its owner may execute and nobody else may write; a start with any other is refused, and a worker built with another engine is refused at its first frame.
+  A standalone Data Plane still starts itself again as its worker.
 - **The command line links no server.**
   Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
   The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.

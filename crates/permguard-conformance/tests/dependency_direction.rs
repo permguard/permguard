@@ -225,6 +225,19 @@ const LAYERS: &[(&str, &[&str])] = &[
     ),
     ("permguard-language-core", EVIDENCE_RUNTIME),
     ("permguard-pdp-core", EVIDENCE_RUNTIME),
+    // The dedicated evaluation worker evaluates and nothing else: no server, no listener, no
+    // client, no Host runtime and no async runtime of its own.
+    ("permguard-evaluation-worker", SERVER_STACK),
+    (
+        "permguard-evaluation-worker",
+        &[
+            "permguard-data-plane",
+            "permguard-runtime",
+            "permguard-client",
+            "permguard-std",
+            "tokio",
+        ],
+    ),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];

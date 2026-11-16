@@ -69,6 +69,79 @@ use decide::Decider;
 /// limit only until the second transport is used.
 static DECIDER: OnceLock<Arc<Decider>> = OnceLock::new();
 
+/// The executable this process's supervised workers start from, when it is not the process's
+/// own: the dedicated worker an embedding application named. Set before the decider is built.
+static WORKER: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Names the dedicated worker `executable` for this process, checked before it is ever started:
+/// an absolute path to a regular file its owner may execute and nobody else may write. What a
+/// supervisor starts evaluates policies and reads requests, so a path somebody else can replace
+/// is refused rather than trusted.
+///
+/// The first name holds for the process; naming another afterwards is refused, and so is naming
+/// one once the decision path is built on the process's own executable.
+pub fn name_worker(executable: &std::path::Path) -> anyhow::Result<()> {
+    check_worker(executable)?;
+    if let Some(held) = WORKER.get() {
+        anyhow::ensure!(
+            held == executable,
+            "this process already starts its evaluation workers from {}",
+            held.display()
+        );
+        return Ok(());
+    }
+    anyhow::ensure!(
+        DECIDER.get().is_none(),
+        "the decision path of this process is already built: its evaluation workers start from \
+         the process's own executable"
+    );
+    // A name another thread set first is judged by the comparison above on the next call.
+    let _ = WORKER.set(executable.to_path_buf());
+    Ok(())
+}
+
+/// Whether `executable` may be started as a worker.
+fn check_worker(executable: &std::path::Path) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        executable.is_absolute(),
+        "the evaluation worker is named by an absolute path, and `{}` is relative",
+        executable.display()
+    );
+    // The link itself, not what it points to: a link is a name somebody may point elsewhere.
+    let found = std::fs::symlink_metadata(executable).map_err(|error| {
+        anyhow::anyhow!(
+            "the evaluation worker {} cannot be read: {error}",
+            executable.display()
+        )
+    })?;
+    anyhow::ensure!(
+        found.is_file(),
+        "the evaluation worker {} is not a regular file",
+        executable.display()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let mode = found.permissions().mode();
+        anyhow::ensure!(
+            mode & 0o100 != 0,
+            "the evaluation worker {} is not executable by its owner",
+            executable.display()
+        );
+        anyhow::ensure!(
+            mode & 0o022 == 0,
+            "the evaluation worker {} may be written by its group or by anybody: whoever can \
+             replace it evaluates every policy",
+            executable.display()
+        );
+    }
+    #[cfg(not(unix))]
+    anyhow::bail!("this platform runs no supervised evaluation worker");
+    #[cfg(unix)]
+    Ok(())
+}
+
 /// The decision path, built from the plane's configuration on first use and
 /// shared from then on.
 /// How long one decision may spend evaluating: nine tenths of the transport's request timeout.
@@ -165,6 +238,12 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
             // The configured assurance profile (WP-2.8): the floor every partition meets at load,
             // and whether its engine runs supervised. A manifest cannot lower it.
             .with_profile(config.assurance().profile())
+            // The dedicated worker an embedding application named, in place of this executable.
+            .with_supervisors(Arc::new(match WORKER.get() {
+                Some(executable) => permguard_languages::worker::Supervisors::default()
+                    .started_from(executable.clone()),
+                None => permguard_languages::worker::Supervisors::default(),
+            }))
             // What this deployment has opted into. A ledger naming a provisional contract it has
             // not enabled is refused at load rather than served.
             .with_enabled(enabled(config)),
@@ -235,4 +314,69 @@ pub fn base_url(context: &PlaneContext<'_>) -> String {
         permguard_core::planes::discovery::PlaneId::Data,
     )
     .unwrap_or_default()
+}
+
+#[cfg(all(test, unix))]
+mod worker_tests {
+    #![allow(clippy::expect_used)]
+
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::path::{Path, PathBuf};
+
+    use super::check_worker;
+
+    /// A file of the test's own, under `mode`.
+    fn file(tag: &str, mode: u32) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "pg-worker-check-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("the directory");
+        let path = directory.join("worker");
+        std::fs::write(&path, b"#!/bin/sh\n").expect("the file");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+            .expect("its permissions");
+        path
+    }
+
+    fn refusal(path: &Path) -> String {
+        format!("{:#}", check_worker(path).expect_err("refused"))
+    }
+
+    #[test]
+    fn test_a_worker_its_owner_alone_may_write_and_execute_is_accepted() {
+        check_worker(&file("accepted", 0o700)).expect("owner-only and executable");
+        check_worker(&file("readable", 0o755)).expect("readable by others, written by none");
+    }
+
+    #[test]
+    fn test_a_worker_named_by_a_relative_path_is_refused() {
+        assert!(refusal(Path::new("permguard-evaluation-worker")).contains("relative"));
+    }
+
+    #[test]
+    fn test_a_worker_that_is_missing_a_directory_or_a_link_is_refused() {
+        assert!(refusal(Path::new("/nonexistent/permguard-evaluation-worker")).contains("read"));
+
+        let held = file("directory", 0o700);
+        let directory = held.parent().expect("its directory");
+        assert!(refusal(directory).contains("not a regular file"));
+
+        let link = directory.join("link");
+        std::os::unix::fs::symlink(&held, &link).expect("a link");
+        assert!(refusal(&link).contains("not a regular file"));
+    }
+
+    #[test]
+    fn test_a_worker_nobody_may_execute_is_refused() {
+        assert!(refusal(&file("plain", 0o600)).contains("not executable"));
+    }
+
+    #[test]
+    fn test_a_worker_another_may_replace_is_refused() {
+        assert!(refusal(&file("group", 0o770)).contains("written by its group"));
+        assert!(refusal(&file("anybody", 0o702)).contains("written by its group"));
+    }
 }

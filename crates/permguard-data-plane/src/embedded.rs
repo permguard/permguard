@@ -92,13 +92,18 @@ pub struct DataPlane;
 impl DataPlane {
     /// A builder over the application's `capabilities`.
     pub fn builder(capabilities: Capabilities) -> Builder {
-        Builder { capabilities }
+        Builder {
+            capabilities,
+            worker: None,
+        }
     }
 }
 
 /// What starts an embedded Data Plane.
 pub struct Builder {
     capabilities: Capabilities,
+    /// The dedicated evaluation worker, when the application named one.
+    worker: Option<std::path::PathBuf>,
 }
 
 /// Why an embedded Data Plane did not start. Nothing is left running when it is returned.
@@ -189,6 +194,21 @@ pub struct Runtime {
 }
 
 impl Builder {
+    /// Names the dedicated evaluation worker: the executable a runtime the assurance profile
+    /// requires isolated is evaluated in, `permguard-evaluation-worker` built with the languages
+    /// and at the version of this library.
+    ///
+    /// Without it the supervisor starts the application's own executable as the worker, which
+    /// works only for an application that calls [`serve_if_worker`](crate::serve_if_worker) first
+    /// in `main`. With it the application's entry point is its own. The path is absolute and names
+    /// a regular file, not a link, its owner may execute and nobody else may write; `start`
+    /// refuses any other.
+    /// The first name holds for the process.
+    pub fn worker_executable(mut self, executable: impl Into<std::path::PathBuf>) -> Self {
+        self.worker = Some(executable.into());
+        self
+    }
+
     /// Registers the Plane with the Host and starts its services on the caller's runtime:
     /// mirroring, the decision log, the decision audit and the temporal history, each as its
     /// configuration enables it. Refused, with nothing left running, when the configuration or
@@ -206,6 +226,10 @@ impl Builder {
             metrics,
         } = self.capabilities;
         crate::plane::startup_check(&config).map_err(StartError::Configuration)?;
+        // Before anything decides: the decision path is built on the worker named here.
+        if let Some(worker) = &self.worker {
+            crate::authz::name_worker(worker).map_err(StartError::Configuration)?;
+        }
         let registration = host
             .register(crate::plane::declaration(&config))
             .map_err(|error| StartError::Declaration(error.to_string()))?;

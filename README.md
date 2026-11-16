@@ -940,6 +940,7 @@ The Host never depends on a concrete plane.
 | `permguard-client`                 | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions, events and tokens.                |
 | `permguard-offline`                | composition | Offline volume administration the server and the command line share: configuration, keys, migrations.         |
 | `permguard-runtime`                | composition | The Host's headless runtime: its composition and its own services.                                            |
+| `permguard-evaluation-worker`      | composition | The dedicated supervised evaluation worker an embedded Data Plane may name.                                   |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |

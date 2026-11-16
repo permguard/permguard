@@ -357,6 +357,22 @@ impl Supervisors {
         }
     }
 
+    /// The same pools, their workers started from `executable` in place of this process's own:
+    /// the dedicated worker of an application that keeps its entry point to itself. A worker
+    /// answers only for the runtime whose descriptor the supervisor names, so an executable built
+    /// with another engine is refused at its first frame.
+    #[cfg(unix)]
+    pub fn started_from(mut self, executable: std::path::PathBuf) -> Self {
+        self.executable = Some((executable, Vec::new()));
+        self
+    }
+
+    /// Where a platform runs no supervised worker, there is none to start from anything.
+    #[cfg(not(unix))]
+    pub fn started_from(self, _executable: std::path::PathBuf) -> Self {
+        self
+    }
+
     /// Compiles a partition of `language` in that runtime's supervised worker.
     #[cfg(unix)]
     pub fn compile(

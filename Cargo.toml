@@ -17,6 +17,7 @@ members = [
     "crates/permguard-data-plane",
     "crates/permguard-data-plane-server",
     "crates/permguard-decisions",
+    "crates/permguard-evaluation-worker",
     "crates/permguard-events",
     "crates/permguard-host",
     "crates/permguard-mirror",

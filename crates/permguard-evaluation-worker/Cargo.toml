@@ -1,0 +1,46 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-evaluation-worker"
+description = "The dedicated supervised evaluation worker: the executable an embedded Data Plane starts to evaluate a runtime its assurance profile requires isolated, in place of the application's own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[[bin]]
+name = "permguard-evaluation-worker"
+path = "src/main.rs"
+doc = false
+
+[features]
+# The languages this worker evaluates. It answers only for a runtime whose descriptor matches the
+# supervisor's, so it is built with the languages, and the versions, of the Data Plane it serves.
+default = ["cedar", "dogwood", "rego"]
+cedar = ["permguard-languages/cedar"]
+dogwood = ["permguard-languages/dogwood"]
+rego = ["permguard-languages/rego"]
+
+[dependencies]
+# The evaluating halves and the worker's protocol: nothing else. No runtime, no listener, no Host.
+permguard-languages = { workspace = true, features = ["evaluate"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+# An application embedding the Data Plane with this worker named, over the Data Plane's own test
+# support: the Host it composes and the repository's examples as verified mirrors.
+permguard-core.workspace = true
+permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
+permguard-events = { workspace = true, features = ["stream"] }
+permguard-host.workspace = true
+permguard-mirror.workspace = true
+permguard-objects.workspace = true
+permguard-std = { workspace = true, features = ["audit", "storage"] }
+serde.workspace = true
+serde_norway.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

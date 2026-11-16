@@ -2741,6 +2741,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-evaluation-worker"
+version = "0.1.0"
+dependencies = [
+ "permguard-core",
+ "permguard-data-plane",
+ "permguard-events",
+ "permguard-host",
+ "permguard-languages",
+ "permguard-mirror",
+ "permguard-objects",
+ "permguard-std",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "tokio",
+]
+
+[[package]]
 name = "permguard-events"
 version = "0.1.0"
 dependencies = [
