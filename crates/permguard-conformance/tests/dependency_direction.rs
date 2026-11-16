@@ -339,9 +339,9 @@ fn each_layer_reaches_only_what_it_allows() {
     }
 }
 
-/// What a build of the catalogue with only `features` links, through normal and build
-/// dependencies: the packages `cargo tree` resolves for it, by name.
-fn carried_with(features: &str) -> BTreeSet<String> {
+/// What a build of `package` with only `features` links, through normal and build dependencies:
+/// the packages `cargo tree` resolves for it, built by itself, by name.
+fn carried_with(package: &str, features: &str) -> BTreeSet<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let output = Command::new(cargo)
@@ -349,7 +349,7 @@ fn carried_with(features: &str) -> BTreeSet<String> {
             "tree",
             "--locked",
             "--package",
-            "permguard-languages",
+            package,
             "--no-default-features",
             "--features",
             features,
@@ -433,7 +433,7 @@ fn a_build_links_only_the_engines_it_carries() {
             ][..],
         ),
     ] {
-        let linked = carried_with(features);
+        let linked = carried_with("permguard-languages", features);
         for name in carried {
             if !linked.contains(*name) {
                 problems.push(format!("a `{features}` build does not link {name}"));
@@ -547,6 +547,92 @@ fn the_control_plane_validates_without_evaluating() {
     assert!(
         problems.is_empty(),
         "the Control Plane validates and the Data Plane evaluates:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The embedded Data Plane carries the languages its application selects and no other, and none by
+/// default (`11-refactoring/1-dependencies.md`, Feature and profile model): built by itself with
+/// one language's feature, it links that engine, the decision point, and neither another engine
+/// nor a server, a listener or a telemetry exporter.
+#[test]
+fn an_embedded_data_plane_links_only_the_languages_it_selects() {
+    // What only a server links, and the default implementations an application injects its own
+    // of. Tonic, and axum through it, stay until the client surfaces split (phase 3): the network
+    // client the Data Plane synchronizes and ships through links them.
+    const NEVER: &[&str] = &[
+        "permguard-server",
+        "permguard-transport",
+        "permguard-telemetry",
+        "permguard-std",
+        "tower-http",
+        "opentelemetry",
+    ];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &["permguard-language-core", "permguard-pdp-core"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-rego",
+                "permguard-language-dogwood",
+                "cedar-policy",
+                "regorus",
+                "dogwood-language",
+            ][..],
+        ),
+        (
+            "cedar",
+            &[
+                "permguard-language-cedar",
+                "cedar-policy",
+                "permguard-pdp-core",
+            ][..],
+            &[
+                "permguard-language-rego",
+                "permguard-language-dogwood",
+                "regorus",
+                "jsonschema",
+                "dogwood-language",
+            ][..],
+        ),
+        (
+            "rego",
+            &["permguard-language-rego", "regorus", "permguard-pdp-core"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-dogwood",
+                "cedar-policy",
+                "dogwood-language",
+            ][..],
+        ),
+        (
+            "dogwood",
+            &["permguard-language-dogwood", "dogwood-language"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-rego",
+                "regorus",
+                "jsonschema",
+            ][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-data-plane", features);
+        for name in carried {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent.iter().chain(NEVER) {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "an embedded Data Plane links what its features select:\n  {}",
         problems.join("\n  ")
     );
 }

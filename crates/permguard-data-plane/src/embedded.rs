@@ -29,9 +29,17 @@
 //! | synchronization   | the `policy.mirror` tasks the application's Host serves, over its own sessions       |
 //! | evidence          | the decision log and history on the Host's streams, when the configuration keeps them |
 //! | `Drop`            | a fail-safe cancellation, never a graceful end: only `shutdown` drains                |
+//! | languages         | the build's features, `cedar`, `rego`, `dogwood`, none by default: `start` refuses none |
+//! | isolated runtimes | the application calls [`crate::serve_if_worker`] first in `main`, before its arguments |
 //!
 //! The evaluation path and the decision log are composed once per process, as in a server, so one
 //! process embeds one Data Plane.
+//!
+//! A runtime the assurance profile requires isolated, Rego from `production`, is compiled and
+//! evaluated in a supervised worker: this executable started again with the worker argument. The
+//! application opts in by calling [`crate::serve_if_worker`] before it parses its own arguments
+//! or starts its runtime; an application that does not is refused such a partition at load, which
+//! is never evaluated in process instead.
 //!
 //! This module is the composition root of an embedded process, as a server's entry point is of a
 //! standalone one: the only place in this package that builds the context a Plane runs in.

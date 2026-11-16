@@ -379,9 +379,16 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
         allowed_lateness: config.events_allowed_lateness(),
         clock_skew: config.events_clock_skew(),
     };
-    let default_window = std::time::Duration::from_secs(
-        u64::try_from(permguard_languages::dogwood_default_max_window_seconds()).unwrap_or(0),
-    );
+    // And a temporal runtime has to be in the build at all: an embedding application selects its
+    // languages, and one built without Dogwood has nothing to decide against a history with.
+    let Some(default_window) = permguard_languages::temporal_default_max_window_seconds() else {
+        anyhow::bail!(
+            "`dataPlane.events.enabled` is true and this build carries no temporal runtime: the \
+             temporal interface is decided by Dogwood, which this build was compiled without. \
+             Build with the `dogwood` feature, or set `dataPlane.events.enabled: false`"
+        );
+    };
+    let default_window = std::time::Duration::from_secs(u64::try_from(default_window).unwrap_or(0));
     if let Err(why) = bounds.admits(default_window) {
         anyhow::bail!(
             "`dataPlane.events.journal.retention_minimum` is too short for the temporal runtimes \

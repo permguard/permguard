@@ -48,6 +48,14 @@ pub fn streams(config: &permguard_core::Config) -> Vec<permguard_stream::StreamD
 
 /// What this plane requires before it binds anything.
 pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
+    // A Data Plane decides with the languages its build selected, and one built with none can
+    // serve no ledger: an invalid profile is refused here rather than at the first load.
+    if permguard_languages::languages().is_empty() {
+        anyhow::bail!(
+            "this build carries no policy language: a Data Plane is built with at least one of \
+             the `cedar`, `rego` and `dogwood` features"
+        );
+    }
     // The languages this binary carries, before any ledger is loaded against them (LANG-12).
     permguard_languages::registry::check_registry().map_err(|collision| {
         anyhow::anyhow!("this build's language catalogue is inconsistent: {collision}")

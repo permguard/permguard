@@ -82,7 +82,8 @@ permguard-language-cedar = { path = "crates/permguard-language-cedar", version =
 permguard-language-core = { path = "crates/permguard-language-core", version = "0.1.0" }
 permguard-language-dogwood = { path = "crates/permguard-language-dogwood", version = "0.1.0" }
 permguard-language-rego = { path = "crates/permguard-language-rego", version = "0.1.0" }
-permguard-languages = { path = "crates/permguard-languages", version = "0.1.0" }
+# No default language: each package states the languages and the half it carries.
+permguard-languages = { path = "crates/permguard-languages", version = "0.1.0", default-features = false }
 permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
 permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
 permguard-stream = { path = "crates/permguard-stream", version = "0.1.0" }

@@ -96,6 +96,17 @@ pub use request::{
 };
 pub use role::{Authoring, ExtractedPolicy, Language};
 
+/// The furthest back a temporal partition may look when its schema says nothing, when this build
+/// carries a temporal runtime: Dogwood's default, and `None` in a build without it.
+pub fn temporal_default_max_window_seconds() -> Option<i64> {
+    #[cfg(feature = "dogwood")]
+    let window = Some(permguard_language_dogwood::DEFAULT_MAX_WINDOW_SECONDS);
+    #[cfg(not(feature = "dogwood"))]
+    let window = None;
+
+    window
+}
+
 /// The furthest back a Dogwood partition may look when its schema says nothing.
 ///
 /// Exposed so a deployment's journal bounds can be checked against it at startup rather than at

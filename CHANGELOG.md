@@ -24,6 +24,8 @@ is cut.
   The running Data Plane decides through the same pipeline both transports use, authorized on the exact ledger before any policy is read, records its decisions on the Host's streams, mirrors over the Host's tasks, and reports its readiness from the same lifecycle a server does.
   `shutdown` drains every service before stopping it, within the budget it is given, stops included, and returns what it could not finish; a runtime dropped without it stops its services without draining.
   One process embeds one Data Plane, since the evaluation path and the decision log are composed once per process.
+  It carries the languages its build selects, with the `cedar`, `rego` and `dogwood` features of `permguard-data-plane`, none by default: built with none it refuses to start, and with `dataPlane.events.enabled` and no `dogwood` it says so.
+  A runtime its assurance profile requires isolated runs in a supervised worker once the application calls `permguard_data_plane::serve_if_worker()` first in its `main`; without it such a partition is refused at load, never evaluated in process.
 
 ### Changed
 

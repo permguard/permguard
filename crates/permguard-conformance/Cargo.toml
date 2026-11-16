@@ -26,7 +26,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
-permguard-languages.workspace = true
+permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego"] }
 serde_norway.workspace = true
 sha2.workspace = true
 permguard-control-client.workspace = true

@@ -30,7 +30,8 @@ permguard-host.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.
 ring.workspace = true
-permguard-languages.workspace = true
+# Every language, validating: ingest checks what a push carries and evaluates nothing.
+permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego"] }
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 serde_json.workspace = true

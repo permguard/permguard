@@ -15,6 +15,7 @@
 #   the catalogue, one language      validating, then evaluating: its golden vectors and corpora
 #                                    pass with neither of the other engines in the build
 #   each engine package              by itself, validating, then evaluating
+#   the embedded Data Plane          built with no language, and with each one alone
 #
 # A profile fails when it does not compile, when a test of it fails, or when it runs no test.
 
@@ -49,6 +50,14 @@ for language in cedar rego dogwood; do
     run "permguard-language-${language}, validating" -p "permguard-language-${language}"
     run "permguard-language-${language}, evaluating" \
         -p "permguard-language-${language}" --features evaluate
+done
+
+# The embedded Data Plane selects its languages too, none by default. Its tests always decide in
+# every language, so what is proven here is that each selection compiles by itself; what it links
+# is `dependency_direction.rs`'s to prove.
+for selection in "" cedar rego dogwood; do
+    printf '==> permguard-data-plane built with `%s`\n' "${selection}"
+    cargo check --locked -p permguard-data-plane --no-default-features --features "${selection}"
 done
 
 printf 'ok: every language profile compiles and passes its tests on its own\n'

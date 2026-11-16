@@ -34,7 +34,7 @@ permguard-control-client.workspace = true
 zeroize.workspace = true
 # The baseline volume's recovery (WP-7.7): the example requests and answers read as JSON, and the
 # evaluation path the Data Plane serves them at.
-permguard-languages.workspace = true
+permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego"] }
 serde_json.workspace = true
 # The secret canaries (TS-5): the recovery key's fingerprint, the secret type, and the base64 forms
 # a canary is searched in.

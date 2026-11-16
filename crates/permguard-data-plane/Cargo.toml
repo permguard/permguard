@@ -15,6 +15,14 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
+# The policy languages an embedding application selects, none by default
+# (`11-refactoring/1-dependencies.md`, Feature and profile model): each links one engine package
+# and nothing of the others. The standalone Data Plane selects all three itself.
+[features]
+cedar = ["permguard-languages/cedar"]
+dogwood = ["permguard-languages/dogwood"]
+rego = ["permguard-languages/rego"]
+
 [dependencies]
 anyhow.workspace = true
 permguard-control-client.workspace = true
@@ -34,13 +42,17 @@ tracing.workspace = true
 # The handles this plane declares and gets from the Host (P1).
 permguard-host.workspace = true
 serde_json.workspace = true
-# The evaluating half: this package decides.
+# The evaluating half: this package decides. Which languages, the features above say.
 permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-objects.workspace = true
-serde.workspace = true
+# `rc`: a request shares its partition inputs across its evaluations behind an `Arc`, and the
+# decision record serializes them.
+serde = { workspace = true, features = ["rc"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 
 [dev-dependencies]
+# The tests decide in every language, whatever features the build under test selected.
+permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego", "evaluate"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 # Decoding a signed response's parts, as a PEP would (WP-6.6b).
 base64.workspace = true
