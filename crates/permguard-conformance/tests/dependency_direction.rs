@@ -416,6 +416,9 @@ fn carried_with(package: &str, features: &str) -> BTreeSet<String> {
     let output = Command::new(cargo)
         .args([
             "tree",
+            // A coloured repeat marker is not the marker these read.
+            "--color",
+            "never",
             "--locked",
             "--package",
             package,
@@ -529,6 +532,9 @@ fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
     let output = Command::new(cargo)
         .args([
             "tree",
+            // A coloured repeat marker is not the marker these read.
+            "--color",
+            "never",
             "--locked",
             "--package",
             package,
