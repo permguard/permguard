@@ -25,6 +25,8 @@ clap.workspace = true
 # The Authority surface's refresh of the key set and status lists a Host verifies tokens with.
 permguard-client = { workspace = true, features = ["authority-refresh"] }
 permguard-core.workspace = true
+# Offline volume administration, which the command line runs without a server.
+permguard-offline.workspace = true
 # The volume's ownership: the claim `serve` takes first, and the `volume claim` command.
 permguard-host.workspace = true
 # The stream foundation: the composition registers every stream its planes declare,
@@ -79,7 +81,7 @@ rustix = { workspace = true }
 
 [features]
 # The PKCS#11 custody of the Host's keys (WP-3.2): loads the token's module at runtime.
-pkcs11 = ["dep:cryptoki"]
+pkcs11 = ["dep:cryptoki", "permguard-offline/pkcs11"]
 
 
 [dev-dependencies]

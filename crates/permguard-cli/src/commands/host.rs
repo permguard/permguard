@@ -444,9 +444,9 @@ pub(super) fn custodian(
     let Some(file) = server_config else {
         return Ok(std::sync::Arc::new(Custodian::development()));
     };
-    let config = permguard_server::offline::config(env!("CARGO_PKG_VERSION"), Some(file))
+    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), Some(file))
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
-    permguard_server::offline::custodian(&config, held)
+    permguard_offline::volume::custodian(&config, held)
         .map_err(|error| Failure::unavailable(format!("the custody of the keys: {error:#}")))
 }
 
@@ -1529,7 +1529,7 @@ fn reset(
             }
             let held = claim(&volume, trace)?;
             let config =
-                permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
+                permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
             let custodian = custodian(&held, server_config)?;
             let opened = open_identity(&held, server_config)?;
@@ -1549,7 +1549,7 @@ fn reset(
             let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
                 config.time_max_clock_skew(),
             ));
-            let rings = permguard_server::offline::rings(
+            let rings = permguard_offline::volume::rings(
                 &config,
                 &held,
                 opened.host_id(),
@@ -1636,13 +1636,13 @@ fn reset(
         ResetAction::Run { confirm_file } => {
             let held = claim(&volume, trace)?;
             let config =
-                permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
+                permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
             let custodian = custodian(&held, server_config)?;
             let suite = identity::suite_of(&held)
                 .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
                 .unwrap_or(identity::Suite::Ed25519Sha256V1);
-            let provisioner = permguard_server::offline::provisioner(&custodian, &held, suite)
+            let provisioner = permguard_offline::volume::provisioner(&custodian, &held, suite)
                 .map_err(|error| Failure::unavailable(format!("{error:#}")))?;
             let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
                 config.time_max_clock_skew(),
@@ -1651,7 +1651,7 @@ fn reset(
             if let Some(old) = identity::reset::marked(&held)
                 .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
             {
-                let rings = permguard_server::offline::rings(
+                let rings = permguard_offline::volume::rings(
                     &config,
                     &held,
                     old,
@@ -1760,7 +1760,7 @@ fn reset(
                 .map_err(|error| Failure::unavailable(format!("consuming the plan: {error}")))?;
             // Every ring the server composes: `host.operations` signs the manifests that end
             // the memberships this Host coordinates, and every ring retires with the identity.
-            let rings = permguard_server::offline::rings(
+            let rings = permguard_offline::volume::rings(
                 &config,
                 &held,
                 opened.host_id(),

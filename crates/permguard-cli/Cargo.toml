@@ -31,8 +31,6 @@ permguard-core.workspace = true
 permguard-authority-plane.workspace = true
 # The grant store of a volume, worked on offline by `host grants` (WP-2.4).
 permguard-host.workspace = true
-# The configuration and the key custody of the server, for the offline `host` commands (WP-3.2).
-permguard-server.workspace = true
 # The object trees the Control Plane declares, which `restore` scans as `volume verify` does (WP-7.9).
 permguard-control-plane.workspace = true
 # The record, the chain and the signature — so `--verify` checks what the
@@ -43,11 +41,11 @@ permguard-events.workspace = true
 permguard-client = { workspace = true, features = ["full"] }
 permguard-notp.workspace = true
 permguard-objects.workspace = true
+# Offline volume administration, the same code the server runs: no server, no listener.
+permguard-offline.workspace = true
 # The evaluating half: this package decides.
 permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego", "evaluate"] }
 permguard-stream.workspace = true
-# A certificate's SPKI digest, computed as the server computes a connection's (TC-6).
-permguard-transport.workspace = true
 # Reads a PEM public key or certificate, and names the client's token cache (TC-6, TC-7).
 ring.workspace = true
 rustls.workspace = true
@@ -67,6 +65,9 @@ rustix = { workspace = true, features = ["termios"] }
 pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
+# The tests stand real listeners and a real Host API to drive the command line against.
+permguard-server.workspace = true
+permguard-transport.workspace = true
 # The server stubs of the contracts, for the tests that stand a fake server on them.
 permguard-contracts = { workspace = true, features = ["control-server", "data-server", "host-server", "authority-server"] }
 permguard-host = { workspace = true, features = ["test-support"] }

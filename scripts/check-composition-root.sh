@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSITION_ROOTS=(
     "crates/permguard-server/src/app.rs"
     "crates/permguard-server/src/plane/mod.rs"
-    "crates/permguard-server/src/plane/factories.rs"
+    "crates/permguard-offline/src/factories.rs"
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"

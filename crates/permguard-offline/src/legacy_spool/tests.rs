@@ -5,7 +5,6 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::Parser as _;
 use permguard_decisions::record::GENESIS;
 use permguard_decisions::spool::{Bounds, Spool};
 use permguard_host::storage::migrate::Layout;
@@ -154,32 +153,6 @@ fn migrate_decisions_refuses_an_undrained_spool_and_archives_a_drained_one() {
     );
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(empty);
-}
-
-#[test]
-fn the_command_line_names_the_decision_archive() {
-    let parsed = crate::command::Cli::try_parse_from([
-        "permguard",
-        "migrate",
-        "decisions",
-        "--volume",
-        "/volume",
-        "--backup",
-        "snapshot-1",
-        "--legacy",
-        "custom/spool",
-    ])
-    .expect("parsed");
-    assert_eq!(
-        parsed.command,
-        Some(crate::command::Command::Migrate {
-            what: crate::command::MigrateCommand::Decisions {
-                volume: PathBuf::from("/volume"),
-                backup: "snapshot-1".to_owned(),
-                legacy: Some(PathBuf::from("custom/spool")),
-            },
-        })
-    );
 }
 
 #[test]

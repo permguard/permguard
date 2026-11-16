@@ -22,6 +22,7 @@ members = [
     "crates/permguard-notp",
     "crates/permguard-client",
     "crates/permguard-objects",
+    "crates/permguard-offline",
     "crates/permguard-pdp-core",
     "crates/permguard-language-cedar",
     "crates/permguard-language-core",
@@ -82,6 +83,7 @@ permguard-mirror = { path = "crates/permguard-mirror", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
 permguard-client = { path = "crates/permguard-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
+permguard-offline = { path = "crates/permguard-offline", version = "0.1.0" }
 permguard-pdp-core = { path = "crates/permguard-pdp-core", version = "0.1.0" }
 permguard-language-cedar = { path = "crates/permguard-language-cedar", version = "0.1.0" }
 permguard-language-core = { path = "crates/permguard-language-core", version = "0.1.0" }

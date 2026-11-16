@@ -26,7 +26,7 @@ pub fn config(version: &'static str, file: Option<&Path>) -> Result<Config> {
         None => Vec::new(),
     };
     let config = Config::from_layers(
-        crate::plane::build_settings(version),
+        crate::factories::build_settings(version),
         Vec::<String>::new(),
         Layers::new()
             .with_file(settings)
@@ -44,7 +44,7 @@ pub const MIN_RECOVERY_KEY_BYTES: usize = 16;
 /// qualified provider's `recovery_key_id` when no key is named. A stated id that is not the
 /// resolved key's fingerprint is refused. `None` when neither is configured.
 pub fn recovery_key_id(config: &Config) -> Result<Option<String>> {
-    let store = crate::plane::factories::secret_store_for(config)?;
+    let store = crate::factories::secret_store_for(config)?;
     recovery_key_id_from(config, store.as_deref())
 }
 
@@ -155,8 +155,8 @@ pub fn backup_policy_shortfalls(
 /// The custodian `serve` builds for `config` over `volume`: its secret store, its KMS and token
 /// clients, its key-encryption keys witnessed on the volume.
 pub fn custodian(config: &Config, volume: &Volume) -> Result<Arc<Custodian>> {
-    let secrets = crate::plane::factories::secret_store_for(config)?;
-    crate::app::custodian_for(config, secrets.as_deref(), volume)
+    let secrets = crate::factories::secret_store_for(config)?;
+    crate::keys::custodian_for(config, secrets.as_deref(), volume)
 }
 
 /// What provisions the identity a reset makes on `volume` (WP-4.1): the identity's custody, its
@@ -207,9 +207,9 @@ pub fn rings(
         profile: config.assurance().profile(),
     };
     Ok([
-        crate::plane::factories::key_manager_for(config, &opener)?,
-        crate::plane::factories::control_signing_keys_for(config, &opener)?,
-        crate::plane::factories::data_signing_keys_for(config, &opener)?,
+        crate::factories::key_manager_for(config, &opener)?,
+        crate::factories::control_signing_keys_for(config, &opener)?,
+        crate::factories::data_signing_keys_for(config, &opener)?,
     ]
     .into_iter()
     .flatten()
@@ -245,7 +245,7 @@ mod tests {
 
     fn config(pairs: &[(&str, &str)]) -> Config {
         Config::from_layers(
-            crate::plane::build_settings("test"),
+            crate::factories::build_settings("test"),
             Vec::<String>::new(),
             Layers::new().with_file(
                 pairs

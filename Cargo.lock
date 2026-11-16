@@ -2461,6 +2461,7 @@ dependencies = [
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
+ "permguard-offline",
  "permguard-server",
  "permguard-std",
  "permguard-stream",
@@ -2884,6 +2885,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-offline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "bytes",
+ "clap",
+ "cryptoki",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "permguard-core",
+ "permguard-decisions",
+ "permguard-events",
+ "permguard-host",
+ "permguard-std",
+ "ring",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "permguard-pdp-core"
 version = "0.1.0"
 dependencies = [
@@ -2922,6 +2952,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-objects",
+ "permguard-offline",
  "permguard-std",
  "permguard-stream",
  "permguard-telemetry",

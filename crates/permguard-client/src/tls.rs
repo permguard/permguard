@@ -260,7 +260,11 @@ pub fn server_name(name: &str) -> Result<ServerName<'static>, Error> {
     })
 }
 
-fn load_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>, Error> {
+/// Reads a PEM file of certificates: the client's own, as it presents them.
+///
+/// Public because whoever names a client certificate by its digest reads the same bytes this
+/// client sends.
+pub fn load_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>, Error> {
     let certificates: Vec<_> = CertificateDer::pem_file_iter(path)
         .map_err(|error| Error::Material {
             path: path.to_path_buf(),

@@ -5,7 +5,6 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::Parser as _;
 use permguard_events::journal::Journal;
 use permguard_events::record::{GENESIS, Producer, Stream, occurrence_digest_of};
 use permguard_host::storage::migrate::Layout;
@@ -399,45 +398,6 @@ fn migrate_events_refuses_another_volume_than_the_configuration_s() {
     assert!(!root.join(TARGET).exists());
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(other);
-}
-
-#[test]
-fn the_command_line_names_the_event_archive() {
-    let parsed = crate::command::Cli::try_parse_from([
-        "permguard",
-        "migrate",
-        "events",
-        "--volume",
-        "/volume",
-        "--backup",
-        "snapshot-1",
-        "--config",
-        "/etc/permguard/server.yml",
-    ])
-    .expect("parsed");
-    assert_eq!(
-        parsed.command,
-        Some(crate::command::Command::Migrate {
-            what: crate::command::MigrateCommand::Events {
-                volume: PathBuf::from("/volume"),
-                backup: "snapshot-1".to_owned(),
-                config: PathBuf::from("/etc/permguard/server.yml"),
-            },
-        })
-    );
-    // The configuration is required: the history is measured against it.
-    assert!(
-        crate::command::Cli::try_parse_from([
-            "permguard",
-            "migrate",
-            "events",
-            "--volume",
-            "/volume",
-            "--backup",
-            "snapshot-1",
-        ])
-        .is_err()
-    );
 }
 
 #[test]

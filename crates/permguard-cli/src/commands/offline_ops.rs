@@ -12,7 +12,7 @@
 //! | `migrate status`   | every subsystem laid out, its version, generation and phase              |
 //! | `migrate rollback` | a committed migration back to its old generation                         |
 //!
-//! The migrations are the server binary's own (`permguard_server::app::migrate`,
+//! The migrations are the server binary's own (`permguard_offline::migrate`,
 //! `legacy_events::migrate_events`): one implementation, reached from both.
 
 use permguard_core::encoding::hex;
@@ -26,7 +26,7 @@ use serde::Serialize;
 use permguard_host::operations::backup::{self, Consistency};
 use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::Mutations;
-use permguard_server::command::MigrateCommand;
+use permguard_offline::MigrateCommand;
 
 use super::host::{
     INITIATOR, Reserved, claim, custodian, hold, open_identity, open_plans, refusal_text,
@@ -304,8 +304,7 @@ fn migrate_held(
     what: &MigrateCommand,
 ) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
-    permguard_server::app::migrate_on(held, what, &mut out)
-        .map_err(|error| format!("{error:#}"))?;
+    permguard_offline::migrate_on(held, what, &mut out).map_err(|error| format!("{error:#}"))?;
     Ok(lines_of(&out))
 }
 
@@ -412,7 +411,7 @@ fn plan(
         config.time_max_clock_skew(),
     ));
     let rings =
-        permguard_server::offline::rings(&config, &held, opened.host_id(), None, &custodian, time)
+        permguard_offline::volume::rings(&config, &held, opened.host_id(), None, &custodian, time)
             .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
     let signer = rings
         .iter()
@@ -551,12 +550,12 @@ fn run(
         Migration::Server(_, what) => migrate_held(&held, what),
         Migration::Events { backup } => {
             let mut out = Vec::new();
-            permguard_server::legacy_events::migrate_events_on(
+            permguard_offline::legacy_events::migrate_events_on(
                 &held,
                 backup,
                 config.working_dir(),
                 &config.events_directory(),
-                permguard_server::legacy_events::bounds_of(&config),
+                permguard_offline::legacy_events::bounds_of(&config),
                 &mut out,
             )
             .map(|()| lines_of(&out))
@@ -673,7 +672,7 @@ mod tests {
         if std::fs::write(&file, "public:\n  http: 0.0.0.0:5556\n").is_err() {
             panic!("a configuration file");
         }
-        let config = permguard_server::offline::config(env!("CARGO_PKG_VERSION"), Some(&file))
+        let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), Some(&file))
             .unwrap_or_else(|error| panic!("a configuration: {error:#}"));
         let _ = std::fs::remove_file(&file);
         let volume = Path::new("/volume");

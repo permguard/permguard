@@ -38,7 +38,8 @@ use crate::{App, DefaultServerHost};
 
 pub mod admission;
 pub mod discovery;
-pub mod factories;
+/// The implementations a deployment's configuration names, built for it: `permguard-offline`'s.
+pub use permguard_offline::factories;
 pub mod health;
 pub mod listeners;
 pub mod settings;

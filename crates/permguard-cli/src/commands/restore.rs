@@ -274,7 +274,7 @@ fn recovery_key_checked(
     let snapshot = backup::snapshot_manifest(held).map_err(|error| {
         Failure::unavailable(format!("reading the snapshot's manifest: {error}"))
     })?;
-    let configured = permguard_server::offline::recovery_key_id(config)
+    let configured = permguard_offline::volume::recovery_key_id(config)
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
     backup::check_recovery_key(
         snapshot.as_ref(),
@@ -299,7 +299,7 @@ fn recovery_key_checked(
 /// The configuration a restore or a migration reads, refused when it requires dual control: an
 /// offline plan then needs an approval, which an offline volume cannot collect.
 pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
-    let config = permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
+    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
     if config
         .assurance()
@@ -359,7 +359,7 @@ fn plan(
         config.time_max_clock_skew(),
     ));
     let rings =
-        permguard_server::offline::rings(&config, &held, opened.host_id(), None, &custodian, time)
+        permguard_offline::volume::rings(&config, &held, opened.host_id(), None, &custodian, time)
             .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
     let signer = rings
         .iter()
@@ -477,7 +477,7 @@ fn run(
         let suite = permguard_host::identity::suite_of(&held)
             .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
             .unwrap_or(permguard_host::identity::Suite::Ed25519Sha256V1);
-        let provisioner = permguard_server::offline::provisioner(&custodian, &held, suite)
+        let provisioner = permguard_offline::volume::provisioner(&custodian, &held, suite)
             .map_err(|error| Failure::unavailable(format!("{error:#}")))?;
         opened = opened.with_provisioner(provisioner);
     }
@@ -543,7 +543,7 @@ fn run(
     }
     // Every ring the server composes, through the configured custody, before anything changes:
     // the restore verifies its keys first.
-    let rings = permguard_server::offline::rings(
+    let rings = permguard_offline::volume::rings(
         &config,
         &held,
         opened.host_id(),

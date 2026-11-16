@@ -45,6 +45,9 @@ is cut.
   The client library takes the name of what it serves, every surface of a Host and its Planes, and carries nothing by default: a feature per surface (`catalog`, `notp`, `decisions`, `events`, `pdp`, `temporal`, `host`, `authority`, `documents`) and per transport (`http`, `grpc`), `full` for them all.
   Built for REST alone it links no tonic and no generated contract; a URL naming a transport the build does not carry is refused by name, and a surface with no transport does not compile.
   The verified local mirror is `permguard-mirror`, with no network in it, and the round over a Host's mirror tasks is `permguard-sync`: the Data Plane's domain, and an embedded Data Plane with it, links no network client, no tonic, axum, hyper or rustls.
+- **The command line links no server.**
+  Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
+  The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.
 - **The gRPC contracts are generated once.**
   `permguard-contracts` compiles `contracts/proto` for the whole workspace, a feature per contract with its client and its server stubs apart; the client library, the three servers, the Host and the conformance tests no longer generate copies of their own, so a message is one type wherever it is named.
   Nothing on a wire changes.

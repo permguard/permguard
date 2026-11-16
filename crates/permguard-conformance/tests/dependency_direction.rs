@@ -211,6 +211,11 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-host", &["permguard-contracts"]),
     ("permguard-authority-plane", &["permguard-contracts"]),
     ("permguard-control-plane", &["permguard-contracts"]),
+    // Offline volume administration has no server in it, and the command line links it and the
+    // domain libraries: no server composition, listener, or telemetry (RD-13). Permguard Admin
+    // links the command line, so its core follows.
+    ("permguard-offline", SERVER_SIDE),
+    ("permguard-cli", SERVER_SIDE),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];
@@ -291,6 +296,20 @@ const DOGWOOD_ENGINE: &[&str] = &[
     "permguard-language-rego",
     "regorus",
     "jsonschema",
+];
+
+/// What only a served process links: the server composition, the listeners, the telemetry
+/// endpoints and exporters, and the three server adapters.
+const SERVER_SIDE: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "permguard-authority-plane-server",
+    "permguard-control-plane-server",
+    "permguard-data-plane-server",
+    "permguard-all-in-one",
+    "tower-http",
+    "opentelemetry",
 ];
 
 /// What a package with no network client may not reach: the client library, the generated

@@ -1,0 +1,44 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-offline"
+description = "Offline volume administration the server and the command line share: the configuration as serve reads it, key rings, custody, provisioning and the migrations of a volume. No listener, no transport."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[features]
+# A hardware token's custody, through PKCS#11.
+pkcs11 = ["dep:cryptoki"]
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+permguard-core.workspace = true
+permguard-host.workspace = true
+permguard-decisions.workspace = true
+permguard-events.workspace = true
+permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
+cryptoki = { workspace = true, optional = true }
+tracing.workspace = true
+# The custody of a KMS or a transit engine: one bounded HTTPS client, no listener.
+base64.workspace = true
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+ring.workspace = true
+rustls.workspace = true
+rustls-native-certs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "net"] }
+tokio-rustls.workspace = true
+zeroize.workspace = true

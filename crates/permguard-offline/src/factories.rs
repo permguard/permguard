@@ -29,7 +29,7 @@ pub fn build_settings(version: &'static str) -> BuildSettings {
     .with_commit(build::COMMIT)
 }
 
-pub(crate) fn audit_sink_for(
+pub fn audit_sink_for(
     binary_name: &'static str,
     config: &Config,
 ) -> anyhow::Result<Option<Arc<dyn AuditSink>>> {
@@ -47,16 +47,14 @@ pub(crate) fn audit_sink_for(
 ///
 /// `data/zones` under the working directory: the control plane's durable state, in the same volume
 /// the audit trail and the key ring already live in — one directory to mount, one to back up.
-pub(crate) fn catalog_for(
-    config: &Config,
-) -> anyhow::Result<Option<Arc<dyn permguard_core::Catalog>>> {
+pub fn catalog_for(config: &Config) -> anyhow::Result<Option<Arc<dyn permguard_core::Catalog>>> {
     Ok(Some(Arc::new(FileCatalog::new(config.zones_directory()))))
 }
 
 /// The lifecycle every Host ring follows: one discipline for every ring this deployment
 /// rotates. A retired key stays in the published set for `retain`, which covers the audit
 /// retention outside development (WP-3.1).
-pub(crate) fn ring_policy(config: &Config) -> Policy {
+pub fn ring_policy(config: &Config) -> Policy {
     Policy {
         publish_ahead: config.keys_publish_ahead(),
         rotate_every: config.keys_rotate_every(),
@@ -67,7 +65,7 @@ pub(crate) fn ring_policy(config: &Config) -> Policy {
 /// The Control Plane's ring, `control.attest`, under `host/keys`: it signs what the Control
 /// Plane serves, NOTP head statements today. Its legacy directory (`keys/control` on the
 /// volume, or the configured one) is migrated once.
-pub(crate) fn control_signing_keys_for(
+pub fn control_signing_keys_for(
     config: &Config,
     rings: &Opener<'_>,
 ) -> anyhow::Result<Option<Arc<Ring>>> {
@@ -85,7 +83,7 @@ pub(crate) fn control_signing_keys_for(
 
 /// The Data Plane's ring, `data.attest`, under `host/keys`: it signs decision and event batches
 /// and, when asked, decision responses. Its legacy directory is migrated once.
-pub(crate) fn data_signing_keys_for(
+pub fn data_signing_keys_for(
     config: &Config,
     rings: &Opener<'_>,
 ) -> anyhow::Result<Option<Arc<Ring>>> {
@@ -105,10 +103,7 @@ pub(crate) fn data_signing_keys_for(
 /// status list tokens at the token endpoint, never on a decision path, so any custody may hold it;
 /// `regulated` keeps it in a PKCS#11 token or a KMS, and no profile but `development` keeps it in
 /// plaintext. Opened only by the Host of a Server running the Authority Plane.
-pub(crate) fn authority_tokens_keys_for(
-    config: &Config,
-    rings: &Opener<'_>,
-) -> anyhow::Result<Arc<Ring>> {
+pub fn authority_tokens_keys_for(config: &Config, rings: &Opener<'_>) -> anyhow::Result<Arc<Ring>> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::config::KeyCustody;
 
@@ -140,13 +135,13 @@ pub(crate) fn authority_tokens_keys_for(
 }
 
 /// The capability a Host reports degraded while `authority.tokens` is kept in files on its volume.
-pub(crate) const TOKEN_CUSTODY: &str = "token-custody";
+pub const TOKEN_CUSTODY: &str = "token-custody";
 
 /// What the Authority Plane's Host says while `authority.tokens` is in `file` custody under `production`
 /// (`2-security/8` Profiles): envelope-encrypted files on the volume, which `production` admits
 /// and reports, since the ring signs every member's tokens. `None` under any other custody or
 /// profile: plaintext and `regulated`'s other custodies are refused at start.
-pub(crate) fn authority_tokens_custody_advice(config: &Config) -> Option<String> {
+pub fn authority_tokens_custody_advice(config: &Config) -> Option<String> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::config::KeyCustody;
 
@@ -163,10 +158,7 @@ pub(crate) fn authority_tokens_custody_advice(config: &Config) -> Option<String>
 
 /// The Host's operations ring, `host.operations`, under `host/keys`: no Plane is handed it.
 /// Its legacy directory is migrated once.
-pub(crate) fn key_manager_for(
-    config: &Config,
-    rings: &Opener<'_>,
-) -> anyhow::Result<Option<Arc<Ring>>> {
+pub fn key_manager_for(config: &Config, rings: &Opener<'_>) -> anyhow::Result<Option<Arc<Ring>>> {
     Ok(Some(rings.open(
         HOST_OPERATIONS,
         Suite::Ed25519Sha256V1,
@@ -175,7 +167,7 @@ pub(crate) fn key_manager_for(
     )?))
 }
 
-pub(crate) fn secret_store_for(config: &Config) -> anyhow::Result<Option<Box<dyn SecretStore>>> {
+pub fn secret_store_for(config: &Config) -> anyhow::Result<Option<Box<dyn SecretStore>>> {
     Ok(match config.secrets_provider() {
         SecretProvider::None => None,
         SecretProvider::Directory => Some(Box::new(DirectorySecretStore::new(
