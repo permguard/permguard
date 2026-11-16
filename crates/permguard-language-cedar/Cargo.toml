@@ -16,15 +16,14 @@ build = "../permguard-language-core/build/locked.rs"
 publish = false
 
 # The evaluating half, off unless asked for: a build that only validates, as the Control Plane's
-# ingest does, compiles no evaluator.
+# ingest does, compiles no evaluator. It implements the contract of `permguard-language-core`, and
+# needs the kernel that runs it for nothing.
 [features]
-evaluate = ["dep:permguard-evaluator"]
+evaluate = []
 
 [dependencies]
 permguard-core.workspace = true
 permguard-language-core.workspace = true
-# The evaluating half: only with the `evaluate` feature.
-permguard-evaluator = { workspace = true, optional = true }
 # Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
 cedar-policy.workspace = true
 serde_json.workspace = true

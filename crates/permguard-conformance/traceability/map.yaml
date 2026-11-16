@@ -2983,13 +2983,13 @@ sections:
       - crates/permguard-events/src/journal.rs::a_retention_shorter_than_the_loaded_policies_need_is_refused
   "5-languages/3-language-dogwood.md#warm-state-and-replay":
     paths:
-      - crates/permguard-evaluator/src/warm.rs
+      - crates/permguard-language-core/src/warm.rs
       - crates/permguard-language-dogwood/src/compiled.rs
       - crates/permguard-data-plane/src/temporal/submit.rs
     tests:
-      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
-      - crates/permguard-evaluator/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
-      - crates/permguard-evaluator/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
+      - crates/permguard-language-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-language-core/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
+      - crates/permguard-language-core/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-data-plane-server/tests/temporal_events.rs::prewarm_replays_recent_histories_before_a_submission_needs_them
       - crates/permguard-languages/tests/warm_footprint.rs::test_a_warm_history_is_charged_at_least_what_its_engine_retains
@@ -3033,13 +3033,13 @@ sections:
   "5-languages/3-language-dogwood.md#current-gaps":
     paths:
       - crates/permguard-language-dogwood/src/lib.rs
-      - crates/permguard-evaluator/src/warm.rs
+      - crates/permguard-language-core/src/warm.rs
       - crates/permguard-language-dogwood/src/annotations.rs
       - crates/permguard-language-dogwood/src/projection.rs
       - crates/permguard-data-plane/src/temporal/submit.rs
     tests:
       - crates/permguard-language-dogwood/src/lib.rs::providers_are_refused_from_production_and_nothing_else_is
-      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-language-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-languages/tests/dogwood_parity.rs::test_the_id_this_build_reads_is_the_one_upstream_parses
       - crates/permguard-language-dogwood/src/compiled.rs::a_pin_this_build_cannot_write_refuses_the_load
@@ -4875,7 +4875,7 @@ findings:
       - crates/permguard-languages/tests/descriptor_vectors.rs::test_every_descriptor_equals_its_golden_vector
   "LANG-09":
     tests:
-      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-language-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_replay_past_its_plan_answers_e_and_within_it_decides
       - crates/permguard-language-dogwood/src/compiled.rs::a_replay_past_its_deadline_stops_and_keeps_the_history
       - crates/permguard-data-plane-server/tests/temporal_events.rs::prewarm_replays_recent_histories_before_a_submission_needs_them
@@ -4948,9 +4948,9 @@ findings:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_partition_carrying_providers_is_refused_from_production
   "DOGWOOD-02":
     tests:
-      - crates/permguard-evaluator/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
-      - crates/permguard-evaluator/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
-      - crates/permguard-evaluator/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
+      - crates/permguard-language-core/src/warm.rs::a_partition_over_its_bound_drops_its_own_coldest_history
+      - crates/permguard-language-core/src/warm.rs::a_zone_over_its_bound_drops_its_coldest_history_whoever_holds_it
+      - crates/permguard-language-core/src/warm.rs::the_host_over_its_bound_drops_its_coldest_history_in_any_zone
       - crates/permguard-language-dogwood/src/compiled.rs::evicting_a_cold_history_costs_a_replay_and_never_an_answer
       - crates/permguard-core/tests/config.rs::the_warm_budgets_and_the_replay_plan_are_read_and_bounded
   "DOGWOOD-03":

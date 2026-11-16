@@ -52,15 +52,15 @@ pub fn language() -> &'static dyn Language {
 /// Compiled only with this package's `evaluate` feature: a build that validates, as the Control
 /// Plane's ingest does, carries no evaluator.
 #[cfg(feature = "evaluate")]
-pub fn evaluating() -> &'static dyn permguard_evaluator::evaluate::Evaluating {
+pub fn evaluating() -> &'static dyn permguard_language_core::evaluating::Evaluating {
     &GUARDED
 }
 
 /// Both halves as one engine: what an application that links this package itself registers with
 /// the Data Plane it embeds.
 #[cfg(feature = "evaluate")]
-pub fn engine() -> permguard_evaluator::Engine {
-    permguard_evaluator::Engine::new(language(), evaluating())
+pub fn engine() -> permguard_language_core::Engine {
+    permguard_language_core::Engine::new(language(), evaluating())
 }
 
 /// The language, guarded: the one value both halves hand out.

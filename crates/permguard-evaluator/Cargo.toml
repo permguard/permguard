@@ -3,7 +3,7 @@
 
 [package]
 name = "permguard-evaluator"
-description = "The policy decision point's evaluating half over the language contracts: the evaluator contract, routing, the evaluation path, its pool and the warm budget."
+description = "The decision alone: the kernel that runs a policy language's evaluating half, the routing of a question to the partitions of a profile and the bounded path every evaluation takes. No Host, no store, no ledger, no log, no server."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,13 @@ repository.workspace = true
 # Not a library: this workspace is one product, released as binaries and images from one tag.
 publish = false
 
+# No language by default. A feature brings one language's package with its evaluating half, and
+# nothing else: no other engine, and nothing a decision does not need.
+[features]
+cedar = ["dep:permguard-language-cedar"]
+dogwood = ["dep:permguard-language-dogwood"]
+rego = ["dep:permguard-language-rego"]
+
 [dependencies]
 permguard-core.workspace = true
 permguard-objects.workspace = true
@@ -21,3 +28,7 @@ permguard-language-core.workspace = true
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The engines, each with its evaluating half, each only with its feature.
+permguard-language-cedar = { workspace = true, features = ["evaluate"], optional = true }
+permguard-language-dogwood = { workspace = true, features = ["evaluate"], optional = true }
+permguard-language-rego = { workspace = true, features = ["evaluate"], optional = true }

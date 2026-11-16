@@ -177,9 +177,16 @@ const LAYERS: &[(&str, &[&str])] = &[
     // carries it.
     ("permguard-languages", SERVER_STACK),
     ("permguard-language-core", LANGUAGE_CORE),
-    // The decision point's evaluating half links no engine either: the engines link it.
-    ("permguard-evaluator", LANGUAGE_CORE),
+    // The evaluating contract is beneath the languages: neither it nor a language package links
+    // the kernel that runs it, which selects a language and is never selected by one (phase 6).
     ("permguard-language-core", &["permguard-evaluator"]),
+    ("permguard-language-cedar", &["permguard-evaluator"]),
+    ("permguard-language-rego", &["permguard-evaluator"]),
+    ("permguard-language-dogwood", &["permguard-evaluator"]),
+    // The kernel is the decision alone, whatever language it selects: no Host, no store, no
+    // ledger, no log, no client, no Plane, no server and no runtime.
+    ("permguard-evaluator", SERVER_STACK),
+    ("permguard-evaluator", NOT_A_DECISION),
     ("permguard-language-cedar", CEDAR_ENGINE),
     ("permguard-language-rego", REGO_ENGINE),
     ("permguard-language-dogwood", DOGWOOD_ENGINE),
@@ -269,6 +276,38 @@ const LANGUAGE_CORE: &[&str] = &[
     "regorus",
     "jsonschema",
     "dogwood-language",
+];
+
+/// What a decision does not need, and the kernel therefore never links, with any feature: the
+/// Host and its runtime, the default implementations, the ledger and its synchronization, the
+/// evidence logs, the clients and contracts, every Plane, an argument parser and an asynchronous
+/// runtime.
+const NOT_A_DECISION: &[&str] = &[
+    "permguard-host",
+    "permguard-runtime",
+    "permguard-std",
+    "permguard-offline",
+    "permguard-data-plane",
+    "permguard-data-plane-server",
+    "permguard-control-plane",
+    "permguard-control-plane-server",
+    "permguard-authority-plane",
+    "permguard-authority-plane-server",
+    "permguard-embedded",
+    "permguard-mirror",
+    "permguard-sync",
+    "permguard-notp",
+    "permguard-decisions",
+    "permguard-events",
+    "permguard-stream",
+    "permguard-client",
+    "permguard-contracts",
+    "permguard-tls",
+    "permguard-languages",
+    "permguard-evaluation-worker",
+    "clap",
+    "tokio",
+    "rustls",
 ];
 
 /// What the Cedar engine package may not reach: the server stack, the other engines, the catalogue.
@@ -796,6 +835,61 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     assert!(
         problems.is_empty(),
         "an embedded Host links no server:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The kernel selects its language (phase 6): built with none it links no engine at all, and with
+/// one it links that language's package and engine and no other language's. Dogwood lowers to
+/// Cedar, so its upstream engine links `cedar-policy`; Permguard's own Cedar package it does not.
+#[test]
+fn the_evaluator_links_only_the_one_engine_it_selects() {
+    const CEDAR: &[&str] = &["permguard-language-cedar"];
+    const REGO: &[&str] = &["permguard-language-rego", "regorus", "jsonschema"];
+    const DOGWOOD: &[&str] = &["permguard-language-dogwood", "dogwood-language"];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[CEDAR, REGO, DOGWOOD, &["cedar-policy", "cedar-policy-core"]][..],
+        ),
+        (
+            "cedar",
+            &["permguard-language-cedar", "cedar-policy"][..],
+            &[REGO, DOGWOOD][..],
+        ),
+        (
+            "rego",
+            &["permguard-language-rego", "regorus"][..],
+            &[CEDAR, DOGWOOD, &["cedar-policy", "cedar-policy-core"]][..],
+        ),
+        (
+            "dogwood",
+            &["permguard-language-dogwood", "dogwood-language"][..],
+            &[CEDAR, REGO][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-evaluator", features);
+        for name in carried {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent.iter().flat_map(|names| names.iter()) {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+        for name in NOT_A_DECISION.iter().chain(SERVER_STACK) {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the evaluator links the decision alone and the engine it selects:\n  {}",
         problems.join("\n  ")
     );
 }

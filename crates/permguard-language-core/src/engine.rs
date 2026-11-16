@@ -8,9 +8,9 @@
 //! once with this, so the catalogue never holds a language that validates under one engine and
 //! evaluates under another.
 
-use permguard_language_core::role::Language;
+use crate::role::Language;
 
-use crate::evaluate::Evaluating;
+use crate::evaluating::Evaluating;
 
 /// One language's validating and evaluating halves.
 #[derive(Clone, Copy)]

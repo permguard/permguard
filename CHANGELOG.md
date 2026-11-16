@@ -66,6 +66,7 @@ is cut.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
 - **The decision point's kernel is `permguard-evaluator`.**
   `permguard-pdp-core` is renamed, with every consumer: one package, no shim, the same code.
+  The evaluating contract, the engine value, the remembering role and the warm budget move beneath the languages, into `permguard-language-core`: a language package no longer links the kernel, and the kernel selects a language by a feature, `cedar`, `rego` or `dogwood`, none by default.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.
