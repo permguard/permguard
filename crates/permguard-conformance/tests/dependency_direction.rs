@@ -159,15 +159,6 @@ const SERVER_STACK: &[&str] = &[
     "opentelemetry",
 ];
 
-/// What only a server links: a listener, the server composition, telemetry endpoints and exporters.
-const SERVER_ONLY: &[&str] = &[
-    "permguard-server",
-    "permguard-transport",
-    "permguard-telemetry",
-    "tower-http",
-    "opentelemetry",
-];
-
 /// What each layer may not reach, through any normal or build dependency, with every feature on.
 /// A phase of the crate boundaries refactoring adds its rows when its split lands, so a boundary
 /// once drawn cannot be crossed again unnoticed.
@@ -195,15 +186,18 @@ const LAYERS: &[(&str, &[&str])] = &[
     // A Plane's domain serves nothing (RD-1): its routes, module and binary are its server
     // package's.
     ("permguard-authority-plane", SERVER_STACK),
-    // The Data Plane's domain listens nowhere and composes no server (RD-2); the network client it
-    // synchronizes and ships through still links tonic until the client surfaces split (phase 3).
-    ("permguard-data-plane", SERVER_ONLY),
+    // The Data Plane's domain listens nowhere and composes no server (RD-2), and links no network
+    // client either (RD-12): its mirror is filled over the sessions of the tasks its Host serves.
+    ("permguard-data-plane", SERVER_STACK),
+    ("permguard-data-plane", NO_CLIENT),
+    // The verified mirror opens no connection: who answers its pull is handed to it.
+    ("permguard-mirror", SERVER_STACK),
+    ("permguard-mirror", NO_CLIENT),
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
     ("permguard-control-plane", CONTROL_PLANE_DOMAIN),
     // Generated contracts have one owner, and a domain selects none of them (RD-9): only an
-    // adapter, a client's or a server's, speaks a wire. The Data Plane's domain reaches them
-    // through the network client it synchronizes with, until that client is an adapter of its own.
+    // adapter, a client's or a server's, speaks a wire.
     ("permguard-host", &["permguard-contracts"]),
     ("permguard-authority-plane", &["permguard-contracts"]),
     ("permguard-control-plane", &["permguard-contracts"]),
@@ -288,6 +282,10 @@ const DOGWOOD_ENGINE: &[&str] = &[
     "regorus",
     "jsonschema",
 ];
+
+/// What a package with no network client may not reach: the client library, the generated
+/// contracts, and the rustls stack only a client or a listener links.
+const NO_CLIENT: &[&str] = &["permguard-client", "permguard-contracts", "rustls"];
 
 /// What a package that only speaks the request model may not reach: any policy language.
 const NO_LANGUAGE: &[&str] = &[
@@ -563,14 +561,18 @@ fn the_control_plane_validates_without_evaluating() {
 /// nor a server, a listener or a telemetry exporter.
 #[test]
 fn an_embedded_data_plane_links_only_the_languages_it_selects() {
-    // What only a server links, and the default implementations an application injects its own
-    // of. Tonic, and axum through it, stay until the client surfaces split (phase 3): the network
-    // client the Data Plane synchronizes and ships through links them.
+    // What only a server or a network client links, and the default implementations an
+    // application injects its own of.
     const NEVER: &[&str] = &[
         "permguard-server",
         "permguard-transport",
         "permguard-telemetry",
         "permguard-std",
+        "permguard-client",
+        "permguard-contracts",
+        "axum",
+        "tonic",
+        "hyper",
         "tower-http",
         "opentelemetry",
     ];

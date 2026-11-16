@@ -351,8 +351,8 @@ mod tests {
     /// hard-linked, so removing one mirror leaves the other's object whole.
     #[test]
     fn mirrors_sharing_an_object_hold_it_apart() {
-        use permguard_client::objects;
-        use permguard_client::store::FsStore;
+        use permguard_mirror::objects;
+        use permguard_mirror::store::FsStore;
 
         let root = scratch("shared-object");
         let mirrors: Vec<Mirror> = ["one", "two"]

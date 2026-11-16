@@ -41,7 +41,6 @@ pub mod attestation;
 pub mod authority;
 pub mod authority_v1;
 pub mod catalog;
-pub mod checkpoint;
 pub mod connect;
 pub mod decisions;
 pub mod decisions_grpc;
@@ -57,25 +56,23 @@ mod host_proto;
 pub mod host_v1;
 pub mod http;
 pub mod narrate;
-pub mod objects;
 /// The generated `permguard.control.v1` stubs, from the plane's own
 /// `contracts/proto/`. Public so the wire tests can stand a fake server on the same
 /// contract this client calls.
 pub mod pdp;
 pub mod pdp_v1;
-pub mod pull;
-pub mod remote;
 pub mod remote_http;
-pub mod store;
 pub mod temporal;
 pub mod tls;
 pub mod token_source;
 pub mod v1;
-pub mod verify;
+
+// The verified local mirror is `permguard-mirror`'s; its modules stay reachable from here, where the
+// command line and Permguard Admin already name them.
+pub use permguard_mirror::{checkpoint, objects, pull, remote, store, verify};
 
 pub use connect::AnyRemote;
 pub use endpoint::Endpoint;
 pub use narrate::Narrator;
-pub use remote::{RefAnswer, Remote};
-pub use store::{FsStore, Store};
+pub use permguard_mirror::{FsStore, RefAnswer, Remote, Store};
 pub use tls::TlsOptions;

@@ -33,13 +33,13 @@ use http_body_util::BodyExt as _;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
-use permguard_client::objects;
-use permguard_client::store::FsStore;
 use permguard_core::{Disclosure, Metrics, Recorder};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::{Decider, Warmed};
 use permguard_data_plane::authz::store::{Identity, Mirror};
 use permguard_data_plane::authz::{block, wire};
+use permguard_mirror::objects;
+use permguard_mirror::store::FsStore;
 
 /// The decision routes behind the authentication boundary every served surface has (WP-2.4):
 /// nobody presents a credential here, so every request is anonymous and the permissive
@@ -320,10 +320,10 @@ fn provision(
     let commit_bytes = commit.encode().expect("the commit encodes");
     let commit_digest = objects::put(&store, "objects", &commit_bytes).expect("stored");
 
-    permguard_client::checkpoint::write(
+    permguard_mirror::checkpoint::write(
         &store,
         "refs/main",
-        &permguard_client::checkpoint::Checkpoint {
+        &permguard_mirror::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
@@ -5021,18 +5021,18 @@ mod signed_response {
         assert_eq!(refused.code(), "response_signing_unavailable");
 
         // A mirror pulled before it kept its head's authority signs nothing, refused unrecorded.
-        let store = permguard_client::store::FsStore::new(
+        let store = permguard_mirror::store::FsStore::new(
             permguard_data_plane::authz::store::find(&root, "acme", "main-ledger")
                 .expect("located")
                 .path,
         );
-        let held = permguard_client::checkpoint::read(&store, "refs/main")
+        let held = permguard_mirror::checkpoint::read(&store, "refs/main")
             .expect("reads")
             .expect("held");
-        permguard_client::checkpoint::write(
+        permguard_mirror::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_client::checkpoint::Checkpoint {
+            &permguard_mirror::checkpoint::Checkpoint {
                 authority_host_id: None,
                 reference: None,
                 ..held.clone()
@@ -5054,10 +5054,10 @@ mod signed_response {
 
         // An authority the payload could not name canonically: the payload is checked whole and
         // the answer refused rather than signed with a malformed state.
-        permguard_client::checkpoint::write(
+        permguard_mirror::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_client::checkpoint::Checkpoint {
+            &permguard_mirror::checkpoint::Checkpoint {
                 authority_host_id: Some("NOT-A-UUID".to_owned()),
                 reference: Some("main".to_owned()),
                 ..held.clone()

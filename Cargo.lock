@@ -2491,6 +2491,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-language-core",
+ "permguard-mirror",
  "permguard-notp",
  "permguard-objects",
  "prost",
@@ -2644,6 +2645,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-languages",
+ "permguard-mirror",
  "permguard-notp",
  "permguard-objects",
  "permguard-std",
@@ -2680,6 +2682,7 @@ dependencies = [
  "permguard-events",
  "permguard-host",
  "permguard-languages",
+ "permguard-mirror",
  "permguard-objects",
  "permguard-server",
  "permguard-std",
@@ -2826,6 +2829,19 @@ dependencies = [
  "serde_json",
  "serde_norway",
  "sha2",
+]
+
+[[package]]
+name = "permguard-mirror"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "permguard-core",
+ "permguard-host",
+ "permguard-notp",
+ "permguard-objects",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

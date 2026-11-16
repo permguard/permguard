@@ -1,0 +1,24 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-mirror"
+description = "The verified local mirror of a policy ledger: its store, its objects, the proof of a signed head and the pull that moves a checkpoint only over a proven closure. No network, no transport."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+# The safe storage a mirror is written through.
+permguard-host.workspace = true
+permguard-notp.workspace = true
+permguard-objects.workspace = true
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true

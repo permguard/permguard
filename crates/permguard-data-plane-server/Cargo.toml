@@ -25,7 +25,6 @@ doc = false
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-permguard-client.workspace = true
 permguard-core.workspace = true
 # The standalone Data Plane selects its languages itself: all three.
 permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
@@ -53,6 +52,9 @@ tracing.workspace = true
 
 
 [dev-dependencies]
+# The client a test drives the served interfaces with, and the mirror it provisions.
+permguard-client.workspace = true
+permguard-mirror.workspace = true
 permguard-host = { workspace = true, features = ["test-support"] }
 # Decoding a signed response's parts, as a PEP would (WP-6.6b).
 base64.workspace = true

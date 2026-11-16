@@ -17,11 +17,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use permguard_client::checkpoint::{self, Checkpoint};
-use permguard_client::objects;
-use permguard_client::store::FsStore;
 use permguard_core::domains;
 use permguard_data_plane::mirrors::layout::{Mirror, on_disk};
+use permguard_mirror::checkpoint::{self, Checkpoint};
+use permguard_mirror::objects;
+use permguard_mirror::store::FsStore;
 use permguard_objects::object::Blob;
 
 const FIXTURE: &str = concat!(

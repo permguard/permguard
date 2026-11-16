@@ -32,8 +32,6 @@ use http_body_util::BodyExt as _;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
-use permguard_client::objects;
-use permguard_client::store::FsStore;
 use permguard_core::{Disclosure, Metrics};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::Decider;
@@ -45,6 +43,8 @@ use permguard_data_plane::temporal::submit::Submitter;
 use permguard_events::journal::Bounds;
 use permguard_languages::dogwood_artifacts;
 use permguard_languages::registry;
+use permguard_mirror::objects;
+use permguard_mirror::store::FsStore;
 
 fn blocking() -> Blocking {
     Blocking::new(
@@ -306,10 +306,10 @@ fn provision_with(
     let commit_bytes = commit.encode().expect("the commit encodes");
     let commit_digest = objects::put(&store, "objects", &commit_bytes).expect("stored");
 
-    permguard_client::checkpoint::write(
+    permguard_mirror::checkpoint::write(
         &store,
         "refs/main",
-        &permguard_client::checkpoint::Checkpoint {
+        &permguard_mirror::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
             ref_digest: None,
@@ -1614,10 +1614,10 @@ mod shipped_example {
             &commit.encode().expect("the commit encodes"),
         )
         .expect("stored");
-        permguard_client::checkpoint::write(
+        permguard_mirror::checkpoint::write(
             &store,
             "refs/main",
-            &permguard_client::checkpoint::Checkpoint {
+            &permguard_mirror::checkpoint::Checkpoint {
                 head: commit_digest.to_string(),
                 counter: 1,
                 ref_digest: None,

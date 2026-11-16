@@ -8,7 +8,7 @@
       "reason": "`replay.new`, the replay journal's compaction directory: a name, not a publication; the directory is created and swapped into place through `Dir`"
     },
     {
-      "source": "crates/permguard-client/src/objects.rs",
+      "source": "crates/permguard-mirror/src/objects.rs",
       "item": "sweep_temporaries",
       "primitive": "temporary",
       "reason": "recognises the `*.tmp` temporaries of the mirror layout before the library, to sweep them; nothing is published under the name"

@@ -992,7 +992,7 @@ sections:
       - crates/permguard-host/src/session/mod.rs
       - crates/permguard-host/src/membership/appraisal.rs
       - crates/permguard-host/src/keys/ring.rs
-      - crates/permguard-client/src/verify.rs
+      - crates/permguard-mirror/src/verify.rs
       - crates/permguard-stream/src/engine/ingest.rs
       - crates/permguard-host/src/restore.rs
     tests:
@@ -1679,7 +1679,7 @@ sections:
       - crates/permguard-objects/src/refstate.rs
       - crates/permguard-objects/src/statement.rs
       - crates/permguard-control-plane/src/store.rs
-      - crates/permguard-client/src/verify.rs
+      - crates/permguard-mirror/src/verify.rs
     tests:
       - crates/permguard-objects/src/refstate.rs::a_ref_state_round_trips_and_chains_to_the_one_before
       - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
@@ -2195,8 +2195,8 @@ sections:
   "4-data-plane/3-data-plane-mirrors-notp.md#verification-order":
     paths:
       - crates/permguard-data-plane/src/mirrors/task.rs
-      - crates/permguard-client/src/pull.rs
-      - crates/permguard-client/src/checkpoint.rs
+      - crates/permguard-mirror/src/pull.rs
+      - crates/permguard-mirror/src/checkpoint.rs
     tests:
       - crates/permguard-data-plane/src/mirrors/task.rs::a_ring_rollback_or_fork_is_refused_before_anything_is_fetched
       - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
@@ -2244,13 +2244,13 @@ sections:
     paths:
       - crates/permguard-data-plane/src/mirrors/round.rs
       - crates/permguard-data-plane/src/mirrors/task.rs
-      - crates/permguard-client/src/pull.rs
+      - crates/permguard-mirror/src/pull.rs
       - crates/permguard-data-plane/src/authz/store.rs
     tests:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
       - crates/permguard-conformance/tests/legacy_trust.rs::no_plane_reaches_a_control_plane_over_a_url_to_mirror_it
       - crates/permguard-data-plane/src/mirrors/task.rs::a_statement_under_the_pinned_set_and_its_coordinator_pulls
-      - crates/permguard-client/src/pull.rs::the_checkpoint_keeps_the_statements_authority_and_ref
+      - crates/permguard-mirror/src/pull.rs::the_checkpoint_keeps_the_statements_authority_and_ref
       - crates/permguard-data-plane-server/tests/authz_decision.rs::two_coordinators_with_one_name_are_refused_until_an_alias_names_one
       - crates/permguard-data-plane/tests/mirror_round.rs::a_reap_candidate_waits_out_its_grace_and_a_listing_restores_it
     gaps:
@@ -4792,7 +4792,7 @@ findings:
       - crates/permguard-host/src/storage/write.rs::concurrent_equal_publishes_are_idempotent
       - crates/permguard-host/src/storage/write.rs::identical_content_is_idempotent_and_keeps_the_inode
       - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
-      - crates/permguard-client/src/objects.rs::local_objects_keep_the_immutable_storage_contract
+      - crates/permguard-mirror/src/objects.rs::local_objects_keep_the_immutable_storage_contract
   "H-07":
     tests:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_conflicting_occurrence_refuses_a_bounded_decision_and_degrades_an_eventual_one

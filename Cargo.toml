@@ -18,6 +18,7 @@ members = [
     "crates/permguard-decisions",
     "crates/permguard-events",
     "crates/permguard-host",
+    "crates/permguard-mirror",
     "crates/permguard-notp",
     "crates/permguard-client",
     "crates/permguard-objects",
@@ -76,6 +77,7 @@ permguard-data-plane-server = { path = "crates/permguard-data-plane-server", ver
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
 permguard-host = { path = "crates/permguard-host", version = "0.1.0" }
+permguard-mirror = { path = "crates/permguard-mirror", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
 permguard-client = { path = "crates/permguard-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }

@@ -23,9 +23,9 @@
 
 use std::path::Path;
 
-use permguard_client::checkpoint::{self, Checkpoint};
-use permguard_client::store::FsStore;
 use permguard_host::storage::{Dir, format, sequence, write};
+use permguard_mirror::checkpoint::{self, Checkpoint};
+use permguard_mirror::store::FsStore;
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 

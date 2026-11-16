@@ -8,11 +8,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use permguard_client::remote::Remote as _;
 use permguard_client::{AnyRemote, TlsOptions};
 use permguard_core::BoxFuture;
 use permguard_host::composition::{MirrorRefusal, MirrorSession, MirrorTask, MirrorTasks};
 pub use permguard_host::membership::record::ProgressResource;
+use permguard_mirror::remote::Remote as _;
 
 /// Every progress report a session carried, by task id (WP-7.2d).
 pub type Reported = Arc<Mutex<Vec<(String, Vec<ProgressResource>)>>>;

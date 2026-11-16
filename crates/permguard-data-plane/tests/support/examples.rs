@@ -10,11 +10,11 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-use permguard_client::objects;
-use permguard_client::store::FsStore;
 use permguard_data_plane::authz::store::Identity;
 use permguard_data_plane::authz::wire;
 use permguard_languages::registry;
+use permguard_mirror::objects;
+use permguard_mirror::store::FsStore;
 use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
@@ -337,10 +337,10 @@ pub fn provision_as(root: &Path, name: &str, zone_id: &str, ledger_id: &str) -> 
     )
     .expect("the commit is stored");
 
-    permguard_client::checkpoint::write(
+    permguard_mirror::checkpoint::write(
         &store,
         "refs/main",
-        &permguard_client::checkpoint::Checkpoint {
+        &permguard_mirror::checkpoint::Checkpoint {
             head: head.to_string(),
             counter: 1,
             ref_digest: None,
