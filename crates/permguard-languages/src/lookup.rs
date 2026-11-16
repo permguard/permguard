@@ -118,8 +118,14 @@ pub fn artifact_for_media_type(
 
 #[cfg(test)]
 mod tests {
+    // The tests that name a language run where it is carried; what only they use is idle elsewhere.
+    #![cfg_attr(
+        not(all(feature = "cedar", feature = "dogwood", feature = "rego")),
+        allow(dead_code, unused_imports)
+    )]
     use super::*;
 
+    #[cfg(all(feature = "cedar", feature = "dogwood", feature = "rego"))]
     #[test]
     fn the_registry_carries_every_language_this_build_ships() {
         assert!(language("cedar").is_some());

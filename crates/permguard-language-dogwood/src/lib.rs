@@ -46,15 +46,18 @@
 //! are `.dw` — the same extension as a policy — so the walk asks
 //! [`permguard_language_core::artifact`] rather than guessing from a name.
 
+pub(crate) mod analysis;
 pub mod annotations;
 pub mod artifacts;
+#[cfg(feature = "evaluate")]
 pub(crate) mod compiled;
+#[cfg(feature = "evaluate")]
 pub(crate) mod event;
 pub use permguard_language_core::occurrence;
 pub mod projection;
 pub use permguard_language_core::value;
 
-pub use compiled::DEFAULT_MAX_WINDOW_SECONDS;
+pub use analysis::DEFAULT_MAX_WINDOW_SECONDS;
 
 use permguard_language_core::artifact::ArtifactType;
 use permguard_language_core::role::{Authoring, ExtractedPolicy, Language};
@@ -89,8 +92,10 @@ pub fn language() -> &'static dyn Language {
 
 /// The evaluating half, every compile of which is inside the same panic boundary.
 ///
-/// Always compiled: Dogwood validates a partition by compiling it, so its validating half is its
-/// evaluating half.
+/// Compiled only with this package's `evaluate` feature: a build that validates, as the Control
+/// Plane's ingest does, carries no evaluator. Validation reads the same analysis the evaluating
+/// half builds its runtime over.
+#[cfg(feature = "evaluate")]
 pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
     &GUARDED
 }
@@ -241,24 +246,25 @@ impl Language for Dogwood {
             )
             .collect();
 
-        // The compile *is* the check: it parses, lowers and validates exactly as a plane does, so
-        // a set that passes here is a set that loads there.
-        let compiled = permguard_pdp_core::evaluate::Evaluating::compile(self, &stored, &bundle)?;
+        // The analysis *is* the check: it parses, lowers and validates exactly as a plane's load
+        // does, which builds its runtime over this same result, so a set that passes here is a set
+        // that loads there.
+        let analyzed = analysis::analyze(&stored, &bundle)?;
 
         // And the manifest's own claim about this partition's history, against what the schemas
         // turned out to say. Run here, where the author can still fix it, as well as at load.
-        match compiled.temporal() {
-            Some(temporal) => {
-                permguard_pdp_core::temporal::check_history_scope(
-                    partition,
-                    declared.history,
-                    temporal.contract(),
-                )?;
-                // And its input: a version 2 partition declares its one-sided fields (TL-5c).
-                temporal.check_input(declared.input.as_ref().map(|input| input.r#type.as_str()))
-            }
-            None => Ok(()),
-        }
+        permguard_language_core::temporal::check_history_scope(
+            partition,
+            declared.history,
+            &analyzed.contract,
+        )?;
+        // And its input: a version 2 partition declares its one-sided fields (TL-5c).
+        analysis::check_input(
+            &analyzed.contract,
+            &analyzed.context,
+            analyzed.projections.as_ref(),
+            declared.input.as_ref().map(|input| input.r#type.as_str()),
+        )
     }
 
     /// Yes: a Dogwood policy decides against what has already happened.

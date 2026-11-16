@@ -2966,7 +2966,7 @@ sections:
     tests:
       - crates/permguard-language-dogwood/src/compiled.rs::the_history_key_is_derived_from_the_request_and_not_from_the_caller
       - crates/permguard-language-dogwood/src/compiled.rs::a_pin_the_caller_contradicts_is_refused_rather_than_resolved
-      - crates/permguard-pdp-core/src/temporal.rs::a_declared_history_scope_must_match_what_the_schema_says
+      - crates/permguard-language-core/src/temporal.rs::a_declared_history_scope_must_match_what_the_schema_says
       - crates/permguard-language-dogwood/src/compiled.rs::a_pin_this_build_cannot_write_refuses_the_load
       - crates/permguard-events/tests/evidence_vectors.rs::event_digests_match_the_vectors
   "5-languages/3-language-dogwood.md#ordered-decision-path":

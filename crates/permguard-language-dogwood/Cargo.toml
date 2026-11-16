@@ -15,14 +15,19 @@ build = "../permguard-language-core/build/locked.rs"
 # Not a library: this workspace is one product, released as binaries and images from one tag.
 publish = false
 
+# The evaluating half, off unless asked for: a build that only validates, as the Control Plane's
+# ingest does, compiles no evaluator. Validation reads the analysis the evaluating half is built on.
+[features]
+evaluate = ["dep:permguard-pdp-core"]
+
 [dependencies]
 permguard-core.workspace = true
 permguard-objects.workspace = true
 # The canonical instant parsing an occurrence is validated against.
 permguard-events.workspace = true
 permguard-language-core.workspace = true
-# The evaluating half, always: Dogwood validates a partition by compiling it.
-permguard-pdp-core.workspace = true
+# The evaluating half: only with the `evaluate` feature.
+permguard-pdp-core = { workspace = true, optional = true }
 # Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
 dogwood-language.workspace = true
 # The Cedar Dogwood lowers to, at the version Dogwood holds the whole build to.

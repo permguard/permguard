@@ -1502,6 +1502,7 @@ mod tests {
         assert_eq!(read_frame(&mut empty), Ok(None), "a clean end of input");
     }
 
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_partition_survives_the_round_trip() {
         let policies = vec![StoredPolicy {

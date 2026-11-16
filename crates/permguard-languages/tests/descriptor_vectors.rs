@@ -6,6 +6,8 @@
 //!
 //! A vector changes when a descriptor deliberately does — an engine upgrade, a feature, a limit —
 //! and that change is a reviewed edit of `tests/vectors/descriptors.json`, never a silent drift.
+//! The file holds one vector per language Permguard defines; a build is held to the vectors of the
+//! languages it carries, so a single-engine build proves its own descriptor without the others.
 //! `engine_build` digests an engine's whole locked dependency closure, so a `cargo update` of any
 //! crate beneath an engine changes it too: regenerate the vectors and review the diff.
 
@@ -50,16 +52,23 @@ fn test_every_descriptor_equals_its_golden_vector() {
         .iter()
         .map(|language| language.name())
         .collect();
-    assert_eq!(
-        languages.len(),
-        carried.len(),
-        "one vector per carried language"
-    );
+    assert!(!carried.is_empty(), "a build carries a language");
+    for name in &carried {
+        assert!(
+            languages
+                .iter()
+                .any(|vector| vector["descriptor"]["name"] == *name),
+            "`{name}` is carried and has no vector"
+        );
+    }
 
     for vector in languages {
         let expected = &vector["descriptor"];
         let name = expected["name"].as_str().expect("a name");
-        let held = descriptor(name).expect("a carried language");
+        let Some(held) = descriptor(name) else {
+            assert!(!carried.contains(&name), "`{name}` is carried");
+            continue;
+        };
 
         assert_eq!(&held.to_json(), expected, "`{name}`'s descriptor drifted");
         let mut members: Vec<&str> = expected
@@ -102,18 +111,24 @@ fn test_every_digest_is_recomputed_from_the_canonical_vector() {
             vector["digest"].as_str(),
             Some(format!("sha256:{recomputed}").as_str())
         );
-        assert_eq!(
-            descriptor_digest(name),
-            vector["digest"].as_str(),
-            "`{name}`: the digest the cache keys use"
-        );
+        if permguard_languages::language(name).is_some() {
+            assert_eq!(
+                descriptor_digest(name),
+                vector["digest"].as_str(),
+                "`{name}`: the digest the cache keys use"
+            );
+        }
     }
 }
 
 /// A descriptor that changes in any member changes its digest.
 #[test]
 fn test_any_change_to_a_descriptor_changes_its_digest() {
-    let held = descriptor("rego").expect("carried").clone();
+    let first = permguard_languages::languages()
+        .first()
+        .expect("a build carries a language")
+        .name();
+    let held = descriptor(first).expect("carried").clone();
     let mut changed: Descriptor = held.clone();
     changed.limits.push("an_added_limit".to_owned());
     assert_ne!(held.digest(), changed.digest());
@@ -258,7 +273,13 @@ fn test_every_engine_is_the_one_cargo_lock_pins() {
             &[][..],
         ),
     ] {
-        let held = descriptor(language).expect("carried");
+        let Some(held) = descriptor(language) else {
+            assert!(
+                permguard_languages::language(language).is_none(),
+                "`{language}` is carried and has no descriptor"
+            );
+            continue;
+        };
         let (version, build) = lock.engine(engine, package, also);
 
         assert_eq!(held.engine_name, engine, "`{language}`");
@@ -266,7 +287,9 @@ fn test_every_engine_is_the_one_cargo_lock_pins() {
         assert_eq!(held.engine_build, build, "`{language}`");
     }
 
-    let cedar = descriptor("cedar").expect("carried");
+    let Some(cedar) = descriptor("cedar") else {
+        return;
+    };
     assert_eq!(
         cedar.language_version, cedar.engine_version,
         "Cedar's language is versioned by its engine"

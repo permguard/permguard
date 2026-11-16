@@ -9,6 +9,18 @@
 
 use permguard_languages::registry::engine_features;
 
+/// The engines this build carries, each with the features its package states.
+fn carried_engines() -> Vec<(&'static str, &'static [&'static str])> {
+    vec![
+        #[cfg(feature = "cedar")]
+        ("cedar-policy", engine_features::CEDAR),
+        #[cfg(feature = "rego")]
+        ("regorus", engine_features::REGO),
+        #[cfg(feature = "dogwood")]
+        ("dogwood-language", engine_features::DOGWOOD),
+    ]
+}
+
 /// The text of one dependency declaration, which may span several lines.
 fn declaration<'a>(manifest: &'a str, name: &str) -> &'a str {
     let start = manifest
@@ -43,11 +55,7 @@ fn test_every_engine_is_pinned_without_defaults_and_names_its_descriptor_feature
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"))
             .expect("the workspace manifest is readable");
 
-    for (name, expected) in [
-        ("cedar-policy", engine_features::CEDAR),
-        ("regorus", engine_features::REGO),
-        ("dogwood-language", engine_features::DOGWOOD),
-    ] {
+    for (name, expected) in carried_engines() {
         let declared = declaration(&manifest, name);
         assert!(
             declared.contains("default-features = false"),
@@ -155,11 +163,7 @@ fn resolved_engine_features_are_the_descriptor_features(selection: &[&str]) {
         .as_array()
         .expect("the resolve graph");
 
-    for (name, expected) in [
-        ("cedar-policy", engine_features::CEDAR),
-        ("regorus", engine_features::REGO),
-        ("dogwood-language", engine_features::DOGWOOD),
-    ] {
+    for (name, expected) in carried_engines() {
         let matching: Vec<_> = packages
             .iter()
             .filter(|package| package["name"] == name)

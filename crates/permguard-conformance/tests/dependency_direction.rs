@@ -377,8 +377,8 @@ fn carried_with(features: &str) -> BTreeSet<String> {
 
 /// A language is a feature of the catalogue (RD-7): a build that names one links that engine and no
 /// other, Cedar excepted for Dogwood, which lowers to it. Evaluating is a feature too (RD-6): a
-/// Cedar or Rego build that only validates links no decision point, and one that evaluates does;
-/// Dogwood validates by compiling, so its build always links one.
+/// build that only validates links no decision point, whichever language it carries, and one that
+/// evaluates does.
 #[test]
 fn a_build_links_only_the_engines_it_carries() {
     let mut problems = Vec::new();
@@ -420,6 +420,16 @@ fn a_build_links_only_the_engines_it_carries() {
                 "permguard-language-rego",
                 "regorus",
                 "jsonschema",
+                "permguard-pdp-core",
+            ][..],
+        ),
+        (
+            "dogwood,evaluate",
+            &["permguard-language-dogwood", "permguard-pdp-core"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-rego",
+                "regorus",
             ][..],
         ),
     ] {
@@ -485,17 +495,27 @@ fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
     features
 }
 
-/// The Control Plane validates what a push carries and evaluates nothing (RD-6): its build carries
-/// every language and no evaluating half of Cedar or Rego, no routing and no supervised worker —
-/// the `evaluate` feature, which brings them, is off throughout. The Data Plane's build turns it on.
+/// The Control Plane validates what a push carries and evaluates nothing (RD-6): its own build, the
+/// domain's and the server's, carries every language and neither the decision point's evaluating
+/// half (`permguard-pdp-core`) nor the `evaluate` feature that brings it, the routing and the
+/// supervised worker. The Data Plane's build carries both.
 #[test]
 fn the_control_plane_validates_without_evaluating() {
     let control = features_of("permguard-control-plane-server");
     let data = features_of("permguard-data-plane-server");
     let mut problems = Vec::new();
+    for package in ["permguard-control-plane", "permguard-control-plane-server"] {
+        if features_of(package).contains_key("permguard-pdp-core") {
+            problems.push(format!("{package} links permguard-pdp-core"));
+        }
+    }
+    if !data.contains_key("permguard-pdp-core") {
+        problems.push("the Data Plane does not link permguard-pdp-core".to_owned());
+    }
     for package in [
         "permguard-languages",
         "permguard-language-cedar",
+        "permguard-language-dogwood",
         "permguard-language-rego",
     ] {
         match control.get(package) {

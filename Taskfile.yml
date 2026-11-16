@@ -466,6 +466,11 @@ tasks:
         {{.FEATURES}} {{if .RELEASE}}--release{{end}} {{.ARGS}} {{.FILTER}}
         {{if .NOCAPTURE}}-- --nocapture{{end}}
 
+  test:profiles:
+    desc: Run the language packages in every profile, one language or validating only, each built apart.
+    cmds:
+      - ./scripts/test-language-profiles.sh
+
   version:control:
     desc: Report the control plane version.
     cmds:

@@ -21,6 +21,11 @@
 //! engine upgrade changes, reviewed before it lands.
 
 #![allow(clippy::expect_used, clippy::panic)]
+// A build that carries neither stateless runtime has no vectors to answer here.
+#![cfg_attr(
+    not(any(feature = "cedar", feature = "rego")),
+    allow(dead_code, unused_imports)
+)]
 
 use std::collections::BTreeMap;
 
@@ -30,7 +35,13 @@ use permguard_languages::{
 };
 use serde_json::{Value, json};
 
-const RUNTIMES: [&str; 2] = ["cedar", "rego"];
+/// The stateless runtimes this build carries, each with golden vectors of its own.
+const RUNTIMES: &[&str] = &[
+    #[cfg(feature = "cedar")]
+    "cedar",
+    #[cfg(feature = "rego")]
+    "rego",
+];
 
 fn path(runtime: &str) -> String {
     format!(
@@ -229,11 +240,13 @@ fn check(runtime: &str) {
     }
 }
 
+#[cfg(feature = "cedar")]
 #[test]
 fn test_cedar_answers_its_golden_vectors() {
     check("cedar");
 }
 
+#[cfg(feature = "rego")]
 #[test]
 fn test_rego_answers_its_golden_vectors() {
     check("rego");

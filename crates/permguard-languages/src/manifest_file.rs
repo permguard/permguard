@@ -390,6 +390,7 @@ profiles:
   default: { type: permguard.api.pdp.native.v1, partitions: [p] }
 "#;
 
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_well_formed_manifest_becomes_the_model() {
         let manifest = from_yaml(WELL_FORMED.as_bytes()).expect("it is well formed");
@@ -404,6 +405,7 @@ profiles:
 
     /// An input a partition declares is one its rules read, so saying nothing about `required`
     /// requires it: fail-open is the choice an author has to write down.
+    #[cfg(feature = "cedar")]
     #[test]
     fn an_input_that_says_nothing_about_required_is_required() {
         let silent = WELL_FORMED.replace(", required: true", "");
@@ -453,6 +455,7 @@ profiles:
         }
     }
 
+    #[cfg(feature = "cedar")]
     #[test]
     fn the_yaml_and_the_model_round_trip() {
         let manifest = from_yaml(WELL_FORMED.as_bytes()).expect("it is well formed");
@@ -469,6 +472,7 @@ profiles:
     /// back; a duplicate or an id that is no interface is refused where the author wrote it.
     /// WP-7.5: and only interfaces its runtime implements, so a Cedar partition promising the
     /// temporal interface beside the native one is refused at load.
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_partitions_interfaces_are_read_sorted_and_refused_when_wrong() {
         let both = WELL_FORMED.replace(

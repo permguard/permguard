@@ -35,7 +35,7 @@
 // the panic boundary, and this package reaches them through the roles and the lookups, never by
 // name. Keeping the concrete types private is what makes the role split a rule the compiler
 // enforces — an ingest path cannot get hold of `Cedar` and call the splitter on it.
-pub use permguard_language_core::{attestation, guard, headroom, input, names, role};
+pub use permguard_language_core::{attestation, guard, headroom, names, role};
 #[cfg(feature = "evaluate")]
 pub use permguard_pdp_core::{fanout, warm};
 
@@ -66,6 +66,7 @@ pub mod temporal {
 pub mod artifact;
 pub mod conformance;
 pub mod descriptor;
+pub mod input;
 pub mod lookup;
 pub mod manifest_file;
 pub mod partition;

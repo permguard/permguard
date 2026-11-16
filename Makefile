@@ -258,6 +258,9 @@ check-systems: ## Check that the Makefile and the Taskfile offer the same comman
 test: ## Run tests.
 	cargo test $(scope) $(FEATURES) $(profile) $(ARGS) $(FILTER) $(if $(NOCAPTURE),-- --nocapture)
 
+test-profiles: ## Run the language packages in every profile, one language or validating only, each built apart.
+	./scripts/test-language-profiles.sh
+
 version-control: ## Report the control plane version.
 	cargo run $(profile) -p permguard-control-plane-server --bin permguard-control-plane -- version
 

@@ -8,8 +8,8 @@
 //! ([`evaluate_all`], [`fanout`]) — and how the histories they keep warm are charged ([`warm`]).
 //!
 //! A language's validating half needs none of it: a build that only validates, as the Control
-//! Plane's ingest does, links a language without this package unless the language validates by
-//! compiling, as Dogwood does (the crate boundaries refactoring, RD-6).
+//! Plane's ingest does, links every language without this package (the crate boundaries
+//! refactoring, RD-6).
 
 pub mod evaluate;
 pub mod fanout;

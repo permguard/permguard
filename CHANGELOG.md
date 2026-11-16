@@ -22,7 +22,7 @@ is cut.
 - **The Data Plane embedded in a Rust application.**
   `permguard_data_plane::embedded` starts a Data Plane inside another process, with no Plane listener and on the application's own Tokio runtime: the application composes the Host, its identity, rings, streams, zone keys and the `policy.mirror` tasks it serves, and hands it to `DataPlane::builder(..).start()`.
   The running Data Plane decides through the same pipeline both transports use, authorized on the exact ledger before any policy is read, records its decisions on the Host's streams, mirrors over the Host's tasks, and reports its readiness from the same lifecycle a server does.
-  `shutdown` drains every service before stopping it and returns what it could not finish; a runtime dropped without it stops its services without draining.
+  `shutdown` drains every service before stopping it, within the budget it is given, stops included, and returns what it could not finish; a runtime dropped without it stops its services without draining.
   One process embeds one Data Plane, since the evaluation path and the decision log are composed once per process.
 
 ### Changed
@@ -35,7 +35,8 @@ is cut.
 - **Each policy language is a package, and a build chooses the languages it carries.**
   `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-pdp-core` holds the evaluating half.
   `permguard-languages` is the catalogue, with one feature per language (`cedar`, `rego`, `dogwood`, all on by default) and an `evaluate` feature for the evaluating halves, the routing and the supervised worker; every path it offered before is where it was.
-  The Control Plane builds every language without `evaluate`, so it validates what a push carries and compiles no evaluator for Cedar or Rego; Dogwood validates by compiling, so its package always links the evaluating half.
+  The Control Plane builds every language without `evaluate`, so it validates what a push carries and links no evaluating half: Dogwood validates a partition with the analysis its evaluating half is built on.
+  A build with one language runs that language's golden vectors and corpora without the other engines, and its startup check accepts it: the catalogue offers a manifest only the inputs of the languages it carries (`task test:profiles` runs every profile, each built apart).
   The control client depends on the request model alone and compiles no policy language.
   The shipped binaries carry the same three languages and decide exactly as before: every language descriptor and its digest are unchanged.
 

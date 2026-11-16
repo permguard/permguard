@@ -807,6 +807,11 @@ pub fn evaluating(language_name: &str) -> Option<&'static dyn crate::evaluate::E
 
 #[cfg(test)]
 mod tests {
+    // The tests that name a language run where it is carried; what only they use is idle elsewhere.
+    #![cfg_attr(
+        not(all(feature = "cedar", feature = "dogwood", feature = "rego")),
+        allow(dead_code, unused_imports)
+    )]
     #![allow(clippy::expect_used)]
 
     use std::collections::BTreeMap;
@@ -823,6 +828,7 @@ mod tests {
     /// WP-7.4a, owner decision of 2026-10-21: a manifest that binds a retired interface fails the
     /// load gate with `interface_retired`, its profile's or a partition's, and is never read as
     /// another id; today's registry retires nothing.
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_manifest_binding_a_retired_interface_fails_the_load_gate() {
         use permguard_core::stages::{REGISTRY, Registered, Stage};
@@ -923,12 +929,14 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_stateless_profile_matches_a_stateless_partition() {
         assert!(check_manifest(&manifest("cedar", PROFILE_PDP_NATIVE_V1)).is_ok());
     }
 
     /// The rename is a rename, not a second contract: the old spelling still loads.
+    #[cfg(feature = "cedar")]
     #[test]
     fn the_interfaces_former_name_still_loads_and_means_the_same_thing() {
         assert!(
@@ -937,12 +945,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "dogwood")]
     #[test]
     fn a_temporal_profile_matches_a_temporal_partition() {
         assert!(check_manifest(&manifest("dogwood", PROFILE_PDP_TEMPORAL_V1ALPHA1)).is_ok());
     }
 
     /// Deciding a Dogwood policy statelessly means deciding it against an empty history.
+    #[cfg(feature = "dogwood")]
     #[test]
     fn a_stateless_profile_naming_a_temporal_partition_is_refused_at_the_gate() {
         let refused = check_manifest(&manifest("dogwood", PROFILE_PDP_NATIVE_V1))
@@ -961,6 +971,7 @@ mod tests {
     }
 
     /// And the other direction: a temporal profile cannot borrow a stateless partition.
+    #[cfg(feature = "cedar")]
     #[test]
     fn a_temporal_profile_naming_a_stateless_partition_is_refused_at_the_gate() {
         let refused = check_manifest(&manifest("cedar", PROFILE_PDP_TEMPORAL_V1ALPHA1))
@@ -976,6 +987,7 @@ mod tests {
     /// WP-7.5, IFACE-01: a partition promises only interfaces its runtime's descriptor
     /// implements, by exact id; one promising two is refused, since no runtime implements two and
     /// an artifact written for one is never reused for another.
+    #[cfg(all(feature = "cedar", feature = "dogwood", feature = "rego"))]
     #[test]
     fn a_partition_promises_only_what_its_runtime_implements() {
         let promising = |language: &str, profile: &str, interfaces: &[&str]| {
@@ -1110,6 +1122,7 @@ mod tests {
     /// The gate asks each language, rather than consulting a list of names kept beside it.
     /// TL-6: a deployment that requires the conformance gate refuses a runtime whose gate has an
     /// open item, by name and with the items, whatever it opted into; one that does not serves it.
+    #[cfg(all(feature = "cedar", feature = "dogwood", feature = "rego"))]
     #[test]
     fn a_runtime_whose_gate_is_open_is_refused_where_the_gate_is_required() {
         let dogwood = manifest("dogwood", PROFILE_PDP_TEMPORAL_V1ALPHA1);
@@ -1142,6 +1155,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "dogwood")]
     #[test]
     fn a_language_declares_whether_it_is_experimental() {
         let carried: Vec<&str> = experimental_languages().collect();
@@ -1260,6 +1274,7 @@ mod tests {
     }
 
     /// LANG-12: every collision is a startup error, not a test assertion.
+    #[cfg(feature = "cedar")]
     #[test]
     fn every_collision_in_the_catalogue_is_a_startup_error() {
         let inputs = crate::input::input_types();
@@ -1383,6 +1398,7 @@ mod tests {
     }
 
     /// An opt-in naming a runtime this build does not gate is a typo, and typos are reported.
+    #[cfg(all(feature = "cedar", feature = "dogwood", feature = "rego"))]
     #[test]
     fn naming_a_runtime_this_build_does_not_gate_is_refused() {
         check_opted_in([(crate::names::DOGWOOD, true)]).expect("a runtime this build gates");

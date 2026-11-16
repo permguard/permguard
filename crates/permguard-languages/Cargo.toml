@@ -25,6 +25,7 @@ rego = ["dep:permguard-language-rego"]
 evaluate = [
     "dep:permguard-pdp-core",
     "permguard-language-cedar?/evaluate",
+    "permguard-language-dogwood?/evaluate",
     "permguard-language-rego?/evaluate",
 ]
 
@@ -59,46 +60,31 @@ permguard-events.workspace = true
 permguard-stream.workspace = true
 regorus.workspace = true
 
-# The suites are written for the full catalogue, evaluating: every one of them names a language of
-# each kind.
-[[test]]
-name = "algebra_vectors"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
+# Each suite asks for what it exercises and nothing else, so a build of one language runs that
+# language's golden vectors and corpora without the others (`task test:engines`). The suites over
+# every carried language, the descriptors and the engine features, hold a build to its own.
 [[test]]
 name = "cedar_corpus"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "descriptor_vectors"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "dogwood_parity"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "engine_features"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "footprint"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "gate_evidence"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
-
-[[test]]
-name = "language_vectors"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
+required-features = ["cedar", "evaluate"]
 
 [[test]]
 name = "opa_corpus"
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
+required-features = ["evaluate", "rego"]
+
+[[test]]
+name = "dogwood_parity"
+required-features = ["dogwood", "evaluate"]
 
 [[test]]
 name = "warm_footprint"
+required-features = ["dogwood", "evaluate"]
+
+[[test]]
+name = "language_vectors"
+required-features = ["evaluate"]
+
+[[test]]
+name = "footprint"
 required-features = ["cedar", "dogwood", "evaluate", "rego"]
 
 # Its own worker: started with the worker argument it serves frames, started plainly it supervises
@@ -106,10 +92,10 @@ required-features = ["cedar", "dogwood", "evaluate", "rego"]
 [[test]]
 name = "worker"
 harness = false
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
+required-features = ["evaluate"]
 
 # Rego in its supervised worker, against the real runtime catalogue: the same two lives.
 [[test]]
 name = "rego_supervised"
 harness = false
-required-features = ["cedar", "dogwood", "evaluate", "rego"]
+required-features = ["evaluate", "rego"]
