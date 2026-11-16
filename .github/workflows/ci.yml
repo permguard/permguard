@@ -113,7 +113,7 @@ jobs:
           if-no-files-found: error
 
   # Deterministic replay on a second platform (TL-6): each runtime's golden vectors and upstream
-  # corpora, and the rest of the languages crate, on Apple silicon — another operating system and
+  # corpora, and the rest of the language packages, on Apple silicon — another operating system and
   # another architecture than the `check` job — against the same expected bytes.
   languages-macos:
     name: languages on macOS
@@ -129,8 +129,14 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: the languages crate, vectors and corpora included
-        run: cargo test -p permguard-languages --all-features --locked
+      - name: the language packages, vectors and corpora included
+        run: >-
+          cargo test --all-features --locked
+          -p permguard-language-core
+          -p permguard-language-cedar
+          -p permguard-language-rego
+          -p permguard-language-dogwood
+          -p permguard-languages
 
   # The release benchmark's harness on every change (TS-3), so it cannot rot between releases: the
   # binaries built in release mode from this commit, a short ladder, every interface and evidence

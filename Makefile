@@ -74,7 +74,7 @@ lint: ## Run clippy over every crate and target.
 	cargo clippy $(scope) --all-targets --all-features $(ARGS) -- -D warnings
 
 plane-run: ## Run a plane. PLANE is control or data.
-	cargo run $(profile) -p permguard-$(PLANE)-plane --bin permguard-$(PLANE)-plane -- crates/permguard-$(PLANE)-plane/$(CONFIG) $(ARGS)
+	cargo run $(profile) -p permguard-$(PLANE)-plane-server --bin permguard-$(PLANE)-plane -- crates/permguard-$(PLANE)-plane/$(CONFIG) $(ARGS)
 
 run-authority: ## Run the authority plane locally.
 	$(MAKE) plane-run PLANE=authority CONFIG=$(CONFIG) ARGS="$(ARGS)" RELEASE=$(RELEASE)

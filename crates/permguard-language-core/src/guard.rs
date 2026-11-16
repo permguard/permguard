@@ -232,7 +232,25 @@ mod tests {
             "1.0.0"
         }
         fn engine(&self) -> crate::descriptor::Engine {
-            crate::lookup::language("cedar").expect("carried").engine()
+            crate::descriptor::Engine {
+                locked: crate::descriptor::Locked {
+                    name: "fragile-engine",
+                    version: "1.0.0",
+                    build: "sha256:00",
+                },
+                capabilities: crate::descriptor::Capabilities {
+                    features: &[],
+                    extensions: &[],
+                    clock: false,
+                    randomness: false,
+                    io: false,
+                },
+                limits: &[],
+                isolation: crate::descriptor::Isolation {
+                    mode: crate::descriptor::IsolationMode::InProcess,
+                    reason: "",
+                },
+            }
         }
         fn policy_media_type(&self) -> &'static str {
             "application/vnd.permguard.policy.fragile"
@@ -312,16 +330,10 @@ mod tests {
         assert!(!refused.contains("secret"), "{refused}");
     }
 
-    /// The built-ins are reached through the guard, and only through it.
+    /// A bare language says it is bare; the catalogue's are guarded (`permguard-languages`).
     #[test]
-    fn the_registry_hands_out_guarded_languages() {
-        for language in crate::lookup::languages() {
-            assert!(
-                language.guarded(),
-                "`{}` is reached unguarded",
-                language.name()
-            );
-        }
+    fn a_bare_language_says_it_is_bare() {
         assert!(!Fragile.guarded(), "a bare language says it is bare");
+        assert!(Guarded(Fragile).guarded(), "a guarded one says so");
     }
 }

@@ -193,18 +193,18 @@ impl Lock {
     }
 
     /// The engine's version, and the digest of its closure with the other crates of its runtime.
-    fn engine(&self, name: &str, also: &[&str]) -> (String, String) {
+    fn engine(&self, name: &str, package: &str, also: &[&str]) -> (String, String) {
         let root = self.find(name);
         let mut seen = std::collections::BTreeSet::new();
         let mut stack = vec![root];
-        // The crates beside the engine, as this crate's own lock entry names them.
-        let own = self.find("permguard-languages");
+        // The crates beside the engine, as its engine package's own lock entry names them.
+        let own = self.find(package);
         stack.extend(also.iter().map(|other| {
             let reference = self.packages[own]
                 .4
                 .iter()
                 .find(|reference| reference.split(' ').next() == Some(*other))
-                .expect("permguard-languages depends on it")
+                .expect("the engine package depends on it")
                 .clone();
             self.find(&reference)
         }));
@@ -243,13 +243,23 @@ impl Lock {
 #[test]
 fn test_every_engine_is_the_one_cargo_lock_pins() {
     let lock = Lock::read();
-    for (language, engine, also) in [
-        ("cedar", "cedar-policy", &[][..]),
-        ("rego", "regorus", &["jsonschema"][..]),
-        ("dogwood", "dogwood-language", &[][..]),
+    for (language, engine, package, also) in [
+        ("cedar", "cedar-policy", "permguard-language-cedar", &[][..]),
+        (
+            "rego",
+            "regorus",
+            "permguard-language-rego",
+            &["jsonschema"][..],
+        ),
+        (
+            "dogwood",
+            "dogwood-language",
+            "permguard-language-dogwood",
+            &[][..],
+        ),
     ] {
         let held = descriptor(language).expect("carried");
-        let (version, build) = lock.engine(engine, also);
+        let (version, build) = lock.engine(engine, package, also);
 
         assert_eq!(held.engine_name, engine, "`{language}`");
         assert_eq!(held.engine_version, version, "`{language}`");

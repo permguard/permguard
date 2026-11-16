@@ -32,7 +32,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::dogwood::occurrence::Occurrence;
+use crate::occurrence::Occurrence;
 
 /// What a compiled temporal partition says about itself, derived from its loaded schemas.
 ///

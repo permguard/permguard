@@ -5,12 +5,15 @@
 //!
 //! Fixed at compile time on purpose: a language is a build, not a deployment
 //! action, so what interprets policy is exactly what was reviewed, signed
-//! and shipped. The concrete languages are private to the crate — they are
-//! reached through the roles, never by name.
+//! and shipped. The concrete languages are private to their packages — they
+//! are reached through the roles, never by name.
+//!
+//! Which ones a build carries is this package's features: `cedar`, `rego` and
+//! `dogwood`, all on by default. A build without one does not link its engine.
 
-use crate::guard::Guarded;
+use std::sync::LazyLock;
+
 use crate::role::Language;
-use crate::{cedar, dogwood, rego};
 
 /// Every language this build carries. Fixed at compile time, on purpose.
 ///
@@ -22,11 +25,18 @@ use crate::{cedar, dogwood, rego};
 /// ledger, the control plane validating a push, the CLI building a workspace — enters its engine
 /// inside the panic boundary.
 pub fn languages() -> &'static [&'static dyn Language] {
-    static CEDAR: Guarded<cedar::Cedar> = Guarded(cedar::Cedar);
-    static DOGWOOD: Guarded<dogwood::Dogwood> = Guarded(dogwood::Dogwood);
-    static REGO: Guarded<rego::Rego> = Guarded(rego::Rego);
-    static ALL: [&'static dyn Language; 3] = [&CEDAR, &DOGWOOD, &REGO];
-    &ALL
+    static CARRIED: LazyLock<Vec<&'static dyn Language>> = LazyLock::new(|| {
+        let carried: &[&'static dyn Language] = &[
+            #[cfg(feature = "cedar")]
+            permguard_language_cedar::language(),
+            #[cfg(feature = "dogwood")]
+            permguard_language_dogwood::language(),
+            #[cfg(feature = "rego")]
+            permguard_language_rego::language(),
+        ];
+        carried.to_vec()
+    });
+    CARRIED.as_slice()
 }
 
 /// Finds a language by name.
@@ -96,6 +106,18 @@ mod role_tests {
                 language
                     .policy_media_type()
                     .starts_with("application/vnd.permguard.policy.")
+            );
+        }
+    }
+
+    /// The built-ins are reached through the guard, and only through it.
+    #[test]
+    fn the_registry_hands_out_guarded_languages() {
+        for language in languages() {
+            assert!(
+                language.guarded(),
+                "`{}` is reached unguarded",
+                language.name()
             );
         }
     }

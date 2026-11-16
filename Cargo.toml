@@ -20,6 +20,10 @@ members = [
     "crates/permguard-notp",
     "crates/permguard-control-client",
     "crates/permguard-objects",
+    "crates/permguard-language-cedar",
+    "crates/permguard-language-core",
+    "crates/permguard-language-dogwood",
+    "crates/permguard-language-rego",
     "crates/permguard-languages",
     "crates/permguard-server",
     "crates/permguard-std",
@@ -72,6 +76,10 @@ permguard-host = { path = "crates/permguard-host", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
 permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
+permguard-language-cedar = { path = "crates/permguard-language-cedar", version = "0.1.0" }
+permguard-language-core = { path = "crates/permguard-language-core", version = "0.1.0" }
+permguard-language-dogwood = { path = "crates/permguard-language-dogwood", version = "0.1.0" }
+permguard-language-rego = { path = "crates/permguard-language-rego", version = "0.1.0" }
 permguard-languages = { path = "crates/permguard-languages", version = "0.1.0" }
 permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
 permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
@@ -134,3 +142,66 @@ tracing-subscriber = { version = "0.3", features = ["json", "registry"] }
 tracing-opentelemetry = "0.34"
 x509-parser = "0.18"
 zeroize = { version = "1", features = ["derive"] }
+
+# The policy engines, pinned once for every package that links one (`permguard-language-cedar`,
+# `-rego`, `-dogwood`, and `permguard-language-core` for Dogwood's values): what evaluates policy is
+# exactly what was reviewed and shipped — plugins are a build, not a deployment action.
+# Held at 4.11 by Dogwood, not by choice: `cedar-policy-mcp-schema-generator`, a transitive
+# dependency of `dogwood-language`, pins `cedar-policy-core = "=4.11.0"` exactly. Cedar's
+# core cannot be two versions in one build, so 4.11 is the only line where Permguard's own Cedar
+# engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
+#
+# Exact versions, no defaults, every feature named: a feature change is a descriptor change, so each
+# list here equals its engine package's `ENGINE_FEATURES`, which
+# `crates/permguard-languages/tests/engine_features.rs` enforces. Cedar's list is its upstream
+# default set. Regorus's is its default set spelled out (`full-opa`, `arc`, `rvm`); its `http`
+# feature only registers an `http.send` that answers `undefined`, and its `net` only parses
+# addresses, so neither reaches the network.
+cedar-policy = { version = "=4.11.0", default-features = false, features = ["datetime", "decimal", "ipaddr"] }
+regorus = { version = "=0.12.0", default-features = false, features = [
+    "arc",
+    "ast",
+    "base64",
+    "base64url",
+    "cache",
+    "coverage",
+    "glob",
+    "graph",
+    "hex",
+    "http",
+    "jsonpatch",
+    "jsonschema",
+    "net",
+    "opa-runtime",
+    "regex",
+    "rvm",
+    "semver",
+    "std",
+    "time",
+    "urlquery",
+    "uuid",
+    "yaml",
+] }
+# Dogwood, the temporal governance language. Experimental and disabled at runtime by
+# `experimental.dogwood.enabled`; a build that carries the `dogwood` feature of
+# `permguard-languages` compiles it in either way, because a language is a build and not a
+# deployment action — the gate decides whether a ledger may *use* it, not whether this binary
+# contains it.
+#
+# From crates.io, `dogwood-language`, the crate upstream publishes from
+# https://github.com/dogwood-policy/dogwood; until 1.1.0 it came from that repository at a pinned
+# git revision, as `amzn-dogwood-language`. Pinned exactly, `=`: a published version cannot change,
+# and the lock records its checksum, so the reviewed code and the built code are one thing. Update
+# procedure: review the upstream diff between the two versions, run this workspace's Dogwood tests
+# and regenerate the vectors that name the version, then move the requirement in one commit.
+# `default-features = false` and an empty `features` list are stated rather than left implicit.
+# Upstream declares three optional features and all must stay off here: `corpus` embeds ~13MB of
+# regression data a server has no use for; `net` registers an `http_get` host function inside the
+# provider sandbox, which makes provider evaluation non-deterministic and reachable from a policy —
+# upstream's own note says the function performs no host validation, so a script building a URL
+# from an event field is an SSRF into whatever the process can reach; and
+# `experimental-arithmetic` accepts arithmetic upstream has not stabilised. Cargo features are
+# additive across a dependency graph, so "off by default" is a property of this build only while
+# nothing else in the graph asks for it; writing it down is what makes a future
+# `features = ["net"]` a visible decision in a diff rather than a silent one.
+dogwood-language = { version = "=1.1.0", default-features = false, features = [] }

@@ -20,50 +20,32 @@ use crate::role::Language;
 pub const MEDIA_TYPE_POLICY_CEDAR: &str = permguard_core::domains::media::POLICY_CEDAR;
 pub const MEDIA_TYPE_SCHEMA_CEDAR: &str = permguard_core::domains::media::SCHEMA_CEDAR;
 pub const MEDIA_TYPE_POLICY_REGO: &str = permguard_core::domains::media::POLICY_REGO;
-pub const MEDIA_TYPE_SCHEMA_REGO: &str = crate::rego::SCHEMA_MEDIA_TYPE;
+pub const MEDIA_TYPE_SCHEMA_REGO: &str = permguard_core::domains::media::SCHEMA_REGO_JSON;
 pub const MEDIA_TYPE_MANIFEST: &str = permguard_objects::manifest::MEDIA_TYPE;
 
 /// The engine identity of this build, for the manifest load gate.
 pub const ENGINE_NAME: &str = "permguard";
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The Cargo features each built-in engine is compiled with, sorted.
+/// The Cargo features each carried engine is compiled with, sorted: each engine package's own
+/// `ENGINE_FEATURES`.
 ///
 /// Part of what a language descriptor promises: an engine evaluates what its features let it, so a
-/// feature added in `Cargo.toml` is a capability added to every policy of that language. The lists
-/// equal the dependency declarations exactly, and what Cargo resolves for the whole workspace is
-/// exactly what they turn on — `tests/engine_features.rs` fails otherwise — so a feature cannot
-/// change, here or through another crate, without this file changing with it.
+/// feature added in the workspace manifest is a capability added to every policy of that language.
+/// The lists equal the dependency declarations exactly, and what Cargo resolves for the whole
+/// workspace is exactly what they turn on — `tests/engine_features.rs` fails otherwise — so a
+/// feature cannot change, there or through another crate, without an engine package changing with
+/// it.
 pub mod engine_features {
     /// `cedar-policy`: its upstream default set.
-    pub const CEDAR: &[&str] = &["datetime", "decimal", "ipaddr"];
-    /// `regorus`: its upstream default set, spelled out.
-    pub const REGO: &[&str] = &[
-        "arc",
-        "ast",
-        "base64",
-        "base64url",
-        "cache",
-        "coverage",
-        "glob",
-        "graph",
-        "hex",
-        "http",
-        "jsonpatch",
-        "jsonschema",
-        "net",
-        "opa-runtime",
-        "regex",
-        "rvm",
-        "semver",
-        "std",
-        "time",
-        "urlquery",
-        "uuid",
-        "yaml",
-    ];
+    #[cfg(feature = "cedar")]
+    pub use permguard_language_cedar::ENGINE_FEATURES as CEDAR;
     /// `dogwood-language`: none; `corpus`, `net` and `experimental-arithmetic` stay off.
-    pub const DOGWOOD: &[&str] = &[];
+    #[cfg(feature = "dogwood")]
+    pub use permguard_language_dogwood::ENGINE_FEATURES as DOGWOOD;
+    /// `regorus`: its upstream default set, spelled out.
+    #[cfg(feature = "rego")]
+    pub use permguard_language_rego::ENGINE_FEATURES as REGO;
 }
 
 /// Why a blob was refused: a stable code plus the sentence.
@@ -766,6 +748,10 @@ pub fn language_of(media_type: &str) -> Option<&'static dyn Language> {
     language_for_media_type(media_type)
 }
 
+pub use permguard_language_core::registry::{
+    EVERY_ARTIFACT, check_artifact_floor_of, check_schema_floor_of,
+};
+
 /// Refuses a partition that carries no schema where its language requires one at `profile`.
 ///
 /// The load gate's half of the assurance floor (CEDAR-05): a manifest cannot lower it, so it is
@@ -778,25 +764,9 @@ pub fn check_schema_floor(
     let Some(language) = crate::lookup::language(language_name) else {
         return Ok(());
     };
-    let required = language.required_schemas(profile);
-    if required.is_empty() || required.iter().any(|name| artifacts.bytes(name).is_some()) {
-        return Ok(());
-    }
 
-    Err(format!(
-        "a `{language_name}` partition carries none of {}, which the `{}` assurance profile \
-         requires",
-        required
-            .iter()
-            .map(|name| format!("`{name}`"))
-            .collect::<Vec<_>>()
-            .join(", "),
-        profile.as_str()
-    ))
+    check_schema_floor_of(language, profile, artifacts)
 }
-
-/// The artifact a floor that came apart refuses: every one, so every partition is refused.
-pub const EVERY_ARTIFACT: &str = "every artifact, the floor having come apart";
 
 /// Refuses a partition that carries an artifact its language may not carry at `profile`.
 ///
@@ -810,19 +780,8 @@ pub fn check_artifact_floor(
     let Some(language) = crate::lookup::language(language_name) else {
         return Ok(());
     };
-    let refused = language.refused_artifacts(profile);
-    let carried = refused
-        .iter()
-        .find(|name| **name == EVERY_ARTIFACT || !artifacts.all(name).is_empty());
-    let Some(carried) = carried else {
-        return Ok(());
-    };
 
-    Err(format!(
-        "a `{language_name}` partition carries `{carried}`, which the `{}` assurance profile \
-         refuses: this runtime cannot bound it in-process and runs no worker for it",
-        profile.as_str()
-    ))
+    check_artifact_floor_of(language, profile, artifacts)
 }
 
 /// Whether a partition of `language_name` must run in a supervised worker under `profile`.
@@ -913,7 +872,7 @@ mod tests {
             },
         );
         let mut partitions = BTreeMap::new();
-        let dogwood = language == crate::dogwood::NAME;
+        let dogwood = language == crate::names::DOGWOOD;
         partitions.insert(
             "p".to_owned(),
             Partition {
@@ -923,7 +882,8 @@ mod tests {
                 schema: false,
                 artifacts: if dogwood {
                     vec![ArtifactContract {
-                        r#type: crate::dogwood::artifacts::ACTION_SCHEMA.to_owned(),
+                        r#type: permguard_core::domains::artifact::DOGWOOD_ACTION_SCHEMA_V1
+                            .to_owned(),
                         required: true,
                     }]
                 } else {
@@ -1185,7 +1145,7 @@ mod tests {
     fn a_language_declares_whether_it_is_experimental() {
         let carried: Vec<&str> = experimental_languages().collect();
         assert!(
-            carried.contains(&crate::dogwood::NAME),
+            carried.contains(&crate::names::DOGWOOD),
             "Dogwood is provisional: {carried:?}"
         );
         assert!(
@@ -1305,7 +1265,7 @@ mod tests {
 
         static BORROWS_CEDAR: Impostor = Impostor {
             name: "impostor",
-            policy: crate::cedar::POLICY_MEDIA_TYPE,
+            policy: permguard_core::domains::media::POLICY_CEDAR,
             artifacts: &[],
         };
         let languages = with(&BORROWS_CEDAR);
@@ -1424,7 +1384,7 @@ mod tests {
     /// An opt-in naming a runtime this build does not gate is a typo, and typos are reported.
     #[test]
     fn naming_a_runtime_this_build_does_not_gate_is_refused() {
-        check_opted_in([(crate::dogwood::NAME, true)]).expect("a runtime this build gates");
+        check_opted_in([(crate::names::DOGWOOD, true)]).expect("a runtime this build gates");
 
         let refused = check_opted_in([("dogwoood", true)]).expect_err("a misspelling");
         assert!(refused.contains("dogwoood"), "{refused}");

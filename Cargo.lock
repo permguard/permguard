@@ -2735,16 +2735,74 @@ dependencies = [
 ]
 
 [[package]]
-name = "permguard-languages"
+name = "permguard-language-cedar"
+version = "0.1.0"
+dependencies = [
+ "cedar-policy",
+ "permguard-core",
+ "permguard-language-core",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "permguard-language-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "dogwood-language",
+ "permguard-core",
+ "permguard-events",
+ "permguard-objects",
+ "permguard-stream",
+ "serde",
+ "serde_json",
+ "sha2",
+ "stacker",
+ "tracing",
+]
+
+[[package]]
+name = "permguard-language-dogwood"
+version = "0.1.0"
+dependencies = [
  "cedar-policy",
  "dogwood-language",
+ "permguard-core",
+ "permguard-events",
+ "permguard-language-core",
+ "permguard-objects",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "permguard-language-rego"
+version = "0.1.0"
+dependencies = [
  "jsonschema 0.59.0",
+ "permguard-core",
+ "permguard-language-core",
+ "regorus",
+ "serde_json",
+ "serde_norway",
+ "sha2",
+]
+
+[[package]]
+name = "permguard-languages"
+version = "0.1.0"
+dependencies = [
+ "cedar-policy",
+ "dogwood-language",
  "libc",
  "permguard-core",
  "permguard-events",
+ "permguard-language-cedar",
+ "permguard-language-core",
+ "permguard-language-dogwood",
+ "permguard-language-rego",
  "permguard-objects",
  "permguard-stream",
  "regorus",
@@ -2752,8 +2810,6 @@ dependencies = [
  "serde_json",
  "serde_norway",
  "sha2",
- "stacker",
- "tracing",
 ]
 
 [[package]]

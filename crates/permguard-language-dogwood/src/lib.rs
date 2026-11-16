@@ -44,26 +44,52 @@
 //! of *typed artifacts*: a required Cedar action schema, an optional event schema, an optional
 //! macro library, optional provider declarations and the provider programs those name. Two of them
 //! are `.dw` — the same extension as a policy — so the walk asks
-//! [`crate::artifact`] rather than guessing from a name.
+//! [`permguard_language_core::artifact`] rather than guessing from a name.
 
 pub mod annotations;
 pub mod artifacts;
 pub(crate) mod compiled;
-pub mod occurrence;
+pub use permguard_language_core::occurrence;
 pub mod projection;
-pub mod value;
+pub use permguard_language_core::value;
 
-use crate::artifact::ArtifactType;
-use crate::role::{Authoring, ExtractedPolicy, Language};
+pub use compiled::DEFAULT_MAX_WINDOW_SECONDS;
+
+use permguard_language_core::artifact::ArtifactType;
+use permguard_language_core::role::{Authoring, ExtractedPolicy, Language};
 
 /// This language's name, as a manifest's `runtimes.<key>.language.name` spells it.
-pub const NAME: &str = "dogwood";
+pub const NAME: &str = permguard_language_core::names::DOGWOOD;
 
 /// The registered media type of a Dogwood policy.
 pub const POLICY_MEDIA_TYPE: &str = permguard_core::domains::media::POLICY_DOGWOOD;
 
+/// `dogwood-language`, as `Cargo.lock` pins it: read by the build script, never written by hand.
+pub const LOCKED: permguard_language_core::descriptor::Locked =
+    permguard_language_core::descriptor::Locked {
+        name: "dogwood-language",
+        version: env!("PERMGUARD_LOCKED_VERSION"),
+        build: env!("PERMGUARD_LOCKED_BUILD"),
+    };
+
+/// The Cargo features `dogwood-language` is compiled with: none; `corpus`, `net` and
+/// `experimental-arithmetic` stay off.
+///
+/// Part of what the descriptor promises: an engine evaluates what its features let it. The list
+/// equals the dependency declaration exactly, and what Cargo resolves for the whole workspace is
+/// exactly what it turns on — `permguard-languages`' `tests/engine_features.rs` fails otherwise.
+pub const ENGINE_FEATURES: &[&str] = &[];
+
+/// The language, every engine entry of which is inside the panic boundary: the only way out of
+/// this package, so no caller reaches the engine without it.
+pub fn language() -> &'static dyn Language {
+    static GUARDED: permguard_language_core::guard::Guarded<Dogwood> =
+        permguard_language_core::guard::Guarded(Dogwood);
+    &GUARDED
+}
+
 /// The Dogwood plugin.
-pub struct Dogwood;
+struct Dogwood;
 
 impl Language for Dogwood {
     fn name(&self) -> &'static str {
@@ -75,13 +101,13 @@ impl Language for Dogwood {
         "1.0.0"
     }
 
-    fn engine(&self) -> crate::descriptor::Engine {
-        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+    fn engine(&self) -> permguard_language_core::descriptor::Engine {
+        use permguard_language_core::descriptor::{Capabilities, Engine, Isolation, IsolationMode};
 
         Engine {
-            locked: locked::DOGWOOD,
+            locked: crate::LOCKED,
             capabilities: Capabilities {
-                features: crate::registry::engine_features::DOGWOOD,
+                features: crate::ENGINE_FEATURES,
                 // Policies are lowered to Cedar with every Cedar extension available, so they reach
                 // `datetime`, `decimal` and `ipaddr` (pure: none reads the clock). Information
                 // providers are Rhai scripts on an engine upstream builds without its time package,
@@ -179,38 +205,41 @@ impl Language for Dogwood {
         artifacts: &std::collections::BTreeMap<String, Vec<u8>>,
         declared: &permguard_objects::manifest::Partition,
     ) -> Result<(), String> {
-        let mut bundle = crate::artifact::Artifacts::default();
+        let mut bundle = permguard_language_core::artifact::Artifacts::default();
         for held in artifacts::all().iter().copied() {
             let Some(bytes) = artifacts.get(held.name()) else {
                 continue;
             };
             bundle.insert(
                 held,
-                crate::artifact::ArtifactBlob {
+                permguard_language_core::artifact::ArtifactBlob {
                     name: held.canonical_filename().unwrap_or(held.name()).to_owned(),
                     media_type: held.media_type().to_owned(),
                     data: bytes.clone(),
                 },
             );
         }
-        let stored: Vec<crate::evaluate::StoredPolicy> = policies
+        let stored: Vec<permguard_language_core::evaluate::StoredPolicy> = policies
             .iter()
-            .map(|(name, bytes)| crate::evaluate::StoredPolicy {
-                id: (*name).to_owned(),
-                alias: None,
-                source: bytes.to_vec(),
-            })
+            .map(
+                |(name, bytes)| permguard_language_core::evaluate::StoredPolicy {
+                    id: (*name).to_owned(),
+                    alias: None,
+                    source: bytes.to_vec(),
+                },
+            )
             .collect();
 
         // The compile *is* the check: it parses, lowers and validates exactly as a plane does, so
         // a set that passes here is a set that loads there.
-        let compiled = crate::evaluate::Evaluating::compile(self, &stored, &bundle)?;
+        let compiled =
+            permguard_language_core::evaluate::Evaluating::compile(self, &stored, &bundle)?;
 
         // And the manifest's own claim about this partition's history, against what the schemas
         // turned out to say. Run here, where the author can still fix it, as well as at load.
         match compiled.temporal() {
             Some(temporal) => {
-                crate::temporal::check_history_scope(
+                permguard_language_core::temporal::check_history_scope(
                     partition,
                     declared.history,
                     temporal.contract(),
@@ -227,7 +256,7 @@ impl Language for Dogwood {
         true
     }
 
-    fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
+    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
         Some(self)
     }
 }
@@ -321,8 +350,9 @@ when temporal {
     /// partition carries; below it, and for a partition without them, nothing is.
     #[test]
     fn providers_are_refused_from_production_and_nothing_else_is() {
-        use crate::artifact::{ArtifactBlob, Artifacts, artifact_type};
+        use crate::artifact_type;
         use permguard_core::assurance::AssuranceProfile;
+        use permguard_language_core::artifact::{ArtifactBlob, Artifacts};
 
         let carrying = |names: &[&str]| {
             let mut bundle = Artifacts::default();
@@ -339,7 +369,11 @@ when temporal {
             bundle
         };
         let floor = |profile, bundle: &Artifacts| {
-            crate::registry::check_artifact_floor(NAME, profile, bundle)
+            permguard_language_core::registry::check_artifact_floor_of(
+                &permguard_language_core::guard::Guarded(crate::Dogwood),
+                profile,
+                bundle,
+            )
         };
 
         for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
@@ -379,3 +413,22 @@ when temporal {
         );
     }
 }
+
+/// The registered artifact types of this language, by name, for the tests.
+#[cfg(test)]
+mod testing {
+    use permguard_language_core::artifact::ArtifactType;
+    use permguard_language_core::role::Language as _;
+
+    /// The artifact type of that name this language registers.
+    pub(crate) fn artifact_type(name: &str) -> Option<&'static dyn ArtifactType> {
+        super::Dogwood
+            .artifacts()
+            .iter()
+            .copied()
+            .find(|held| held.name() == name)
+    }
+}
+
+#[cfg(test)]
+use testing::artifact_type;

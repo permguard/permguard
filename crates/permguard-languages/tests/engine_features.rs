@@ -1,9 +1,9 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Every engine dependency is pinned exactly, compiles without its defaults, and names the
-//! features its descriptor lists — so a feature or version change is visible as a descriptor
-//! change in the same diff.
+//! Every engine dependency is pinned exactly, once, in the workspace manifest, compiles without its
+//! defaults, and names the features its descriptor lists — so a feature or version change is
+//! visible as a descriptor change in the same diff.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -13,7 +13,7 @@ use permguard_languages::registry::engine_features;
 fn declaration<'a>(manifest: &'a str, name: &str) -> &'a str {
     let start = manifest
         .find(&format!("\n{name} = "))
-        .unwrap_or_else(|| panic!("`{name}` is declared in Cargo.toml"))
+        .unwrap_or_else(|| panic!("`{name}` is declared in the workspace manifest"))
         + 1;
     let rest = &manifest[start..];
     let end = if rest[name.len() + 3..].trim_start().starts_with('{') {
@@ -39,8 +39,9 @@ fn features(declaration: &str) -> Vec<String> {
 
 #[test]
 fn test_every_engine_is_pinned_without_defaults_and_names_its_descriptor_features() {
-    let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
-        .expect("the manifest is readable");
+    let manifest =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml"))
+            .expect("the workspace manifest is readable");
 
     for (name, expected) in [
         ("cedar-policy", engine_features::CEDAR),
@@ -67,7 +68,7 @@ fn test_every_engine_is_pinned_without_defaults_and_names_its_descriptor_feature
         assert_eq!(
             listed,
             expected.iter().map(|f| (*f).to_owned()).collect::<Vec<_>>(),
-            "`{name}`'s features in Cargo.toml and registry::engine_features differ: change both"
+            "`{name}`'s features in the workspace manifest and its engine package's ENGINE_FEATURES differ: change both"
         );
     }
 }

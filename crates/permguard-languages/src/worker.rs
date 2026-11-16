@@ -1509,8 +1509,11 @@ mod tests {
             alias: Some("readers".to_owned()),
             source: b"permit (principal, action, resource);".to_vec(),
         }];
-        let artifacts =
-            Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, b"entity User;").expect("registered");
+        let artifacts = crate::artifact::just(
+            permguard_core::domains::artifact::CEDAR_SCHEMA_V1,
+            b"entity User;",
+        )
+        .expect("registered");
         let (back, held) =
             decode_material(&encode_material(&policies, &artifacts)).expect("it decodes");
         assert_eq!(back, policies);

@@ -40,7 +40,7 @@ use dogwood_language::{Event, EventBuilder, Value as DogwoodValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 
-use super::value;
+use crate::value;
 
 /// The registered name of this event input.
 pub const EVENT_TYPE: &str = permguard_core::domains::event::DOGWOOD_V1;
@@ -150,7 +150,7 @@ impl Occurrence {
         let reference = |entity: &EntityRef| entity.kind.len() + entity.id.len();
         let values = |bag: &BTreeMap<String, DogwoodValue>| -> usize {
             bag.iter()
-                .map(|(key, value)| key.len() + super::value::canonical(value).len())
+                .map(|(key, value)| key.len() + crate::value::canonical(value).len())
                 .sum()
         };
 

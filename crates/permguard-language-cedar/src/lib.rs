@@ -15,17 +15,41 @@ mod evaluate;
 
 use std::str::FromStr as _;
 
-use crate::role::{Authoring, ExtractedPolicy, Language};
+use permguard_language_core::role::{Authoring, ExtractedPolicy, Language};
 
 /// This language's name, as a manifest's `runtime.language.name` spells it.
-pub const NAME: &str = "cedar";
+pub const NAME: &str = permguard_language_core::names::CEDAR;
 /// The registered media type of a Cedar policy.
 pub const POLICY_MEDIA_TYPE: &str = permguard_core::domains::media::POLICY_CEDAR;
 /// The registered media type of a Cedar schema.
 pub const SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA_CEDAR;
 
+/// `cedar-policy`, as `Cargo.lock` pins it: read by the build script, never written by hand.
+pub const LOCKED: permguard_language_core::descriptor::Locked =
+    permguard_language_core::descriptor::Locked {
+        name: "cedar-policy",
+        version: env!("PERMGUARD_LOCKED_VERSION"),
+        build: env!("PERMGUARD_LOCKED_BUILD"),
+    };
+
+/// The Cargo features `cedar-policy` is compiled with, sorted: its upstream default set.
+///
+/// Part of what the descriptor promises: an engine evaluates what its features let it, so a feature
+/// added in the workspace manifest is a capability added to every Cedar policy. The list equals the
+/// dependency declaration exactly, and what Cargo resolves for the whole workspace is exactly what
+/// it turns on — `permguard-languages`' `tests/engine_features.rs` fails otherwise.
+pub const ENGINE_FEATURES: &[&str] = &["datetime", "decimal", "ipaddr"];
+
+/// The language, every engine entry of which is inside the panic boundary: the only way out of
+/// this package, so no caller reaches the engine without it.
+pub fn language() -> &'static dyn Language {
+    static GUARDED: permguard_language_core::guard::Guarded<Cedar> =
+        permguard_language_core::guard::Guarded(Cedar);
+    &GUARDED
+}
+
 /// The Cedar plugin.
-pub struct Cedar;
+struct Cedar;
 
 impl Language for Cedar {
     fn name(&self) -> &'static str {
@@ -35,16 +59,16 @@ impl Language for Cedar {
     fn language_version(&self) -> &'static str {
         // Cedar's language is versioned by its engine's releases: the version is the locked
         // `cedar-policy`'s, read from `Cargo.lock` at build time and never written by hand.
-        crate::descriptor::locked::CEDAR.version
+        crate::LOCKED.version
     }
 
-    fn engine(&self) -> crate::descriptor::Engine {
-        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+    fn engine(&self) -> permguard_language_core::descriptor::Engine {
+        use permguard_language_core::descriptor::{Capabilities, Engine, Isolation, IsolationMode};
 
         Engine {
-            locked: locked::CEDAR,
+            locked: crate::LOCKED,
             capabilities: Capabilities {
-                features: crate::registry::engine_features::CEDAR,
+                features: crate::ENGINE_FEATURES,
                 // The extension types those features add; none reads the clock or draws a value.
                 extensions: &["datetime", "decimal", "ipaddr"],
                 clock: false,
@@ -68,7 +92,7 @@ impl Language for Cedar {
         Some(SCHEMA_MEDIA_TYPE)
     }
 
-    fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+    fn artifacts(&self) -> &'static [&'static dyn permguard_language_core::artifact::ArtifactType] {
         const SCHEMA: &SchemaArtifact = &SchemaArtifact;
 
         &[SCHEMA]
@@ -84,7 +108,7 @@ impl Language for Cedar {
         let text = std::str::from_utf8(bytes)
             .map_err(|_| "a Cedar schema must be valid UTF-8".to_owned())?;
         check_nesting(text, Grammar::Schema).map_err(|error| format!("cedar schema: {error}"))?;
-        crate::headroom::ample(|| {
+        permguard_language_core::headroom::ample(|| {
             cedar_policy::Schema::from_cedarschema_str(text)
                 .map(|_| ())
                 .map_err(|error| format!("cedar schema: {error}"))
@@ -148,18 +172,18 @@ impl Language for Cedar {
         Some(self)
     }
 
-    fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
+    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
         Some(self)
     }
 }
 
 /// Parses a Cedar schema from its authored text.
-pub(super) fn parse_schema(bytes: &[u8]) -> Result<cedar_policy::Schema, String> {
+pub(crate) fn parse_schema(bytes: &[u8]) -> Result<cedar_policy::Schema, String> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| "cedar: the schema is not valid UTF-8".to_owned())?;
     check_nesting(text, Grammar::Schema)
         .map_err(|error| format!("cedar: the schema does not parse: {error}"))?;
-    let (schema, _warnings) = crate::headroom::ample(|| {
+    let (schema, _warnings) = permguard_language_core::headroom::ample(|| {
         cedar_policy::Schema::from_cedarschema_str(text)
             .map_err(|error| format!("cedar: the schema does not parse: {error}"))
     })?;
@@ -172,7 +196,7 @@ pub(super) fn parse_schema(bytes: &[u8]) -> Result<cedar_policy::Schema, String>
 /// The one definition of "satisfies the schema" — authoring, commit
 /// acceptance and the data plane's load all call this, which is what makes
 /// the promise "what validates is what serves" a fact rather than a hope.
-pub(super) fn check_against_schema(
+pub(crate) fn check_against_schema(
     set: &cedar_policy::PolicySet,
     schema: &cedar_policy::Schema,
 ) -> Result<(), String> {
@@ -180,7 +204,7 @@ pub(super) fn check_against_schema(
 
     // The strict validator recurses on each policy's tree: on a stack segment sized for the bound,
     // whichever thread — a Control Plane accepting a push included — asked.
-    let result = crate::headroom::ample(|| {
+    let result = permguard_language_core::headroom::ample(|| {
         Validator::new(schema.clone()).validate(set, ValidationMode::Strict)
     });
     if !result.validation_passed() {
@@ -210,7 +234,8 @@ fn alias_of(policy: &str) -> Result<Option<String>, String> {
     let Some(alias) = parsed.annotation(ALIAS_ANNOTATION) else {
         return Ok(None);
     };
-    crate::role::identity_alias(alias).map_err(|error| format!("cedar: {error}"))?;
+    permguard_language_core::role::identity_alias(alias)
+        .map_err(|error| format!("cedar: {error}"))?;
 
     Ok(Some(alias.to_owned()))
 }
@@ -298,7 +323,7 @@ pub(crate) fn check_nesting(text: &str, grammar: Grammar) -> Result<(), String> 
 /// sized for that bound.
 pub(crate) fn parse_policy(text: &str) -> Result<cedar_policy::Policy, String> {
     check_nesting(text, Grammar::Policy).map_err(|error| format!("cedar: {error}"))?;
-    crate::headroom::ample(|| {
+    permguard_language_core::headroom::ample(|| {
         cedar_policy::Policy::from_str(text).map_err(|error| format!("cedar: {error}"))
     })
 }
@@ -404,7 +429,7 @@ pub const SCHEMA_EXTENSION: &str = "cedarschema";
 /// The Cedar schema artifact.
 pub struct SchemaArtifact;
 
-impl crate::artifact::ArtifactType for SchemaArtifact {
+impl permguard_language_core::artifact::ArtifactType for SchemaArtifact {
     fn name(&self) -> &'static str {
         SCHEMA_ARTIFACT
     }
@@ -417,8 +442,8 @@ impl crate::artifact::ArtifactType for SchemaArtifact {
         NAME
     }
 
-    fn role(&self) -> crate::artifact::ArtifactRole {
-        crate::artifact::ArtifactRole::Schema
+    fn role(&self) -> permguard_language_core::artifact::ArtifactRole {
+        permguard_language_core::artifact::ArtifactRole::Schema
     }
 
     fn semantic_role(&self) -> &'static str {
@@ -429,12 +454,12 @@ impl crate::artifact::ArtifactType for SchemaArtifact {
         &[SCHEMA_EXTENSION]
     }
 
-    fn cardinality(&self) -> crate::artifact::Cardinality {
-        crate::artifact::Cardinality::ZeroOrOne
+    fn cardinality(&self) -> permguard_language_core::artifact::Cardinality {
+        permguard_language_core::artifact::Cardinality::ZeroOrOne
     }
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
-        crate::role::Language::validate_schema(&Cedar, bytes)
+        permguard_language_core::role::Language::validate_schema(&Cedar, bytes)
     }
 }
 
@@ -542,3 +567,24 @@ action read appliesTo { principal: [User], resource: [Document] };
         assert!(Cedar.validate_schema(b"entity ;;;").is_err());
     }
 }
+
+/// The registered artifact types of this language, by name, for the tests.
+#[cfg(test)]
+mod testing {
+    use permguard_language_core::artifact::Artifacts;
+    use permguard_language_core::role::Language as _;
+
+    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
+    /// language registers.
+    pub(crate) fn just(name: &str, data: &[u8]) -> Option<Artifacts> {
+        super::Cedar
+            .artifacts()
+            .iter()
+            .copied()
+            .find(|held| held.name() == name)
+            .map(|artifact| Artifacts::just_of(artifact, data))
+    }
+}
+
+#[cfg(test)]
+use testing::just;

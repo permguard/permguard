@@ -1,21 +1,23 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Reads every policy engine's locked identity out of the workspace `Cargo.lock`.
+//! Reads one policy engine's locked identity out of the workspace `Cargo.lock`: the build script
+//! of every engine package (`permguard-language-cedar`, `-rego`, `-dogwood`), each naming this
+//! file as its `build`, so the three read the lock one way.
 //!
 //! A language descriptor promises which engine evaluates its policies. Written by hand, that promise
 //! drifted: Cedar advertised `4.12.0` while the lock held `cedar-policy 4.11.0`. Read from the lock
 //! at build time, it cannot — the binary reports exactly the engine it was linked against, and a
 //! lock that does not name one engine exactly once fails the build rather than shipping a guess.
 //!
-//! For each engine this sets `PERMGUARD_LOCKED_<ENGINE>_VERSION`, the locked version, and
-//! `PERMGUARD_LOCKED_<ENGINE>_BUILD`, the build identity: `sha256:` and the hex SHA-256 of the
-//! engine's whole locked dependency closure — one line per crate reachable from it,
-//! `name version checksum-or-source`, sorted and joined by `\n`. A `cargo update` anywhere beneath
-//! an engine changes what it evaluates with, so it changes this too.
+//! The engine is the one the building package wraps, found by its name in [`ENGINES`]. This sets
+//! `PERMGUARD_LOCKED_VERSION`, the locked version, and `PERMGUARD_LOCKED_BUILD`, the build identity:
+//! `sha256:` and the hex SHA-256 of the engine's whole locked dependency closure — one line per
+//! crate reachable from it, `name version checksum-or-source`, sorted and joined by `\n`. A
+//! `cargo update` anywhere beneath an engine changes what it evaluates with, so it changes this too.
 //!
-//! The lock read is this workspace's own, `../../Cargo.lock`: the crate is `publish = false` and
-//! built only inside it, so the lock is the one its binaries were resolved with.
+//! The lock read is this workspace's own, `../../Cargo.lock`: the packages are `publish = false` and
+//! built only inside it, so the lock is the one their binaries were resolved with.
 
 use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
@@ -23,50 +25,53 @@ use std::path::Path;
 
 use sha2::{Digest as _, Sha256};
 
-/// The engines, by crate name, the variable prefix each is published under, and the other crates
-/// whose behaviour is part of the runtime: Rego admits its input through `jsonschema`. Those are
-/// found through this crate's own entry in the lock, which names the exact version it links when
-/// the lock holds several.
+/// The engine packages, the engine crate each wraps, and the other crates whose behaviour is part
+/// of the runtime: Rego admits its input through `jsonschema`. Those are found through the engine
+/// package's own entry in the lock, which names the exact version it links when the lock holds
+/// several.
 const ENGINES: &[(&str, &str, &[&str])] = &[
-    ("cedar-policy", "CEDAR", &[]),
-    ("regorus", "REGO", &["jsonschema"]),
-    ("dogwood-language", "DOGWOOD", &[]),
+    ("permguard-language-cedar", "cedar-policy", &[]),
+    ("permguard-language-rego", "regorus", &["jsonschema"]),
+    ("permguard-language-dogwood", "dogwood-language", &[]),
 ];
 
 fn main() {
+    let own = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| fail("CARGO_PKG_NAME is not set"));
+    let Some((_, name, also)) = ENGINES.iter().find(|(package, _, _)| *package == own) else {
+        fail(&format!(
+            "`{own}` is not an engine package this script reads the lock for"
+        ));
+    };
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| fail("CARGO_MANIFEST_DIR is not set"));
     let lock = Path::new(&manifest).join("../../Cargo.lock");
     println!("cargo:rerun-if-changed={}", lock.display());
-    println!("cargo:rerun-if-changed=build.rs");
 
     let text = std::fs::read_to_string(&lock)
         .unwrap_or_else(|error| fail(&format!("cannot read {}: {error}", lock.display())));
     let packages = packages(&text);
 
-    for (name, prefix, also) in ENGINES {
-        let found: Vec<usize> = packages
-            .iter()
-            .enumerate()
-            .filter(|(_, package)| package.name == *name)
-            .map(|(index, _)| index)
-            .collect();
-        let [engine] = found.as_slice() else {
-            fail(&format!(
-                "Cargo.lock names `{name}` {} times; a language descriptor needs exactly one locked engine",
-                found.len()
-            ));
-        };
+    let found: Vec<usize> = packages
+        .iter()
+        .enumerate()
+        .filter(|(_, package)| package.name == *name)
+        .map(|(index, _)| index)
+        .collect();
+    let [engine] = found.as_slice() else {
+        fail(&format!(
+            "Cargo.lock names `{name}` {} times; a language descriptor needs exactly one locked engine",
+            found.len()
+        ));
+    };
 
-        println!(
-            "cargo:rustc-env=PERMGUARD_LOCKED_{prefix}_VERSION={}",
-            packages[*engine].version
-        );
-        println!(
-            "cargo:rustc-env=PERMGUARD_LOCKED_{prefix}_BUILD={}",
-            closure_digest(&packages, *engine, also)
-        );
-    }
+    println!(
+        "cargo:rustc-env=PERMGUARD_LOCKED_VERSION={}",
+        packages[*engine].version
+    );
+    println!(
+        "cargo:rustc-env=PERMGUARD_LOCKED_BUILD={}",
+        closure_digest(&packages, &own, *engine, also)
+    );
 }
 
 /// One `[[package]]` entry of the lock: the fields a descriptor reads.
@@ -92,12 +97,12 @@ impl Package {
 }
 
 /// The digest of the closure of `root` in the lock's dependency graph.
-fn closure_digest(packages: &[Package], root: usize, also: &[&str]) -> String {
+fn closure_digest(packages: &[Package], own: &str, root: usize, also: &[&str]) -> String {
     let mut seen = BTreeSet::new();
     let mut queue = VecDeque::from([root]);
     queue.extend(
         also.iter()
-            .map(|name| resolve(packages, &own_dependency(packages, name))),
+            .map(|name| resolve(packages, &own_dependency(packages, own, name))),
     );
     while let Some(index) = queue.pop_front() {
         if !seen.insert(index) {
@@ -117,17 +122,18 @@ fn closure_digest(packages: &[Package], root: usize, also: &[&str]) -> String {
     text
 }
 
-/// How this crate's own entry in the lock names its dependency `name`.
-fn own_dependency(packages: &[Package], name: &str) -> String {
-    let own = packages
+/// How the package `own`'s entry in the lock names its dependency `name`.
+fn own_dependency(packages: &[Package], own: &str, name: &str) -> String {
+    let entry = packages
         .iter()
-        .find(|package| package.name == "permguard-languages")
-        .unwrap_or_else(|| fail("Cargo.lock has no entry for permguard-languages"));
-    own.dependencies
+        .find(|package| package.name == own)
+        .unwrap_or_else(|| fail(&format!("Cargo.lock has no entry for {own}")));
+    entry
+        .dependencies
         .iter()
         .find(|reference| reference.split(' ').next() == Some(name))
         .cloned()
-        .unwrap_or_else(|| fail(&format!("permguard-languages does not depend on `{name}`")))
+        .unwrap_or_else(|| fail(&format!("{own} does not depend on `{name}`")))
 }
 
 /// The package a dependency entry names: by name alone when the lock holds one of that name, by

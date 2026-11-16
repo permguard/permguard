@@ -1,7 +1,13 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The built-in policy languages: Cedar, Rego and Dogwood.
+//! The built-in policy languages: Cedar, Rego and Dogwood, as one catalogue.
+//!
+//! Each language is its own package — `permguard-language-cedar`, `permguard-language-rego`,
+//! `permguard-language-dogwood` — over the contracts of `permguard-language-core`. This package is
+//! the catalogue a build carries, chosen by its features (`cedar`, `rego`, `dogwood`, all on by
+//! default), and every rule that is asked of all of them at once: the lookups, the manifest gates,
+//! the startup checks, the descriptors, the supervised worker.
 //!
 //! Split by role, because the two sides of the product ask a language
 //! different things:
@@ -23,38 +29,31 @@
 //! deployment action, so what interprets policy is exactly what was
 //! reviewed, signed and shipped.
 
-// The languages themselves are internals: they are reached through the roles
-// and the lookups, never by name. Keeping them private is what makes the role
-// split a rule the compiler enforces — an ingest path cannot get hold of
-// `Cedar` and call the splitter on it.
-mod cedar;
-mod dogwood;
-mod rego;
+// The languages themselves are internals: each engine package hands out only its language behind
+// the panic boundary, and this package reaches them through the roles and the lookups, never by
+// name. Keeping the concrete types private is what makes the role split a rule the compiler
+// enforces — an ingest path cannot get hold of `Cedar` and call the splitter on it.
+pub use permguard_language_core::{
+    attestation, evaluate, fanout, guard, headroom, input, names, request, role, temporal, warm,
+};
 
 pub mod artifact;
-pub mod attestation;
 pub mod conformance;
 pub mod descriptor;
-pub mod evaluate;
-pub mod fanout;
-pub mod guard;
-pub mod headroom;
-pub mod input;
 pub mod lookup;
 pub mod manifest_file;
 pub mod partition;
 pub mod registry;
-pub mod request;
-pub mod role;
-pub mod temporal;
-pub mod warm;
 pub mod worker;
 
-pub use dogwood::artifacts as dogwood_artifacts;
-pub use dogwood::occurrence::{
+pub use permguard_language_core::names::DOGWOOD;
+pub use permguard_language_core::occurrence::{
     self as event, EntityRef, EntityUidBody, Occurrence, OccurrenceBody, OccurrenceBodyV2,
 };
-pub use dogwood::{NAME as DOGWOOD, POLICY_MEDIA_TYPE as MEDIA_TYPE_POLICY_DOGWOOD};
+#[cfg(feature = "dogwood")]
+pub use permguard_language_dogwood::artifacts as dogwood_artifacts;
+/// The registered media type of a Dogwood policy.
+pub const MEDIA_TYPE_POLICY_DOGWOOD: &str = permguard_core::domains::media::POLICY_DOGWOOD;
 pub use evaluate::{
     Action, Entity, Evaluating, EvaluationError, Evaluator, Outcome, Query, Resolution,
     StoredPolicy, Verdict, resolve,
@@ -73,6 +72,7 @@ pub use role::{Authoring, ExtractedPolicy, Language};
 /// the first submission: a plane whose retention is shorter than the runtimes it carries would
 /// refuse every ledger, and finding that out at boot is the difference between a configuration
 /// error and an outage.
+#[cfg(feature = "dogwood")]
 pub fn dogwood_default_max_window_seconds() -> i64 {
-    dogwood::compiled::DEFAULT_MAX_WINDOW_SECONDS
+    permguard_language_dogwood::DEFAULT_MAX_WINDOW_SECONDS
 }

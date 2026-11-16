@@ -1,0 +1,35 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-language-core"
+description = "What a policy language is to Permguard: the roles, artifacts, descriptors, request model and shared evaluation path every engine implements."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+permguard-objects.workspace = true
+# The event record the occurrence becomes.
+permguard-events.workspace = true
+# The canonical JSON attestations and descriptors are digested over.
+permguard-stream.workspace = true
+sha2.workspace = true
+base64.workspace = true
+# The values the temporal interface's occurrence carries, as the Dogwood language defines them.
+dogwood-language.workspace = true
+# Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
+# expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
+# "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy
+# carries it — so it is a direct dependency of the crate that has to guarantee the headroom rather
+# than a transitive accident. See `evaluate::evaluate_all`.
+stacker = "0.1"
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true

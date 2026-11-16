@@ -124,7 +124,7 @@ A caller can also ask for the response itself to be signed.
 `permguard.api.pdp.native.v1` is Permguard's native policy decision interface, designed for profile-based decisions evaluated across one or more heterogeneous policy partitions.
 It is not an implementation of, nor a compatibility claim for, anybody else's authorization API.
 The shape will look familiar, a subject, an action, a resource and a context in, a decision and a reason out, because that is the obvious shape for the question.
-What owning it buys is that the parts nobody else specifies are specified *here*, in [`crates/permguard-languages/src/request.rs`](crates/permguard-languages/src/request.rs), and can change when Permguard needs them to.
+What owning it buys is that the parts nobody else specifies are specified *here*, in [`crates/permguard-language-core/src/request.rs`](crates/permguard-language-core/src/request.rs), and can change when Permguard needs them to.
 
 ### Supported policy languages
 
@@ -921,7 +921,11 @@ The Host never depends on a concrete plane.
 | `permguard-notp`                   | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                                      |
 | `permguard-decisions`              | codecs      | Decision evidence records, commitments and their verification.                                                |
 | `permguard-events`                 | codecs      | Event evidence records for the temporal interface.                                                            |
-| `permguard-languages`              | planes      | Cedar, Rego and Dogwood integration, and the native request model.                                            |
+| `permguard-language-core`          | languages   | What a language is: roles, artifacts, descriptors, the request model and the shared evaluation path.          |
+| `permguard-language-cedar`         | languages   | Cedar, through the official `cedar-policy` crate.                                                             |
+| `permguard-language-rego`          | languages   | Rego, through the `regorus` interpreter.                                                                      |
+| `permguard-language-dogwood`       | languages   | Dogwood, the temporal governance language, through `dogwood-language`.                                        |
+| `permguard-languages`              | languages   | The language catalogue a build carries, one feature each, with its gates, descriptors and worker.             |
 | `permguard-authority-plane`        | planes      | Authority Plane domain: service accounts, access keys, scopes, tokens, keys and status lists; serves nothing. |
 | `permguard-authority-plane-server` | planes      | Authority Plane served: its HTTP and gRPC routes, its module and the `permguard-authority-plane` binary.      |
 | `permguard-control-plane`          | planes      | Control Plane domain: catalog, ledger store and NOTP, decision and event stores; serves nothing.              |

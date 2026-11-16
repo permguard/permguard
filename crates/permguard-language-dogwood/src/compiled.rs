@@ -30,9 +30,11 @@ use dogwood_language::{
     ProviderDeclarations, ServiceSchema, Validator, Value as DogwoodValue,
 };
 
-use crate::artifact::Artifacts;
-use crate::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
-use crate::temporal::{Applied, Checked, Contract, Field, Pin, PinSource, Refused, Signature};
+use permguard_language_core::artifact::Artifacts;
+use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+use permguard_language_core::temporal::{
+    Applied, Checked, Contract, Field, Pin, PinSource, Refused, Signature,
+};
 
 use super::artifacts as registry;
 use super::occurrence::Occurrence;
@@ -181,7 +183,7 @@ impl Evaluating for super::Dogwood {
         // is not kept: engines belong to histories, and this partition has none yet.
         drop(authorizer);
         Ok(Box::new(CompiledDogwood {
-            histories: Arc::new(Mutex::new(Histories::default())),
+            histories: Arc::new(Shelf::default()),
             inputs,
             cedar_schema,
             contract,
@@ -650,7 +652,7 @@ fn event_bytes(occurrence: &Occurrence) -> u64 {
 /// A schema that pins the caller has one history per caller, and each engine holds a lowered
 /// policy set and the events it observed: memory grows with the tenant's callers and with what
 /// they record — a caller-controlled allocation. The bound is therefore bytes, charged to a
-/// [`crate::warm::Budget`] per partition, per zone and per Host (DOGWOOD-02), never a count.
+/// [`permguard_language_core::warm::Budget`] per partition, per zone and per Host (DOGWOOD-02), never a count.
 ///
 /// Evicting one costs a rebuild and changes no answer: the durable journal is the authority, and a
 /// history that is asked for again is replayed from it before it decides.
@@ -659,9 +661,19 @@ struct Histories {
     held: std::collections::HashMap<String, Arc<Held>>,
 }
 
+/// The warm histories behind their lock: what the budget evicts through.
+#[derive(Default)]
+struct Shelf(Mutex<Histories>);
+
+impl Shelf {
+    fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Histories>> {
+        self.0.lock()
+    }
+}
+
 /// The budget evicts through this: it drops the engine, and any caller still holding the `Arc`
 /// finishes with it.
-impl crate::warm::Evict for Mutex<Histories> {
+impl permguard_language_core::warm::Evict for Shelf {
     fn evict(&self, history: &str) {
         if let Ok(mut histories) = self.lock() {
             histories.held.remove(history);
@@ -671,7 +683,7 @@ impl crate::warm::Evict for Mutex<Histories> {
 
 /// Where this partition's warm histories are charged.
 struct Warm {
-    budget: Arc<crate::warm::Budget>,
+    budget: Arc<permguard_language_core::warm::Budget>,
     zone: String,
     owner: u64,
 }
@@ -679,7 +691,7 @@ struct Warm {
 /// A Dogwood partition, compiled and ready.
 struct CompiledDogwood {
     /// One engine per history partition, bounded by the warm budget.
-    histories: Arc<Mutex<Histories>>,
+    histories: Arc<Shelf>,
     /// The budget it charges, bound by the plane or, unbound, one of its own.
     warm: std::sync::OnceLock<Warm>,
     /// What it takes to build a fresh authorizer, for a cold history or a rebuild.
@@ -818,13 +830,19 @@ impl CompiledDogwood {
     /// The budget this partition charges: the plane's once bound, its own until then.
     fn warm(&self) -> &Warm {
         self.warm.get_or_init(|| {
-            self.bound(crate::warm::Budget::new(crate::warm::Limits::default()), "")
+            self.bound(
+                permguard_language_core::warm::Budget::new(
+                    permguard_language_core::warm::Limits::default(),
+                ),
+                "",
+            )
         })
     }
 
-    fn bound(&self, budget: Arc<crate::warm::Budget>, zone: &str) -> Warm {
-        let evictor: std::sync::Weak<dyn crate::warm::Evict> =
-            Arc::downgrade(&self.histories) as std::sync::Weak<dyn crate::warm::Evict>;
+    fn bound(&self, budget: Arc<permguard_language_core::warm::Budget>, zone: &str) -> Warm {
+        let evictor: std::sync::Weak<dyn permguard_language_core::warm::Evict> =
+            Arc::downgrade(&self.histories)
+                as std::sync::Weak<dyn permguard_language_core::warm::Evict>;
         let owner = budget.register(evictor);
 
         Warm {
@@ -858,7 +876,7 @@ impl CompiledDogwood {
             history,
             engine.bytes.load(std::sync::atomic::Ordering::Relaxed),
         );
-        crate::warm::evict_all(victims);
+        permguard_language_core::warm::evict_all(victims);
     }
 }
 
@@ -880,8 +898,8 @@ impl Evaluator for CompiledDogwood {
     /// it would return it as an ordinary permit or deny, indistinguishable from one the policies
     /// meant. The request is one this runtime cannot take on this interface.
     fn evaluate(&self, query: &Query) -> Verdict {
-        // The stack an engine needs is its own to guarantee: see crate::headroom.
-        crate::headroom::with(|| {
+        // The stack an engine needs is its own to guarantee: see permguard_language_core::headroom.
+        permguard_language_core::headroom::with(|| {
             let _ = query;
 
             Verdict::input_rejected(
@@ -902,12 +920,12 @@ impl Evaluator for CompiledDogwood {
         self.identities.clone()
     }
 
-    fn temporal(&self) -> Option<&dyn crate::temporal::Temporal> {
+    fn temporal(&self) -> Option<&dyn permguard_language_core::temporal::Temporal> {
         Some(self)
     }
 }
 
-impl crate::temporal::Temporal for CompiledDogwood {
+impl permguard_language_core::temporal::Temporal for CompiledDogwood {
     fn contract(&self) -> &Contract {
         &self.contract
     }
@@ -1053,9 +1071,9 @@ impl crate::temporal::Temporal for CompiledDogwood {
             // The verdicts of a replay are discarded: what is being rebuilt is the *history*, and
             // a decision made now against a partial replay would be a decision nobody asked for.
             // Entered with room to recurse in, like every other call into an engine — see
-            // `crate::headroom`; a replay that declined for want of stack would rebuild a history
+            // `permguard_language_core::headroom`; a replay that declined for want of stack would rebuild a history
             // missing the very events it is replaying.
-            let _ = crate::headroom::with(|| fresh.is_authorized(&event));
+            let _ = permguard_language_core::headroom::with(|| fresh.is_authorized(&event));
         }
 
         let engine = self.engine(history)?;
@@ -1122,7 +1140,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
         Ok(())
     }
 
-    fn bind_warm(&self, budget: &Arc<crate::warm::Budget>, zone: &str) {
+    fn bind_warm(&self, budget: &Arc<permguard_language_core::warm::Budget>, zone: &str) {
         // The first binding wins: the plane binds a partition before it hands it any work, and
         // one used unbound keeps the budget of its own it started with. A compiled partition
         // belongs to one ledger and so to one zone: a later call naming another zone is a no-op
@@ -1209,8 +1227,8 @@ impl CompiledDogwood {
                 // Entered with room to recurse in: this is where a Dogwood partition
                 // actually decides, and a thread whose stack the platform under-reports would
                 // have every policy here answer "recursion limit reached". See
-                // `crate::headroom`.
-                crate::headroom::with(|| authorizer.is_authorized(&event))
+                // `permguard_language_core::headroom`.
+                permguard_language_core::headroom::with(|| authorizer.is_authorized(&event))
             }
             // A history whose lock a panicking thread left poisoned is one nobody can vouch for.
             // Fail closed rather than reach past the poison for the state.
@@ -1373,7 +1391,7 @@ impl CompiledDogwood {
 
         // The refusal is built inside, not outside: upstream's entity error is a large value, and
         // a closure that returned it would carry it out through every frame this grows.
-        crate::headroom::with(|| {
+        permguard_language_core::headroom::with(|| {
             Entities::from_json_value(serde_json::Value::Array(store), Some(&self.cedar_schema))
                 .map(|_| ())
                 .map_err(|error| {
@@ -1601,20 +1619,23 @@ mod tests {
         checked.pin_values().join("\u{1f}")
     }
 
-    use crate::artifact::{ArtifactBlob, ArtifactType};
+    use permguard_language_core::artifact::{ArtifactBlob, ArtifactType};
     use serde_json::{Value as Json, json};
 
     /// Upstream's own example: policy, action schema, and the event schema that is its default.
-    const POLICY: &str = include_str!("../../tests/fixtures/dogwood/read-login-not-logout.dw");
-    const ACTION_SCHEMA: &str =
-        include_str!("../../tests/fixtures/dogwood/read-login-not-logout.cedarschema");
-    const EVENT_SCHEMA: &str = include_str!("../../tests/fixtures/dogwood/pinned.dwschema");
+    const POLICY: &str =
+        include_str!("../../permguard-languages/tests/fixtures/dogwood/read-login-not-logout.dw");
+    const ACTION_SCHEMA: &str = include_str!(
+        "../../permguard-languages/tests/fixtures/dogwood/read-login-not-logout.cedarschema"
+    );
+    const EVENT_SCHEMA: &str =
+        include_str!("../../permguard-languages/tests/fixtures/dogwood/pinned.dwschema");
     /// Upstream's session-pinned alternative, whose pin is a bare top-level logged field.
     const SESSION_PINNED: &str =
-        include_str!("../../tests/fixtures/dogwood/session-pinned.dwschema");
+        include_str!("../../permguard-languages/tests/fixtures/dogwood/session-pinned.dwschema");
 
     fn artifact(type_name: &str, data: &str) -> (&'static dyn ArtifactType, ArtifactBlob) {
-        let held = crate::artifact::artifact_type(type_name).expect("a registered artifact");
+        let held = crate::artifact_type(type_name).expect("a registered artifact");
 
         (
             held,
@@ -2753,11 +2774,12 @@ when { Run::Away(context.input.document).ok == true };
         let temporal = compiled.temporal().expect("it remembers");
         // A partition bound that holds three engines and not four (DOGWOOD-02).
         let engine = 2 * compiled.footprint() as u64;
-        let budget = crate::warm::Budget::new(crate::warm::Limits {
-            host: u64::MAX,
-            zone: u64::MAX,
-            partition: engine * 3 + engine / 2,
-        });
+        let budget =
+            permguard_language_core::warm::Budget::new(permguard_language_core::warm::Limits {
+                host: u64::MAX,
+                zone: u64::MAX,
+                partition: engine * 3 + engine / 2,
+            });
         temporal.bind_warm(&budget, "acme");
 
         let login_of = |user: &str| {
@@ -2823,11 +2845,15 @@ when { Run::Away(context.input.document).ok == true };
     fn a_warm_history_is_charged_its_set_and_its_events_to_the_bound_budget() {
         let compiled = example();
         let temporal = compiled.temporal().expect("it remembers");
-        let budget = crate::warm::Budget::new(crate::warm::Limits::default());
+        let budget = permguard_language_core::warm::Budget::new(
+            permguard_language_core::warm::Limits::default(),
+        );
         temporal.bind_warm(&budget, "acme");
         // A second binding is a no-op: the first wins.
         temporal.bind_warm(
-            &crate::warm::Budget::new(crate::warm::Limits::default()),
+            &permguard_language_core::warm::Budget::new(
+                permguard_language_core::warm::Limits::default(),
+            ),
             "other",
         );
 

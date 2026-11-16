@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use dogwood_language::Value as DogwoodValue;
 use serde::Deserialize;
 
-use crate::temporal::Signature;
+use permguard_language_core::temporal::Signature;
 
 /// A dotted path, by segment.
 pub type Path = Vec<String>;
@@ -296,7 +296,7 @@ pub fn check_complete(
             .pins
             .iter()
             .filter_map(|pin| match &pin.source {
-                crate::temporal::PinSource::Context(path) => Some(path.clone()),
+                permguard_language_core::temporal::PinSource::Context(path) => Some(path.clone()),
                 _ => None,
             })
             .collect();
@@ -440,8 +440,9 @@ mod tests {
 
     use super::*;
 
-    const ACTION_SCHEMA: &str =
-        include_str!("../../tests/fixtures/dogwood/read-login-not-logout.cedarschema");
+    const ACTION_SCHEMA: &str = include_str!(
+        "../../permguard-languages/tests/fixtures/dogwood/read-login-not-logout.cedarschema"
+    );
 
     fn path(text: &str) -> Path {
         text.split('.').map(str::to_owned).collect()
@@ -550,14 +551,16 @@ mod tests {
             action: "A::Action::X".to_owned(),
             kind: "request".to_owned(),
             decision: true,
-            fields: vec![crate::temporal::Field {
+            fields: vec![permguard_language_core::temporal::Field {
                 path: path("sessionId"),
                 declared: "String".to_owned(),
             }],
             pins: if pinned {
-                vec![crate::temporal::Pin {
+                vec![permguard_language_core::temporal::Pin {
                     field: path("sessionId"),
-                    source: crate::temporal::PinSource::Context(path("sessionId")),
+                    source: permguard_language_core::temporal::PinSource::Context(path(
+                        "sessionId",
+                    )),
                 }]
             } else {
                 Vec::new()

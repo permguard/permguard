@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-language-dogwood"
+description = "Dogwood for Permguard, through the dogwood-language crate: the temporal governance language, its artifacts, projection and evaluation against history."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# The engine's identity, read out of the workspace `Cargo.lock`: one script for every engine package.
+build = "../permguard-language-core/build/locked.rs"
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+permguard-objects.workspace = true
+# The canonical instant parsing an occurrence is validated against.
+permguard-events.workspace = true
+permguard-language-core.workspace = true
+# Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
+dogwood-language.workspace = true
+# The Cedar Dogwood lowers to, at the version Dogwood holds the whole build to.
+cedar-policy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# The build script digests the engine's locked dependency closure.
+[build-dependencies]
+sha2.workspace = true

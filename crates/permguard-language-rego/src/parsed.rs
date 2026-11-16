@@ -253,9 +253,10 @@ pub fn check_nesting(source: &str) -> Result<(), String> {
 pub fn parse(source: &str) -> Result<Parsed, String> {
     check_nesting(source)?;
     let mut engine = regorus::Engine::new();
-    let package =
-        crate::headroom::ample(|| engine.add_policy("policy.rego".to_owned(), source.to_owned()))
-            .map_err(|error| format!("rego: {error}"))?;
+    let package = permguard_language_core::headroom::ample(|| {
+        engine.add_policy("policy.rego".to_owned(), source.to_owned())
+    })
+    .map_err(|error| format!("rego: {error}"))?;
     let tree = engine
         .get_ast_as_json()
         .map_err(|error| format!("rego: the parsed module cannot be read: {error}"))?;
@@ -391,7 +392,8 @@ pub fn alias(source: &str, parsed: &Parsed) -> Result<Option<String>, String> {
     let alias = alias
         .as_str()
         .ok_or_else(|| "rego: `custom.alias` is not a string".to_owned())?;
-    crate::role::identity_alias(alias).map_err(|error| format!("rego: {error}"))?;
+    permguard_language_core::role::identity_alias(alias)
+        .map_err(|error| format!("rego: {error}"))?;
 
     Ok(Some(alias.to_owned()))
 }

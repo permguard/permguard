@@ -67,7 +67,7 @@ use regorus::utils::limits::ExecutionTimerConfig;
 use regorus::{Engine, Value as RegoValue};
 use serde_json::{Value, json};
 
-use crate::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
 
 use super::Rego;
 
@@ -108,20 +108,20 @@ impl Evaluating for Rego {
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        artifacts: &crate::artifact::Artifacts,
+        artifacts: &permguard_language_core::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String> {
         // Compiled once, here, and never again: a schema recompiled per request would be the
         // most expensive thing on the decision path and would say the same thing every time.
-        let schema = artifacts.bytes(crate::rego::SCHEMA_ARTIFACT);
-        let input_schema = artifacts.bytes(crate::rego::INPUT_SCHEMA_ARTIFACT);
+        let schema = artifacts.bytes(crate::SCHEMA_ARTIFACT);
+        let input_schema = artifacts.bytes(crate::INPUT_SCHEMA_ARTIFACT);
         // One schema, one truth: v2 types `input.partition` too, so a partition carrying both
         // would answer to two schemas that may disagree.
         if schema.is_some() && input_schema.is_some() {
             return Err(format!(
                 "rego: the partition carries both `{}` and `{}`; the whole-input schema covers \
                  the partition document too, so carry one",
-                crate::rego::SCHEMA_ARTIFACT,
-                crate::rego::INPUT_SCHEMA_ARTIFACT
+                crate::SCHEMA_ARTIFACT,
+                crate::INPUT_SCHEMA_ARTIFACT
             ));
         }
         let validator = schema.map(compile_schema).transpose()?;
@@ -146,7 +146,7 @@ impl Evaluating for Rego {
                 .map_err(|error| format!("rego: module {}: {error}", stored.id))?;
             // `parse` has bounded the module's nesting and parse work; the parse itself still
             // runs on a stack segment sized for them.
-            let package = crate::headroom::ample(|| {
+            let package = permguard_language_core::headroom::ample(|| {
                 engine.add_policy(format!("{}.rego", stored.id), text.to_owned())
             })
             .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
@@ -250,8 +250,8 @@ fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
 
 impl Evaluator for RegoEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
-        // The stack an engine needs is its own to guarantee: see crate::headroom.
-        crate::headroom::with(|| {
+        // The stack an engine needs is its own to guarantee: see permguard_language_core::headroom.
+        permguard_language_core::headroom::with(|| {
             // The partition's budget starts here: building and checking the input spend from it too.
             let started = std::time::Instant::now();
             let document = input_document(query);
@@ -346,9 +346,12 @@ impl Evaluator for RegoEvaluator {
     ///
     /// Fail-closed: a document the schema refuses never reaches a rule, and never becomes a
     /// silent `undefined` that reads as "the guardrail did not fire".
-    fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
-        // The stack an engine needs is its own to guarantee: see crate::headroom.
-        crate::headroom::with(|| {
+    fn check_input(
+        &self,
+        input: &permguard_language_core::input::PartitionData,
+    ) -> Result<(), String> {
+        // The stack an engine needs is its own to guarantee: see permguard_language_core::headroom.
+        permguard_language_core::headroom::with(|| {
             let Some(validator) = &self.validator else {
                 return Ok(());
             };
@@ -442,7 +445,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::evaluate::{Action, Entity};
+    use permguard_language_core::evaluate::{Action, Entity};
     use serde_json::Map;
 
     const READERS: &str = r#"package documents
@@ -468,9 +471,8 @@ deny if input.subject.id == "bob"
 "#;
 
     /// A partition carrying just this Rego schema.
-    fn artifacts(schema: &[u8]) -> crate::artifact::Artifacts {
-        crate::artifact::Artifacts::just(crate::rego::SCHEMA_ARTIFACT, schema)
-            .expect("the Rego schema artifact is registered")
+    fn artifacts(schema: &[u8]) -> permguard_language_core::artifact::Artifacts {
+        crate::just(crate::SCHEMA_ARTIFACT, schema).expect("the Rego schema artifact is registered")
     }
 
     fn stored(id: &str, source: &str) -> StoredPolicy {
@@ -504,12 +506,12 @@ deny if input.subject.id == "bob"
             },
             context: Map::new(),
             deadline: None,
-            input: crate::input::PartitionData::default(),
+            input: permguard_language_core::input::PartitionData::default(),
         }
     }
 
-    fn document(value: serde_json::Value) -> crate::input::PartitionData {
-        crate::input::PartitionData::RegoData(std::sync::Arc::new(
+    fn document(value: serde_json::Value) -> permguard_language_core::input::PartitionData {
+        permguard_language_core::input::PartitionData::RegoData(std::sync::Arc::new(
             value.as_object().cloned().unwrap_or_default(),
         ))
     }
@@ -537,7 +539,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-hostile", HOSTILE)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -577,7 +579,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-hostile", HOSTILE)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -614,7 +616,10 @@ allow if {
             })
             .collect();
         let compiled = Rego
-            .compile(&policies, &crate::artifact::Artifacts::default())
+            .compile(
+                &policies,
+                &permguard_language_core::artifact::Artifacts::default(),
+            )
             .expect("the modules compile");
 
         let started = std::time::Instant::now();
@@ -646,8 +651,8 @@ allow if {
                              "properties": { "tenant": { "type": "string" } } }
             }
         }"#;
-        let held = crate::artifact::Artifacts::just(crate::rego::INPUT_SCHEMA_ARTIFACT, v2)
-            .expect("the v2 artifact is registered");
+        let held =
+            crate::just(crate::INPUT_SCHEMA_ARTIFACT, v2).expect("the v2 artifact is registered");
         let compiled = Rego
             .compile(
                 &[stored(
@@ -684,10 +689,10 @@ allow if {
 
         let mut both = held.clone();
         both.insert(
-            &crate::rego::SchemaArtifact,
-            crate::artifact::ArtifactBlob {
+            &crate::SchemaArtifact,
+            permguard_language_core::artifact::ArtifactBlob {
                 name: "partition.regoschema".to_owned(),
-                media_type: crate::rego::SCHEMA_MEDIA_TYPE.to_owned(),
+                media_type: crate::SCHEMA_MEDIA_TYPE.to_owned(),
                 data: br#"{"type":"object"}"#.to_vec(),
             },
         );
@@ -702,8 +707,11 @@ allow if {
 
         let remote = br#"{"$ref": "https://example.invalid/schema.json"}"#;
         assert!(
-            crate::artifact::ArtifactType::validate(&crate::rego::InputSchemaArtifact, remote)
-                .is_err(),
+            permguard_language_core::artifact::ArtifactType::validate(
+                &crate::InputSchemaArtifact,
+                remote
+            )
+            .is_err(),
             "a remote reference is refused at compile, without I/O"
         );
     }
@@ -713,16 +721,17 @@ allow if {
     #[test]
     fn the_assurance_profile_raises_the_schema_floor() {
         use permguard_core::assurance::AssuranceProfile::{Development, Production, Regulated};
-        let floor = |profile, held: &crate::artifact::Artifacts| {
-            crate::registry::check_schema_floor(crate::rego::NAME, profile, held)
+        let floor = |profile, held: &permguard_language_core::artifact::Artifacts| {
+            permguard_language_core::registry::check_schema_floor_of(
+                &permguard_language_core::guard::Guarded(crate::Rego),
+                profile,
+                held,
+            )
         };
-        let none = crate::artifact::Artifacts::default();
+        let none = permguard_language_core::artifact::Artifacts::default();
         let v1 = artifacts(br#"{"type":"object"}"#);
-        let v2 = crate::artifact::Artifacts::just(
-            crate::rego::INPUT_SCHEMA_ARTIFACT,
-            br#"{"type":"object"}"#,
-        )
-        .expect("registered");
+        let v2 =
+            crate::just(crate::INPUT_SCHEMA_ARTIFACT, br#"{"type":"object"}"#).expect("registered");
         assert!(floor(Development, &none).is_ok());
         assert!(floor(Production, &none).is_err());
         assert!(floor(Production, &v1).is_ok() && floor(Production, &v2).is_ok());
@@ -738,7 +747,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-readers", READERS)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -752,7 +761,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-readers", READERS)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -778,7 +787,7 @@ allow if {
                     stored("01a0-readers", READERS),
                     stored("01a0-guards", NEVER_BOB),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the modules compile");
 
@@ -800,7 +809,7 @@ allow if {
                     "01a0-quiet",
                     "package quiet\n\nimport rego.v1\n\nsomething := 1\n",
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -829,7 +838,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-graph", module)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -888,7 +897,7 @@ allow if {
         let compiled = Rego
             .compile(
                 &[stored("01a0-readers", READERS)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -912,7 +921,7 @@ deny if input.resource.id in input.partition.frozen_services
         let compiled = Rego
             .compile(
                 &[stored("01a0-frozen", MODULE)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -942,7 +951,7 @@ deny if input.resource.id in input.partition.frozen_services
         let compiled = Rego
             .compile(
                 &[stored("01a0-odd", module)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -974,7 +983,7 @@ deny if input.resource.id in input.partition.frozen_services
                     stored("01a0-guards", NEVER_BOB),
                     stored("01a0-odd", odd_deny),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the modules compile");
 
@@ -1003,7 +1012,7 @@ deny if input.resource.id in input.partition.frozen_services
                     stored("01a0-guards", NEVER_BOB),
                     stored("01a0-oddallow", odd_allow),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the modules compile");
         let verdict = allow_fails.evaluate(&query("bob", "read", "open"));
@@ -1068,7 +1077,7 @@ deny if input.resource.id in input.partition.frozen_services
         let refused = Rego
             .compile(
                 &[stored("01a0-no", NO), stored("01a0-yes", YES)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .err()
             .expect("a package this engine cannot attribute is refused, not served");
@@ -1086,7 +1095,7 @@ deny if input.resource.id in input.partition.frozen_services
         const NO: &str = "package shared\n\nimport rego.v1\n\ndefault allow := false\n";
         const YES: &str = "package shared\n\nimport rego.v1\n\nallow if { true }\n";
 
-        let refused = crate::role::Language::validate_set(
+        let refused = permguard_language_core::role::Language::validate_set(
             &Rego,
             &[("a.rego", NO.as_bytes()), ("b.rego", YES.as_bytes())],
             None,
@@ -1105,7 +1114,7 @@ deny if input.resource.id in input.partition.frozen_services
         assert!(
             Rego.compile(
                 &[stored("01a0-one", ONE), stored("01a0-two", TWO)],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .is_ok()
         );

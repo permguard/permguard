@@ -14,7 +14,7 @@
 //! ones sharing an extension reserve a canonical file name. The CLI's walk and the plane's loader
 //! both ask the registry; neither grows a switch that mentions Dogwood.
 
-use crate::artifact::{ArtifactRole, ArtifactType, Cardinality};
+use permguard_language_core::artifact::{ArtifactRole, ArtifactType, Cardinality};
 
 /// The registered type of the required Cedar action schema.
 pub const ACTION_SCHEMA: &str = permguard_core::domains::artifact::DOGWOOD_ACTION_SCHEMA_V1;
@@ -344,7 +344,7 @@ impl ArtifactType for RhaiProvider {
         //
         // So: it is text, it is not empty, and it is small enough that storing it is not itself
         // the attack. The limits it *runs* under are upstream's sandbox — see the module
-        // documentation in `crate::dogwood`, which says exactly whose they are.
+        // documentation in `crate`, which says exactly whose they are.
         let source = super::source_of(bytes, "a provider script")?;
         if source.trim().is_empty() {
             return Err("dogwood: a provider script is empty".to_owned());
@@ -377,7 +377,7 @@ pub fn all() -> &'static [&'static dyn ArtifactType] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::artifact::classify;
+    use permguard_language_core::artifact::classify;
 
     #[test]
     fn the_required_action_schema_is_the_only_required_one() {

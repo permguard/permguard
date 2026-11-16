@@ -145,7 +145,7 @@ fn test_cedar_reproduces_the_upstream_integration_corpus() {
             .collect();
         policies.sort_by(|a, b| a.id.cmp(&b.id));
         let artifacts = match case["schema"].as_str() {
-            Some(schema) => Artifacts::just(
+            Some(schema) => permguard_languages::artifact::just(
                 permguard_core::domains::artifact::CEDAR_SCHEMA_V1,
                 &read(schema),
             )

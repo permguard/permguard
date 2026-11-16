@@ -117,7 +117,8 @@ pub fn alias_of(policies: &[Vec<Annotation>]) -> Result<Option<String>, String> 
         }
     };
     let alias = decode(raw)?;
-    crate::role::identity_alias(&alias).map_err(|error| format!("dogwood: {error}"))?;
+    permguard_language_core::role::identity_alias(&alias)
+        .map_err(|error| format!("dogwood: {error}"))?;
 
     Ok(Some(alias))
 }

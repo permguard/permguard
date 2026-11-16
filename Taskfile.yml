@@ -290,7 +290,7 @@ tasks:
     cmds:
       - >-
         cargo run {{if .RELEASE}}--release{{end}}
-        -p permguard-{{.PLANE}}-plane
+        -p permguard-{{.PLANE}}-plane-server
         --bin permguard-{{.PLANE}}-plane
         -- crates/permguard-{{.PLANE}}-plane/{{.CONFIG}} {{.ARGS}}
 

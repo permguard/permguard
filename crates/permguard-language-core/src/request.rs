@@ -561,7 +561,7 @@ impl Asking {
 
         // Cedar has nowhere else to read them from. Absent when there are none, so a schema that
         // never declared `context.action` keeps validating the requests it always did.
-        if target.language == crate::cedar::NAME && !self.action.properties.is_empty() {
+        if target.language == crate::names::CEDAR && !self.action.properties.is_empty() {
             context.insert(
                 RESERVED_CONTEXT_ACTION.to_owned(),
                 Value::Object(self.action.properties.clone()),

@@ -181,8 +181,14 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-stream", SERVER_STACK),
     ("permguard-decisions", SERVER_STACK),
     ("permguard-events", SERVER_STACK),
-    // The policy languages validate and evaluate; they serve nothing and call nobody.
+    // The policy languages validate and evaluate; they serve nothing and call nobody (RD-6): the
+    // contracts link no engine but the Dogwood values its occurrence model names, and each engine
+    // links no other and never the catalogue that carries it.
     ("permguard-languages", SERVER_STACK),
+    ("permguard-language-core", LANGUAGE_CORE),
+    ("permguard-language-cedar", CEDAR_ENGINE),
+    ("permguard-language-rego", REGO_ENGINE),
+    ("permguard-language-dogwood", DOGWOOD_ENGINE),
     // A Plane's domain serves nothing (RD-1): its routes, module and binary are its server
     // package's.
     ("permguard-authority-plane", SERVER_STACK),
@@ -192,6 +198,76 @@ const LAYERS: &[(&str, &[&str])] = &[
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
     ("permguard-control-plane", CONTROL_PLANE_DOMAIN),
+];
+
+/// What the language contracts may not reach: the server stack, any engine package, the catalogue,
+/// and the Rego engine and the JSON Schema validator only Rego admits its input through.
+const LANGUAGE_CORE: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+    "permguard-languages",
+    "permguard-language-cedar",
+    "permguard-language-rego",
+    "permguard-language-dogwood",
+    "regorus",
+    "jsonschema",
+];
+
+/// What the Cedar engine package may not reach: the server stack, the other engines, the catalogue.
+const CEDAR_ENGINE: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+    "permguard-languages",
+    "permguard-language-rego",
+    "permguard-language-dogwood",
+    "regorus",
+    "jsonschema",
+];
+
+/// What the Rego engine package may not reach: the server stack, the other engine packages, the
+/// catalogue. Cedar's core is reached through the contracts' Dogwood values, not as an engine.
+const REGO_ENGINE: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+    "permguard-languages",
+    "permguard-language-cedar",
+    "permguard-language-dogwood",
+];
+
+/// What the Dogwood engine package may not reach: the server stack, the other engine packages, the
+/// catalogue, and the Rego engine.
+const DOGWOOD_ENGINE: &[&str] = &[
+    "permguard-server",
+    "permguard-transport",
+    "permguard-telemetry",
+    "axum",
+    "tonic",
+    "hyper",
+    "tower-http",
+    "opentelemetry",
+    "permguard-languages",
+    "permguard-language-cedar",
+    "permguard-language-rego",
+    "regorus",
+    "jsonschema",
 ];
 
 /// What the Control Plane's domain may not reach: the server stack, and the Authority Plane its
@@ -235,4 +311,92 @@ fn each_layer_reaches_only_what_it_allows() {
             "the all-in-one reaches {name}"
         );
     }
+}
+
+/// What a build of the catalogue with only `features` links, through normal and build
+/// dependencies: the packages `cargo tree` resolves for it, by name.
+fn carried_with(features: &str) -> BTreeSet<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let output = Command::new(cargo)
+        .args([
+            "tree",
+            "--locked",
+            "--package",
+            "permguard-languages",
+            "--no-default-features",
+            "--features",
+            features,
+            "--edges",
+            "normal,build",
+            "--prefix",
+            "none",
+            "--format",
+            "{lib}",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("cargo tree runs");
+    assert!(
+        output.status.success(),
+        "cargo tree: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| line.trim().replace('_', "-"))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// A language is a feature of the catalogue (RD-7): a build that names one links that engine and no
+/// other. Cedar's core stays in every build, because the contracts' occurrence model is typed with
+/// Dogwood's values.
+#[test]
+fn a_build_links_only_the_engines_it_carries() {
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "cedar",
+            &["permguard-language-cedar", "cedar-policy"][..],
+            &[
+                "permguard-language-rego",
+                "permguard-language-dogwood",
+                "regorus",
+                "jsonschema",
+            ][..],
+        ),
+        (
+            "rego",
+            &["permguard-language-rego", "regorus", "jsonschema"][..],
+            &["permguard-language-cedar", "permguard-language-dogwood"][..],
+        ),
+        (
+            "dogwood",
+            &["permguard-language-dogwood", "dogwood-language"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-rego",
+                "regorus",
+                "jsonschema",
+            ][..],
+        ),
+    ] {
+        let linked = carried_with(features);
+        for name in carried {
+            if !linked.contains(*name) {
+                problems.push(format!("a `{features}` build does not link {name}"));
+            }
+        }
+        for name in absent {
+            if linked.contains(*name) {
+                problems.push(format!("a `{features}` build links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a build links exactly the engines it carries:\n  {}",
+        problems.join("\n  ")
+    );
 }

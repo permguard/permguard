@@ -45,7 +45,7 @@ use cedar_policy::{
 };
 use serde_json::{Value, json};
 
-use crate::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
 
 use super::Cedar;
 
@@ -53,9 +53,9 @@ impl Evaluating for Cedar {
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        artifacts: &crate::artifact::Artifacts,
+        artifacts: &permguard_language_core::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String> {
-        let schema = artifacts.bytes(crate::cedar::SCHEMA_ARTIFACT);
+        let schema = artifacts.bytes(crate::SCHEMA_ARTIFACT);
         let schema_bytes = schema.map_or(0, <[u8]>::len);
         let schema = schema.map(super::parse_schema).transpose()?;
 
@@ -115,8 +115,8 @@ fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
 
 impl Evaluator for CedarEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
-        // The stack an engine needs is its own to guarantee: see crate::headroom.
-        crate::headroom::with(|| {
+        // The stack an engine needs is its own to guarantee: see permguard_language_core::headroom.
+        permguard_language_core::headroom::with(|| {
             // Cedar terminates by construction — no loops, no recursion, no unbounded traversal — so
             // there is nothing to interrupt mid-evaluation and nothing that needs interrupting. What
             // is worth checking is whether to start at all: a partition reached after the decision ran
@@ -176,9 +176,12 @@ impl Evaluator for CedarEvaluator {
     /// A store the schema refuses is a bad request rather than a denied one, and the difference
     /// matters to whoever has to fix it: `deny` sends them reading policies, and this sends them
     /// to the entity they mistyped.
-    fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
-        // The stack an engine needs is its own to guarantee: see crate::headroom.
-        crate::headroom::with(|| {
+    fn check_input(
+        &self,
+        input: &permguard_language_core::input::PartitionData,
+    ) -> Result<(), String> {
+        // The stack an engine needs is its own to guarantee: see permguard_language_core::headroom.
+        permguard_language_core::headroom::with(|| {
             build_entities(input.cedar_entities().to_vec(), self.schema.as_ref())
                 .map(|_| ())
                 .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
@@ -268,7 +271,7 @@ pub const MAX_HIERARCHY_DEPTH: usize = 64;
 /// stack segment of its own.
 fn build_entities(items: Vec<Value>, schema: Option<&Schema>) -> Result<Entities, String> {
     check_hierarchy(&items)?;
-    crate::headroom::ample(|| {
+    permguard_language_core::headroom::ample(|| {
         Entities::from_json_value(Value::Array(items), schema).map_err(|error| error.to_string())
     })
 }
@@ -379,7 +382,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::evaluate::{Action, Entity, Resolution, resolve};
+    use permguard_language_core::evaluate::{Action, Entity, Resolution, resolve};
     use serde_json::Map;
 
     fn stored(id: &str, source: &str) -> StoredPolicy {
@@ -408,15 +411,15 @@ mod tests {
             },
             context: Map::new(),
             deadline: None,
-            input: crate::input::PartitionData::default(),
+            input: permguard_language_core::input::PartitionData::default(),
         }
     }
 
-    fn store(items: Vec<Value>) -> crate::input::PartitionData {
-        crate::input::PartitionData::CedarEntities(std::sync::Arc::new(items))
+    fn store(items: Vec<Value>) -> permguard_language_core::input::PartitionData {
+        permguard_language_core::input::PartitionData::CedarEntities(std::sync::Arc::new(items))
     }
 
-    /// The evaluator guarantees its own stack (crate::headroom), so a caller on a thread with
+    /// The evaluator guarantees its own stack (permguard_language_core::headroom), so a caller on a thread with
     /// almost none left gets an answer, not Cedar's "recursion limit reached". This is the Windows
     /// case: a first thread of one megabyte and large debug frames left Cedar under its 100 KiB
     /// guard for ordinary requests entered without the headroom.
@@ -428,7 +431,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
         let compiled = std::sync::Arc::new(compiled);
@@ -459,7 +462,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -491,7 +494,7 @@ mod tests {
                         r#"permit (principal, action, resource) when { principal.clearance == "top" };"#,
                     ),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -535,7 +538,7 @@ mod tests {
                         r#"permit (principal, action, resource) when { principal.clearance == "top" };"#,
                     ),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -578,7 +581,7 @@ mod tests {
                         r#"forbid (principal == User::"bob", action, resource);"#,
                     ),
                 ],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -596,7 +599,7 @@ mod tests {
                     r#"permit (principal, action == Action::"read", resource)
                        when { resource.status == "open" && context.tenant == "acme" };"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -630,7 +633,7 @@ mod tests {
                     "01a0-group",
                     r#"permit (principal in Group::"finance", action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -658,7 +661,7 @@ mod tests {
                     "01a0-open",
                     r#"permit (principal, action, resource) when { resource.status == "open" };"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
         let stated = |status: &str| {
@@ -696,12 +699,14 @@ mod tests {
     /// never a crash of the process.
     #[test]
     fn deep_expressions_large_sets_and_large_graphs_stay_inside_limits() {
-        let artifacts = crate::artifact::Artifacts::default();
+        let artifacts = permguard_language_core::artifact::Artifacts::default();
         let compile = |id: &str, source: String| {
-            crate::headroom::with(|| Cedar.compile(&[stored(id, &source)], &artifacts))
+            permguard_language_core::headroom::with(|| {
+                Cedar.compile(&[stored(id, &source)], &artifacts)
+            })
         };
         let ask = |query: &Query, evaluator: &dyn Evaluator| {
-            crate::headroom::with(|| evaluator.evaluate(query))
+            permguard_language_core::headroom::with(|| evaluator.evaluate(query))
         };
 
         let chain = vec!["true"; 2_000].join(" && ");
@@ -723,9 +728,9 @@ mod tests {
                 format!("permit (principal, action, resource) when {{ {deep} }};"),
             )
         };
-        let at_bound = nested(crate::cedar::MAX_NESTING - 1).expect("the bound compiles");
+        let at_bound = nested(crate::MAX_NESTING - 1).expect("the bound compiles");
         assert!(ask(&query("alice", "read", "budget"), at_bound.as_ref()).permitted());
-        for refused in [crate::cedar::MAX_NESTING, 5_000] {
+        for refused in [crate::MAX_NESTING, 5_000] {
             let Err(error) = nested(refused) else {
                 panic!("{refused} levels compiled");
             };
@@ -739,8 +744,8 @@ mod tests {
             }
             format!("permit (principal, action, resource) when {{ {expression} }};")
         };
-        assert!(compile("01a0-ifs", ifs(crate::cedar::MAX_NESTING - 1)).is_ok());
-        for levels in [crate::cedar::MAX_NESTING, 5_000] {
+        assert!(compile("01a0-ifs", ifs(crate::MAX_NESTING - 1)).is_ok());
+        for levels in [crate::MAX_NESTING, 5_000] {
             let Err(error) = compile("01a0-ifs", ifs(levels)) else {
                 panic!("{levels} nested ifs compiled");
             };
@@ -761,7 +766,7 @@ mod tests {
         };
         assert!(compile("01a0-member", member(8)).is_ok());
         assert!(compile("01a0-path", path(8)).is_ok());
-        for links in [crate::cedar::MAX_NESTING + 1, 100_000] {
+        for links in [crate::MAX_NESTING + 1, 100_000] {
             for (name, source) in [("member", member(links)), ("path", path(links))] {
                 let Err(error) = compile("01a0-chain-link", source) else {
                     panic!("a {name} chain of {links} links compiled");
@@ -775,11 +780,12 @@ mod tests {
             ">".repeat(5_000)
         );
         assert!(
-            crate::role::Language::validate_schema(&Cedar, sets.as_bytes()).is_err(),
+            permguard_language_core::role::Language::validate_schema(&Cedar, sets.as_bytes())
+                .is_err(),
             "a schema nesting `Set<…>` past the bound is refused before the parser"
         );
         assert!(
-            crate::role::Language::validate_policy(
+            permguard_language_core::role::Language::validate_policy(
                 &Cedar,
                 format!(
                     "permit (principal, action, resource) when {{ {}true{} }};",
@@ -909,7 +915,10 @@ mod tests {
         ];
         let compile = || {
             Cedar
-                .compile(&policies, &crate::artifact::Artifacts::default())
+                .compile(
+                    &policies,
+                    &permguard_language_core::artifact::Artifacts::default(),
+                )
                 .expect("the policies compile")
         };
         let symbol = |verdict: &Verdict| match verdict {
@@ -944,7 +953,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal == User::"alice", action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the Cedar schema artifact"),
             )
             .expect("the policies compile");
@@ -973,7 +982,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
         let mut late = query("alice", "read", "budget");
@@ -1001,7 +1010,7 @@ mod tests {
                     "01a0-list",
                     r#"permit (principal, action == Action::"list", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
         let verdict = compiled.evaluate(&query("alice", "read", "budget"));
@@ -1022,7 +1031,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-folder",
                     r#"permit (principal, action == Action::"read", resource == Folder::"x");"#,
                 )],
-                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the schema artifact is registered"),
             )
             .map(|_| ())
@@ -1044,7 +1053,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the schema artifact is registered"),
             )
             .expect("the policies satisfy the schema");
@@ -1070,7 +1079,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-read",
                     r#"permit (principal, action, resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -1097,7 +1106,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-ns",
                     r#"permit (principal, action == acme::Action::"read", resource);"#,
                 )],
-                &crate::artifact::Artifacts::default(),
+                &permguard_language_core::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 

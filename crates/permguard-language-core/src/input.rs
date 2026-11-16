@@ -47,9 +47,9 @@ pub const CEDAR_ENTITIES_V1: &str = permguard_core::domains::input::CEDAR_ENTITI
 /// The registered name of the Rego document input.
 pub const REGO_DATA_V1: &str = permguard_core::domains::input::REGO_DATA_V1;
 /// The registered name of the Dogwood occurrence input.
-pub const DOGWOOD_EVENT_V1: &str = crate::dogwood::occurrence::EVENT_TYPE;
+pub const DOGWOOD_EVENT_V1: &str = crate::occurrence::EVENT_TYPE;
 /// The registered name of the Dogwood occurrence's version 2, one canonical field map (TL-5c).
-pub const DOGWOOD_EVENT_V2: &str = crate::dogwood::occurrence::EVENT_TYPE_V2;
+pub const DOGWOOD_EVENT_V2: &str = crate::occurrence::EVENT_TYPE_V2;
 
 /// One partition input, as the wire carries it.
 ///
@@ -139,7 +139,7 @@ impl InputType for CedarEntitiesV1 {
     }
 
     fn runtime(&self) -> &'static str {
-        crate::cedar::NAME
+        crate::names::CEDAR
     }
 
     fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
@@ -187,7 +187,7 @@ impl InputType for RegoDataV1 {
     }
 
     fn runtime(&self) -> &'static str {
-        crate::rego::NAME
+        crate::names::REGO
     }
 
     fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
@@ -225,7 +225,7 @@ impl InputType for DogwoodEventV1 {
     }
 
     fn runtime(&self) -> &'static str {
-        crate::dogwood::NAME
+        crate::names::DOGWOOD
     }
 
     fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
@@ -263,7 +263,7 @@ impl InputType for DogwoodEventV2 {
     }
 
     fn runtime(&self) -> &'static str {
-        crate::dogwood::NAME
+        crate::names::DOGWOOD
     }
 
     fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
@@ -405,7 +405,7 @@ mod tests {
     fn a_temporal_occurrence_is_refused_in_partition_inputs_and_says_where_to_send_it() {
         let dogwood = input_type(DOGWOOD_EVENT_V1).expect("registered");
 
-        assert_eq!(dogwood.runtime(), crate::dogwood::NAME);
+        assert_eq!(dogwood.runtime(), crate::names::DOGWOOD);
         let refused = dogwood
             .normalize(&json!({"event_id": "e"}))
             .expect_err("an occurrence is not a per-partition input");

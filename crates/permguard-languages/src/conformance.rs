@@ -135,14 +135,14 @@ const CEDAR: &[Record] = &[
     passing(
         Item::Adversarial,
         &[
-            "permguard-languages/src/cedar/mod.rs::the_alias_is_the_parsed_annotation_and_nothing_that_looks_like_one",
-            "permguard-languages/src/cedar/mod.rs::broken_cedar_is_refused",
-            "permguard-languages/src/cedar/mod.rs::semicolons_inside_strings_do_not_split",
-            "permguard-languages/src/cedar/mod.rs::schema_validation",
-            "permguard-languages/src/cedar/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits",
-            "permguard-languages/src/cedar/evaluate.rs::one_value_has_one_authority_between_the_store_and_the_properties",
-            "permguard-languages/src/cedar/evaluate.rs::a_policy_that_does_not_satisfy_the_schema_refuses_the_load",
-            "permguard-languages/src/cedar/evaluate.rs::a_request_missing_its_parts_is_an_input_the_engine_rejects",
+            "permguard-language-cedar/src/lib.rs::the_alias_is_the_parsed_annotation_and_nothing_that_looks_like_one",
+            "permguard-language-cedar/src/lib.rs::broken_cedar_is_refused",
+            "permguard-language-cedar/src/lib.rs::semicolons_inside_strings_do_not_split",
+            "permguard-language-cedar/src/lib.rs::schema_validation",
+            "permguard-language-cedar/src/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits",
+            "permguard-language-cedar/src/evaluate.rs::one_value_has_one_authority_between_the_store_and_the_properties",
+            "permguard-language-cedar/src/evaluate.rs::a_policy_that_does_not_satisfy_the_schema_refuses_the_load",
+            "permguard-language-cedar/src/evaluate.rs::a_request_missing_its_parts_is_an_input_the_engine_rejects",
         ],
     ),
     passing(
@@ -150,7 +150,7 @@ const CEDAR: &[Record] = &[
         &[
             "ci:check",
             "ci:languages-macos",
-            "permguard-languages/src/cedar/evaluate.rs::golden_results_hold_across_a_recompile",
+            "permguard-language-cedar/src/evaluate.rs::golden_results_hold_across_a_recompile",
         ],
     ),
     passing(
@@ -165,14 +165,14 @@ const CEDAR: &[Record] = &[
         Item::FaultInjection,
         &[
             // The evaluation path every runtime's partition runs on, Cedar's included.
-            "panic=permguard-languages/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
-            "panic=permguard-languages/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure",
-            "panic=permguard-languages/src/guard.rs::every_guarded_entry_refuses_instead_of_panicking",
-            "timeout=permguard-languages/src/cedar/evaluate.rs::a_partition_reached_past_its_deadline_fails_closed",
+            "panic=permguard-language-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
+            "panic=permguard-language-core/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure",
+            "panic=permguard-language-core/src/guard.rs::every_guarded_entry_refuses_instead_of_panicking",
+            "timeout=permguard-language-cedar/src/evaluate.rs::a_partition_reached_past_its_deadline_fails_closed",
             // Cedar runs in-process and terminates by construction: its memory is bounded by the
             // input's depth, width and the graph's hierarchy, refused before evaluation, and by the
             // cache's byte bound, which charges at least what the engine retains.
-            "memory=permguard-languages/src/cedar/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits",
+            "memory=permguard-language-cedar/src/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits",
             "memory=permguard-languages/tests/footprint.rs::test_every_runtimes_footprint_is_at_least_what_its_engine_retains",
             "memory=permguard-data-plane/src/authz/cache.rs::the_byte_bound_evicts_too",
             "cache=permguard-data-plane/tests/examples.rs::a_corrupted_mirror_fails_a_cold_load_and_never_changes_a_warm_answer",
@@ -202,15 +202,15 @@ const REGO: &[Record] = &[
     passing(
         Item::Adversarial,
         &[
-            "permguard-languages/src/rego/parsed.rs::brackets_nest_at_most_the_bound_and_deeper_is_refused_before_the_parser",
-            "permguard-languages/src/rego/parsed.rs::many_moderately_nested_literals_exhaust_the_parse_work_budget",
-            "permguard-languages/src/rego/parsed.rs::brackets_in_strings_raw_strings_and_comments_are_not_syntax",
-            "permguard-languages/src/rego/parsed.rs::a_built_in_outside_the_allow_list_is_refused",
-            "permguard-languages/src/rego/parsed.rs::a_refused_built_in_named_by_index_or_substituted_is_refused",
-            "permguard-languages/src/rego/parsed.rs::only_the_metadata_heading_the_package_carries_its_alias",
-            "permguard-languages/src/rego/mod.rs::a_schema_that_reaches_for_the_network_does_not_compile",
-            "permguard-languages/src/rego/evaluate.rs::a_hostile_rule_is_stopped_by_the_execution_budget_and_is_an_evaluation_failure",
-            "permguard-languages/src/rego/evaluate.rs::a_document_the_schema_refuses_never_reaches_a_rule",
+            "permguard-language-rego/src/parsed.rs::brackets_nest_at_most_the_bound_and_deeper_is_refused_before_the_parser",
+            "permguard-language-rego/src/parsed.rs::many_moderately_nested_literals_exhaust_the_parse_work_budget",
+            "permguard-language-rego/src/parsed.rs::brackets_in_strings_raw_strings_and_comments_are_not_syntax",
+            "permguard-language-rego/src/parsed.rs::a_built_in_outside_the_allow_list_is_refused",
+            "permguard-language-rego/src/parsed.rs::a_refused_built_in_named_by_index_or_substituted_is_refused",
+            "permguard-language-rego/src/parsed.rs::only_the_metadata_heading_the_package_carries_its_alias",
+            "permguard-language-rego/src/lib.rs::a_schema_that_reaches_for_the_network_does_not_compile",
+            "permguard-language-rego/src/evaluate.rs::a_hostile_rule_is_stopped_by_the_execution_budget_and_is_an_evaluation_failure",
+            "permguard-language-rego/src/evaluate.rs::a_document_the_schema_refuses_never_reaches_a_rule",
         ],
     ),
     passing(Item::Replay, &["ci:check", "ci:languages-macos"]),
@@ -225,10 +225,10 @@ const REGO: &[Record] = &[
     passing(
         Item::FaultInjection,
         &[
-            "panic=permguard-languages/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
+            "panic=permguard-language-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
             "panic=permguard-languages/tests/worker.rs::a_worker_that_panics_is_replaced",
-            "timeout=permguard-languages/src/rego/evaluate.rs::a_hostile_rule_is_stopped_by_the_decisions_deadline_long_before_the_rule_budget",
-            "timeout=permguard-languages/src/rego/evaluate.rs::many_expensive_rules_share_one_decreasing_budget",
+            "timeout=permguard-language-rego/src/evaluate.rs::a_hostile_rule_is_stopped_by_the_decisions_deadline_long_before_the_rule_budget",
+            "timeout=permguard-language-rego/src/evaluate.rs::many_expensive_rules_share_one_decreasing_budget",
             "timeout=permguard-languages/tests/worker.rs::a_worker_past_its_deadline_is_killed_and_replaced",
             // From `production` Rego runs in its supervised worker, under `RLIMIT_AS`.
             "memory=permguard-languages/tests/rego_supervised.rs::a_rego_partition_that_exhausts_its_address_space_fails_closed",
@@ -244,7 +244,7 @@ const REGO: &[Record] = &[
             SHARED_STORED[2],
             // A partition whose schema is the older `permguard.rego.schema.v1` still loads, typing
             // what it typed.
-            "permguard-languages/src/rego/evaluate.rs::the_whole_input_schema_types_every_member_and_excludes_v1",
+            "permguard-language-rego/src/evaluate.rs::the_whole_input_schema_types_every_member_and_excludes_v1",
         ],
     ),
     passing(Item::SupplyChain, SUPPLY_CHAIN),
@@ -259,7 +259,7 @@ const DOGWOOD: &[Record] = &[
     passing(
         Item::UpstreamCorpus,
         &[
-            "permguard-languages/src/dogwood/compiled.rs::the_upstream_example_reproduces_the_verdicts_upstream_records",
+            "permguard-language-dogwood/src/compiled.rs::the_upstream_example_reproduces_the_verdicts_upstream_records",
             "permguard-languages/tests/dogwood_parity.rs::test_the_max_window_this_build_reads_is_the_one_upstream_enforces",
             "permguard-languages/tests/dogwood_parity.rs::test_the_id_this_build_reads_is_the_one_upstream_parses",
         ],
@@ -267,12 +267,12 @@ const DOGWOOD: &[Record] = &[
     passing(
         Item::Adversarial,
         &[
-            "permguard-languages/src/dogwood/occurrence.rs::an_unknown_field_is_refused_rather_than_ignored",
-            "permguard-languages/src/dogwood/occurrence.rs::a_value_that_cannot_be_represented_exactly_is_refused_by_position",
-            "permguard-languages/src/dogwood/annotations.rs::an_unclosed_source_is_refused_rather_than_read_short",
-            "permguard-languages/src/dogwood/compiled.rs::a_pin_the_caller_contradicts_is_refused_rather_than_resolved",
-            "permguard-languages/src/dogwood/compiled.rs::an_entity_store_that_does_not_conform_is_refused_before_authorization",
-            "permguard-languages/src/dogwood/compiled.rs::one_principals_login_does_not_permit_anothers_read",
+            "permguard-language-core/src/occurrence.rs::an_unknown_field_is_refused_rather_than_ignored",
+            "permguard-language-core/src/occurrence.rs::a_value_that_cannot_be_represented_exactly_is_refused_by_position",
+            "permguard-language-dogwood/src/annotations.rs::an_unclosed_source_is_refused_rather_than_read_short",
+            "permguard-language-dogwood/src/compiled.rs::a_pin_the_caller_contradicts_is_refused_rather_than_resolved",
+            "permguard-language-dogwood/src/compiled.rs::an_entity_store_that_does_not_conform_is_refused_before_authorization",
+            "permguard-language-dogwood/src/compiled.rs::one_principals_login_does_not_permit_anothers_read",
         ],
     ),
     passing(Item::Replay, &["ci:check", "ci:languages-macos"]),
@@ -294,8 +294,8 @@ const DOGWOOD: &[Record] = &[
             SHARED_STORED[0],
             SHARED_STORED[1],
             SHARED_STORED[2],
-            "permguard-languages/src/dogwood/compiled.rs::a_version_1_history_replays_into_a_version_2_partition",
-            "permguard-languages/src/dogwood/occurrence.rs::each_event_version_is_read_by_its_own_contract",
+            "permguard-language-dogwood/src/compiled.rs::a_version_1_history_replays_into_a_version_2_partition",
+            "permguard-language-core/src/occurrence.rs::each_event_version_is_read_by_its_own_contract",
         ],
     ),
     passing(Item::SupplyChain, SUPPLY_CHAIN),

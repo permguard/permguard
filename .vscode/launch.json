@@ -9,7 +9,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--bin=permguard-control-plane", "--package=permguard-control-plane"],
+        "args": ["build", "--bin=permguard-control-plane", "--package=permguard-control-plane-server"],
         "filter": { "name": "permguard-control-plane", "kind": "bin" }
       },
       "args": ["crates/permguard-control-plane/config.local.yml"],
@@ -24,7 +24,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--bin=permguard-data-plane", "--package=permguard-data-plane"],
+        "args": ["build", "--bin=permguard-data-plane", "--package=permguard-data-plane-server"],
         "filter": { "name": "permguard-data-plane", "kind": "bin" }
       },
       "args": ["crates/permguard-data-plane/config.local.yml"],

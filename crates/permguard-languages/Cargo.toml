@@ -3,7 +3,7 @@
 
 [package]
 name = "permguard-languages"
-description = "The built-in policy language plugins — Cedar and Rego: parsing, validation, policy extraction and alias markers. Compiled in, never loaded."
+description = "The catalogue of built-in policy languages a build carries — Cedar, Rego and Dogwood, each a feature — and every rule asked of all of them: lookups, manifest gates, startup checks, descriptors and the supervised worker. Compiled in, never loaded."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,109 +12,95 @@ repository.workspace = true
 
 publish = false
 
+# The languages a build carries: each feature links one engine package, and a build without it does
+# not link that engine at all. All three by default, which is what every binary of this workspace
+# ships; a narrower build is a deliberate choice of the application that embeds the catalogue.
+[features]
+default = ["cedar", "dogwood", "rego"]
+cedar = ["dep:permguard-language-cedar"]
+dogwood = ["dep:permguard-language-dogwood"]
+rego = ["dep:permguard-language-rego"]
+
 [dependencies]
 permguard-core.workspace = true
 # The model a language plugs into: manifest runtimes for the load gate, and the
 # manifest's own validation. One direction only — the model knows no language.
 permguard-objects.workspace = true
-# The canonical instant parsing an occurrence is validated against: one definition of what a
-# Dogwood timestamp is, shared with the journal that stores it.
-permguard-events.workspace = true
-permguard-stream.workspace = true
+# What a language is, and the shared evaluation path, without any language in it.
+permguard-language-core.workspace = true
+permguard-language-cedar = { workspace = true, optional = true }
+permguard-language-dogwood = { workspace = true, optional = true }
+permguard-language-rego = { workspace = true, optional = true }
+# The supervised worker's frame digests and the descriptor cache.
 sha2.workspace = true
-# The `request_nonce` of a signed decision response, base64url (WP-6.6).
-base64.workspace = true
-# The official engines, pinned: what evaluates policy is exactly what was
-# reviewed and shipped — plugins are a build, not a deployment action.
-# Held at 4.11 by Dogwood, not by choice: `cedar-policy-mcp-schema-generator`, a transitive
-# dependency of `dogwood-language`, pins `cedar-policy-core = "=4.11.0"` exactly. Cedar's
-# core cannot be two versions in one build, so 4.11 is the only line where Permguard's own Cedar
-# engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
-#
-# Exact versions, no defaults, every feature named: a feature change is a descriptor change, so each
-# list here equals its constant in `registry::engine_features`, which `tests/engine_features.rs`
-# enforces. Cedar's list is its upstream default set. Regorus's is its default set spelled out
-# (`full-opa`, `arc`, `rvm`); its `http` feature only registers an `http.send` that answers
-# `undefined`, and its `net` only parses addresses, so neither reaches the network.
-cedar-policy = { version = "=4.11.0", default-features = false, features = ["datetime", "decimal", "ipaddr"] }
-regorus = { version = "=0.12.0", default-features = false, features = [
-    "arc",
-    "ast",
-    "base64",
-    "base64url",
-    "cache",
-    "coverage",
-    "glob",
-    "graph",
-    "hex",
-    "http",
-    "jsonpatch",
-    "jsonschema",
-    "net",
-    "opa-runtime",
-    "regex",
-    "rvm",
-    "semver",
-    "std",
-    "time",
-    "urlquery",
-    "uuid",
-    "yaml",
-] }
-# Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
-# expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
-# "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy
-# carries it — so it is a direct dependency of the crate that has to guarantee the headroom rather
-# than a transitive accident. See `evaluate_all`.
-stacker = "0.1"
-# The Rego partition schema: JSON Schema, compiled once at load. Already in this
-# workspace's graph — regorus carries it — so it is a direct dependency of the
-# crate that actually validates with it rather than a transitive accident.
-jsonschema = { version = "0.59", default-features = false }
-# Dogwood, the temporal governance language. Experimental and disabled at runtime by
-# `experimental.dogwood.enabled`; the dependency is compiled in either way, because a language is
-# a build and not a deployment action — the gate decides whether a ledger may *use* it, not
-# whether this binary contains it.
-#
-# From crates.io, `dogwood-language`, the crate upstream publishes from
-# https://github.com/dogwood-policy/dogwood; until 1.1.0 it came from that repository at a pinned
-# git revision, as `amzn-dogwood-language`. Pinned exactly, `=`: a published version cannot change,
-# and the lock records its checksum, so the reviewed code and the built code are one thing. Update
-# procedure: review the upstream diff between the two versions, run this workspace's Dogwood tests
-# and regenerate the vectors that name the version, then move the requirement in one commit.
-# `default-features = false` and an empty `features` list are stated rather than left implicit.
-# Upstream declares three optional features and all must stay off here: `corpus` embeds ~13MB of
-# regression data a server has no use for; `net` registers an `http_get` host function inside the
-# provider sandbox, which makes provider evaluation non-deterministic and reachable from a policy —
-# upstream's own note says the function performs no host validation, so a script building a URL
-# from an event field is an SSRF into whatever the process can reach; and
-# `experimental-arithmetic` accepts arithmetic upstream has not stabilised. Cargo features are
-# additive across a dependency graph, so "off by default" is a property of this build only while
-# nothing else in the graph asks for it; writing it down is what makes a future
-# `features = ["net"]` a visible decision in a diff rather than a silent one.
-dogwood-language = { version = "=1.1.0", default-features = false, features = [] }
-# Said once, plainly, when an evaluation worker cannot start: a pool quietly smaller than it was
-# asked for is a plane that got slower for a reason nothing recorded.
-tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The authored manifest file.
 serde_norway.workspace = true
-
-# `build.rs` digests each engine's locked dependency closure.
-[build-dependencies]
-sha2.workspace = true
 
 # `setrlimit` and the protocol descriptor for the supervised worker (`worker.rs`).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# The suites drive the engines' own crates beside the catalogue — the corpora, the parity checks,
+# the independent lock reader — and the events and stream crates their vectors are built with.
+[dev-dependencies]
+cedar-policy.workspace = true
+dogwood-language.workspace = true
+permguard-events.workspace = true
+permguard-stream.workspace = true
+regorus.workspace = true
+
+# The suites are written for the full catalogue: every one of them names a language of each kind.
+[[test]]
+name = "algebra_vectors"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "cedar_corpus"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "descriptor_vectors"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "dogwood_parity"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "engine_features"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "footprint"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "gate_evidence"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "language_vectors"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "opa_corpus"
+required-features = ["cedar", "dogwood", "rego"]
+
+[[test]]
+name = "warm_footprint"
+required-features = ["cedar", "dogwood", "rego"]
 
 # Its own worker: started with the worker argument it serves frames, started plainly it supervises
 # itself — which the test harness, parsing every argument as a filter, cannot allow.
 [[test]]
 name = "worker"
 harness = false
+required-features = ["cedar", "dogwood", "rego"]
 
 # Rego in its supervised worker, against the real runtime catalogue: the same two lives.
 [[test]]
 name = "rego_supervised"
 harness = false
+required-features = ["cedar", "dogwood", "rego"]

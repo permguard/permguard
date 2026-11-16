@@ -1,0 +1,27 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-language-cedar"
+description = "Cedar for Permguard, through the official cedar-policy crate: validation, policy extraction, alias markers and evaluation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# The engine's identity, read out of the workspace `Cargo.lock`: one script for every engine package.
+build = "../permguard-language-core/build/locked.rs"
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+permguard-language-core.workspace = true
+# Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
+cedar-policy.workspace = true
+serde_json.workspace = true
+
+# The build script digests the engine's locked dependency closure.
+[build-dependencies]
+sha2.workspace = true

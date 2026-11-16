@@ -10,10 +10,10 @@
 pub(crate) mod evaluate;
 pub(crate) mod parsed;
 
-use crate::role::{Authoring, ExtractedPolicy, Language};
+use permguard_language_core::role::{Authoring, ExtractedPolicy, Language};
 
 /// This language's name, as a manifest's `runtime.language.name` spells it.
-pub const NAME: &str = "rego";
+pub const NAME: &str = permguard_language_core::names::REGO;
 
 /// The registered media type of a Rego partition's schema.
 ///
@@ -34,8 +34,55 @@ pub const INPUT_SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA
 /// The extension an authored whole-input schema carries.
 pub const INPUT_SCHEMA_EXTENSION: &str = "regoinput";
 
+/// `regorus`, as `Cargo.lock` pins it: read by the build script, never written by hand.
+pub const LOCKED: permguard_language_core::descriptor::Locked =
+    permguard_language_core::descriptor::Locked {
+        name: "regorus",
+        version: env!("PERMGUARD_LOCKED_VERSION"),
+        build: env!("PERMGUARD_LOCKED_BUILD"),
+    };
+
+/// The Cargo features `regorus` is compiled with, sorted: its upstream default set, spelled out.
+///
+/// Part of what the descriptor promises: an engine evaluates what its features let it, so a feature
+/// added in the workspace manifest is a capability added to every Rego policy. The list equals the
+/// dependency declaration exactly, and what Cargo resolves for the whole workspace is exactly what
+/// it turns on — `permguard-languages`' `tests/engine_features.rs` fails otherwise.
+pub const ENGINE_FEATURES: &[&str] = &[
+    "arc",
+    "ast",
+    "base64",
+    "base64url",
+    "cache",
+    "coverage",
+    "glob",
+    "graph",
+    "hex",
+    "http",
+    "jsonpatch",
+    "jsonschema",
+    "net",
+    "opa-runtime",
+    "regex",
+    "rvm",
+    "semver",
+    "std",
+    "time",
+    "urlquery",
+    "uuid",
+    "yaml",
+];
+
+/// The language, every engine entry of which is inside the panic boundary: the only way out of
+/// this package, so no caller reaches the engine without it.
+pub fn language() -> &'static dyn Language {
+    static GUARDED: permguard_language_core::guard::Guarded<Rego> =
+        permguard_language_core::guard::Guarded(Rego);
+    &GUARDED
+}
+
 /// The Rego plugin.
-pub struct Rego;
+struct Rego;
 
 impl Language for Rego {
     fn name(&self) -> &'static str {
@@ -47,13 +94,13 @@ impl Language for Rego {
         "1.0.0"
     }
 
-    fn engine(&self) -> crate::descriptor::Engine {
-        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+    fn engine(&self) -> permguard_language_core::descriptor::Engine {
+        use permguard_language_core::descriptor::{Capabilities, Engine, Isolation, IsolationMode};
 
         Engine {
-            locked: locked::REGO,
+            locked: crate::LOCKED,
             capabilities: Capabilities {
-                features: crate::registry::engine_features::REGO,
+                features: crate::ENGINE_FEATURES,
                 extensions: &[],
                 // `time` gives `time.now_ns`; `std` gives `rand.intn` and `uuid` gives
                 // `uuid.rfc4122`. Neither `http` nor `opa-runtime` reaches the network or the
@@ -82,7 +129,7 @@ impl Language for Rego {
         Some(SCHEMA_MEDIA_TYPE)
     }
 
-    fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+    fn artifacts(&self) -> &'static [&'static dyn permguard_language_core::artifact::ArtifactType] {
         const SCHEMA: &SchemaArtifact = &SchemaArtifact;
         const INPUT: &InputSchemaArtifact = &InputSchemaArtifact;
 
@@ -151,7 +198,7 @@ impl Language for Rego {
                 .map_err(|error| format!("rego: policy {name}: {error}"))?
                 .package;
             if let Some(first) = claimed.get(&package) {
-                return Err(crate::rego::evaluate::shared_package(&package, first, name));
+                return Err(crate::evaluate::shared_package(&package, first, name));
             }
             claimed.insert(package, name);
         }
@@ -170,7 +217,7 @@ impl Language for Rego {
         Some(self)
     }
 
-    fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
+    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
         Some(self)
     }
 }
@@ -205,7 +252,7 @@ pub const SCHEMA_ARTIFACT: &str = permguard_core::domains::artifact::REGO_SCHEMA
 /// The Rego schema artifact.
 pub struct SchemaArtifact;
 
-impl crate::artifact::ArtifactType for SchemaArtifact {
+impl permguard_language_core::artifact::ArtifactType for SchemaArtifact {
     fn name(&self) -> &'static str {
         SCHEMA_ARTIFACT
     }
@@ -218,8 +265,8 @@ impl crate::artifact::ArtifactType for SchemaArtifact {
         NAME
     }
 
-    fn role(&self) -> crate::artifact::ArtifactRole {
-        crate::artifact::ArtifactRole::Schema
+    fn role(&self) -> permguard_language_core::artifact::ArtifactRole {
+        permguard_language_core::artifact::ArtifactRole::Schema
     }
 
     fn semantic_role(&self) -> &'static str {
@@ -230,19 +277,19 @@ impl crate::artifact::ArtifactType for SchemaArtifact {
         &[SCHEMA_EXTENSION]
     }
 
-    fn cardinality(&self) -> crate::artifact::Cardinality {
-        crate::artifact::Cardinality::ZeroOrOne
+    fn cardinality(&self) -> permguard_language_core::artifact::Cardinality {
+        permguard_language_core::artifact::Cardinality::ZeroOrOne
     }
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
-        crate::role::Language::validate_schema(&Rego, bytes)
+        permguard_language_core::role::Language::validate_schema(&Rego, bytes)
     }
 }
 
 /// The registered type of a Rego partition's whole-input schema.
 pub struct InputSchemaArtifact;
 
-impl crate::artifact::ArtifactType for InputSchemaArtifact {
+impl permguard_language_core::artifact::ArtifactType for InputSchemaArtifact {
     fn name(&self) -> &'static str {
         INPUT_SCHEMA_ARTIFACT
     }
@@ -255,8 +302,8 @@ impl crate::artifact::ArtifactType for InputSchemaArtifact {
         NAME
     }
 
-    fn role(&self) -> crate::artifact::ArtifactRole {
-        crate::artifact::ArtifactRole::Schema
+    fn role(&self) -> permguard_language_core::artifact::ArtifactRole {
+        permguard_language_core::artifact::ArtifactRole::Schema
     }
 
     fn semantic_role(&self) -> &'static str {
@@ -267,8 +314,8 @@ impl crate::artifact::ArtifactType for InputSchemaArtifact {
         &[INPUT_SCHEMA_EXTENSION]
     }
 
-    fn cardinality(&self) -> crate::artifact::Cardinality {
-        crate::artifact::Cardinality::ZeroOrOne
+    fn cardinality(&self) -> permguard_language_core::artifact::Cardinality {
+        permguard_language_core::artifact::Cardinality::ZeroOrOne
     }
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
@@ -339,3 +386,24 @@ allow if {
         assert!(refused.contains("rego:"), "{refused}");
     }
 }
+
+/// The registered artifact types of this language, by name, for the tests.
+#[cfg(test)]
+mod testing {
+    use permguard_language_core::artifact::Artifacts;
+    use permguard_language_core::role::Language as _;
+
+    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
+    /// language registers.
+    pub(crate) fn just(name: &str, data: &[u8]) -> Option<Artifacts> {
+        super::Rego
+            .artifacts()
+            .iter()
+            .copied()
+            .find(|held| held.name() == name)
+            .map(|artifact| Artifacts::just_of(artifact, data))
+    }
+}
+
+#[cfg(test)]
+use testing::just;
