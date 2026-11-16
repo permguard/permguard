@@ -54,7 +54,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: the declared MSRV is the one we build with
         run: |
           declared="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
@@ -399,7 +399,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: clippy and tests, on stable
         run: |
           cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -448,7 +448,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests render it with helm, as the `check` job does.
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: no file changed its line endings in the checkout
         shell: bash
         run: |
@@ -475,7 +475,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with:
           tool: cargo-llvm-cov
@@ -495,7 +495,7 @@ jobs:
         with:
           # The end-to-end run upgrades from the single-group chart, read from its last commit.
           fetch-depth: 0
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: kind, pinned by digest
         run: |
           set -euo pipefail
@@ -524,7 +524,7 @@ jobs:
       attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: kind, pinned by digest
         run: |
           set -euo pipefail
@@ -668,7 +668,7 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: kind, pinned by digest
         run: |
           set -euo pipefail
@@ -697,7 +697,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: lint
         run: helm lint charts/permguard
       # Rendered in every shape the chart supports, because a template that only works with the

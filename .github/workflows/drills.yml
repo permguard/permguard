@@ -70,7 +70,7 @@ jobs:
         run: cargo build --release --locked -p permguard-all-in-one
       - name: a successor beside its predecessor, on one volume
         run: ./scripts/drill-split-brain.sh target/release/permguard-all-in-one drill-split-brain.json
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
       - name: kind, pinned by digest
         run: |
           set -euo pipefail
