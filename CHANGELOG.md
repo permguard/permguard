@@ -54,6 +54,7 @@ is cut.
   `permguard-runtime` holds the composition that opens a Host on its volume and registers its Planes, with the services the Host runs for itself; it binds no listener, installs no signal handler and links no network client.
   What reaches outside the process is an adapter the build composes, the peer sessions, the Authority Plane's client, the process's signals and the listeners it publishes: a server composes them all, and every command and start runs the code it ran.
   The KMS custody is the `kms` feature of `permguard-offline`, which the server and the command line select; a build without it refuses that custody by name.
+  The migrate commands are plain values there, and a `clap` subcommand only with its `cli` feature: the headless runtime links no argument parser.
 - **The default implementations are selected by name, and a one-worker profile is supported.**
   `permguard-std` has no default bundle: every build names the implementations it links, so `provision`, which can mint a certificate authority, is in a server's build and in neither the command line's, Permguard Admin's nor the headless runtime's.
   The pool a request's partitions fan out on holds no more workers than `PERMGUARD_EVALUATION_CONCURRENCY`, and none at `1`: an embedded Data Plane configured for one evaluation at a time runs one evaluating thread, with the same answers.

@@ -19,6 +19,8 @@ publish = false
 #
 # A hardware token's custody, through PKCS#11.
 pkcs11 = ["dep:cryptoki"]
+# The migrate commands parsed from a command line: a binary's, never a library's.
+cli = ["dep:clap"]
 # A KMS's custody, a Vault Transit engine: the one network client of this package.
 kms = [
     "dep:base64",
@@ -35,7 +37,8 @@ kms = [
 
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
+# The migrate commands as a `clap` subcommand, for a binary that parses them (`cli`).
+clap = { workspace = true, optional = true }
 permguard-core.workspace = true
 permguard-host.workspace = true
 permguard-decisions = { workspace = true, features = ["storage"] }

@@ -680,6 +680,8 @@ fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
         "rustls",
         "tokio-rustls",
         "hyper-util",
+        // No argument parser either: a command line is a binary's.
+        "clap",
     ]) {
         if runtime.contains(name) {
             problems.push(format!("permguard-runtime, built by itself, links {name}"));
@@ -692,9 +694,11 @@ fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
     }
     if features_of("permguard-runtime")
         .get("permguard-offline")
-        .is_some_and(|enabled| enabled.contains("kms") || enabled.contains("pkcs11"))
+        .is_some_and(|enabled| {
+            enabled.contains("kms") || enabled.contains("pkcs11") || enabled.contains("cli")
+        })
     {
-        problems.push("permguard-runtime selects a remote custody".to_owned());
+        problems.push("permguard-runtime selects a remote custody or a command line".to_owned());
     }
     if !features_of("permguard-server")
         .get("permguard-offline")

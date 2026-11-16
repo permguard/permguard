@@ -8,51 +8,54 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::Subcommand;
 
 /// What can be asked of the subsystem layouts from the command line (WP-1.9). Every command runs
 /// offline: it takes the volume's lock, so it fails while a server holds the volume, and the
 /// server refuses to start while a migration is between two sides.
-#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+///
+/// The commands are plain values: the `cli` feature makes them a `clap` subcommand, for a binary
+/// that parses them, and a build that only runs them links no argument parser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::Subcommand))]
 pub enum MigrateCommand {
     /// List every subsystem laid out on the volume: its version, generation and where its
     /// migration stands.
     Status {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
     },
     /// Land a migration a crash interrupted: before the switch the new generation is abandoned,
     /// after it the commit is written, a finalize or a rollback in progress is completed.
     Recover {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The subsystem.
-        #[arg(long, value_name = "NAME")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "NAME"))]
         subsystem: String,
     },
     /// Return a committed migration to its old generation, when the new one is as the commit
     /// left it; a generation the server has since written into is never discarded.
     Rollback {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The subsystem.
-        #[arg(long, value_name = "NAME")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "NAME"))]
         subsystem: String,
     },
     /// Remove the old generation of a committed migration: the rollback horizon ends here, and
     /// only here.
     Finalize {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The subsystem.
-        #[arg(long, value_name = "NAME")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "NAME"))]
         subsystem: String,
     },
     /// Migrate the legacy `ring.json` key rings into `host/keys/<ring>` with an external backup
@@ -60,16 +63,16 @@ pub enum MigrateCommand {
     /// A ring whose legacy directory holds no `ring.json` is left for the server to lay out.
     Keys {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The external backup taken before the migration, as the operator names it.
-        #[arg(long, value_name = "REFERENCE")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "REFERENCE"))]
         backup: String,
 
         /// A ring kept outside its default legacy directory, as `<ring>=<directory>`;
         /// `operations/keys/{operations,control,data}` below the volume otherwise.
-        #[arg(long = "legacy", value_name = "RING=DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long = "legacy", value_name = "RING=DIRECTORY"))]
         legacy: Vec<String>,
     },
     /// Carry the legacy JSON-lines audit chain into `host/audit/legacy`, byte for byte, with an
@@ -77,16 +80,16 @@ pub enum MigrateCommand {
     /// before it starts.
     Audit {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The external backup taken before the migration, as the operator names it.
-        #[arg(long, value_name = "REFERENCE")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "REFERENCE"))]
         backup: String,
 
         /// The directory the chain is in, when `audit.directory` moved it; `operations/audit`
         /// below the volume otherwise.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         legacy: Option<PathBuf>,
     },
     /// Archive the drained legacy decision spool into `data/decisions/legacy`, byte for byte,
@@ -94,16 +97,16 @@ pub enum MigrateCommand {
     /// names once the spool's shipper sent it. A spool holding anything unshipped is refused.
     Decisions {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The external backup taken before the migration, as the operator names it.
-        #[arg(long, value_name = "REFERENCE")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "REFERENCE"))]
         backup: String,
 
         /// The spool's directory, when `log.spool_directory` moved it; `data/decisions/spool`
         /// below the volume otherwise.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         legacy: Option<PathBuf>,
     },
     /// Archive the drained legacy event history, the journals and the retired pull's store in
@@ -112,16 +115,16 @@ pub enum MigrateCommand {
     /// and older than every window a loaded policy reads. Anything else is refused.
     Events {
         /// The volume's root, the server's working directory.
-        #[arg(long, value_name = "DIRECTORY")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "DIRECTORY"))]
         volume: PathBuf,
 
         /// The external backup taken before the migration, as the operator names it.
-        #[arg(long, value_name = "REFERENCE")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "REFERENCE"))]
         backup: String,
 
         /// The server's configuration file, read as `permguard <config file>` reads it: where
         /// the history is, and the retention, lateness and skew it is measured against.
-        #[arg(long, value_name = "CONFIG_FILE")]
+        #[cfg_attr(feature = "cli", arg(long, value_name = "CONFIG_FILE"))]
         config: PathBuf,
     },
 }

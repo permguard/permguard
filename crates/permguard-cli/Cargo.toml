@@ -42,7 +42,7 @@ permguard-client = { workspace = true, features = ["full"] }
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 # Offline volume administration, the same code the server runs: no server, no listener.
-permguard-offline = { workspace = true, features = ["kms"] }
+permguard-offline = { workspace = true, features = ["cli", "kms"] }
 # The evaluating half: this package decides.
 permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego", "evaluate"] }
 permguard-stream.workspace = true
