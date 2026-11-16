@@ -66,4 +66,3 @@ tower.workspace = true
 http.workspace = true
 # Reading a router's answer, for the discovery chain walked the way a client walks it.
 http-body-util.workspace = true
-

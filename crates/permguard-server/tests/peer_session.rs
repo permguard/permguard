@@ -3452,6 +3452,8 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
 /// the client identity it dials out with and no `admin.addr`, it joins the coordinator its
 /// invitation names over mutual TLS 1.3, pending until the coordinator approves; the same
 /// composition without that identity refuses the start, by name.
+// The invitation is a file only its owner reads, which is said in Unix permissions.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -3658,6 +3660,7 @@ async fn an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to
     );
 }
 
+#[cfg(unix)]
 #[allow(dead_code)]
 #[path = "../../permguard-data-plane/tests/support/examples.rs"]
 mod examples;
@@ -3667,6 +3670,8 @@ mod examples;
 /// repository's example, records each decision on its Host's stream, and ships them to the
 /// coordinator over the `decisions.ship` task of its membership when it stops. Nothing is owed
 /// once it has stopped, and the stop is complete.
+// The invitation is a file only its owner reads, which is said in Unix permissions.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn an_embedded_data_plane_decides_and_ships_its_decisions_to_the_coordinator_it_joined() {
     use std::os::unix::fs::PermissionsExt as _;

@@ -50,4 +50,3 @@ permguard-host = { workspace = true, features = ["test-support"] }
 http.workspace = true
 http-body-util.workspace = true
 tower.workspace = true
-

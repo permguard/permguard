@@ -136,4 +136,3 @@ rcgen.workspace = true
 axum.workspace = true
 axum-server.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
-
