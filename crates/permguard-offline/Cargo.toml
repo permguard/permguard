@@ -40,7 +40,8 @@ permguard-core.workspace = true
 permguard-host.workspace = true
 permguard-decisions = { workspace = true, features = ["storage"] }
 permguard-events = { workspace = true, features = ["storage"] }
-permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
+# The implementations a configuration may name offline: the catalog and the secret stores.
+permguard-std = { workspace = true, features = ["catalog", "secrets"] }
 cryptoki = { workspace = true, optional = true }
 tracing.workspace = true
 # The custody of a KMS or a transit engine: one bounded HTTPS client, no listener (`kms`).

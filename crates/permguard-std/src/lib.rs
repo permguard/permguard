@@ -32,9 +32,10 @@
 //! permguard-std = { version = "0.1", default-features = false, features = ["secrets", "storage"] }
 //! ```
 //!
-//! `provision` is **not** in the default set, and deliberately: it is the one that can mint a
-//! certificate authority. Getting it has to be something written down — `features = ["provision"]` —
-//! rather than something inherited by writing the crate's name.
+//! There is no default set (the crate boundaries refactoring, RD-17): writing the crate's name
+//! links none of the implementations, so every build writes down the ones it carries. That matters
+//! most for `provision`, the one that can mint a certificate authority: it is in a build only where
+//! `features = ["provision"]` says so.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]

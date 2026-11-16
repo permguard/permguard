@@ -3014,6 +3014,7 @@ dependencies = [
  "hmac",
  "permguard-core",
  "permguard-host",
+ "permguard-std",
  "rcgen",
  "ring",
  "serde",

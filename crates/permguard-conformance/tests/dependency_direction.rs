@@ -601,6 +601,71 @@ fn the_control_plane_validates_without_evaluating() {
     );
 }
 
+/// The default implementations are selected by name (RD-17): `permguard-std` has no default
+/// bundle, the workspace takes it with none, and every manifest that links it writes the exact
+/// implementations it uses. So the one that can mint a certificate authority, `provision`, is in a
+/// server's build, which serves the listeners it provisions, and in neither the headless runtime's
+/// nor the command line's, which Permguard Admin links.
+#[test]
+fn the_default_implementations_are_selected_by_name() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let read = |path: &Path| {
+        std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+    };
+    let mut problems = Vec::new();
+
+    let own = read(&root.join("crates/permguard-std/Cargo.toml"));
+    if !own.lines().any(|line| line.trim() == "default = []") {
+        problems.push("permguard-std declares a default bundle".to_owned());
+    }
+    let workspace = read(&root.join("Cargo.toml"));
+    if !workspace.lines().any(|line| {
+        line.starts_with("permguard-std = ") && line.contains("default-features = false")
+    }) {
+        problems.push("the workspace takes permguard-std with its default features".to_owned());
+    }
+    let mut manifests = 0;
+    for entry in std::fs::read_dir(root.join("crates")).expect("the crates directory") {
+        let manifest = entry.expect("a crate directory").path().join("Cargo.toml");
+        if !manifest.is_file() || manifest.ends_with("permguard-std/Cargo.toml") {
+            continue;
+        }
+        for line in read(&manifest).lines() {
+            // A package's own tests may name it by path to turn its features on; any other mention
+            // is a dependency, and names its features.
+            if line.starts_with("permguard-std") && !line.contains("features = [") {
+                problems.push(format!(
+                    "{} links permguard-std without naming its features: `{line}`",
+                    manifest.display()
+                ));
+            }
+            if line.starts_with("permguard-std") {
+                manifests += 1;
+            }
+        }
+    }
+    assert!(manifests > 0, "no manifest links permguard-std");
+
+    let selected = |package: &str| {
+        features_of(package)
+            .remove("permguard-std")
+            .unwrap_or_default()
+    };
+    for package in ["permguard-runtime", "permguard-cli", "permguard-offline"] {
+        if selected(package).contains("provision") {
+            problems.push(format!("{package} builds permguard-std with `provision`"));
+        }
+    }
+    if !selected("permguard-server").contains("provision") {
+        problems.push("permguard-server builds permguard-std without `provision`".to_owned());
+    }
+    assert!(
+        problems.is_empty(),
+        "the default implementations are selected by name:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// The Host's runtime is headless (RD-15), its composition included: built by itself it links no
 /// listener, no network client, no generated contract, no TLS stack and no telemetry exporter.
 /// What reaches a network is an adapter a build composes: a server's build selects the KMS custody

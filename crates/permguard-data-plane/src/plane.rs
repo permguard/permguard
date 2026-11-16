@@ -68,7 +68,11 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              over `decisions.ship` to the coordinator of its membership. Remove it"
         );
     }
-    crate::temporal::startup_check(config)
+    crate::temporal::startup_check(config)?;
+    // The pool the partitions of a request fan out on holds no more workers than the evaluations
+    // this deployment runs at once, and none under one: bound before anything decides (RD-17).
+    permguard_languages::fanout::Fanout::bound_shared(config.evaluation_concurrency());
+    Ok(())
 }
 
 /// Loops about the volume rather than the request, each off by default: the mirroring loop

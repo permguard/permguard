@@ -88,6 +88,22 @@ impl std::fmt::Display for Lost {
 /// the back belong to requests whose callers have long since been answered by a timeout.
 const QUEUE_PER_WORKER: usize = 4;
 
+/// The evaluations the deployment configured to run at once, when it said so before the shared
+/// pool was built.
+static SHARED_BOUND: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+/// How many workers the shared pool holds on a machine of `cores`, under the deployment's `bound`
+/// when it gave one: never more than [`MAX_WORKERS`], never more than the bound, and none at all
+/// when the bound is one evaluation at a time.
+fn shared_workers(cores: usize, bound: Option<usize>) -> usize {
+    let sized = cores.clamp(1, MAX_WORKERS);
+    match bound {
+        Some(0 | 1) => 0,
+        Some(bound) => sized.min(bound),
+        None => sized,
+    }
+}
+
 /// A fixed set of worker threads, and the bounded queue they take work from.
 pub struct Fanout {
     /// Guarded because the pool is shared by every thread that decides; sending is a pointer move.
@@ -172,14 +188,45 @@ impl Fanout {
     /// One per process, sized to the machine and capped: it is an execution resource, like the
     /// allocator, and not a collaborator anybody swaps — there is no behaviour to choose, only
     /// threads to share. A test that needs its own builds one with [`Fanout::with_workers`].
+    ///
+    /// # The bound a deployment configured
+    ///
+    /// The pool never holds more workers than the evaluations a deployment configured to run at
+    /// once, when [`Fanout::bound_shared`] told it how many before its first use. A deployment
+    /// configured for one evaluation at a time holds no worker at all: its partitions are
+    /// evaluated one after another on the thread that decides, which is the one-worker profile an
+    /// embedding application asks for. Unbounded, it is sized to the machine, as it always was.
     pub fn shared() -> &'static Fanout {
         static SHARED: LazyLock<Fanout> = LazyLock::new(|| {
             let cores = std::thread::available_parallelism().map_or(2, std::num::NonZero::get);
 
-            Fanout::with_workers(cores.min(MAX_WORKERS))
+            match shared_workers(cores, SHARED_BOUND.get().copied()) {
+                0 => Fanout::sequential(),
+                workers => Fanout::with_workers(workers),
+            }
         });
 
         &SHARED
+    }
+
+    /// Bounds the pool this process decides on to `evaluations`, the evaluations its deployment
+    /// configured to run at once. Called before anything decides; the first bound holds, and one
+    /// given once the pool is built changes nothing. Answers whether this call set the bound.
+    pub fn bound_shared(evaluations: usize) -> bool {
+        SHARED_BOUND.set(evaluations.max(1)).is_ok()
+    }
+
+    /// A pool with no worker and no thread: [`Fanout::run`] does every job on the calling thread,
+    /// in order.
+    pub fn sequential() -> Self {
+        // Nothing reads this queue and nothing is ever sent to it: a pool with no workers runs
+        // every job where it was asked.
+        let (sender, _) = mpsc::sync_channel::<Job>(0);
+
+        Self {
+            work: Mutex::new(sender),
+            workers: 0,
+        }
     }
 
     /// How many workers this pool holds.
@@ -309,6 +356,38 @@ mod tests {
     use super::*;
     use std::sync::Barrier;
     use std::time::Duration;
+
+    #[test]
+    fn the_shared_pool_never_outgrows_the_machine_the_cap_or_the_configured_bound() {
+        // Unbounded: sized to the machine, capped.
+        assert_eq!(shared_workers(4, None), 4);
+        assert_eq!(shared_workers(64, None), MAX_WORKERS);
+        // Bounded by what the deployment configured, when that is the smaller.
+        assert_eq!(shared_workers(8, Some(2)), 2);
+        assert_eq!(shared_workers(2, Some(6)), 2);
+        assert_eq!(shared_workers(64, Some(32)), MAX_WORKERS);
+        // One evaluation at a time holds no worker; a bound of none is read as one.
+        assert_eq!(shared_workers(8, Some(1)), 0);
+        assert_eq!(shared_workers(8, Some(0)), 0);
+    }
+
+    #[test]
+    fn a_sequential_pool_answers_in_order_on_the_calling_thread() {
+        let pool = Fanout::sequential();
+        let caller = std::thread::current().id();
+        let jobs: Vec<Box<dyn FnOnce() -> (usize, bool) + Send + 'static>> = (0..5usize)
+            .map(|index| {
+                Box::new(move || (index, std::thread::current().id() == caller))
+                    as Box<dyn FnOnce() -> (usize, bool) + Send + 'static>
+            })
+            .collect();
+
+        assert_eq!(pool.workers(), 0);
+        assert_eq!(
+            pool.run(jobs).expect("every job answered"),
+            (0..5).map(|index| (index, true)).collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn two_partitions_are_evaluated_at_the_same_time() {

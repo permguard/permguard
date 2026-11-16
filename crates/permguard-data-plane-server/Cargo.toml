@@ -66,7 +66,7 @@ permguard-control-plane.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 http.workspace = true
 http-body-util.workspace = true
-permguard-std.workspace = true
+permguard-std = { workspace = true, features = ["audit", "metrics", "storage"] }
 tower.workspace = true
 # The PDP over a real socket: a listener already bound, handed to tonic.
 async-stream.workspace = true

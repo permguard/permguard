@@ -38,7 +38,8 @@ permguard-stream.workspace = true
 # stream engine (WP-5.1).
 permguard-decisions = { workspace = true, features = ["storage", "stream"] }
 permguard-events = { workspace = true, features = ["storage", "stream"] }
-permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
+# The implementations the server composes by default, each named: none arrives as a bundle.
+permguard-std = { workspace = true, features = ["audit", "keys", "metrics", "provision", "storage"] }
 permguard-telemetry.workspace = true
 permguard-transport.workspace = true
 # The Host listener's gRPC half, `permguard.host.v1`, compiled by `build.rs` from `contracts/proto`.
@@ -87,6 +88,9 @@ pkcs11 = ["dep:cryptoki", "permguard-offline/pkcs11"]
 
 
 [dev-dependencies]
+# The implementations the tests compose beside the server's own: the pseudonymiser and the secret
+# stores.
+permguard-std = { workspace = true, features = ["audit", "keys", "metrics", "provision", "pseudonym", "secrets", "storage"] }
 # The Authority Plane's `TokenService` the gRPC fetch is tested against, served over TLS as the
 # listeners serve it.
 axum-server.workspace = true

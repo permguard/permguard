@@ -7,6 +7,7 @@
 
 #![allow(dead_code, clippy::expect_used, clippy::unwrap_used)]
 
+pub mod embedded;
 pub mod examples;
 pub mod plane;
 pub mod tasks;

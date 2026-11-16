@@ -20,7 +20,9 @@ publish = false
 # `provision` is out of the default set on purpose: it is the one implementation that can mint a
 # certificate authority, and a build should have to write it down rather than inherit it.
 [features]
-default = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage"]
+# No default bundle (RD-17): a build names each implementation it links, so a profile carries
+# exactly what it wrote down.
+default = []
 audit = []
 catalog = ["dep:ring", "dep:serde", "dep:serde_json", "dep:permguard-host"]
 keys = ["dep:ring", "dep:serde", "dep:serde_json", "dep:tokio", "dep:zeroize", "dep:permguard-host"]
@@ -50,6 +52,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "ti
 zeroize = { workspace = true, optional = true }
 
 [dev-dependencies]
+# The tests exercise every implementation.
+permguard-std = { path = ".", features = ["audit", "catalog", "keys", "metrics", "provision", "pseudonym", "secrets", "storage"] }
 base64.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

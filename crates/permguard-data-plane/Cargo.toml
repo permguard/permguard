@@ -75,4 +75,4 @@ serde_norway.workspace = true
 permguard-client = { workspace = true, features = ["http", "grpc", "catalog", "notp"] }
 # `start_paused` lets the mirror service's wait be tested without waiting (WP-7.2c).
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
-permguard-std.workspace = true
+permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "storage"] }

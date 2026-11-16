@@ -60,7 +60,7 @@ permguard-client = { workspace = true, features = ["http", "grpc", "catalog"] }
 permguard-conformance.workspace = true
 permguard-data-plane.workspace = true
 # The file catalog and the key manager the tests compose stores and signers with.
-permguard-std = { workspace = true, features = ["catalog", "keys"] }
+permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "storage"] }
 ring.workspace = true
 tower.workspace = true
 http.workspace = true

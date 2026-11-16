@@ -552,6 +552,10 @@ pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
 /// [`SETTING_MAX_BLOCKING`] bounds, so that a stalled disk cannot take the evaluation's capacity
 /// and a hung evaluation cannot take the disk's. Unset, it is the Host's logical cores, read at
 /// start: a number derived from the machine, never one measured elsewhere.
+///
+/// The partitions of one request fan out on a pool that holds no more workers than this, and none
+/// when it is `1`: a deployment that asks for one evaluation at a time gets one evaluating thread,
+/// its partitions decided one after another, with the same answers.
 pub const SETTING_EVALUATION_CONCURRENCY: &str = "PERMGUARD_EVALUATION_CONCURRENCY";
 
 /// How many evaluations may wait for one of the [`SETTING_EVALUATION_CONCURRENCY`] slots.
