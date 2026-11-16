@@ -31,6 +31,13 @@ is cut.
   A Plane is now two packages: its domain, which serves nothing and listens nowhere, and its server, which holds its routes over HTTP and gRPC, its module and its binary.
   Building from source names the server package: `cargo build -p permguard-authority-plane-server --bin permguard-authority-plane`, `-p permguard-data-plane-server --bin permguard-data-plane`, `-p permguard-control-plane-server --bin permguard-control-plane`.
   Every binary, image, archive and shipped configuration keeps its name and its place.
+  `task plane:run` and `make plane-run` build the server package accordingly.
+- **Each policy language is a package, and a build chooses the languages it carries.**
+  `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-pdp-core` holds the evaluating half.
+  `permguard-languages` is the catalogue, with one feature per language (`cedar`, `rego`, `dogwood`, all on by default) and an `evaluate` feature for the evaluating halves, the routing and the supervised worker; every path it offered before is where it was.
+  The Control Plane builds every language without `evaluate`, so it validates what a push carries and compiles no evaluator for Cedar or Rego; Dogwood validates by compiling, so its package always links the evaluating half.
+  The control client depends on the request model alone and compiles no policy language.
+  The shipped binaries carry the same three languages and decide exactly as before: every language descriptor and its digest are unchanged.
 
 ## [0.1.32] - 2026-11-15
 
