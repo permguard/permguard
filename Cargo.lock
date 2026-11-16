@@ -2441,6 +2441,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-canonical"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "permguard-cli"
 version = "0.1.0"
 dependencies = [
@@ -2497,7 +2506,6 @@ dependencies = [
  "permguard-client",
  "permguard-contracts",
  "permguard-core",
- "permguard-events",
  "permguard-host",
  "permguard-language-core",
  "permguard-mirror",
@@ -2719,6 +2727,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "hmac",
+ "permguard-canonical",
  "permguard-core",
  "permguard-host",
  "permguard-std",
@@ -2735,6 +2744,7 @@ name = "permguard-events"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "permguard-canonical",
  "permguard-core",
  "permguard-decisions",
  "permguard-host",
@@ -2780,10 +2790,9 @@ name = "permguard-language-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "permguard-canonical",
  "permguard-core",
- "permguard-events",
  "permguard-objects",
- "permguard-stream",
  "serde",
  "serde_json",
  "sha2",
@@ -2797,8 +2806,8 @@ version = "0.1.0"
 dependencies = [
  "cedar-policy",
  "dogwood-language",
+ "permguard-canonical",
  "permguard-core",
- "permguard-events",
  "permguard-language-core",
  "permguard-objects",
  "permguard-pdp-core",
@@ -3002,6 +3011,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "hmac",
+ "permguard-canonical",
  "permguard-core",
  "permguard-host",
  "permguard-objects",

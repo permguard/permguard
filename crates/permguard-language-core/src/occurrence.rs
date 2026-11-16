@@ -260,7 +260,7 @@ impl OccurrenceBody {
 
         let occurred_at = required(&self.occurred_at, "occurred_at")?;
         let occurred_at_epoch =
-            permguard_events::index::epoch_seconds(&occurred_at).ok_or_else(|| {
+            permguard_canonical::time::epoch_seconds(&occurred_at).ok_or_else(|| {
                 Malformed::new(
                     permguard_core::codes::pdp_temporal::EVENT_TIME_NOT_CANONICAL,
                     format!(

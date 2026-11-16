@@ -56,9 +56,7 @@ pub mod cursor;
 pub mod descriptor;
 pub mod engine;
 pub mod frontier;
-pub mod jcs;
 pub mod layout;
-pub mod merkle;
 pub mod name;
 pub mod signers;
 pub mod window;
@@ -71,3 +69,7 @@ pub use frontier::Frontier;
 pub use name::{PositionError, StreamPosition, is_portable_name};
 pub use signers::{MAX_SIGNER_SPANS, SIGNERS_FILE, SignerError, SignerSpan, Signers};
 pub use window::{Block, Coverage, Expired, Window, more};
+
+// Canonical JSON and the Merkle tree over a batch are `permguard-canonical`'s, shared with
+// protocols that keep no stream; named here where the stream engine and its users reach them.
+pub use permguard_canonical::{jcs, merkle};

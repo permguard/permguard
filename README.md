@@ -916,6 +916,7 @@ The Host never depends on a concrete plane.
 | ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
 | `permguard-core`                   | contracts   | Stable traits, identifiers, errors, canonical codecs and crypto primitives.                                   |
 | `permguard-host`                   | Host        | Identity, authorization, keys and secrets, audit, membership, storage, lifecycle and the Host API.            |
+| `permguard-canonical`              | codecs      | Canonical forms with no I/O: strict JCS, the Merkle root, RFC 3339 instants.                                  |
 | `permguard-stream`                 | codecs      | The Host stream engine: signed batches, acknowledgements, cursors, retention and recovery.                    |
 | `permguard-objects`                | codecs      | Canonical policy objects, digests, manifests and signed head statements.                                      |
 | `permguard-notp`                   | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                                      |

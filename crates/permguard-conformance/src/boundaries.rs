@@ -24,6 +24,7 @@ use serde::Deserialize;
 /// The crates whose sources the inventory scans.
 pub const SCANNED: &[&str] = &[
     "crates/permguard-core",
+    "crates/permguard-canonical",
     "crates/permguard-objects",
     "crates/permguard-stream",
     "crates/permguard-decisions",

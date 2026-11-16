@@ -27,8 +27,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use serde::{Deserialize, Serialize};
 
+use permguard_canonical::jcs;
 use permguard_core::keys::{Jwk, Sign};
-use permguard_stream::jcs;
 
 use crate::record::Stream;
 

@@ -1133,7 +1133,7 @@ mod tests {
 
     /// One occurrence of upstream's trace, in Permguard's own event contract.
     fn occurrence(at: i64, action: &str, kind: &str, user: &str, fields: Json) -> Occurrence {
-        let instant = permguard_events::index::render_epoch_seconds(at)
+        let instant = permguard_canonical::time::render_epoch_seconds(at)
             .expect("the trace's timepoints are instants");
         let body: super::super::occurrence::OccurrenceBody = serde_json::from_value(json!({
             "event_id": format!("{action}-{kind}-{at}"),
@@ -1152,7 +1152,7 @@ mod tests {
 
     /// One occurrence of upstream's trace as version 2: one canonical field map (TL-5c).
     fn occurrence_v2(at: i64, action: &str, kind: &str, user: &str, fields: Json) -> Occurrence {
-        let instant = permguard_events::index::render_epoch_seconds(at)
+        let instant = permguard_canonical::time::render_epoch_seconds(at)
             .expect("the trace's timepoints are instants");
         let body: super::super::occurrence::OccurrenceBodyV2 = serde_json::from_value(json!({
             "event_id": format!("{action}-{kind}-{at}"),

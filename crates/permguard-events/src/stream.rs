@@ -42,7 +42,7 @@ impl RecordCodec for Codec {
     type Record = Value;
 
     fn encode(&self, record: &Value) -> Result<Vec<u8>, String> {
-        permguard_stream::jcs::canonicalize(record).map_err(|error| error.to_string())
+        permguard_canonical::jcs::canonicalize(record).map_err(|error| error.to_string())
     }
 
     fn decode(&self, bytes: &[u8]) -> Result<Value, String> {

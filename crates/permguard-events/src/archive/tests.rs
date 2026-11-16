@@ -30,7 +30,7 @@ fn scratch(tag: &str) -> PathBuf {
 }
 
 fn epoch(instant: &str) -> i64 {
-    crate::index::epoch_seconds(instant).expect("an instant")
+    permguard_canonical::time::epoch_seconds(instant).expect("an instant")
 }
 
 /// A horizon after every record: nothing a loaded window reads.

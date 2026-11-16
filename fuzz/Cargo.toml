@@ -23,6 +23,7 @@ permguard-objects = { path = "../crates/permguard-objects" }
 permguard-host = { path = "../crates/permguard-host" }
 permguard-authority-plane = { path = "../crates/permguard-authority-plane" }
 permguard-events = { path = "../crates/permguard-events" }
+permguard-canonical = { path = "../crates/permguard-canonical" }
 permguard-stream = { path = "../crates/permguard-stream" }
 serde_json = "1"
 

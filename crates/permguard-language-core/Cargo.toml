@@ -14,12 +14,10 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+# Canonical JSON, for the digests of descriptors and attestations, and the protocol's instant.
+permguard-canonical.workspace = true
 permguard-core.workspace = true
 permguard-objects.workspace = true
-# The event record the occurrence becomes.
-permguard-events.workspace = true
-# The canonical JSON attestations and descriptors are digested over.
-permguard-stream.workspace = true
 sha2.workspace = true
 base64.workspace = true
 # Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an

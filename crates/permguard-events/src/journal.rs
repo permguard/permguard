@@ -102,7 +102,7 @@ pub fn drained_before(
         record
             .get("occurred_at")
             .and_then(Value::as_str)
-            .and_then(crate::index::epoch_seconds)
+            .and_then(permguard_canonical::time::epoch_seconds)
             .is_some_and(|occurred| occurred < horizon)
     }))
 }

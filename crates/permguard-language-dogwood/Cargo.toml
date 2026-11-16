@@ -21,10 +21,10 @@ publish = false
 evaluate = ["dep:permguard-pdp-core"]
 
 [dependencies]
+# The canonical instant an occurrence is rendered with.
+permguard-canonical.workspace = true
 permguard-core.workspace = true
 permguard-objects.workspace = true
-# The canonical instant parsing an occurrence is validated against.
-permguard-events.workspace = true
 permguard-language-core.workspace = true
 # The evaluating half: only with the `evaluate` feature.
 permguard-pdp-core = { workspace = true, optional = true }

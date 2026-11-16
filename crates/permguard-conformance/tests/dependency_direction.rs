@@ -216,6 +216,15 @@ const LAYERS: &[(&str, &[&str])] = &[
     // links the command line, so its core follows.
     ("permguard-offline", SERVER_SIDE),
     ("permguard-cli", SERVER_SIDE),
+    // The canonical primitives are nobody's runtime (RD-16): the language contracts compute their
+    // digests and read the protocol's instant with them, and link no evidence store or stream.
+    ("permguard-canonical", EVIDENCE_RUNTIME),
+    (
+        "permguard-canonical",
+        &["permguard-core", "permguard-host", "permguard-objects"],
+    ),
+    ("permguard-language-core", EVIDENCE_RUNTIME),
+    ("permguard-pdp-core", EVIDENCE_RUNTIME),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];
@@ -296,6 +305,14 @@ const DOGWOOD_ENGINE: &[&str] = &[
     "permguard-language-rego",
     "regorus",
     "jsonschema",
+];
+
+/// The evidence packages and the stream engine: what keeps records, which a package that only
+/// computes over canonical bytes never links.
+const EVIDENCE_RUNTIME: &[&str] = &[
+    "permguard-decisions",
+    "permguard-events",
+    "permguard-stream",
 ];
 
 /// What only a served process links: the server composition, the listeners, the telemetry

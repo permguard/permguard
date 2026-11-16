@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use permguard_stream::jcs::{self, CanonicalError};
+use permguard_canonical::jcs::{self, CanonicalError};
 
 /// The domain this crate's record digests live in.
 ///
@@ -317,12 +317,12 @@ pub fn validate(value: &Value) -> Result<Record, RecordError> {
             )));
         }
     }
-    if crate::index::epoch_seconds(&record.occurred_at).is_none() {
+    if permguard_canonical::time::epoch_seconds(&record.occurred_at).is_none() {
         return Err(RecordError::new(
             "`occurred_at` is not a canonical whole-second UTC instant",
         ));
     }
-    if crate::index::epoch_seconds(&record.observed_at).is_none() {
+    if permguard_canonical::time::epoch_seconds(&record.observed_at).is_none() {
         return Err(RecordError::new(
             "`observed_at` is not a canonical whole-second UTC instant",
         ));

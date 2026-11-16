@@ -236,7 +236,7 @@ impl Descriptor {
     /// startup (`registry::check_registry`), so [`Descriptor::digest`] never meets a refusal.
     pub fn canonical(&self) -> Result<Vec<u8>, String> {
         let value = serde_json::to_value(self).map_err(|error| error.to_string())?;
-        permguard_stream::jcs::canonicalize(&value).map_err(|error| format!("{error:?}"))
+        permguard_canonical::jcs::canonicalize(&value).map_err(|error| format!("{error:?}"))
     }
 
     /// The canonical digest: `sha256:` and the hex SHA-256 of the domain and the RFC 8785 bytes.

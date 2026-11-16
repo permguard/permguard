@@ -17,6 +17,8 @@ publish = false
 crash-points = ["permguard-host/crash-points"]
 
 [dependencies]
+# Canonical JSON, the Merkle tree and the protocol's instant.
+permguard-canonical.workspace = true
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
 permguard-host.workspace = true

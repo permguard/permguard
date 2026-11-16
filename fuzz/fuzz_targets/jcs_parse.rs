@@ -5,7 +5,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use permguard_stream::jcs;
+use permguard_canonical::jcs;
 
 fuzz_target!(|data: &[u8]| {
     // What the strict reader accepts, the canonicaliser writes, and the canonical bytes read back

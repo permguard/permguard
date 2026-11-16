@@ -56,7 +56,7 @@ pub use envelope::{BATCH_TYPE, Batch, Envelope, EnvelopeError, Signed};
 /// the Merkle construction carries no domain, so sharing it is safe in exactly the way sharing a
 /// digest domain would not be. A verifier needs it to check that a path reaches the root its
 /// envelope attests.
-pub use permguard_stream::merkle::recompute as merkle_of;
+pub use permguard_canonical::merkle::recompute as merkle_of;
 pub use record::{
     DIGEST_DOMAIN, GENESIS, HISTORY_DOMAIN, HistoryKey, PRODUCER_CLASS_DATA_PLANE, Producer,
     RECORD_TYPE, Record, RecordError, Stream, digest_of, history_digest_of, occurrence_digest_of,

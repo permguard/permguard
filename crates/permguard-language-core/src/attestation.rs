@@ -338,7 +338,7 @@ impl std::fmt::Display for DigestError {
 impl std::error::Error for DigestError {}
 
 fn digest(domain: &str, value: &Value) -> Result<String, DigestError> {
-    let canonical = permguard_stream::jcs::canonicalize(value)
+    let canonical = permguard_canonical::jcs::canonicalize(value)
         .map_err(|error| DigestError(format!("{error:?}")))?;
     let mut hasher = Sha256::new();
     hasher.update(domain.as_bytes());
@@ -492,24 +492,24 @@ impl Payload {
     /// The payload's bytes: its JCS form, what the JWS carries.
     pub fn canonical(&self) -> Result<Vec<u8>, DigestError> {
         let value = serde_json::to_value(self).map_err(|error| DigestError(error.to_string()))?;
-        permguard_stream::jcs::canonicalize(&value)
+        permguard_canonical::jcs::canonicalize(&value)
             .map_err(|error| DigestError(format!("{error:?}")))
     }
 }
 
 /// Reads one JSON text strictly: one value, no member named twice at any level (WP-6.6c).
 pub fn strict_json(bytes: &[u8]) -> Result<Value, String> {
-    permguard_stream::jcs::parse_strict(bytes).map_err(|error| format!("{error:?}"))
+    permguard_canonical::jcs::parse_strict(bytes).map_err(|error| format!("{error:?}"))
 }
 
 /// The JCS bytes of `value` (WP-6.6c).
 pub fn jcs(value: &Value) -> Result<Vec<u8>, String> {
-    permguard_stream::jcs::canonicalize(value).map_err(|error| format!("{error:?}"))
+    permguard_canonical::jcs::canonicalize(value).map_err(|error| format!("{error:?}"))
 }
 
 /// Reads bytes that must already be the JCS form of their value (WP-6.6c).
 pub fn canonical_json(bytes: &[u8]) -> Result<Value, String> {
-    permguard_stream::jcs::decode_canonical(bytes).map_err(|error| format!("{error:?}"))
+    permguard_canonical::jcs::decode_canonical(bytes).map_err(|error| format!("{error:?}"))
 }
 
 /// A whole-second UTC instant, `YYYY-MM-DDTHH:MM:SSZ`, in epoch seconds.

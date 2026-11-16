@@ -181,20 +181,20 @@
       "fuzz": "crypto_statements"
     },
     {
-      "crate": "permguard-stream",
-      "source": "crates/permguard-stream/src/jcs.rs",
+      "crate": "permguard-canonical",
+      "source": "crates/permguard-canonical/src/jcs.rs",
       "item": "parse_strict",
-      "entry": "permguard_stream::jcs::parse_strict",
+      "entry": "permguard_canonical::jcs::parse_strict",
       "max_input_bytes": 8388608,
       "limit": "its callers: HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads, or the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
       "enforced_at_decoder": false,
       "fuzz": "jcs_parse"
     },
     {
-      "crate": "permguard-stream",
-      "source": "crates/permguard-stream/src/jcs.rs",
+      "crate": "permguard-canonical",
+      "source": "crates/permguard-canonical/src/jcs.rs",
       "item": "decode_canonical",
-      "entry": "permguard_stream::jcs::decode_canonical",
+      "entry": "permguard_canonical::jcs::decode_canonical",
       "max_input_bytes": 8388608,
       "limit": "its callers: HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads, or the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
       "enforced_at_decoder": false,

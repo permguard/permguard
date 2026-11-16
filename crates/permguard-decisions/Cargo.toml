@@ -24,6 +24,8 @@ hmac.workspace = true
 # one cryptographic backend this workspace already links.
 base64.workspace = true
 ring.workspace = true
+# Canonical JSON and the Merkle tree a batch is committed with.
+permguard-canonical.workspace = true
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
 permguard-host.workspace = true

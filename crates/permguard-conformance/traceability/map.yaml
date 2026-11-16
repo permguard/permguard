@@ -637,7 +637,7 @@ sections:
       - "open (code): wrapped or provider-held custody of delivered zone keys is partial (status.md)"
   "1-architecture/4-architecture-server-host-keys.md#containers-and-canonical-bytes":
     paths:
-      - crates/permguard-stream/src/jcs.rs
+      - crates/permguard-canonical/src/jcs.rs
       - crates/permguard-objects/src/cbor.rs
       - crates/permguard-objects/src/cose.rs
     tests:
@@ -858,7 +858,7 @@ sections:
   "1-architecture/6-architecture-server-host-streams.md#record-and-batch":
     paths:
       - crates/permguard-stream/src/engine/batch.rs
-      - crates/permguard-stream/src/merkle.rs
+      - crates/permguard-canonical/src/merkle.rs
       - crates/permguard-stream/src/engine/producer/seal.rs
     tests:
       - crates/permguard-stream/src/engine/tests.rs::a_batch_chains_to_the_one_before_and_a_run_starts_from_genesis
@@ -866,7 +866,7 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_sealed_batch_verifies_and_carries_the_exact_record_bytes
       - crates/permguard-stream/src/engine/tests.rs::a_batch_whose_records_do_not_match_its_commitments_is_refused
       - crates/permguard-stream/src/engine/tests.rs::a_sealed_batch_is_kept_before_it_is_answered_and_never_signed_again
-      - crates/permguard-stream/src/merkle.rs::test_an_internal_node_cannot_be_presented_as_a_leaf
+      - crates/permguard-canonical/src/merkle.rs::test_an_internal_node_cannot_be_presented_as_a_leaf
   "1-architecture/6-architecture-server-host-streams.md#ingest-state-machine":
     paths:
       - crates/permguard-stream/src/engine/ingest.rs
@@ -3846,7 +3846,7 @@ sections:
   "7-contracts/5-contract-stream-common.md#block":
     paths:
       - crates/permguard-stream/src/window.rs
-      - crates/permguard-stream/src/merkle.rs
+      - crates/permguard-canonical/src/merkle.rs
       - crates/permguard-control-plane/src/events/read.rs
       - crates/permguard-control-plane/src/decisions/read.rs
     tests:

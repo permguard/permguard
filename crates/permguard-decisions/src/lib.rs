@@ -37,8 +37,8 @@ pub mod record;
 pub mod spool;
 pub mod stream;
 
-pub use permguard_stream::jcs;
-pub use permguard_stream::merkle;
+pub use permguard_canonical::jcs;
+pub use permguard_canonical::merkle;
 
 pub use chain::{ChainError, Verified};
 pub use commitment::Commitment;

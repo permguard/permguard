@@ -64,7 +64,7 @@ fn store_drained_before(directory: &Path, horizon: i64) -> std::result::Result<b
     let before = |instant: Option<&Value>| {
         instant
             .and_then(Value::as_str)
-            .and_then(crate::index::epoch_seconds)
+            .and_then(permguard_canonical::time::epoch_seconds)
             .is_some_and(|at| at < horizon)
     };
     let read = |name: &str| match std::fs::read(directory.join(name)) {
