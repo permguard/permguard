@@ -1,0 +1,19 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-tls"
+description = "What every Permguard TLS endpoint shares, a listener or a client: the algorithms it negotiates, the material it reads off the disk and the channel binding a peer session signs. No listener, no client, no runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+permguard-core.workspace = true
+rustls.workspace = true

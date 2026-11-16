@@ -944,6 +944,7 @@ The Host never depends on a concrete plane.
 | `permguard-embedded`               | composition | The Data Plane embedded over a Host the headless runtime composes for it.                                     |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
+| `permguard-tls`                    | support     | What a TLS listener and a TLS client share: algorithms, material, binding.                                    |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |
 | `permguard-telemetry`              | support     | Liveness, readiness and metrics.                                                                              |
 | `permguard-std`                    | support     | Default implementations behind feature flags.                                                                 |

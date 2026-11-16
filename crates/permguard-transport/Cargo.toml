@@ -23,6 +23,8 @@ http.workspace = true
 http-body-util.workspace = true
 hyper-util.workspace = true
 permguard-core.workspace = true
+# The algorithms, the material and the channel binding every TLS endpoint shares.
+permguard-tls.workspace = true
 # Naming each request. The same generator `rustls` already links, rather than a second one.
 ring.workspace = true
 rustls.workspace = true

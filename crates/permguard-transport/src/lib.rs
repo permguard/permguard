@@ -52,7 +52,6 @@ mod guard;
 mod identity;
 mod material;
 mod measure;
-mod policy;
 mod reload;
 mod request;
 mod surface;
@@ -69,7 +68,7 @@ pub use material::{load_certificates, load_key, load_revocations, server_config}
 pub use measure::{
     ACCEPTED, CERTIFICATE_EXPIRY, CONNECTIONS, CRL_EXPIRY, LATENCY, REFUSED, REQUESTS,
 };
-pub use policy::{CIPHER_SUITES, provider};
+pub use permguard_tls::{CIPHER_SUITES, provider};
 pub use reload::{Reloaded, reload_all};
 pub use request::RequestId;
 pub use surface::{Listener, Surface};

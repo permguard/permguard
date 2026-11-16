@@ -82,7 +82,7 @@ pub(crate) mod rest;
     )
 ))]
 pub mod authority_v1;
-#[cfg(all(feature = "grpc", feature = "host"))]
+#[cfg(all(feature = "grpc", any(feature = "host", feature = "peer")))]
 pub mod host_v1;
 #[cfg(feature = "grpc")]
 pub mod pdp_v1;
@@ -116,6 +116,8 @@ pub mod host;
 mod host_proto;
 #[cfg(feature = "pdp")]
 pub mod pdp;
+#[cfg(feature = "peer")]
+pub mod peer;
 #[cfg(all(feature = "notp", feature = "http"))]
 pub mod remote_http;
 #[cfg(feature = "temporal")]

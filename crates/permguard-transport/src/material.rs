@@ -11,18 +11,16 @@
 //! chain instead would mean every issuer in it needs a published, current list, and the failure when
 //! one is missing is that every client is refused. That is a worse failure than the one it prevents.
 
-use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, bail};
-use rustls::pki_types::pem::PemObject;
-use rustls::pki_types::{CertificateDer, CertificateRevocationListDer, PrivateKeyDer};
+use anyhow::{Context, Result};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
 
 use permguard_core::{TlsSettings, TlsVersion};
 
 use crate::digest::digest;
+pub use permguard_tls::{load_certificates, load_key, load_revocations};
 
 /// Builds the TLS configuration a listener serves with.
 pub fn server_config(settings: &TlsSettings) -> Result<Arc<ServerConfig>> {
@@ -51,7 +49,7 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
         TlsVersion::V1_3 => &[&rustls::version::TLS13],
     };
 
-    let builder = ServerConfig::builder_with_provider(crate::policy::provider())
+    let builder = ServerConfig::builder_with_provider(permguard_tls::provider())
         .with_protocol_versions(versions)
         .context("the pinned algorithm policy refuses these TLS versions")?;
 
@@ -66,7 +64,7 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
 
             let mut verifier = WebPkiClientVerifier::builder_with_provider(
                 Arc::new(roots),
-                crate::policy::provider(),
+                permguard_tls::provider(),
             );
 
             if let Some(path) = settings.crl() {
@@ -117,49 +115,4 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     Ok((Arc::new(config), leaf))
-}
-
-/// Reads a PEM file of certificates.
-///
-/// Public because a build that verifies a peer, or a test that acts as a client, needs the same
-/// reader the listener uses — and two readers of the same format eventually disagree.
-pub fn load_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
-    let certificates: Vec<_> = CertificateDer::pem_file_iter(path)
-        .with_context(|| format!("opening {}", path.display()))?
-        .collect::<std::result::Result<_, _>>()
-        .with_context(|| format!("reading certificates from {}", path.display()))?;
-
-    if certificates.is_empty() {
-        bail!("{} contains no certificate", path.display());
-    }
-
-    Ok(certificates)
-}
-
-/// Reads a PEM private key, in whichever of the three encodings it was written.
-pub fn load_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
-    PrivateKeyDer::from_pem_file(path)
-        .with_context(|| format!("reading a private key from {}", path.display()))
-}
-
-/// Reads a PEM file of certificate revocation lists.
-///
-/// A file with no list in it is refused rather than treated as "nothing is revoked". The two look
-/// identical to a listener and mean opposite things to an operator, and the one that silently
-/// accepts every revoked certificate is not the one to guess.
-pub fn load_revocations(path: &Path) -> Result<Vec<CertificateRevocationListDer<'static>>> {
-    let revocations: Vec<_> = CertificateRevocationListDer::pem_file_iter(path)
-        .with_context(|| format!("opening {}", path.display()))?
-        .collect::<std::result::Result<_, _>>()
-        .with_context(|| format!("reading revocation lists from {}", path.display()))?;
-
-    if revocations.is_empty() {
-        bail!(
-            "{} contains no revocation list: an empty file and a file that revokes nothing are \
-             indistinguishable here, and only one of them is safe to assume",
-            path.display()
-        );
-    }
-
-    Ok(revocations)
 }

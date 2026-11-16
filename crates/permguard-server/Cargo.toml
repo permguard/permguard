@@ -23,7 +23,7 @@ anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
 # The Authority surface's refresh of the key set and status lists a Host verifies tokens with.
-permguard-client = { workspace = true, features = ["authority-refresh"] }
+permguard-client = { workspace = true, features = ["authority-refresh", "peer"] }
 permguard-core.workspace = true
 # The services a Host runs for itself, headless.
 permguard-runtime.workspace = true

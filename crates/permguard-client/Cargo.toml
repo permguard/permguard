@@ -51,6 +51,18 @@ authority-refresh = [
     "dep:bytes",
     "dep:tower",
 ]
+# The peer channel's initiator: how a member Host reaches its coordinators, one TLS 1.3 connection
+# and one session per exchange. A Host that only dials out links this and no listener.
+peer = [
+    "grpc",
+    "permguard-contracts?/host-client",
+    "dep:permguard-tls",
+    "dep:anyhow",
+    "dep:hyper-util",
+    "dep:tokio-rustls",
+    "dep:futures-core",
+    "dep:tower",
+]
 # Every surface over both transports: what the command line and Permguard Admin link.
 full = [
     "http",
@@ -85,6 +97,10 @@ http.workspace = true
 ring.workspace = true
 rustls.workspace = true
 rustls-native-certs.workspace = true
+# The algorithms and the material a peer session's connection is built on (`peer`).
+permguard-tls = { workspace = true, optional = true }
+# The frames of a peer channel, as a stream (`peer`).
+futures-core = { workspace = true, optional = true }
 # The asynchronous fetch of the Authority refresh.
 anyhow = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }

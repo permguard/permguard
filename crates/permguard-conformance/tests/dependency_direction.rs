@@ -238,6 +238,12 @@ const LAYERS: &[(&str, &[&str])] = &[
             "tokio",
         ],
     ),
+    // What every TLS endpoint shares is no endpoint: no listener, no client, no async runtime.
+    ("permguard-tls", SERVER_STACK),
+    (
+        "permguard-tls",
+        &["permguard-host", "tokio", "permguard-client"],
+    ),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];
@@ -921,6 +927,15 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
 #[test]
 fn a_client_links_only_the_transports_it_selects() {
     const SURFACES: &str = "catalog,notp,decisions,events,pdp,temporal,host,authority,documents";
+    // The peer channel's initiator is a client too: it links the shared TLS policy, and neither
+    // the listener side nor a server.
+    let peer = carried_with("permguard-client", "peer");
+    assert!(
+        peer.contains("permguard-tls")
+            && !peer.contains("permguard-transport")
+            && !peer.contains("permguard-server"),
+        "the peer initiator links the TLS policy and no listener"
+    );
     let rest = carried_with("permguard-client", &format!("http,{SURFACES}"));
     let grpc = carried_with("permguard-client", &format!("grpc,{SURFACES}"));
     let mut problems = Vec::new();

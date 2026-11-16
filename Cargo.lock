@@ -2511,6 +2511,7 @@ dependencies = [
  "permguard-mirror",
  "permguard-notp",
  "permguard-objects",
+ "permguard-tls",
  "prost",
  "prost-types",
  "rcgen",
@@ -3118,6 +3119,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-tls"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "permguard-core",
+ "rustls",
+]
+
+[[package]]
 name = "permguard-transport"
 version = "0.1.0"
 dependencies = [
@@ -3128,6 +3138,7 @@ dependencies = [
  "http-body-util",
  "hyper-util",
  "permguard-core",
+ "permguard-tls",
  "rcgen",
  "ring",
  "rustls",
