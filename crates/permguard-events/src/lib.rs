@@ -15,6 +15,14 @@
 //! | [`chain`] | `prev(N) = digest(N − 1)`, across one producer's stream |
 //! | [`envelope`] | the signed head a batch of records travels under |
 //!
+//! Two halves are a runtime over that model, and a feature each, so that a verifier links the
+//! model alone (the crate boundaries refactoring, RD-14):
+//!
+//! | Feature | What it adds |
+//! | --- | --- |
+//! | `storage` | `journal`, the durable local history, with its `index` and its `archive` |
+//! | `stream` | `stream`, the event log as the Host's stream engine registers it |
+//!
 //! # Why this is not the decision log
 //!
 //! The two are the same *shape* — an append-only, producer-partitioned, hash-chained stream shipped
@@ -34,17 +42,21 @@
 //! would change what future decisions mean.
 //!
 //! What *is* shared is what carries no domain: JCS canonicalization and the per-batch Merkle tree,
-//! shared through `permguard-stream` rather than written twice.
+//! shared through `permguard-canonical` rather than written twice.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
+#[cfg(feature = "storage")]
 pub mod archive;
 pub mod chain;
 pub mod envelope;
+#[cfg(feature = "storage")]
 pub mod index;
+#[cfg(feature = "storage")]
 pub mod journal;
 pub mod record;
+#[cfg(feature = "stream")]
 pub mod stream;
 
 pub use chain::{ChainError, Verified};

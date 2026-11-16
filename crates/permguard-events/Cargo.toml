@@ -18,12 +18,9 @@ permguard-canonical.workspace = true
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
 permguard-host.workspace = true
-# The two primitives that are genuinely domain-agnostic: JCS canonicalization and the per-batch
-# Merkle tree operate on bytes and digest strings, and live in the stream foundation.
-# Everything that carries a *domain* — the record digest, the chain, the signed envelope's type —
-# is defined here instead, because reusing the decision log's domains is exactly what must never
-# happen: a decision record and an event record must not be confusable by any verifier.
-permguard-stream.workspace = true
+# The Host stream engine, for the two halves that are a runtime and not the model: the journal reads
+# the stream's signers, and the registration names the engine's descriptor and codec.
+permguard-stream = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -31,7 +28,18 @@ base64.workspace = true
 # Ed25519 verification, the same primitive the decision log verifies with.
 ring.workspace = true
 
+[features]
+# The normative model, record, chain and envelope, is always built and needs none of these: a
+# verifier links it alone.
+#
+# The durable journal a producer keeps, its index and the legacy archive read at a migration.
+storage = ["dep:permguard-stream"]
+# The event log as the Host's stream engine registers it: its name, descriptor and codec.
+stream = ["dep:permguard-stream"]
+
 [dev-dependencies]
 # Only to prove the domains stay separate: the test digests one value under both domains and
 # demands two different answers.
 permguard-decisions.workspace = true
+# The tests exercise the storage and the registration with the model.
+permguard-events = { path = ".", features = ["storage", "stream"] }

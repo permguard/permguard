@@ -3,7 +3,7 @@
 
 [package]
 name = "permguard-decisions"
-description = "What a decision record is: RFC 8785 canonical JSON, record digests, the producer hash chain, signed batch envelopes with Merkle roots, and the durable spool. Shared by the data plane that writes them, the control plane that keeps them and the CLI that verifies them."
+description = "What a decision record is: RFC 8785 canonical JSON, record digests, the producer hash chain, signed batch envelopes with Merkle roots. The durable spool and the Host stream registration are features. Shared by the data plane that writes them, the control plane that keeps them and the CLI that verifies them."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -29,13 +29,23 @@ permguard-canonical.workspace = true
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
 permguard-host.workspace = true
-# The domain-free primitives every evidence stream shares: JCS canonicalization and the per-batch
-# Merkle tree. They live in the stream foundation so a new stream type depends on the foundation,
-# never on the decision log.
-permguard-stream.workspace = true
+# The Host stream engine, for the two halves that are a runtime and not the model: the spool reads
+# the stream's signers, and the registration names the engine's descriptor and codec.
+permguard-stream = { workspace = true, optional = true }
+
+[features]
+# The normative model, record, chain, envelope, commitment and ceiling, is always built and needs
+# none of these: a verifier links it alone.
+#
+# The durable local record a producer keeps, and the legacy archive read at a migration.
+storage = ["dep:permguard-stream"]
+# The decision log as the Host's stream engine registers it: its name, descriptor and codec.
+stream = ["dep:permguard-stream"]
 
 [dev-dependencies]
 # A real key ring, so signing and verification are exercised end to end rather
 # than against a stub that agrees with itself.
 permguard-std = { workspace = true, features = ["keys"] }
+# The tests exercise the storage and the registration with the model.
+permguard-decisions = { path = ".", features = ["storage", "stream"] }
 proptest.workspace = true

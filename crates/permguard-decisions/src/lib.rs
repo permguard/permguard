@@ -14,12 +14,19 @@
 //! | [`envelope`] | the signed head a batch travels under |
 //! | [`commitment`] | keyed commitments over caller-supplied inputs |
 //! | [`ceiling`] | what a store accepts in clear |
-//! | [`spool`] | the durable local record, and the crash boundaries around it |
 //! | [`instance`] | incarnation identifiers, minted where a stream begins |
+//!
+//! Two halves are a runtime over that model, and a feature each, so that a verifier links the
+//! model alone (the crate boundaries refactoring, RD-14):
+//!
+//! | Feature | What it adds |
+//! | --- | --- |
+//! | `storage` | `spool`, the durable local record and the crash boundaries around it, and `archive` |
+//! | `stream` | `stream`, the decision log as the Host's stream engine registers it |
 //!
 //! The two primitives that carry no decision domain at all — [`jcs`], the canonical bytes every
 //! digest is taken over, and [`merkle`], the per-batch inclusion tree — live in
-//! `permguard-stream` and are re-exported here unchanged: every evidence stream needs them, and a
+//! `permguard-canonical` and are re-exported here unchanged: every evidence stream needs them, and a
 //! future stream type must be able to depend on them without depending on decisions.
 //!
 //! It says nothing about *what is done* with a record: the data plane writes
@@ -27,6 +34,7 @@
 //! them. None of that is visible from here — which is what lets every side
 //! compute the same digests without agreeing on anything else.
 
+#[cfg(feature = "storage")]
 pub mod archive;
 pub mod ceiling;
 pub mod chain;
@@ -34,7 +42,9 @@ pub mod commitment;
 pub mod envelope;
 pub mod instance;
 pub mod record;
+#[cfg(feature = "storage")]
 pub mod spool;
+#[cfg(feature = "stream")]
 pub mod stream;
 
 pub use permguard_canonical::jcs;
@@ -44,4 +54,5 @@ pub use chain::{ChainError, Verified};
 pub use commitment::Commitment;
 pub use envelope::{Batch, Envelope, EnvelopeError, Signed};
 pub use record::{Body, GENESIS, Record, Stream, digest_of};
+#[cfg(feature = "storage")]
 pub use spool::{Spool, SpoolError, State};

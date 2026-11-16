@@ -601,6 +601,52 @@ fn the_control_plane_validates_without_evaluating() {
     );
 }
 
+/// A decision record and an event record are a normative model first (RD-14): built with no
+/// feature, each package links no Host stream engine, which is what a verifier links; the durable
+/// storage and the stream registration are features that bring it. The Control Plane's domain
+/// registers the two streams and keeps what it receives in its own store, so its build takes the
+/// registration and never a producer's spool or journal.
+#[test]
+fn an_evidence_model_links_no_stream_runtime_until_a_feature_asks() {
+    let mut problems = Vec::new();
+    for package in ["permguard-decisions", "permguard-events"] {
+        if carried_with(package, "").contains("permguard-stream") {
+            problems.push(format!(
+                "{package}, the model alone, links permguard-stream"
+            ));
+        }
+        for feature in ["storage", "stream"] {
+            if !carried_with(package, feature).contains("permguard-stream") {
+                problems.push(format!(
+                    "{package} with `{feature}` does not link permguard-stream"
+                ));
+            }
+        }
+    }
+    let control = features_of("permguard-control-plane");
+    for package in ["permguard-decisions", "permguard-events"] {
+        match control.get(package) {
+            None => problems.push(format!("the Control Plane does not link {package}")),
+            Some(enabled) => {
+                if enabled.contains("storage") {
+                    problems.push(format!("the Control Plane builds {package} with `storage`"));
+                }
+                if !enabled.contains("stream") {
+                    problems.push(format!(
+                        "the Control Plane builds {package} without `stream`"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "an evidence model is selectable alone:
+  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// The embedded Data Plane carries the languages its application selects and no other, and none by
 /// default (`11-refactoring/1-dependencies.md`, Feature and profile model): built by itself with
 /// one language's feature, it links that engine, the decision point, and neither another engine

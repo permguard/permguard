@@ -22,8 +22,8 @@ anyhow.workspace = true
 clap.workspace = true
 permguard-core.workspace = true
 permguard-host.workspace = true
-permguard-decisions.workspace = true
-permguard-events.workspace = true
+permguard-decisions = { workspace = true, features = ["storage"] }
+permguard-events = { workspace = true, features = ["storage"] }
 permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
 cryptoki = { workspace = true, optional = true }
 tracing.workspace = true

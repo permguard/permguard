@@ -22,10 +22,10 @@ anyhow.workspace = true
 base64.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain, the signed envelope.
-permguard-decisions.workspace = true
+permguard-decisions = { workspace = true, features = ["stream"] }
 # The bounded stream-window contract both evidence stores are read through.
 # The event record, chain and signed batch contract this store keeps.
-permguard-events.workspace = true
+permguard-events = { workspace = true, features = ["stream"] }
 permguard-host.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.

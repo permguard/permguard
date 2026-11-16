@@ -103,7 +103,7 @@ fn login(at: i64, user: &str, server: &str) -> permguard_languages::Occurrence {
         "resource": "Drupe::Gateway::\"gw1\"",
         "logged": fields,
         "request_context": {"input": fields["input"]},
-        "occurred_at": permguard_events::index::render_epoch_seconds(at).expect("an instant"),
+        "occurred_at": permguard_canonical::time::render_epoch_seconds(at).expect("an instant"),
     }))
     .expect("the body parses");
     body.read().expect("well formed")

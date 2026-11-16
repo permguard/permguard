@@ -4,7 +4,8 @@
 
 #
 # Runs the packages whose features select what a build carries, in every profile, each resolved
-# on its own: the policy languages, and the client library's surfaces and transports.
+# on its own: the policy languages, the client library's surfaces and transports, and the two
+# evidence models.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -73,5 +74,15 @@ for surface in catalog notp decisions events pdp temporal host authority documen
     cargo check --locked -p permguard-client --no-default-features --features "http,grpc,${surface}"
 done
 run "permguard-client, every surface over both transports" -p permguard-client
+
+# The evidence models: the normative record, chain and envelope with no feature, then each runtime
+# half alone. Their tests run with both halves.
+for package in permguard-decisions permguard-events; do
+    for selection in "" storage stream; do
+        printf '==> %s built with `%s`\n' "${package}" "${selection}"
+        cargo check --locked -p "${package}" --no-default-features --features "${selection}"
+    done
+    run "${package}, the model with its storage and its registration" -p "${package}"
+done
 
 printf 'ok: every profile compiles and passes its tests on its own\n'

@@ -97,7 +97,7 @@ fn test_every_digest_is_recomputed_from_the_canonical_vector() {
     for vector in vectors["languages"].as_array().expect("languages") {
         let name = vector["descriptor"]["name"].as_str().expect("a name");
         let canonical =
-            permguard_stream::jcs::canonicalize(&vector["descriptor"]).expect("canonical JSON");
+            permguard_canonical::jcs::canonicalize(&vector["descriptor"]).expect("canonical JSON");
         let mut hasher = Sha256::new();
         hasher.update(domain.as_bytes());
         hasher.update(&canonical);

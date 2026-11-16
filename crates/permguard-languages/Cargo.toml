@@ -52,12 +52,11 @@ serde_norway.workspace = true
 libc = "0.2"
 
 # The suites drive the engines' own crates beside the catalogue — the corpora, the parity checks,
-# the independent lock reader — and the events and stream crates their vectors are built with.
+# the independent lock reader — and the canonical forms their vectors are built with.
 [dev-dependencies]
 cedar-policy.workspace = true
 dogwood-language.workspace = true
-permguard-events.workspace = true
-permguard-stream.workspace = true
+permguard-canonical.workspace = true
 regorus.workspace = true
 
 # Each suite asks for what it exercises and nothing else, so a build of one language runs that

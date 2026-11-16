@@ -47,6 +47,9 @@ is cut.
   The verified local mirror is `permguard-mirror`, with no network in it, and the round over a Host's mirror tasks is `permguard-sync`: the Data Plane's domain, and an embedded Data Plane with it, links no network client, no tonic, axum, hyper or rustls.
 - **The canonical forms are a package of their own.**
   Strict JCS, the Merkle root and the RFC 3339 instants are `permguard-canonical`, a package with no I/O and no runtime: `permguard-language-core` builds on it and no longer reaches the Host's events or its stream engine.
+- **A decision record and an event record are selectable without their storage.**
+  `permguard-decisions` and `permguard-events` build the normative model, record, chain and envelope, with no feature; the durable spool and journal are their `storage` feature and the Host stream registration their `stream` feature.
+  A verifier links the model alone, with no Host stream engine; no record, digest or envelope changes.
 - **The command line links no server.**
   Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
   The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.
