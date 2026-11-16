@@ -48,12 +48,13 @@ NON_TEST_CODE='
 
 # The files a `#[cfg(test)] mod name;` loads are test code as a whole, as the durability check
 # reads them: `name.rs` or `name/mod.rs` beside a `lib.rs`, `main.rs` or `mod.rs`, under `stem/`
-# beside any other file.
+# beside any other file. The `case` patterns open with a parenthesis because this runs inside a
+# command substitution, where bash 3.2, the one macOS ships, reads a bare `)` as its end.
 TEST_FILES="$(
     find "${ROOT}/crates" -type f -name '*.rs' -path '*/src/*' | sort | while IFS= read -r file; do
         case "$(basename "${file}")" in
-            lib.rs | main.rs | mod.rs) base="$(dirname "${file}")" ;;
-            *) base="${file%.rs}" ;;
+            (lib.rs | main.rs | mod.rs) base="$(dirname "${file}")" ;;
+            (*) base="${file%.rs}" ;;
         esac
         awk '
             /^#\[cfg\(test\)\][[:space:]]*$/ { pending = 1; next }
