@@ -261,6 +261,9 @@ test: ## Run tests.
 test-profiles: ## Run every profile a build may select, a language, a client surface or a transport, each built apart.
 	./scripts/test-profiles.sh
 
+measure-embedded: ## Measure the reference embedding application in every named profile, packages, build, size, memory, threads and shutdown.
+	./scripts/measure-embedded-fixture.sh
+
 version-control: ## Report the control plane version.
 	cargo run $(profile) -p permguard-control-plane-server --bin permguard-control-plane -- version
 

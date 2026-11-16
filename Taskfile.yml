@@ -471,6 +471,11 @@ tasks:
     cmds:
       - ./scripts/test-profiles.sh
 
+  measure:embedded:
+    desc: Measure the reference embedding application in every named profile, packages, build, size, memory, threads and shutdown.
+    cmds:
+      - ./scripts/measure-embedded-fixture.sh
+
   version:control:
     desc: Report the control plane version.
     cmds:

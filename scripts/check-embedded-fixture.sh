@@ -21,6 +21,8 @@
 #                     profile was last settled, with a margin of about five in a hundred, so a
 #                     dependency that grows a profile is seen when it arrives
 #   what it does      the fixture's tests of that profile pass, and at least one ran
+#   one worker        for a profile that decides a ledger alone, the reference application under the
+#                     one-worker profile decides it and holds no more threads than the bound below
 #
 # The fixture's lockfile is the workspace's, copied before each run: a profile is proven with the
 # versions the repository ships, and there is no second lockfile to keep.
@@ -126,8 +128,40 @@ check() {
     fi
 }
 
+# The most threads the reference application may hold under the one-worker profile: its own,
+# one evaluating, one for storage and one for evidence, and two to spare. Measured at 2.
+ONE_WORKER_THREADS=6
+
+one_worker() {
+    local selection="$1"
+    printf '==> the reference application with `%s`, one worker\n' "${selection}"
+    local report
+    if ! report="$(cargo run --quiet --manifest-path "${MANIFEST}" --no-default-features \
+        --features "${selection}" --example reference -- --one-worker 2>/dev/null)"; then
+        printf '%s\n' "${report}" >&2
+        printf 'error: with `%s`, the reference application failed under one worker\n' "${selection}" >&2
+        exit 1
+    fi
+    local decisions threads
+    decisions="$(printf '%s\n' "${report}" | awk -F '\t' '$1 == "decisions" { print $2 }')"
+    threads="$(printf '%s\n' "${report}" | awk -F '\t' '$1 == "threads" { print $2 }')"
+    printf '    %s decisions on %s threads, of a bound of %s\n' "${decisions:-0}" "${threads:-?}" "${ONE_WORKER_THREADS}"
+    if [ "${decisions:-0}" -lt 1 ]; then
+        printf 'error: with `%s`, the reference application decided nothing under one worker\n' "${selection}" >&2
+        exit 1
+    fi
+    if [ -z "${threads}" ] || [ "${threads}" -lt 1 ] || [ "${threads}" -gt "${ONE_WORKER_THREADS}" ]; then
+        printf 'error: with `%s`, one worker holds %s threads, past the bound of %s\n' \
+            "${selection}" "${threads:-none counted}" "${ONE_WORKER_THREADS}" >&2
+        exit 1
+    fi
+}
+
 for selection in "" cedar rego dogwood "cedar,rego,dogwood"; do
     check "${selection}"
+done
+for selection in cedar rego; do
+    one_worker "${selection}"
 done
 
 printf 'ok: the embedding application links and decides what each profile selects\n'
