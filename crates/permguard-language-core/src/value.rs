@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The one mapping between JSON on the wire and Dogwood's runtime values.
+//! The one mapping between JSON on the wire and Dogwood's runtime values, and the values themselves.
 //!
 //! # Why a mapping needs writing down at all
 //!
@@ -38,7 +38,6 @@
 
 use std::collections::BTreeMap;
 
-use dogwood_language::Value as DogwoodValue;
 use serde_json::{Map, Number, Value as Json};
 
 /// The key Cedar uses to escape an entity reference.
@@ -47,6 +46,61 @@ pub const ENTITY_ESCAPE: &str = "__entity";
 pub const EXTENSION_ESCAPE: &str = "__extn";
 /// The extension function naming a decimal.
 pub const DECIMAL_FUNCTION: &str = "decimal";
+
+/// One value an occurrence carries: Dogwood's value domain, variant for variant.
+///
+/// Held here rather than taken from `dogwood-language`, so the contracts link no engine: the Dogwood
+/// package turns each variant into the same variant of its engine's value when it builds the
+/// event its authorizer reads, and nowhere else does a value cross that line.
+///
+/// `PartialEq` and `Eq` are structural, as upstream's are: a decimal compares its text verbatim,
+/// so `1.5` and `1.50` differ under `==`. The comparison a policy makes is [`Value::dom_eq`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Value {
+    Null,
+    Bool(bool),
+    Int(i64),
+    /// A decimal, kept as the exact text it was written in.
+    Decimal(String),
+    String(String),
+    Entity {
+        ty: String,
+        id: String,
+    },
+    Array(Vec<Value>),
+    Object(BTreeMap<String, Value>),
+}
+
+impl Value {
+    /// Structural equality, with decimals compared the way Cedar compares them: by the value Cedar
+    /// holds, so `1.5` and `1.50` are one decimal. A spelling Cedar refuses is no decimal, and
+    /// equals only its own text.
+    ///
+    /// Upstream's own `Value::dom_eq`, over this package's values; the Dogwood package holds the
+    /// two to the same verdict on every case it can name.
+    pub fn dom_eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Decimal(left), Value::Decimal(right)) => {
+                match (decimal_scaled(left), decimal_scaled(right)) {
+                    (Some(left), Some(right)) => left == right,
+                    _ => left == right,
+                }
+            }
+            (Value::Array(left), Value::Array(right)) => {
+                left.len() == right.len()
+                    && left.iter().zip(right).all(|(one, two)| one.dom_eq(two))
+            }
+            (Value::Object(left), Value::Object(right)) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right)
+                        .all(|((one, held), (two, other))| one == two && held.dom_eq(other))
+            }
+            _ => self == other,
+        }
+    }
+}
 
 /// Why a JSON value is not a Dogwood value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,22 +132,22 @@ impl std::fmt::Display for ValueError {
 impl std::error::Error for ValueError {}
 
 /// One JSON value, as the Dogwood value it exactly represents.
-pub fn from_json(json: &Json) -> Result<DogwoodValue, ValueError> {
+pub fn from_json(json: &Json) -> Result<Value, ValueError> {
     convert(json, "")
 }
 
-fn convert(json: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
+fn convert(json: &Json, at: &str) -> Result<Value, ValueError> {
     match json {
-        Json::Null => Ok(DogwoodValue::Null),
-        Json::Bool(held) => Ok(DogwoodValue::Bool(*held)),
+        Json::Null => Ok(Value::Null),
+        Json::Bool(held) => Ok(Value::Bool(*held)),
         Json::Number(held) => number(held, at),
-        Json::String(held) => Ok(DogwoodValue::String(held.clone())),
+        Json::String(held) => Ok(Value::String(held.clone())),
         Json::Array(items) => items
             .iter()
             .enumerate()
             .map(|(index, item)| convert(item, &push(at, &index.to_string())))
-            .collect::<Result<Vec<DogwoodValue>, ValueError>>()
-            .map(DogwoodValue::Array),
+            .collect::<Result<Vec<Value>, ValueError>>()
+            .map(Value::Array),
         Json::Object(fields) => object(fields, at),
     }
 }
@@ -105,9 +159,9 @@ fn convert(json: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
 /// and is refused with the escape it should have used: silently making it a decimal would invent
 /// a precision the caller never stated, and making it an integer would discard the part after the
 /// point.
-fn number(held: &Number, at: &str) -> Result<DogwoodValue, ValueError> {
+fn number(held: &Number, at: &str) -> Result<Value, ValueError> {
     if let Some(whole) = held.as_i64() {
-        return Ok(DogwoodValue::Int(whole));
+        return Ok(Value::Int(whole));
     }
     if held.as_u64().is_some() {
         return Err(ValueError::new(
@@ -136,7 +190,7 @@ fn number(held: &Number, at: &str) -> Result<DogwoodValue, ValueError> {
 /// "Exactly": an object is an escape only when the escape key is its **sole** key. An object that
 /// merely contains `__entity` beside other fields is a record with an oddly named field, and
 /// guessing otherwise would let a caller turn a record into an entity by naming a field.
-fn object(fields: &Map<String, Json>, at: &str) -> Result<DogwoodValue, ValueError> {
+fn object(fields: &Map<String, Json>, at: &str) -> Result<Value, ValueError> {
     if fields.len() == 1 {
         if let Some(entity) = fields.get(ENTITY_ESCAPE) {
             return self_entity(entity, &push(at, ENTITY_ESCAPE));
@@ -151,10 +205,10 @@ fn object(fields: &Map<String, Json>, at: &str) -> Result<DogwoodValue, ValueErr
         record.insert(name.clone(), convert(value, &push(at, name))?);
     }
 
-    Ok(DogwoodValue::Object(record))
+    Ok(Value::Object(record))
 }
 
-fn self_entity(entity: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
+fn self_entity(entity: &Json, at: &str) -> Result<Value, ValueError> {
     let Json::Object(fields) = entity else {
         return Err(ValueError::new(
             at,
@@ -183,10 +237,10 @@ fn self_entity(entity: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
         ));
     }
 
-    Ok(DogwoodValue::Entity { ty, id })
+    Ok(Value::Entity { ty, id })
 }
 
-fn decimal(extension: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
+fn decimal(extension: &Json, at: &str) -> Result<Value, ValueError> {
     let Json::Object(fields) = extension else {
         return Err(ValueError::new(
             at,
@@ -213,7 +267,7 @@ fn decimal(extension: &Json, at: &str) -> Result<DogwoodValue, ValueError> {
         ));
     }
 
-    Ok(DogwoodValue::Decimal(argument.to_owned()))
+    Ok(Value::Decimal(argument.to_owned()))
 }
 
 /// Whether text is a decimal literal, in the shape Cedar accepts.
@@ -234,12 +288,12 @@ fn is_decimal_text(text: &str) -> bool {
 /// The inverse of [`from_json`] for everything [`from_json`] accepts, which is what the round-trip
 /// tests hold it to: a value that survives one direction and not the other is a value a caller
 /// cannot read back.
-pub fn to_json(value: &DogwoodValue) -> Json {
+pub fn to_json(value: &Value) -> Json {
     match value {
-        DogwoodValue::Null => Json::Null,
-        DogwoodValue::Bool(held) => Json::Bool(*held),
-        DogwoodValue::Int(held) => Json::Number(Number::from(*held)),
-        DogwoodValue::Decimal(text) => {
+        Value::Null => Json::Null,
+        Value::Bool(held) => Json::Bool(*held),
+        Value::Int(held) => Json::Number(Number::from(*held)),
+        Value::Decimal(text) => {
             let mut extension = Map::new();
             extension.insert("fn".to_owned(), Json::String(DECIMAL_FUNCTION.to_owned()));
             extension.insert("arg".to_owned(), Json::String(text.clone()));
@@ -248,8 +302,8 @@ pub fn to_json(value: &DogwoodValue) -> Json {
 
             Json::Object(wrapper)
         }
-        DogwoodValue::String(held) => Json::String(held.clone()),
-        DogwoodValue::Entity { ty, id } => {
+        Value::String(held) => Json::String(held.clone()),
+        Value::Entity { ty, id } => {
             let mut entity = Map::new();
             entity.insert("type".to_owned(), Json::String(ty.clone()));
             entity.insert("id".to_owned(), Json::String(id.clone()));
@@ -258,8 +312,8 @@ pub fn to_json(value: &DogwoodValue) -> Json {
 
             Json::Object(wrapper)
         }
-        DogwoodValue::Array(items) => Json::Array(items.iter().map(to_json).collect()),
-        DogwoodValue::Object(fields) => Json::Object(
+        Value::Array(items) => Json::Array(items.iter().map(to_json).collect()),
+        Value::Object(fields) => Json::Object(
             fields
                 .iter()
                 .map(|(name, held)| (name.clone(), to_json(held)))
@@ -285,8 +339,9 @@ const DECIMAL_PLACES: u32 = 4;
 /// A decimal's exact Cedar value: the text scaled to [`DECIMAL_PLACES`], as Cedar holds it.
 ///
 /// Mirrors upstream's own `cedar_decimal_value`, which is crate-private there. Reimplementing it
-/// is a drift risk and is treated as one: `a_canonical_encoding_agrees_with_dogwoods_own_equality`
-/// checks this against `Value::dom_eq` over the spellings that make the two disagree — a missing
+/// is a drift risk and is treated as one: the Dogwood package's
+/// `the_contracts_values_compare_as_dogwoods_own` checks [`Value::dom_eq`] and [`canonical`]
+/// against upstream's `Value::dom_eq` over the spellings that make the two disagree — a missing
 /// point, a fifth place, a negative zero whose whole part parses to `0`.
 fn decimal_scaled(text: &str) -> Option<i64> {
     let (whole_text, fraction_text) = text.split_once('.')?;
@@ -335,24 +390,24 @@ fn decimal_scaled(text: &str) -> Option<i64> {
 ///
 /// A decimal encodes as the integer Cedar holds it as, so `1.50` and `1.5` — one value to Cedar,
 /// and one value to a policy comparing them — are one key.
-pub fn canonical(value: &DogwoodValue) -> String {
+pub fn canonical(value: &Value) -> String {
     let mut encoded = String::new();
     encode(value, &mut encoded);
 
     encoded
 }
 
-fn encode(value: &DogwoodValue, into: &mut String) {
+fn encode(value: &Value, into: &mut String) {
     match value {
-        DogwoodValue::Null => into.push_str("n:"),
-        DogwoodValue::Bool(held) => {
+        Value::Null => into.push_str("n:"),
+        Value::Bool(held) => {
             into.push_str(if *held { "b:1" } else { "b:0" });
         }
-        DogwoodValue::Int(held) => {
+        Value::Int(held) => {
             into.push_str("i:");
             into.push_str(&held.to_string());
         }
-        DogwoodValue::Decimal(text) => match decimal_scaled(text) {
+        Value::Decimal(text) => match decimal_scaled(text) {
             // The exact value, so two spellings of one decimal are one key.
             Some(scaled) => {
                 into.push_str("d:");
@@ -366,16 +421,16 @@ fn encode(value: &DogwoodValue, into: &mut String) {
                 text_into(text, into);
             }
         },
-        DogwoodValue::String(held) => {
+        Value::String(held) => {
             into.push_str("s:");
             text_into(held, into);
         }
-        DogwoodValue::Entity { ty, id } => {
+        Value::Entity { ty, id } => {
             into.push_str("e:");
             text_into(ty, into);
             text_into(id, into);
         }
-        DogwoodValue::Array(items) => {
+        Value::Array(items) => {
             into.push_str("a:");
             into.push_str(&items.len().to_string());
             into.push(':');
@@ -383,7 +438,7 @@ fn encode(value: &DogwoodValue, into: &mut String) {
                 encode(item, into);
             }
         }
-        DogwoodValue::Object(fields) => {
+        Value::Object(fields) => {
             into.push_str("o:");
             into.push_str(&fields.len().to_string());
             into.push(':');
@@ -408,7 +463,7 @@ fn text_into(text: &str, into: &mut String) {
 /// The point of showing it in the wire's own shape is that a message about a value the caller sent
 /// should be readable against what the caller sent, not against this crate's internal spelling of
 /// it.
-pub fn render(value: &DogwoodValue) -> String {
+pub fn render(value: &Value) -> String {
     serde_json::to_string(&to_json(value)).unwrap_or_else(|_| "<unrenderable>".to_owned())
 }
 
@@ -478,7 +533,7 @@ mod tests {
         assert!(from_json(&big).is_err(), "u64::MAX has no i64 counterpart");
         assert_eq!(
             from_json(&json!(i64::MAX)).expect("this one fits"),
-            DogwoodValue::Int(i64::MAX)
+            Value::Int(i64::MAX)
         );
     }
 
@@ -488,11 +543,11 @@ mod tests {
         let value = from_json(&json!({"type": "invoice", "id": "inv-1"})).expect("a record");
 
         match value {
-            DogwoodValue::Object(fields) => {
+            Value::Object(fields) => {
                 assert_eq!(fields.len(), 2);
                 assert_eq!(
                     fields.get("type"),
-                    Some(&DogwoodValue::String("invoice".to_owned()))
+                    Some(&Value::String("invoice".to_owned()))
                 );
             }
             other => panic!("guessed an entity from a record: {other:?}"),
@@ -506,7 +561,7 @@ mod tests {
             .expect("a record with an oddly named field");
 
         assert!(
-            matches!(value, DogwoodValue::Object(ref fields) if fields.len() == 2),
+            matches!(value, Value::Object(ref fields) if fields.len() == 2),
             "a caller must not turn a record into an entity by naming a field"
         );
     }
@@ -540,11 +595,11 @@ mod tests {
     /// Explicit null is a value, and stays one.
     #[test]
     fn an_explicit_null_stays_explicit() {
-        assert_eq!(from_json(&json!(null)).expect("null"), DogwoodValue::Null);
+        assert_eq!(from_json(&json!(null)).expect("null"), Value::Null);
         let record = from_json(&json!({"note": null})).expect("a record with a null");
         match record {
-            DogwoodValue::Object(fields) => {
-                assert_eq!(fields.get("note"), Some(&DogwoodValue::Null));
+            Value::Object(fields) => {
+                assert_eq!(fields.get("note"), Some(&Value::Null));
             }
             other => panic!("{other:?}"),
         }
@@ -557,9 +612,9 @@ mod tests {
         let value =
             from_json(&json!({"__extn": {"fn": "decimal", "arg": "1.50"}})).expect("a decimal");
 
-        assert_eq!(value, DogwoodValue::Decimal("1.50".to_owned()));
+        assert_eq!(value, Value::Decimal("1.50".to_owned()));
         // `1.50` and `1.5` are the same number and different text; Dogwood compares them as
         // decimals, and the wire must not have already collapsed one into the other.
-        assert!(value.dom_eq(&DogwoodValue::Decimal("1.5".to_owned())));
+        assert!(value.dom_eq(&Value::Decimal("1.5".to_owned())));
     }
 }

@@ -27,8 +27,9 @@ use std::sync::{Arc, Mutex};
 use cedar_policy::{Entities, EntityUid, Schema};
 use dogwood_language::{
     Authorizer, EventFieldType, EventPinRoot, LoweredPolicySet, ParsedPolicySet, PolicySchema,
-    ProviderDeclarations, ServiceSchema, Validator, Value as DogwoodValue,
+    ProviderDeclarations, ServiceSchema, Validator,
 };
+use permguard_language_core::value::Value;
 
 use permguard_language_core::artifact::Artifacts;
 use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
@@ -952,8 +953,7 @@ impl permguard_language_core::temporal::Temporal for CompiledDogwood {
             // Accepting one and dropping it would store an event that answers differently from
             // the one that was sent; the pins that would have the same problem are refused a
             // load earlier, where an operator can act on it.
-            if !matches!(value, DogwoodValue::Object(_)) && !injectable(std::slice::from_ref(group))
-            {
+            if !matches!(value, Value::Object(_)) && !injectable(std::slice::from_ref(group)) {
                 return Err(Refused::new(
                     permguard_core::codes::pdp_temporal::EVENT_FIELD_NOT_CARRIABLE,
                     format!(
@@ -1058,7 +1058,7 @@ impl permguard_language_core::temporal::Temporal for CompiledDogwood {
                     ),
                 )
             })?;
-            let event = occurrence.to_event().map_err(|malformed| {
+            let event = crate::event::to_event(occurrence).map_err(|malformed| {
                 Refused::new(
                     permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
                     format!(
@@ -1200,7 +1200,7 @@ impl CompiledDogwood {
             Ok(projected) => projected,
             Err(refused) => return Applied::Decided(Verdict::engine_failed(refused.message)),
         };
-        let event = match occurrence.to_event() {
+        let event = match crate::event::to_event(&occurrence) {
             Ok(event) => event,
             // Checked before it was journalled, so this is not a caller's mistake reaching here
             // late — it is this build disagreeing with itself: the engine failing, `E`, and never
@@ -1446,7 +1446,7 @@ fn check_leaf(
     signature: &Signature,
     bag: &str,
     path: &mut Vec<String>,
-    value: &DogwoodValue,
+    value: &Value,
     required: bool,
 ) -> Result<(), Refused> {
     let declared = signature.fields.iter().find(|field| field.path == *path);
@@ -1469,7 +1469,7 @@ fn check_leaf(
             )),
         };
     }
-    if let DogwoodValue::Object(fields) = value {
+    if let Value::Object(fields) = value {
         // Not a declared leaf, and a record: a group, so descend. A record that *is* a declared
         // leaf was answered above — upstream's matching reads both a whole record and its members,
         // and it is the declaration that says which this is.
@@ -1505,11 +1505,11 @@ fn check_leaf(
 /// `true` for anything it does not recognise — a record type by name, an extension type — rather
 /// than refusing a value because this build could not read the word for its type. Refusing on
 /// unfamiliarity would turn a Cedar upgrade into an outage.
-fn compatible(declared: &str, value: &DogwoodValue) -> bool {
+fn compatible(declared: &str, value: &Value) -> bool {
     // The `EntityTypes` rendering: a `principalType(A)` field, kept as its full declared set.
     if declared.contains(" | ") || declared.contains("::") {
         return match value {
-            DogwoodValue::Entity { ty, .. } => declared
+            Value::Entity { ty, .. } => declared
                 .split(" | ")
                 .any(|held| entity_type_matches(held.trim(), ty)),
             _ => false,
@@ -1521,11 +1521,11 @@ fn compatible(declared: &str, value: &DogwoodValue) -> bool {
         .unwrap_or(declared);
 
     match token {
-        "String" => matches!(value, DogwoodValue::String(_)),
-        "Long" => matches!(value, DogwoodValue::Int(_)),
-        "Bool" | "Boolean" => matches!(value, DogwoodValue::Bool(_)),
-        "decimal" | "Decimal" => matches!(value, DogwoodValue::Decimal(_)),
-        "Set" => matches!(value, DogwoodValue::Array(_)),
+        "String" => matches!(value, Value::String(_)),
+        "Long" => matches!(value, Value::Int(_)),
+        "Bool" | "Boolean" => matches!(value, Value::Bool(_)),
+        "decimal" | "Decimal" => matches!(value, Value::Decimal(_)),
+        "Set" => matches!(value, Value::Array(_)),
         _ => true,
     }
 }
@@ -1558,13 +1558,13 @@ fn action_uid(action: &str) -> String {
 }
 
 /// The value a pin takes, read from the request root its schema names.
-fn pin_value(occurrence: &Occurrence, pin: &Pin) -> Result<DogwoodValue, Refused> {
+fn pin_value(occurrence: &Occurrence, pin: &Pin) -> Result<Value, Refused> {
     match &pin.source {
-        PinSource::Principal => Ok(DogwoodValue::Entity {
+        PinSource::Principal => Ok(Value::Entity {
             ty: occurrence.principal.kind.clone(),
             id: occurrence.principal.id.clone(),
         }),
-        PinSource::Resource => Ok(DogwoodValue::Entity {
+        PinSource::Resource => Ok(Value::Entity {
             ty: occurrence.resource.kind.clone(),
             id: occurrence.resource.id.clone(),
         }),
@@ -1586,14 +1586,11 @@ fn pin_value(occurrence: &Occurrence, pin: &Pin) -> Result<DogwoodValue, Refused
 }
 
 /// One value of a bag, by dotted path.
-fn read_path<'a>(
-    bag: &'a BTreeMap<String, DogwoodValue>,
-    path: &[String],
-) -> Option<&'a DogwoodValue> {
+fn read_path<'a>(bag: &'a BTreeMap<String, Value>, path: &[String]) -> Option<&'a Value> {
     let (head, rest) = path.split_first()?;
     let mut held = bag.get(head)?;
     for segment in rest {
-        let DogwoodValue::Object(fields) = held else {
+        let Value::Object(fields) = held else {
             return None;
         };
         held = fields.get(segment)?;
@@ -2115,7 +2112,7 @@ when { Run::Away(context.input.document).ok == true };
         assert_eq!(checked.pin_names(), ["callerPrincipal"]);
         assert_eq!(
             checked.pin_values(),
-            [value::canonical(&DogwoodValue::Entity {
+            [value::canonical(&Value::Entity {
                 ty: "Drupe::OAuthUser".to_owned(),
                 id: "alice".to_owned(),
             })]
@@ -2148,7 +2145,7 @@ when { Run::Away(context.input.document).ok == true };
         );
         event.logged.insert(
             "callerPrincipal".to_owned(),
-            DogwoodValue::Entity {
+            Value::Entity {
                 ty: "Drupe::OAuthUser".to_owned(),
                 id: "mallory".to_owned(),
             },
@@ -2162,7 +2159,7 @@ when { Run::Away(context.input.document).ok == true };
         // The same value the schema derives is not a contradiction: a caller may state it.
         event.logged.insert(
             "callerPrincipal".to_owned(),
-            DogwoodValue::Entity {
+            Value::Entity {
                 ty: "Drupe::OAuthUser".to_owned(),
                 id: "alice".to_owned(),
             },
@@ -2287,9 +2284,7 @@ when { Run::Away(context.input.document).ok == true };
                     id: "alice".to_owned(),
                 },
                 // `OAuthUser` declares `id: String`, and nothing called `rank`.
-                attrs: [("rank".to_owned(), DogwoodValue::Int(1))]
-                    .into_iter()
-                    .collect(),
+                attrs: [("rank".to_owned(), Value::Int(1))].into_iter().collect(),
                 parents: Vec::new(),
             });
 
@@ -2543,10 +2538,9 @@ when { Run::Away(context.input.document).ok == true };
             json!({"input": {"user": "alice", "document": "doc1"}}),
         );
         // Declared by the pinned schema, and with nowhere to go through the public builder.
-        event.logged.insert(
-            "requestId".to_owned(),
-            DogwoodValue::String("u2".to_owned()),
-        );
+        event
+            .logged
+            .insert("requestId".to_owned(), Value::String("u2".to_owned()));
 
         let refused = temporal.check(&event).expect_err("it would be dropped");
         assert_eq!(refused.code, "event_field_not_carriable");
@@ -2992,9 +2986,7 @@ when { Run::Away(context.input.document).ok == true };
         // A logged bag whose group is a bare value rather than a record of fields cannot become an
         // event, so the replay fails where it is attempted.
         let mut broken = login.clone();
-        broken
-            .logged
-            .insert("input".to_owned(), DogwoodValue::Int(7));
+        broken.logged.insert("input".to_owned(), Value::Int(7));
         let refused = temporal
             .rebuild(&history(&checked), &[broken], None)
             .expect_err("an unreplayable history is not a history");

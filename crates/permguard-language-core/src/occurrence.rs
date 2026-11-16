@@ -36,11 +36,10 @@
 
 use std::collections::BTreeMap;
 
-use dogwood_language::{Event, EventBuilder, Value as DogwoodValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 
-use crate::value;
+use crate::value::{self, Value};
 
 /// The registered name of this event input.
 pub const EVENT_TYPE: &str = permguard_core::domains::event::DOGWOOD_V1;
@@ -139,7 +138,7 @@ pub struct EntityBody {
 #[derive(Debug, Clone)]
 pub struct AttributedEntity {
     pub uid: EntityRef,
-    pub attrs: BTreeMap<String, DogwoodValue>,
+    pub attrs: BTreeMap<String, Value>,
     pub parents: Vec<EntityRef>,
 }
 
@@ -148,7 +147,7 @@ impl Occurrence {
     /// for, scaled by the measured factor (DOGWOOD-08).
     pub fn weight(&self) -> usize {
         let reference = |entity: &EntityRef| entity.kind.len() + entity.id.len();
-        let values = |bag: &BTreeMap<String, DogwoodValue>| -> usize {
+        let values = |bag: &BTreeMap<String, Value>| -> usize {
             bag.iter()
                 .map(|(key, value)| key.len() + crate::value::canonical(value).len())
                 .sum()
@@ -184,7 +183,8 @@ pub struct Malformed {
 }
 
 impl Malformed {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    /// A refusal with its stable code and its sentence.
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -209,12 +209,12 @@ pub struct Occurrence {
     pub action: String,
     pub principal: EntityRef,
     pub resource: EntityRef,
-    pub logged: BTreeMap<String, DogwoodValue>,
-    pub request_context: BTreeMap<String, DogwoodValue>,
+    pub logged: BTreeMap<String, Value>,
+    pub request_context: BTreeMap<String, Value>,
     pub entities: Vec<AttributedEntity>,
     /// The canonical field map of a version 2 occurrence, which the partition projects into
     /// `logged` and `request_context` by its schemas; `None` for version 1, which carries the two.
-    pub fields: Option<BTreeMap<String, DogwoodValue>>,
+    pub fields: Option<BTreeMap<String, Value>>,
     /// The instant, as the canonical text the caller sent.
     pub occurred_at: String,
     /// The same instant as the signed epoch seconds Dogwood's windows are measured in.
@@ -361,9 +361,10 @@ pub fn read_typed(event_type: &str, data: &Json) -> Result<Occurrence, String> {
 impl EntityUidBody {
     /// The decoded `(type, id)` this reference names.
     ///
-    /// A literal is decoded by Dogwood, through the one path that also builds the event — never by
-    /// an unescaping table kept here, which would be a second implementation of a round trip
-    /// upstream documents as non-idempotent and easy to get wrong.
+    /// A literal is decoded exactly as Dogwood decodes the principal of the event it builds: the
+    /// same split and the same unescaping, reproduced here so the contracts link no engine, and held
+    /// to upstream's own answer on every case the Dogwood package can name
+    /// (`a_literal_decodes_as_dogwood_decodes_it`).
     pub fn decode(&self, what: &str) -> Result<EntityRef, Malformed> {
         match self {
             Self::Structured(reference) => {
@@ -391,23 +392,105 @@ impl EntityUidBody {
     }
 }
 
-/// Decodes a canonical Cedar uid literal, using Dogwood's own parser.
+/// Decodes a canonical Cedar uid literal as Dogwood does: everything before the first `::"` is the
+/// type, and the rest, less its closing quote, is the escaped id.
 ///
-/// Dogwood keeps the parse `pub(crate)`, so it is reached the way it is reachable: through the
-/// builder, which files a parsed principal under `callerPrincipal` in the logged bag. A literal it
-/// refuses leaves that field absent, which is exactly the answer wanted. The event built here is
-/// discarded; it exists so that the escaping rules live in one place, upstream.
+/// Upstream's `uid_to_value`, which is crate-private there, as `dogwood-language` 1.1.0 writes it.
+/// A reproduction is a drift risk and is treated as one: the Dogwood package's
+/// `a_literal_decodes_as_dogwood_decodes_it` asks upstream's builder for its decoding of every
+/// literal it names and requires this one to agree.
 fn decode_literal(literal: &str) -> Option<EntityRef> {
-    let probe = Event::builder("Probe", "probe").principal(literal).build();
-    match probe.field_path(&[CALLER_PRINCIPAL.to_owned()]) {
-        Some(DogwoodValue::Entity { ty, id }) if !ty.trim().is_empty() && !id.is_empty() => {
-            Some(EntityRef {
-                kind: ty.clone(),
-                id: id.clone(),
-            })
+    let split = literal.find("::\"")?;
+    let kind = literal[..split].to_owned();
+    let id = unescape(literal[split + 3..].strip_suffix('"')?);
+    (!kind.trim().is_empty() && !id.is_empty()).then_some(EntityRef { kind, id })
+}
+
+/// Decodes Cedar's canonical string escapes, the inverse of [`str::escape_debug`]: the simple
+/// escapes `\" \\ \' \n \t \r \0`, the Unicode escape `\u{HH..}` with `_` digit separators
+/// (a leading one is Cedar's refusal, kept verbatim), and the byte escape `\xHH`. Anything else,
+/// and a malformed escape, is kept verbatim rather than dropped.
+///
+/// Upstream's `unescape`, crate-private there, as `dogwood-language` 1.1.0 writes it, and held to
+/// it by the same test as [`decode_literal`].
+fn unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
         }
-        _ => None,
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('\'') => out.push('\''),
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('0') => out.push('\0'),
+            Some('u') if chars.peek() == Some(&'{') => {
+                chars.next();
+                let mut hex = String::new();
+                while let Some(&held) = chars.peek() {
+                    if held == '}' {
+                        break;
+                    }
+                    hex.push(held);
+                    chars.next();
+                }
+                let closed = chars.peek() == Some(&'}');
+                if closed {
+                    chars.next();
+                }
+                let digits: String = hex.chars().filter(|held| *held != '_').collect();
+                let decoded = if hex.starts_with('_') {
+                    None
+                } else {
+                    u32::from_str_radix(&digits, 16)
+                        .ok()
+                        .and_then(char::from_u32)
+                };
+                match (closed, decoded) {
+                    (true, Some(decoded)) => out.push(decoded),
+                    _ => {
+                        out.push_str("\\u{");
+                        out.push_str(&hex);
+                        if closed {
+                            out.push('}');
+                        }
+                    }
+                }
+            }
+            Some('x') => {
+                let mut hex = String::new();
+                if let Some(first) = chars.peek().copied().filter(char::is_ascii_hexdigit) {
+                    hex.push(first);
+                    chars.next();
+                    if let Some(&second) = chars.peek()
+                        && second.is_ascii_hexdigit()
+                    {
+                        hex.push(second);
+                        chars.next();
+                    }
+                }
+                match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+                    Some(decoded) => out.push(decoded),
+                    None => {
+                        out.push_str("\\x");
+                        out.push_str(&hex);
+                    }
+                }
+            }
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
     }
+
+    out
 }
 
 impl EntityBody {
@@ -440,58 +523,6 @@ impl EntityBody {
 }
 
 impl Occurrence {
-    /// The occurrence as the Dogwood event an authorizer reads.
-    ///
-    /// Built through the *structured* constructors throughout — `builder_for`, `principal_for`,
-    /// `entity_for`, `parents_for` — so no identifier is joined into a literal and re-parsed on
-    /// the way in. Whatever form the caller wrote, it was decoded once, here it is escaped once.
-    pub fn to_event(&self) -> Result<Event, Malformed> {
-        let (namespace, action_id) = split_action(&self.action)?;
-        let namespace: Vec<&str> = namespace.iter().map(String::as_str).collect();
-
-        let mut builder: EventBuilder = Event::builder_for(&namespace, &action_id, &self.kind)
-            .timestamp(self.occurred_at_epoch)
-            .principal_for(&self.principal.kind, &self.principal.id)
-            .resource_for(&self.resource.kind, &self.resource.id);
-
-        for (group, value) in &self.logged {
-            // The two scope aliases are top-level logged fields, and `principal_for` /
-            // `resource_for` above already wrote them from the request's own roots. A caller that
-            // restated them was held to the same value at check time, so there is nothing left to
-            // write; every other top-level leaf was refused there, because upstream's public
-            // builder cannot write one.
-            if group == CALLER_PRINCIPAL || group == CALLER_RESOURCE {
-                continue;
-            }
-            for (name, held) in grouped(value, "logged", group)? {
-                builder = builder.field(group, name, held.clone());
-            }
-        }
-        for (group, value) in &self.request_context {
-            for (name, held) in grouped(value, "request_context", group)? {
-                builder = builder.request_context(group, name, held.clone());
-            }
-        }
-        for entity in &self.entities {
-            let attrs: Vec<(&str, DogwoodValue)> = entity
-                .attrs
-                .iter()
-                .map(|(name, held)| (name.as_str(), held.clone()))
-                .collect();
-            builder = builder.entity_for(&entity.uid.kind, &entity.uid.id, attrs);
-            if !entity.parents.is_empty() {
-                let parents: Vec<(&str, &str)> = entity
-                    .parents
-                    .iter()
-                    .map(|parent| (parent.kind.as_str(), parent.id.as_str()))
-                    .collect();
-                builder = builder.parents_for(&entity.uid.kind, &entity.uid.id, parents);
-            }
-        }
-
-        Ok(builder.build())
-    }
-
     /// The canonical uid literal of the principal, as the entity store keys it.
     pub fn principal_uid(&self) -> String {
         uid_literal(&self.principal)
@@ -512,24 +543,6 @@ fn uid_literal(reference: &EntityRef) -> String {
     format!("{}::\"{}\"", reference.kind, reference.id.escape_debug())
 }
 
-/// The fields of one bag group, refusing a group that is not a record of fields.
-fn grouped<'a>(
-    value: &'a DogwoodValue,
-    bag: &str,
-    group: &str,
-) -> Result<&'a BTreeMap<String, DogwoodValue>, Malformed> {
-    match value {
-        DogwoodValue::Object(fields) => Ok(fields),
-        _ => Err(Malformed::new(
-            permguard_core::codes::pdp_temporal::EVENT_BAG_NOT_GROUPED,
-            format!(
-                "`{bag}.{group}` is not an object. A bag holds named groups of fields, as the \
-                 event schema declares them"
-            ),
-        )),
-    }
-}
-
 fn required(value: &Option<String>, field: &'static str) -> Result<String, Malformed> {
     value
         .as_deref()
@@ -547,10 +560,7 @@ fn missing(field: &str) -> Malformed {
 }
 
 /// One bag of grouped fields, converted value by value.
-fn bag(
-    fields: &Map<String, Json>,
-    what: &str,
-) -> Result<BTreeMap<String, DogwoodValue>, Malformed> {
+fn bag(fields: &Map<String, Json>, what: &str) -> Result<BTreeMap<String, Value>, Malformed> {
     let mut converted = BTreeMap::new();
     for (group, value) in fields {
         let held = value::from_json(value).map_err(|error| {
@@ -570,14 +580,14 @@ fn bag(
 /// Compared with Dogwood's own equality, not Rust's, so `1.50` and `1.5` are one decimal here
 /// exactly as they are to a policy. Two spellings of one number are not a divergence.
 fn agree(
-    logged: &BTreeMap<String, DogwoodValue>,
-    request_context: &BTreeMap<String, DogwoodValue>,
+    logged: &BTreeMap<String, Value>,
+    request_context: &BTreeMap<String, Value>,
 ) -> Result<(), Malformed> {
     for (group, left) in logged {
         let Some(right) = request_context.get(group) else {
             continue;
         };
-        let (DogwoodValue::Object(left), DogwoodValue::Object(right)) = (left, right) else {
+        let (Value::Object(left), Value::Object(right)) = (left, right) else {
             if !left.dom_eq(right) {
                 return Err(divergence(group, ""));
             }
@@ -616,7 +626,7 @@ fn divergence(group: &str, name: &str) -> Malformed {
 }
 
 /// Splits `Acme::Action::Transfer` into its namespace path and bare id.
-fn split_action(action: &str) -> Result<(Vec<String>, String), Malformed> {
+pub fn split_action(action: &str) -> Result<(Vec<String>, String), Malformed> {
     let mut parts: Vec<String> = action.split("::").map(ToOwned::to_owned).collect();
     let Some(id) = parts.pop().filter(|id| !id.is_empty()) else {
         return Err(Malformed::new(
@@ -702,36 +712,6 @@ mod tests {
         serde_json::from_value(base).expect("the body parses")
     }
 
-    #[test]
-    fn the_payload_the_contract_documents_reads_and_becomes_a_dogwood_event() {
-        let occurrence = body(json!({})).read().expect("it is well formed");
-
-        assert_eq!(occurrence.event_id, "01J8Z9");
-        assert_eq!(occurrence.action, "Acme::Action::Transfer");
-        assert_eq!(occurrence.principal.kind, "Acme::User");
-        assert_eq!(occurrence.principal.id, "alice");
-        assert_eq!(occurrence.occurred_at_epoch, 1_787_912_130);
-
-        let event = occurrence.to_event().expect("it becomes an event");
-        assert_eq!(event.kind(), "request");
-        assert_eq!(event.action(), "Transfer");
-        assert_eq!(event.namespace(), ["Acme", "Action"]);
-        assert_eq!(event.timestamp(), 1_787_912_130);
-        assert_eq!(event.principal().as_deref(), Some("Acme::User::\"alice\""));
-        assert_eq!(
-            event.resource().as_deref(),
-            Some("Acme::Account::\"payments\"")
-        );
-        assert_eq!(
-            event.field("input", "currency"),
-            Some(&DogwoodValue::String("EUR".to_owned()))
-        );
-        assert_eq!(
-            event.request_context_path(&["input".to_owned(), "currency".to_owned()]),
-            Some(&DogwoodValue::String("EUR".to_owned()))
-        );
-    }
-
     /// The two spellings of one reference are one reference.
     #[test]
     fn a_literal_and_a_structured_reference_decode_to_the_same_entity() {
@@ -744,41 +724,6 @@ mod tests {
 
         assert_eq!(literal.principal, structured.principal);
         assert_eq!(literal.principal_uid(), structured.principal_uid());
-    }
-
-    /// An id Cedar allows but nobody would want to hand-escape survives the structured route, and
-    /// the literal Permguard renders is the one Dogwood's own store is keyed by.
-    #[test]
-    fn an_identifier_that_needs_escaping_round_trips_through_dogwoods_own_escaping() {
-        for id in ["ali\"ce", "back\\slash", "line\nbreak", "quote'and\"both"] {
-            let occurrence = body(json!({
-                "principal": {"type": "Acme::User", "id": id},
-                "entities": [{"uid": {"type": "Acme::User", "id": id}, "attrs": {"role": "dev"}}]
-            }))
-            .read()
-            .expect("well formed");
-            let event = occurrence.to_event().expect("it becomes an event");
-
-            // What Permguard renders is what Dogwood renders: one escaping, not two.
-            assert_eq!(
-                event.principal().as_deref(),
-                Some(occurrence.principal_uid().as_str()),
-                "{id:?}"
-            );
-            // And that same literal is the key the attribute store answers to.
-            let attributes: Vec<&str> = event
-                .entity_attributes(&occurrence.principal_uid())
-                .map(|(name, _)| name)
-                .collect();
-            assert_eq!(attributes, ["role"], "{id:?}");
-
-            // The escaped literal decodes back to the id it came from, so a caller that holds a
-            // literal and a caller that holds the pair reach the same entity.
-            let round_trip = EntityUidBody::Literal(occurrence.principal_uid())
-                .decode("principal")
-                .expect("a literal Dogwood produced is a literal Dogwood reads");
-            assert_eq!(round_trip.id, id, "{id:?}");
-        }
     }
 
     /// The invariant upstream calls out as a production concern.
@@ -890,45 +835,6 @@ mod tests {
         });
 
         assert!(serde_json::from_value::<OccurrenceBody>(with_pins).is_err());
-    }
-
-    #[test]
-    fn the_attributed_entity_store_reaches_the_event_with_its_parents() {
-        let occurrence = body(json!({
-            "entities": [{
-                "uid": "Acme::User::\"alice\"",
-                "attrs": {"role": "Developer"},
-                "parents": [{"type": "Acme::Team", "id": "payments"}]
-            }]
-        }))
-        .read()
-        .expect("it is well formed");
-        let event = occurrence.to_event().expect("it becomes an event");
-
-        let attributes: Vec<(&str, &DogwoodValue)> =
-            event.entity_attributes("Acme::User::\"alice\"").collect();
-        assert_eq!(attributes.len(), 1);
-        assert_eq!(attributes[0].0, "role");
-        assert_eq!(
-            event.entity_parents("Acme::User::\"alice\""),
-            [DogwoodValue::Entity {
-                ty: "Acme::Team".to_owned(),
-                id: "payments".to_owned()
-            }]
-        );
-    }
-
-    /// A bag holds groups of fields; a bare value at group level is not one.
-    #[test]
-    fn a_bag_group_that_is_not_a_record_is_refused() {
-        let occurrence = body(json!({"logged": {"input": 7}, "request_context": {}}))
-            .read()
-            .expect("shape is the event's business, not the reader's");
-        let refused = occurrence
-            .to_event()
-            .expect_err("a group is a record of fields");
-
-        assert_eq!(refused.code, "event_bag_not_grouped");
     }
 
     /// A value the mapping cannot carry exactly is refused rather than coerced.

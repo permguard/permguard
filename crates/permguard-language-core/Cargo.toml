@@ -22,8 +22,6 @@ permguard-events.workspace = true
 permguard-stream.workspace = true
 sha2.workspace = true
 base64.workspace = true
-# The values the temporal interface's occurrence carries, as the Dogwood language defines them.
-dogwood-language.workspace = true
 # Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
 # expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
 # "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy

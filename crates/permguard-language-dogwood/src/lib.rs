@@ -49,6 +49,7 @@
 pub mod annotations;
 pub mod artifacts;
 pub(crate) mod compiled;
+pub(crate) mod event;
 pub use permguard_language_core::occurrence;
 pub mod projection;
 pub use permguard_language_core::value;

@@ -8,9 +8,9 @@
 //!
 //! An engine (`permguard-language-cedar`, `-rego`, `-dogwood`) implements these roles and nothing
 //! else; `permguard-languages` holds the catalogue of the engines a build carries and every rule
-//! over them (the crate boundaries refactoring, RD-6). The occurrence's values are Dogwood's own,
-//! which is why this package links `dogwood-language`: the temporal interface's wire model names
-//! them.
+//! over them (the crate boundaries refactoring, RD-6). The occurrence's values are Dogwood's value
+//! domain, held here variant for variant ([`value::Value`]) so this package links no engine: the
+//! Dogwood package converts them where its authorizer reads them.
 
 pub mod artifact;
 pub mod attestation;

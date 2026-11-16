@@ -2750,7 +2750,6 @@ name = "permguard-language-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
- "dogwood-language",
  "permguard-core",
  "permguard-events",
  "permguard-objects",

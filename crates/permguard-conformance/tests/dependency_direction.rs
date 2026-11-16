@@ -182,8 +182,8 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-decisions", SERVER_STACK),
     ("permguard-events", SERVER_STACK),
     // The policy languages validate and evaluate; they serve nothing and call nobody (RD-6): the
-    // contracts link no engine but the Dogwood values its occurrence model names, and each engine
-    // links no other and never the catalogue that carries it.
+    // contracts link no engine, and each engine links no other and never the catalogue that
+    // carries it.
     ("permguard-languages", SERVER_STACK),
     ("permguard-language-core", LANGUAGE_CORE),
     ("permguard-language-cedar", CEDAR_ENGINE),
@@ -201,7 +201,7 @@ const LAYERS: &[(&str, &[&str])] = &[
 ];
 
 /// What the language contracts may not reach: the server stack, any engine package, the catalogue,
-/// and the Rego engine and the JSON Schema validator only Rego admits its input through.
+/// any engine, and the JSON Schema validator only Rego admits its input through.
 const LANGUAGE_CORE: &[&str] = &[
     "permguard-server",
     "permguard-transport",
@@ -215,8 +215,11 @@ const LANGUAGE_CORE: &[&str] = &[
     "permguard-language-cedar",
     "permguard-language-rego",
     "permguard-language-dogwood",
+    "cedar-policy",
+    "cedar-policy-core",
     "regorus",
     "jsonschema",
+    "dogwood-language",
 ];
 
 /// What the Cedar engine package may not reach: the server stack, the other engines, the catalogue.
@@ -234,10 +237,11 @@ const CEDAR_ENGINE: &[&str] = &[
     "permguard-language-dogwood",
     "regorus",
     "jsonschema",
+    "dogwood-language",
 ];
 
-/// What the Rego engine package may not reach: the server stack, the other engine packages, the
-/// catalogue. Cedar's core is reached through the contracts' Dogwood values, not as an engine.
+/// What the Rego engine package may not reach: the server stack, the other engine packages and
+/// engines, the catalogue.
 const REGO_ENGINE: &[&str] = &[
     "permguard-server",
     "permguard-transport",
@@ -250,10 +254,13 @@ const REGO_ENGINE: &[&str] = &[
     "permguard-languages",
     "permguard-language-cedar",
     "permguard-language-dogwood",
+    "cedar-policy",
+    "cedar-policy-core",
+    "dogwood-language",
 ];
 
 /// What the Dogwood engine package may not reach: the server stack, the other engine packages, the
-/// catalogue, and the Rego engine.
+/// catalogue, and the Rego engine. Cedar is Dogwood's own: it lowers to it.
 const DOGWOOD_ENGINE: &[&str] = &[
     "permguard-server",
     "permguard-transport",
@@ -350,8 +357,7 @@ fn carried_with(features: &str) -> BTreeSet<String> {
 }
 
 /// A language is a feature of the catalogue (RD-7): a build that names one links that engine and no
-/// other. Cedar's core stays in every build, because the contracts' occurrence model is typed with
-/// Dogwood's values.
+/// other, Cedar excepted for Dogwood, which lowers to it.
 #[test]
 fn a_build_links_only_the_engines_it_carries() {
     let mut problems = Vec::new();
@@ -364,12 +370,19 @@ fn a_build_links_only_the_engines_it_carries() {
                 "permguard-language-dogwood",
                 "regorus",
                 "jsonschema",
+                "dogwood-language",
             ][..],
         ),
         (
             "rego",
             &["permguard-language-rego", "regorus", "jsonschema"][..],
-            &["permguard-language-cedar", "permguard-language-dogwood"][..],
+            &[
+                "permguard-language-cedar",
+                "permguard-language-dogwood",
+                "cedar-policy",
+                "cedar-policy-core",
+                "dogwood-language",
+            ][..],
         ),
         (
             "dogwood",

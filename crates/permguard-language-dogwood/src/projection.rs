@@ -25,7 +25,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use dogwood_language::Value as DogwoodValue;
+use permguard_language_core::value::Value;
 use serde::Deserialize;
 
 use permguard_language_core::temporal::Signature;
@@ -34,7 +34,7 @@ use permguard_language_core::temporal::Signature;
 pub type Path = Vec<String>;
 
 /// One projection of an occurrence: `logged` or `request_context`.
-pub type Bag = BTreeMap<String, DogwoodValue>;
+pub type Bag = BTreeMap<String, Value>;
 
 /// The one-sided fields a partition's author declared: `projections.json`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -360,7 +360,7 @@ pub fn check_complete(
 /// A leaf goes to each side that declares it; a group goes to each side with a leaf below it,
 /// holding what that side declares; a key neither side declares is refused.
 pub fn project(
-    fields: &BTreeMap<String, DogwoodValue>,
+    fields: &BTreeMap<String, Value>,
     event: &Side,
     request: &Side,
 ) -> Result<(Bag, Bag), String> {
@@ -381,14 +381,14 @@ pub fn project(
 }
 
 /// What of `value` at `path` one side declares.
-fn side(value: &DogwoodValue, path: &mut Path, leaves: &Side) -> Option<DogwoodValue> {
+fn side(value: &Value, path: &mut Path, leaves: &Side) -> Option<Value> {
     if leaves.leaves.contains(path) {
         return Some(value.clone());
     }
     if !leaves.has(path) {
         return None;
     }
-    let DogwoodValue::Object(members) = value else {
+    let Value::Object(members) = value else {
         return None;
     };
     let mut held = BTreeMap::new();
@@ -400,16 +400,11 @@ fn side(value: &DogwoodValue, path: &mut Path, leaves: &Side) -> Option<DogwoodV
         path.pop();
     }
 
-    Some(DogwoodValue::Object(held.into_iter().collect()))
+    Some(Value::Object(held.into_iter().collect()))
 }
 
 /// Refuses the first key of `value` at `path` that neither side declares.
-fn unknown(
-    value: &DogwoodValue,
-    path: &mut Path,
-    event: &Side,
-    request: &Side,
-) -> Result<(), String> {
+fn unknown(value: &Value, path: &mut Path, event: &Side, request: &Side) -> Result<(), String> {
     if event.leaves.contains(path) || request.leaves.contains(path) {
         return Ok(());
     }
@@ -419,7 +414,7 @@ fn unknown(
             path.join(".")
         ));
     }
-    let DogwoodValue::Object(members) = value else {
+    let Value::Object(members) = value else {
         return Err(format!(
             "`fields.{}` is a group of fields in the schemas, and a single value was sent",
             path.join(".")
@@ -498,16 +493,16 @@ mod tests {
     fn a_leaf_goes_to_each_side_that_declares_it_and_one_neither_declares_is_refused() {
         let event = Side::of_event([path("input.user"), path("requestId")].into());
         let request = Side::of_event([path("input.user"), path("system.now")].into());
-        let value = |text: &str| DogwoodValue::String(text.to_owned());
+        let value = |text: &str| Value::String(text.to_owned());
         let mut fields = BTreeMap::new();
         fields.insert(
             "input".to_owned(),
-            DogwoodValue::Object([("user".to_owned(), value("alice"))].into()),
+            Value::Object([("user".to_owned(), value("alice"))].into()),
         );
         fields.insert("requestId".to_owned(), value("r1"));
         fields.insert(
             "system".to_owned(),
-            DogwoodValue::Object([("now".to_owned(), value("t"))].into()),
+            Value::Object([("now".to_owned(), value("t"))].into()),
         );
         let (logged, context) = project(&fields, &event, &request).expect("it projects");
         assert_eq!(logged.keys().collect::<Vec<_>>(), ["input", "requestId"]);
@@ -592,11 +587,11 @@ mod tests {
         let event = Side::of_event([path("input.user"), path("input.trace")].into());
         let mut request = Side::of_event([path("input.user"), path("tags")].into());
         request.groups.insert(path("output"));
-        let value = |text: &str| DogwoodValue::String(text.to_owned());
+        let value = |text: &str| Value::String(text.to_owned());
         let mut fields = BTreeMap::new();
         fields.insert(
             "input".to_owned(),
-            DogwoodValue::Object(
+            Value::Object(
                 [
                     ("user".to_owned(), value("alice")),
                     ("trace".to_owned(), value("t1")),
@@ -604,13 +599,13 @@ mod tests {
                 .into(),
             ),
         );
-        fields.insert("output".to_owned(), DogwoodValue::Object(BTreeMap::new()));
+        fields.insert("output".to_owned(), Value::Object(BTreeMap::new()));
         fields.insert(
             "tags".to_owned(),
-            DogwoodValue::Array(vec![value("a"), value("b")]),
+            Value::Array(vec![value("a"), value("b")]),
         );
         let (logged, context) = project(&fields, &event, &request).expect("it projects");
-        let DogwoodValue::Object(logged_input) = &logged["input"] else {
+        let Value::Object(logged_input) = &logged["input"] else {
             panic!("a group");
         };
         assert_eq!(
@@ -618,7 +613,7 @@ mod tests {
             2,
             "the history keeps the one-sided `trace`"
         );
-        let DogwoodValue::Object(context_input) = &context["input"] else {
+        let Value::Object(context_input) = &context["input"] else {
             panic!("a group");
         };
         assert_eq!(
@@ -626,7 +621,7 @@ mod tests {
             ["user"],
             "the request reads only what its context declares"
         );
-        assert_eq!(context["output"], DogwoodValue::Object(BTreeMap::new()));
+        assert_eq!(context["output"], Value::Object(BTreeMap::new()));
         assert!(!logged.contains_key("output") && !logged.contains_key("tags"));
         assert_eq!(context["tags"], fields["tags"], "a set is a leaf");
     }
