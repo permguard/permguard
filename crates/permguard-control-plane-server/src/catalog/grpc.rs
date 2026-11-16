@@ -96,16 +96,16 @@ impl Refuses for CatalogFacade {
 }
 
 #[tonic::async_trait]
-impl ZoneCatalog for CatalogFacade {
+impl ZoneCatalog for crate::served::Served<CatalogFacade> {
     async fn create_zone(
         &self,
         request: Request<v1::CreateZoneRequest>,
     ) -> Answer<v1::ZoneResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let zone = zones::create(self, &actor, &request.name, &request.request_id)
+        let zone = zones::create(&self.0, &actor, &request.name, &request.request_id)
             .await
-            .map_err(|error| self.refuse(error))?;
+            .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ZoneResponse {
             zone: Some(wire_zone(zone)),
@@ -118,8 +118,12 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::ListZonesResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
-        let zones = zones::list(self, &actor, super::ListWindow::of(asked.page, asked.size))
-            .map_err(|error| self.refuse(error))?;
+        let zones = zones::list(
+            &self.0,
+            &actor,
+            super::ListWindow::of(asked.page, asked.size),
+        )
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ListZonesResponse {
             zones: zones.into_iter().map(wire_zone).collect(),
@@ -128,8 +132,8 @@ impl ZoneCatalog for CatalogFacade {
 
     async fn get_zone(&self, request: Request<v1::GetZoneRequest>) -> Answer<v1::ZoneResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
-        let zone = zones::get(self, &actor, &request.into_inner().zone)
-            .map_err(|error| self.refuse(error))?;
+        let zone = zones::get(&self.0, &actor, &request.into_inner().zone)
+            .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ZoneResponse {
             zone: Some(wire_zone(zone)),
@@ -142,9 +146,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::ZoneResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
         let zone = zones::rename(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.name,
@@ -152,7 +156,7 @@ impl ZoneCatalog for CatalogFacade {
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ZoneResponse {
             zone: Some(wire_zone(zone)),
@@ -165,10 +169,16 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::ZoneResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
-        let zone = zones::delete(self, &actor, &request.zone, revision, &request.request_id)
-            .await
-            .map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
+        let zone = zones::delete(
+            &self.0,
+            &actor,
+            &request.zone,
+            revision,
+            &request.request_id,
+        )
+        .await
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ZoneResponse {
             zone: Some(wire_zone(zone)),
@@ -182,14 +192,14 @@ impl ZoneCatalog for CatalogFacade {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
         let ledger = ledgers::create(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.name,
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::LedgerResponse {
             ledger: Some(wire_ledger(ledger)),
@@ -203,12 +213,12 @@ impl ZoneCatalog for CatalogFacade {
         let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let ledgers = ledgers::list(
-            self,
+            &self.0,
             &actor,
             &asked.zone,
             super::ListWindow::of(asked.page, asked.size),
         )
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::ListLedgersResponse {
             ledgers: ledgers.into_iter().map(wire_ledger).collect(),
@@ -221,8 +231,8 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let served = ledgers::get_served(self, &actor, &request.zone, &request.ledger)
-            .map_err(|error| self.refuse(error))?;
+        let served = ledgers::get_served(&self.0, &actor, &request.zone, &request.ledger)
+            .map_err(|error| self.0.refuse(error))?;
         let mut ledger = wire_ledger(served.ledger);
         ledger.serving_members = served
             .serving_members
@@ -241,9 +251,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
         let ledger = ledgers::rename(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.ledger,
@@ -252,7 +262,7 @@ impl ZoneCatalog for CatalogFacade {
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::LedgerResponse {
             ledger: Some(wire_ledger(ledger)),
@@ -265,9 +275,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
         let ledger = ledgers::delete(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.ledger,
@@ -275,7 +285,7 @@ impl ZoneCatalog for CatalogFacade {
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::LedgerResponse {
             ledger: Some(wire_ledger(ledger)),
@@ -288,9 +298,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::ExportResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let exported = exports::ledger(self, &actor, &request.zone, &request.ledger)
+        let exported = exports::ledger(&self.0, &actor, &request.zone, &request.ledger)
             .await
-            .map_err(|error| self.refuse(error))?;
+            .map_err(|error| self.0.refuse(error))?;
         Ok(Response::new(wire_export(exported)))
     }
 
@@ -298,7 +308,7 @@ impl ZoneCatalog for CatalogFacade {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
         let mode = imports::Mode::parse(&request.mode).ok_or_else(|| {
-            self.refuse(
+            self.0.refuse(
                 ApiError::new(
                     ErrorClass::Validation,
                     codes::common::INVALID_ARGUMENT,
@@ -308,7 +318,7 @@ impl ZoneCatalog for CatalogFacade {
             )
         })?;
         let imported = imports::import(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             imports::Request {
@@ -322,7 +332,7 @@ impl ZoneCatalog for CatalogFacade {
             },
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
         Ok(Response::new(v1::ImportResponse {
             mode: imported.mode.to_owned(),
             manifest_digest: imported.manifest_digest,
@@ -358,9 +368,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::ExportResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let exported = exports::zone(self, &actor, &request.zone)
+        let exported = exports::zone(&self.0, &actor, &request.zone)
             .await
-            .map_err(|error| self.refuse(error))?;
+            .map_err(|error| self.0.refuse(error))?;
         Ok(Response::new(wire_export(exported)))
     }
 
@@ -370,9 +380,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
         let ledger = ledgers::archive(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.ledger,
@@ -380,7 +390,7 @@ impl ZoneCatalog for CatalogFacade {
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::LedgerResponse {
             ledger: Some(wire_ledger(ledger)),
@@ -393,9 +403,9 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let revision = expected(request.expected_revision).map_err(|error| self.refuse(error))?;
+        let revision = expected(request.expected_revision).map_err(|error| self.0.refuse(error))?;
         let ledger = ledgers::restore(
-            self,
+            &self.0,
             &actor,
             &request.zone,
             &request.ledger,
@@ -403,7 +413,7 @@ impl ZoneCatalog for CatalogFacade {
             &request.request_id,
         )
         .await
-        .map_err(|error| self.refuse(error))?;
+        .map_err(|error| self.0.refuse(error))?;
 
         Ok(Response::new(v1::LedgerResponse {
             ledger: Some(wire_ledger(ledger)),
@@ -496,7 +506,7 @@ mod tests {
                 .to_owned()
         };
 
-        let refused = facade
+        let refused = crate::served::Served(facade.clone())
             .create_zone(request(v1::CreateZoneRequest {
                 name: "billing".to_owned(),
                 request_id: String::new(),
@@ -504,7 +514,7 @@ mod tests {
             .await
             .expect_err("no request id");
         assert_eq!(refused.code(), tonic::Code::InvalidArgument);
-        let created = facade
+        let created = crate::served::Served(facade.clone())
             .create_zone(request(v1::CreateZoneRequest {
                 name: "billing".to_owned(),
                 request_id: "r-1".to_owned(),
@@ -522,19 +532,19 @@ mod tests {
             request_id: request_id.to_owned(),
             expected_revision,
         };
-        let refused = facade
+        let refused = crate::served::Served(facade.clone())
             .rename_zone(request(rename(0, "r-2")))
             .await
             .expect_err("revision 0 names none");
         assert_eq!(refused.code(), tonic::Code::InvalidArgument);
         assert_eq!(code(refused), "invalid_argument");
-        let refused = facade
+        let refused = crate::served::Served(facade.clone())
             .rename_zone(request(rename(2, "r-3")))
             .await
             .expect_err("stale");
         assert_eq!(refused.code(), tonic::Code::FailedPrecondition);
         assert_eq!(code(refused), "revision_conflict");
-        let renamed = facade
+        let renamed = crate::served::Served(facade.clone())
             .rename_zone(request(rename(1, "r-4")))
             .await
             .expect("renamed")
@@ -543,7 +553,7 @@ mod tests {
             .expect("a zone");
         assert_eq!((renamed.name.as_str(), renamed.revision), ("finance", 2));
 
-        let refused = facade
+        let refused = crate::served::Served(facade.clone())
             .delete_zone(request(v1::DeleteZoneRequest {
                 zone: "finance".to_owned(),
                 request_id: "r-5".to_owned(),
@@ -578,7 +588,7 @@ mod tests {
             request
         }
         let codes = [
-            facade
+            crate::served::Served(facade.clone())
                 .delete_zone(anonymous(v1::DeleteZoneRequest {
                     zone: "billing".to_owned(),
                     request_id: String::new(),
@@ -587,7 +597,7 @@ mod tests {
                 .await
                 .expect_err("closed")
                 .code(),
-            facade
+            crate::served::Served(facade.clone())
                 .rename_zone(anonymous(v1::RenameZoneRequest {
                     zone: "billing".to_owned(),
                     name: "finance".to_owned(),
@@ -597,7 +607,7 @@ mod tests {
                 .await
                 .expect_err("closed")
                 .code(),
-            facade
+            crate::served::Served(facade.clone())
                 .delete_ledger(anonymous(v1::DeleteLedgerRequest {
                     zone: "billing".to_owned(),
                     ledger: "invoices".to_owned(),
@@ -638,14 +648,14 @@ mod tests {
             request
         };
 
-        let billing = facade
+        let billing = crate::served::Served(facade.clone())
             .create_zone(create("spiffe://acme/billing", "billing"))
             .await
             .expect("billing's change")
             .into_inner()
             .zone
             .expect("a zone");
-        let people = facade
+        let people = crate::served::Served(facade.clone())
             .create_zone(create("spiffe://acme/people", "people"))
             .await
             .expect("people's change, not a reused id")
@@ -654,7 +664,7 @@ mod tests {
             .expect("a zone");
         assert_ne!(billing.id, people.id);
         assert_eq!(people.name, "people");
-        let again = facade
+        let again = crate::served::Served(facade.clone())
             .create_zone(create("spiffe://acme/billing", "billing"))
             .await
             .expect("billing's retry")
@@ -692,7 +702,7 @@ mod tests {
         };
 
         // Nobody: UNAUTHENTICATED, with the code as metadata and no class.
-        let refused = facade
+        let refused = crate::served::Served(facade.clone())
             .get_zone(Request::new(v1::GetZoneRequest {
                 zone: billing.id.clone(),
             }))
@@ -713,20 +723,31 @@ mod tests {
             zone: "billing".to_owned(),
         });
         request.extensions_mut().insert(Arc::clone(&billing_reader));
-        assert!(facade.get_zone(request).await.is_ok());
+        assert!(
+            crate::served::Served(facade.clone())
+                .get_zone(request)
+                .await
+                .is_ok()
+        );
 
         // And cannot read people, nor tell it from a zone that is not there.
         let mut request = Request::new(v1::GetZoneRequest {
             zone: people.id.clone(),
         });
         request.extensions_mut().insert(Arc::clone(&billing_reader));
-        let foreign = facade.get_zone(request).await.expect_err("F-22");
+        let foreign = crate::served::Served(facade.clone())
+            .get_zone(request)
+            .await
+            .expect_err("F-22");
         assert_eq!(foreign.code(), tonic::Code::PermissionDenied);
         let mut request = Request::new(v1::GetZoneRequest {
             zone: "nowhere".to_owned(),
         });
         request.extensions_mut().insert(Arc::clone(&billing_reader));
-        let unknown = facade.get_zone(request).await.expect_err("not disclosed");
+        let unknown = crate::served::Served(facade.clone())
+            .get_zone(request)
+            .await
+            .expect_err("not disclosed");
         assert_eq!(unknown.code(), tonic::Code::PermissionDenied);
         assert_eq!(unknown.message(), foreign.message());
     }

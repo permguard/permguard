@@ -197,7 +197,7 @@ impl PlaneModule for ControlPlaneModule {
         }));
 
         if let Some(facade) = permguard_control_plane::plane::catalog_facade(context) {
-            grpc.add_service(ZoneCatalogServer::new(facade));
+            grpc.add_service(ZoneCatalogServer::new(crate::served::Served(facade)));
         }
 
         // The codec ceiling matches what this plane's own protocols advertise:
@@ -210,8 +210,10 @@ impl PlaneModule for ControlPlaneModule {
             permguard_control_plane::plane::grpc_message_ceiling(context.config());
         if let Some(facade) = self.composition.notp_facade(context) {
             grpc.add_service(
-                crate::v1::git_like_store_server::GitLikeStoreServer::new(facade)
-                    .max_decoding_message_size(message_ceiling),
+                crate::v1::git_like_store_server::GitLikeStoreServer::new(crate::served::Served(
+                    facade,
+                ))
+                .max_decoding_message_size(message_ceiling),
             );
         }
 
@@ -219,14 +221,16 @@ impl PlaneModule for ControlPlaneModule {
         // same code behind it, so neither surface can drift from the other.
         if let Some(facade) = self.composition.decision_facade(context) {
             grpc.add_service(
-                crate::v1::decision_log_server::DecisionLogServer::new(facade)
-                    .max_decoding_message_size(message_ceiling),
+                crate::v1::decision_log_server::DecisionLogServer::new(crate::served::Served(
+                    facade,
+                ))
+                .max_decoding_message_size(message_ceiling),
             );
         }
         // The same contract as the HTTP surface, over the same facade.
         if let Some(facade) = self.composition.event_facade(context) {
             grpc.add_service(
-                crate::v1::event_log_server::EventLogServer::new(facade)
+                crate::v1::event_log_server::EventLogServer::new(crate::served::Served(facade))
                     .max_decoding_message_size(message_ceiling),
             );
         }

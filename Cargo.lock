@@ -2424,6 +2424,7 @@ dependencies = [
  "http",
  "http-body-util",
  "permguard-authority-plane",
+ "permguard-contracts",
  "permguard-core",
  "permguard-host",
  "permguard-server",
@@ -2434,7 +2435,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "tower",
  "tracing",
  "zeroize",
@@ -2451,6 +2451,7 @@ dependencies = [
  "clap_complete",
  "permguard-authority-plane",
  "permguard-authority-plane-server",
+ "permguard-contracts",
  "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
@@ -2489,6 +2490,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "permguard-authority-plane",
+ "permguard-contracts",
  "permguard-control-client",
  "permguard-core",
  "permguard-decisions",
@@ -2509,6 +2511,17 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
+]
+
+[[package]]
+name = "permguard-contracts"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-types",
+ "serde",
+ "tonic",
+ "tonic-prost",
  "tonic-prost-build",
 ]
 
@@ -2520,6 +2533,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-core",
  "http",
+ "permguard-contracts",
  "permguard-core",
  "permguard-events",
  "permguard-host",
@@ -2537,7 +2551,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "zeroize",
 ]
 
@@ -2578,6 +2591,7 @@ dependencies = [
  "http-body-util",
  "permguard-authority-plane-server",
  "permguard-conformance",
+ "permguard-contracts",
  "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
@@ -2599,7 +2613,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "tower",
  "tracing",
 ]
@@ -2658,6 +2671,7 @@ dependencies = [
  "http",
  "http-body-util",
  "permguard-conformance",
+ "permguard-contracts",
  "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
@@ -2678,7 +2692,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "tower",
  "tracing",
  "tracing-subscriber",
@@ -2873,6 +2886,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "permguard-conformance",
+ "permguard-contracts",
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
@@ -2895,7 +2909,6 @@ dependencies = [
  "tokio-rustls",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "tower",
  "tracing",
  "tracing-opentelemetry",

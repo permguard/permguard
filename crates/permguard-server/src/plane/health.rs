@@ -11,7 +11,7 @@ use tonic::{Request, Response, Status};
 /// The generated half of `grpc.health.v1`.
 #[allow(clippy::all, missing_docs)]
 pub mod v1 {
-    tonic::include_proto!("grpc.health.v1");
+    pub use permguard_contracts::health::v1::*;
 }
 
 use v1::health_check_response::ServingStatus;

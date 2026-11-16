@@ -201,6 +201,12 @@ const LAYERS: &[(&str, &[&str])] = &[
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
     ("permguard-control-plane", CONTROL_PLANE_DOMAIN),
+    // Generated contracts have one owner, and a domain selects none of them (RD-9): only an
+    // adapter, a client's or a server's, speaks a wire. The Data Plane's domain reaches them
+    // through the network client it synchronizes with, until that client is an adapter of its own.
+    ("permguard-host", &["permguard-contracts"]),
+    ("permguard-authority-plane", &["permguard-contracts"]),
+    ("permguard-control-plane", &["permguard-contracts"]),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-control-client", NO_LANGUAGE),
 ];

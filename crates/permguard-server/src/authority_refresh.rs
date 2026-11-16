@@ -70,7 +70,7 @@ pub const LISTS_REFUSED: permguard_core::Metric = permguard_core::Metric::counte
 /// lists with over gRPC, and the server half its tests stand up.
 #[allow(clippy::all, clippy::pedantic, missing_docs)]
 pub mod authority_v1 {
-    tonic::include_proto!("permguard.authority.v1");
+    pub use permguard_contracts::authority::v1::*;
 }
 
 /// Where the Authority Plane is.

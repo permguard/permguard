@@ -14,7 +14,6 @@ repository.workspace = true
 publish = false
 
 # The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
-build = "build.rs"
 
 # The Authority Plane on its own: the binary the `authority-plane` image runs (`2-security/8`
 # Where it runs). The all-in-one and control-plane binaries register this package's module beside
@@ -35,6 +34,8 @@ permguard-host.workspace = true
 permguard-server.workspace = true
 # The actor a request carries, read where a route authorizes.
 permguard-transport.workspace = true
+# The contracts this package speaks, generated once for the workspace.
+permguard-contracts = { workspace = true, features = ["authority-server"] }
 prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -50,5 +51,3 @@ http.workspace = true
 http-body-util.workspace = true
 tower.workspace = true
 
-[build-dependencies]
-tonic-prost-build.workspace = true

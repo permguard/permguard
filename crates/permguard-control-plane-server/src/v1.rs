@@ -1,8 +1,7 @@
-#![allow(clippy::all, clippy::pedantic, missing_docs)]
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The generated `permguard.control.v1` server stubs, from the checked-in
-//! `contracts/proto/` — the contract of the surfaces it serves.
+//! `permguard.control.v1`, the contract of the surfaces this package serves, as
+//! `permguard-contracts` generates it for every package.
 
-tonic::include_proto!("permguard.control.v1");
+pub use permguard_contracts::control::v1::*;

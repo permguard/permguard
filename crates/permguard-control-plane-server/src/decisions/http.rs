@@ -1119,7 +1119,7 @@ mod strict {
         let router = routes(facade.clone());
         let (status, body) = get(&router, super::super::configuration::CONFIGURATION_PATH).await;
         assert_eq!(status, StatusCode::OK);
-        let answered = facade
+        let answered = crate::served::Served(facade.clone())
             .get_configuration(tonic::Request::new(
                 crate::v1::GetDecisionConfigurationRequest {},
             ))
@@ -1136,7 +1136,7 @@ mod strict {
     async fn get_signers_answers_a_host_run_over_grpc() {
         use crate::v1::decision_log_server::DecisionLog as _;
 
-        let answered = signing("host-signers-grpc")
+        let answered = crate::served::Served(signing("host-signers-grpc"))
             .get_signers(tonic::Request::new(crate::v1::GetDecisionSignersRequest {
                 pdp: permguard_core::encoding::hex(&[0xa1; 16]),
                 instance: permguard_core::encoding::hex(&[0x01; 16]),
@@ -1411,15 +1411,21 @@ mod strict {
             request
         };
         assert!(
-            DecisionLog::read(&held, ask("main", Some(auditor())))
-                .await
-                .is_ok()
-        );
-        let refused = DecisionLog::read(&held, ask("audit", Some(auditor())))
+            DecisionLog::read(
+                &crate::served::Served(held.clone()),
+                ask("main", Some(auditor()))
+            )
             .await
-            .expect_err("another ledger");
+            .is_ok()
+        );
+        let refused = DecisionLog::read(
+            &crate::served::Served(held.clone()),
+            ask("audit", Some(auditor())),
+        )
+        .await
+        .expect_err("another ledger");
         assert_eq!(refused.code(), tonic::Code::PermissionDenied);
-        let refused = DecisionLog::read(&held, ask("main", None))
+        let refused = DecisionLog::read(&crate::served::Served(held.clone()), ask("main", None))
             .await
             .expect_err("nobody");
         assert_eq!(refused.code(), tonic::Code::Unauthenticated);

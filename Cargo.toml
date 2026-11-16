@@ -9,6 +9,7 @@ members = [
     "crates/permguard-authority-plane-server",
     "crates/permguard-cli",
     "crates/permguard-conformance",
+    "crates/permguard-contracts",
     "crates/permguard-control-plane",
     "crates/permguard-control-plane-server",
     "crates/permguard-core",
@@ -64,6 +65,7 @@ opt-level = 1
 permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.0" }
 permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }
 permguard-conformance = { path = "crates/permguard-conformance", version = "0.1.0" }
+permguard-contracts = { path = "crates/permguard-contracts", version = "0.1.0" }
 permguard-authority-plane = { path = "crates/permguard-authority-plane", version = "0.1.0" }
 permguard-authority-plane-server = { path = "crates/permguard-authority-plane-server", version = "0.1.0" }
 permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.0" }

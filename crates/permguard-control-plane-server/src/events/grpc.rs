@@ -29,7 +29,7 @@ use crate::v1::{
 /// The gRPC metadata keys carrying the structured half of a refusal.
 
 #[tonic::async_trait]
-impl EventLog for EventFacade {
+impl EventLog for crate::served::Served<EventFacade> {
     async fn list_records(
         &self,
         request: Request<ListRecordsRequest>,
@@ -37,17 +37,17 @@ impl EventLog for EventFacade {
         let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
         let (scope, kind) =
-            scope_of(&asked).map_err(|refused| status_of(&refused, self.disclosure))?;
+            scope_of(&asked).map_err(|refused| status_of(&refused, self.0.disclosure))?;
         // Same gate and resolution as the HTTP list, so the two transports narrow to the same
         // records (WP-6.3c).
-        let scope = match self.gate(&actor, scope) {
+        let scope = match self.0.gate(&actor, scope) {
             Ok(scope) => scope,
             Err(crate::evidence::Gated::Denied(denial)) => {
-                self.denied(kind);
+                self.0.denied(kind);
                 return Err(crate::wire::grpc_denial(&denial));
             }
             Err(crate::evidence::Gated::Refused(error)) => {
-                return Err(read_status(error, self.disclosure));
+                return Err(read_status(error, self.0.disclosure));
             }
         };
         let filters = filters_of(&asked);
@@ -61,7 +61,7 @@ impl EventLog for EventFacade {
             proof: asked.proof,
         };
 
-        let facade = self.clone();
+        let facade = self.0.clone();
         let page =
             tokio::task::spawn_blocking(move || facade.read(&scope, &filters, &window, kind))
                 .await
@@ -72,7 +72,7 @@ impl EventLog for EventFacade {
                 members: crate::members::to_proto(crate::members::members_of(
                     page.records.iter(),
                     crate::members::event_host,
-                    self.members.as_deref(),
+                    self.0.members.as_deref(),
                 )),
                 records: page.records.iter().map(render).collect(),
                 next: page.next,
@@ -87,7 +87,7 @@ impl EventLog for EventFacade {
                     scan_bounded: page.coverage.scan_bounded,
                 }),
             })),
-            Err(error) => Err(read_status(error, self.disclosure)),
+            Err(error) => Err(read_status(error, self.0.disclosure)),
         }
     }
 
@@ -104,13 +104,13 @@ impl EventLog for EventFacade {
                     permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                     "one occurrence is read inside one ledger: name `zone` and `ledger`",
                 ),
-                self.disclosure,
+                self.0.disclosure,
             ));
         }
         // Resolved the same way the HTTP surface resolves it, so a reader gets one answer whichever
         // transport asked: a name and an identity address the same ledger, and a scope nobody holds
         // is a refusal rather than an empty answer.
-        let scope = match self.gate(
+        let scope = match self.0.gate(
             &actor,
             Scope::Tenant {
                 zone: asked.zone,
@@ -119,15 +119,15 @@ impl EventLog for EventFacade {
         ) {
             Ok(scope) => scope,
             Err(crate::evidence::Gated::Denied(denial)) => {
-                self.denied("record");
+                self.0.denied("record");
                 return Err(crate::wire::grpc_denial(&denial));
             }
             Err(crate::evidence::Gated::Refused(error)) => {
-                return Err(read_status(error, self.disclosure));
+                return Err(read_status(error, self.0.disclosure));
             }
         };
 
-        let facade = self.clone();
+        let facade = self.0.clone();
         let event_id = asked.event_id;
         let found = tokio::task::spawn_blocking(move || {
             read::get(&facade.sources(), &scope, &event_id, &facade.cursor_key)
@@ -145,9 +145,9 @@ impl EventLog for EventFacade {
                     permguard_core::codes::stream::EVENT_NOT_FOUND,
                     "no event in this ledger carries that identifier",
                 ),
-                self.disclosure,
+                self.0.disclosure,
             )),
-            Err(error) => Err(read_status(error, self.disclosure)),
+            Err(error) => Err(read_status(error, self.0.disclosure)),
         }
     }
 
@@ -177,7 +177,7 @@ impl EventLog for EventFacade {
                             permguard_core::codes::stream::CURSOR_MALFORMED,
                             error.to_string(),
                         ),
-                        self.disclosure,
+                        self.0.disclosure,
                     )
                 })?,
             ),
@@ -190,7 +190,7 @@ impl EventLog for EventFacade {
             after,
         };
         let (facade, zone, ledger, disclosure) =
-            (self.clone(), asked.zone, asked.ledger, self.disclosure);
+            (self.0.clone(), asked.zone, asked.ledger, self.0.disclosure);
         let document = tokio::task::spawn_blocking(move || {
             facade.signers_of(&zone, &ledger, asked.from_seq, asked.until_seq, &wanted)
         })
@@ -232,7 +232,7 @@ impl EventLog for EventFacade {
                                         permguard_core::codes::stream::SIGNER_MALFORMED,
                                         error.to_string(),
                                     ),
-                                    self.disclosure,
+                                    self.0.disclosure,
                                 )
                             })?,
                         })
@@ -261,13 +261,14 @@ impl EventLog for EventFacade {
         _request: Request<GetEventConfigurationRequest>,
     ) -> Result<Response<GetEventConfigurationResponse>, Status> {
         let header = self
+            .0
             .describer
             .header(permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1)
-            .map_err(|refused| crate::wire::grpc_error(&refused, self.disclosure))?;
+            .map_err(|refused| crate::wire::grpc_error(&refused, self.0.disclosure))?;
         let document = super::configuration::document(
-            &self.base_url,
-            &self.base_url,
-            &self.accepted_types(),
+            &self.0.base_url,
+            &self.0.base_url,
+            &self.0.accepted_types(),
             header,
         );
 

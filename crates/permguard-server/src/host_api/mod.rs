@@ -20,7 +20,7 @@ pub(crate) mod wire;
 /// The generated server half of `permguard.host.v1`.
 #[allow(clippy::all, missing_docs)]
 pub mod v1 {
-    tonic::include_proto!("permguard.host.v1");
+    pub use permguard_contracts::host::v1::*;
 }
 
 use std::sync::Arc;

@@ -14,7 +14,6 @@ repository.workspace = true
 publish = false
 
 # The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
-build = "build.rs"
 
 # The Control Plane, with the Authority Plane registered beside it: the binary the
 # `control-plane` image runs (`runtime.planes` selects which of them serve).
@@ -43,6 +42,8 @@ permguard-server.workspace = true
 permguard-stream.workspace = true
 # The actor a request carries, read where a route authorizes (WP-2.4).
 permguard-transport.workspace = true
+# The contracts this package speaks, generated once for the workspace.
+permguard-contracts = { workspace = true, features = ["control-server"] }
 prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -66,5 +67,3 @@ http.workspace = true
 # Reading a router's answer, for the discovery chain walked the way a client walks it.
 http-body-util.workspace = true
 
-[build-dependencies]
-tonic-prost-build.workspace = true

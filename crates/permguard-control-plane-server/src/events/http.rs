@@ -965,7 +965,7 @@ mod gate {
                 Some("")
             )
         );
-        let over_grpc = served
+        let over_grpc = crate::served::Served(served.clone())
             .get_event_configuration(tonic::Request::new(
                 crate::v1::GetEventConfigurationRequest {},
             ))
@@ -996,7 +996,7 @@ mod gate {
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "interface_retired");
         assert_eq!(refused["class"], "validation");
-        let refused = retired
+        let refused = crate::served::Served(retired.clone())
             .get_event_configuration(tonic::Request::new(
                 crate::v1::GetEventConfigurationRequest {},
             ))
@@ -1069,8 +1069,12 @@ mod gate {
             request.extensions_mut().insert(auditor());
             request
         };
-        assert!(EventLog::list_records(&held, list("main")).await.is_ok());
-        let refused = EventLog::list_records(&held, list("audit"))
+        assert!(
+            EventLog::list_records(&crate::served::Served(held.clone()), list("main"))
+                .await
+                .is_ok()
+        );
+        let refused = EventLog::list_records(&crate::served::Served(held.clone()), list("audit"))
             .await
             .expect_err("another ledger");
         assert_eq!(refused.code(), tonic::Code::PermissionDenied);
@@ -1079,7 +1083,7 @@ mod gate {
             ledger: "main".to_owned(),
             event_id: "e-1".to_owned(),
         });
-        let refused = EventLog::get_record(&held, nobody)
+        let refused = EventLog::get_record(&crate::served::Served(held.clone()), nobody)
             .await
             .expect_err("nobody");
         assert_eq!(refused.code(), tonic::Code::Unauthenticated);
@@ -1089,7 +1093,7 @@ mod gate {
             event_id: "e-1".to_owned(),
         });
         nobody.extensions_mut().insert(auditor());
-        let refused = EventLog::get_record(&held, nobody)
+        let refused = EventLog::get_record(&crate::served::Served(held.clone()), nobody)
             .await
             .expect_err("another ledger");
         assert_eq!(refused.code(), tonic::Code::PermissionDenied);
@@ -1121,7 +1125,7 @@ mod gate {
             ..Default::default()
         });
         asked.extensions_mut().insert(auditor());
-        let refused = EventLog::list_records(&held, asked)
+        let refused = EventLog::list_records(&crate::served::Served(held.clone()), asked)
             .await
             .expect_err("nothing granted");
         assert_eq!(refused.code(), tonic::Code::PermissionDenied);
@@ -1130,7 +1134,7 @@ mod gate {
             ledger: "main".to_owned(),
             ..Default::default()
         });
-        let refused = EventLog::list_records(&held, nobody)
+        let refused = EventLog::list_records(&crate::served::Served(held.clone()), nobody)
             .await
             .expect_err("nobody");
         assert_eq!(refused.code(), tonic::Code::Unauthenticated);
@@ -1206,7 +1210,7 @@ mod gate {
             asked
         };
         for name in ["audit", "nowhere"] {
-            let refused = EventLog::get_record(&ledger, get(name))
+            let refused = EventLog::get_record(&crate::served::Served(ledger.clone()), get(name))
                 .await
                 .expect_err("refused");
             assert_eq!(refused.code(), tonic::Code::PermissionDenied, "{name}");
@@ -1216,7 +1220,7 @@ mod gate {
             status(&plane, &records("nowhere")).await,
             StatusCode::NOT_FOUND
         );
-        let refused = EventLog::get_record(&plane, get("nowhere"))
+        let refused = EventLog::get_record(&crate::served::Served(plane.clone()), get("nowhere"))
             .await
             .expect_err("not held");
         assert_eq!(refused.code(), tonic::Code::NotFound);

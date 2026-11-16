@@ -4,8 +4,8 @@
 //! The checked-in contracts under `contracts/`: the protobuf of every gRPC surface, the OpenAPI of
 //! every REST surface, the CBOR label registries and the stable-code ownership report.
 //!
-//! The planes compile their own protobuf; this module compiles what no plane serves yet, the Host
-//! API stub, and gives the contract tests the path of the `contracts/` root.
+//! The protobuf is generated once, by `permguard-contracts`; this module names the halves the
+//! contract tests drive and gives them the path of the `contracts/` root.
 
 use std::path::{Path, PathBuf};
 
@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 /// names every service, and the clients, so the vectors drive the listener over gRPC.
 #[allow(clippy::all, missing_docs)]
 pub mod host_v1 {
-    tonic::include_proto!("permguard.host.v1");
+    pub use permguard_contracts::host::v1::*;
 }
 
 /// The generated client half of the Authority Plane, `permguard.authority.v1`.
 #[allow(clippy::all, missing_docs)]
 pub mod authority_v1 {
-    tonic::include_proto!("permguard.authority.v1");
+    pub use permguard_contracts::authority::v1::*;
 }
 
 /// The repository's `contracts/` directory.
@@ -30,10 +30,8 @@ pub fn root() -> PathBuf {
 /// The descriptor set of every checked-in proto, written by the build script.
 pub fn descriptors() -> prost_types::FileDescriptorSet {
     use prost::Message;
-    prost_types::FileDescriptorSet::decode(
-        &include_bytes!(concat!(env!("OUT_DIR"), "/contracts.bin"))[..],
-    )
-    .expect("the build script wrote a descriptor set")
+    prost_types::FileDescriptorSet::decode(permguard_contracts::DESCRIPTORS)
+        .expect("the build script wrote a descriptor set")
 }
 
 /// The fields of the message `full_name` (`package.Message`, nested types as `Outer.Inner`), or

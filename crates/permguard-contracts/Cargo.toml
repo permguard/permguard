@@ -1,0 +1,50 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-contracts"
+description = "The messages and gRPC stubs generated from contracts/proto, once: a feature per contract, client and server stubs apart."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+# Nothing by default. A contract's feature generates its messages; `-client` and `-server` add the
+# stubs of its services, so a client adapter links no server stub and a server no client it does
+# not call. A domain package selects none of them.
+[features]
+control = []
+control-client = ["control"]
+control-server = ["control"]
+data = []
+data-client = ["data"]
+data-server = ["data"]
+host = []
+host-client = ["host"]
+host-server = ["host"]
+authority = []
+authority-client = ["authority"]
+authority-server = ["authority"]
+health = []
+health-client = ["health"]
+health-server = ["health"]
+# The messages of the Host API and of the Authority Plane as JSON, for what compares a gRPC answer
+# with a REST answer as one document.
+serde = ["dep:serde"]
+# The descriptor set of every Permguard contract, for the tests that read the contracts themselves.
+descriptors = []
+
+[dependencies]
+prost.workspace = true
+# The well-known types the decision point's contract carries.
+prost-types.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+serde = { workspace = true, optional = true }
+
+[build-dependencies]
+tonic-prost-build.workspace = true

@@ -36,6 +36,8 @@ permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "met
 permguard-telemetry.workspace = true
 permguard-transport.workspace = true
 # The Host listener's gRPC half, `permguard.host.v1`, compiled by `build.rs` from `contracts/proto`.
+# The contracts this package speaks, generated once for the workspace.
+permguard-contracts = { workspace = true, features = ["host-client", "host-server", "authority-client", "authority-server", "health-client", "health-server"] }
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
@@ -77,8 +79,6 @@ rustix = { workspace = true }
 # The PKCS#11 custody of the Host's keys (WP-3.2): loads the token's module at runtime.
 pkcs11 = ["dep:cryptoki"]
 
-[build-dependencies]
-tonic-prost-build.workspace = true
 
 [dev-dependencies]
 # The Authority Plane's `TokenService` the gRPC fetch is tested against, served over TLS as the

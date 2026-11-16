@@ -919,6 +919,7 @@ The Host never depends on a concrete plane.
 | `permguard-stream`                 | codecs      | The Host stream engine: signed batches, acknowledgements, cursors, retention and recovery.                    |
 | `permguard-objects`                | codecs      | Canonical policy objects, digests, manifests and signed head statements.                                      |
 | `permguard-notp`                   | codecs      | Negotiated Object Transfer Protocol messages and codecs.                                                      |
+| `permguard-contracts`              | codecs      | The messages and gRPC stubs of `contracts/proto`, generated once: a feature per contract and side.            |
 | `permguard-decisions`              | codecs      | Decision evidence records, commitments and their verification.                                                |
 | `permguard-events`                 | codecs      | Event evidence records for the temporal interface.                                                            |
 | `permguard-language-core`          | languages   | What a language is: roles, artifacts, descriptors, the request model and the shared evaluation path.          |

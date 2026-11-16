@@ -79,7 +79,7 @@ mod tests {
             routed(facade.clone()),
             tonic::service::Routes::new(
                 crate::v1::zone_catalog_server::ZoneCatalogServer::with_interceptor(
-                    facade,
+                    crate::served::Served(facade),
                     anonymous_interceptor,
                 ),
             ),
@@ -327,7 +327,7 @@ mod tests {
         }
 
         pub(super) async fn create_zone(facade: &CatalogFacade, name: &str) -> tonic::Status {
-            facade
+            crate::served::Served(facade.clone())
                 .create_zone(anonymous_request(v1::CreateZoneRequest {
                     name: name.to_owned(),
                     request_id: fresh(),
@@ -337,7 +337,7 @@ mod tests {
         }
 
         pub(super) async fn get_zone(facade: &CatalogFacade, zone: &str) -> tonic::Status {
-            facade
+            crate::served::Served(facade.clone())
                 .get_zone(anonymous_request(v1::GetZoneRequest {
                     zone: zone.to_owned(),
                 }))
@@ -346,7 +346,7 @@ mod tests {
         }
 
         pub(super) async fn delete_zone(facade: &CatalogFacade, zone: &str) -> tonic::Status {
-            facade
+            crate::served::Served(facade.clone())
                 .delete_zone(anonymous_request(v1::DeleteZoneRequest {
                     zone: zone.to_owned(),
                     request_id: fresh(),
@@ -361,7 +361,7 @@ mod tests {
             zone: &str,
             name: &str,
         ) -> tonic::Status {
-            facade
+            crate::served::Served(facade.clone())
                 .create_ledger(anonymous_request(v1::CreateLedgerRequest {
                     zone: zone.to_owned(),
                     name: name.to_owned(),

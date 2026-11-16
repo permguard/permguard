@@ -9,6 +9,7 @@
 
 mod api;
 mod members;
+mod served;
 mod service;
 #[cfg(test)]
 mod testing;

@@ -35,17 +35,18 @@ use crate::v1::{
 };
 
 #[tonic::async_trait]
-impl DecisionLog for DecisionFacade {
+impl DecisionLog for crate::served::Served<DecisionFacade> {
     /// The same document the HTTP well-known answers, as JSON text.
     async fn get_configuration(
         &self,
         _request: Request<GetDecisionConfigurationRequest>,
     ) -> Result<Response<GetDecisionConfigurationResponse>, Status> {
         let header = self
+            .0
             .describer
             .header(permguard_core::domains::interface::DECISIONS_NATIVE_V1)
-            .map_err(|refused| api_status(&refused, self.disclosure))?;
-        let document = super::configuration::document(&self.base_url, &self.base_url, header);
+            .map_err(|refused| api_status(&refused, self.0.disclosure))?;
+        let document = super::configuration::document(&self.0.base_url, &self.0.base_url, header);
         let document_json = serde_json::to_string(&document)
             .map_err(|error| Status::internal(format!("the document did not render: {error}")))?;
         Ok(Response::new(GetDecisionConfigurationResponse {
@@ -66,11 +67,11 @@ impl DecisionLog for DecisionFacade {
                     codes::stream::STREAM_REQUIRED,
                     "a signer manifest belongs to one producer stream: set `pdp` and `instance`",
                 ),
-                self.disclosure,
+                self.0.disclosure,
             ));
         }
 
-        let (facade, disclosure) = (self.clone(), self.disclosure);
+        let (facade, disclosure) = (self.0.clone(), self.0.disclosure);
         let view = tokio::task::spawn_blocking(move || {
             facade.signers_of(&asked.pdp, &asked.instance, asked.from_seq, asked.until_seq)
         })
@@ -134,7 +135,7 @@ impl DecisionLog for DecisionFacade {
                     codes::stream::SCOPE_REQUIRED,
                     "name a zone and a ledger, or one producer stream with `pdp` and `instance`",
                 ),
-                self.disclosure,
+                self.0.disclosure,
             ));
         };
         let kind = match scope {
@@ -160,7 +161,7 @@ impl DecisionLog for DecisionFacade {
 
         // Off the runtime's threads, exactly as on HTTP.
         let page = {
-            let facade = self.clone();
+            let facade = self.0.clone();
             let scope = scope.clone();
             tokio::task::spawn_blocking(move || facade.read_as(&actor, scope, &window))
                 .await
@@ -174,7 +175,7 @@ impl DecisionLog for DecisionFacade {
         let page = match page {
             Ok(page) => Ok(page),
             Err(crate::evidence::Gated::Denied(denial)) => {
-                self.metrics.count(
+                self.0.metrics.count(
                     &measure::READS,
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "denied")],
                 );
@@ -184,7 +185,7 @@ impl DecisionLog for DecisionFacade {
         };
         match page {
             Ok(page) => {
-                self.metrics.count(
+                self.0.metrics.count(
                     &measure::READS,
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
                 );
@@ -192,7 +193,7 @@ impl DecisionLog for DecisionFacade {
                 let members = crate::members::members_of(
                     page.records.iter(),
                     crate::members::decision_host,
-                    self.members.as_deref(),
+                    self.0.members.as_deref(),
                 );
                 Ok(Response::new(ReadResponse {
                     members: crate::members::to_proto(members),
@@ -217,7 +218,7 @@ impl DecisionLog for DecisionFacade {
                     requested_sequence,
                 },
             ) => {
-                self.metrics.count(
+                self.0.metrics.count(
                     &measure::READS,
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "expired")],
                 );
@@ -231,7 +232,7 @@ impl DecisionLog for DecisionFacade {
                         codes::stream::OFFSET_EXPIRED,
                         expired.to_string(),
                     ),
-                    self.disclosure,
+                    self.0.disclosure,
                 );
                 let metadata = status.metadata_mut();
                 if let Ok(value) = oldest.parse() {
@@ -247,12 +248,12 @@ impl DecisionLog for DecisionFacade {
                 Err(status)
             }
             Err(error) => {
-                self.metrics.count(
+                self.0.metrics.count(
                     &measure::READS,
                     &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
                 );
 
-                Err(refused_read(&error, self.disclosure))
+                Err(refused_read(&error, self.0.disclosure))
             }
         }
     }

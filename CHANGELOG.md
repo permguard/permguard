@@ -41,6 +41,9 @@ is cut.
   A build with one language runs that language's golden vectors and corpora without the other engines, and its startup check accepts it: the catalogue offers a manifest only the inputs of the languages it carries (`task test:profiles` runs every profile, each built apart).
   The control client depends on the request model alone and compiles no policy language.
   The shipped binaries carry the same three languages and decide exactly as before: every language descriptor and its digest are unchanged.
+- **The gRPC contracts are generated once.**
+  `permguard-contracts` compiles `contracts/proto` for the whole workspace, a feature per contract with its client and its server stubs apart; the client library, the three servers, the Host and the conformance tests no longer generate copies of their own, so a message is one type wherever it is named.
+  Nothing on a wire changes.
 
 ## [0.1.32] - 2026-11-15
 

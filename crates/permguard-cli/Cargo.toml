@@ -67,6 +67,8 @@ rustix = { workspace = true, features = ["termios"] }
 pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
+# The server stubs of the contracts, for the tests that stand a fake server on them.
+permguard-contracts = { workspace = true, features = ["control-server", "data-server", "host-server", "authority-server"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 # The Authority Plane's module, composed by the Authority Plane test as a binary composes it.
 permguard-authority-plane-server.workspace = true

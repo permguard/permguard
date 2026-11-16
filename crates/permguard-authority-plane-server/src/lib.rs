@@ -14,7 +14,7 @@ mod wire;
 
 #[allow(clippy::all, clippy::pedantic, missing_docs)]
 mod v1 {
-    tonic::include_proto!("permguard.authority.v1");
+    pub use permguard_contracts::authority::v1::*;
 }
 
 /// The domain the routes serve, under the names the routes were written against.

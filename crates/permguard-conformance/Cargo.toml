@@ -14,7 +14,6 @@ repository.workspace = true
 publish = false
 
 # The Host API stub of `contracts/proto/`, compiled so it stays valid protobuf; nothing serves it.
-build = "build.rs"
 
 [dependencies]
 axum.workspace = true
@@ -31,6 +30,8 @@ serde_norway.workspace = true
 sha2.workspace = true
 permguard-control-client.workspace = true
 permguard-core.workspace = true
+# The contracts this package speaks, generated once for the workspace.
+permguard-contracts = { workspace = true, features = ["host-client", "host-server", "authority-client", "serde", "descriptors"] }
 prost.workspace = true
 prost-types.workspace = true
 serde.workspace = true
@@ -44,8 +45,6 @@ tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 tonic.workspace = true
 tonic-prost.workspace = true
 
-[build-dependencies]
-tonic-prost-build.workspace = true
 
 [dev-dependencies]
 permguard-authority-plane.workspace = true

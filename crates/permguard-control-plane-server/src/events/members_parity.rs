@@ -81,7 +81,7 @@ async fn the_members_a_page_names_are_the_same_over_rest_and_grpc() {
         ..Default::default()
     });
     request.extensions_mut().insert(actor);
-    let grpc = EventLog::list_records(&facade, request)
+    let grpc = EventLog::list_records(&crate::served::Served(facade.clone()), request)
         .await
         .expect("answered")
         .into_inner();

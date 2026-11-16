@@ -646,7 +646,7 @@ mod tests {
         let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
         let (objects, head) = build_commit();
         let negotiated = GitLikeStore::negotiate_push(
-            &facade,
+            &crate::served::Served(facade.clone()),
             anonymous(crate::v1::NegotiatePushRequest {
                 zone: zone.clone(),
                 ledger: ledger.clone(),
@@ -668,7 +668,7 @@ mod tests {
         .into_inner();
         let transfer_id: [u8; 16] = negotiated.transfer_id.clone().try_into().expect("16 bytes");
         GitLikeStore::upload_objects(
-            &facade,
+            &crate::served::Served(facade.clone()),
             anonymous(crate::v1::UploadObjectsRequest {
                 zone: zone.clone(),
                 ledger: ledger.clone(),
@@ -821,11 +821,13 @@ mod tests {
         request
             .extensions_mut()
             .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
-        let committed =
-            crate::v1::git_like_store_server::GitLikeStore::commit_push(&facade, request)
-                .await
-                .expect("the gRPC commit lands")
-                .into_inner();
+        let committed = crate::v1::git_like_store_server::GitLikeStore::commit_push(
+            &crate::served::Served(facade.clone()),
+            request,
+        )
+        .await
+        .expect("the gRPC commit lands")
+        .into_inner();
         assert_eq!((committed.head, committed.counter), (head.to_string(), 1));
 
         // The same commit asked again over REST is the transfer's answer, not a second update.

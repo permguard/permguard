@@ -84,7 +84,7 @@ fn optional_text(value: &str) -> Option<String> {
 }
 
 #[tonic::async_trait]
-impl GitLikeStore for NotpFacade {
+impl GitLikeStore for crate::served::Served<NotpFacade> {
     async fn get_ref(
         &self,
         request: Request<GetRefRequest>,
@@ -92,6 +92,7 @@ impl GitLikeStore for NotpFacade {
         let actor = permguard_transport::actor_of(request.extensions());
         let message = request.into_inner();
         match self
+            .0
             .get_ref(&actor, &message.zone, &message.ledger, &message.r#ref)
             .await
         {
@@ -101,7 +102,7 @@ impl GitLikeStore for NotpFacade {
                 statement: answered.statement,
                 ref_digest: answered.ref_digest.to_string(),
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -128,7 +129,8 @@ impl GitLikeStore for NotpFacade {
                     .collect::<Result<Vec<_>, ApiError>>()?,
                 request_id: request_id(&message.request_id)?,
             };
-            self.negotiate_push(&actor, &message.zone, &message.ledger, &domain)
+            self.0
+                .negotiate_push(&actor, &message.zone, &message.ledger, &domain)
                 .await
         }
         .await;
@@ -142,7 +144,7 @@ impl GitLikeStore for NotpFacade {
                 reservation: response.reservation,
                 expiry: response.expiry,
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -158,7 +160,8 @@ impl GitLikeStore for NotpFacade {
                 objects: message.objects,
                 compression: optional_text(&message.compression),
             };
-            self.upload(&actor, &message.zone, &message.ledger, &domain)
+            self.0
+                .upload(&actor, &message.zone, &message.ledger, &domain)
                 .await
         }
         .await;
@@ -167,7 +170,7 @@ impl GitLikeStore for NotpFacade {
                 received: strings(response.received),
                 remaining: response.remaining,
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -185,7 +188,8 @@ impl GitLikeStore for NotpFacade {
                 transfer_id: transfer_id(&message.transfer_id)?,
                 request_id: request_id(&message.request_id)?,
             };
-            self.commit_push(&actor, &message.zone, &message.ledger, &domain)
+            self.0
+                .commit_push(&actor, &message.zone, &message.ledger, &domain)
                 .await
         }
         .await;
@@ -196,7 +200,7 @@ impl GitLikeStore for NotpFacade {
                 statement: response.statement,
                 ref_digest: response.ref_digest.to_string(),
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -213,7 +217,8 @@ impl GitLikeStore for NotpFacade {
                 have: digests(&message.have)?,
                 checkpoint: expected(message.checkpoint.as_ref())?,
             };
-            self.negotiate_pull(&actor, &message.zone, &message.ledger, &domain)
+            self.0
+                .negotiate_pull(&actor, &message.zone, &message.ledger, &domain)
                 .await
         }
         .await;
@@ -230,7 +235,7 @@ impl GitLikeStore for NotpFacade {
                 ref_digest: response.ref_digest.to_string(),
                 expiry: response.expiry,
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -246,7 +251,8 @@ impl GitLikeStore for NotpFacade {
                 accept_compression: optional_text(&message.accept_compression),
                 transfer_id: transfer_id(&message.transfer_id)?,
             };
-            self.fetch(&actor, &message.zone, &message.ledger, &domain)
+            self.0
+                .fetch(&actor, &message.zone, &message.ledger, &domain)
                 .await
         }
         .await;
@@ -256,7 +262,7 @@ impl GitLikeStore for NotpFacade {
                 compression: response.compression.unwrap_or_default(),
                 expiry: response.expiry,
             })),
-            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.disclosure)),
+            Err(refusal) => Err(wire::grpc_refusal(&refusal, self.0.disclosure)),
         }
     }
 
@@ -264,9 +270,9 @@ impl GitLikeStore for NotpFacade {
         &self,
         _request: Request<GetKeyRingRequest>,
     ) -> Result<Response<GetKeyRingResponse>, Status> {
-        match self.keyring() {
+        match self.0.keyring() {
             Ok(jwks) => Ok(Response::new(GetKeyRingResponse { jwks })),
-            Err(error) => Err(wire::grpc_error(&error, self.disclosure)),
+            Err(error) => Err(wire::grpc_error(&error, self.0.disclosure)),
         }
     }
 }
@@ -340,7 +346,7 @@ mod tests {
     async fn a_ref_read_and_a_pull_are_authorized_over_grpc_before_any_lookup() {
         let facade = closed_facade();
         let nobody = GitLikeStore::get_ref(
-            &facade,
+            &crate::served::Served(facade.clone()),
             Request::new(GetRefRequest {
                 zone: "delivery".to_owned(),
                 ledger: "main".to_owned(),
@@ -373,9 +379,10 @@ mod tests {
                 Credential::Certificate,
                 None,
             ))));
-        let somebody = GitLikeStore::negotiate_pull(&facade, request)
-            .await
-            .expect_err("F-22");
+        let somebody =
+            GitLikeStore::negotiate_pull(&crate::served::Served(facade.clone()), request)
+                .await
+                .expect_err("F-22");
         assert_eq!(somebody.code(), tonic::Code::PermissionDenied);
         assert_eq!(
             somebody
