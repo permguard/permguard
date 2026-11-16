@@ -34,7 +34,8 @@ tracing.workspace = true
 # The handles this plane declares and gets from the Host (P1).
 permguard-host.workspace = true
 serde_json.workspace = true
-permguard-languages.workspace = true
+# The evaluating half: this package decides.
+permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-objects.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }

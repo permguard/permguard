@@ -21,6 +21,7 @@
 
 use std::collections::BTreeMap;
 
+use permguard_languages::request::Route as _;
 use permguard_languages::{self as languages, Evaluator, Semantic, registry, resolve};
 use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{Object, Tree};

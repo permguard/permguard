@@ -7,7 +7,9 @@
 //! `permguard-language-dogwood` — over the contracts of `permguard-language-core`. This package is
 //! the catalogue a build carries, chosen by its features (`cedar`, `rego`, `dogwood`, all on by
 //! default), and every rule that is asked of all of them at once: the lookups, the manifest gates,
-//! the startup checks, the descriptors, the supervised worker.
+//! the startup checks, the descriptors. The `evaluate` feature adds what a decision point needs and
+//! a build that only validates does not: the evaluating halves, routing, the evaluation path
+//! (`permguard-pdp-core`) and the supervised worker.
 //!
 //! Split by role, because the two sides of the product ask a language
 //! different things:
@@ -16,8 +18,8 @@
 //! | --- | --- | --- |
 //! | [`Language`] | both sides | is this legal, and what alias does the source declare — the base every consumer needs |
 //! | [`Authoring`] | the CLI | split a source file into the policies it holds — the server never reads files |
-//! | [`Evaluating`] | the data plane | compile a partition once, then decide — the PDP's half, which no ingest path can reach |
-//! | [`temporal::Temporal`] | the data plane | remember: check an occurrence against the loaded schemas, then observe and decide it |
+//! | `Evaluating` | the data plane | compile a partition once, then decide — the PDP's half, which no ingest path can reach, with `evaluate` |
+//! | `temporal::Temporal` | the data plane | remember: check an occurrence against the loaded schemas, then observe and decide it |
 //!
 //! Nothing here is visible to the object model: what an object *is* — bytes,
 //! digests, trees, identity, signatures — knows no language, so a language
@@ -33,9 +35,33 @@
 // the panic boundary, and this package reaches them through the roles and the lookups, never by
 // name. Keeping the concrete types private is what makes the role split a rule the compiler
 // enforces — an ingest path cannot get hold of `Cedar` and call the splitter on it.
-pub use permguard_language_core::{
-    attestation, evaluate, fanout, guard, headroom, input, names, request, role, temporal, warm,
-};
+pub use permguard_language_core::{attestation, guard, headroom, input, names, role};
+#[cfg(feature = "evaluate")]
+pub use permguard_pdp_core::{fanout, warm};
+
+/// Queries, verdicts and how they combine (`permguard-language-core`), and — with the `evaluate`
+/// feature — the evaluating half and the one path every evaluation takes (`permguard-pdp-core`).
+pub mod evaluate {
+    pub use permguard_language_core::evaluate::*;
+    #[cfg(feature = "evaluate")]
+    pub use permguard_pdp_core::evaluate::*;
+}
+
+/// The native request model (`permguard-language-core`), and — with the `evaluate` feature — how
+/// one question is routed to the partitions of a profile (`permguard-pdp-core`).
+pub mod request {
+    pub use permguard_language_core::request::*;
+    #[cfg(feature = "evaluate")]
+    pub use permguard_pdp_core::route::*;
+}
+
+/// The temporal interface's wire model (`permguard-language-core`), and — with the `evaluate`
+/// feature — what a temporal partition is and how it decides (`permguard-pdp-core`).
+pub mod temporal {
+    pub use permguard_language_core::temporal::*;
+    #[cfg(feature = "evaluate")]
+    pub use permguard_pdp_core::temporal::*;
+}
 
 pub mod artifact;
 pub mod conformance;
@@ -44,6 +70,7 @@ pub mod lookup;
 pub mod manifest_file;
 pub mod partition;
 pub mod registry;
+#[cfg(feature = "evaluate")]
 pub mod worker;
 
 pub use permguard_language_core::names::DOGWOOD;
@@ -55,11 +82,13 @@ pub use permguard_language_dogwood::artifacts as dogwood_artifacts;
 /// The registered media type of a Dogwood policy.
 pub const MEDIA_TYPE_POLICY_DOGWOOD: &str = permguard_core::domains::media::POLICY_DOGWOOD;
 pub use evaluate::{
-    Action, Entity, Evaluating, EvaluationError, Evaluator, Outcome, Query, Resolution,
-    StoredPolicy, Verdict, resolve,
+    Action, Entity, EvaluationError, Outcome, Query, Resolution, StoredPolicy, Verdict, resolve,
 };
+#[cfg(feature = "evaluate")]
+pub use evaluate::{Evaluating, Evaluator};
 pub use input::{PartitionData, PartitionInputBody, input_type, input_types};
 pub use lookup::{language, language_for_media_type, languages};
+#[cfg(feature = "evaluate")]
 pub use registry::evaluating;
 pub use request::{
     Asked, CheckRequest, CheckResponse, Decision, DecisionContext, Malformed, Semantic,

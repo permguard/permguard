@@ -92,7 +92,7 @@ pub struct Engine {
 }
 
 /// The limits the shared evaluation path enforces for every stateless runtime
-/// (`crate::evaluate::evaluate_all` and `crate::headroom`).
+/// (`permguard_pdp_core::evaluate::evaluate_all` and [`crate::headroom`]).
 pub const COMMON_LIMITS: &[&str] = &[
     "deadline_after_evaluation",
     "deadline_before_evaluation",

@@ -43,7 +43,8 @@ permguard-events.workspace = true
 permguard-control-client.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true
-permguard-languages.workspace = true
+# The evaluating half: this package decides.
+permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-stream.workspace = true
 # A certificate's SPKI digest, computed as the server computes a connection's (TC-6).
 permguard-transport.workspace = true

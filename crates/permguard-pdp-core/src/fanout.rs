@@ -41,7 +41,7 @@
 //! has already fired releases the concurrency permit that was limiting how many of these could be
 //! in flight, and the next request is admitted while the previous one's work is still queued. With
 //! nothing bounding the queue, that is how a plane under load accumulates work nobody is waiting
-//! for. The queue cannot grow now, and [`Query::deadline`](crate::evaluate::Query::deadline) is
+//! for. The queue cannot grow now, and [`Query::deadline`](permguard_language_core::evaluate::Query::deadline) is
 //! what ends the work already running.
 //!
 //! # Fail-closed

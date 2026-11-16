@@ -10,15 +10,15 @@
 //! an occurrence left durable and unapplied.
 //!
 //! [`Guarded`] wraps a built-in language so every caller that reaches it through the registry gets
-//! the boundary on validation, extraction and compilation. Evaluation has its own, per job, in
-//! [`crate::evaluate::evaluate_all`]; the input check and the temporal entries are wrapped with
-//! [`contained`] where they are called, because each of those refuses in its own terms.
+//! the boundary on validation and extraction, and — through `permguard-pdp-core`, which owns the
+//! evaluating half — on compilation. Evaluation has its own, per job, in
+//! `permguard_pdp_core::evaluate::evaluate_all`; the input check and the temporal entries are
+//! wrapped with [`contained`] where they are called, because each of those refuses in its own
+//! terms.
 //!
 //! A panic's own message is never part of a refusal: an engine's words can carry policy text or
 //! tenant data. It is returned to the caller, which keeps it as internal detail at most.
 
-use crate::artifact::Artifacts;
-use crate::evaluate::{Evaluating, Evaluator, StoredPolicy};
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
 /// Runs `work`, and answers what it returned, or what its panic said.
@@ -59,7 +59,9 @@ pub fn report_panics_without_their_words() {
 pub struct Guarded<L: Language + 'static>(pub L);
 
 impl<L: Language + 'static> Guarded<L> {
-    fn came_apart(&self, doing: &str) -> String {
+    /// The refusal of an entry that came apart: the language and what it was doing, never what
+    /// the panic said.
+    pub fn came_apart(&self, doing: &str) -> String {
         format!(
             "the `{}` engine came apart {doing}; nothing it was given was accepted",
             self.0.name()
@@ -173,10 +175,6 @@ impl<L: Language + 'static> Language for Guarded<L> {
     fn guarded(&self) -> bool {
         true
     }
-
-    fn evaluating(&self) -> Option<&dyn Evaluating> {
-        self.0.evaluating().map(|_| self as &dyn Evaluating)
-    }
 }
 
 impl<L: Language + 'static> Authoring for Guarded<L> {
@@ -198,20 +196,6 @@ impl<L: Language + 'static> Authoring for Guarded<L> {
         };
         contained(|| authoring.extract(source))
             .unwrap_or_else(|_| Err(self.came_apart("splitting a source file")))
-    }
-}
-
-impl<L: Language + 'static> Evaluating for Guarded<L> {
-    fn compile(
-        &self,
-        policies: &[StoredPolicy],
-        artifacts: &Artifacts,
-    ) -> Result<Box<dyn Evaluator>, String> {
-        let Some(evaluating) = self.0.evaluating() else {
-            return Err(format!("`{}` carries no evaluating half", self.0.name()));
-        };
-        contained(|| evaluating.compile(policies, artifacts))
-            .unwrap_or_else(|_| Err(self.came_apart("compiling a partition")))
     }
 }
 
@@ -273,9 +257,6 @@ mod tests {
         fn authoring(&self) -> Option<&dyn Authoring> {
             Some(self)
         }
-        fn evaluating(&self) -> Option<&dyn Evaluating> {
-            Some(self)
-        }
     }
 
     impl Authoring for Fragile {
@@ -284,16 +265,6 @@ mod tests {
         }
         fn extract(&self, _source: &[u8]) -> Result<Vec<ExtractedPolicy>, String> {
             panic!("the splitter came apart")
-        }
-    }
-
-    impl Evaluating for Fragile {
-        fn compile(
-            &self,
-            _policies: &[StoredPolicy],
-            _artifacts: &Artifacts,
-        ) -> Result<Box<dyn Evaluator>, String> {
-            panic!("the compiler came apart over secret policy text")
         }
     }
 
@@ -322,12 +293,6 @@ mod tests {
         );
         let authoring = guarded.authoring().expect("it authors");
         assert!(authoring.extract(b"x").is_err());
-        let evaluating = guarded.evaluating().expect("it evaluates");
-        let refused = evaluating
-            .compile(&[], &Artifacts::default())
-            .err()
-            .expect("refused");
-        assert!(!refused.contains("secret"), "{refused}");
     }
 
     /// A bare language says it is bare; the catalogue's are guarded (`permguard-languages`).

@@ -7,6 +7,7 @@
 //! policy — the whole verbatim source. The alias rides the standard OPA
 //! `# METADATA` annotation block, under `custom.alias`; no bespoke syntax.
 
+#[cfg(feature = "evaluate")]
 pub(crate) mod evaluate;
 pub(crate) mod parsed;
 
@@ -76,10 +77,21 @@ pub const ENGINE_FEATURES: &[&str] = &[
 /// The language, every engine entry of which is inside the panic boundary: the only way out of
 /// this package, so no caller reaches the engine without it.
 pub fn language() -> &'static dyn Language {
-    static GUARDED: permguard_language_core::guard::Guarded<Rego> =
-        permguard_language_core::guard::Guarded(Rego);
     &GUARDED
 }
+
+/// The evaluating half, every compile of which is inside the same panic boundary.
+///
+/// Compiled only with this package's `evaluate` feature: a build that validates, as the Control
+/// Plane's ingest does, carries no evaluator.
+#[cfg(feature = "evaluate")]
+pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
+    &GUARDED
+}
+
+/// The language, guarded: the one value both halves hand out.
+static GUARDED: permguard_language_core::guard::Guarded<Rego> =
+    permguard_language_core::guard::Guarded(Rego);
 
 /// The Rego plugin.
 struct Rego;
@@ -161,7 +173,7 @@ impl Language for Rego {
     }
 
     fn validate_schema(&self, bytes: &[u8]) -> Result<(), String> {
-        evaluate::compile_schema(bytes).map(|_| ())
+        compile_schema(bytes).map(|_| ())
     }
 
     /// The module parses, calls only allowed built-ins and declares a well-formed alias, if any:
@@ -179,7 +191,7 @@ impl Language for Rego {
     ///
     /// Run at authoring and at commit acceptance, where the error belongs to whoever wrote it —
     /// the compile refuses the same shape, so a ledger that reached a plane is refused there too,
-    /// but by then the error belongs to whoever met it. See `evaluate::shared_package` for why it
+    /// but by then the error belongs to whoever met it. See [`shared_package`] for why it
     /// is a refusal rather than something to work around.
     fn validate_set(
         &self,
@@ -198,7 +210,7 @@ impl Language for Rego {
                 .map_err(|error| format!("rego: policy {name}: {error}"))?
                 .package;
             if let Some(first) = claimed.get(&package) {
-                return Err(crate::evaluate::shared_package(&package, first, name));
+                return Err(shared_package(&package, first, name));
             }
             claimed.insert(package, name);
         }
@@ -214,10 +226,6 @@ impl Language for Rego {
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
-        Some(self)
-    }
-
-    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
         Some(self)
     }
 }
@@ -319,8 +327,52 @@ impl permguard_language_core::artifact::ArtifactType for InputSchemaArtifact {
     }
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
-        evaluate::compile_schema(bytes).map(|_| ())
+        compile_schema(bytes).map(|_| ())
     }
+}
+
+/// Compiles a partition's JSON Schema, once.
+///
+/// Draft 2020-12, and **local**: `$ref` may only reach inside the document. There is no retriever
+/// configured, so a schema naming a remote reference fails to compile rather than reaching for the
+/// network — a policy load that made an outbound request would be a policy load an operator cannot
+/// reason about, and one an attacker could aim.
+pub(crate) fn compile_schema(bytes: &[u8]) -> Result<jsonschema::Validator, String> {
+    let text =
+        std::str::from_utf8(bytes).map_err(|_| "rego: the schema is not valid UTF-8".to_owned())?;
+    let document: serde_json::Value = serde_json::from_str(text)
+        .map_err(|error| format!("rego: the schema is not JSON: {error}"))?;
+
+    jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&document)
+        .map_err(|error| format!("rego: the schema is not a usable JSON Schema: {error}"))
+}
+
+/// The refusal for two policies that share one package.
+///
+/// # Why this is refused rather than served
+///
+/// `package.allow` is the union of every `allow` rule in that package — that is the language, not
+/// a detail of this engine. There is no per-file `allow` to evaluate, and no way to ask which
+/// file's rule body produced the value.
+///
+/// So a partition holding two files of one package can be *decided* correctly and cannot be
+/// *explained* correctly: evaluating the package rule once per file and attributing the answer to
+/// each names policies that decided nothing. The verdict would be right and the reason would be
+/// false — and the reason is what an incident response, an appeal and an audit read.
+///
+/// Permguard cites decisions by policy identity, and a policy identity is a stored unit. Two files
+/// of one package are one unit, so they are refused with the two names and the way out: put the
+/// package in one file, or give each file its own package.
+pub(crate) fn shared_package(package: &str, first: &str, second: &str) -> String {
+    format!(
+        "rego: the policies {first} and {second} both declare `{package}`. A package's `allow` and \
+         `deny` are the union of every rule in it, so this engine can decide them correctly and \
+         cannot say which of the two decided — and a decision that cites a policy which decided \
+         nothing is a false audit trail. Put the package in one policy, or give each its own \
+         package"
+    )
 }
 
 #[cfg(test)]
@@ -386,24 +438,3 @@ allow if {
         assert!(refused.contains("rego:"), "{refused}");
     }
 }
-
-/// The registered artifact types of this language, by name, for the tests.
-#[cfg(test)]
-mod testing {
-    use permguard_language_core::artifact::Artifacts;
-    use permguard_language_core::role::Language as _;
-
-    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
-    /// language registers.
-    pub(crate) fn just(name: &str, data: &[u8]) -> Option<Artifacts> {
-        super::Rego
-            .artifacts()
-            .iter()
-            .copied()
-            .find(|held| held.name() == name)
-            .map(|artifact| Artifacts::just_of(artifact, data))
-    }
-}
-
-#[cfg(test)]
-use testing::just;

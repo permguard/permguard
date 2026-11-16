@@ -45,7 +45,8 @@ use cedar_policy::{
 };
 use serde_json::{Value, json};
 
-use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+use permguard_language_core::evaluate::{Query, StoredPolicy, Verdict};
+use permguard_pdp_core::evaluate::{Evaluating, Evaluator};
 
 use super::Cedar;
 
@@ -380,6 +381,19 @@ fn action_uid(name: &str) -> Result<EntityUid, String> {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
+
+    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
+    /// language registers.
+    fn just(name: &str, data: &[u8]) -> Option<permguard_language_core::artifact::Artifacts> {
+        use permguard_language_core::role::Language as _;
+
+        crate::Cedar
+            .artifacts()
+            .iter()
+            .copied()
+            .find(|held| held.name() == name)
+            .map(|artifact| permguard_language_core::artifact::Artifacts::just_of(artifact, data))
+    }
 
     use super::*;
     use permguard_language_core::evaluate::{Action, Entity, Resolution, resolve};
@@ -953,7 +967,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal == User::"alice", action == Action::"read", resource);"#,
                 )],
-                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
+                &just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the Cedar schema artifact"),
             )
             .expect("the policies compile");
@@ -1031,7 +1045,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-folder",
                     r#"permit (principal, action == Action::"read", resource == Folder::"x");"#,
                 )],
-                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
+                &just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the schema artifact is registered"),
             )
             .map(|_| ())
@@ -1053,7 +1067,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                &crate::just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
+                &just(crate::SCHEMA_ARTIFACT, schema.as_bytes())
                     .expect("the schema artifact is registered"),
             )
             .expect("the policies satisfy the schema");

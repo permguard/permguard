@@ -208,15 +208,6 @@ pub trait Language: Send + Sync {
     fn guarded(&self) -> bool {
         false
     }
-
-    /// The evaluating half, when this build carries it.
-    ///
-    /// Asked for, never assumed — exactly like [`Language::authoring`]: a
-    /// build that carries a language it cannot evaluate answers `None`, and
-    /// the caller refuses the load instead of discovering it mid-decision.
-    fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
-        None
-    }
 }
 
 /// The authoring role: turning files an author edits into policies.

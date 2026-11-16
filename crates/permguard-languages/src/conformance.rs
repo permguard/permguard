@@ -165,8 +165,8 @@ const CEDAR: &[Record] = &[
         Item::FaultInjection,
         &[
             // The evaluation path every runtime's partition runs on, Cedar's included.
-            "panic=permguard-language-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
-            "panic=permguard-language-core/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure",
+            "panic=permguard-pdp-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
+            "panic=permguard-pdp-core/src/evaluate.rs::a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure",
             "panic=permguard-language-core/src/guard.rs::every_guarded_entry_refuses_instead_of_panicking",
             "timeout=permguard-language-cedar/src/evaluate.rs::a_partition_reached_past_its_deadline_fails_closed",
             // Cedar runs in-process and terminates by construction: its memory is bounded by the
@@ -225,7 +225,7 @@ const REGO: &[Record] = &[
     passing(
         Item::FaultInjection,
         &[
-            "panic=permguard-language-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
+            "panic=permguard-pdp-core/src/evaluate.rs::a_partition_that_panics_makes_the_whole_request_indeterminate",
             "panic=permguard-languages/tests/worker.rs::a_worker_that_panics_is_replaced",
             "timeout=permguard-language-rego/src/evaluate.rs::a_hostile_rule_is_stopped_by_the_decisions_deadline_long_before_the_rule_budget",
             "timeout=permguard-language-rego/src/evaluate.rs::many_expensive_rules_share_one_decreasing_budget",

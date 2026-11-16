@@ -800,8 +800,9 @@ pub fn isolation_required(
 /// language, and this is what turns that name into something that can decide.
 /// A language this build does not carry — or carries without an engine — is
 /// `None`, and the load is refused rather than answered best-effort.
+#[cfg(feature = "evaluate")]
 pub fn evaluating(language_name: &str) -> Option<&'static dyn crate::evaluate::Evaluating> {
-    crate::lookup::language(language_name)?.evaluating()
+    crate::lookup::evaluating(language_name)
 }
 
 #[cfg(test)]

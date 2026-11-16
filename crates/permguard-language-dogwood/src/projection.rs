@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use permguard_language_core::value::Value;
 use serde::Deserialize;
 
-use permguard_language_core::temporal::Signature;
+use permguard_pdp_core::temporal::Signature;
 
 /// A dotted path, by segment.
 pub type Path = Vec<String>;
@@ -296,7 +296,7 @@ pub fn check_complete(
             .pins
             .iter()
             .filter_map(|pin| match &pin.source {
-                permguard_language_core::temporal::PinSource::Context(path) => Some(path.clone()),
+                permguard_pdp_core::temporal::PinSource::Context(path) => Some(path.clone()),
                 _ => None,
             })
             .collect();
@@ -546,16 +546,14 @@ mod tests {
             action: "A::Action::X".to_owned(),
             kind: "request".to_owned(),
             decision: true,
-            fields: vec![permguard_language_core::temporal::Field {
+            fields: vec![permguard_pdp_core::temporal::Field {
                 path: path("sessionId"),
                 declared: "String".to_owned(),
             }],
             pins: if pinned {
-                vec![permguard_language_core::temporal::Pin {
+                vec![permguard_pdp_core::temporal::Pin {
                     field: path("sessionId"),
-                    source: permguard_language_core::temporal::PinSource::Context(path(
-                        "sessionId",
-                    )),
+                    source: permguard_pdp_core::temporal::PinSource::Context(path("sessionId")),
                 }]
             } else {
                 Vec::new()

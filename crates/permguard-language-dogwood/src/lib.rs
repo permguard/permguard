@@ -84,10 +84,20 @@ pub const ENGINE_FEATURES: &[&str] = &[];
 /// The language, every engine entry of which is inside the panic boundary: the only way out of
 /// this package, so no caller reaches the engine without it.
 pub fn language() -> &'static dyn Language {
-    static GUARDED: permguard_language_core::guard::Guarded<Dogwood> =
-        permguard_language_core::guard::Guarded(Dogwood);
     &GUARDED
 }
+
+/// The evaluating half, every compile of which is inside the same panic boundary.
+///
+/// Always compiled: Dogwood validates a partition by compiling it, so its validating half is its
+/// evaluating half.
+pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
+    &GUARDED
+}
+
+/// The language, guarded: the one value both halves hand out.
+static GUARDED: permguard_language_core::guard::Guarded<Dogwood> =
+    permguard_language_core::guard::Guarded(Dogwood);
 
 /// The Dogwood plugin.
 struct Dogwood;
@@ -233,14 +243,13 @@ impl Language for Dogwood {
 
         // The compile *is* the check: it parses, lowers and validates exactly as a plane does, so
         // a set that passes here is a set that loads there.
-        let compiled =
-            permguard_language_core::evaluate::Evaluating::compile(self, &stored, &bundle)?;
+        let compiled = permguard_pdp_core::evaluate::Evaluating::compile(self, &stored, &bundle)?;
 
         // And the manifest's own claim about this partition's history, against what the schemas
         // turned out to say. Run here, where the author can still fix it, as well as at load.
         match compiled.temporal() {
             Some(temporal) => {
-                permguard_language_core::temporal::check_history_scope(
+                permguard_pdp_core::temporal::check_history_scope(
                     partition,
                     declared.history,
                     temporal.contract(),
@@ -255,10 +264,6 @@ impl Language for Dogwood {
     /// Yes: a Dogwood policy decides against what has already happened.
     fn is_temporal(&self) -> bool {
         true
-    }
-
-    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
-        Some(self)
     }
 }
 

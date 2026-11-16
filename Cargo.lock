@@ -2741,6 +2741,7 @@ dependencies = [
  "cedar-policy",
  "permguard-core",
  "permguard-language-core",
+ "permguard-pdp-core",
  "serde_json",
  "sha2",
 ]
@@ -2771,6 +2772,7 @@ dependencies = [
  "permguard-events",
  "permguard-language-core",
  "permguard-objects",
+ "permguard-pdp-core",
  "serde",
  "serde_json",
  "sha2",
@@ -2783,6 +2785,7 @@ dependencies = [
  "jsonschema 0.59.0",
  "permguard-core",
  "permguard-language-core",
+ "permguard-pdp-core",
  "regorus",
  "serde_json",
  "serde_norway",
@@ -2803,6 +2806,7 @@ dependencies = [
  "permguard-language-dogwood",
  "permguard-language-rego",
  "permguard-objects",
+ "permguard-pdp-core",
  "permguard-stream",
  "regorus",
  "serde",
@@ -2835,6 +2839,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "zeroize",
+]
+
+[[package]]
+name = "permguard-pdp-core"
+version = "0.1.0"
+dependencies = [
+ "permguard-core",
+ "permguard-language-core",
+ "permguard-objects",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

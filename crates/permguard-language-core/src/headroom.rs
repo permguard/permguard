@@ -17,7 +17,7 @@
 //! process's first thread: its `pthread_getattr_np` probes the pages currently mapped and reports
 //! what it finds — around 128 KiB — where glibc and Darwin report the real eight megabytes. Every
 //! Linux release binary is musl-static, and both engine entry points can run on that first thread
-//! ([`crate::fanout::Fanout::run`] deliberately evaluates the first partition on the calling
+//! (`permguard_pdp_core::fanout::Fanout::run` deliberately evaluates the first partition on the calling
 //! thread, and the temporal path decides on the caller's). The result was a two-line policy
 //! answering "recursion limit reached" on Linux while the same workspace passed on macOS, and
 //! passed again over gRPC, where the work lands on a spawned thread whose bounds musl does know.

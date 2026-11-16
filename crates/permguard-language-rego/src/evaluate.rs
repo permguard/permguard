@@ -67,7 +67,8 @@ use regorus::utils::limits::ExecutionTimerConfig;
 use regorus::{Engine, Value as RegoValue};
 use serde_json::{Value, json};
 
-use permguard_language_core::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+use permguard_language_core::evaluate::{Query, StoredPolicy, Verdict};
+use permguard_pdp_core::evaluate::{Evaluating, Evaluator};
 
 use super::Rego;
 
@@ -124,8 +125,8 @@ impl Evaluating for Rego {
                 crate::INPUT_SCHEMA_ARTIFACT
             ));
         }
-        let validator = schema.map(compile_schema).transpose()?;
-        let input_validator = input_schema.map(compile_schema).transpose()?;
+        let validator = schema.map(crate::compile_schema).transpose()?;
+        let input_validator = input_schema.map(crate::compile_schema).transpose()?;
 
         let mut engine = prepared_engine();
         let mut modules = Vec::new();
@@ -151,7 +152,7 @@ impl Evaluating for Rego {
             })
             .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
             if let Some(first) = claimed.get(&package) {
-                return Err(shared_package(&package, first, &stored.id));
+                return Err(crate::shared_package(&package, first, &stored.id));
             }
             claimed.insert(package.clone(), stored.id.clone());
             modules.push(Module {
@@ -176,32 +177,6 @@ impl Evaluating for Rego {
             footprint: footprint(policy_bytes, schema.or(input_schema).map_or(0, <[u8]>::len)),
         }))
     }
-}
-
-/// The refusal for two policies that share one package.
-///
-/// # Why this is refused rather than served
-///
-/// `package.allow` is the union of every `allow` rule in that package — that is the language, not
-/// a detail of this engine. There is no per-file `allow` to evaluate, and no way to ask which
-/// file's rule body produced the value.
-///
-/// So a partition holding two files of one package can be *decided* correctly and cannot be
-/// *explained* correctly: evaluating the package rule once per file and attributing the answer to
-/// each names policies that decided nothing. The verdict would be right and the reason would be
-/// false — and the reason is what an incident response, an appeal and an audit read.
-///
-/// Permguard cites decisions by policy identity, and a policy identity is a stored unit. Two files
-/// of one package are one unit, so they are refused with the two names and the way out: put the
-/// package in one file, or give each file its own package.
-pub(crate) fn shared_package(package: &str, first: &str, second: &str) -> String {
-    format!(
-        "rego: the policies {first} and {second} both declare `{package}`. A package's `allow` and \
-         `deny` are the union of every rule in it, so this engine can decide them correctly and \
-         cannot say which of the two decided — and a decision that cites a policy which decided \
-         nothing is a false audit trail. Put the package in one policy, or give each its own \
-         package"
-    )
 }
 
 /// A compiled Rego partition.
@@ -376,24 +351,6 @@ impl Evaluator for RegoEvaluator {
     }
 }
 
-/// Compiles a partition's JSON Schema, once.
-///
-/// Draft 2020-12, and **local**: `$ref` may only reach inside the document. There is no retriever
-/// configured, so a schema naming a remote reference fails to compile rather than reaching for the
-/// network — a policy load that made an outbound request would be a policy load an operator cannot
-/// reason about, and one an attacker could aim.
-pub(super) fn compile_schema(bytes: &[u8]) -> Result<jsonschema::Validator, String> {
-    let text =
-        std::str::from_utf8(bytes).map_err(|_| "rego: the schema is not valid UTF-8".to_owned())?;
-    let document: Value = serde_json::from_str(text)
-        .map_err(|error| format!("rego: the schema is not JSON: {error}"))?;
-
-    jsonschema::options()
-        .with_draft(jsonschema::Draft::Draft202012)
-        .build(&document)
-        .map_err(|error| format!("rego: the schema is not a usable JSON Schema: {error}"))
-}
-
 /// Asks one rule the module defines. `undefined` — a rule whose body did not
 /// hold — is not an error: it is a no.
 fn asked(engine: &mut Engine, rule: &str) -> Result<bool, String> {
@@ -444,6 +401,19 @@ fn value_of(document: &Value) -> Result<RegoValue, String> {
 mod tests {
     #![allow(clippy::expect_used)]
 
+    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
+    /// language registers.
+    fn just(name: &str, data: &[u8]) -> Option<permguard_language_core::artifact::Artifacts> {
+        use permguard_language_core::role::Language as _;
+
+        crate::Rego
+            .artifacts()
+            .iter()
+            .copied()
+            .find(|held| held.name() == name)
+            .map(|artifact| permguard_language_core::artifact::Artifacts::just_of(artifact, data))
+    }
+
     use super::*;
     use permguard_language_core::evaluate::{Action, Entity};
     use serde_json::Map;
@@ -472,7 +442,7 @@ deny if input.subject.id == "bob"
 
     /// A partition carrying just this Rego schema.
     fn artifacts(schema: &[u8]) -> permguard_language_core::artifact::Artifacts {
-        crate::just(crate::SCHEMA_ARTIFACT, schema).expect("the Rego schema artifact is registered")
+        just(crate::SCHEMA_ARTIFACT, schema).expect("the Rego schema artifact is registered")
     }
 
     fn stored(id: &str, source: &str) -> StoredPolicy {
@@ -651,8 +621,7 @@ allow if {
                              "properties": { "tenant": { "type": "string" } } }
             }
         }"#;
-        let held =
-            crate::just(crate::INPUT_SCHEMA_ARTIFACT, v2).expect("the v2 artifact is registered");
+        let held = just(crate::INPUT_SCHEMA_ARTIFACT, v2).expect("the v2 artifact is registered");
         let compiled = Rego
             .compile(
                 &[stored(
@@ -730,8 +699,7 @@ allow if {
         };
         let none = permguard_language_core::artifact::Artifacts::default();
         let v1 = artifacts(br#"{"type":"object"}"#);
-        let v2 =
-            crate::just(crate::INPUT_SCHEMA_ARTIFACT, br#"{"type":"object"}"#).expect("registered");
+        let v2 = just(crate::INPUT_SCHEMA_ARTIFACT, br#"{"type":"object"}"#).expect("registered");
         assert!(floor(Development, &none).is_ok());
         assert!(floor(Production, &none).is_err());
         assert!(floor(Production, &v1).is_ok() && floor(Production, &v2).is_ok());

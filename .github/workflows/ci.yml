@@ -133,6 +133,7 @@ jobs:
         run: >-
           cargo test --all-features --locked
           -p permguard-language-core
+          -p permguard-pdp-core
           -p permguard-language-cedar
           -p permguard-language-rego
           -p permguard-language-dogwood

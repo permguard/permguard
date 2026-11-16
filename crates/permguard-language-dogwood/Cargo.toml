@@ -21,6 +21,8 @@ permguard-objects.workspace = true
 # The canonical instant parsing an occurrence is validated against.
 permguard-events.workspace = true
 permguard-language-core.workspace = true
+# The evaluating half, always: Dogwood validates a partition by compiling it.
+permguard-pdp-core.workspace = true
 # Pinned in the workspace manifest, with the reasons; its features are this package's `ENGINE_FEATURES`.
 dogwood-language.workspace = true
 # The Cedar Dogwood lowers to, at the version Dogwood holds the whole build to.

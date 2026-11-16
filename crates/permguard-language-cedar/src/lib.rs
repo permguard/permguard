@@ -11,6 +11,7 @@
 //! decides *where* a policy ends, the official parser decides *whether* it
 //! is one.
 
+#[cfg(feature = "evaluate")]
 mod evaluate;
 
 use std::str::FromStr as _;
@@ -43,10 +44,21 @@ pub const ENGINE_FEATURES: &[&str] = &["datetime", "decimal", "ipaddr"];
 /// The language, every engine entry of which is inside the panic boundary: the only way out of
 /// this package, so no caller reaches the engine without it.
 pub fn language() -> &'static dyn Language {
-    static GUARDED: permguard_language_core::guard::Guarded<Cedar> =
-        permguard_language_core::guard::Guarded(Cedar);
     &GUARDED
 }
+
+/// The evaluating half, every compile of which is inside the same panic boundary.
+///
+/// Compiled only with this package's `evaluate` feature: a build that validates, as the Control
+/// Plane's ingest does, carries no evaluator.
+#[cfg(feature = "evaluate")]
+pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
+    &GUARDED
+}
+
+/// The language, guarded: the one value both halves hand out.
+static GUARDED: permguard_language_core::guard::Guarded<Cedar> =
+    permguard_language_core::guard::Guarded(Cedar);
 
 /// The Cedar plugin.
 struct Cedar;
@@ -169,10 +181,6 @@ impl Language for Cedar {
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
-        Some(self)
-    }
-
-    fn evaluating(&self) -> Option<&dyn permguard_language_core::evaluate::Evaluating> {
         Some(self)
     }
 }
@@ -567,24 +575,3 @@ action read appliesTo { principal: [User], resource: [Document] };
         assert!(Cedar.validate_schema(b"entity ;;;").is_err());
     }
 }
-
-/// The registered artifact types of this language, by name, for the tests.
-#[cfg(test)]
-mod testing {
-    use permguard_language_core::artifact::Artifacts;
-    use permguard_language_core::role::Language as _;
-
-    /// The artifacts of a partition that carries exactly one blob, of the type `name` this
-    /// language registers.
-    pub(crate) fn just(name: &str, data: &[u8]) -> Option<Artifacts> {
-        super::Cedar
-            .artifacts()
-            .iter()
-            .copied()
-            .find(|held| held.name() == name)
-            .map(|artifact| Artifacts::just_of(artifact, data))
-    }
-}
-
-#[cfg(test)]
-use testing::just;

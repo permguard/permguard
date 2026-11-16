@@ -186,6 +186,9 @@ const LAYERS: &[(&str, &[&str])] = &[
     // carries it.
     ("permguard-languages", SERVER_STACK),
     ("permguard-language-core", LANGUAGE_CORE),
+    // The decision point's evaluating half links no engine either: the engines link it.
+    ("permguard-pdp-core", LANGUAGE_CORE),
+    ("permguard-language-core", &["permguard-pdp-core"]),
     ("permguard-language-cedar", CEDAR_ENGINE),
     ("permguard-language-rego", REGO_ENGINE),
     ("permguard-language-dogwood", DOGWOOD_ENGINE),
@@ -202,8 +205,9 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-control-client", NO_LANGUAGE),
 ];
 
-/// What the language contracts may not reach: the server stack, any engine package, the catalogue,
-/// any engine, and the JSON Schema validator only Rego admits its input through.
+/// What the language contracts and the decision point's evaluating half may not reach: the server
+/// stack, any engine package, the catalogue, any engine, and the JSON Schema validator only Rego
+/// admits its input through.
 const LANGUAGE_CORE: &[&str] = &[
     "permguard-server",
     "permguard-transport",
@@ -372,7 +376,9 @@ fn carried_with(features: &str) -> BTreeSet<String> {
 }
 
 /// A language is a feature of the catalogue (RD-7): a build that names one links that engine and no
-/// other, Cedar excepted for Dogwood, which lowers to it.
+/// other, Cedar excepted for Dogwood, which lowers to it. Evaluating is a feature too (RD-6): a
+/// Cedar or Rego build that only validates links no decision point, and one that evaluates does;
+/// Dogwood validates by compiling, so its build always links one.
 #[test]
 fn a_build_links_only_the_engines_it_carries() {
     let mut problems = Vec::new();
@@ -386,6 +392,7 @@ fn a_build_links_only_the_engines_it_carries() {
                 "regorus",
                 "jsonschema",
                 "dogwood-language",
+                "permguard-pdp-core",
             ][..],
         ),
         (
@@ -397,7 +404,13 @@ fn a_build_links_only_the_engines_it_carries() {
                 "cedar-policy",
                 "cedar-policy-core",
                 "dogwood-language",
+                "permguard-pdp-core",
             ][..],
+        ),
+        (
+            "cedar,rego,evaluate",
+            &["permguard-pdp-core", "regorus", "cedar-policy"][..],
+            &["permguard-language-dogwood", "dogwood-language"][..],
         ),
         (
             "dogwood",
@@ -425,6 +438,95 @@ fn a_build_links_only_the_engines_it_carries() {
     assert!(
         problems.is_empty(),
         "a build links exactly the engines it carries:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The features `package`'s own build resolves for each workspace package it links, by name: what
+/// `cargo tree` resolves when that package alone is built, as its release is.
+fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let output = Command::new(cargo)
+        .args([
+            "tree",
+            "--locked",
+            "--package",
+            package,
+            "--edges",
+            "normal,build",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}|{f}",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("cargo tree runs");
+    assert!(
+        output.status.success(),
+        "cargo tree: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut features: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some((package, enabled)) = line.split_once('|') else {
+            continue;
+        };
+        let name = package.split(' ').next().unwrap_or_default().to_owned();
+        let enabled = enabled.trim().trim_end_matches("(*)").trim();
+        features.entry(name).or_default().extend(
+            enabled
+                .split(',')
+                .filter(|feature| !feature.is_empty())
+                .map(str::to_owned),
+        );
+    }
+    features
+}
+
+/// The Control Plane validates what a push carries and evaluates nothing (RD-6): its build carries
+/// every language and no evaluating half of Cedar or Rego, no routing and no supervised worker —
+/// the `evaluate` feature, which brings them, is off throughout. The Data Plane's build turns it on.
+#[test]
+fn the_control_plane_validates_without_evaluating() {
+    let control = features_of("permguard-control-plane-server");
+    let data = features_of("permguard-data-plane-server");
+    let mut problems = Vec::new();
+    for package in [
+        "permguard-languages",
+        "permguard-language-cedar",
+        "permguard-language-rego",
+    ] {
+        match control.get(package) {
+            None => problems.push(format!("the Control Plane does not link {package}")),
+            Some(enabled) if enabled.contains("evaluate") => {
+                problems.push(format!(
+                    "the Control Plane builds {package} with `evaluate`"
+                ));
+            }
+            Some(_) => {}
+        }
+        if !data
+            .get(package)
+            .is_some_and(|enabled| enabled.contains("evaluate"))
+        {
+            problems.push(format!(
+                "the Data Plane builds {package} without `evaluate`"
+            ));
+        }
+    }
+    for language in ["cedar", "dogwood", "rego"] {
+        if !control
+            .get("permguard-languages")
+            .is_some_and(|enabled| enabled.contains(language))
+        {
+            problems.push(format!("the Control Plane does not carry {language}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the Control Plane validates and the Data Plane evaluates:\n  {}",
         problems.join("\n  ")
     );
 }

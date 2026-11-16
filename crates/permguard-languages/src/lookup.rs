@@ -39,6 +39,45 @@ pub fn languages() -> &'static [&'static dyn Language] {
     CARRIED.as_slice()
 }
 
+/// The evaluating half of every language this build carries, by name, in the catalogue's order.
+///
+/// Only with the `evaluate` feature: a build that validates, as the Control Plane's ingest does,
+/// carries no evaluator. Each is behind the same panic boundary as its language.
+#[cfg(feature = "evaluate")]
+pub fn evaluators() -> &'static [(&'static str, &'static dyn permguard_pdp_core::Evaluating)] {
+    static CARRIED: LazyLock<Vec<(&'static str, &'static dyn permguard_pdp_core::Evaluating)>> =
+        LazyLock::new(|| {
+            let carried: &[(&'static str, &'static dyn permguard_pdp_core::Evaluating)] = &[
+                #[cfg(feature = "cedar")]
+                (
+                    permguard_language_cedar::NAME,
+                    permguard_language_cedar::evaluating(),
+                ),
+                #[cfg(feature = "dogwood")]
+                (
+                    permguard_language_dogwood::NAME,
+                    permguard_language_dogwood::evaluating(),
+                ),
+                #[cfg(feature = "rego")]
+                (
+                    permguard_language_rego::NAME,
+                    permguard_language_rego::evaluating(),
+                ),
+            ];
+            carried.to_vec()
+        });
+    CARRIED.as_slice()
+}
+
+/// The evaluating half of the language `name`, when this build carries and evaluates it.
+#[cfg(feature = "evaluate")]
+pub fn evaluating(name: &str) -> Option<&'static dyn permguard_pdp_core::Evaluating> {
+    evaluators()
+        .iter()
+        .find(|(held, _)| *held == name)
+        .map(|(_, evaluating)| *evaluating)
+}
+
 /// Finds a language by name.
 pub fn language(name: &str) -> Option<&'static dyn Language> {
     languages().iter().copied().find(|p| p.name() == name)
