@@ -17,28 +17,24 @@ pub mod app;
 /// surface (RD-11); named here where the composition wires it.
 pub use permguard_client::authority_refresh;
 pub mod banner;
-pub mod checkpoints;
+/// The services a Host runs for itself are `permguard-runtime`'s (RD-15), named here where the
+/// composition starts them.
+pub(crate) use permguard_runtime::join;
+pub use permguard_runtime::{
+    checkpoints, dormancy, objectives, repin, shipping, stream_gc, time, witness, zone,
+};
 pub mod command;
 pub use permguard_offline::custody;
-pub mod dormancy;
 pub mod host;
 pub mod host_api;
-pub(crate) mod join;
 pub use permguard_offline::legacy_events;
 pub use permguard_offline::legacy_spool;
 pub mod logging;
-pub mod objectives;
 /// Offline volume administration: `permguard-offline`'s, named here where the server uses it.
 pub use permguard_offline::volume as offline;
 pub mod plane;
 pub mod prestop;
-pub mod repin;
-pub mod shipping;
 pub mod signal;
-pub mod stream_gc;
-pub mod time;
-pub mod witness;
-pub mod zone;
 
 pub use app::{App, VerifiedTree};
 pub use banner::Banner;

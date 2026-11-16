@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-runtime"
+description = "The headless runtime of a Host: the services it runs for itself off the request path, the clock, the audit checkpoints, the objectives, the streams' retention and shipping, the memberships' upkeep. No listener, no network client, no telemetry exporter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+permguard-core.workspace = true
+# The Host these services belong to: its API, its audit engine, its memberships, its time.
+permguard-host.workspace = true
+# The stream engine whose retention the garbage collection drives.
+permguard-stream.workspace = true
+# The event log's codec, which the garbage collection reads the consumers' records with.
+permguard-events = { workspace = true, features = ["stream"] }
+# The key rings' clock, answered from the Host's one time service.
+permguard-std = { workspace = true, features = ["keys"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

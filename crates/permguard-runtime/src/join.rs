@@ -25,7 +25,7 @@ const MAX_BYTES: u64 = 64 * 1024;
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 /// The running joins; dropping it stops them with the server.
-pub(crate) struct Joining(tokio::task::JoinHandle<()>);
+pub struct Joining(tokio::task::JoinHandle<()>);
 
 impl Drop for Joining {
     fn drop(&mut self) {
@@ -37,7 +37,7 @@ impl Drop for Joining {
 /// already holds as many memberships as it names invitations never reads them again: an operator
 /// may remove or reissue them once the replica joined. A Host that cannot join at all, with no
 /// client to reach a coordinator, is refused at start rather than retried for ever.
-pub(crate) fn drive(api: Arc<HostApi>, join: HostJoin, health: Health) -> anyhow::Result<Joining> {
+pub fn drive(api: Arc<HostApi>, join: HostJoin, health: Health) -> anyhow::Result<Joining> {
     if let Err(refusal) = api.can_join() {
         anyhow::bail!(
             "host.join: this Host cannot reach a coordinator: {}",

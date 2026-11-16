@@ -291,7 +291,7 @@ sections:
     paths:
       - crates/permguard-host/src/identity/mod.rs
       - crates/permguard-server/src/app.rs
-      - crates/permguard-server/src/witness.rs
+      - crates/permguard-runtime/src/witness.rs
       - crates/permguard-host/src/restore.rs
     tests:
       - crates/permguard-host/src/identity/tests.rs::without_init_nothing_is_minted_and_provisioning_happens_once
@@ -369,7 +369,7 @@ sections:
       - crates/permguard-host/src/authz/mapper.rs
       - crates/permguard-host/src/session/mod.rs
       - crates/permguard-host/src/keys/ring.rs
-      - crates/permguard-server/src/witness.rs
+      - crates/permguard-runtime/src/witness.rs
       - crates/permguard-host/src/membership/task.rs
     tests:
       - crates/permguard-host/src/identity/tests.rs::a_provisioned_identity_opens_again_as_itself_with_a_new_boot_id
@@ -443,7 +443,7 @@ sections:
     paths:
       - crates/permguard-host/src/membership/repin.rs
       - crates/permguard-host/src/keys/ring.rs
-      - crates/permguard-server/src/repin.rs
+      - crates/permguard-runtime/src/repin.rs
     tests:
       - crates/permguard-host/src/membership/repin/tests.rs::a_repin_revises_the_manifest_and_the_session_goes_on
       - crates/permguard-host/src/membership/repin/tests.rs::a_member_ring_does_not_activate_before_its_repin_is_persisted
@@ -504,7 +504,7 @@ sections:
   "1-architecture/3-architecture-server-host-membership.md#dormancy-and-expiry":
     paths:
       - crates/permguard-host/src/membership/dormancy.rs
-      - crates/permguard-server/src/dormancy.rs
+      - crates/permguard-runtime/src/dormancy.rs
       - crates/permguard-host/src/time.rs
     tests:
       - crates/permguard-host/src/membership/dormancy/tests.rs::a_silent_member_is_suspended_then_revoked_at_the_thresholds
@@ -556,7 +556,7 @@ sections:
       - crates/permguard-host/src/membership/mod.rs
       - crates/permguard-host/src/membership/task.rs
       - crates/permguard-host/src/membership/import.rs
-      - crates/permguard-server/src/shipping.rs
+      - crates/permguard-runtime/src/shipping.rs
     tests:
       - crates/permguard-server/tests/peer_session.rs::a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens
       - crates/permguard-stream/src/engine/tests.rs::a_run_ships_on_after_a_repin_under_both_pins
@@ -1107,7 +1107,7 @@ sections:
   "1-architecture/7-architecture-security.md#residual-risks-and-required-operations":
     paths:
       - crates/permguard-host/src/audit/checkpoint.rs
-      - crates/permguard-server/src/checkpoints.rs
+      - crates/permguard-runtime/src/checkpoints.rs
       - crates/permguard-server/src/app.rs
       - crates/permguard-objects/src/crypto/seal.rs
     tests:
@@ -1325,13 +1325,13 @@ sections:
   "1-architecture/8-architecture-storage-operations.md#service-objectives":
     paths:
       - crates/permguard-core/src/objectives.rs
-      - crates/permguard-server/src/objectives.rs
+      - crates/permguard-runtime/src/objectives.rs
       - crates/permguard-core/src/lifecycle.rs
     tests:
       - crates/permguard-core/src/objectives.rs::missing_objectives_are_named_in_order
       - crates/permguard-core/src/objectives.rs::every_value_is_bounded
       - crates/permguard-core/src/objectives.rs::a_subsystem_bound_past_the_margin_is_an_inconsistency
-      - crates/permguard-server/src/objectives.rs::each_objective_is_held_once_its_margin_is_exhausted
+      - crates/permguard-runtime/src/objectives.rs::each_objective_is_held_once_its_margin_is_exhausted
       - crates/permguard-core/src/lifecycle.rs::a_hold_takes_readiness_away_and_its_release_gives_it_back
       - crates/permguard-server/tests/app.rs::test_a_production_deployment_missing_an_objective_refuses_to_start
   "1-architecture/8-architecture-storage-operations.md#current-implementation-and-target":
@@ -1373,7 +1373,7 @@ sections:
       - crates/permguard-server/tests/host.rs::test_an_optional_plane_that_fails_to_start_is_listed_failed_and_does_not_gate
   "1-architecture/9-architecture-patterns.md#draining-and-scale-down":
     paths:
-      - crates/permguard-server/src/shipping.rs
+      - crates/permguard-runtime/src/shipping.rs
       - crates/permguard-server/src/prestop.rs
       - crates/permguard-host/src/operations/drain.rs
       - crates/permguard-host/src/api/drain.rs
@@ -1560,7 +1560,7 @@ sections:
     paths:
       - crates/permguard-control-plane/src/gc.rs
       - crates/permguard-control-plane/src/inventory.rs
-      - crates/permguard-server/src/stream_gc.rs
+      - crates/permguard-runtime/src/stream_gc.rs
       - crates/permguard-stream/src/engine/retention.rs
     tests:
       - crates/permguard-control-plane/src/gc.rs::a_pass_stops_at_its_bound_and_the_next_resumes_there
@@ -1855,14 +1855,14 @@ sections:
   "3-control-plane/3-control-plane-evidence-stores.md#retention":
     paths:
       - crates/permguard-stream/src/engine/retention.rs
-      - crates/permguard-server/src/stream_gc.rs
+      - crates/permguard-runtime/src/stream_gc.rs
       - crates/permguard-stream/src/engine/anchor.rs
     tests:
       - crates/permguard-stream/src/engine/tests.rs::a_pass_anchors_audits_then_deletes_what_was_acknowledged
       - crates/permguard-stream/src/engine/tests.rs::each_subscription_keeps_its_own_ack_and_truncate_safe_is_the_least_required
       - crates/permguard-stream/src/engine/tests.rs::a_silent_required_subscription_still_blocks_until_its_task_leaves_the_manifest
       - crates/permguard-stream/src/engine/tests.rs::a_consumer_keeps_an_unmeasured_run_and_prunes_a_measured_one_to_its_floor
-      - crates/permguard-server/src/stream_gc.rs::the_event_retention_waits_for_its_consumer_and_its_members
+      - crates/permguard-runtime/src/stream_gc.rs::the_event_retention_waits_for_its_consumer_and_its_members
       - crates/permguard-host/src/membership/member/import/tests.rs::retention_refusals_and_bad_batches_leave_durable_gaps_and_stop_the_run
   "3-control-plane/3-control-plane-evidence-stores.md#files":
     paths:
@@ -4543,12 +4543,12 @@ sections:
       - crates/permguard-conformance/tests/api_layout.rs::endpoints_csv_is_what_the_contracts_say
   "1-architecture/11-architecture-deployment-conformance.md#join-from-an-invitation-file":
     paths:
-      - crates/permguard-server/src/join.rs
+      - crates/permguard-runtime/src/join.rs
       - crates/permguard-host/src/api/members.rs
     tests:
       - crates/permguard-server/tests/peer_session.rs::a_member_joins_by_itself_from_an_invitation_and_waits_for_its_approval
       - crates/permguard-core/tests/refusals.rs::a_join_names_its_invitation_and_its_pin_from_any_layer
-      - crates/permguard-server/src/join.rs::an_invitation_file_is_read_only_when_no_other_user_can
+      - crates/permguard-runtime/src/join.rs::an_invitation_file_is_read_only_when_no_other_user_can
   "1-architecture/11-architecture-deployment-conformance.md#the-host-identity-under-production":
     paths:
       - crates/permguard-server/src/app.rs

@@ -225,6 +225,14 @@ const LAYERS: &[(&str, &[&str])] = &[
     ),
     ("permguard-language-core", EVIDENCE_RUNTIME),
     ("permguard-pdp-core", EVIDENCE_RUNTIME),
+    // The Host's own runtime is headless (RD-15): no listener, no network client, no generated
+    // contract, no TLS stack and no telemetry exporter; the adapters that reach a network are the
+    // server's.
+    ("permguard-runtime", SERVER_STACK),
+    (
+        "permguard-runtime",
+        &["permguard-client", "permguard-contracts", "rustls", "clap"],
+    ),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];

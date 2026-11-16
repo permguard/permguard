@@ -25,6 +25,8 @@ clap.workspace = true
 # The Authority surface's refresh of the key set and status lists a Host verifies tokens with.
 permguard-client = { workspace = true, features = ["authority-refresh"] }
 permguard-core.workspace = true
+# The services a Host runs for itself, headless.
+permguard-runtime.workspace = true
 # Offline volume administration, which the command line runs without a server.
 permguard-offline.workspace = true
 # The volume's ownership: the claim `serve` takes first, and the `volume claim` command.

@@ -30,6 +30,7 @@ members = [
     "crates/permguard-language-dogwood",
     "crates/permguard-language-rego",
     "crates/permguard-languages",
+    "crates/permguard-runtime",
     "crates/permguard-server",
     "crates/permguard-std",
     "crates/permguard-stream",
@@ -93,6 +94,7 @@ permguard-language-dogwood = { path = "crates/permguard-language-dogwood", versi
 permguard-language-rego = { path = "crates/permguard-language-rego", version = "0.1.0" }
 # No default language: each package states the languages and the half it carries.
 permguard-languages = { path = "crates/permguard-languages", version = "0.1.0", default-features = false }
+permguard-runtime = { path = "crates/permguard-runtime", version = "0.1.0" }
 permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
 permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
 permguard-stream = { path = "crates/permguard-stream", version = "0.1.0" }

@@ -2936,6 +2936,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "permguard-core",
+ "permguard-events",
+ "permguard-host",
+ "permguard-std",
+ "permguard-stream",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "permguard-server"
 version = "0.1.0"
 dependencies = [
@@ -2963,6 +2978,7 @@ dependencies = [
  "permguard-host",
  "permguard-objects",
  "permguard-offline",
+ "permguard-runtime",
  "permguard-std",
  "permguard-stream",
  "permguard-telemetry",
