@@ -42,7 +42,7 @@ clap"
 # The engine each language brings. Dogwood lowers to Cedar, so it brings Cedar's too.
 engines_of() {
     case "$1" in
-        (cedar) printf 'cedar_policy\n' ;;
+        (cedar | registered-cedar) printf 'cedar_policy\n' ;;
         (rego) printf 'regorus\n' ;;
         (dogwood) printf 'dogwood_language\ncedar_policy\n' ;;
     esac
@@ -53,7 +53,7 @@ engines_of() {
 budget_of() {
     case "$1" in
         ("") printf '85\n' ;;
-        (cedar) printf '160\n' ;;
+        (cedar | registered-cedar | cedar,registered-cedar) printf '160\n' ;;
         (rego) printf '192\n' ;;
         (dogwood) printf '190\n' ;;
         (cedar,rego,dogwood) printf '273\n' ;;
@@ -157,7 +157,9 @@ one_worker() {
     fi
 }
 
-for selection in "" cedar rego dogwood "cedar,rego,dogwood"; do
+# The last two are the other way a language arrives: the application links Cedar itself and
+# registers its engine, alone, and then beside the feature, which a start refuses.
+for selection in "" cedar rego dogwood "cedar,rego,dogwood" registered-cedar "cedar,registered-cedar"; do
     check "${selection}"
 done
 for selection in cedar rego; do

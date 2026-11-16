@@ -64,6 +64,10 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **An engine is registered through the builder.**
+  A language package hands out both its halves as one `engine()`, and `DataPlane::builder(..).engine(..)` registers it: an application that links `permguard-language-cedar` itself needs no language feature of the Data Plane.
+  A feature and a registration are one implementation reached two ways, never both for one language: the catalogue is the process's, in one fixed order, sealed when first read, and it refuses a language it already holds and an engine registered after that read.
+  Nothing is replaced, and what a ledger may use stays the load gate's to say.
 - **An embedding application keeps its entry point.**
   `permguard-evaluation-worker` is the supervised evaluation worker as an executable of its own, and `DataPlane::builder(..).worker_executable(path)` names it: a runtime the assurance profile requires isolated is then evaluated there, and the application no longer calls `serve_if_worker` first in `main`.
   The path is absolute and names a regular file, not a link, that its owner may execute and nobody else may write; a start with any other is refused, and a worker built with another engine is refused at its first frame.

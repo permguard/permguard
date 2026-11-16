@@ -100,6 +100,13 @@ pub fn evaluating() -> &'static dyn permguard_pdp_core::evaluate::Evaluating {
     &GUARDED
 }
 
+/// Both halves as one engine: what an application that links this package itself registers with
+/// the Data Plane it embeds.
+#[cfg(feature = "evaluate")]
+pub fn engine() -> permguard_pdp_core::Engine {
+    permguard_pdp_core::Engine::new(language(), evaluating())
+}
+
 /// The language, guarded: the one value both halves hand out.
 static GUARDED: permguard_language_core::guard::Guarded<Dogwood> =
     permguard_language_core::guard::Guarded(Dogwood);

@@ -12,7 +12,11 @@
 
 use permguard_data_plane::embedded::{Capabilities, DataPlane, Runtime, StartError};
 
-/// Starts the Data Plane over what the application composed, on the caller's runtime.
+/// Starts the Data Plane over what the application composed, on the caller's runtime, with the
+/// engines the application links itself registered through the builder.
 pub async fn embed(capabilities: Capabilities) -> Result<Runtime, StartError> {
-    DataPlane::builder(capabilities).start().await
+    let builder = DataPlane::builder(capabilities);
+    #[cfg(feature = "registered-cedar")]
+    let builder = builder.engine(permguard_language_cedar::engine());
+    builder.start().await
 }

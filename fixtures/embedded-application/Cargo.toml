@@ -21,10 +21,16 @@ publish = false
 cedar = ["permguard-data-plane/cedar"]
 rego = ["permguard-data-plane/rego"]
 dogwood = ["permguard-data-plane/dogwood"]
+# The other way a language reaches the Data Plane: the application links the language package
+# itself and registers its engine with the builder. Alone, it is Cedar with no feature of the Data
+# Plane; beside `cedar`, it is the duplicate a start refuses.
+registered-cedar = ["dep:permguard-language-cedar"]
 
 [dependencies]
 # The one Permguard package an embedding application names.
 permguard-data-plane = { path = "../../crates/permguard-data-plane", default-features = false }
+# A language package the application links itself, with its evaluating half (`registered-cedar`).
+permguard-language-cedar = { path = "../../crates/permguard-language-cedar", features = ["evaluate"], optional = true }
 
 [dev-dependencies]
 # What the application composes for the Plane: the Host, its configuration, a store and a sink.

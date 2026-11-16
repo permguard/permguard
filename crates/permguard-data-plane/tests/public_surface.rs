@@ -46,8 +46,8 @@ fn every_module_outside_the_supported_surface_is_hidden() {
 #[test]
 fn the_facade_exports_the_types_its_signatures_name() {
     use permguard_data_plane::embedded::{
-        Actor, Builder, Capabilities, CheckRequest, CheckResponse, DataPlane, Health, Refused,
-        Runtime, Shutdown, StartError, SubmitRequest, SubmitResponse, TraceContext,
+        Actor, Builder, Capabilities, CheckRequest, CheckResponse, DataPlane, Engine, Health,
+        Refused, Runtime, Shutdown, StartError, SubmitRequest, SubmitResponse, TraceContext,
     };
 
     fn named<T>() -> &'static str {
@@ -60,6 +60,7 @@ fn the_facade_exports_the_types_its_signatures_name() {
         named::<CheckRequest>(),
         named::<CheckResponse>(),
         named::<DataPlane>(),
+        named::<Engine>(),
         named::<Health>(),
         named::<Refused>(),
         named::<Runtime>(),
@@ -69,5 +70,5 @@ fn the_facade_exports_the_types_its_signatures_name() {
         named::<SubmitResponse>(),
         named::<TraceContext>(),
     ];
-    assert_eq!(names.len(), 14);
+    assert_eq!(names.len(), 15);
 }

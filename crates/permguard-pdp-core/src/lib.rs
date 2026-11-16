@@ -11,6 +11,7 @@
 //! Plane's ingest does, links every language without this package (the crate boundaries
 //! refactoring, RD-6).
 
+pub mod engine;
 pub mod evaluate;
 pub mod fanout;
 pub mod guard;
@@ -18,5 +19,6 @@ pub mod route;
 pub mod temporal;
 pub mod warm;
 
+pub use engine::Engine;
 pub use evaluate::{Answered, Evaluating, Evaluator, evaluate_all};
 pub use route::{PartitionTarget, Route};

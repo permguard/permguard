@@ -4,13 +4,14 @@
 //! The embedded Data Plane under the profile this build selected, outside the repository's
 //! workspace (`11-refactoring/1-dependencies.md`, Verification requirements).
 //!
-//! | Profile                 | What is proven                                                       |
-//! | ----------------------- | -------------------------------------------------------------------- |
-//! | no language             | the start is refused, by name: a Data Plane decides with a language  |
-//! | `cedar` or `rego` alone | the basics example narrowed to that language is decided as it says;  |
-//! |                         | as published, with both, its manifest is refused by the language     |
-//! | a build without Dogwood | an event history is refused at the start, by the feature it lacks    |
-//! | `dogwood` alone         | the temporal example decided in order: permitted, denied, recorded   |
+//! | Profile                 | What is proven                                                                                                                       |
+//! | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+//! | no language             | the start is refused, by name: a Data Plane decides with a language                                                                  |
+//! | `cedar` or `rego` alone | the basics example narrowed to that language is decided as it says; as published, with both, its manifest is refused by the language |
+//! | a build without Dogwood | an event history is refused at the start, by the feature it lacks                                                                    |
+//! | `dogwood` alone         | the temporal example decided in order: permitted, denied, recorded                                                                   |
+//! | `registered-cedar`      | the engine the application registers decides as the feature would                                                                    |
+//! | `cedar` and registered  | one language twice: the start is refused, nothing replaced                                                                           |
 //!
 //! Each test is compiled only in the profile it speaks of; `scripts/check-embedded-fixture.sh`
 //! runs every profile and refuses one that ran no test.
@@ -36,7 +37,12 @@ mod examples;
 use composed::{Recording, capabilities, config, scratch};
 
 /// A build with no language carries nothing to decide with, and says so instead of starting.
-#[cfg(not(any(feature = "cedar", feature = "rego", feature = "dogwood")))]
+#[cfg(not(any(
+    feature = "cedar",
+    feature = "rego",
+    feature = "dogwood",
+    feature = "registered-cedar"
+)))]
 #[tokio::test]
 async fn test_a_build_with_no_language_refuses_to_start() {
     let working = scratch("no-language");
@@ -62,7 +68,11 @@ async fn test_a_build_with_no_language_refuses_to_start() {
 }
 
 /// An event history is decided the way Dogwood decides: a build without it refuses the start.
-#[cfg(all(any(feature = "cedar", feature = "rego"), not(feature = "dogwood")))]
+#[cfg(all(
+    any(feature = "cedar", feature = "rego"),
+    not(feature = "dogwood"),
+    not(feature = "registered-cedar")
+))]
 #[tokio::test]
 async fn test_an_event_history_is_refused_in_a_build_without_dogwood() {
     use permguard_core::config::{SETTING_EVENTS_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
@@ -94,9 +104,12 @@ async fn test_an_event_history_is_refused_in_a_build_without_dogwood() {
 
 /// One language alone: the example as an author publishes it for this build is decided as its
 /// cases say, and the example published with both languages is refused, never permitted.
-#[cfg(any(
-    all(feature = "cedar", not(feature = "rego"), not(feature = "dogwood")),
-    all(feature = "rego", not(feature = "cedar"), not(feature = "dogwood"))
+#[cfg(all(
+    not(feature = "registered-cedar"),
+    any(
+        all(feature = "cedar", not(feature = "rego"), not(feature = "dogwood")),
+        all(feature = "rego", not(feature = "cedar"), not(feature = "dogwood"))
+    )
 ))]
 mod one_language {
     use permguard_core::authz::Actor;
@@ -301,4 +314,87 @@ async fn test_a_build_with_every_language_decides_the_example_as_published() {
 
     let shutdown = runtime.shutdown(Duration::from_secs(10)).await;
     assert!(shutdown.unfinished.is_empty(), "{:?}", shutdown.unfinished);
+}
+
+/// The engine an application links and registers itself, with no language feature of the Data
+/// Plane: the same implementation reached the other way, deciding the example narrowed to Cedar.
+///
+/// One test: an engine is registered once in a process, before its catalogue is read.
+#[cfg(all(
+    feature = "registered-cedar",
+    not(any(feature = "cedar", feature = "rego", feature = "dogwood"))
+))]
+#[tokio::test]
+async fn test_an_engine_the_application_registers_decides_as_the_feature_would() {
+    use permguard_core::authz::Actor;
+
+    let working = scratch("registered");
+    let config = config(&working, &[]);
+    // Provisioned once the Plane started: reading a manifest reads the catalogue, and the
+    // registration comes first.
+    let mirrors = config.mirrors_directory();
+
+    let runtime = embed(capabilities(config, Arc::new(Recording::default())))
+        .await
+        .expect("the embedded Data Plane starts with the engine the application registered");
+    assert!(runtime.health().is_ready(), "ready once its services run");
+
+    examples::provision_manifest(
+        &mirrors,
+        "basics",
+        examples::manifest_narrowed_to("basics", "cedar"),
+        "01a1a166-5743-7014-b7bf-197ed0437363",
+        "01a1a166-5747-7d8c-a96a-6e17f5281a37",
+    );
+    let (mut permitted, mut denied) = (0, 0);
+    for (name, case) in examples::cases("basics") {
+        let Some(wanted) = case.expect.decision.as_deref() else {
+            continue;
+        };
+        let asked = std::path::Path::new(&case.request)
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|request| ["permit.json", "deny.json"].contains(&request));
+        if !asked || case.profile.is_some() {
+            continue;
+        }
+        let answer = runtime
+            .evaluate(&Actor::Anonymous, examples::request(&name, &case), None)
+            .await
+            .unwrap_or_else(|refused| panic!("{name}/{}: refused: {refused:?}", case.name));
+        assert_eq!(answer.decision, wanted == "permit", "{name}/{}", case.name);
+        if answer.decision {
+            permitted += 1;
+        } else {
+            denied += 1;
+        }
+    }
+    assert!(permitted >= 1 && denied >= 1, "a permit and a deny");
+
+    let shutdown = runtime.shutdown(Duration::from_secs(10)).await;
+    assert!(shutdown.unfinished.is_empty(), "{:?}", shutdown.unfinished);
+}
+
+/// A language selected by a feature and registered too is one language twice: the start is
+/// refused, by name, and nothing is replaced.
+#[cfg(all(feature = "registered-cedar", feature = "cedar"))]
+#[tokio::test]
+async fn test_a_language_selected_and_registered_too_refuses_the_start() {
+    let working = scratch("registered-twice");
+
+    let refused = match embed(capabilities(
+        config(&working, &[]),
+        Arc::new(Recording::default()),
+    ))
+    .await
+    {
+        Ok(_) => panic!("an engine was registered over the one a feature carries"),
+        Err(refused) => refused,
+    };
+
+    assert!(
+        matches!(refused, StartError::Configuration(_)),
+        "refused for another reason: {refused}"
+    );
+    assert!(refused.to_string().contains("never replaced"), "{refused}");
 }

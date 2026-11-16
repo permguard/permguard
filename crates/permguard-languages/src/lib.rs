@@ -88,7 +88,12 @@ pub use evaluate::{
 #[cfg(feature = "evaluate")]
 pub use evaluate::{Evaluating, Evaluator};
 pub use input::{PartitionData, PartitionInputBody, input_type, input_types};
-pub use lookup::{language, language_for_media_type, languages};
+#[cfg(feature = "evaluate")]
+pub use lookup::register;
+pub use lookup::{Unregistered, language, language_for_media_type, languages};
+/// An engine, both halves of one language: what [`register`] takes.
+#[cfg(feature = "evaluate")]
+pub use permguard_pdp_core::Engine;
 #[cfg(feature = "evaluate")]
 pub use registry::evaluating;
 pub use request::{

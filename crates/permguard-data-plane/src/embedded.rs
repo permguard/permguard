@@ -63,6 +63,8 @@ use crate::{COMPONENT, PLANE};
 // request and its answer, the refusal, the temporal submission, the caller and the health.
 pub use permguard_core::Health;
 pub use permguard_core::authz::Actor;
+/// An engine, both halves of one language, as a language package hands it out.
+pub use permguard_languages::Engine;
 pub use permguard_languages::temporal::{SubmitRequest, SubmitResponse};
 
 pub use crate::authz::wire::{CheckRequest, CheckResponse, TraceContext};
@@ -95,6 +97,7 @@ impl DataPlane {
         Builder {
             capabilities,
             worker: None,
+            engines: Vec::new(),
         }
     }
 }
@@ -104,6 +107,8 @@ pub struct Builder {
     capabilities: Capabilities,
     /// The dedicated evaluation worker, when the application named one.
     worker: Option<std::path::PathBuf>,
+    /// The engines the application registers, beside those this build's features select.
+    engines: Vec<Engine>,
 }
 
 /// Why an embedded Data Plane did not start. Nothing is left running when it is returned.
@@ -194,6 +199,22 @@ pub struct Runtime {
 }
 
 impl Builder {
+    /// Registers an engine the application links itself: `permguard_language_cedar::engine()`,
+    /// say, from a language package built with its `evaluate` feature.
+    ///
+    /// A feature of this package, `cedar`, `rego` or `dogwood`, and a registration are the same
+    /// implementation reached two ways, and never both for one language: `start` refuses an
+    /// engine whose language the process already carries, since nothing is ever replaced, and one
+    /// registered after the process's catalogue was read, since what it held then is what the
+    /// process decides with. The order engines are registered in changes nothing.
+    ///
+    /// What a ledger may then use is still the load gate's to say: a manifest naming a language,
+    /// a version or an interface the registered engine does not provide is refused when loaded.
+    pub fn engine(mut self, engine: Engine) -> Self {
+        self.engines.push(engine);
+        self
+    }
+
     /// Names the dedicated evaluation worker: the executable a runtime the assurance profile
     /// requires isolated is evaluated in, `permguard-evaluation-worker` built with the languages
     /// and at the version of this library.
@@ -225,6 +246,11 @@ impl Builder {
             audit,
             metrics,
         } = self.capabilities;
+        // First: the start check reads the catalogue, and reading it seals it.
+        for engine in self.engines {
+            permguard_languages::register(engine)
+                .map_err(|refused| StartError::Configuration(anyhow::Error::new(refused)))?;
+        }
         crate::plane::startup_check(&config).map_err(StartError::Configuration)?;
         // Before anything decides: the decision path is built on the worker named here.
         if let Some(worker) = &self.worker {
