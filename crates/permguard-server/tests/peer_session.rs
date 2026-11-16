@@ -3657,3 +3657,243 @@ async fn an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to
         "the approval is the coordinator's"
     );
 }
+
+#[allow(dead_code)]
+#[path = "../../permguard-data-plane/tests/support/examples.rs"]
+mod examples;
+
+/// The whole of it, in one process and over one wire: an application embeds the Data Plane with
+/// no listener, joins a served coordinator from an invitation, is approved, decides the
+/// repository's example, records each decision on its Host's stream, and ships them to the
+/// coordinator over the `decisions.ship` task of its membership when it stops. Nothing is owed
+/// once it has stopped, and the stop is complete.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_embedded_data_plane_decides_and_ships_its_decisions_to_the_coordinator_it_joined() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use permguard_core::{BoxFuture, BuildSettings, ProductIdentity, ServerContext};
+    use permguard_embedded::Embedded;
+    use permguard_host::api::host_input::InvitationHandoff;
+    use permguard_host::api::members::{ApproveMember, CreateInvite};
+    use permguard_host::membership::record::{Role, TaskType};
+
+    const ZONE_ID: &str = "01a1a166-5743-7014-b7bf-197ed0437363";
+    const LEDGER_ID: &str = "01a1a166-5747-7d8c-a96a-6e17f5281a37";
+
+    /// A service of the application's own: it hands the test the Host API composed in process.
+    struct Probe(std::sync::Mutex<Option<tokio::sync::oneshot::Sender<Option<Arc<HostApi>>>>>);
+
+    impl permguard_core::Service for Probe {
+        fn name(&self) -> &'static str {
+            "probe"
+        }
+
+        fn start<'a>(
+            &'a self,
+            context: &'a ServerContext<'a>,
+        ) -> BoxFuture<'a, anyhow::Result<()>> {
+            Box::pin(async move {
+                if let Some(report) = self.0.lock().ok().and_then(|mut held| held.take()) {
+                    let _ = report.send(context.host_handles::<HostApi>());
+                }
+                Ok(())
+            })
+        }
+    }
+
+    let root = scratch("embedded-ships");
+    let pki = Pki::new(&root);
+    let coordinator = streaming_side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        permguard_host::membership::Capabilities::default()
+            .declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+                groups: None,
+                name: None,
+            },
+        )
+        .await
+        .expect("invited");
+    let join = join_of(&coordinator, &invited, "join");
+    let invitation = root.join("invitation.json");
+    std::fs::write(
+        &invitation,
+        serde_json::to_vec(&InvitationHandoff {
+            version: 1,
+            coordinator: join.coordinator.clone(),
+            invite_id: join.invite_id.clone(),
+            token: join.token.clone(),
+            requested: join.requested.clone(),
+            expires: invited.expires.clone(),
+        })
+        .expect("JSON"),
+    )
+    .expect("the invitation file");
+    std::fs::set_permissions(&invitation, std::fs::Permissions::from_mode(0o400))
+        .expect("owner-only");
+
+    // The application's Host: its volume, the root its zone keys derive from, its client
+    // identity, its rings, a decision log, one public grant, and no listener anywhere.
+    let volume = root.join("embedded-volume");
+    let secrets = volume.join("operations/secrets");
+    std::fs::create_dir_all(&secrets).expect("the secrets directory");
+    std::fs::write(secrets.join("coordinator-root"), "5a".repeat(32)).expect("the root");
+    std::fs::write(secrets.join("audit-pseudonym"), "6b".repeat(32)).expect("the key");
+    let (certificate, key) = pki.issue("embedded", "embedded.example");
+    let file = root.join("embedded.yml");
+    std::fs::write(
+        &file,
+        format!(
+            "assurance:\n  profile: development\nworking_dir: {volume}\nhost:\n  addr: \"off\"\n  \
+             join:\n    invitation_file: {invitation}\n    pin_fingerprint: {pin}\n  authz:\n    \
+             public:\n      - operations: [decision.evaluate]\n        selector: \
+             \"plane/data/zone/{ZONE_ID}/ledger/{LEDGER_ID}\"\nadmin:\n  tls:\n    cert: {cert}\n    \
+             key: {key}\n    client_ca: {ca}\noperations:\n  keys:\n    enabled: true\n    \
+             publish_ahead: 1h\n    rotate_every: 30d\n    retain: 365d\n  secrets:\n    \
+             provider: directory\n    coordinator_root_ref: coordinator-root\n  audit:\n    \
+             pseudonym:\n      enabled: true\n      key_ref: audit-pseudonym\n      \
+             key_version: \"v1\"\ndataPlane:\n  \
+             decisions:\n    log:\n      enabled: \"true\"\n",
+            volume = volume.display(),
+            invitation = invitation.display(),
+            pin = coordinator.host.identity.first_fingerprint(),
+            cert = certificate.display(),
+            key = key.display(),
+            ca = pki.authority().display(),
+        ),
+    )
+    .expect("the configuration file");
+
+    let (probe, probed) = tokio::sync::oneshot::channel();
+    let (embedded, started) = Embedded::builder(
+        ProductIdentity::new("an-application", "An Application", "", "", ""),
+        BuildSettings::new("9.9.9", "2026", "Test Holder"),
+    )
+    .build()
+    .expect("the build's languages are registered once");
+    let embedded = embedded.with_membership().compose(|composition| {
+        composition.with_service(Box::new(Probe(std::sync::Mutex::new(Some(probe)))))
+    });
+    let config = embedded.config(&file).expect("the server's configuration");
+    assert!(config.admin_addr().is_none(), "no listener is configured");
+    examples::provision_as(&config.mirrors_directory(), "basics", ZONE_ID, LEDGER_ID);
+
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let application = async {
+        let api = probed
+            .await
+            .ok()
+            .flatten()
+            .expect("the membership side is composed with no listener");
+        let handle = started.handle().await.expect("the Plane started");
+
+        // Joined by itself, pending until the coordinator approves; then active by itself.
+        let mut pending = Vec::new();
+        for _ in 0..400 {
+            pending = coordinator
+                .api
+                .members(&admin(), Some("pending"))
+                .expect("listed")
+                .members;
+            if !pending.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let joined = pending.first().expect("the coordinator holds the join");
+        coordinator
+            .api
+            .approve_member(
+                &admin(),
+                &joined.membership_id,
+                ApproveMember {
+                    request_id: "approve".to_owned(),
+                    expected_revision: joined.revision,
+                    narrow: None,
+                    lease_policy: None,
+                    assurance: None,
+                    groups: None,
+                    name: None,
+                },
+            )
+            .await
+            .expect("approved");
+
+        // The member reads its approval over a session it opens: the pass its join runs every
+        // fifteen seconds, asked for here at once. What it decided is then owed its coordinator:
+        // a required subscription holds the stream until it is acknowledged.
+        let mut active = false;
+        for _ in 0..200 {
+            if api
+                .sync_joined(&joined.membership_id)
+                .await
+                .is_ok_and(|view| view.status == "active")
+            {
+                active = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(active, "the member never read its approval");
+        // A member now: the example decided as its cases say, each decision recorded on the
+        // Host's stream before it is answered.
+        let mut decided = 0;
+        for (name, case) in examples::cases("basics") {
+            let Some(wanted) = case.expect.decision.as_deref() else {
+                continue;
+            };
+            let answer = handle
+                .evaluate(
+                    &permguard_core::authz::Actor::Anonymous,
+                    examples::request(&name, &case),
+                    None,
+                )
+                .await
+                .unwrap_or_else(|refused| panic!("{name}/{}: refused: {refused:?}", case.name));
+            assert_eq!(answer.decision, wanted == "permit", "{name}/{}", case.name);
+            decided += 1;
+        }
+        assert!(decided > 0, "the example claims decisions");
+
+        let mut owed = false;
+        for _ in 0..200 {
+            if api.shipping_behind().unwrap_or(false) {
+                owed = true;
+                break;
+            }
+            let _ = api.register_subscriptions();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let _ = stop.send(());
+        (api, owed)
+    };
+
+    let (served, (api, owed)) = tokio::join!(
+        embedded.serve(&config, &file, async {
+            let _ = stopped.await;
+        }),
+        application
+    );
+    assert!(owed, "the decisions were never owed the coordinator");
+    served.expect("the Host stopped with nothing owed: the drain shipped every decision");
+    assert!(
+        !api.shipping_behind().expect("read"),
+        "decisions are still owed the coordinator after the stop"
+    );
+}

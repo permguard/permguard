@@ -204,3 +204,40 @@ pub fn drive_local(local: Arc<permguard_host::membership::local::LocalShipping>)
         }
     }))
 }
+/// The evidence drained at shutdown for a Host with no listener: the producers ship to their
+/// required subscriptions before the deadline, and a stream left behind makes the drain
+/// incomplete, marked `unshipped` and resumed at the next start.
+///
+/// A served Host does this in its Host listener's service, after its requests. A Host embedded in
+/// an application has no such service, and would otherwise stop with decisions it owes a
+/// coordinator and say nothing: a composition that makes it a member registers this.
+#[derive(Debug, Default)]
+pub struct EvidenceDrain;
+
+impl permguard_core::Service for EvidenceDrain {
+    fn name(&self) -> &'static str {
+        "evidence-drain"
+    }
+
+    /// Nothing starts: the periodic passes are the composition's, and this is their last one.
+    fn start<'a>(
+        &'a self,
+        _context: &'a permguard_core::ServerContext<'a>,
+    ) -> permguard_core::BoxFuture<'a, Result<()>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+
+    fn drain<'a>(
+        &'a self,
+        context: &'a permguard_core::ServerContext<'a>,
+        deadline: Instant,
+    ) -> permguard_core::BoxFuture<'a, Result<Drained>> {
+        Box::pin(async move {
+            match context.host_handles::<HostApi>() {
+                // No membership side, so nothing is owed anybody.
+                None => Ok(Drained::Complete),
+                Some(api) => drain(&api, deadline).await,
+            }
+        })
+    }
+}

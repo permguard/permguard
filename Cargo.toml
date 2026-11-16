@@ -83,6 +83,7 @@ permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
 permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
 permguard-data-plane-server = { path = "crates/permguard-data-plane-server", version = "0.1.0" }
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
+permguard-embedded = { path = "crates/permguard-embedded", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
 permguard-host = { path = "crates/permguard-host", version = "0.1.0" }
 permguard-mirror = { path = "crates/permguard-mirror", version = "0.1.0" }

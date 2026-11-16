@@ -228,15 +228,20 @@ impl Embedded {
     /// invitation names and opens every session itself, over the client identity of `admin.tls`,
     /// verifying the coordinator against its `client_ca` and, when set, its `crl`, on TLS 1.3.
     /// Its policies are then mirrored, and its decisions and events shipped, over the tasks of
-    /// that membership. No listener is bound, and nobody enrolls with this Host.
+    /// that membership, and what it still owes is shipped when it stops, or the stop is reported
+    /// incomplete. No listener is bound, and nobody enrolls with this Host.
     ///
     /// Without it, as without a mutual `admin.tls`, a configured `host.join` refuses the start.
     #[cfg(feature = "membership")]
     pub fn with_membership(self) -> Self {
         self.compose(|composition| {
-            composition.with_peer_connector(|config, session| {
-                permguard_client::peer::connector(config.admin_tls().as_ref(), session)
-            })
+            composition
+                .with_peer_connector(|config, session| {
+                    permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+                })
+                // What this Host owes its coordinator is shipped before it stops, or the stop
+                // says it was not: registered after the Plane, so it drains once the Plane did.
+                .with_service(Box::new(permguard_runtime::shipping::EvidenceDrain))
         })
     }
 

@@ -68,6 +68,7 @@ is cut.
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.
   The peer channel's initiator moved to the `peer` feature of `permguard-client`, over `permguard-tls`, the algorithms, material readers and channel binding a listener and a client share; an embedded Host also keeps its rings, their first key and their rotation.
+  What an embedded member still owes its coordinator is shipped when it stops, or the stop is reported incomplete: the drain a served Host runs in its listener's service is `permguard_runtime::shipping::EvidenceDrain` for a Host with none.
 - **An application embeds the Data Plane without composing a Host.**
   `permguard-embedded` composes it: the headless runtime opens the Host on its volume from the configuration file a server reads, with the implementations that file names, and runs the Data Plane as its one Plane, with no listener.
   The application drives one future, the Host's life, and is handed a handle to decide, submit and read health; its own future ends the Host, drained and stopped in order.
