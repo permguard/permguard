@@ -13,8 +13,8 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 use crate::authority::TokenAsk;
-use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
+use crate::failure::Failure;
 use crate::tls::{Credential, TlsOptions};
 
 /// How long before its `exp` a token is obtained again.

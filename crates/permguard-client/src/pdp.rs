@@ -37,13 +37,18 @@
 //! configuration, and reads the endpoints from there. Both routes lead to the same paths — one
 //! because it was compiled against them, the other because it asked.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use serde_json::{Map, Value};
 
-use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
+use crate::failure::Failure;
+#[cfg(feature = "http")]
 use crate::http::Client;
 use crate::tls::TlsOptions;
 
+#[cfg(feature = "http")]
 /// How long one decision may take. A PDP that has not answered in five
 /// seconds is not going to.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -67,20 +72,30 @@ pub fn client(
     tls: &TlsOptions,
     narrator: Box<dyn crate::narrate::Narrator>,
 ) -> Result<Box<dyn Pdp>, String> {
-    if url.starts_with("grpc://") || url.starts_with("grpcs://") {
+    if crate::transport::is_grpc(url) {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(crate::grpc::GrpcPdp::connect(url, tls, narrator)?));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
-    let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
+    #[cfg(feature = "http")]
+    {
+        let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
 
-    Ok(Box::new(HttpPdp::new(endpoint, tls.clone(), narrator)?))
+        Ok(Box::new(HttpPdp::new(endpoint, tls.clone(), narrator)?))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
+#[cfg(feature = "http")]
 /// The HTTP surface: a `POST` of the payload, and the answer as it came.
 struct HttpPdp {
     endpoint: Endpoint,
     client: Client,
 }
 
+#[cfg(feature = "http")]
 impl HttpPdp {
     fn new(
         endpoint: Endpoint,
@@ -121,6 +136,7 @@ impl HttpPdp {
     }
 }
 
+#[cfg(feature = "http")]
 impl Pdp for HttpPdp {
     fn evaluate(&self, payload: &Value) -> Result<Value, Failure> {
         // The boxcarred path when the caller boxcarred, the single one
@@ -150,6 +166,7 @@ impl Pdp for HttpPdp {
     }
 }
 
+#[cfg(feature = "http")]
 /// Turns a server's refusal body into a value a caller can branch on.
 fn refusal(parsed: &Value, status: u16) -> Failure {
     let field = |name: &str| {

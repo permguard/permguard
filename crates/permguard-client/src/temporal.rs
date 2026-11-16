@@ -3,17 +3,23 @@
 
 //! Client for the stateful PDP interface, over either transport.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use permguard_language_core::temporal::{
     HistoryScope, Outcome, PartitionEvaluation, Reason, SubmitRequest, SubmitResponse, Watermark,
 };
 use serde_json::Value;
 
-use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
+use crate::failure::Failure;
+#[cfg(feature = "http")]
 use crate::http::Client;
+#[cfg(feature = "grpc")]
 use crate::pdp_v1 as proto;
 use crate::tls::TlsOptions;
 
+#[cfg(feature = "http")]
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub trait TemporalPdp {
@@ -26,23 +32,33 @@ pub fn client(
     tls: &TlsOptions,
     narrator: Box<dyn crate::narrate::Narrator>,
 ) -> Result<Box<dyn TemporalPdp>, String> {
-    if url.starts_with("grpc://") || url.starts_with("grpcs://") {
+    if crate::transport::is_grpc(url) {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(GrpcTemporal::connect(url, tls, narrator)?));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
-    let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
+    #[cfg(feature = "http")]
+    {
+        let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
 
-    Ok(Box::new(HttpTemporal::new(
-        endpoint,
-        tls.clone(),
-        narrator,
-    )?))
+        Ok(Box::new(HttpTemporal::new(
+            endpoint,
+            tls.clone(),
+            narrator,
+        )?))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
+#[cfg(feature = "http")]
 struct HttpTemporal {
     endpoint: Endpoint,
     client: Client,
 }
 
+#[cfg(feature = "http")]
 impl HttpTemporal {
     fn new(
         endpoint: Endpoint,
@@ -80,6 +96,7 @@ impl HttpTemporal {
     }
 }
 
+#[cfg(feature = "http")]
 impl TemporalPdp for HttpTemporal {
     fn submit(&self, payload: &Value) -> Result<Value, Failure> {
         // Read the same top-level contract before either transport. HTTP still sends the caller's
@@ -108,8 +125,10 @@ impl TemporalPdp for HttpTemporal {
     }
 }
 
+#[cfg(feature = "grpc")]
 struct GrpcTemporal(crate::grpc::GrpcChannel);
 
+#[cfg(feature = "grpc")]
 impl GrpcTemporal {
     fn connect(
         url: &str,
@@ -130,6 +149,7 @@ impl GrpcTemporal {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl TemporalPdp for GrpcTemporal {
     fn submit(&self, payload: &Value) -> Result<Value, Failure> {
         let request: SubmitRequest =
@@ -187,6 +207,7 @@ impl TemporalPdp for GrpcTemporal {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn to_proto(request: SubmitRequest) -> Result<proto::SubmitEventRequest, Failure> {
     let malformed = |detail: String| Failure {
         class: "validation".to_owned(),
@@ -308,6 +329,7 @@ pub(crate) fn validated(answer: Value) -> Result<Value, Failure> {
     Ok(answer)
 }
 
+#[cfg(feature = "grpc")]
 fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
     let internal = |detail: String| Failure {
         class: "internal".to_owned(),
@@ -403,6 +425,7 @@ fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
     serde_json::to_value(response).map_err(|error| internal(error.to_string()))
 }
 
+#[cfg(feature = "http")]
 fn http_refusal(parsed: &Value, status: u16) -> Failure {
     let field = |name: &str| {
         parsed
@@ -430,6 +453,7 @@ fn http_refusal(parsed: &Value, status: u16) -> Failure {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn grpc_refusal(status: tonic::Status) -> Failure {
     let metadata = |key: &str| {
         status

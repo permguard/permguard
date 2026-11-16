@@ -5,20 +5,27 @@
 //! HTTP surface, `grpc`/`grpcs` the gRPC one. Same server, same facade
 //! behind it — everything above this file is blind to which door was used.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
     NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
     UploadObjectsRequest, UploadObjectsResponse,
 };
 
+#[cfg(feature = "grpc")]
 use crate::grpc::GrpcRemote;
 use crate::remote::{RefAnswer, Remote};
+#[cfg(feature = "http")]
 use crate::remote_http::HttpRemote;
 use crate::tls::TlsOptions;
 
 /// everything downstream blind to it — the same [`Remote`] contract either way.
 pub enum AnyRemote {
+    #[cfg(feature = "http")]
     Http(HttpRemote),
+    #[cfg(feature = "grpc")]
     Grpc(GrpcRemote),
 }
 
@@ -30,23 +37,32 @@ impl AnyRemote {
         tls: &TlsOptions,
         narrator: Box<dyn crate::narrate::Narrator>,
     ) -> Result<Self, String> {
-        if url.starts_with("grpc://") || url.starts_with("grpcs://") {
-            GrpcRemote::connect(url, tls, narrator).map(Self::Grpc)
-        } else {
-            HttpRemote::connect(url, tls, narrator).map(Self::Http)
+        if crate::transport::is_grpc(url) {
+            #[cfg(feature = "grpc")]
+            return GrpcRemote::connect(url, tls, narrator).map(Self::Grpc);
+            #[cfg(not(feature = "grpc"))]
+            return Err(crate::transport::no_grpc(url));
         }
+        #[cfg(feature = "http")]
+        return HttpRemote::connect(url, tls, narrator).map(Self::Http);
+        #[cfg(not(feature = "http"))]
+        return Err(crate::transport::no_http(url));
     }
 
     pub fn bind(&self, zone_id: &str, ledger_id: &str) {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.bind(zone_id, ledger_id),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.bind(zone_id, ledger_id),
         }
     }
 
     pub fn verify_discovery(&self) -> Result<(), String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.verify_discovery(),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.verify_discovery(),
         }
     }
@@ -55,21 +71,27 @@ impl AnyRemote {
 impl Remote for AnyRemote {
     fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.resolve(zone, ledger),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.resolve(zone, ledger),
         }
     }
 
     fn keyring(&self) -> Result<Vec<u8>, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.keyring(),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.keyring(),
         }
     }
 
     fn get_ref(&self, r#ref: &str) -> Result<Option<RefAnswer>, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.get_ref(r#ref),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.get_ref(r#ref),
         }
     }
@@ -79,21 +101,27 @@ impl Remote for AnyRemote {
         request: &NegotiatePushRequest,
     ) -> Result<NegotiatePushResponse, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.negotiate_push(request),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.negotiate_push(request),
         }
     }
 
     fn upload(&self, request: &UploadObjectsRequest) -> Result<UploadObjectsResponse, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.upload(request),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.upload(request),
         }
     }
 
     fn commit_push(&self, request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.commit_push(request),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.commit_push(request),
         }
     }
@@ -103,14 +131,18 @@ impl Remote for AnyRemote {
         request: &NegotiatePullRequest,
     ) -> Result<NegotiatePullResponse, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.negotiate_pull(request),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.negotiate_pull(request),
         }
     }
 
     fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse, String> {
         match self {
+            #[cfg(feature = "http")]
             Self::Http(remote) => remote.fetch(request),
+            #[cfg(feature = "grpc")]
             Self::Grpc(remote) => remote.fetch(request),
         }
     }

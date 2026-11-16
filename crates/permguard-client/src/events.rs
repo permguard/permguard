@@ -20,26 +20,33 @@
 //! digest domain. Sharing the client would mean one type could reach the other's endpoint, and the
 //! whole point of domain separation is that it cannot.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::encode;
 use crate::endpoint::Endpoint;
+#[cfg(feature = "http")]
 use crate::http::Client;
 use crate::tls::TlsOptions;
 
+#[cfg(feature = "http")]
 /// How long one exchange may take.
 ///
 /// Generous next to a decision, tight next to a journal that fills: the point of a deadline here
 /// is that a hung socket must not stop the next round.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+#[cfg(feature = "http")]
 /// The HTTP client.
 pub struct HttpEventSink {
     pub(crate) endpoint: Endpoint,
     pub(crate) client: Client,
 }
 
+#[cfg(feature = "http")]
 impl HttpEventSink {
     /// Connects to `url` with `tls`, narrating each exchange to `narrator`.
     pub fn connect(
@@ -216,6 +223,7 @@ pub trait EventLog: EventReader + Send + Sync {}
 
 impl<T: EventReader + Send + Sync> EventLog for T {}
 
+#[cfg(feature = "http")]
 impl EventReader for HttpEventSink {
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
         // Every caller-supplied value is escaped on the way in. A zone, a ledger and a producer
@@ -371,6 +379,7 @@ impl EventReader for HttpEventSink {
     }
 }
 
+#[cfg(feature = "http")]
 /// The refusal a body describes.
 fn read_refusal(body: &str, status: u16) -> ReadError {
     let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
@@ -424,10 +433,16 @@ pub fn client(
     narrator: Box<dyn crate::narrate::Narrator>,
 ) -> Result<Box<dyn EventLog>, String> {
     if url.starts_with("grpc") {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(crate::events_grpc::GrpcEventSink::connect(
             url, tls, narrator,
         )?));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
 
-    Ok(Box::new(HttpEventSink::connect(url, tls, narrator)?))
+    #[cfg(feature = "http")]
+    return Ok(Box::new(HttpEventSink::connect(url, tls, narrator)?));
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }

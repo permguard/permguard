@@ -28,7 +28,7 @@ hyper-util.workspace = true
 permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego"] }
 serde_norway.workspace = true
 sha2.workspace = true
-permguard-client.workspace = true
+permguard-client = { workspace = true, features = ["http", "grpc", "catalog", "pdp"] }
 permguard-core.workspace = true
 # The contracts this package speaks, generated once for the workspace.
 permguard-contracts = { workspace = true, features = ["host-client", "host-server", "authority-client", "serde", "descriptors"] }

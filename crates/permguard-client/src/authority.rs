@@ -9,13 +9,19 @@
 //! `{class, code, message}`. A secret key is answered once, by the call that made it, and never
 //! printed by `Debug`.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+#[cfg(feature = "grpc")]
 use crate::authority_v1 as proto;
-use crate::catalog::Failure;
 use crate::endpoint::Endpoint;
+use crate::failure::Failure;
+#[cfg(feature = "grpc")]
 use crate::grpc::GrpcChannel;
+#[cfg(feature = "http")]
 use crate::http::Client;
 use crate::tls::TlsOptions;
 
@@ -201,6 +207,7 @@ pub trait Authority {
     fn revoke_token(&self, request_id: &str, jti: &str) -> Result<Token, Failure>;
 }
 
+#[cfg(feature = "http")]
 fn usage(detail: impl Into<String>) -> Failure {
     Failure {
         class: "validation".to_owned(),
@@ -219,27 +226,36 @@ pub fn client(
 ) -> Result<Box<dyn Authority + Send + Sync>, String> {
     let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
     if endpoint.is_grpc() {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(GrpcAuthority(GrpcChannel::connect(
             url, tls, narrator,
         )?)));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
-    let client = Client::new(
-        std::time::Duration::from_secs(30),
-        tls.clone(),
-        endpoint.is_tls(),
-    )
-    .map_err(|error| error.to_string())?
-    .with_narrator(narrator);
-    // The token endpoint is reached without the bearer: its proof is the access key's.
-    let mut bare = tls.clone();
-    bare.token = None;
-    Ok(Box::new(RestAuthority {
-        client,
-        bare,
-        endpoint,
-    }))
+    #[cfg(feature = "http")]
+    {
+        let client = Client::new(
+            std::time::Duration::from_secs(30),
+            tls.clone(),
+            endpoint.is_tls(),
+        )
+        .map_err(|error| error.to_string())?
+        .with_narrator(narrator);
+        // The token endpoint is reached without the bearer: its proof is the access key's.
+        let mut bare = tls.clone();
+        bare.token = None;
+        Ok(Box::new(RestAuthority {
+            client,
+            bare,
+            endpoint,
+        }))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
+#[cfg(feature = "http")]
 /// A path segment: refused when it would change the path.
 fn segment(text: &str) -> Result<String, Failure> {
     if text.is_empty() || text.contains(['/', '?', '#', '%']) || text.chars().any(char::is_control)
@@ -249,25 +265,30 @@ fn segment(text: &str) -> Result<String, Failure> {
     Ok(crate::encode::value(text))
 }
 
+#[cfg(feature = "http")]
 fn json(body: &impl Serialize) -> Result<String, Failure> {
     serde_json::to_string(body).map_err(|error| usage(error.to_string()))
 }
 
+#[cfg(feature = "http")]
 #[derive(Deserialize)]
 struct AccountsBody {
     accounts: Vec<ServiceAccount>,
 }
 
+#[cfg(feature = "http")]
 #[derive(Deserialize)]
 struct KeysBody {
     keys: Vec<AccessKey>,
 }
 
+#[cfg(feature = "http")]
 #[derive(Deserialize)]
 struct TokensBody {
     tokens: Vec<Token>,
 }
 
+#[cfg(feature = "http")]
 struct RestAuthority {
     client: Client,
     /// The TLS options without the bearer: the token endpoint's.
@@ -275,6 +296,7 @@ struct RestAuthority {
     endpoint: Endpoint,
 }
 
+#[cfg(feature = "http")]
 impl RestAuthority {
     fn call<T: for<'de> Deserialize<'de>>(
         &self,
@@ -282,10 +304,11 @@ impl RestAuthority {
         path: &str,
         body: Option<&str>,
     ) -> Result<T, Failure> {
-        crate::catalog::call(&self.client, &self.endpoint, method, path, body)
+        crate::rest::call(&self.client, &self.endpoint, method, path, body)
     }
 }
 
+#[cfg(feature = "http")]
 /// The token request as RFC 6749 encodes it: the proof in Basic, the rest in the form.
 fn token_form(ask: &TokenAsk) -> (String, String) {
     use base64::Engine as _;
@@ -315,6 +338,7 @@ fn token_form(ask: &TokenAsk) -> (String, String) {
     )
 }
 
+#[cfg(feature = "http")]
 /// RFC 6749's refusal as a failure: the error and its description, never anything sent.
 fn token_failure(status: u16, body: &[u8], access_key: &str) -> Failure {
     let parsed: Option<serde_json::Value> = serde_json::from_slice(body).ok();
@@ -362,6 +386,7 @@ fn refused_token(error: &str, description: &str, access_key: &str) -> String {
     }
 }
 
+#[cfg(feature = "http")]
 impl Authority for RestAuthority {
     fn metadata(&self) -> Result<serde_json::Value, Failure> {
         self.call("GET", "/.well-known/oauth-authorization-server", None)
@@ -571,8 +596,10 @@ impl Authority for RestAuthority {
     }
 }
 
+#[cfg(feature = "grpc")]
 struct GrpcAuthority(GrpcChannel);
 
+#[cfg(feature = "grpc")]
 fn scope_in(scope: proto::Scope) -> Scope {
     Scope {
         operations: scope.operations,
@@ -580,6 +607,7 @@ fn scope_in(scope: proto::Scope) -> Scope {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn scope_out(scope: &Scope) -> proto::Scope {
     proto::Scope {
         operations: scope.operations.clone(),
@@ -587,6 +615,7 @@ fn scope_out(scope: &Scope) -> proto::Scope {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn key_in(key: proto::AccessKey) -> AccessKey {
     AccessKey {
         access_key: key.access_key,
@@ -597,6 +626,7 @@ fn key_in(key: proto::AccessKey) -> AccessKey {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn account_in(account: Option<proto::ServiceAccount>) -> Result<ServiceAccount, Failure> {
     let account = account.ok_or_else(|| Failure {
         class: "internal".to_owned(),
@@ -617,6 +647,7 @@ fn account_in(account: Option<proto::ServiceAccount>) -> Result<ServiceAccount, 
     })
 }
 
+#[cfg(feature = "grpc")]
 fn token_in(token: proto::TokenSummary) -> Token {
     Token {
         jti: token.jti,
@@ -632,6 +663,7 @@ fn token_in(token: proto::TokenSummary) -> Token {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn scopes_in(scopes: proto::ScopesResponse) -> Scopes {
     Scopes {
         name: scopes.name,
@@ -641,6 +673,7 @@ fn scopes_in(scopes: proto::ScopesResponse) -> Scopes {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn decoded(what: &str, text: &str) -> Result<serde_json::Value, Failure> {
     serde_json::from_str(text).map_err(|error| Failure {
         class: "internal".to_owned(),
@@ -650,6 +683,7 @@ fn decoded(what: &str, text: &str) -> Result<serde_json::Value, Failure> {
     })
 }
 
+#[cfg(feature = "grpc")]
 impl GrpcAuthority {
     fn tokens_client(
         &self,
@@ -676,6 +710,7 @@ impl GrpcAuthority {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl Authority for GrpcAuthority {
     fn metadata(&self) -> Result<serde_json::Value, Failure> {
         let mut client = self.tokens_client();

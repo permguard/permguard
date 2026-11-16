@@ -37,40 +37,88 @@
 /// tune a transfer.
 pub const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
-pub mod attestation;
-pub mod authority;
-pub mod authority_v1;
-pub mod catalog;
-pub mod connect;
-pub mod decisions;
-pub mod decisions_grpc;
-pub mod documents;
+// A surface is called over a transport: a build that selects one and neither transport is an
+// invalid profile, refused here rather than left to answer every URL with a refusal.
+#[cfg(all(
+    any(
+        feature = "catalog",
+        feature = "notp",
+        feature = "decisions",
+        feature = "events",
+        feature = "pdp",
+        feature = "temporal",
+        feature = "host",
+        feature = "authority",
+        feature = "documents"
+    ),
+    not(any(feature = "http", feature = "grpc"))
+))]
+compile_error!(
+    "permguard-client: a surface is selected and no transport; select `http`, `grpc` or both"
+);
+
 pub mod encode;
 pub mod endpoint;
-pub mod events;
-pub mod events_grpc;
-pub mod grpc;
-pub mod host;
-mod host_proto;
-/// The generated `permguard.host.v1` stubs (TC-1).
-pub mod host_v1;
-pub mod http;
+pub mod failure;
 pub mod narrate;
-/// The generated `permguard.control.v1` stubs, from the plane's own
-/// `contracts/proto/`. Public so the wire tests can stand a fake server on the same
-/// contract this client calls.
-pub mod pdp;
-pub mod pdp_v1;
-pub mod remote_http;
-pub mod temporal;
 pub mod tls;
-pub mod token_source;
+pub mod transport;
+
+// The transports.
+#[cfg(feature = "grpc")]
+pub mod grpc;
+#[cfg(feature = "http")]
+pub mod http;
+#[cfg(feature = "http")]
+pub(crate) mod rest;
+
+// The generated contracts the gRPC transport speaks, where the surfaces name them.
+#[cfg(all(feature = "grpc", any(feature = "authority", feature = "documents")))]
+pub mod authority_v1;
+#[cfg(all(feature = "grpc", feature = "host"))]
+pub mod host_v1;
+#[cfg(feature = "grpc")]
+pub mod pdp_v1;
+#[cfg(feature = "grpc")]
 pub mod v1;
+
+// The surfaces.
+#[cfg(feature = "pdp")]
+pub mod attestation;
+#[cfg(feature = "authority")]
+pub mod authority;
+#[cfg(feature = "catalog")]
+pub mod catalog;
+#[cfg(feature = "notp")]
+pub mod connect;
+#[cfg(feature = "decisions")]
+pub mod decisions;
+#[cfg(all(feature = "decisions", feature = "grpc"))]
+pub mod decisions_grpc;
+#[cfg(feature = "documents")]
+pub mod documents;
+#[cfg(feature = "events")]
+pub mod events;
+#[cfg(all(feature = "events", feature = "grpc"))]
+pub mod events_grpc;
+#[cfg(feature = "host")]
+pub mod host;
+#[cfg(all(feature = "host", feature = "grpc"))]
+mod host_proto;
+#[cfg(feature = "pdp")]
+pub mod pdp;
+#[cfg(all(feature = "notp", feature = "http"))]
+pub mod remote_http;
+#[cfg(feature = "temporal")]
+pub mod temporal;
+#[cfg(feature = "authority")]
+pub mod token_source;
 
 // The verified local mirror is `permguard-mirror`'s; its modules stay reachable from here, where the
 // command line and Permguard Admin already name them.
 pub use permguard_mirror::{checkpoint, objects, pull, remote, store, verify};
 
+#[cfg(feature = "notp")]
 pub use connect::AnyRemote;
 pub use endpoint::Endpoint;
 pub use narrate::Narrator;

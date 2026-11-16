@@ -41,6 +41,10 @@ is cut.
   A build with one language runs that language's golden vectors and corpora without the other engines, and its startup check accepts it: the catalogue offers a manifest only the inputs of the languages it carries (`task test:profiles` runs every profile, each built apart).
   The control client depends on the request model alone and compiles no policy language.
   The shipped binaries carry the same three languages and decide exactly as before: every language descriptor and its digest are unchanged.
+- **`permguard-control-client` is `permguard-client`, and selects what it carries.**
+  The client library takes the name of what it serves, every surface of a Host and its Planes, and carries nothing by default: a feature per surface (`catalog`, `notp`, `decisions`, `events`, `pdp`, `temporal`, `host`, `authority`, `documents`) and per transport (`http`, `grpc`), `full` for them all.
+  Built for REST alone it links no tonic and no generated contract; a URL naming a transport the build does not carry is refused by name, and a surface with no transport does not compile.
+  The verified local mirror is `permguard-mirror`, with no network in it, and the round over a Host's mirror tasks is `permguard-sync`: the Data Plane's domain, and an embedded Data Plane with it, links no network client, no tonic, axum, hyper or rustls.
 - **The gRPC contracts are generated once.**
   `permguard-contracts` compiles `contracts/proto` for the whole workspace, a feature per contract with its client and its server stubs apart; the client library, the three servers, the Host and the conformance tests no longer generate copies of their own, so a message is one type wherever it is named.
   Nothing on a wire changes.

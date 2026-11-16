@@ -23,9 +23,17 @@ use permguard_host::api::keys::{
 use permguard_host::api::plans::{ApprovalView, ApprovePlan, PlanApproved, PlanList, PlanView};
 use permguard_host::gc::{Entry, Kept, Report};
 
-use super::{GrpcHost, RestHost, json, query_value, segment, usage};
-use crate::catalog::Failure;
+#[cfg(feature = "grpc")]
+use super::GrpcHost;
+#[cfg(feature = "http")]
+use super::RestHost;
+#[cfg(feature = "http")]
+use super::{json, query_value};
+use super::{segment, usage};
+use crate::failure::Failure;
+#[cfg(feature = "grpc")]
 use crate::host_proto as map;
+#[cfg(feature = "grpc")]
 use crate::host_v1 as proto;
 
 /// The Host's key rings, audit trails, configuration and plans (TC-2).
@@ -77,6 +85,7 @@ pub trait Operations {
     fn run_gc(&self, job: &str, request: &RunGc) -> Result<GcRan, Failure>;
 }
 
+#[cfg(feature = "http")]
 /// `?name=value&…` of the members given, percent-encoded; empty when none is.
 fn query(members: &[(&str, Option<String>)]) -> String {
     let given: Vec<String> = members
@@ -94,6 +103,7 @@ fn query(members: &[(&str, Option<String>)]) -> String {
     }
 }
 
+#[cfg(feature = "http")]
 impl Operations for RestHost {
     fn rings(&self) -> Result<Rings, Failure> {
         self.get("/host/v1/keys")
@@ -234,11 +244,13 @@ impl Operations for RestHost {
     }
 }
 
+#[cfg(feature = "grpc")]
 /// An empty string is no value on gRPC.
 fn blank(text: Option<&String>) -> String {
     text.cloned().unwrap_or_default()
 }
 
+#[cfg(feature = "grpc")]
 fn ring_in(answer: proto::GetKeyRingResponse) -> RingView {
     RingView {
         ring: answer.ring,
@@ -262,6 +274,7 @@ fn ring_in(answer: proto::GetKeyRingResponse) -> RingView {
     }
 }
 
+#[cfg(feature = "grpc")]
 fn records_in(records: Vec<proto::AuditRecord>) -> Vec<AuditRecordView> {
     records
         .into_iter()
@@ -276,6 +289,7 @@ fn records_in(records: Vec<proto::AuditRecord>) -> Vec<AuditRecordView> {
         .collect()
 }
 
+#[cfg(feature = "grpc")]
 fn gaps_in(gaps: Vec<proto::AuditGap>) -> Vec<AuditGapView> {
     gaps.into_iter()
         .map(|gap| AuditGapView {
@@ -288,6 +302,7 @@ fn gaps_in(gaps: Vec<proto::AuditGap>) -> Vec<AuditGapView> {
         .collect()
 }
 
+#[cfg(feature = "grpc")]
 fn anchor_in(anchor: Option<proto::AuditAnchor>) -> Option<AuditAnchorView> {
     anchor.map(|anchor| AuditAnchorView {
         low_watermark: anchor.low_watermark,
@@ -296,6 +311,7 @@ fn anchor_in(anchor: Option<proto::AuditAnchor>) -> Option<AuditAnchorView> {
     })
 }
 
+#[cfg(feature = "grpc")]
 fn checkpoints_in(checkpoints: Vec<proto::AuditCheckpoint>) -> Vec<AuditCheckpointView> {
     checkpoints
         .into_iter()
@@ -307,6 +323,7 @@ fn checkpoints_in(checkpoints: Vec<proto::AuditCheckpoint>) -> Vec<AuditCheckpoi
         .collect()
 }
 
+#[cfg(feature = "grpc")]
 fn plan_in(plan: proto::OperationPlan) -> PlanView {
     PlanView {
         plan_id: plan.plan_id,
@@ -331,6 +348,7 @@ fn plan_in(plan: proto::OperationPlan) -> PlanView {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl GrpcHost {
     fn keys_client(&self) -> proto::key_service_client::KeyServiceClient<crate::grpc::AuthChannel> {
         proto::key_service_client::KeyServiceClient::new(self.0.channel())
@@ -343,6 +361,7 @@ impl GrpcHost {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl Operations for GrpcHost {
     fn rings(&self) -> Result<Rings, Failure> {
         let answer = self
@@ -755,6 +774,7 @@ impl Operations for GrpcHost {
     }
 }
 
+#[cfg(feature = "grpc")]
 /// A garbage-collection report as gRPC carries it.
 fn report_in(report: proto::GcReport) -> Report {
     Report {
@@ -783,6 +803,7 @@ fn report_in(report: proto::GcReport) -> Report {
     }
 }
 
+#[cfg(feature = "grpc")]
 /// How a finalize or an abort ended, as gRPC carries it.
 fn ended(
     backup: String,

@@ -17,13 +17,18 @@
 //! 5xx / no answer   → retry with backoff; the records are still here
 //! ```
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::endpoint::Endpoint;
+#[cfg(feature = "http")]
 use crate::http::Client;
 use crate::tls::TlsOptions;
 
+#[cfg(feature = "http")]
 /// How long one shipment may take.
 ///
 /// Generous next to a decision, tight next to a spool that fills: the point of
@@ -47,13 +52,19 @@ pub fn client(
     tls: &crate::tls::TlsOptions,
     narrator: Box<dyn crate::narrate::Narrator>,
 ) -> Result<Box<dyn DecisionLog>, String> {
-    if url.starts_with("grpc://") || url.starts_with("grpcs://") {
+    if crate::transport::is_grpc(url) {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(crate::decisions_grpc::GrpcSink::connect(
             url, tls, narrator,
         )?));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
 
-    Ok(Box::new(HttpSink::connect(url, tls, narrator)?))
+    #[cfg(feature = "http")]
+    return Ok(Box::new(HttpSink::connect(url, tls, narrator)?));
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
 /// Which records a reader is asking for.
@@ -254,12 +265,14 @@ pub trait DecisionReader {
     ) -> Result<serde_json::Value, ReadError>;
 }
 
+#[cfg(feature = "http")]
 /// The HTTP shipper.
 pub struct HttpSink {
     endpoint: Endpoint,
     client: Client,
 }
 
+#[cfg(feature = "http")]
 impl HttpSink {
     /// Connects to `url` with `tls`, narrating each exchange to `narrator`.
     pub fn connect(
@@ -276,6 +289,7 @@ impl HttpSink {
     }
 }
 
+#[cfg(feature = "http")]
 impl DecisionReader for HttpSink {
     fn signers(
         &self,
@@ -414,6 +428,7 @@ impl DecisionReader for HttpSink {
     }
 }
 
+#[cfg(feature = "http")]
 fn first_line(body: &str) -> String {
     body.lines()
         .next()

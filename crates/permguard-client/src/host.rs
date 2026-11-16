@@ -13,6 +13,9 @@
 //! (WP-4.8): every operation the `host identity` and `host members` commands reach; [`Operations`] adds the key rings, the audit trails, the configuration and the
 //! plans (TC-2).
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use permguard_host::api::identity::{
@@ -33,14 +36,18 @@ use permguard_host::api::streams::{
     SubscriptionView,
 };
 
-use crate::catalog::Failure;
+use crate::failure::Failure;
 use permguard_host::api::Planned;
 
 mod ops;
 use crate::endpoint::Endpoint;
+#[cfg(feature = "grpc")]
 use crate::grpc::GrpcChannel;
+#[cfg(feature = "grpc")]
 use crate::host_proto as map;
+#[cfg(feature = "grpc")]
 use crate::host_v1 as proto;
+#[cfg(feature = "http")]
 use crate::http::Client;
 use crate::tls::TlsOptions;
 pub use ops::Operations;
@@ -63,6 +70,7 @@ pub enum Change {
 }
 
 impl Change {
+    #[cfg(feature = "http")]
     fn verb(self) -> &'static str {
         match self {
             Self::Reject => "reject",
@@ -168,6 +176,7 @@ fn usage(detail: impl Into<String>) -> Failure {
     }
 }
 
+#[cfg(feature = "http")]
 /// A query value, percent-encoded: everything but the unreserved characters.
 fn query_value(value: &str) -> String {
     value
@@ -196,6 +205,7 @@ fn segment(id: &str) -> Result<&str, Failure> {
     Ok(id)
 }
 
+#[cfg(feature = "grpc")]
 /// `stream`, its plane and type refused as a REST path segment refuses them, on either
 /// transport, so both refuse a malformed name the same way (after the review).
 fn checked<'a>(stream: &StreamName<'a>) -> Result<StreamName<'a>, Failure> {
@@ -204,6 +214,7 @@ fn checked<'a>(stream: &StreamName<'a>) -> Result<StreamName<'a>, Failure> {
     Ok(*stream)
 }
 
+#[cfg(feature = "http")]
 /// The REST path of the stream read `what` of `stream`.
 fn stream_path(stream: &StreamName<'_>, what: &str) -> Result<String, Failure> {
     Ok(format!(
@@ -214,6 +225,7 @@ fn stream_path(stream: &StreamName<'_>, what: &str) -> Result<String, Failure> {
     ))
 }
 
+#[cfg(feature = "http")]
 fn json(body: &impl serde::Serialize) -> Result<String, Failure> {
     serde_json::to_string(body).map_err(|error| usage(error.to_string()))
 }
@@ -226,28 +238,38 @@ pub fn client(
 ) -> Result<Box<dyn Host>, String> {
     let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
     if endpoint.is_grpc() {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(GrpcHost(GrpcChannel::connect(
             url, tls, narrator,
         )?)));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
-    let client = Client::new(
-        std::time::Duration::from_secs(30),
-        tls.clone(),
-        endpoint.is_tls(),
-    )
-    .map_err(|error| error.to_string())?
-    .with_narrator(narrator);
-    Ok(Box::new(RestHost { client, endpoint }))
+    #[cfg(feature = "http")]
+    {
+        let client = Client::new(
+            std::time::Duration::from_secs(30),
+            tls.clone(),
+            endpoint.is_tls(),
+        )
+        .map_err(|error| error.to_string())?
+        .with_narrator(narrator);
+        Ok(Box::new(RestHost { client, endpoint }))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
+#[cfg(feature = "http")]
 struct RestHost {
     client: Client,
     endpoint: Endpoint,
 }
 
+#[cfg(feature = "http")]
 impl Host for RestHost {
     fn status(&self) -> Result<StatusView, Failure> {
-        crate::catalog::call(&self.client, &self.endpoint, "GET", "/host/v1/status", None)
+        crate::rest::call(&self.client, &self.endpoint, "GET", "/host/v1/status", None)
     }
 
     fn streams(&self) -> Result<StreamList, Failure> {
@@ -275,7 +297,7 @@ impl Host for RestHost {
     }
 
     fn identity(&self) -> Result<IdentityView, Failure> {
-        crate::catalog::call(
+        crate::rest::call(
             &self.client,
             &self.endpoint,
             "GET",
@@ -301,7 +323,7 @@ impl Host for RestHost {
     }
 
     fn delete_invite(&self, invite_id: &str, request_id: &str) -> Result<InviteDeleted, Failure> {
-        crate::catalog::call(
+        crate::rest::call(
             &self.client,
             &self.endpoint,
             "DELETE",
@@ -419,9 +441,10 @@ impl Host for RestHost {
     }
 }
 
+#[cfg(feature = "http")]
 impl RestHost {
     fn get<T: for<'de> serde::Deserialize<'de>>(&self, path: &str) -> Result<T, Failure> {
-        crate::catalog::call(&self.client, &self.endpoint, "GET", path, None)
+        crate::rest::call(&self.client, &self.endpoint, "GET", path, None)
     }
 
     fn post<T: for<'de> serde::Deserialize<'de>>(
@@ -429,12 +452,14 @@ impl RestHost {
         path: &str,
         body: &str,
     ) -> Result<T, Failure> {
-        crate::catalog::call(&self.client, &self.endpoint, "POST", path, Some(body))
+        crate::rest::call(&self.client, &self.endpoint, "POST", path, Some(body))
     }
 }
 
+#[cfg(feature = "grpc")]
 struct GrpcHost(GrpcChannel);
 
+#[cfg(feature = "grpc")]
 impl Host for GrpcHost {
     fn streams(&self) -> Result<StreamList, Failure> {
         let answer = self
@@ -1112,6 +1137,7 @@ impl Host for GrpcHost {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl GrpcHost {
     fn members_client(
         &self,
@@ -1126,6 +1152,7 @@ impl GrpcHost {
     }
 }
 
+#[cfg(feature = "grpc")]
 /// The status view a `GetStatusResponse` means, field for field.
 fn status_of(answer: proto::GetStatusResponse) -> StatusView {
     let assurance = answer.assurance.unwrap_or_default();

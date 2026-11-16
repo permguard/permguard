@@ -11,23 +11,32 @@
 //! synchronous program; tonic is not — a private current-thread runtime
 //! bridges the two, and never leaks past this module.
 
+// A helper every surface shares is idle in a build that selects the few that do not call it.
+#![cfg_attr(not(feature = "full"), allow(dead_code, unused_imports))]
+
 use std::cell::RefCell;
 
 use crate::pdp_v1 as pdp;
+#[cfg(feature = "notp")]
 use crate::remote::{RefAnswer, Remote};
 use crate::v1 as proto;
+#[cfg(feature = "notp")]
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
     NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
     UploadObjectsRequest, UploadObjectsResponse,
 };
+#[cfg(feature = "notp")]
 use permguard_objects::digest::Digest;
+#[cfg(feature = "notp")]
 use permguard_objects::{compress, limits};
 use tonic::metadata::{AsciiMetadataValue, MetadataValue};
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 
-use crate::catalog::{Failure as CatalogFailure, Ledger, Zone};
+#[cfg(feature = "catalog")]
+use crate::catalog::{Ledger, Zone};
+use crate::failure::Failure as CatalogFailure;
 use crate::narrate::Narrator;
 use crate::tls::TlsOptions;
 
@@ -433,9 +442,11 @@ fn classify(code: tonic::Code) -> (&'static str, &'static str) {
 
 // ---- the catalog, over gRPC --------------------------------------------------------------------
 
+#[cfg(feature = "catalog")]
 /// Zones and ledgers over gRPC: the same verbs `zones.rs` speaks over HTTP.
 pub struct GrpcAdmin(pub GrpcChannel);
 
+#[cfg(feature = "catalog")]
 impl crate::catalog::Catalog for GrpcAdmin {
     fn list_zones(
         &self,
@@ -663,6 +674,7 @@ pub(crate) fn failure_of(status: tonic::Status) -> CatalogFailure {
     }
 }
 
+#[cfg(feature = "catalog")]
 impl GrpcAdmin {
     fn catalog(&self) -> proto::zone_catalog_client::ZoneCatalogClient<AuthChannel> {
         proto::zone_catalog_client::ZoneCatalogClient::new(self.0.channel.clone())
@@ -989,6 +1001,7 @@ impl GrpcAdmin {
     }
 }
 
+#[cfg(feature = "catalog")]
 /// A serving member as `GetLedger` carries it on gRPC (TC-5).
 fn serving_member_of(member: proto::ServingMember) -> crate::catalog::ServingMember {
     crate::catalog::ServingMember {
@@ -1028,6 +1041,7 @@ fn serving_member_of(member: proto::ServingMember) -> crate::catalog::ServingMem
     }
 }
 
+#[cfg(feature = "catalog")]
 /// A re-homed ledger's provenance as the wire carries it (WP-7.10).
 fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provenance {
     permguard_core::Provenance {
@@ -1039,6 +1053,7 @@ fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provena
     }
 }
 
+#[cfg(feature = "catalog")]
 /// A ledger's state as gRPC carries it: a server older than states sends none, which reads as
 /// `active`, as it does over REST (WP-7.3b).
 fn active_unless_said(state: String) -> String {
@@ -1051,6 +1066,7 @@ fn active_unless_said(state: String) -> String {
 
 // ---- the git-like store, over gRPC --------------------------------------------------------------
 
+#[cfg(feature = "notp")]
 /// A remote ledger over gRPC — the same [`Remote`] contract the HTTP
 /// implementation satisfies, so the workspace engine cannot tell them apart.
 pub struct GrpcRemote {
@@ -1062,6 +1078,7 @@ pub struct GrpcRemote {
     compression: RefCell<Option<String>>,
 }
 
+#[cfg(feature = "notp")]
 impl GrpcRemote {
     pub fn connect(
         url: &str,
@@ -1106,14 +1123,17 @@ impl GrpcRemote {
     }
 }
 
+#[cfg(feature = "notp")]
 fn parse_digest(text: &str) -> Result<Digest, String> {
     Digest::parse(text).map_err(|error| error.to_string())
 }
 
+#[cfg(feature = "notp")]
 fn parse_digests(list: Vec<String>) -> Result<Vec<Digest>, String> {
     list.iter().map(|text| parse_digest(text)).collect()
 }
 
+#[cfg(feature = "notp")]
 /// A ref state the client names, in its proto shape.
 fn expected_ref(expected: &permguard_notp::ExpectedRef) -> proto::ExpectedRef {
     proto::ExpectedRef {
@@ -1122,6 +1142,7 @@ fn expected_ref(expected: &permguard_notp::ExpectedRef) -> proto::ExpectedRef {
     }
 }
 
+#[cfg(feature = "notp")]
 /// A transfer session id the server issued: exactly 16 bytes.
 fn transfer_id(bytes: &[u8]) -> Result<permguard_notp::TransferId, String> {
     bytes
@@ -1129,6 +1150,7 @@ fn transfer_id(bytes: &[u8]) -> Result<permguard_notp::TransferId, String> {
         .map_err(|_| "the server issued a transfer id that is not 16 bytes".to_owned())
 }
 
+#[cfg(feature = "notp")]
 impl Remote for GrpcRemote {
     fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
         // The zone catalog over the same channel, same runtime.
@@ -1367,6 +1389,7 @@ impl Remote for GrpcRemote {
     }
 }
 
+#[cfg(feature = "pdp")]
 /// The data plane's decision endpoint over gRPC.
 ///
 /// It lives beside the channel because that is where the runtime, the TLS
@@ -1375,6 +1398,7 @@ impl Remote for GrpcRemote {
 /// carries the RPCs and nothing about the contract.
 pub struct GrpcPdp(GrpcChannel);
 
+#[cfg(feature = "pdp")]
 impl GrpcPdp {
     /// Connects to `grpc://host:port` or `grpcs://host:port`.
     pub fn connect(
@@ -1390,6 +1414,7 @@ impl GrpcPdp {
     }
 }
 
+#[cfg(feature = "pdp")]
 impl crate::pdp::Pdp for GrpcPdp {
     fn evaluate(&self, payload: &serde_json::Value) -> Result<serde_json::Value, CatalogFailure> {
         let mut client = self.client();
@@ -1420,11 +1445,11 @@ impl crate::pdp::Pdp for GrpcPdp {
         let answer = if boxcarred {
             self.0
                 .call("EvaluateMany", client.evaluate_many(request))
-                .map_err(GrpcAdmin::failure)?
+                .map_err(failure_of)?
         } else {
             self.0
                 .call("Evaluate", client.evaluate(request))
-                .map_err(GrpcAdmin::failure)?
+                .map_err(failure_of)?
         };
 
         Ok(answer_of(answer))
@@ -1440,7 +1465,7 @@ impl crate::pdp::Pdp for GrpcPdp {
                 "GetConfiguration",
                 client.get_configuration(pdp::GetConfigurationRequest {}),
             )
-            .map_err(GrpcAdmin::failure)?;
+            .map_err(failure_of)?;
         let endpoints = answer.endpoints.unwrap_or_default();
         let scope = answer.store_scope.unwrap_or_default();
 
@@ -1486,6 +1511,7 @@ impl crate::pdp::Pdp for GrpcPdp {
     }
 }
 
+#[cfg(any(feature = "pdp", feature = "temporal"))]
 /// The common header a gRPC configuration answer carries, as the HTTP document spells it
 /// (WP-7.4a): `sunset` only when there is one, `limits` by name.
 pub(crate) fn header_json(
@@ -1517,6 +1543,7 @@ pub(crate) fn header_json(
     );
 }
 
+#[cfg(feature = "pdp")]
 /// The proto request a JSON payload means, **or a refusal**.
 ///
 /// # One validation, not two
@@ -1554,6 +1581,7 @@ fn request_of(
     })
 }
 
+#[cfg(feature = "pdp")]
 /// The generated message a contract request means. Total, and fallible only on numbers.
 fn to_proto(
     request: &permguard_language_core::CheckRequest,
@@ -1579,12 +1607,14 @@ fn to_proto(
     })
 }
 
+#[cfg(any(feature = "pdp", feature = "temporal"))]
 /// An absent string is an empty one: proto3 has no other way to say it, and the contract's
 /// "absent" and "empty" mean the same thing for a name nobody wrote.
 fn text(value: &Option<String>) -> String {
     value.clone().unwrap_or_default()
 }
 
+#[cfg(any(feature = "pdp", feature = "temporal"))]
 /// One JSON value, as proto carries values.
 ///
 /// proto has one number type, an IEEE-754 double. Past 2^53 a double no longer counts one at a
@@ -1637,6 +1667,7 @@ fn proto_value(value: &serde_json::Value) -> Result<prost_types::Value, String> 
     Ok(prost_types::Value { kind: Some(kind) })
 }
 
+#[cfg(any(feature = "pdp", feature = "temporal"))]
 pub(crate) fn structure(
     map: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<Option<prost_types::Struct>, String> {
@@ -1652,6 +1683,7 @@ pub(crate) fn structure(
     }))
 }
 
+#[cfg(feature = "pdp")]
 fn entity_of(
     entity: Option<&permguard_language_core::request::EntityBody>,
 ) -> Result<Option<pdp::Entity>, String> {
@@ -1666,6 +1698,7 @@ fn entity_of(
     }))
 }
 
+#[cfg(feature = "pdp")]
 fn action_of(
     action: Option<&permguard_language_core::request::ActionBody>,
 ) -> Result<Option<pdp::Action>, String> {
@@ -1679,6 +1712,7 @@ fn action_of(
     }))
 }
 
+#[cfg(feature = "pdp")]
 /// The partition inputs, by the name each is addressed to.
 ///
 /// Carried whole, because a transport that dropped one would change which world a partition
@@ -1700,6 +1734,7 @@ fn inputs_of(
         .collect()
 }
 
+#[cfg(feature = "pdp")]
 fn evaluation_of(
     evaluation: &permguard_language_core::request::EvaluationBody,
 ) -> Result<pdp::Evaluation, String> {
@@ -1721,6 +1756,7 @@ fn evaluation_of(
     })
 }
 
+#[cfg(feature = "pdp")]
 fn semantic_of(request: &permguard_language_core::CheckRequest) -> i32 {
     match request
         .options
@@ -1742,6 +1778,7 @@ fn semantic_of(request: &permguard_language_core::CheckRequest) -> i32 {
     }
 }
 
+#[cfg(feature = "pdp")]
 /// The answer, back as the profile's JSON — so a caller cannot tell which
 /// transport carried it, and `-o json` prints the server's decision rather
 /// than this client's idea of it.
@@ -1798,6 +1835,7 @@ fn answer_of(answer: pdp::EvaluateResponse) -> serde_json::Value {
     Value::Object(object)
 }
 
+#[cfg(feature = "pdp")]
 fn context_of(context: pdp::DecisionContext) -> serde_json::Value {
     use serde_json::{Map, Value};
 

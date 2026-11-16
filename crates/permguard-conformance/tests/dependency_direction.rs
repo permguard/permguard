@@ -654,3 +654,42 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
         problems.join("\n  ")
     );
 }
+
+/// The client library carries the transports its consumer selects and no other (RD-10): built for
+/// REST alone it links no tonic and no generated contract, whatever surfaces it serves; built for
+/// gRPC it links them, and the stubs of a server in neither case.
+#[test]
+fn a_client_links_only_the_transports_it_selects() {
+    const SURFACES: &str = "catalog,notp,decisions,events,pdp,temporal,host,authority,documents";
+    let rest = carried_with("permguard-client", &format!("http,{SURFACES}"));
+    let grpc = carried_with("permguard-client", &format!("grpc,{SURFACES}"));
+    let mut problems = Vec::new();
+    // Axum is tonic's own, for the router its default features carry: a gRPC client links it
+    // through tonic, and a REST client not at all.
+    for name in ["tonic", "prost", "permguard-contracts", "axum", "hyper"] {
+        if rest.contains(name) {
+            problems.push(format!("built for REST alone, it links {name}"));
+        }
+        if !grpc.contains(name) {
+            problems.push(format!("built for gRPC, it does not link {name}"));
+        }
+    }
+    for linked in [&rest, &grpc] {
+        for name in [
+            "permguard-server",
+            "permguard-transport",
+            "permguard-languages",
+            "cedar-policy",
+            "regorus",
+        ] {
+            if linked.contains(name) {
+                problems.push(format!("a client links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "a client links the transports it selects:\n  {}",
+        problems.join("\n  ")
+    );
+}

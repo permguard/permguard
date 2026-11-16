@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 #
-# Runs the language packages in every profile a build may select, each resolved on its own.
+# Runs the packages whose features select what a build carries, in every profile, each resolved
+# on its own: the policy languages, and the client library's surfaces and transports.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -60,4 +61,17 @@ for selection in "" cedar rego dogwood; do
     cargo check --locked -p permguard-data-plane --no-default-features --features "${selection}"
 done
 
-printf 'ok: every language profile compiles and passes its tests on its own\n'
+# The client library: nothing by default, a feature per surface and per transport. Every surface
+# over one transport alone, then each surface by itself over both; its tests run with them all.
+surfaces="catalog,notp,decisions,events,pdp,temporal,host,authority,documents"
+for selection in "" "http,${surfaces}" "grpc,${surfaces}"; do
+    printf '==> permguard-client built with `%s`\n' "${selection}"
+    cargo check --locked -p permguard-client --no-default-features --features "${selection}"
+done
+for surface in catalog notp decisions events pdp temporal host authority documents; do
+    printf '==> permguard-client, `%s` alone\n' "${surface}"
+    cargo check --locked -p permguard-client --no-default-features --features "http,grpc,${surface}"
+done
+run "permguard-client, every surface over both transports" -p permguard-client
+
+printf 'ok: every profile compiles and passes its tests on its own\n'

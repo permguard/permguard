@@ -2486,6 +2486,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-core",
  "http",
+ "permguard-client",
  "permguard-contracts",
  "permguard-core",
  "permguard-events",

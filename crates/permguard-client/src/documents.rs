@@ -14,15 +14,23 @@
 //! the Server Host listener by contract, and names each plane's `grpc_endpoint`, which is the URL a
 //! client speaking gRPC alone gives this module.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::catalog::{Failure, call};
 use crate::endpoint::Endpoint;
+use crate::failure::Failure;
+#[cfg(feature = "grpc")]
 use crate::grpc::GrpcChannel;
+#[cfg(feature = "http")]
 use crate::http::Client;
+#[cfg(feature = "http")]
+use crate::rest::call;
 use crate::tls::TlsOptions;
+#[cfg(feature = "grpc")]
 use crate::{authority_v1 as authority, pdp_v1 as data, v1 as control};
 use permguard_core::domains::interface;
 
@@ -54,6 +62,7 @@ impl Plane {
         }
     }
 
+    #[cfg(feature = "http")]
     const fn keys_path(self) -> &'static str {
         match self {
             Self::Control => "/control-plane/v1/keys",
@@ -106,6 +115,7 @@ impl Interface {
         }
     }
 
+    #[cfg(feature = "http")]
     const fn path(self) -> &'static str {
         match self {
             Self::Decisions => "/.well-known/permguard-decisions-native-v1-configuration",
@@ -143,23 +153,31 @@ pub fn client(
 ) -> Result<Box<dyn Documents + Send + Sync>, String> {
     let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
     if endpoint.is_grpc() {
+        #[cfg(feature = "grpc")]
         return Ok(Box::new(GrpcDocuments {
             channel: GrpcChannel::connect(url, tls, narrator)?,
             plane,
         }));
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
-    let client = Client::new(
-        std::time::Duration::from_secs(30),
-        tls.clone(),
-        endpoint.is_tls(),
-    )
-    .map_err(|error| error.to_string())?
-    .with_narrator(narrator);
-    Ok(Box::new(RestDocuments {
-        client,
-        endpoint,
-        plane,
-    }))
+    #[cfg(feature = "http")]
+    {
+        let client = Client::new(
+            std::time::Duration::from_secs(30),
+            tls.clone(),
+            endpoint.is_tls(),
+        )
+        .map_err(|error| error.to_string())?
+        .with_narrator(narrator);
+        Ok(Box::new(RestDocuments {
+            client,
+            endpoint,
+            plane,
+        }))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }
 
 fn usage(detail: String) -> Failure {
@@ -176,6 +194,7 @@ fn not_on(plane: Plane, what: &str) -> Failure {
     usage(format!("the {} publishes no {what}", plane.name()))
 }
 
+#[cfg(feature = "grpc")]
 fn decoded(what: &str, bytes: &[u8]) -> Result<Value, Failure> {
     serde_json::from_slice(bytes).map_err(|error| Failure {
         class: "internal".to_owned(),
@@ -185,18 +204,21 @@ fn decoded(what: &str, bytes: &[u8]) -> Result<Value, Failure> {
     })
 }
 
+#[cfg(feature = "http")]
 struct RestDocuments {
     client: Client,
     endpoint: Endpoint,
     plane: Plane,
 }
 
+#[cfg(feature = "http")]
 impl RestDocuments {
     fn get(&self, path: &str) -> Result<Value, Failure> {
         call(&self.client, &self.endpoint, "GET", path, None)
     }
 }
 
+#[cfg(feature = "http")]
 impl Documents for RestDocuments {
     fn configuration(&self) -> Result<Value, Failure> {
         self.get("/.well-known/server-configuration")
@@ -232,11 +254,13 @@ impl Documents for RestDocuments {
     }
 }
 
+#[cfg(feature = "grpc")]
 struct GrpcDocuments {
     channel: GrpcChannel,
     plane: Plane,
 }
 
+#[cfg(feature = "grpc")]
 impl GrpcDocuments {
     fn run<T, F>(&self, rpc: &str, future: F) -> Result<T, Failure>
     where
@@ -248,6 +272,7 @@ impl GrpcDocuments {
     }
 }
 
+#[cfg(feature = "grpc")]
 impl Documents for GrpcDocuments {
     fn configuration(&self) -> Result<Value, Failure> {
         let channel = self.channel.channel();
@@ -492,6 +517,7 @@ impl Documents for GrpcDocuments {
     }
 }
 
+#[cfg(feature = "grpc")]
 /// One component of a plane's health, as the three planes' `GetHealth` carry it alike.
 struct HealthComponent {
     component: String,
@@ -504,6 +530,7 @@ struct HealthComponent {
     reason: Option<String>,
 }
 
+#[cfg(feature = "grpc")]
 /// `<Plane>/GetHealth`, member for member the REST `/health`: `degraded` only when something is,
 /// a component's optional members only when it has them.
 fn health_document(
@@ -557,6 +584,7 @@ fn health_document(
     Value::Object(document)
 }
 
+#[cfg(feature = "grpc")]
 /// The common header every interface document carries (WP-7.4a); the sunset only when deprecated.
 fn header(
     document: &mut Map<String, Value>,
@@ -575,6 +603,7 @@ fn header(
     }
 }
 
+#[cfg(feature = "grpc")]
 /// The ceilings by name, as the REST document's `limits` object.
 fn limits(limits: HashMap<String, u64>) -> Value {
     Value::Object(
@@ -585,6 +614,7 @@ fn limits(limits: HashMap<String, u64>) -> Value {
     )
 }
 
+#[cfg(feature = "grpc")]
 fn store_scope(scope: Option<data::StoreScope>) -> Value {
     let scope = scope.unwrap_or_default();
     json!({
@@ -595,6 +625,7 @@ fn store_scope(scope: Option<data::StoreScope>) -> Value {
     })
 }
 
+#[cfg(feature = "grpc")]
 /// `EventLog/GetEventConfiguration`, member for member the REST document.
 pub fn events_document(answer: control::GetEventConfigurationResponse) -> Value {
     let endpoints = answer.endpoints.unwrap_or_default();
@@ -629,6 +660,7 @@ pub fn events_document(answer: control::GetEventConfigurationResponse) -> Value 
     Value::Object(document)
 }
 
+#[cfg(feature = "grpc")]
 /// `PolicyDecisionPoint/GetConfiguration`, member for member the REST document.
 pub fn pdp_document(answer: data::GetConfigurationResponse) -> Value {
     let endpoints = answer.endpoints.unwrap_or_default();
@@ -667,6 +699,7 @@ pub fn pdp_document(answer: data::GetConfigurationResponse) -> Value {
     Value::Object(document)
 }
 
+#[cfg(feature = "grpc")]
 /// `TemporalPolicyDecisionPoint/GetTemporalConfiguration`, member for member the REST document.
 pub fn temporal_document(answer: data::GetTemporalConfigurationResponse) -> Value {
     let endpoints = answer.endpoints.unwrap_or_default();

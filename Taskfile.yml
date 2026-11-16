@@ -467,9 +467,9 @@ tasks:
         {{if .NOCAPTURE}}-- --nocapture{{end}}
 
   test:profiles:
-    desc: Run the language packages in every profile, one language or validating only, each built apart.
+    desc: Run every profile a build may select, a language, a client surface or a transport, each built apart.
     cmds:
-      - ./scripts/test-language-profiles.sh
+      - ./scripts/test-profiles.sh
 
   version:control:
     desc: Report the control plane version.

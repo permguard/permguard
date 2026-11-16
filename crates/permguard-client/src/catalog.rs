@@ -12,9 +12,13 @@
 //! what came back. All the semantics — uniqueness, emptiness before deletion, name rules — live on
 //! the server, so the CLI can never disagree with another client about what is allowed.
 
+// An import one transport alone uses is idle in a build that carries the other alone.
+#![cfg_attr(not(all(feature = "http", feature = "grpc")), allow(unused_imports))]
+
 use serde::{Deserialize, Serialize};
 
 use crate::endpoint::Endpoint;
+#[cfg(feature = "http")]
 use crate::http::Client;
 
 /// The state a ledger answered before states existed is.
@@ -114,90 +118,10 @@ pub struct ServingProgress {
     pub stale: bool,
 }
 
-/// What the server says when it refuses: the shape every Permguard API shares.
-#[derive(Debug, Deserialize)]
-struct Refusal {
-    class: String,
-    code: String,
-    message: String,
-}
+pub use crate::failure::Failure;
 
-/// A call that did not produce what was asked for, and why.
-#[derive(Debug)]
-pub struct Failure {
-    /// The closed category, exactly as the server named it — or the transport's own.
-    pub class: String,
-    /// The stable code: the server's, or the transport's.
-    pub reason: String,
-    /// The sentence.
-    pub detail: String,
-    /// Whether the mistake is in what was asked (a usage error) or in the world (a failure).
-    pub usage: bool,
-}
-
-impl std::fmt::Display for Failure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.detail)
-    }
-}
-
-/// Sends one catalog request and reads back either the payload or the refusal.
-pub(crate) fn call<T: for<'de> Deserialize<'de>>(
-    client: &Client,
-    endpoint: &Endpoint,
-    method: &str,
-    path: &str,
-    body: Option<&str>,
-) -> Result<T, Failure> {
-    let response = client
-        .request(endpoint, method, path, body)
-        .map_err(|error| Failure {
-            class: "unavailable".to_owned(),
-            reason: error.reason().to_owned(),
-            detail: error.to_string(),
-            usage: false,
-        })?;
-
-    if (200..300).contains(&response.status) {
-        return serde_json::from_str(&response.body).map_err(|error| Failure {
-            class: "internal".to_owned(),
-            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
-            detail: format!("the answer to {method} {path} was unreadable: {error}"),
-            usage: false,
-        });
-    }
-
-    // A refusal carries its class, its code and a sentence; anything else gets the status as both.
-    match serde_json::from_str::<Refusal>(&response.body) {
-        Ok(refusal) => Err(Failure {
-            // The class decides whose mistake it is: validation, conflicts and lookups are the
-            // operator's to fix; unavailable and internal are the world's.
-            usage: matches!(
-                refusal.class.as_str(),
-                "validation" | "conflict" | "not_found"
-            ),
-            class: refusal.class,
-            reason: refusal.code,
-            detail: refusal.message,
-        }),
-        // A denial at the listener's gate (TC-1): `{code, message}` and no class, as the wire
-        // carries it; the operator's to fix, as over gRPC.
-        Err(_) => match serde_json::from_str::<permguard_core::api::WireDenial>(&response.body) {
-            Ok(denial) if matches!(response.status, 401 | 403) => Err(Failure {
-                class: String::new(),
-                reason: denial.code,
-                detail: denial.message,
-                usage: true,
-            }),
-            _ => Err(Failure {
-                class: "internal".to_owned(),
-                reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
-                detail: format!("{method} {path} answered {}", response.status),
-                usage: false,
-            }),
-        },
-    }
-}
+#[cfg(feature = "http")]
+pub(crate) use crate::rest::call;
 
 /// A fresh request id, what a retry of the same change repeats (WP-7.3a): 16 random bytes in hex,
 /// minted as the Host mints an operation's.
@@ -212,6 +136,7 @@ pub fn request_id() -> Result<String, Failure> {
         })
 }
 
+#[cfg(feature = "http")]
 /// A create's or a rename's body (WP-7.3a): the name, a fresh request id and, for a rename, the
 /// revision the record was read at.
 fn name_body(name: &str, expected_revision: Option<u64>) -> Result<String, Failure> {
@@ -236,6 +161,7 @@ fn name_body(name: &str, expected_revision: Option<u64>) -> Result<String, Failu
     })
 }
 
+#[cfg(feature = "http")]
 pub fn create_zone(client: &Client, endpoint: &Endpoint, name: &str) -> Result<Zone, Failure> {
     call(
         client,
@@ -246,6 +172,7 @@ pub fn create_zone(client: &Client, endpoint: &Endpoint, name: &str) -> Result<Z
     )
 }
 
+#[cfg(feature = "http")]
 pub fn list_zones(
     client: &Client,
     endpoint: &Endpoint,
@@ -261,6 +188,7 @@ pub fn list_zones(
     )
 }
 
+#[cfg(feature = "http")]
 /// Appends the paging a caller asked for; nothing when they did not — the
 /// pre-pagination request, byte for byte.
 fn paged(path: &str, page: Option<u32>, size: Option<u32>) -> String {
@@ -272,6 +200,7 @@ fn paged(path: &str, page: Option<u32>, size: Option<u32>) -> String {
     }
 }
 
+#[cfg(feature = "http")]
 pub fn get_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone, Failure> {
     call(
         client,
@@ -282,6 +211,7 @@ pub fn get_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone
     )
 }
 
+#[cfg(feature = "http")]
 pub fn rename_zone(
     client: &Client,
     endpoint: &Endpoint,
@@ -298,6 +228,7 @@ pub fn rename_zone(
     )
 }
 
+#[cfg(feature = "http")]
 /// A delete's query (WP-7.3a): a fresh request id and the revision the record was read at.
 fn deletion(expected_revision: u64) -> Result<String, Failure> {
     Ok(format!(
@@ -306,6 +237,7 @@ fn deletion(expected_revision: u64) -> Result<String, Failure> {
     ))
 }
 
+#[cfg(feature = "http")]
 pub fn delete_zone(
     client: &Client,
     endpoint: &Endpoint,
@@ -325,6 +257,7 @@ pub fn delete_zone(
     )
 }
 
+#[cfg(feature = "http")]
 pub fn create_ledger(
     client: &Client,
     endpoint: &Endpoint,
@@ -340,6 +273,7 @@ pub fn create_ledger(
     )
 }
 
+#[cfg(feature = "http")]
 pub fn list_ledgers(
     client: &Client,
     endpoint: &Endpoint,
@@ -360,6 +294,7 @@ pub fn list_ledgers(
     )
 }
 
+#[cfg(feature = "http")]
 pub fn get_ledger(
     client: &Client,
     endpoint: &Endpoint,
@@ -379,6 +314,7 @@ pub fn get_ledger(
     )
 }
 
+#[cfg(feature = "http")]
 pub fn rename_ledger(
     client: &Client,
     endpoint: &Endpoint,
@@ -400,6 +336,7 @@ pub fn rename_ledger(
     )
 }
 
+#[cfg(feature = "http")]
 /// Archives or restores a ledger (WP-7.3b): `verb` is `archive` or `restore`.
 pub fn set_ledger_state(
     client: &Client,
@@ -438,6 +375,7 @@ pub fn set_ledger_state(
     )
 }
 
+#[cfg(feature = "http")]
 pub fn delete_ledger(
     client: &Client,
     endpoint: &Endpoint,
@@ -563,6 +501,7 @@ pub struct Imported {
     pub ledgers: Vec<Ledger>,
 }
 
+#[cfg(feature = "http")]
 /// Imports an archive over HTTP.
 pub fn import(
     client: &Client,
@@ -618,6 +557,7 @@ pub struct ExportedLedger {
     pub statements: u64,
 }
 
+#[cfg(feature = "http")]
 /// An export as REST answers it: the archive base64url.
 #[derive(Deserialize)]
 struct ExportWire {
@@ -629,6 +569,7 @@ struct ExportWire {
     ledgers: Vec<ExportedLedger>,
 }
 
+#[cfg(feature = "http")]
 /// `POST <path>` with the closed empty body an export takes.
 fn export(client: &Client, endpoint: &Endpoint, path: &str) -> Result<Export, Failure> {
     use base64::Engine as _;
@@ -651,6 +592,7 @@ fn export(client: &Client, endpoint: &Endpoint, path: &str) -> Result<Export, Fa
     })
 }
 
+#[cfg(feature = "http")]
 /// Exports a ledger over HTTP.
 pub fn export_ledger(
     client: &Client,
@@ -669,6 +611,7 @@ pub fn export_ledger(
     )
 }
 
+#[cfg(feature = "http")]
 /// Exports a zone over HTTP.
 pub fn export_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Export, Failure> {
     export(
@@ -678,12 +621,14 @@ pub fn export_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<E
     )
 }
 
+#[cfg(feature = "http")]
 /// The catalog over HTTP.
 pub struct HttpCatalog {
     client: Client,
     endpoint: Endpoint,
 }
 
+#[cfg(feature = "http")]
 impl Catalog for HttpCatalog {
     fn list_zones(&self, page: Option<u32>, size: Option<u32>) -> Result<Vec<Zone>, Failure> {
         list_zones(&self.client, &self.endpoint, page, size)
@@ -808,19 +753,29 @@ pub fn client(
     tls: &crate::tls::TlsOptions,
     narrator: Box<dyn crate::narrate::Narrator>,
 ) -> Result<Box<dyn Catalog>, String> {
-    if url.starts_with("grpc://") || url.starts_with("grpcs://") {
-        let channel = crate::grpc::GrpcChannel::connect(url, tls, narrator)?;
-        return Ok(Box::new(crate::grpc::GrpcAdmin(channel)));
+    if crate::transport::is_grpc(url) {
+        #[cfg(feature = "grpc")]
+        {
+            let channel = crate::grpc::GrpcChannel::connect(url, tls, narrator)?;
+            return Ok(Box::new(crate::grpc::GrpcAdmin(channel)));
+        }
+        #[cfg(not(feature = "grpc"))]
+        return Err(crate::transport::no_grpc(url));
     }
 
-    let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
-    let client = Client::new(
-        std::time::Duration::from_secs(30),
-        tls.clone(),
-        endpoint.is_tls(),
-    )
-    .map_err(|error| error.to_string())?
-    .with_narrator(narrator);
+    #[cfg(feature = "http")]
+    {
+        let endpoint = Endpoint::parse(url).map_err(|error| error.to_string())?;
+        let client = Client::new(
+            std::time::Duration::from_secs(30),
+            tls.clone(),
+            endpoint.is_tls(),
+        )
+        .map_err(|error| error.to_string())?
+        .with_narrator(narrator);
 
-    Ok(Box::new(HttpCatalog { client, endpoint }))
+        Ok(Box::new(HttpCatalog { client, endpoint }))
+    }
+    #[cfg(not(feature = "http"))]
+    return Err(crate::transport::no_http(url));
 }

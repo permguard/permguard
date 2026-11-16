@@ -55,7 +55,7 @@ tracing.workspace = true
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
 # The client half of the catalog's REST/gRPC parity, driven against these routes.
-permguard-client.workspace = true
+permguard-client = { workspace = true, features = ["http", "grpc", "catalog"] }
 # Transport parity, fault injection and the boundary registry, shared by every plane.
 permguard-conformance.workspace = true
 permguard-data-plane.workspace = true

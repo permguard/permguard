@@ -40,7 +40,7 @@ permguard-control-plane.workspace = true
 permguard-decisions.workspace = true
 # The event record and its chain, for `permguard events --verify`.
 permguard-events.workspace = true
-permguard-client.workspace = true
+permguard-client = { workspace = true, features = ["full"] }
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 # The evaluating half: this package decides.

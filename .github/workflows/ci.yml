@@ -112,11 +112,11 @@ jobs:
           path: target/traceability.json
           if-no-files-found: error
 
-  # A language is a feature of the catalogue, and evaluating another: the profiles a build may
-  # select, one language alone or validation without evaluation, each resolved and tested apart,
-  # since the jobs above build every feature together and Cargo unifies them.
+  # A language is a feature of the catalogue, evaluating another, and each surface and transport
+  # of the client library one more: the profiles a build may select, each resolved and tested
+  # apart, since the jobs above build every feature together and Cargo unifies them.
   language-profiles:
-    name: language profiles, each built apart
+    name: profiles, each built apart
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -128,8 +128,8 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: every language profile compiles and passes its tests on its own
-        run: ./scripts/test-language-profiles.sh
+      - name: every profile compiles and passes its tests on its own
+        run: ./scripts/test-profiles.sh
 
   # Deterministic replay on a second platform (TL-6): each runtime's golden vectors and upstream
   # corpora, and the rest of the language packages, on Apple silicon — another operating system and
