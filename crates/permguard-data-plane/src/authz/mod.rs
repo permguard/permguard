@@ -47,7 +47,8 @@ pub mod measure;
 pub mod quarantine;
 pub mod signing;
 pub mod snapshot;
-pub mod store;
+/// Which mirrors this plane holds, and which one a request names: `permguard-mirror`'s.
+pub use permguard_mirror::held as store;
 pub mod wire;
 
 use std::path::PathBuf;

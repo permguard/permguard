@@ -147,7 +147,7 @@ pub fn mirrors(root: &Path) -> Vec<Mirror> {
         }
         // An authority's directory holds zones (WP-7.2a); any other is a zone of a configured
         // URL's mirrors, retired (WP-7.7).
-        if !crate::mirrors::layout::is_authority(&entry.file_name().to_string_lossy()) {
+        if !crate::layout::is_authority(&entry.file_name().to_string_lossy()) {
             continue;
         }
         let Ok(zones) = std::fs::read_dir(entry.path()) else {
@@ -387,7 +387,7 @@ mod tests {
             authority: "0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b".to_owned(),
         });
         assert_eq!(alias.authority, "0193a1b2c3d47e5f8a9b0c1d2e3f4a5b");
-        assert!(crate::mirrors::layout::is_authority(&alias.authority));
+        assert!(crate::layout::is_authority(&alias.authority));
         assert_eq!(
             (alias.zone.as_str(), alias.ledger.as_str()),
             ("acme", "main")

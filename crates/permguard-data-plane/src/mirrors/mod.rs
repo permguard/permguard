@@ -37,16 +37,16 @@
 //! A compromised or confused server can make this plane *stale*. It cannot
 //! make it serve policy nobody signed.
 
+// The layout, the verified state and the reap candidacy of a mirror are `permguard-mirror`'s.
+pub use permguard_mirror::{layout, state, tombstone};
+
 pub mod hints;
-pub mod layout;
 pub mod measure;
 pub mod progress;
 pub mod readiness;
 pub mod round;
 pub mod source;
-pub mod state;
 pub mod task;
-pub mod tombstone;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

@@ -14,6 +14,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+anyhow.workspace = true
 permguard-core.workspace = true
 # The safe storage a mirror is written through.
 permguard-host.workspace = true

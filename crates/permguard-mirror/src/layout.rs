@@ -169,7 +169,7 @@ pub fn remove(root: &Path, mirror: &Mirror) -> Result<()> {
     // no files at all, which is what a mirror of a ledger with no history yet
     // looked like before that file existed. Anything else is somebody's data
     // in our directory, and it stays.
-    let looks_like_a_mirror = resolved.join(crate::authz::store::IDENTITY_FILE).exists()
+    let looks_like_a_mirror = resolved.join(crate::held::IDENTITY_FILE).exists()
         || resolved.join("FORMAT").exists()
         || resolved.join("objects").exists();
     if !looks_like_a_mirror && holds_files(&resolved) {
@@ -351,8 +351,8 @@ mod tests {
     /// hard-linked, so removing one mirror leaves the other's object whole.
     #[test]
     fn mirrors_sharing_an_object_hold_it_apart() {
-        use permguard_mirror::objects;
-        use permguard_mirror::store::FsStore;
+        use crate::objects;
+        use crate::store::FsStore;
 
         let root = scratch("shared-object");
         let mirrors: Vec<Mirror> = ["one", "two"]
@@ -367,7 +367,7 @@ mod tests {
         for mirror in &mirrors {
             let path = mirror.path(&root);
             std::fs::create_dir_all(&path).expect("the mirror");
-            std::fs::write(path.join(crate::authz::store::IDENTITY_FILE), b"{}").expect("marked");
+            std::fs::write(path.join(crate::held::IDENTITY_FILE), b"{}").expect("marked");
             digests.push(
                 objects::put(&FsStore::new(&path), "objects", b"one shared object")
                     .expect("stored"),

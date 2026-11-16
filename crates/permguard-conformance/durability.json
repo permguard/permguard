@@ -20,7 +20,7 @@
       "reason": "recognises the `*.tmp` temporaries of the object store layout before the library, to sweep them; nothing is published under the name"
     },
     {
-      "source": "crates/permguard-data-plane/src/authz/store.rs",
+      "source": "crates/permguard-mirror/src/held.rs",
       "item": "touch_synced",
       "primitive": "write",
       "reason": "`SYNCED`, the mirror's freshness marker: its modification time is the datum and its content is empty, so an in-place write is the cheapest way to move the time and a torn one cannot exist (owner decision of 2026-10-07)"

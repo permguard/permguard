@@ -1959,16 +1959,16 @@ sections:
       - crates/permguard-data-plane/src/authz/audit.rs::queuing_a_decision_does_not_wait_for_the_sink
   "4-data-plane/1-data-plane.md#files":
     paths:
-      - crates/permguard-data-plane/src/mirrors/state.rs
-      - crates/permguard-data-plane/src/mirrors/layout.rs
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs
+      - crates/permguard-mirror/src/state.rs
+      - crates/permguard-mirror/src/layout.rs
+      - crates/permguard-mirror/src/tombstone.rs
       - crates/permguard-stream/src/layout.rs
       - crates/permguard-data-plane/src/authz/cache.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/state.rs::a_mirror_of_another_layout_is_refused
-      - crates/permguard-data-plane/src/mirrors/state.rs::the_journal_is_the_switch_and_the_views_follow_it
+      - crates/permguard-mirror/src/state.rs::a_mirror_of_another_layout_is_refused
+      - crates/permguard-mirror/src/state.rs::the_journal_is_the_switch_and_the_views_follow_it
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs::a_tombstone_round_trips_is_closed_and_is_cleared
+      - crates/permguard-mirror/src/tombstone.rs::a_tombstone_round_trips_is_closed_and_is_cleared
       - crates/permguard-stream/src/layout.rs::the_directory_is_plane_then_type_then_role
     gaps:
       - "open (code): no blocks/<commit>-<engine-build>.cbor; a refusal is kept as <mirror>/BLOCKED"
@@ -2157,8 +2157,8 @@ sections:
     paths:
       - crates/permguard-data-plane/src/mirrors/round.rs
       - crates/permguard-data-plane/src/mirrors/source.rs
-      - crates/permguard-data-plane/src/mirrors/layout.rs
-      - crates/permguard-data-plane/src/authz/store.rs
+      - crates/permguard-mirror/src/layout.rs
+      - crates/permguard-mirror/src/held.rs
       - crates/permguard-core/src/mirrors.rs
     tests:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
@@ -2171,7 +2171,7 @@ sections:
       - crates/permguard-data-plane/src/mirrors/round.rs
       - crates/permguard-data-plane/src/mirrors/mod.rs
       - crates/permguard-data-plane/src/mirrors/task.rs
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs
+      - crates/permguard-mirror/src/tombstone.rs
     tests:
       - crates/permguard-data-plane/src/mirrors/mod.rs::jitter_spreads_the_whole_fraction_over_both_halves
       - crates/permguard-data-plane/src/mirrors/mod.rs::a_round_skips_every_tick_it_outlasts
@@ -2206,38 +2206,38 @@ sections:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_task_whose_membership_pins_no_ring_is_not_mirrored
   "4-data-plane/3-data-plane-mirrors-notp.md#atomic-checkpoint":
     paths:
-      - crates/permguard-data-plane/src/mirrors/state.rs
+      - crates/permguard-mirror/src/state.rs
       - crates/permguard-data-plane/src/mirrors/task.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/state.rs::the_journal_is_the_switch_and_the_views_follow_it
-      - crates/permguard-data-plane/src/mirrors/state.rs::a_state_round_trips_and_is_closed
-      - crates/permguard-data-plane/src/mirrors/state.rs::a_checkpoint_ahead_of_the_journal_is_never_rewound
-      - crates/permguard-data-plane/src/mirrors/state.rs::the_closure_digest_names_the_set
+      - crates/permguard-mirror/src/state.rs::the_journal_is_the_switch_and_the_views_follow_it
+      - crates/permguard-mirror/src/state.rs::a_state_round_trips_and_is_closed
+      - crates/permguard-mirror/src/state.rs::a_checkpoint_ahead_of_the_journal_is_never_rewound
+      - crates/permguard-mirror/src/state.rs::the_closure_digest_names_the_set
       - crates/permguard-data-plane/src/mirrors/task.rs::a_round_over_a_task_switches_the_mirror_through_its_journal
   "4-data-plane/3-data-plane-mirrors-notp.md#contention-and-reaping":
     paths:
-      - crates/permguard-data-plane/src/authz/store.rs
+      - crates/permguard-mirror/src/held.rs
       - crates/permguard-data-plane/src/mirrors/round.rs
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs
-      - crates/permguard-data-plane/src/mirrors/layout.rs
+      - crates/permguard-mirror/src/tombstone.rs
+      - crates/permguard-mirror/src/layout.rs
     tests:
       - crates/permguard-data-plane-server/tests/authz_decision.rs::two_coordinators_with_one_name_are_refused_until_an_alias_names_one
       - crates/permguard-data-plane/tests/mirror_round.rs::a_ledger_two_coordinators_list_is_served_from_neither_by_its_names
       - crates/permguard-data-plane/tests/mirror_round.rs::a_reap_candidate_waits_out_its_grace_and_a_listing_restores_it
       - crates/permguard-data-plane/tests/mirror_round.rs::a_held_ledger_keeps_its_mirror
-      - crates/permguard-data-plane/src/mirrors/layout.rs::mirrors_sharing_an_object_hold_it_apart
+      - crates/permguard-mirror/src/layout.rs::mirrors_sharing_an_object_hold_it_apart
     gaps:
       - "open (code): reaping does not check a required-PDP declaration or an active request pin, neither of which exists (owner question in status.md)"
   "4-data-plane/3-data-plane-mirrors-notp.md#files":
     paths:
-      - crates/permguard-data-plane/src/mirrors/state.rs
-      - crates/permguard-data-plane/src/mirrors/layout.rs
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs
+      - crates/permguard-mirror/src/state.rs
+      - crates/permguard-mirror/src/layout.rs
+      - crates/permguard-mirror/src/tombstone.rs
     tests:
-      - crates/permguard-data-plane/src/mirrors/state.rs::a_mirror_of_another_layout_is_refused
-      - crates/permguard-data-plane/src/mirrors/state.rs::the_journal_is_the_switch_and_the_views_follow_it
-      - crates/permguard-data-plane/src/mirrors/tombstone.rs::a_tombstone_round_trips_is_closed_and_is_cleared
-      - crates/permguard-data-plane/src/mirrors/layout.rs::what_is_on_disk_is_listed_by_identity
+      - crates/permguard-mirror/src/state.rs::a_mirror_of_another_layout_is_refused
+      - crates/permguard-mirror/src/state.rs::the_journal_is_the_switch_and_the_views_follow_it
+      - crates/permguard-mirror/src/tombstone.rs::a_tombstone_round_trips_is_closed_and_is_cleared
+      - crates/permguard-mirror/src/layout.rs::what_is_on_disk_is_listed_by_identity
     gaps:
       - "open (code): no blocks/<commit>-<engine-build>.cbor; compiled partitions are memory-only"
   "4-data-plane/3-data-plane-mirrors-notp.md#current-implementation-and-target":
@@ -2245,7 +2245,7 @@ sections:
       - crates/permguard-data-plane/src/mirrors/round.rs
       - crates/permguard-data-plane/src/mirrors/task.rs
       - crates/permguard-mirror/src/pull.rs
-      - crates/permguard-data-plane/src/authz/store.rs
+      - crates/permguard-mirror/src/held.rs
     tests:
       - crates/permguard-data-plane/tests/mirror_round.rs::a_membership_task_is_mirrored_under_its_authority_over_its_session
       - crates/permguard-conformance/tests/legacy_trust.rs::no_plane_reaches_a_control_plane_over_a_url_to_mirror_it

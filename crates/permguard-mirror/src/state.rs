@@ -23,12 +23,15 @@
 
 use std::path::Path;
 
+use crate::checkpoint::{self, Checkpoint};
+use crate::store::FsStore;
 use permguard_host::storage::{Dir, format, sequence, write};
-use permguard_mirror::checkpoint::{self, Checkpoint};
-use permguard_mirror::store::FsStore;
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 
+/// Where a task mirror keeps the identity-signed binding of the `control.attest` set its
+/// statements verified under (WP-7.2b).
+pub const RING_BINDING: &str = "RING-BINDING.cose";
 /// The journal of a task mirror's verified states.
 pub const JOURNAL: &str = "journal.cborseq";
 /// The exact signed head statement of the state in force.
@@ -304,7 +307,7 @@ fn materialize(mirror: &Path, dir: &Dir, state: &MirrorState) -> Result<(), Stri
     let held = unrewound(&store, state)?;
     for (name, bytes) in [
         (VERIFIED, state.verified.clone()),
-        (super::task::RING_BINDING, state.ring_binding.clone()),
+        (RING_BINDING, state.ring_binding.clone()),
         (CHECKPOINT, state.checkpoint()?),
     ] {
         if dir.read(name).map_err(storage)?.as_deref() != Some(bytes.as_slice()) {
@@ -462,7 +465,7 @@ mod tests {
         assert_eq!(items(&mirror), 2, "one item per advance, none per round");
         let views = |name: &str| std::fs::read(mirror.join(name)).expect("a view");
         assert_eq!(views(VERIFIED), b"statement".to_vec());
-        assert_eq!(views(super::super::task::RING_BINDING), b"binding".to_vec());
+        assert_eq!(views(RING_BINDING), b"binding".to_vec());
         assert_eq!(views(CHECKPOINT), state(2).checkpoint().expect("encodes"));
         let json = checkpoint::read(&FsStore::new(&mirror), REFS_MAIN)
             .expect("reads")

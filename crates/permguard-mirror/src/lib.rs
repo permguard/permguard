@@ -12,6 +12,9 @@
 //! | [`verify`]                           | the proof discipline: a signed head, its freshness, its closure         |
 //! | [`remote`]                           | what a mirror asks of whoever holds the ledger: the pull verbs of NOTP  |
 //! | [`pull`]                             | the fetch cycle that respects the proof: fetch, prove, then checkpoint  |
+//! | [`layout`], [`held`]                 | where the mirrors of a volume live, and which one a request names       |
+//! | [`state`]                            | a mirror's verified state, switched through one journal and recovered   |
+//! | [`tombstone`]                        | a mirror's reap candidacy, never decided on one listing                 |
 //!
 //! **Pull only, and no network.** A mirror learns the last commit, fetches what it lacks, proves
 //! the closure and the signature, and moves a checkpoint. Who answers is a [`remote::Remote`] the
@@ -19,10 +22,14 @@
 //! so a Data Plane that mirrors over its Host's sessions links no transport.
 
 pub mod checkpoint;
+pub mod held;
+pub mod layout;
 pub mod objects;
 pub mod pull;
 pub mod remote;
+pub mod state;
 pub mod store;
+pub mod tombstone;
 pub mod verify;
 
 pub use remote::{RefAnswer, Remote};

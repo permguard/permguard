@@ -47,9 +47,7 @@ pub async fn list(session: &Shared, task: &MirrorTask) -> Result<ListLedgersAnsw
     ListLedgersAnswer::decode(&answer).map_err(|error| format!("the listing: {error}"))
 }
 
-/// Where a task mirror keeps the identity-signed binding of the `control.attest` set its
-/// statements verified under (WP-7.2b).
-pub const RING_BINDING: &str = "RING-BINDING.cose";
+pub use super::state::RING_BINDING;
 
 /// Pulls one ledger over its task session (WP-7.2b), the shared pull bound to the membership: the ring never goes back nor forks at one epoch, checked before anything is
 /// fetched; the statement verifies under the pinned `control.attest` keys only, names the task's
