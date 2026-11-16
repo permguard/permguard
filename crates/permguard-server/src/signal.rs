@@ -13,8 +13,6 @@
 //! renewed a certificate already expect to work — so it works, and *what* gets re-read is decided by
 //! the binary rather than here.
 
-use std::sync::Arc;
-
 use tokio::task::JoinHandle;
 use tracing::info;
 #[cfg(any(unix, windows))]
@@ -23,7 +21,7 @@ use tracing::warn;
 use permguard_core::BoxFuture;
 
 /// What a build does when it is asked to re-read what it can.
-pub type ReloadHandler = Arc<dyn Fn() + Send + Sync>;
+pub use permguard_runtime::ReloadHandler;
 
 /// Resolves when the process is asked to stop.
 ///

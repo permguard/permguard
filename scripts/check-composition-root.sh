@@ -19,6 +19,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSITION_ROOTS=(
+    "crates/permguard-runtime/src/composition.rs"
     "crates/permguard-server/src/app.rs"
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-offline/src/factories.rs"

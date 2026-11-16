@@ -3,7 +3,7 @@
 
 [package]
 name = "permguard-runtime"
-description = "The headless runtime of a Host: the services it runs for itself off the request path, the clock, the audit checkpoints, the objectives, the streams' retention and shipping, the memberships' upkeep. No listener, no network client, no telemetry exporter."
+description = "The headless runtime of a Host: its composition, which opens it on its volume and registers its Planes, and the services it runs for itself off the request path. No listener, no network client, no telemetry exporter: what reaches outside the process is an adapter the build composes."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,8 +20,13 @@ permguard-core.workspace = true
 permguard-host.workspace = true
 # The stream engine whose retention the garbage collection drives.
 permguard-stream.workspace = true
-# The event log's codec, which the garbage collection reads the consumers' records with.
-permguard-events = { workspace = true, features = ["stream"] }
+# The decision log and the event journal the composition registers on the stream engine, and the
+# layouts of their legacy stores it checks before it serves.
+permguard-decisions = { workspace = true, features = ["storage", "stream"] }
+permguard-events = { workspace = true, features = ["storage", "stream"] }
+# What a start shares with an offline command: the configuration as it is read, the custody of the
+# keys, the legacy stores. No remote custody is selected here: an adapter's build selects it.
+permguard-offline.workspace = true
 # The key rings' clock, answered from the Host's one time service.
 permguard-std = { workspace = true, features = ["keys"] }
 serde_json.workspace = true
@@ -30,4 +35,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
+# The collaborators a build hands a composition, in memory.
+permguard-std = { workspace = true, features = ["audit", "keys", "storage"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

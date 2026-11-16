@@ -125,11 +125,32 @@ fn token_for(_config: &Config, _secrets: Option<&dyn SecretStore>) -> Result<Tok
     )
 }
 
+/// The Vault Transit client of the `kms` custody (WP-3.2), when this build has the `kms` feature.
+#[cfg(feature = "kms")]
+struct Kms(Arc<crate::custody::Transit>);
+
+#[cfg(feature = "kms")]
+impl Kms {
+    fn remote(&self) -> Arc<dyn permguard_host::keys::custody::Remote> {
+        Arc::clone(&self.0) as _
+    }
+
+    fn kek(
+        &self,
+        name: &str,
+        version: u64,
+    ) -> Result<Arc<dyn permguard_host::keys::custody::Wrap>> {
+        Ok(Arc::new(crate::custody::TransitKek::open(
+            Arc::clone(&self.0),
+            name,
+            version,
+        )?))
+    }
+}
+
 /// The Vault Transit client of the `kms` custody (WP-3.2): its token from the secret store.
-fn transit_for(
-    config: &Config,
-    secrets: Option<&dyn SecretStore>,
-) -> Result<Arc<crate::custody::Transit>> {
+#[cfg(feature = "kms")]
+fn transit_for(config: &Config, secrets: Option<&dyn SecretStore>) -> Result<Kms> {
     let address = config.keys_kms_address().context(
         "the `kms` custody reaches a Vault, and `operations.keys.kms.address` names none",
     )?;
@@ -149,12 +170,40 @@ fn transit_for(
             .trim()
             .to_owned(),
     );
-    crate::custody::Transit::start(crate::custody::Endpoint {
-        address: address.to_owned(),
-        mount: config.keys_kms_mount().to_owned(),
-        token,
-        ca: config.keys_kms_ca(),
-    })
+    Ok(Kms(crate::custody::Transit::start(
+        crate::custody::Endpoint {
+            address: address.to_owned(),
+            mount: config.keys_kms_mount().to_owned(),
+            token,
+            ca: config.keys_kms_ca(),
+        },
+    )?))
+}
+
+/// Without the `kms` feature, no client: the custody is refused by name.
+#[cfg(not(feature = "kms"))]
+struct Kms;
+
+#[cfg(not(feature = "kms"))]
+impl Kms {
+    fn remote(&self) -> Arc<dyn permguard_host::keys::custody::Remote> {
+        unreachable!("no KMS is ever reached without the `kms` feature")
+    }
+
+    fn kek(
+        &self,
+        _name: &str,
+        _version: u64,
+    ) -> Result<Arc<dyn permguard_host::keys::custody::Wrap>> {
+        unreachable!("no KMS is ever reached without the `kms` feature")
+    }
+}
+
+#[cfg(not(feature = "kms"))]
+fn transit_for(_config: &Config, _secrets: Option<&dyn SecretStore>) -> Result<Kms> {
+    anyhow::bail!(
+        "the `kms` custody needs a build with the `kms` feature; this one was built without it"
+    )
 }
 
 /// Each ring's provider from its custody (WP-3.2, owner decisions of 2026-10-08): the
@@ -224,7 +273,7 @@ pub fn custodian_for(
         keks,
     );
     if let Some(kms) = kms {
-        custodian = custodian.with_kms(kms);
+        custodian = custodian.with_kms(kms.remote());
     }
     if let Some(hsm) = hsm {
         custodian = custodian.with_hsm(hsm.remote());
@@ -237,7 +286,7 @@ fn keks_for(
     config: &Config,
     secrets: Option<&dyn SecretStore>,
     volume: &permguard_host::storage::volume::Volume,
-    kms: Option<&Arc<crate::custody::Transit>>,
+    kms: Option<&Kms>,
     hsm: Option<&Token>,
 ) -> Result<permguard_host::keys::custody::Keks> {
     use permguard_core::config::KekProvider;
@@ -257,17 +306,12 @@ fn keks_for(
                 "the KEK in the KMS is the Transit key `operations.keys.kek_ref` names, and it \
                  names none",
             )?;
-            let current: Arc<dyn KeyWrap> = Arc::new(crate::custody::TransitKek::open(
-                Arc::clone(transit),
-                reference.name(),
-                version(config.keys_kek_version())?,
-            )?);
+            let current: Arc<dyn KeyWrap> =
+                transit.kek(reference.name(), version(config.keys_kek_version())?)?;
             let previous = match config.keys_previous_kek() {
-                Some((reference, previous)) => Some(Arc::new(crate::custody::TransitKek::open(
-                    Arc::clone(transit),
-                    reference.name(),
-                    version(previous)?,
-                )?) as Arc<dyn KeyWrap>),
+                Some((reference, previous)) => {
+                    Some(transit.kek(reference.name(), version(previous)?)?)
+                }
                 None => None,
             };
             return Ok(Keks { current, previous });
@@ -319,4 +363,53 @@ fn keks_for(
         None => None,
     };
     Ok(Keks { current, previous })
+}
+
+/// A build without the `kms` feature carries no client to a KMS: a configuration that names that
+/// custody is refused by name, before any ring is opened, and never falls back to another custody.
+#[cfg(all(test, not(feature = "kms")))]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use permguard_core::config::{
+        Layers, SETTING_ASSURANCE_PROFILE, SETTING_KEYS_CUSTODY, SETTING_KEYS_KMS_ADDRESS,
+    };
+    use permguard_core::{BuildSettings, Config};
+
+    use super::custodian_for;
+
+    #[test]
+    fn test_a_kms_custody_is_refused_by_name_in_a_build_without_the_adapter() {
+        let config = Config::from_layers(
+            BuildSettings::new("1.2.3", "2026", "Build Holder"),
+            [""; 0],
+            Layers::new().with_file(
+                [
+                    (SETTING_ASSURANCE_PROFILE, "development"),
+                    (SETTING_KEYS_CUSTODY, "kms"),
+                    (SETTING_KEYS_KMS_ADDRESS, "https://vault.example:8200"),
+                ]
+                .map(|(key, value)| (key.to_owned(), value.to_owned())),
+            ),
+        )
+        .expect("the layers build a config");
+        let root =
+            std::env::temp_dir().join(format!("permguard-offline-test-kms-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let volume = permguard_host::storage::volume::Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("a volume");
+
+        let refused = match custodian_for(&config, None, &volume) {
+            Ok(_) => panic!("a custody this build cannot reach was accepted"),
+            Err(refused) => format!("{refused:#}"),
+        };
+
+        assert!(
+            refused.contains("the `kms` custody needs a build with the `kms` feature"),
+            "{refused}"
+        );
+    }
 }

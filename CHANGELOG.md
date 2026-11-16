@@ -50,6 +50,10 @@ is cut.
 - **A decision record and an event record are selectable without their storage.**
   `permguard-decisions` and `permguard-events` build the normative model, record, chain and envelope, with no feature; the durable spool and journal are their `storage` feature and the Host stream registration their `stream` feature.
   A verifier links the model alone, with no Host stream engine; no record, digest or envelope changes.
+- **A Host is composed without a server.**
+  `permguard-runtime` holds the composition that opens a Host on its volume and registers its Planes, with the services the Host runs for itself; it binds no listener, installs no signal handler and links no network client.
+  What reaches outside the process is an adapter the build composes, the peer sessions, the Authority Plane's client, the process's signals and the listeners it publishes: a server composes them all, and every command and start runs the code it ran.
+  The KMS custody is the `kms` feature of `permguard-offline`, which the server and the command line select; a build without it refuses that custody by name.
 - **The command line links no server.**
   Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
   The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.

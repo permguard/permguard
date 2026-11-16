@@ -225,14 +225,6 @@ const LAYERS: &[(&str, &[&str])] = &[
     ),
     ("permguard-language-core", EVIDENCE_RUNTIME),
     ("permguard-pdp-core", EVIDENCE_RUNTIME),
-    // The Host's own runtime is headless (RD-15): no listener, no network client, no generated
-    // contract, no TLS stack and no telemetry exporter; the adapters that reach a network are the
-    // server's.
-    ("permguard-runtime", SERVER_STACK),
-    (
-        "permguard-runtime",
-        &["permguard-client", "permguard-contracts", "rustls", "clap"],
-    ),
     // A client speaks the request model and compiles no policy language (RD-6).
     ("permguard-client", NO_LANGUAGE),
 ];
@@ -605,6 +597,49 @@ fn the_control_plane_validates_without_evaluating() {
     assert!(
         problems.is_empty(),
         "the Control Plane validates and the Data Plane evaluates:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The Host's runtime is headless (RD-15), its composition included: built by itself it links no
+/// listener, no network client, no generated contract, no TLS stack and no telemetry exporter.
+/// What reaches a network is an adapter a build composes: a server's build selects the KMS custody
+/// of `permguard-offline`, which the runtime's own build leaves out and refuses by name.
+#[test]
+fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
+    let runtime = carried_with("permguard-runtime", "");
+    let mut problems = Vec::new();
+    for name in SERVER_STACK.iter().copied().chain([
+        "permguard-client",
+        "permguard-contracts",
+        "rustls",
+        "tokio-rustls",
+        "hyper-util",
+    ]) {
+        if runtime.contains(name) {
+            problems.push(format!("permguard-runtime, built by itself, links {name}"));
+        }
+    }
+    for name in ["permguard-host", "permguard-stream", "permguard-offline"] {
+        if !runtime.contains(name) {
+            problems.push(format!("permguard-runtime does not link {name}"));
+        }
+    }
+    if features_of("permguard-runtime")
+        .get("permguard-offline")
+        .is_some_and(|enabled| enabled.contains("kms") || enabled.contains("pkcs11"))
+    {
+        problems.push("permguard-runtime selects a remote custody".to_owned());
+    }
+    if !features_of("permguard-server")
+        .get("permguard-offline")
+        .is_some_and(|enabled| enabled.contains("kms"))
+    {
+        problems.push("permguard-server does not compose the KMS custody".to_owned());
+    }
+    assert!(
+        problems.is_empty(),
+        "the runtime is headless and a server composes its adapters:\n  {}",
         problems.join("\n  ")
     );
 }

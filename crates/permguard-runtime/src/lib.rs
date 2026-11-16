@@ -8,6 +8,8 @@
 //!
 //! | Module          | What it runs                                                                  |
 //! | --------------- | ----------------------------------------------------------------------------- |
+//! | [`composition`] | the Host opened on its volume, its Planes registered, the server host run     |
+//! | [`banner`]      | the text a start announces the build with                                     |
 //! | [`time`]        | the clock's observer and its periodic pass, and the key rings' clock          |
 //! | [`checkpoints`] | the audit trails' sealing sweep, and the legacy audit chain laid out at start |
 //! | [`objectives`]  | readiness held while a measured lag or headroom is past its objective         |
@@ -20,11 +22,12 @@
 //! | [`witness`]     | the external witness a silent key change is checked against                   |
 //!
 //! Nothing here listens, connects or exports: each service takes the Host's handles it works on,
-//! and runs on the Tokio runtime of whoever calls it. The composition that opens those handles and
-//! the adapters that reach the network, the peer sessions, a KMS and the Authority Plane, are the
-//! server's.
+//! and runs on the Tokio runtime of whoever calls it. What reaches the network, the peer sessions,
+//! a KMS and the Authority Plane, is an adapter the build composes: the server's, in a server.
 
+pub mod banner;
 pub mod checkpoints;
+pub mod composition;
 pub mod dormancy;
 pub mod join;
 pub mod objectives;
@@ -34,3 +37,5 @@ pub mod stream_gc;
 pub mod time;
 pub mod witness;
 pub mod zone;
+
+pub use composition::{AuthorityObserving, AuthoritySource, Composition, ReloadHandler};

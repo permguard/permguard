@@ -14,8 +14,24 @@ repository.workspace = true
 publish = false
 
 [features]
+# Each remote custody is an adapter a build carries only when it asks; without one, a
+# configuration that names that custody is refused by name.
+#
 # A hardware token's custody, through PKCS#11.
 pkcs11 = ["dep:cryptoki"]
+# A KMS's custody, a Vault Transit engine: the one network client of this package.
+kms = [
+    "dep:base64",
+    "dep:bytes",
+    "dep:http",
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+    "dep:tokio",
+    "dep:tokio-rustls",
+]
 
 [dependencies]
 anyhow.workspace = true
@@ -27,18 +43,18 @@ permguard-events = { workspace = true, features = ["storage"] }
 permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
 cryptoki = { workspace = true, optional = true }
 tracing.workspace = true
-# The custody of a KMS or a transit engine: one bounded HTTPS client, no listener.
-base64.workspace = true
-bytes.workspace = true
-http.workspace = true
-http-body-util.workspace = true
-hyper.workspace = true
-hyper-util.workspace = true
+# The custody of a KMS or a transit engine: one bounded HTTPS client, no listener (`kms`).
+base64 = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+http-body-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
 ring.workspace = true
-rustls.workspace = true
-rustls-native-certs.workspace = true
+rustls = { workspace = true, optional = true }
+rustls-native-certs = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt", "time", "net"] }
-tokio-rustls.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "net"], optional = true }
+tokio-rustls = { workspace = true, optional = true }
 zeroize.workspace = true

@@ -28,7 +28,7 @@ permguard-core.workspace = true
 # The services a Host runs for itself, headless.
 permguard-runtime.workspace = true
 # Offline volume administration, which the command line runs without a server.
-permguard-offline.workspace = true
+permguard-offline = { workspace = true, features = ["kms"] }
 # The volume's ownership: the claim `serve` takes first, and the `volume claim` command.
 permguard-host.workspace = true
 # The stream foundation: the composition registers every stream its planes declare,

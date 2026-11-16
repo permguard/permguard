@@ -17,11 +17,11 @@
 //! owns the process — not from a library path a test or a downstream command might take twice.
 
 use anyhow::{Context, Result};
-use tracing::{Level, info};
+use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-use permguard_core::{Config, LogFormat, LogLevel, ProductIdentity};
+use permguard_core::{Config, LogFormat, LogLevel};
 
 /// Keeps the OTLP pipeline alive for the life of the process; dropping it
 /// flushes what is buffered and shuts the exporter down. A build that did not
@@ -378,25 +378,9 @@ impl<E: opentelemetry_sdk::trace::SpanExporter> opentelemetry_sdk::trace::SpanEx
     }
 }
 
-/// Records which build is running, as the first record of the stream.
-///
-/// In `json` there is no banner, so this record is the only thing that says which build produced
-/// everything after it — and a stream nobody can attribute to a build is a stream nobody can act on.
-/// In `terminal` the banner says the same thing to a human; the record is emitted either way so the
-/// two formats carry the same information.
-pub fn record_build(identity: &ProductIdentity, config: &Config, host: &str) {
-    info!(
-        event.name = "server.build",
-        service.name = identity.binary_name(),
-        service.version = config.version(),
-        server.host = host,
-        log.level = config.log_level().as_str(),
-        log.format = config.log_format().as_str(),
-        otel.enabled = config.otel_enabled(),
-        process.pid = std::process::id(),
-        "build"
-    );
-}
+/// Records which build is running, as the first record of the stream: the composition's, named
+/// here beside the pipeline that carries it.
+pub use permguard_runtime::composition::record_build;
 
 /// Maps the configured level onto the one `tracing` filters with.
 fn level_of(level: LogLevel) -> Level {

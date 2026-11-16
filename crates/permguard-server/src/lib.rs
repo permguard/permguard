@@ -16,10 +16,9 @@ pub mod app;
 /// The Authority Plane's key set and status lists, fetched by the client library's Authority
 /// surface (RD-11); named here where the composition wires it.
 pub use permguard_client::authority_refresh;
-pub mod banner;
+pub use permguard_runtime::banner;
 /// The services a Host runs for itself are `permguard-runtime`'s (RD-15), named here where the
 /// composition starts them.
-pub(crate) use permguard_runtime::join;
 pub use permguard_runtime::{
     checkpoints, dormancy, objectives, repin, shipping, stream_gc, time, witness, zone,
 };

@@ -2941,8 +2941,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "permguard-core",
+ "permguard-decisions",
  "permguard-events",
  "permguard-host",
+ "permguard-offline",
  "permguard-std",
  "permguard-stream",
  "serde_json",

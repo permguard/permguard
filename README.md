@@ -939,7 +939,7 @@ The Host never depends on a concrete plane.
 | `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
 | `permguard-client`                 | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions, events and tokens.                |
 | `permguard-offline`                | composition | Offline volume administration the server and the command line share: configuration, keys, migrations.         |
-| `permguard-runtime`                | composition | The Host's headless runtime: the services it runs for itself, no listener.                                    |
+| `permguard-runtime`                | composition | The Host's headless runtime: its composition and its own services.                                            |
 | `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |

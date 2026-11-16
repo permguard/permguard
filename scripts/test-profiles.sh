@@ -4,8 +4,8 @@
 
 #
 # Runs the packages whose features select what a build carries, in every profile, each resolved
-# on its own: the policy languages, the client library's surfaces and transports, and the two
-# evidence models.
+# on its own: the policy languages, the client library's surfaces and transports, the two
+# evidence models, and the headless runtime with the offline package it links.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -84,5 +84,13 @@ for package in permguard-decisions permguard-events; do
     done
     run "${package}, the model with its storage and its registration" -p "${package}"
 done
+
+# Offline volume administration: a remote custody is an adapter a build selects. Without one, the
+# package builds with no network client and refuses that custody by name, which its test proves;
+# the headless runtime links it that way, and its own tests start a Host with no server.
+run "permguard-offline, no remote custody" -p permguard-offline
+printf '==> permguard-offline built with `kms`\n'
+cargo check --locked -p permguard-offline --features kms
+run "permguard-runtime, headless" -p permguard-runtime
 
 printf 'ok: every profile compiles and passes its tests on its own\n'
