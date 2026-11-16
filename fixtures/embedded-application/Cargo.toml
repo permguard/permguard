@@ -1,0 +1,43 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# An application that embeds the Data Plane, as one outside this repository would: its own
+# workspace, one Permguard dependency with no default feature, and a feature per language it
+# selects. `scripts/check-embedded-fixture.sh` resolves, builds and tests it once per named
+# profile, so nothing the repository's workspace unifies can hide what a profile links.
+[package]
+name = "permguard-embedded-fixture"
+description = "A reference application embedding the Permguard Data Plane, built outside the workspace once per named profile."
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Its own workspace: the repository's would otherwise claim it, and unify its features.
+[workspace]
+
+[features]
+# The named profiles: a language each, none by default.
+cedar = ["permguard-data-plane/cedar"]
+rego = ["permguard-data-plane/rego"]
+dogwood = ["permguard-data-plane/dogwood"]
+
+[dependencies]
+# The one Permguard package an embedding application names.
+permguard-data-plane = { path = "../../crates/permguard-data-plane", default-features = false }
+
+[dev-dependencies]
+# What the application composes for the Plane: the Host, its configuration, a store and a sink.
+# The default implementations stand in for the application's own here, in the tests alone.
+permguard-core = { path = "../../crates/permguard-core" }
+permguard-host = { path = "../../crates/permguard-host" }
+permguard-std = { path = "../../crates/permguard-std", default-features = false, features = ["audit", "storage"] }
+# The repository's examples as verified mirrors, read by the Data Plane's own test support.
+# No language is named here: the tests decide with what the profile selected, and no more.
+permguard-languages = { path = "../../crates/permguard-languages", default-features = false }
+permguard-mirror = { path = "../../crates/permguard-mirror" }
+permguard-objects = { path = "../../crates/permguard-objects" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_norway = "0.9"
+tokio = { version = "1", features = ["macros", "rt"] }

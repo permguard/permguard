@@ -209,7 +209,78 @@ pub fn provision(root: &Path, name: &str) -> Manifest {
 /// [`provision`], the zone and the ledger under `zone_id` and `ledger_id`: UUIDs where the
 /// decision log keys its tags and pseudonyms by them.
 pub fn provision_as(root: &Path, name: &str, zone_id: &str, ledger_id: &str) -> Manifest {
-    let manifest = manifest(name);
+    provision_manifest(root, name, manifest(name), zone_id, ledger_id)
+}
+
+/// The example's manifest with only what `language` runs: its runtime, the partitions on it and
+/// the profiles over them. What an author publishes for a Data Plane built with that language
+/// alone, from the same file; narrowed before it is read, since a build reads no manifest naming a
+/// language it does not carry.
+pub fn manifest_narrowed_to(name: &str, language: &str) -> Manifest {
+    use serde_norway::Value as Yaml;
+
+    let bytes =
+        std::fs::read(example(name).join("manifest.yml")).expect("the example carries a manifest");
+    let mut document: Yaml = serde_norway::from_slice(&bytes).expect("the manifest is YAML");
+    let named = |value: &Yaml, key: &str| value.get(key).and_then(Yaml::as_str).map(str::to_owned);
+
+    let runtimes = document
+        .get_mut("runtimes")
+        .and_then(Yaml::as_mapping_mut)
+        .expect("the manifest declares runtimes");
+    runtimes.retain(|_, runtime| {
+        runtime
+            .get("language")
+            .and_then(|declared| named(declared, "name"))
+            .as_deref()
+            == Some(language)
+    });
+    let kept: Vec<Yaml> = runtimes.keys().cloned().collect();
+
+    let partitions = document
+        .get_mut("partitions")
+        .and_then(Yaml::as_mapping_mut)
+        .expect("the manifest declares partitions");
+    partitions.retain(|_, partition| {
+        partition
+            .get("runtime")
+            .is_some_and(|runtime| kept.contains(runtime))
+    });
+    let kept: Vec<Yaml> = partitions.keys().cloned().collect();
+
+    let profiles = document
+        .get_mut("profiles")
+        .and_then(Yaml::as_mapping_mut)
+        .expect("the manifest declares profiles");
+    for (_, profile) in profiles.iter_mut() {
+        if let Some(listed) = profile
+            .get_mut("partitions")
+            .and_then(Yaml::as_sequence_mut)
+        {
+            listed.retain(|partition| kept.contains(partition));
+        }
+    }
+    profiles.retain(|_, profile| {
+        profile
+            .get("partitions")
+            .and_then(Yaml::as_sequence)
+            .is_some_and(|listed| !listed.is_empty())
+    });
+
+    let narrowed = serde_norway::to_string(&document).expect("the narrowed manifest is YAML");
+    permguard_languages::manifest_file::from_yaml(narrowed.as_bytes())
+        .expect("the narrowed manifest is well formed")
+}
+
+/// [`provision_as`], with the manifest the mirror is to hold: the example's policies, under
+/// `manifest` in place of the one its directory carries.
+pub fn provision_manifest(
+    root: &Path,
+    name: &str,
+    manifest: Manifest,
+    zone_id: &str,
+    ledger_id: &str,
+) -> Manifest {
     let path = root.join(MIRROR_AUTHORITY).join(zone_id).join(ledger_id);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);

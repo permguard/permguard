@@ -5,7 +5,8 @@
 #
 # Runs the packages whose features select what a build carries, in every profile, each resolved
 # on its own: the policy languages, the client library's surfaces and transports, the two
-# evidence models, and the headless runtime with the offline package it links.
+# evidence models, the headless runtime with the offline package it links, and the reference
+# embedding application, which is built outside the workspace.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -92,5 +93,9 @@ run "permguard-offline, no remote custody" -p permguard-offline
 printf '==> permguard-offline built with `kms`\n'
 cargo check --locked -p permguard-offline --features kms
 run "permguard-runtime, headless" -p permguard-runtime
+
+# The embedded Data Plane as an application outside this workspace links it: every named profile
+# resolved, built and tested for that application alone.
+./scripts/check-embedded-fixture.sh
 
 printf 'ok: every profile compiles and passes its tests on its own\n'

@@ -58,6 +58,9 @@ is cut.
   `permguard-std` has no default bundle: every build names the implementations it links, so `provision`, which can mint a certificate authority, is in a server's build and in neither the command line's, Permguard Admin's nor the headless runtime's.
   The pool a request's partitions fan out on holds no more workers than `PERMGUARD_EVALUATION_CONCURRENCY`, and none at `1`: an embedded Data Plane configured for one evaluation at a time runs one evaluating thread, with the same answers.
   Unset, the setting is the machine's cores and the pool is sized as it was.
+- **Every embedded profile is proven outside the workspace.**
+  `fixtures/embedded-application` is an application of its own workspace that names `permguard-data-plane` alone; `scripts/check-embedded-fixture.sh`, run by `task test:profiles`, resolves, builds and tests it with no language, with each one alone and with the three.
+  Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
 - **The command line links no server.**
   Offline volume administration, the configuration as `serve` reads it, the key rings and their custody, provisioning and the migrations of a volume, is `permguard-offline`, which the server and the command line share; the Authority Plane's key set and status list refresh is a feature of the client library.
   The `permguard` binary, and Permguard Admin through it, link no server composition, listener or telemetry; every command runs the code it ran.

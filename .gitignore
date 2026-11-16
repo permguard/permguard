@@ -560,3 +560,7 @@ zig-out/
 # these are listed rather than cleaned up by hand.
 prebuilt/
 /permguard-benchmark.json
+
+# The reference embedding application takes the workspace's lockfile, copied before each run by
+# `scripts/check-embedded-fixture.sh`: there is no second lockfile to keep.
+/fixtures/embedded-application/Cargo.lock
