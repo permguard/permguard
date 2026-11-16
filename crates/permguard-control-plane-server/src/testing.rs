@@ -297,7 +297,7 @@ pub mod exports {
 
     fn blob(text: &str) -> Vec<u8> {
         Blob {
-            media_type: "application/vnd.permguard.policy.cedar".to_owned(),
+            media_type: permguard_core::domains::media::POLICY_CEDAR.to_owned(),
             data: text.as_bytes().to_vec(),
         }
         .encode()
