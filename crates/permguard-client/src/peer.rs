@@ -714,6 +714,18 @@ async fn endpoint(address: &str) -> Result<(SocketAddr, ServerName<'static>), Re
     Ok((resolved, name))
 }
 
+/// How a Host reaches its coordinators under `settings`, the Host listener's TLS block,
+/// initiating with `context`: what a composition hands the membership side. `None` without a
+/// client CA, and a join is then `peer_client_unconfigured`; material that cannot be read stops
+/// the start.
+pub fn connector(
+    settings: Option<&permguard_core::TlsSettings>,
+    context: &Context,
+) -> anyhow::Result<Option<Arc<dyn Connector>>> {
+    Ok(member_client(settings)?
+        .map(|tls| Arc::new(PeerConnector::new(context.clone(), tls)) as Arc<dyn Connector>))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]

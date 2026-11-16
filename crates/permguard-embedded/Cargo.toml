@@ -23,7 +23,11 @@ rego = ["permguard-data-plane/rego"]
 #
 # The Authority Plane's key set and status lists, fetched over REST or gRPC by the scheme of its
 # URL, for an application whose callers present access tokens.
-authority-refresh = ["dep:permguard-client"]
+authority-refresh = ["dep:permguard-client", "permguard-client/authority-refresh"]
+# The membership side: this Host joins a coordinator from an invitation and reaches it over peer
+# sessions it opens itself, to mirror its policies and ship its decisions and events. It binds no
+# listener; the Host listener's TLS block, `admin.tls`, is the client identity it dials out with.
+membership = ["dep:permguard-client", "permguard-client/peer"]
 # The remote custodies of the Host's keys.
 kms = ["permguard-offline/kms"]
 pkcs11 = ["permguard-offline/pkcs11"]
@@ -40,8 +44,9 @@ permguard-offline.workspace = true
 # The headless composition of the Host, and the host that runs its services.
 permguard-runtime.workspace = true
 # The default storage and audit sink the composition is handed.
-permguard-std = { workspace = true, features = ["audit", "storage"] }
-permguard-client = { workspace = true, features = ["authority-refresh"], optional = true }
+# And the upkeep of the Host's rings: their first key, their rotation.
+permguard-std = { workspace = true, features = ["audit", "keys", "storage"] }
+permguard-client = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]

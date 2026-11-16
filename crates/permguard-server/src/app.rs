@@ -91,17 +91,7 @@ impl App {
                 // own certificate, verifying them against its client CA; without one, a join is
                 // refused.
                 .with_peer_connector(|config, session| {
-                    Ok(
-                        crate::host_api::peer::member_client(config.admin_tls().as_ref())?.map(
-                            |tls| {
-                                Arc::new(crate::host_api::peer::PeerConnector::new(
-                                    session.clone(),
-                                    tls,
-                                ))
-                                    as Arc<dyn permguard_host::membership::member::Connector>
-                            },
-                        ),
-                    )
+                    permguard_client::peer::connector(config.admin_tls().as_ref(), session)
                 })
                 // The Authority Plane's key set and lists, fetched by the client library's
                 // Authority surface over the transport the source's scheme names (RD-11).

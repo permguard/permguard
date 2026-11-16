@@ -760,17 +760,26 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
             problems.push(format!("permguard-embedded does not link {name}"));
         }
     }
-    if !refreshing.contains("permguard-client") {
-        problems.push("with `authority-refresh`, it does not link permguard-client".to_owned());
-    }
-    for name in [
-        "permguard-server",
-        "permguard-transport",
-        "permguard-telemetry",
-    ] {
-        if refreshing.contains(name) {
-            problems.push(format!("with `authority-refresh`, it links {name}"));
+    // The member side is a client too: the peer channel's initiator, over the shared TLS policy.
+    let member = carried_with("permguard-embedded", "membership");
+    for (feature, linked) in [("authority-refresh", &refreshing), ("membership", &member)] {
+        if !linked.contains("permguard-client") {
+            problems.push(format!(
+                "with `{feature}`, it does not link permguard-client"
+            ));
         }
+        for name in [
+            "permguard-server",
+            "permguard-transport",
+            "permguard-telemetry",
+        ] {
+            if linked.contains(name) {
+                problems.push(format!("with `{feature}`, it links {name}"));
+            }
+        }
+    }
+    if !member.contains("permguard-tls") {
+        problems.push("with `membership`, it does not link permguard-tls".to_owned());
     }
     if features_of("permguard-embedded")
         .get("permguard-std")

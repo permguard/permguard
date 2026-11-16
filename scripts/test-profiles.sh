@@ -96,7 +96,7 @@ run "permguard-runtime, headless" -p permguard-runtime
 
 # The Data Plane embedded over a Host composed for it: by itself, with each language and with the
 # adapter that fetches the Authority Plane's keys; its tests start a Host from a configuration file.
-for selection in "" cedar rego dogwood authority-refresh; do
+for selection in "" cedar rego dogwood authority-refresh membership; do
     printf '==> permguard-embedded built with `%s`\n' "${selection}"
     cargo check --locked -p permguard-embedded --no-default-features --features "${selection}"
 done

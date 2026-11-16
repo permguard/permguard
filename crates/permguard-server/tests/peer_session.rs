@@ -3446,3 +3446,214 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         .await
         .expect("the watch opens");
 }
+
+/// `1-architecture/3`, A member with no listener: a Host embedded in an application binds
+/// nothing, and is a member all the same. Composed by the headless runtime with `admin.tls` as
+/// the client identity it dials out with and no `admin.addr`, it joins the coordinator its
+/// invitation names over mutual TLS 1.3, pending until the coordinator approves; the same
+/// composition without that identity refuses the start, by name.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use permguard_core::{BoxFuture, BuildSettings, ProductIdentity, ServerContext};
+    use permguard_host::api::host_input::InvitationHandoff;
+    use permguard_host::api::members::CreateInvite;
+    use permguard_host::composition::Declaration;
+    use permguard_host::membership::record::{Role, TaskType};
+    use permguard_runtime::Composition;
+    use permguard_server::plane::factories::{
+        data_signing_keys_for, key_manager_for, secret_store_for,
+    };
+
+    /// A service of the application's own: it hands the test the Host API the composition built
+    /// in process, which no listener serves.
+    struct Probe(std::sync::Mutex<Option<tokio::sync::oneshot::Sender<Option<Arc<HostApi>>>>>);
+
+    impl permguard_core::Service for Probe {
+        fn name(&self) -> &'static str {
+            "probe"
+        }
+
+        fn start<'a>(
+            &'a self,
+            context: &'a ServerContext<'a>,
+        ) -> BoxFuture<'a, anyhow::Result<()>> {
+            Box::pin(async move {
+                if let Some(report) = self.0.lock().ok().and_then(|mut held| held.take()) {
+                    let _ = report.send(context.host_handles::<HostApi>());
+                }
+                Ok(())
+            })
+        }
+    }
+
+    let root = scratch("embedded-member");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        permguard_host::membership::Capabilities::default()
+            .declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+                groups: None,
+                name: None,
+            },
+        )
+        .await
+        .expect("invited");
+    let join = join_of(&coordinator, &invited, "join");
+    let invitation = root.join("invitation.json");
+    std::fs::write(
+        &invitation,
+        serde_json::to_vec(&InvitationHandoff {
+            version: 1,
+            coordinator: join.coordinator.clone(),
+            invite_id: join.invite_id.clone(),
+            token: join.token.clone(),
+            requested: join.requested.clone(),
+            expires: invited.expires.clone(),
+        })
+        .expect("JSON"),
+    )
+    .expect("the invitation file");
+    std::fs::set_permissions(&invitation, std::fs::Permissions::from_mode(0o400))
+        .expect("owner-only");
+
+    // The embedded Host: a volume of its own, a client identity, and no listener anywhere.
+    let (certificate, key) = pki.issue("embedded", "embedded.example");
+    let configuration = |tls: &str| {
+        let file = root.join(format!("embedded-{}.yml", tls.len()));
+        std::fs::write(
+            &file,
+            format!(
+                "assurance:\n  profile: development\nworking_dir: {}\nhost:\n  addr: \"off\"\n  \
+                 join:\n    invitation_file: {}\n    pin_fingerprint: {}\n{tls}",
+                root.join(format!("embedded-volume-{}", tls.len()))
+                    .display(),
+                invitation.display(),
+                coordinator.host.identity.first_fingerprint(),
+            ),
+        )
+        .expect("the configuration file");
+        file
+    };
+    let composed = |probe, stop: Option<tokio::sync::oneshot::Receiver<()>>| {
+        let stop = std::sync::Mutex::new(stop);
+        Composition::new(
+            ProductIdentity::new("an-application", "An Application", "", "", ""),
+            BuildSettings::new("9.9.9", "2026", "Test Holder"),
+            // The runtime's own host: it starts the services below and binds nothing.
+            Box::new(permguard_runtime::host::DefaultServerHost::new()),
+            Box::new(permguard_std::storage::MemoryStorage::new()),
+            Box::new(permguard_std::audit::RecordingAuditSink::new()),
+        )
+        .with_secrets_factory(secret_store_for)
+        .with_keys_factory(key_manager_for)
+        .with_data_signing_keys_factory(data_signing_keys_for)
+        // The Data Plane's part in a membership: it ships its decisions as a member.
+        .with_plane_declaration(|_| {
+            Some((
+                "data",
+                true,
+                Declaration::new("data").handles_task(TaskType::DecisionsShip, 1),
+            ))
+        })
+        .with_peer_connector(|config, session| {
+            permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+        })
+        // The rings' upkeep, which gives each its first key, as an embedded Host composes it.
+        .with_service(Box::new(permguard_std::keys::KeyService::new()))
+        .with_service(Box::new(Probe(std::sync::Mutex::new(probe))))
+        .with_shutdown_signal(move || {
+            match stop.lock().ok().and_then(|mut held| held.take()) {
+                Some(stop) => Box::pin(async move {
+                    let _ = stop.await;
+                }) as BoxFuture<'static, ()>,
+                None => Box::pin(std::future::ready(())),
+            }
+        })
+    };
+
+    // With no client identity the member side is not composed, and the join refuses the start.
+    let file = configuration("");
+    let alone = composed(None, None);
+    let config = alone
+        .config_from(Some(&file), Vec::<(String, String)>::new())
+        .expect("the configuration")
+        .embedded();
+    let refused = alone
+        .serve(&config, &file, &mut Vec::new())
+        .await
+        .expect_err("a join with nothing to dial out with");
+    assert!(
+        format!("{refused:#}").contains("`admin.tls.client_ca`"),
+        "{refused:#}"
+    );
+
+    // With it, and still no listener, the Host dials out and joins.
+    let file = configuration(&format!(
+        // Its rings are on, as on any Host that is a member: a membership pins `data.attest`.
+        "admin:\n  tls:\n    cert: {}\n    key: {}\n    client_ca: {}\noperations:\n  keys:\n    \
+         enabled: true\n    publish_ahead: 1h\n    rotate_every: 30d\n    retain: 365d\n",
+        certificate.display(),
+        key.display(),
+        pki.authority().display(),
+    ));
+    let (probe, probed) = tokio::sync::oneshot::channel();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let member = composed(Some(probe), Some(stopped));
+    let config = member
+        .config_from(Some(&file), Vec::<(String, String)>::new())
+        .expect("the configuration")
+        .embedded();
+    assert!(config.admin_addr().is_none(), "no listener is configured");
+
+    let application = async {
+        let api = probed
+            .await
+            .ok()
+            .flatten()
+            .expect("the membership side is composed with no listener");
+        let mut joined = false;
+        for _ in 0..400 {
+            if api.holds_a_membership_as_member() {
+                joined = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let _ = stop.send(());
+        joined
+    };
+    let mut out = Vec::new();
+    let (served, joined) = tokio::join!(member.serve(&config, &file, &mut out), application);
+    served.expect("the embedded Host started and ended");
+    assert!(joined, "the embedded Host joined no coordinator");
+
+    let pending = coordinator
+        .api
+        .members(&admin(), Some("pending"))
+        .expect("listed")
+        .members;
+    assert_eq!(pending.len(), 1, "the coordinator holds the join");
+    assert_eq!(
+        pending[0].status, "pending",
+        "the approval is the coordinator's"
+    );
+}

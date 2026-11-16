@@ -64,6 +64,10 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **A Host with no listener is a member.**
+  A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
+  The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.
+  The peer channel's initiator moved to the `peer` feature of `permguard-client`, over `permguard-tls`, the algorithms, material readers and channel binding a listener and a client share; an embedded Host also keeps its rings, their first key and their rotation.
 - **An application embeds the Data Plane without composing a Host.**
   `permguard-embedded` composes it: the headless runtime opens the Host on its volume from the configuration file a server reads, with the implementations that file names, and runs the Data Plane as its one Plane, with no listener.
   The application drives one future, the Host's life, and is handed a handle to decide, submit and read health; its own future ends the Host, drained and stopped in order.

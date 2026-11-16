@@ -2042,7 +2042,13 @@ impl Composition {
         let mut repinning_coordinator: Option<
             Arc<permguard_host::membership::service::Coordinating>,
         > = None;
-        if config.admin_addr().is_some() {
+        // A member opens every session, so it needs no listener to be one (`1-architecture/3`, A
+        // member with no listener): a Host embedded in an application composes the same membership
+        // side with no ingress, when the Host listener's TLS block names the client identity it
+        // dials out with. A served Host composes it beside its listener, as before.
+        let dials_out =
+            config.is_embedded() && config.admin_tls().is_some_and(|tls| tls.is_mutual());
+        if config.admin_addr().is_some() || dials_out {
             use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
 
             let (replay, recovery) = Replay::open(&volume, time.now_secs()).with_context(|| {
@@ -2448,6 +2454,11 @@ impl Composition {
                 join.clone(),
                 context.health().clone(),
             )?),
+            (Some(_), None) if config.is_embedded() => bail!(
+                "host.join needs the client identity this Host dials out with: set \
+                 `admin.tls.cert`, `admin.tls.key` and `admin.tls.client_ca`; an embedded Host \
+                 binds no listener and joins through its membership side"
+            ),
             (Some(_), None) => bail!(
                 "host.join needs this Host's listener (`admin.addr` and its TLS): the join is \
                  made through its membership side"

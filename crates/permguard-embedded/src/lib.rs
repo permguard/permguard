@@ -33,7 +33,7 @@
 //! | listeners       | none: no Plane listener, no Host listener, no telemetry endpoint               |
 //! | configuration   | the server's file and contract; `runtime.planes` is `data`, whatever it says   |
 //! | authorization   | the Host's: access tokens, and the public grants the configuration declares    |
-//! | synchronization | a verified local mirror; a Host with no listener joins no coordinator          |
+//! | synchronization | a verified local mirror; with `membership`, the tasks of a coordinator it joins |
 //! | the network     | nothing by default; each adapter is a feature the application selects          |
 //!
 //! `serve` borrows nothing from the application and is not `Send`: it runs where it is awaited,
@@ -162,6 +162,9 @@ impl Builder {
             )
         })
         .with_startup_check(permguard_data_plane::embedded::startup_check)
+        // The Host's rings are kept: a first key when a ring has none, its rotation on schedule.
+        // The Host's own service, so it starts before the Plane and stops after it.
+        .with_service(Box::new(permguard_std::keys::KeyService::new()))
         .with_service(Box::new(hosted));
 
         Ok((Embedded { composition }, started))
@@ -217,6 +220,22 @@ impl Embedded {
                     },
                 )?;
                 Ok(Box::new(refreshing) as Box<dyn std::any::Any + Send>)
+            })
+        })
+    }
+
+    /// Composes the membership side's connector: this Host joins the coordinator its configured
+    /// invitation names and opens every session itself, over the client identity of `admin.tls`,
+    /// verifying the coordinator against its `client_ca` and, when set, its `crl`, on TLS 1.3.
+    /// Its policies are then mirrored, and its decisions and events shipped, over the tasks of
+    /// that membership. No listener is bound, and nobody enrolls with this Host.
+    ///
+    /// Without it, as without a mutual `admin.tls`, a configured `host.join` refuses the start.
+    #[cfg(feature = "membership")]
+    pub fn with_membership(self) -> Self {
+        self.compose(|composition| {
+            composition.with_peer_connector(|config, session| {
+                permguard_client::peer::connector(config.admin_tls().as_ref(), session)
             })
         })
     }
