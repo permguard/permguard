@@ -130,6 +130,25 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: every profile compiles and passes its tests on its own
         run: ./scripts/test-profiles.sh
+      # The reference embedding application measured in every profile: packages, build, stripped
+      # size, resident memory, threads and shutdown. Held to this runner's budget file once one is
+      # written from a run here, `fixtures/embedded-application/budgets/linux-x86_64.tsv`; until
+      # then the measures are recorded and kept with the run, which is what that file is cut from.
+      - name: the reference embedding application, measured
+        run: |
+          budgets=fixtures/embedded-application/budgets/linux-x86_64.tsv
+          if [ -f "${budgets}" ]; then
+            ./scripts/measure-embedded-fixture.sh --check "${budgets}" > embedded-measures.tsv
+          else
+            ./scripts/measure-embedded-fixture.sh > embedded-measures.tsv
+          fi
+          cat embedded-measures.tsv
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: embedded-measures
+          path: embedded-measures.tsv
+          if-no-files-found: warn
 
   # Deterministic replay on a second platform (TL-6): each runtime's golden vectors and upstream
   # corpora, and the rest of the language packages, on Apple silicon — another operating system and
