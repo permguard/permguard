@@ -46,7 +46,7 @@ use cedar_policy::{
 use serde_json::{Value, json};
 
 use permguard_language_core::evaluate::{Query, StoredPolicy, Verdict};
-use permguard_pdp_core::evaluate::{Evaluating, Evaluator};
+use permguard_language_core::evaluating::{Evaluating, Evaluator};
 
 use super::Cedar;
 

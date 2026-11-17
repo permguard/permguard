@@ -184,6 +184,11 @@ pub fn routes_of(plane: &str) -> Vec<AdmittedRoute> {
 
 /// `router`, every closed route of `plane` asked only by a caller with standing under it.
 pub fn admitted(router: Router, plane: &str, admission: Arc<dyn Admission>) -> Router {
+    // A Plane that serves nothing over a transport hands in a router with no route: there is
+    // nothing to admit to, and a layer over no route is refused by the router itself.
+    if !router.has_routes() {
+        return router;
+    }
     router.route_layer(AdmissionLayer::new(admission, routes_of(plane)))
 }
 

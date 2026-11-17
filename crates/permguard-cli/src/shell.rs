@@ -263,6 +263,7 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
 
             Ok(ExitCode::from(EXIT_READY))
         }
+        #[cfg(feature = "cli-bin")]
         Command::Completion { shell } => {
             // Raw generator source, straight to stdout: a shell evaluates this, so a banner or a
             // report wrapper would be syntax errors in someone's rc file.
@@ -281,6 +282,7 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Authority { action } => {
             commands::authority::authority_command(&globals, action, &trace)
         }
+        #[cfg(feature = "volume-restore")]
         Command::Restore {
             server_config,
             action,
@@ -384,6 +386,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
 
     match command {
         Command::Version => ("version", Class::Local),
+        #[cfg(feature = "cli-bin")]
         Command::Completion { .. } => ("completion", Class::Local),
         Command::Config { .. } => ("config", Class::Local),
         Command::Init { .. } => ("init", Class::Local),
@@ -406,6 +409,7 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Apply { .. } => ("apply", Class::Control),
         Command::Verify => ("verify", Class::Control),
         Command::Inspect { .. } => ("inspect", Class::Planes),
+        #[cfg(feature = "volume-restore")]
         Command::Restore { .. } => ("restore", Class::Volume),
         Command::Backup { .. } => ("backup", Class::Volume),
         Command::Gc { .. } => ("gc", Class::Host),

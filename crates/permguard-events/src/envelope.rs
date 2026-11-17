@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use permguard_canonical::jcs;
 use permguard_core::keys::{Jwk, Sign};
+use permguard_objects::jws;
 
 use crate::record::Stream;
 
@@ -194,17 +195,13 @@ impl Signed {
     /// Signs `envelope` under the manager's active key.
     pub fn create(envelope: &Envelope, keys: &dyn Sign) -> Result<Self, EnvelopeError> {
         envelope.check_shape()?;
-        let parts = permguard_host::composition::sign_jws::<
-            permguard_host::composition::EventBatchV1,
-        >(&envelope.signed_bytes()?, keys)
-        .map_err(|error| match error {
-            permguard_host::composition::JwsError::Algorithm(found) => {
-                EnvelopeError::Algorithm(found)
-            }
-            permguard_host::composition::JwsError::Key(error) => {
-                EnvelopeError::Signing(error.to_string())
-            }
-        })?;
+        let parts =
+            jws::sign(&jws::EVENT_BATCH, &envelope.signed_bytes()?, keys).map_err(|error| {
+                match error {
+                    jws::JwsError::Algorithm(found) => EnvelopeError::Algorithm(found),
+                    jws::JwsError::Key(error) => EnvelopeError::Signing(error.to_string()),
+                }
+            })?;
         Ok(Self::from(parts))
     }
 
@@ -280,7 +277,9 @@ impl Signed {
         }
         let key = keys
             .iter()
-            .find(|candidate| permguard_host::keys::selects(candidate, &header.kid))
+            .find(|candidate| {
+                permguard_objects::crypto::thumbprint::selects(candidate, &header.kid)
+            })
             .ok_or_else(|| EnvelopeError::UnknownKey(header.kid.clone()))?;
         let public = B64
             .decode(&key.x)
@@ -348,9 +347,9 @@ impl std::fmt::Display for EnvelopeError {
 
 impl std::error::Error for EnvelopeError {}
 
-/// The parts the Host's framing wrote (WP-3.2).
-impl From<permguard_host::composition::JwsParts> for Signed {
-    fn from(parts: permguard_host::composition::JwsParts) -> Self {
+/// The parts the one framing wrote (WP-3.2).
+impl From<jws::Parts> for Signed {
+    fn from(parts: jws::Parts) -> Self {
         Self {
             protected: parts.protected,
             payload: parts.payload,
@@ -368,6 +367,8 @@ pub trait BatchSigner: Send + Sync {
     fn published(&self) -> permguard_core::keys::Result<Vec<permguard_core::keys::Jwk>>;
 }
 
+/// A Host's typed signer, in a build that reaches a Host: with `storage` or `stream`.
+#[cfg(any(feature = "storage", feature = "stream"))]
 impl BatchSigner
     for permguard_host::composition::Signer<permguard_host::composition::EventBatchV1>
 {

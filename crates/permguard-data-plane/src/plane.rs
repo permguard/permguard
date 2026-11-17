@@ -10,7 +10,9 @@ pub fn declaration(config: &permguard_core::Config) -> permguard_host::compositi
     crate::handles::declaration(config)
 }
 
-/// The evidence streams this plane serves under `config`, enabled or not.
+/// The evidence streams this plane serves under `config`, enabled or not: those of the evidence
+/// this build carries.
+#[cfg(any(feature = "decision-evidence", feature = "event-evidence"))]
 pub fn streams(config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
     let mut streams = Vec::new();
 
@@ -20,6 +22,7 @@ pub fn streams(config: &permguard_core::Config) -> Vec<permguard_stream::StreamD
 
     // The decision log: this plane produces it into a local spool and ships it. The spool
     // directory predates the versioned layout and stays where recorded evidence already is.
+    #[cfg(feature = "decision-evidence")]
     if let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "decisions") {
         streams.push(permguard_stream::StreamDescriptor {
             identity,
@@ -32,6 +35,7 @@ pub fn streams(config: &permguard_core::Config) -> Vec<permguard_stream::StreamD
     }
 
     // The temporal events: journals per ledger under the events root, produced and shipped.
+    #[cfg(feature = "event-evidence")]
     if let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "events") {
         streams.push(permguard_stream::StreamDescriptor {
             identity,
@@ -68,7 +72,27 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              over `decisions.ship` to the coordinator of its membership. Remove it"
         );
     }
+    // A capability this build does not carry is refused by name, never ignored.
+    #[cfg(not(feature = "decision-evidence"))]
+    if config.log_enabled() {
+        anyhow::bail!(
+            "`dataPlane.decisions.log.enabled` is on and this build keeps no decision log: build \
+             the Data Plane with the `decision-evidence` feature, or turn the log off"
+        );
+    }
+    #[cfg(feature = "event-evidence")]
     crate::temporal::startup_check(config)?;
+    #[cfg(not(feature = "event-evidence"))]
+    {
+        permguard_languages::registry::check_opted_in(config.experimental_named())
+            .map_err(|error| anyhow::anyhow!(error))?;
+        if config.events_enabled() {
+            anyhow::bail!(
+                "`dataPlane.events.enabled` is on and this build serves no temporal interface: \
+                 build the Data Plane with the `event-evidence` feature, or turn the events off"
+            );
+        }
+    }
     // The pool the partitions of a request fan out on holds no more workers than the evaluations
     // this deployment runs at once, and none under one: bound before anything decides (RD-17).
     permguard_languages::fanout::Fanout::bound_shared(config.evaluation_concurrency());
@@ -79,13 +103,18 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
 /// keeps the policies current, the decision-log loop measures what this plane decided, and the
 /// event loop keeps the history's floors. A plane fed by other means, or one that records
 /// nothing, is a legitimate deployment.
+// Each service is pushed under its own capability, so the list cannot be one literal.
+#[allow(clippy::vec_init_then_push)]
 pub fn services() -> Vec<Box<dyn permguard_core::PlaneTask>> {
-    vec![
-        Box::new(crate::mirrors::MirrorService::new()),
-        Box::new(crate::decisions::DecisionService::new()),
-        Box::new(crate::authz::audit::DecisionAuditService::new()),
-        // Off unless this plane serves the temporal interface: it keeps the floors and evicts
-        // what no loaded policy still needs.
-        Box::new(crate::temporal::service::EventService::new()),
-    ]
+    let mut services: Vec<Box<dyn permguard_core::PlaneTask>> = Vec::new();
+    #[cfg(feature = "sync")]
+    services.push(Box::new(crate::mirrors::MirrorService::new()));
+    #[cfg(feature = "decision-evidence")]
+    services.push(Box::new(crate::decisions::DecisionService::new()));
+    services.push(Box::new(crate::authz::audit::DecisionAuditService::new()));
+    // Off unless this plane serves the temporal interface: it keeps the floors and evicts
+    // what no loaded policy still needs.
+    #[cfg(feature = "event-evidence")]
+    services.push(Box::new(crate::temporal::service::EventService::new()));
+    services
 }

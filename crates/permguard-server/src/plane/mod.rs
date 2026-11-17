@@ -14,6 +14,7 @@
 //! well-known documents say about which planes are loaded), and
 //! [`factories`] (what the composition root builds: rings, catalogs, sinks).
 
+#[cfg(all(feature = "cli", feature = "signals", feature = "authority-refresh"))]
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
@@ -505,12 +506,27 @@ impl PlaneServer {
         self
     }
 
-    /// Runs the composed process.
+    /// Runs the composed process, as a Permguard binary does: the command line parsed, the
+    /// process's signals answered, the Authority Plane's client composed.
+    #[cfg(all(feature = "cli", feature = "signals", feature = "authority-refresh"))]
     pub async fn run(self) -> ExitCode {
+        self.compose()
+            .with_process_signals()
+            .with_authority_client()
+            .run()
+            .await
+    }
+
+    /// Composes the server these Planes are served by, and returns it: the kit, with every
+    /// registered Plane's declaration, checks, background services and listeners, the Host
+    /// listener and the default implementations a configuration names. It owns no process: the
+    /// program that holds it adds what it selected and serves it, with
+    /// [`App::serve_until`] or its own command line.
+    pub fn compose(self) -> App {
         let binary_name = self.identity.binary_name();
         let version = self.build_settings.version();
 
-        let mut app = App::new(
+        let app = App::kit(
             self.identity,
             self.build_settings,
             Box::new(DefaultServerHost::new()),
@@ -519,40 +535,44 @@ impl PlaneServer {
         )
         .with_metrics(Metrics::new(Arc::new(Registry::new())))
         .with_provisioner(permguard_std::provision::prepare)
-        .with_secrets_factory(secret_store_for)
-        // `keys export --directory` reads a ring's journal on a stopped volume (WP-3.4).
-        .with_keys_exporter(|directory| {
-            permguard_host::keys::ring::export(directory).map_err(anyhow::Error::from)
-        })
-        // `audit verify --directory` checks the Host's trails, their checkpoints and anchors on a
-        // stopped volume (WP-3.7).
-        .with_audit_verifier(crate::checkpoints::verify)
-        .with_audit_factory(move |config| audit_sink_for(binary_name, config))
-        .with_keys_factory(key_manager_for)
-        .with_catalog_factory(catalog_for)
-        .with_control_signing_keys_factory(control_signing_keys_for)
-        .with_data_signing_keys_factory(data_signing_keys_for)
-        .with_reload_handler(|| {
-            permguard_transport::reload_all();
-        })
-        .with_verified_trees(
-            self.planes
-                .iter()
-                .flat_map(|plane| plane.module().verified_trees())
-                .collect(),
-        )
-        .with_declared_settings(declared_settings_for(&self.planes))
-        .with_section_settings("runtime", runtime_settings)
-        .with_section_settings("authority", settings::authority_settings)
-        .with_service(Box::new(
-            TelemetryService::new()
-                .with_configuration(server_configuration_document)
-                .with_keys_location(discovery::host_keys_location),
-        ))
-        .with_service(Box::new(KeyService::new()))
-        // The Host listener (WP-2.5): the `admin` section, serving `/host/v1` and
-        // `permguard.host.v1` when `admin.addr` is set, and nothing otherwise.
-        .with_service(Box::new(crate::host_api::HostApiService::new()));
+        .with_secrets_factory(secret_store_for);
+        // What the offline commands read on a stopped volume: a ring's journal for
+        // `keys export --directory` (WP-3.4), the Host's trails, their checkpoints and anchors for
+        // `audit verify --directory` (WP-3.7), the Planes' content-addressed trees for
+        // `volume verify`.
+        #[cfg(feature = "cli")]
+        let app = app
+            .with_keys_exporter(|directory| {
+                permguard_host::keys::ring::export(directory).map_err(anyhow::Error::from)
+            })
+            .with_audit_verifier(crate::checkpoints::verify)
+            .with_verified_trees(
+                self.planes
+                    .iter()
+                    .flat_map(|plane| plane.module().verified_trees())
+                    .collect(),
+            );
+        let mut app = app
+            .with_audit_factory(move |config| audit_sink_for(binary_name, config))
+            .with_keys_factory(key_manager_for)
+            .with_catalog_factory(catalog_for)
+            .with_control_signing_keys_factory(control_signing_keys_for)
+            .with_data_signing_keys_factory(data_signing_keys_for)
+            .with_reload_handler(|| {
+                permguard_transport::reload_all();
+            })
+            .with_declared_settings(declared_settings_for(&self.planes))
+            .with_section_settings("runtime", runtime_settings)
+            .with_section_settings("authority", settings::authority_settings)
+            .with_service(Box::new(
+                TelemetryService::new()
+                    .with_configuration(server_configuration_document)
+                    .with_keys_location(discovery::host_keys_location),
+            ))
+            .with_service(Box::new(KeyService::new()))
+            // The Host listener (WP-2.5): the `admin` section, serving `/host/v1` and
+            // `permguard.host.v1` when `admin.addr` is set, and nothing otherwise.
+            .with_service(Box::new(crate::host_api::HostApiService::new()));
 
         for section in section_settings_for(&self.planes) {
             app = app.with_section_settings(section.name, move |value| {
@@ -652,7 +672,7 @@ impl PlaneServer {
             app = app.with_service(Box::new(plane));
         }
 
-        app.run().await
+        app
     }
 }
 
@@ -773,6 +793,11 @@ fn gated(
     lifecycle: permguard_core::lifecycle::Lifecycle,
     plane: &'static str,
 ) -> Router {
+    // A Plane that serves nothing over a transport hands in a router with no route: there is no
+    // route to close, and a layer over none is refused by the router itself.
+    if !router.has_routes() {
+        return router;
+    }
     router.route_layer(axum::middleware::from_fn(
         move |request: axum::extract::Request, next: axum::middleware::Next| {
             let phase = lifecycle

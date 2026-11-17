@@ -1,0 +1,43 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-evaluator"
+description = "The decision alone: the kernel that runs a policy language's evaluating half, the routing of a question to the partitions of a profile and the bounded path every evaluation takes. No Host, no store, no ledger, no log, no server."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+# No language by default. A feature brings one language's package with its evaluating half, and
+# nothing else: no other engine, and nothing a decision does not need.
+[features]
+cedar = ["dep:permguard-language-cedar"]
+rego = ["dep:permguard-language-rego"]
+# The pool the partitions of one question fan out on. Off by default: the kernel then starts no
+# thread, and decides on the caller's own thread. A Data
+# Plane, which answers many questions at once on a machine it shares, turns it on.
+threads = []
+
+[dependencies]
+permguard-core.workspace = true
+permguard-objects.workspace = true
+# What a language is, and the request model the evaluation answers.
+permguard-language-core.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The engines, each with its evaluating half, each only with its feature.
+permguard-language-cedar = { workspace = true, features = ["evaluate"], optional = true }
+permguard-language-rego = { workspace = true, features = ["evaluate"], optional = true }
+
+[dev-dependencies]
+# The tests exercise the pool, and each engine through the kernel's own surface.
+permguard-evaluator = { path = ".", features = ["threads", "cedar", "rego"] }
+permguard-language-cedar = { workspace = true, features = ["evaluate"] }
+permguard-language-dogwood = { workspace = true, features = ["evaluate"] }
+permguard-language-rego = { workspace = true, features = ["evaluate"] }

@@ -1704,99 +1704,32 @@ impl<'a, T: JwsArtifact> Jws<'a, T> {
     }
 }
 
-/// A signed JWS's three parts, base64url.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JwsParts {
-    /// The protected header the Host wrote.
-    pub protected: String,
-    /// The payload.
-    pub payload: String,
-    /// The signature over `protected || "." || payload`.
-    pub signature: String,
-}
+pub use permguard_objects::jws::{JwsError, Parts as JwsParts};
 
-/// Why a JWS was not signed.
-#[derive(Debug)]
-pub enum JwsError {
-    /// The ring did not sign.
-    Key(permguard_core::KeyError),
-    /// The ring signed with an algorithm the artifact's header does not declare.
-    Algorithm(String),
-}
+/// How `T` is framed: the algorithm and the header its contract fixes.
+fn framing<T: JwsArtifact>() -> permguard_objects::jws::Framing {
+    use permguard_objects::jws::Header;
 
-impl std::fmt::Display for JwsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Key(error) => write!(f, "{error}"),
-            Self::Algorithm(found) => write!(f, "the ring signed with `{found}`"),
-        }
+    permguard_objects::jws::Framing {
+        algorithm: T::ALGORITHM,
+        header: if T::CANONICAL_HEADER {
+            Header::Canonical(T::TYPE)
+        } else if T::DECLARES_TYPE {
+            Header::Typed(T::TYPE)
+        } else {
+            Header::Bare
+        },
     }
 }
 
-impl std::error::Error for JwsError {}
-
-#[derive(serde::Serialize)]
-struct JwsHeader<'a> {
-    alg: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    typ: Option<&'a str>,
-    kid: &'a str,
-}
-
-/// The JCS header: members in code-point order, every one present.
-#[derive(serde::Serialize)]
-struct CanonicalJwsHeader<'a> {
-    alg: &'a str,
-    kid: &'a str,
-    typ: &'a str,
-}
-
 /// Signs `payload` as a JWS of `T` under `keys`' active key: the one framing of a batch, used by
-/// the Host's [`Signer<T>`] and by a tool that holds a ring itself.
+/// the Host's [`Signer<T>`] and by a tool that holds a ring itself. The framing is
+/// `permguard_objects::jws`'s, the one an evidence model signs a batch with.
 pub fn sign_jws<T: JwsArtifact>(
     payload: &[u8],
     keys: &dyn permguard_core::keys::Sign,
 ) -> Result<JwsParts, JwsError> {
-    use base64::Engine as _;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-
-    let kid = keys.active_key_id().map_err(JwsError::Key)?;
-    let header = if T::CANONICAL_HEADER {
-        serde_json::to_vec(&CanonicalJwsHeader {
-            alg: T::ALGORITHM,
-            kid: kid.as_str(),
-            typ: T::TYPE,
-        })
-    } else {
-        serde_json::to_vec(&JwsHeader {
-            alg: T::ALGORITHM,
-            typ: T::DECLARES_TYPE.then_some(T::TYPE),
-            kid: kid.as_str(),
-        })
-    }
-    .map_err(|error| {
-        JwsError::Key(permguard_core::KeyError::backend(format!(
-            "writing the protected header: {error}"
-        )))
-    })?;
-    let protected = B64.encode(header);
-    let payload = B64.encode(payload);
-    let signature = keys
-        .sign(format!("{protected}.{payload}").as_bytes())
-        .map_err(JwsError::Key)?;
-    if signature.algorithm() != T::ALGORITHM {
-        return Err(JwsError::Algorithm(signature.algorithm().to_owned()));
-    }
-    if signature.key_id() != &kid {
-        return Err(JwsError::Key(permguard_core::KeyError::backend(
-            "the signing key rotated mid-signature",
-        )));
-    }
-    Ok(JwsParts {
-        protected,
-        payload,
-        signature: B64.encode(signature.bytes()),
-    })
+    permguard_objects::jws::sign(&framing::<T>(), payload, keys)
 }
 
 impl<T: JwsArtifact> sealed::Sealed for Jws<'_, T> {}
@@ -2665,6 +2598,24 @@ mod tests {
 
     use super::*;
     use permguard_core::keys::Maintenance;
+
+    /// A batch has one framing: the one the Host's typed signer writes is the one an evidence
+    /// model signs with, and the other artifacts keep the header their contract fixes.
+    #[test]
+    fn the_host_frames_a_batch_as_its_model_does() {
+        use permguard_objects::jws::{DECISION_BATCH, EVENT_BATCH, Header};
+
+        assert_eq!(framing::<DecisionBatchV1>(), DECISION_BATCH);
+        assert_eq!(framing::<EventBatchV1>(), EVENT_BATCH);
+        for canonical in [
+            framing::<DecisionResponseV1>(),
+            framing::<AccessTokenV1>(),
+            framing::<StatusListTokenV1>(),
+        ] {
+            assert_eq!(canonical.algorithm, "EdDSA");
+            assert!(matches!(canonical.header, Header::Canonical(_)));
+        }
+    }
 
     /// A ring that signs with a fixed tag, so a test can tell which ring signed.
     struct TaggedRing(&'static str);

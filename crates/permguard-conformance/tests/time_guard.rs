@@ -42,11 +42,10 @@ const UNGUARDED_RINGS: &[&str] = &[
 /// The reads allowed anyway: the file, how many lines may read, and why.
 const ALLOWED: &[(&str, usize, &str)] = &[
     (
-        "permguard-server/src/app.rs",
-        2,
-        "the guard's own wall source, `SystemClock`, handed to `TimeGuard::open`; and the seed of \
-         `permguard verify --sample`, which picks the files an offline check reads and is compared \
-         with nothing",
+        "permguard-server/src/app/cli.rs",
+        1,
+        "the seed of `permguard verify --sample`, which picks the files an offline check reads \
+         and is compared with nothing",
     ),
     (
         "permguard-host/src/authz/store.rs",

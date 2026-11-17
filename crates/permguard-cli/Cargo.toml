@@ -20,19 +20,21 @@ publish = false
 [[bin]]
 name = "permguard"
 path = "src/main.rs"
+required-features = ["cli-bin"]
 
 [dependencies]
 anyhow.workspace = true
 base64.workspace = true
 clap.workspace = true
-clap_complete.workspace = true
+# Shell completions, which only the official binary prints.
+clap_complete = { workspace = true, optional = true }
 permguard-core.workspace = true
 # The offline `authority admin-key`: the Authority Plane's accounts on a stopped server's volume.
 permguard-authority-plane.workspace = true
 # The grant store of a volume, worked on offline by `host grants` (WP-2.4).
 permguard-host.workspace = true
 # The object trees the Control Plane declares, which `restore` scans as `volume verify` does (WP-7.9).
-permguard-control-plane.workspace = true
+permguard-control-plane = { workspace = true, optional = true }
 # The record, the chain and the signature — so `--verify` checks what the
 # planes compute, with the same code rather than a second implementation.
 permguard-decisions = { workspace = true, features = ["stream"] }
@@ -44,7 +46,7 @@ permguard-objects.workspace = true
 # Offline volume administration, the same code the server runs: no server, no listener.
 permguard-offline = { workspace = true, features = ["cli", "kms"] }
 # The evaluating half: this package decides.
-permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego", "evaluate"] }
+permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-stream.workspace = true
 # Reads a PEM public key or certificate, and names the client's token cache (TC-6, TC-7).
 ring.workspace = true
@@ -61,18 +63,31 @@ toml = "1.1"
 rustix = { workspace = true, features = ["termios"] }
 
 [features]
+# The official binary, on by default so that it builds as it always did: every language, and the
+# shell completions. A program that embeds the library, Permguard Admin, names the package with
+# `default-features = false` and the languages it decides with; the argument parser stays the
+# library's, since such a program runs the same commands through it (`shell::run_captured`).
+default = ["cli-bin"]
+cli-bin = ["cedar", "dogwood", "rego", "volume-restore", "dep:clap_complete"]
+# `restore`: the offline restore of a Server Host's volume, which scans the object trees the
+# Control Plane declares and so links its domain, with every language it validates.
+volume-restore = ["dep:permguard-control-plane"]
+# The policy languages the commands validate and decide with, each linking one engine package.
+cedar = ["permguard-languages/cedar"]
+dogwood = ["permguard-languages/dogwood"]
+rego = ["permguard-languages/rego"]
 # The `pkcs11` custody of the offline `host` commands: the server's, behind the same feature.
 pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
 # The tests stand real listeners and a real Host API to drive the command line against.
-permguard-server.workspace = true
+permguard-server = { workspace = true, features = ["cli", "signals", "authority-refresh", "otel", "kms"] }
 permguard-transport.workspace = true
 # The server stubs of the contracts, for the tests that stand a fake server on them.
 permguard-contracts = { workspace = true, features = ["control-server", "data-server", "host-server", "authority-server"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 # The Authority Plane's module, composed by the Authority Plane test as a binary composes it.
-permguard-authority-plane-server.workspace = true
+permguard-authority-plane-server = { workspace = true, features = ["bin"] }
 # The storage and audit sink of the Server context the Authority Plane test composes.
 permguard-std = { workspace = true, features = ["audit", "storage"] }
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).

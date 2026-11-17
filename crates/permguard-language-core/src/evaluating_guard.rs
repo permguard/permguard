@@ -3,14 +3,14 @@
 
 //! The panic boundary around the evaluating half: a compiler that comes apart loading a ledger
 //! ends as that load's refusal, never as a crashed plane or a refusal carrying the engine's words.
-//! The boundary around every other entry is the language's (`permguard_language_core::guard`).
+//! The boundary around every other entry is the language's (`crate::guard`).
 
-use permguard_language_core::artifact::Artifacts;
-use permguard_language_core::evaluate::StoredPolicy;
-use permguard_language_core::guard::{Guarded, contained};
-use permguard_language_core::role::Language;
+use crate::artifact::Artifacts;
+use crate::evaluate::StoredPolicy;
+use crate::guard::{Guarded, contained};
+use crate::role::Language;
 
-use crate::evaluate::{Evaluating, Evaluator};
+use crate::evaluating::{Evaluating, Evaluator};
 
 impl<L: Language + Evaluating + 'static> Evaluating for Guarded<L> {
     fn compile(
@@ -39,10 +39,8 @@ mod tests {
         fn language_version(&self) -> &'static str {
             "1.0.0"
         }
-        fn engine(&self) -> permguard_language_core::descriptor::Engine {
-            use permguard_language_core::descriptor::{
-                Capabilities, Engine, Isolation, IsolationMode, Locked,
-            };
+        fn engine(&self) -> crate::descriptor::Engine {
+            use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, Locked};
 
             Engine {
                 locked: Locked {

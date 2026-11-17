@@ -1,0 +1,32 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# An edition assembled outside this repository, as another repository would assemble one: its own
+# workspace, a Plane the workspace does not know, registered beside an open-source Plane in a
+# server built from the kit, through public interfaces alone. Nothing here is a product: the
+# Plane answers one route and runs one background task, to prove the composition and no more.
+# `scripts/check-external-plane-fixture.sh` resolves, builds and tests it.
+[package]
+name = "permguard-external-plane-fixture"
+description = "A server assembled outside the workspace from the Permguard server kit: a Plane of its own beside an open-source one."
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Its own workspace: the repository's would otherwise claim it, and unify its features.
+[workspace]
+
+[dependencies]
+# The server kit, with no feature: no command line, no signal handler, no exporter.
+permguard-server = { path = "../../crates/permguard-server", default-features = false }
+# An open-source Plane, reused as it is: its module, without the binary's own selections.
+permguard-data-plane-server = { path = "../../crates/permguard-data-plane-server", default-features = false }
+# The contracts a Plane is written against.
+permguard-core = { path = "../../crates/permguard-core" }
+permguard-host = { path = "../../crates/permguard-host" }
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }

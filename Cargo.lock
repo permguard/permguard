@@ -2663,6 +2663,7 @@ dependencies = [
  "permguard-conformance",
  "permguard-control-plane-server",
  "permguard-core",
+ "permguard-data-plane",
  "permguard-decisions",
  "permguard-events",
  "permguard-host",
@@ -2732,7 +2733,9 @@ dependencies = [
  "permguard-canonical",
  "permguard-core",
  "permguard-decisions",
+ "permguard-evaluator",
  "permguard-host",
+ "permguard-objects",
  "permguard-std",
  "permguard-stream",
  "proptest",
@@ -2783,6 +2786,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-evaluator"
+version = "0.1.0"
+dependencies = [
+ "permguard-core",
+ "permguard-evaluator",
+ "permguard-language-cedar",
+ "permguard-language-core",
+ "permguard-language-dogwood",
+ "permguard-language-rego",
+ "permguard-objects",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "permguard-events"
 version = "0.1.0"
 dependencies = [
@@ -2792,6 +2811,7 @@ dependencies = [
  "permguard-decisions",
  "permguard-events",
  "permguard-host",
+ "permguard-objects",
  "permguard-stream",
  "ring",
  "serde",
@@ -2824,7 +2844,6 @@ dependencies = [
  "cedar-policy",
  "permguard-core",
  "permguard-language-core",
- "permguard-pdp-core",
  "serde_json",
  "sha2",
 ]
@@ -2854,7 +2873,6 @@ dependencies = [
  "permguard-core",
  "permguard-language-core",
  "permguard-objects",
- "permguard-pdp-core",
  "serde",
  "serde_json",
  "sha2",
@@ -2867,7 +2885,6 @@ dependencies = [
  "jsonschema 0.59.0",
  "permguard-core",
  "permguard-language-core",
- "permguard-pdp-core",
  "regorus",
  "serde_json",
  "serde_norway",
@@ -2883,12 +2900,12 @@ dependencies = [
  "libc",
  "permguard-canonical",
  "permguard-core",
+ "permguard-evaluator",
  "permguard-language-cedar",
  "permguard-language-core",
  "permguard-language-dogwood",
  "permguard-language-rego",
  "permguard-objects",
- "permguard-pdp-core",
  "regorus",
  "serde",
  "serde_json",
@@ -2966,18 +2983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "permguard-pdp-core"
-version = "0.1.0"
-dependencies = [
- "permguard-core",
- "permguard-language-core",
- "permguard-objects",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
 name = "permguard-runtime"
 version = "0.1.0"
 dependencies = [
@@ -3027,6 +3032,7 @@ dependencies = [
  "permguard-objects",
  "permguard-offline",
  "permguard-runtime",
+ "permguard-server",
  "permguard-std",
  "permguard-stream",
  "permguard-telemetry",
@@ -3409,9 +3415,9 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
+checksum = "3ef0b569d1d907ab3a28596aee62cf1f61dacb0529a4bedcd8e7460e2d5228b4"
 dependencies = [
  "bytes",
  "prost-derive",
@@ -3440,9 +3446,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
+checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
 dependencies = [
  "anyhow",
  "itertools",
@@ -3453,9 +3459,9 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.14.4"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
+checksum = "f29a7c4c7a84cef41a53d338a2d10d4f1b043ea5c3dde26db22ee2c9c1b1c75b"
 dependencies = [
  "prost",
 ]
@@ -5405,9 +5411,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.0"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 dependencies = [
  "zeroize_derive",
 ]

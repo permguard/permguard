@@ -33,7 +33,6 @@ use super::host::{
     rooted_file, volume_of,
 };
 use super::host_ops::BundleFile;
-use super::restore::{config_of, planner};
 use crate::args::{BackupVerifyAction, Globals, MigrateAction};
 use crate::failure::Failure;
 use crate::output::Report;
@@ -645,6 +644,30 @@ fn migration_of(
         }
     };
     Ok(Migration::Server(subsystem.to_owned(), what))
+}
+
+/// The configuration a restore or a migration reads, refused when it requires dual control: an
+/// offline plan then needs an approval, which an offline volume cannot collect.
+pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
+    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
+        .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+    if config
+        .assurance()
+        .requires(permguard_core::assurance::Control::OperationsDualControl)
+    {
+        return Err(Failure::usage(
+            "the assurance profile requires dual control, under which an offline restore or \
+             migration needs an approval that no offline volume can collect yet: nothing was \
+             planned",
+        ));
+    }
+    Ok(config)
+}
+
+/// Who plans an offline operation: the initiator every offline command acts as.
+pub(super) fn planner() -> Result<permguard_core::authz::Principal, Failure> {
+    permguard_core::authz::Principal::new(INITIATOR)
+        .map_err(|error| Failure::internal(format!("the planner: {error}")))
 }
 
 #[cfg(test)]

@@ -19,6 +19,13 @@ publish = false
 cedar = ["permguard-data-plane/cedar"]
 dogwood = ["permguard-data-plane/dogwood"]
 rego = ["permguard-data-plane/rego"]
+# The Data Plane's capabilities beside the decision path, each one named: none by default.
+#
+# The round over the Host's `policy.mirror` tasks: without it the mirrors are filled otherwise.
+sync = ["permguard-data-plane/sync"]
+# The decision log, and the temporal interface with its event history.
+decision-evidence = ["permguard-data-plane/decision-evidence"]
+event-evidence = ["permguard-data-plane/event-evidence"]
 # The adapters that reach outside the process, each one a client an application selects.
 #
 # The Authority Plane's key set and status lists, fetched over REST or gRPC by the scheme of its
@@ -35,7 +42,8 @@ pkcs11 = ["permguard-offline/pkcs11"]
 [dependencies]
 anyhow.workspace = true
 permguard-core.workspace = true
-permguard-data-plane.workspace = true
+# The decision path against a verified local mirror: what an embedded Data Plane always is.
+permguard-data-plane = { workspace = true, features = ["local-ledger"] }
 permguard-host.workspace = true
 # The engine an application registers, and the catalogue it is registered in.
 permguard-languages = { workspace = true, features = ["evaluate"] }
@@ -50,7 +58,7 @@ permguard-client = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
-permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
+permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego", "sync", "decision-evidence", "event-evidence"] }
 permguard-events = { workspace = true, features = ["stream"] }
 permguard-mirror.workspace = true
 permguard-objects.workspace = true

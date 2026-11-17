@@ -23,7 +23,9 @@ rego = ["dep:permguard-language-rego"]
 # The evaluating half of every carried language, the routing, the evaluation path and the
 # supervised worker: what a decision point needs and a build that only validates does not.
 evaluate = [
-    "dep:permguard-pdp-core",
+    "dep:permguard-evaluator",
+    # A Plane fans the partitions of a question out on the kernel's pool.
+    "permguard-evaluator/threads",
     "permguard-language-cedar?/evaluate",
     "permguard-language-dogwood?/evaluate",
     "permguard-language-rego?/evaluate",
@@ -39,7 +41,7 @@ permguard-language-core.workspace = true
 permguard-language-cedar = { workspace = true, optional = true }
 permguard-language-dogwood = { workspace = true, optional = true }
 permguard-language-rego = { workspace = true, optional = true }
-permguard-pdp-core = { workspace = true, optional = true }
+permguard-evaluator = { workspace = true, optional = true }
 # The supervised worker's frame digests and the descriptor cache.
 sha2.workspace = true
 serde.workspace = true

@@ -21,14 +21,15 @@ autobenches = false
 base64.workspace = true
 anyhow.workspace = true
 axum.workspace = true
-clap.workspace = true
+clap = { workspace = true, optional = true }
 # The Authority surface's refresh of the key set and status lists a Host verifies tokens with.
-permguard-client = { workspace = true, features = ["authority-refresh", "peer"] }
+# The PeerChannel's frames, which the Host listener and a member's sessions share.
+permguard-client = { workspace = true, features = ["peer"] }
 permguard-core.workspace = true
 # The services a Host runs for itself, headless.
 permguard-runtime.workspace = true
 # Offline volume administration, which the command line runs without a server.
-permguard-offline = { workspace = true, features = ["cli", "kms"] }
+permguard-offline.workspace = true
 # The volume's ownership: the claim `serve` takes first, and the `volume claim` command.
 permguard-host.workspace = true
 # The stream foundation: the composition registers every stream its planes declare,
@@ -69,25 +70,45 @@ serde.workspace = true
 # its own document composes a value rather than slicing a closing brace off some text.
 serde_json.workspace = true
 serde_norway.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 # Distributed tracing: spans leave over OTLP when `telemetry.otel` turns it on.
-opentelemetry.workspace = true
-opentelemetry-otlp.workspace = true
-opentelemetry_sdk.workspace = true
-tracing-opentelemetry.workspace = true
+opentelemetry = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
 
 # The `drain` command signals the server it runs beside (`prestop`).
 [target.'cfg(unix)'.dependencies]
-rustix = { workspace = true }
+rustix = { workspace = true, optional = true }
 
+# The kit by default: the composition, the listeners, the Host API and the registration of a
+# Plane's module. What a program owns beside them is a feature its binary selects, none by default
+# (`11-refactoring/1-dependencies.md`, The server kit and other editions).
 [features]
+# The command line: the parser, the commands that run with no server, and `drain`.
+cli = ["dep:clap", "dep:rustix", "permguard-offline/cli"]
+# The process's signals: the server stops on them and reloads on a hangup.
+signals = ["tokio/signal"]
+# The Authority Plane's key set and status lists, fetched by the client library.
+authority-refresh = ["permguard-client/authority-refresh"]
+# The OTLP span exporter `telemetry.otel` turns on.
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry_sdk",
+    "dep:tracing-opentelemetry",
+]
+# The remote custodies of the Host's keys.
+kms = ["permguard-offline/kms"]
 # The PKCS#11 custody of the Host's keys (WP-3.2): loads the token's module at runtime.
 pkcs11 = ["dep:cryptoki", "permguard-offline/pkcs11"]
 
 
 [dev-dependencies]
+# The tests drive the server a Permguard binary is, with everything it selects.
+permguard-server = { path = ".", features = ["cli", "signals", "authority-refresh", "otel", "kms"] }
 # The implementations the tests compose beside the server's own: the pseudonymiser and the secret
 # stores.
 permguard-std = { workspace = true, features = ["audit", "keys", "metrics", "provision", "pseudonym", "secrets", "storage"] }
@@ -106,8 +127,8 @@ rcgen.workspace = true
 permguard-objects.workspace = true
 # An application embedding the Data Plane as a member of a served coordinator: the embedded
 # composition whole, and the repository's examples as its verified mirror.
-permguard-embedded = { workspace = true, features = ["cedar", "rego", "membership"] }
-permguard-data-plane = { workspace = true, features = ["cedar", "rego"] }
+permguard-embedded = { workspace = true, features = ["cedar", "rego", "membership", "sync", "decision-evidence", "event-evidence"] }
+permguard-data-plane = { workspace = true, features = ["cedar", "rego", "sync", "decision-evidence", "event-evidence"] }
 permguard-languages = { workspace = true, features = ["cedar", "rego", "evaluate"] }
 permguard-mirror.workspace = true
 serde_norway.workspace = true

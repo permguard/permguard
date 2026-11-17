@@ -372,6 +372,7 @@ pub enum Command {
     ///
     /// The server is stopped and the previous owner fenced with `volume claim`; the volume is
     /// scanned, then the mode's identity transition runs.
+    #[cfg(feature = "volume-restore")]
     Restore {
         /// The server's configuration file, read with the environment as the server reads them:
         /// where the volume's keys are kept and how they are opened.
@@ -425,6 +426,8 @@ pub enum Command {
         action: ReclaimAction,
     },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
+    /// The official binary's: a program that embeds the library has no shell to complete in.
+    #[cfg(feature = "cli-bin")]
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
     )]
@@ -2558,6 +2561,7 @@ pub enum ResetAction {
 }
 
 /// `permguard restore …` (WP-7.9): two steps, the run consuming the plan's file.
+#[cfg(feature = "volume-restore")]
 #[derive(Debug, Subcommand)]
 pub enum RestoreAction {
     /// Plan the restore: prove the fence, scan the volume, open its keys, and write the plan to

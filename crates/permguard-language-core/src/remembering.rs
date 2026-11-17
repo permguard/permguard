@@ -3,7 +3,7 @@
 
 //! The fourth role a language may play: **remembering**.
 //!
-//! [`Evaluating`](crate::evaluate::Evaluating) answers *may this subject do this to this?* from
+//! [`Evaluating`](crate::evaluating::Evaluating) answers *may this subject do this to this?* from
 //! the request alone. A temporal runtime answers a different question — *may this happen, given
 //! what has already happened?* — and the difference is not a bigger request. It is that the
 //! partition has a past, that the past has to be durable before a decision may depend on it, and
@@ -32,8 +32,8 @@
 
 use std::collections::BTreeMap;
 
-use permguard_language_core::occurrence::Occurrence;
-use permguard_language_core::temporal::Contract;
+use crate::occurrence::Occurrence;
+use crate::temporal::Contract;
 
 /// An occurrence this partition accepts, with everything the schema derived for it.
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ pub enum Applied {
     /// A history-only kind: observed, and there is no verdict to fabricate.
     Observed,
     /// A decision kind: the runtime's verdict, in Permguard's own terms.
-    Decided(permguard_language_core::evaluate::Verdict),
+    Decided(crate::evaluate::Verdict),
 }
 
 /// The remembering half of a compiled partition.

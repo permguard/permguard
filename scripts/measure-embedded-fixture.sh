@@ -41,7 +41,7 @@ measure() {
     cp "${ROOT}/Cargo.lock" "${FIXTURE}/Cargo.lock"
 
     local packages
-    packages="$(cargo tree --manifest-path "${MANIFEST}" --no-default-features \
+    packages="$(cargo tree --color never --manifest-path "${MANIFEST}" --no-default-features \
         --features "${selection}" --edges normal,build --prefix none --format '{lib}' |
         sed 's/ (\*)$//' | sort -u | grep -c .)"
     printf '%s\t-\tpackages\t%s\n' "${name}" "${packages}"

@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.33] - 2026-11-17
+
 ### Added
 
 - **The Data Plane embedded in a Rust application.**
@@ -35,7 +39,7 @@ is cut.
   Every binary, image, archive and shipped configuration keeps its name and its place.
   `task plane:run` and `make plane-run` build the server package accordingly.
 - **Each policy language is a package, and a build chooses the languages it carries.**
-  `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-pdp-core` holds the evaluating half.
+  `permguard-language-core` holds what a language is and the request model, and links no engine; `permguard-language-cedar`, `permguard-language-rego` and `permguard-language-dogwood` each wrap one; `permguard-evaluator` holds the evaluating half.
   `permguard-languages` is the catalogue, with one feature per language (`cedar`, `rego`, `dogwood`, all on by default) and an `evaluate` feature for the evaluating halves, the routing and the supervised worker; every path it offered before is where it was.
   The Control Plane builds every language without `evaluate`, so it validates what a push carries and links no evaluating half: Dogwood validates a partition with the analysis its evaluating half is built on.
   A build with one language runs that language's golden vectors and corpora without the other engines, and its startup check accepts it: the catalogue offers a manifest only the inputs of the languages it carries (`task test:profiles` runs every profile, each built apart).
@@ -64,6 +68,36 @@ is cut.
   Each profile is held to what it may link, to a budget of packages, 80 with no language and 153 with Cedar where the Data Plane linked 418, and to what it decides: one language decides the example narrowed to it, a build with no language refuses to start, and one without Dogwood refuses an event history.
   Its reference application reports what each profile holds, memory, threads and shutdown, through `task measure:embedded`, and the gate holds it to six threads under the one-worker profile, where it measures two against twenty-six by default.
   The embedded temporal interface is proven on the repository's Dogwood example, as one history decided in order, in the workspace and in the build that carries Dogwood alone.
+- **The decision point's kernel is `permguard-evaluator`.**
+  `permguard-pdp-core` is renamed, with every consumer: one package, no shim, the same code.
+  The evaluating contract, the engine value, the remembering role and the warm budget move beneath the languages, into `permguard-language-core`: a language package no longer links the kernel, and the kernel selects a language by a feature, `cedar`, `rego` or `dogwood`, none by default.
+  It gains the surface of an application that embeds no Data Plane: `Evaluator::builder().engine(..).load(policies)?.build()?` and `evaluate(&request)`, a decision with what permitted or refused it and why it failed, with no side effect and no Host, store, ledger or log in the build; what an application loads is `Provenance::Validated`, never a verified ledger, and a language that decides on history is refused by name.
+  The pool the partitions of a question fan out on is its `threads` feature, which a Plane selects: without it the kernel starts no thread.
+  Its languages are `cedar` and `rego`; Dogwood, which decides against a history, is validated by its own package and decided by the Data Plane.
+  It reads no wall clock; the monotonic clock is read to measure an evaluation and against a deadline its caller sets, which `Evaluator` never does.
+  It does not build for `wasm32-unknown-unknown`: a browser target is future work, not claimed.
+- **An evidence model links no Host.**
+  `permguard-decisions` and `permguard-events`, built with no feature, are the record, its chain and its signed batch, and link no Host: a batch is framed by `permguard_objects::jws`, the one framing the Host's typed signer writes too, and its key is selected by `permguard_objects::crypto::thumbprint`.
+  `storage` and `stream` remain the only way either reaches a Host, and a Host's typed signer signs a batch only in a build with one of them.
+  The `evaluator` feature of `permguard-decisions` adds `answer`, the record's answer from an evaluator's: its outcome, causes, cited policies and reason code, the mapping the Data Plane records with.
+  `permguard_evaluator::engines` names the engines a build selected, and `fixtures/evaluator-application` proves each profile of an application that embeds the evaluator alone, outside the workspace.
+- **The Data Plane's capabilities are features, none by default.**
+  `permguard-data-plane` with no feature is the evaluator and the request model, and links no Host, ledger, log or asynchronous runtime.
+  `local-ledger` brings the Host's handles and the decision path against a verified mirror, `sync` the round over the Host's `policy.mirror` tasks, `decision-evidence` the decision log, `event-evidence` the temporal interface; there is no `full` feature.
+  An application that names `permguard-data-plane` with `default-features = false` now names the capabilities it uses, and `permguard-embedded`, which always carries `local-ledger`, has `sync`, `decision-evidence` and `event-evidence` of its own.
+  A capability a build does not carry is refused at start by name: `dataPlane.decisions.log.enabled` without `decision-evidence`, `dataPlane.events.enabled` without `event-evidence`.
+  The standalone Data Plane, the all-in-one and their images carry every capability, as before.
+- **The server is a kit, and a program selects what it owns.**
+  `permguard-server` with no feature is the composition, the listeners, the Host API and the registration of a Plane's module: `PlaneServer::compose` returns the composed server, and `App::serve_until` serves it on the caller's runtime until the caller says stop, with no command line parsed and no signal handler installed.
+  The command line and its offline commands are `cli`, the process's signals `signals`, the Authority Plane's client `authority-refresh`, the OTLP exporter `otel`, the remote custodies `kms` and `pkcs11`; `telemetry.otel.enabled` in a build without `otel` is refused at start by name.
+  Each Plane's server package has a `bin` feature, on by default, that selects them for its binary: a composition that registers a Plane's module in a server of its own names the package with `default-features = false`.
+  The binaries and images are built as before, and `fixtures/external-plane` proves, outside the workspace, a Plane the workspace does not know served beside the Data Plane by the kit alone.
+  A Plane that serves no route over one transport is registered as it is: its empty router is no longer layered.
+- **The command line library selects its languages, and the binary is `cli-bin`.**
+  `permguard-cli` builds the `permguard` binary under `cli-bin`, on by default: every language, the offline `restore` and the shell completions.
+  A program that embeds the library names the package with `default-features = false` and what it uses: `cedar`, `dogwood`, `rego`, and `volume-restore` for the `restore` command, which links the Control Plane's domain.
+  With no feature the library links no engine: 172 packages where it linked 343.
+  The argument parser stays in the library, since an embedding program runs the same commands through `shell::run_captured`.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.
