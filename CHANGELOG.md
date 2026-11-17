@@ -68,7 +68,9 @@ is cut.
   `permguard-pdp-core` is renamed, with every consumer: one package, no shim, the same code.
   The evaluating contract, the engine value, the remembering role and the warm budget move beneath the languages, into `permguard-language-core`: a language package no longer links the kernel, and the kernel selects a language by a feature, `cedar`, `rego` or `dogwood`, none by default.
   It gains the surface of an application that embeds no Data Plane: `Evaluator::builder().engine(..).load(policies)?.build()?` and `evaluate(&request)`, a decision with what permitted or refused it and why it failed, with no side effect and no Host, store, ledger or log in the build; what an application loads is `Provenance::Validated`, never a verified ledger, and a language that decides on history is refused by name.
-  The pool the partitions of a question fan out on is its `threads` feature, which a Plane selects: without it the kernel starts no thread and reaches no operating system interface.
+  The pool the partitions of a question fan out on is its `threads` feature, which a Plane selects: without it the kernel starts no thread.
+  Its languages are `cedar` and `rego`; Dogwood, which decides against a history, is validated by its own package and decided by the Data Plane.
+  It reads the monotonic clock to measure an evaluation and no wall clock; it does not build for `wasm32-unknown-unknown`, which is not claimed.
 - **An evidence model links no Host.**
   `permguard-decisions` and `permguard-events`, built with no feature, are the record, its chain and its signed batch, and link no Host: a batch is framed by `permguard_objects::jws`, the one framing the Host's typed signer writes too, and its key is selected by `permguard_objects::crypto::thumbprint`.
   `storage` and `stream` remain the only way either reaches a Host, and a Host's typed signer signs a batch only in a build with one of them.

@@ -351,7 +351,8 @@ impl Evaluator {
     /// indeterminate, else any permit is a permit, else it is denied by default.
     ///
     /// It reads the compiled policies and the request, and nothing else: no file, no socket, no
-    /// clock, no log. Asked twice, it answers the same.
+    /// wall clock, no log. Asked twice, it answers the same. The one thing it reads beside them is
+    /// the monotonic clock, to measure how long each language took: the answer never depends on it.
     pub fn evaluate(&self, request: &Request) -> Result<Decision, Refused> {
         // The input against each compiled schema, before any policy is consulted: a request that
         // is malformed is refused, never denied.

@@ -4,7 +4,7 @@
 //! An application that decides in its own process with the Permguard evaluator and nothing
 //! else: no Host, no server, no ledger, no store, no listener.
 //!
-//! It names one Permguard package, `permguard-evaluator`, with the language its build selects,
+//! It names `permguard-evaluator` with the language its build decides with, Cedar or Rego,
 //! and, when it keeps records of what it decided or of what happened, the evidence model of
 //! each: `permguard-decisions`, `permguard-events`. The tests are the profiles' proof; what each
 //! profile links is `scripts/check-evaluator-fixture.sh`'s to read.

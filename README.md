@@ -955,12 +955,15 @@ Four compositions are built from these packages, each linking only what it selec
 
 | Composition | What an application names                                      | What it is                                                     |
 | ----------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
-| evaluator   | `permguard-evaluator` with one language                        | the decision alone: no Host, store, ledger, log or server      |
+| evaluator   | `permguard-evaluator` with `cedar` or `rego`                   | the decision alone: no Host, store, ledger, log or server      |
 | Data Plane  | `permguard-data-plane` with the capabilities it uses           | the evaluator, a verified ledger, the round, each evidence log |
 | embedded    | `permguard-embedded` with a language and capabilities          | the Data Plane over a Host composed for it, with no listener   |
 | server      | `permguard-server` and a Plane's server package                | the Planes served, and what a program owns beside them         |
 
-No package has a `full` feature, and none of these has a default one: a build that names nothing links nothing but the decision.
+`permguard-evaluator`, `permguard-data-plane`, `permguard-embedded` and `permguard-server` have no default feature and no `full` one: a build that names nothing links nothing but the decision.
+A package that builds a binary keeps that binary's selections on by default, so it builds as it always did: `bin` in each Plane's server package and `cli-bin` in `permguard-cli`, which a program that links the library turns off with `default-features = false`.
+`permguard-languages` carries every language by default, `permguard-evaluation-worker` too, and `permguard-client` has a `full` feature for a program that speaks every surface.
+Dogwood is no feature of the evaluator: it decides against a history, so its package validates a policy and the Data Plane, with `event-evidence`, decides with it.
 
 ```toml
 # The decision alone, with Cedar.
@@ -977,7 +980,8 @@ permguard-data-plane-server = { path = "crates/permguard-data-plane-server", def
 ```
 
 The crates are not published: a path or a git dependency on this repository at one tag is how they are named.
-The evaluator links no thread, file, socket or process interface, which a gate holds; no browser or WebAssembly build is claimed, since no engine has been built for one here.
+The evaluator's sources name no thread, file, socket, process or wall clock, which a gate reads from their text; it reads the monotonic clock once, to measure an evaluation.
+No browser or WebAssembly build exists: the evaluator with no engine does not build for `wasm32-unknown-unknown` today, since the object model's cryptography links `getrandom` with no browser backend.
 
 </details>
 

@@ -1161,8 +1161,9 @@ fn an_evidence_model_links_no_host_until_a_runtime_is_selected() {
 }
 
 /// The kernel selects its language (phase 6): built with none it links no engine at all, and with
-/// one it links that language's package and engine and no other language's. Dogwood lowers to
-/// Cedar, so its upstream engine links `cedar-policy`; Permguard's own Cedar package it does not.
+/// one it links that language's package and engine and no other language's. Dogwood is none of
+/// them: it decides against a history the kernel keeps none of, so no feature of the kernel links
+/// it, and it is validated by its own package and decided by the Data Plane.
 #[test]
 fn the_evaluator_links_only_the_one_engine_it_selects() {
     const CEDAR: &[&str] = &["permguard-language-cedar"];
@@ -1186,9 +1187,9 @@ fn the_evaluator_links_only_the_one_engine_it_selects() {
             &[CEDAR, DOGWOOD, &["cedar-policy", "cedar-policy-core"]][..],
         ),
         (
-            "dogwood",
-            &["permguard-language-dogwood", "dogwood-language"][..],
-            &[CEDAR, REGO][..],
+            "cedar,rego,threads",
+            &["permguard-language-cedar", "permguard-language-rego"][..],
+            &[DOGWOOD][..],
         ),
     ] {
         let linked = carried_with("permguard-evaluator", features);
@@ -1395,6 +1396,73 @@ fn a_client_links_only_the_transports_it_selects() {
     assert!(
         problems.is_empty(),
         "a client links the transports it selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The open-source workspace is closed over itself and the public registry (phase 6): every
+/// package of the resolved graph, development dependencies included, is either a member kept
+/// under this repository's root or a crate of crates.io. A path that leaves the repository is how
+/// another edition's code would arrive, a proprietary one's included, and `deny.toml`, which
+/// refuses a git source and an unknown registry, says nothing of a path.
+#[test]
+fn every_package_is_this_repository_s_or_the_public_registry_s() {
+    const REGISTRY: &str = "registry+https://github.com/rust-lang/crates.io-index";
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let output = Command::new(cargo)
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--all-features",
+            "--locked",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        output.status.success(),
+        "cargo metadata: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("cargo metadata is JSON");
+    let workspace = Path::new(metadata["workspace_root"].as_str().expect("a root"))
+        .canonicalize()
+        .expect("the workspace root exists");
+
+    let mut problems = Vec::new();
+    let mut members = 0;
+    for package in metadata["packages"].as_array().expect("packages") {
+        let name = package["name"].as_str().expect("a name");
+        match package["source"].as_str() {
+            // No source: a path dependency, which stays under the repository's root.
+            None => {
+                members += 1;
+                let manifest = Path::new(package["manifest_path"].as_str().expect("a manifest"));
+                let inside = manifest
+                    .canonicalize()
+                    .is_ok_and(|manifest| manifest.starts_with(&workspace));
+                if !inside {
+                    problems.push(format!(
+                        "{name} is a path dependency outside the repository: {}",
+                        manifest.display()
+                    ));
+                }
+            }
+            Some(source) if source == REGISTRY => {}
+            Some(source) => problems.push(format!("{name} comes from {source}")),
+        }
+    }
+    // The check reads a real graph: the workspace's own packages are the path dependencies.
+    assert!(
+        members >= 36,
+        "the workspace's packages are read: {members}"
+    );
+    assert!(
+        problems.is_empty(),
+        "the workspace reaches outside itself and the public registry:\n  {}",
         problems.join("\n  ")
     );
 }

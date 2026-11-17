@@ -21,7 +21,9 @@ publish = false
 # A language each, none by default.
 cedar = ["permguard-evaluator/cedar"]
 rego = ["permguard-evaluator/rego"]
-dogwood = ["permguard-evaluator/dogwood"]
+# Dogwood decides against a history, which the stateless evaluator keeps none of: its package is
+# linked here to validate a policy, and no more. Deciding with it is the Data Plane's.
+dogwood = ["dep:permguard-language-dogwood"]
 # The evidence models, each alone: the record, its chain and its signed batch, and no Host.
 decisions = ["dep:permguard-decisions"]
 events = ["dep:permguard-events"]
@@ -32,6 +34,8 @@ permguard-evaluator = { path = "../../crates/permguard-evaluator", default-featu
 permguard-decisions = { path = "../../crates/permguard-decisions", default-features = false, features = ["evaluator"], optional = true }
 # The event record.
 permguard-events = { path = "../../crates/permguard-events", default-features = false, optional = true }
+# The Dogwood language, validating: no evaluating half.
+permguard-language-dogwood = { path = "../../crates/permguard-language-dogwood", optional = true }
 serde_json = "1"
 
 [dev-dependencies]

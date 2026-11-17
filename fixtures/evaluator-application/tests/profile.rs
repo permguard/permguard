@@ -8,7 +8,7 @@
 //! | no language           | policies have no engine to load them, and nothing is built            |
 //! | `cedar`               | validated, compiled, decided: permit, deny, default, and the context  |
 //! | `rego`                | validated, compiled, decided                                          |
-//! | `dogwood`             | validated; refused by an evaluator that keeps no history              |
+//! | `dogwood`             | validated by its own package; the evaluator has no engine for it      |
 //! | `cedar,decisions`     | an answer becomes a record; a chain; a batch signed and verified      |
 //! | `cedar,events`        | an event record with no decision record; a batch signed and verified  |
 //! | both models           | one decision and what it was decided about, in two separate chains    |
@@ -129,16 +129,33 @@ fn rego_decides_who_may_do_what_to_what() {
 
 #[cfg(feature = "dogwood")]
 #[test]
-fn dogwood_is_linked_and_refused_by_an_evaluator_that_keeps_no_history() {
-    let engine = permguard_evaluator::engines::dogwood();
-    assert_eq!(engine.name(), "dogwood");
+fn dogwood_is_validated_beside_the_evaluator_and_decided_elsewhere() {
+    let language = permguard_language_dogwood::language();
+    assert_eq!(language.name(), "dogwood");
+    assert!(language.is_temporal(), "it decides against a history");
 
+    // The repository's own example is a Dogwood policy; a statement cut short is not.
+    let policy =
+        include_str!("../../../examples/dogwood-session-access/governance/read-after-login.dw");
+    language
+        .validate_policy(policy.as_bytes())
+        .expect("the example's policy is valid Dogwood");
+    for broken in [
+        "permit (principal",
+        "permit (principal, action, resource) when temporal {",
+    ] {
+        assert!(
+            language.validate_policy(broken.as_bytes()).is_err(),
+            "not a policy, and it validated: {broken}"
+        );
+    }
+
+    // The evaluator has no engine for it in any build: its policies have nothing to load them.
     let refused = Evaluator::builder()
-        .engine(engine)
-        .load(Policies::of("dogwood").policy("any", "permit (principal, action, resource);"))
+        .load(Policies::of("dogwood").policy("read-after-login", policy))
         .err()
-        .expect("Dogwood decides against a past");
-    assert_eq!(refused, Refused::Temporal("dogwood".to_owned()));
+        .expect("no engine decides Dogwood here");
+    assert_eq!(refused, Refused::NoEngine("dogwood".to_owned()));
 }
 
 /// A ring the application holds itself: Ed25519, published under its own name.

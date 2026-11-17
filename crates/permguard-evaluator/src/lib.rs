@@ -24,13 +24,6 @@ pub mod engines {
         permguard_language_cedar::engine()
     }
 
-    /// Dogwood, both halves. It decides against a history, which the stateless
-    /// [`Evaluator`](crate::Evaluator) keeps none of and refuses by name.
-    #[cfg(feature = "dogwood")]
-    pub fn dogwood() -> crate::Engine {
-        permguard_language_dogwood::engine()
-    }
-
     /// Rego, both halves.
     #[cfg(feature = "rego")]
     pub fn rego() -> crate::Engine {

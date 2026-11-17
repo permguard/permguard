@@ -40,7 +40,8 @@ permguard_server permguard_transport permguard_telemetry permguard_client permgu
 permguard_tls permguard_mirror permguard_sync permguard_notp permguard_stream permguard_languages
 permguard_evaluation_worker axum tonic hyper tower_http opentelemetry rustls clap tokio"
 
-# What each selection brings. Dogwood lowers to Cedar, so its engine links Cedar's upstream
+# What each selection brings. Dogwood is its own package, validating, and no feature of the
+# evaluator; it lowers to Cedar, so it links Cedar's upstream
 # package; Permguard's own Cedar package it does not.
 brings() {
     case "$1" in
