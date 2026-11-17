@@ -27,6 +27,36 @@ fn free_port() -> u16 {
         .expect("a free port")
 }
 
+/// What a server says when an address it was configured with is taken.
+const ADDRESS_IN_USE: &str = "Address already in use";
+
+/// Whether the server that ran in `dir` exited because another process held one of its ports:
+/// said on standard error, which a start keeps in `stderr.log`, or in what it logged.
+fn lost_a_port(dir: &std::path::Path, seen: &str) -> bool {
+    seen.contains(ADDRESS_IN_USE)
+        || std::fs::read_to_string(dir.join("stderr.log"))
+            .is_ok_and(|said| said.contains(ADDRESS_IN_USE))
+}
+
+/// Runs `boot`, which empties `dir`, chooses ports, writes the configuration and starts the
+/// server, and runs it again when the server lost a port: a port found free is released before
+/// the server, a process of its own, binds it, and another process may take it in between. Any
+/// other outcome is returned as it is, a server that did not start included.
+fn booted<T>(
+    dir: &std::path::Path,
+    mut boot: impl FnMut() -> (T, Child, String),
+) -> (T, Child, String) {
+    for _ in 0..2 {
+        let (ports, mut child, seen) = boot();
+        if seen.contains("server.started") || !lost_a_port(dir, &seen) {
+            return (ports, child, seen);
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    boot()
+}
+
 fn stop(mut child: Child) {
     let _ = child.kill();
     let _ = child.wait();
@@ -45,39 +75,43 @@ fn help_names_the_product_and_exits_cleanly() {
 fn the_binary_serves_the_authority_plane_alone_and_issues_a_token() {
     let dir =
         std::env::temp_dir().join(format!("permguard-authority-binary-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
-    let (port, host_port) = (free_port(), free_port());
-    std::fs::write(
-        dir.join("config.yml"),
-        format!(
-            "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
-             log:\n  level: info\n  format: json\n\
-             host:\n  addr: 127.0.0.1:{host_port}\n\
-             runtime:\n  planes: [authority]\n\
-             authority:\n  url: http://127.0.0.1:{port}\n\
-             authorityPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{port} }}\n"
-        ),
-    )
-    .expect("the config writes");
-    let mut child = binary()
-        .arg(dir.join("config.yml"))
-        .env("PERMGUARD_WORKING_DIR", &dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("the binary starts");
-    let mut stdout = child.stdout.take().expect("stdout is piped");
-    let mut seen = String::new();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    let mut buffer = [0u8; 4096];
-    while std::time::Instant::now() < deadline && !seen.contains("server.started") {
-        match stdout.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(read) => seen.push_str(&String::from_utf8_lossy(&buffer[..read])),
-            Err(_) => break,
+    let ((port, _host_port), child, seen) = booted(&dir, || {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+        let (port, host_port) = (free_port(), free_port());
+        std::fs::write(
+            dir.join("config.yml"),
+            format!(
+                "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
+                 log:\n  level: info\n  format: json\n\
+                 host:\n  addr: 127.0.0.1:{host_port}\n\
+                 runtime:\n  planes: [authority]\n\
+                 authority:\n  url: http://127.0.0.1:{port}\n\
+                 authorityPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{port} }}\n"
+            ),
+        )
+        .expect("the config writes");
+        let mut child = binary()
+            .arg(dir.join("config.yml"))
+            .env("PERMGUARD_WORKING_DIR", &dir)
+            .stdout(std::process::Stdio::piped())
+            // Kept, so that a start that lost a port can be told from one that failed.
+            .stderr(std::fs::File::create(dir.join("stderr.log")).expect("a log"))
+            .spawn()
+            .expect("the binary starts");
+        let mut stdout = child.stdout.take().expect("stdout is piped");
+        let mut seen = String::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut buffer = [0u8; 4096];
+        while std::time::Instant::now() < deadline && !seen.contains("server.started") {
+            match stdout.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => seen.push_str(&String::from_utf8_lossy(&buffer[..read])),
+                Err(_) => break,
+            }
         }
-    }
+        ((port, host_port), child, seen)
+    });
     let outcome = (|| {
         if !seen.contains("server.started") {
             return Err(format!("the binary did not start: {seen}"));

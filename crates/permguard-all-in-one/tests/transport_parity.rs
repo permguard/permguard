@@ -62,8 +62,28 @@ enum Served {
     GrpcOnly,
 }
 
+/// What a server says when an address it was configured with is taken.
+const ADDRESS_IN_USE: &str = "Address already in use";
+
 /// Starts the runtime with every plane serving `served`, and reads its log until it serves.
+///
+/// A port found free is released before the runtime, a process of its own, binds it, and another
+/// process may take it in between: a start that failed on that alone is made again over other
+/// ports, twice at most. Any other failure is the test's, as it was.
 fn start(tag: &str, served: Served) -> Running {
+    let mut said = String::new();
+    for _ in 0..3 {
+        match start_once(tag, served) {
+            Ok(running) => return running,
+            Err(lost) if lost.contains(ADDRESS_IN_USE) => said = lost,
+            Err(failed) => panic!("the runtime did not start ({served:?}): {failed}"),
+        }
+    }
+    panic!("the runtime lost a port three times ({served:?}): {said}")
+}
+
+/// One start: the running runtime, or what it said when it did not serve.
+fn start_once(tag: &str, served: Served) -> Result<Running, String> {
     let dir =
         std::env::temp_dir().join(format!("permguard-transport-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -124,7 +144,8 @@ fn start(tag: &str, served: Served) -> Running {
         .arg(dir.join("config.yml"))
         .env("PERMGUARD_WORKING_DIR", &dir)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        // Kept, so that a start that lost a port can be told from one that failed.
+        .stderr(std::fs::File::create(dir.join("stderr.log")).expect("a log"))
         .spawn()
         .expect("the runtime starts");
     let mut stdout = child.stdout.take().expect("stdout is piped");
@@ -138,13 +159,15 @@ fn start(tag: &str, served: Served) -> Running {
             Err(_) => break,
         }
     }
+    if !seen.contains("server.started") {
+        let _ = child.kill();
+        let _ = child.wait();
+        let said = std::fs::read_to_string(dir.join("stderr.log")).unwrap_or_default();
+        return Err(format!("{seen}\n{said}"));
+    }
     // Drained from here on, so a full pipe never blocks the runtime.
     std::thread::spawn(move || std::io::copy(&mut stdout, &mut std::io::sink()));
-    assert!(
-        seen.contains("server.started"),
-        "the runtime did not start ({served:?}): {seen}"
-    );
-    Running { child, dir, host }
+    Ok(Running { child, dir, host })
 }
 
 /// The process registry: REST on the Server Host listener.

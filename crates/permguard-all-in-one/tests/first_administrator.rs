@@ -50,13 +50,44 @@ fn free_port() -> u16 {
         .expect("a free port")
 }
 
+/// What a server says when an address it was configured with is taken.
+const ADDRESS_IN_USE: &str = "Address already in use";
+
+/// Whether the server that ran in `dir` exited because another process held one of its ports:
+/// said on standard error, which a start keeps in `stderr.log`, or in what it logged.
+fn lost_a_port(dir: &std::path::Path, seen: &str) -> bool {
+    seen.contains(ADDRESS_IN_USE)
+        || std::fs::read_to_string(dir.join("stderr.log"))
+            .is_ok_and(|said| said.contains(ADDRESS_IN_USE))
+}
+
+/// Runs `boot`, which empties `dir`, chooses ports, writes the configuration and starts the
+/// server, and runs it again when the server lost a port: a port found free is released before
+/// the server, a process of its own, binds it, and another process may take it in between. Any
+/// other outcome is returned as it is, a server that did not start included.
+fn booted<T>(
+    dir: &std::path::Path,
+    mut boot: impl FnMut() -> (T, Child, String),
+) -> (T, Child, String) {
+    for _ in 0..2 {
+        let (ports, mut child, seen) = boot();
+        if seen.contains("server.started") || !lost_a_port(dir, &seen) {
+            return (ports, child, seen);
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    boot()
+}
+
 /// Starts the runtime on `dir` and reads its log until it serves: the child and what it logged.
 fn start(dir: &std::path::Path) -> (Child, String) {
     let mut child = binary()
         .arg(dir.join("config.yml"))
         .env("PERMGUARD_WORKING_DIR", dir)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        // Kept, so that a start that lost a port can be told from one that failed.
+        .stderr(std::fs::File::create(dir.join("stderr.log")).expect("a log"))
         .spawn()
         .expect("the runtime starts");
     let mut stdout = child.stdout.take().expect("stdout is piped");
@@ -81,24 +112,26 @@ fn stop(mut child: Child) {
 #[test]
 fn a_fresh_host_makes_its_administrator_once_and_its_key_administers() {
     let dir = std::env::temp_dir().join(format!("permguard-first-admin-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
-    let port = free_port();
-    let host_port = free_port();
-    std::fs::write(
-        dir.join("config.yml"),
-        format!(
-            "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
-             log:\n  level: info\n  format: json\n\
-             host:\n  addr: 127.0.0.1:{host_port}\n\
-             runtime:\n  planes: [authority]\n\
-             authority:\n  url: http://127.0.0.1:{port}\n\
-             authorityPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{port} }}\n"
-        ),
-    )
-    .expect("the config writes");
-
-    let (child, seen) = start(&dir);
+    let ((port, host_port), child, seen) = booted(&dir, || {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+        let port = free_port();
+        let host_port = free_port();
+        std::fs::write(
+            dir.join("config.yml"),
+            format!(
+                "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
+                 log:\n  level: info\n  format: json\n\
+                 host:\n  addr: 127.0.0.1:{host_port}\n\
+                 runtime:\n  planes: [authority]\n\
+                 authority:\n  url: http://127.0.0.1:{port}\n\
+                 authorityPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{port} }}\n"
+            ),
+        )
+        .expect("the config writes");
+        let (child, seen) = start(&dir);
+        ((port, host_port), child, seen)
+    });
     let key_file = dir.join("planes/authority/admin.key");
     let base = format!("http://127.0.0.1:{port}");
     let outcome = (|| {
