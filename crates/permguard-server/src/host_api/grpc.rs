@@ -620,6 +620,15 @@ impl OperationsService for Served {
                     class: setting.class,
                 })
                 .collect(),
+            public_grants: effective
+                .public_grants
+                .into_iter()
+                .map(|grant| v1::EffectivePublicGrant {
+                    operations: grant.operations,
+                    selector: grant.selector,
+                    resource_types: grant.resource_types,
+                })
+                .collect(),
         }))
     }
 

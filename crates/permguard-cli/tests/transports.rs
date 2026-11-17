@@ -1308,6 +1308,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
         effective: Effective {
             revision: 0,
             settings: Vec::new(),
+            public_grants: Vec::new(),
         },
         trail: "test".to_owned(),
         mutations: Some(mutations),

@@ -244,6 +244,7 @@ impl Host {
             effective: Effective {
                 revision: 0,
                 settings: Vec::new(),
+                public_grants: Vec::new(),
             },
             trail: "test".to_owned(),
             mutations: None,
@@ -859,6 +860,7 @@ async fn side_with(
         effective: Effective {
             revision: 0,
             settings: Vec::new(),
+            public_grants: Vec::new(),
         },
         trail: "test".to_owned(),
         mutations: Some(Arc::clone(&mutations)),

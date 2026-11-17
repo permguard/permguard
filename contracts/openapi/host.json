@@ -6504,15 +6504,58 @@
             },
             "description": "Every setting this build reads, supplied or default, secrets masked.",
             "x-grpc-field": "settings"
+          },
+          "public_grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectivePublicGrant"
+            },
+            "description": "The `host.authz.public` grants in force: what anybody may do without a credential.",
+            "x-grpc-field": "public_grants"
           }
         },
         "required": [
           "revision",
-          "settings"
+          "settings",
+          "public_grants"
         ],
         "additionalProperties": false,
         "description": "What `GET /host/v1/config/effective` answers.",
         "x-grpc-message": "permguard.host.v1.GetEffectiveConfigResponse"
+      },
+      "EffectivePublicGrant": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The operations granted, each a registered operation.",
+            "x-grpc-field": "operations"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The resources granted on, as the configuration spells the selector.",
+            "x-grpc-field": "selector"
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The resource types granted on; `*` for any.",
+            "x-grpc-field": "resource_types"
+          }
+        },
+        "required": [
+          "operations",
+          "selector",
+          "resource_types"
+        ],
+        "additionalProperties": false,
+        "description": "One public grant in force.",
+        "x-grpc-message": "permguard.host.v1.EffectivePublicGrant"
       },
       "HostIdentity": {
         "type": "object",

@@ -1001,7 +1001,9 @@ impl HostAuth {
             let at = format!("host.authz.public[{position}]");
             if !assurance.permits(Relaxation::AuthzPublic) {
                 return Err(format!(
-                    "{at} grants without a credential, which the `{}` assurance profile does not                      permit: `{}` is in force; every request names its principal, so remove the                      public grants and give the callers a credential",
+                    "{at} grants without a credential, which the `{}` assurance profile does not \
+                    permit: `{}` is in force; every request names its principal, so remove the \
+                    public grants and give the callers a credential",
                     assurance.profile(),
                     Relaxation::AuthzPublic.forbidden_by(),
                 ));
@@ -1013,7 +1015,10 @@ impl HostAuth {
                 && !assurance.permits(Relaxation::AuthzPublicWrite)
             {
                 return Err(format!(
-                    "{at}.operations names `{write}`, a write operation, which the `{}` assurance                      profile does not grant without a credential: `{}` is in force; give the                      callers a token, or state `assurance.profile: development` on a developer's                      machine",
+                    "{at}.operations names `{write}`, a write operation, which the `{}` assurance \
+                    profile does not grant without a credential: `{}` is in force; give the \
+                    callers a token, or state `assurance.profile: development` on a developer's \
+                    machine",
                     assurance.profile(),
                     Relaxation::AuthzPublicWrite.forbidden_by(),
                 ));

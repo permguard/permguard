@@ -330,6 +330,11 @@ fn launch_host(
                             origin: "environment".to_owned(),
                             class: "startup".to_owned(),
                         }],
+                        public_grants: vec![permguard_host::api::config::PublicGrant {
+                            operations: vec!["lifecycle.read".to_owned()],
+                            selector: "host".to_owned(),
+                            resource_types: vec!["*".to_owned()],
+                        }],
                     },
                     trail: "test".to_owned(),
                     mutations: Some(mutations),
@@ -1400,6 +1405,12 @@ fn the_host_operations_commands_answer_over_both_transports() {
     assert_eq!(
         configs[0]["settings"][0]["key"], "PERMGUARD_LOG_LEVEL",
         "the settings carried"
+    );
+    // The public grants in force are carried beside the settings, on both transports (BUG-0202).
+    assert_eq!(
+        configs[0]["public_grants"],
+        serde_json::json!([{"operations": ["lifecycle.read"], "selector": "host", "resource_types": ["*"]}]),
+        "the public grants carried"
     );
     assert_eq!(
         first_records[0], first_records[1],

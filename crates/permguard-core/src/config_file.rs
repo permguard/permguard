@@ -1760,7 +1760,8 @@ impl ConfigFile {
                 .find(|operation| operations::never_public(operation))
             {
                 bail!(
-                    "{at}.operations names `{administrative}`, an administrative operation, which                      is never public: grant it to an authenticated principal"
+                    "{at}.operations names `{administrative}`, an administrative operation, which \
+                     is never public: grant it to an authenticated principal"
                 );
             }
             let resource_types = if grant.resource_types.is_empty() {

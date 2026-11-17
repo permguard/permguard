@@ -285,6 +285,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             effective: Effective {
                 revision: 0,
                 settings: Vec::new(),
+                public_grants: Vec::new(),
             },
             trail: "recording".to_owned(),
             mutations: Some(mutations),

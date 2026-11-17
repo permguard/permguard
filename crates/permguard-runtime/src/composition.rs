@@ -2240,7 +2240,21 @@ impl Composition {
                 assurance: Assurance::of(
                     &config.assurance().report(&config.relaxations_in_force()),
                 ),
-                effective: Effective::of(config.effective_settings()),
+                // The settings, and the public grants beside them (BUG-0202): a structured section
+                // with no variable, read from the file the authorization was built from.
+                effective: Effective::of(config.effective_settings()).with_public_grants(
+                    file.host_auth()
+                        .with_context(|| {
+                            format!("in the configuration file {}", config_file.display())
+                        })?
+                        .public
+                        .into_iter()
+                        .map(|grant| permguard_host::api::config::PublicGrant {
+                            operations: grant.operations,
+                            selector: grant.selector.to_string(),
+                            resource_types: grant.resource_types,
+                        }),
+                ),
                 trail: audit.name().to_owned(),
                 mutations: Some(Arc::clone(&mutations)),
                 identity: Some(Arc::clone(&host_identity)),

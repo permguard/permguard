@@ -32,19 +32,43 @@ pub struct Setting {
     pub class: String,
 }
 
+/// One `host.authz.public` grant in force: what anybody may do without a credential (BUG-0202).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicGrant {
+    /// The operations granted, each a registered operation.
+    pub operations: Vec<String>,
+    /// The resources granted on, as the configuration spells the selector.
+    pub selector: String,
+    /// The resource types granted on; `*` for any.
+    pub resource_types: Vec<String>,
+}
+
 /// The effective configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Effective {
     /// `0`: the static configuration this process started with.
     pub revision: u64,
     pub settings: Vec<Setting>,
+    /// The public grants in force, empty when every request needs a credential. A structured
+    /// section of the file, with no variable of its own, so it is not among `settings`; the
+    /// assurance block names the relaxations it amounts to. Absent from a Host older than
+    /// it, which read as none.
+    #[serde(default)]
+    pub public_grants: Vec<PublicGrant>,
 }
 
 impl Effective {
+    /// The document with the public grants in force beside the settings.
+    pub fn with_public_grants(mut self, grants: impl IntoIterator<Item = PublicGrant>) -> Self {
+        self.public_grants = grants.into_iter().collect();
+        self
+    }
+
     /// Builds the document from every setting in force, masking what [`is_secret`] names.
     pub fn of(settings: impl IntoIterator<Item = EffectiveSetting>) -> Self {
         Self {
             revision: 0,
+            public_grants: Vec::new(),
             settings: settings
                 .into_iter()
                 .map(|setting| {

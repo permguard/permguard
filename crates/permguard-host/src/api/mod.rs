@@ -1005,6 +1005,7 @@ pub(crate) mod testing {
             effective: Effective {
                 revision: 0,
                 settings: Vec::new(),
+                public_grants: Vec::new(),
             },
             trail: "audit".to_owned(),
             mutations: Some(mutations),

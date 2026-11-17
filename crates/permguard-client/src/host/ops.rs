@@ -14,7 +14,7 @@ use permguard_host::api::audit::{
 use permguard_host::api::backups::{
     AbortBackup, BackupEnded, BackupList, BackupPrepared, BackupView, FinalizeBackup, PrepareBackup,
 };
-use permguard_host::api::config::{Effective, Setting};
+use permguard_host::api::config::{Effective, PublicGrant, Setting};
 use permguard_host::api::gc::{GcPlanned, GcRan, PlanGc, RunGc};
 use permguard_host::api::keys::{
     KeyBundlePage, KeyBundleQuery, KeyRevoked, KeyView, PlanKeyRevoke, RingRotated, RingSummary,
@@ -603,6 +603,15 @@ impl Operations for GrpcHost {
                     masked: setting.masked,
                     origin: setting.origin,
                     class: setting.class,
+                })
+                .collect(),
+            public_grants: answer
+                .public_grants
+                .into_iter()
+                .map(|grant| PublicGrant {
+                    operations: grant.operations,
+                    selector: grant.selector,
+                    resource_types: grant.resource_types,
                 })
                 .collect(),
         })
