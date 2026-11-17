@@ -76,12 +76,12 @@ permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }
 permguard-conformance = { path = "crates/permguard-conformance", version = "0.1.0" }
 permguard-contracts = { path = "crates/permguard-contracts", version = "0.1.0" }
 permguard-authority-plane = { path = "crates/permguard-authority-plane", version = "0.1.0" }
-permguard-authority-plane-server = { path = "crates/permguard-authority-plane-server", version = "0.1.0" }
+permguard-authority-plane-server = { path = "crates/permguard-authority-plane-server", version = "0.1.0", default-features = false }
 permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.0" }
-permguard-control-plane-server = { path = "crates/permguard-control-plane-server", version = "0.1.0" }
+permguard-control-plane-server = { path = "crates/permguard-control-plane-server", version = "0.1.0", default-features = false }
 permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
 permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
-permguard-data-plane-server = { path = "crates/permguard-data-plane-server", version = "0.1.0" }
+permguard-data-plane-server = { path = "crates/permguard-data-plane-server", version = "0.1.0", default-features = false }
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
 permguard-embedded = { path = "crates/permguard-embedded", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }

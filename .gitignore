@@ -566,3 +566,4 @@ prebuilt/
 /fixtures/embedded-application/Cargo.lock
 /fixtures/embedded-native/Cargo.lock
 /fixtures/evaluator-application/Cargo.lock
+/fixtures/external-plane/Cargo.lock

@@ -15,6 +15,7 @@
 pub mod app;
 /// The Authority Plane's key set and status lists, fetched by the client library's Authority
 /// surface (RD-11); named here where the composition wires it.
+#[cfg(feature = "authority-refresh")]
 pub use permguard_client::authority_refresh;
 pub use permguard_runtime::banner;
 /// The services a Host runs for itself are `permguard-runtime`'s (RD-15), named here where the
@@ -22,6 +23,7 @@ pub use permguard_runtime::banner;
 pub use permguard_runtime::{
     checkpoints, dormancy, objectives, repin, shipping, stream_gc, time, witness, zone,
 };
+#[cfg(feature = "cli")]
 pub mod command;
 pub use permguard_offline::custody;
 pub mod host;
@@ -32,11 +34,14 @@ pub mod logging;
 /// Offline volume administration: `permguard-offline`'s, named here where the server uses it.
 pub use permguard_offline::volume as offline;
 pub mod plane;
+#[cfg(feature = "cli")]
 pub mod prestop;
+#[cfg(feature = "signals")]
 pub mod signal;
 
 pub use app::{App, VerifiedTree};
 pub use banner::Banner;
+#[cfg(feature = "cli")]
 pub use command::{
     Action, AuditCommand, Cli, Command, KeysCommand, MigrateCommand, ServeArgs, VolumeCommand,
 };

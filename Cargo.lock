@@ -3031,6 +3031,7 @@ dependencies = [
  "permguard-objects",
  "permguard-offline",
  "permguard-runtime",
+ "permguard-server",
  "permguard-std",
  "permguard-stream",
  "permguard-telemetry",

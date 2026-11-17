@@ -26,10 +26,13 @@ use permguard_core::{Config, LogFormat, LogLevel};
 /// Keeps the OTLP pipeline alive for the life of the process; dropping it
 /// flushes what is buffered and shuts the exporter down. A build that did not
 /// turn tracing on holds an empty guard and pays nothing.
-pub struct TelemetryGuard(Option<opentelemetry_sdk::trace::SdkTracerProvider>);
+pub struct TelemetryGuard(
+    #[cfg(feature = "otel")] Option<opentelemetry_sdk::trace::SdkTracerProvider>,
+);
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
+        #[cfg(feature = "otel")]
         if let Some(provider) = self.0.take() {
             // Best-effort by design: the process is leaving either way.
             let _ = provider.shutdown();
@@ -45,6 +48,7 @@ impl Drop for TelemetryGuard {
 pub fn install(config: &Config) -> Result<TelemetryGuard> {
     let level = tracing_subscriber::filter::LevelFilter::from_level(level_of(config.log_level()));
 
+    #[cfg(feature = "otel")]
     let (provider, otel_layer) = if config.otel_enabled() {
         let provider = span_pipeline(config)?;
         let tracer = opentelemetry::trace::TracerProvider::tracer(&provider, "permguard");
@@ -55,8 +59,18 @@ pub fn install(config: &Config) -> Result<TelemetryGuard> {
     } else {
         (None, None)
     };
+    // An exporter this build does not link is refused by name, never silently left off.
+    #[cfg(not(feature = "otel"))]
+    if config.otel_enabled() {
+        anyhow::bail!(
+            "`telemetry.otel.enabled` is on and this build links no OTLP exporter: build the \
+             server with the `otel` feature, or turn the export off"
+        );
+    }
 
-    let registry = tracing_subscriber::registry().with(level).with(otel_layer);
+    let registry = tracing_subscriber::registry().with(level);
+    #[cfg(feature = "otel")]
+    let registry = registry.with(otel_layer);
 
     // Every record goes through a bounded queue to a writer thread: a stdout nobody drains — a
     // full pipe, a stalled collector — fills the queue and costs dropped lines, never a decision.
@@ -78,7 +92,10 @@ pub fn install(config: &Config) -> Result<TelemetryGuard> {
     .map_err(|error| anyhow::anyhow!(error))
     .context("installing the log subscriber")?;
 
-    Ok(TelemetryGuard(provider))
+    Ok(TelemetryGuard(
+        #[cfg(feature = "otel")]
+        provider,
+    ))
 }
 
 /// How many formatted log records may wait for the writer thread before new ones are dropped.
@@ -90,6 +107,7 @@ pub const LOG_LINES_DROPPED: permguard_core::Metric = permguard_core::Metric::co
     "Log records dropped because the writer could not keep up; recording never waits for it.",
 );
 
+#[cfg(feature = "otel")]
 /// How many ended spans may wait for export before new ones are dropped. The SDK's batch queue is
 /// sized to the same number, so it never overflows by itself: every span that does not reach the
 /// exporter is dropped, and counted, here.
@@ -113,6 +131,7 @@ pub fn dropped_spans() -> u64 {
     DROPPED_SPANS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+#[cfg(feature = "otel")]
 fn record_span_drops(spans: u64) {
     DROPPED_SPANS.fetch_add(spans, std::sync::atomic::Ordering::Relaxed);
     if let Some(metrics) = DROP_METRICS.get() {
@@ -222,6 +241,7 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BoundedLines {
     }
 }
 
+#[cfg(feature = "otel")]
 /// Builds the OTLP/gRPC span pipeline: batch export from its own thread,
 /// bounded queue with every drop counted, parent-based ratio sampling. Building fails only on a
 /// malformed endpoint — an unreachable one is a runtime drop, not an error,
@@ -249,6 +269,7 @@ fn span_pipeline(config: &Config) -> Result<opentelemetry_sdk::trace::SdkTracerP
         .build())
 }
 
+#[cfg(feature = "otel")]
 /// The SDK's batch processor around `exporter`, with every drop counted.
 ///
 /// The batch processor already exports from its own thread through a bounded queue, but a span it
@@ -281,6 +302,7 @@ where
     }
 }
 
+#[cfg(feature = "otel")]
 /// A span processor that admits at most `capacity` spans waiting for export and counts the rest.
 #[derive(Debug)]
 struct CountedSpans<P> {
@@ -289,6 +311,7 @@ struct CountedSpans<P> {
     capacity: usize,
 }
 
+#[cfg(feature = "otel")]
 impl<P: opentelemetry_sdk::trace::SpanProcessor> opentelemetry_sdk::trace::SpanProcessor
     for CountedSpans<P>
 {
@@ -328,6 +351,7 @@ impl<P: opentelemetry_sdk::trace::SpanProcessor> opentelemetry_sdk::trace::SpanP
     }
 }
 
+#[cfg(feature = "otel")]
 /// An exporter that releases what [`CountedSpans`] admitted, and counts a batch it fails to send.
 #[derive(Debug)]
 struct CountedExporter<E> {
@@ -335,6 +359,7 @@ struct CountedExporter<E> {
     waiting: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
+#[cfg(feature = "otel")]
 impl<E: opentelemetry_sdk::trace::SpanExporter> opentelemetry_sdk::trace::SpanExporter
     for CountedExporter<E>
 {
@@ -415,6 +440,7 @@ mod tests {
         assert!(!config.otel_enabled());
     }
 
+    #[cfg(feature = "otel")]
     #[tokio::test]
     async fn test_the_span_pipeline_builds_without_a_collector_listening() {
         // The failure posture in one assertion: building the pipeline needs no
@@ -511,7 +537,7 @@ mod bounded_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "otel"))]
 mod span_tests {
     #![allow(clippy::expect_used)]
 

@@ -764,11 +764,30 @@ fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
     {
         problems.push("permguard-runtime selects a remote custody or a command line".to_owned());
     }
-    if !features_of("permguard-server")
+    // Nor does the server kit, by itself (phase 6): a remote custody and a command line are what
+    // a binary selects, and every Permguard binary does.
+    if features_of("permguard-server")
         .get("permguard-offline")
-        .is_some_and(|enabled| enabled.contains("kms"))
+        .is_some_and(|enabled| {
+            enabled.contains("kms") || enabled.contains("pkcs11") || enabled.contains("cli")
+        })
     {
-        problems.push("permguard-server does not compose the KMS custody".to_owned());
+        problems.push("permguard-server selects a remote custody or a command line".to_owned());
+    }
+    for binary in [
+        "permguard-all-in-one",
+        "permguard-authority-plane-server",
+        "permguard-control-plane-server",
+        "permguard-data-plane-server",
+    ] {
+        if !features_of(binary)
+            .get("permguard-offline")
+            .is_some_and(|enabled| enabled.contains("kms") && enabled.contains("cli"))
+        {
+            problems.push(format!(
+                "{binary} does not compose the KMS custody and the command line"
+            ));
+        }
     }
     assert!(
         problems.is_empty(),
@@ -835,6 +854,81 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     assert!(
         problems.is_empty(),
         "an embedded Host links no server:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The server is a kit until a program selects what it owns (phase 6): built with no feature it
+/// links no argument parser and no OTLP exporter, and each Plane's adapter, as a library, links
+/// the kit and no more. A feature brings what it names: `cli` the parser, `otel` the exporter.
+#[test]
+fn the_server_kit_links_nothing_a_program_owns_until_it_is_selected() {
+    const PARSER: &[&str] = &["clap"];
+    const EXPORTER: &[&str] = &[
+        "opentelemetry",
+        "opentelemetry-otlp",
+        "opentelemetry-sdk",
+        "tracing-opentelemetry",
+    ];
+    let mut problems = Vec::new();
+    for (package, features, carried, absent) in [
+        ("permguard-server", "", &[][..], &[PARSER, EXPORTER][..]),
+        ("permguard-server", "cli", &[PARSER][..], &[EXPORTER][..]),
+        ("permguard-server", "otel", &[EXPORTER][..], &[PARSER][..]),
+        (
+            "permguard-server",
+            "signals,authority-refresh,kms",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-authority-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-control-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-data-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-data-plane-server",
+            "bin",
+            &[PARSER, EXPORTER][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with(package, features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!(
+                    "{package} built with `{features}` does not link {name}"
+                ));
+            }
+        }
+        for name in absent.iter().flat_map(|names| names.iter()) {
+            if linked.contains(*name) {
+                problems.push(format!("{package} built with `{features}` links {name}"));
+            }
+        }
+        // The kit is what every one of them is built on.
+        if !linked.contains("permguard-runtime") {
+            problems.push(format!(
+                "{package} built with `{features}` links no runtime"
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the server kit links what a program selects:\n  {}",
         problems.join("\n  ")
     );
 }

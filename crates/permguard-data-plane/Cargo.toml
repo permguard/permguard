@@ -86,7 +86,7 @@ tracing-subscriber.workspace = true
 # Transport parity, fault injection and the boundary registry, shared by every plane.
 permguard-conformance.workspace = true
 # A Control Plane served over HTTP, which a mirror round pulls from.
-permguard-control-plane-server.workspace = true
+permguard-control-plane-server = { workspace = true, features = ["bin"] }
 axum.workspace = true
 # The actor the served Control Plane reads, as its listener sets it.
 permguard-transport.workspace = true

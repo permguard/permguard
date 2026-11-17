@@ -66,13 +66,13 @@ pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
 # The tests stand real listeners and a real Host API to drive the command line against.
-permguard-server.workspace = true
+permguard-server = { workspace = true, features = ["cli", "signals", "authority-refresh", "otel", "kms"] }
 permguard-transport.workspace = true
 # The server stubs of the contracts, for the tests that stand a fake server on them.
 permguard-contracts = { workspace = true, features = ["control-server", "data-server", "host-server", "authority-server"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 # The Authority Plane's module, composed by the Authority Plane test as a binary composes it.
-permguard-authority-plane-server.workspace = true
+permguard-authority-plane-server = { workspace = true, features = ["bin"] }
 # The storage and audit sink of the Server context the Authority Plane test composes.
 permguard-std = { workspace = true, features = ["audit", "storage"] }
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).

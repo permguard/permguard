@@ -80,6 +80,12 @@ is cut.
   An application that names `permguard-data-plane` with `default-features = false` now names the capabilities it uses, and `permguard-embedded`, which always carries `local-ledger`, has `sync`, `decision-evidence` and `event-evidence` of its own.
   A capability a build does not carry is refused at start by name: `dataPlane.decisions.log.enabled` without `decision-evidence`, `dataPlane.events.enabled` without `event-evidence`.
   The standalone Data Plane, the all-in-one and their images carry every capability, as before.
+- **The server is a kit, and a program selects what it owns.**
+  `permguard-server` with no feature is the composition, the listeners, the Host API and the registration of a Plane's module: `PlaneServer::compose` returns the composed server, and `App::serve_until` serves it on the caller's runtime until the caller says stop, with no command line parsed and no signal handler installed.
+  The command line and its offline commands are `cli`, the process's signals `signals`, the Authority Plane's client `authority-refresh`, the OTLP exporter `otel`, the remote custodies `kms` and `pkcs11`; `telemetry.otel.enabled` in a build without `otel` is refused at start by name.
+  Each Plane's server package has a `bin` feature, on by default, that selects them for its binary: a composition that registers a Plane's module in a server of its own names the package with `default-features = false`.
+  The binaries and images are built as before, and `fixtures/external-plane` proves, outside the workspace, a Plane the workspace does not know served beside the Data Plane by the kit alone.
+  A Plane that serves no route over one transport is registered as it is: its empty router is no longer layered.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.

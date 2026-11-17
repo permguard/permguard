@@ -22,6 +22,22 @@ name = "permguard-control-plane"
 path = "src/main.rs"
 # The binary documents nothing of its own, and its name is the domain library's.
 doc = false
+required-features = ["bin"]
+
+[features]
+default = ["bin"]
+# The Plane's own binary: the kit with what a Permguard program owns, its command line, its
+# process's signals, the Authority Plane's client, the OTLP exporter and the remote custodies. On
+# by default, so the binary builds as it always did; a composition that registers this Plane's
+# module in a server of its own names the package with `default-features = false` and links the
+# kit alone.
+bin = [
+    "permguard-server/cli",
+    "permguard-server/signals",
+    "permguard-server/authority-refresh",
+    "permguard-server/otel",
+    "permguard-server/kms",
+]
 
 [dependencies]
 anyhow.workspace = true
@@ -38,6 +54,8 @@ permguard-host.workspace = true
 permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego"] }
 permguard-notp.workspace = true
 permguard-objects.workspace = true
+# The server kit: this Plane's module is registered with it. What the binary owns beside the kit
+# is the `bin` feature's.
 permguard-server.workspace = true
 permguard-stream.workspace = true
 # The actor a request carries, read where a route authorizes (WP-2.4).

@@ -124,4 +124,19 @@ run "permguard-evaluation-worker, the dedicated worker" -p permguard-evaluation-
 # listener, a language, and the Data Plane's capabilities named or refused by name.
 ./scripts/check-native-fixture.sh
 
+# The server kit: by itself, then with each thing a program owns beside it, and each Plane's
+# adapter as a library over the kit alone.
+for selection in "" cli signals authority-refresh otel kms "cli,signals,authority-refresh,otel,kms"; do
+    printf '==> permguard-server built with `%s`\n' "${selection}"
+    cargo check --locked -p permguard-server --no-default-features --features "${selection}"
+done
+for plane in authority control data; do
+    printf '==> permguard-%s-plane-server, its module over the kit alone\n' "${plane}"
+    cargo check --locked -p "permguard-${plane}-plane-server" --no-default-features --lib
+done
+
+# A server assembled outside this workspace from the kit: a Plane the workspace does not know
+# beside an open-source one.
+./scripts/check-external-plane-fixture.sh
+
 printf 'ok: every profile compiles and passes its tests on its own\n'
