@@ -96,11 +96,16 @@ pub enum Control {
     OperationsDualControl,
     Tls13Only,
     DecisionsIncludeNamed,
+    /// A public grant names no write operation: anybody may read and ask, nobody may change
+    /// the catalog, the policies or the history without a credential.
+    AuthzPublicReadOnly,
+    /// No public grant: every request names the principal it is decided for.
+    AuthzPublicNone,
 }
 
 impl Control {
     /// Every control, in the order of the profile table.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 20] = [
         Self::EvidenceRequired,
         Self::SchemaPartition,
         Self::SchemaWarningsAsErrors,
@@ -119,6 +124,8 @@ impl Control {
         Self::OperationsDualControl,
         Self::Tls13Only,
         Self::DecisionsIncludeNamed,
+        Self::AuthzPublicReadOnly,
+        Self::AuthzPublicNone,
     ];
 
     /// The stable name discovery publishes.
@@ -142,6 +149,8 @@ impl Control {
             Self::OperationsDualControl => names::OPERATIONS_DUAL_CONTROL,
             Self::Tls13Only => names::TLS_1_3_ONLY,
             Self::DecisionsIncludeNamed => names::DECISIONS_INCLUDE_NAMED,
+            Self::AuthzPublicReadOnly => names::AUTHZ_PUBLIC_READ_ONLY,
+            Self::AuthzPublicNone => names::AUTHZ_PUBLIC_NONE,
         }
     }
 
@@ -155,7 +164,8 @@ impl Control {
             | Self::CustodyHsm
             | Self::OperationsDualControl
             | Self::Tls13Only
-            | Self::DecisionsIncludeNamed => AssuranceProfile::Regulated,
+            | Self::DecisionsIncludeNamed
+            | Self::AuthzPublicNone => AssuranceProfile::Regulated,
             _ => AssuranceProfile::Production,
         }
     }
@@ -173,6 +183,8 @@ impl Control {
                 | Self::IdentityWitness
                 | Self::OperationsDualControl
                 | Self::DecisionsIncludeNamed
+                | Self::AuthzPublicReadOnly
+                | Self::AuthzPublicNone
         )
     }
 
@@ -209,6 +221,9 @@ impl Control {
             Self::DecisionsIncludeNamed => {
                 "Bootstrap (`Config::validate`) over the decision log's `include` and the decision \
                  store's `accept`"
+            }
+            Self::AuthzPublicReadOnly | Self::AuthzPublicNone => {
+                "Bootstrap (`Composition::config_from`) over `host.authz.public`"
             }
         }
     }
@@ -300,11 +315,16 @@ pub enum Relaxation {
     /// A decision log, or a decision store, that keeps in clear every member a caller sends:
     /// `["*"]` in `dataPlane.decisions.log.include` or `controlPlane.decisions.accept`.
     DecisionsIncludeAll,
+    /// A `host.authz.public` grant: what it names needs no credential.
+    AuthzPublic,
+    /// A `host.authz.public` grant naming a write operation: anybody may change the catalog, the
+    /// policies or the history.
+    AuthzPublicWrite,
 }
 
 impl Relaxation {
     /// Every relaxation.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::EvidenceBestEffort,
         Self::SchemaRegoInputAbsent,
         Self::GrpcTransportParityPartial,
@@ -312,6 +332,8 @@ impl Relaxation {
         Self::CustodyPlaintext,
         Self::TlsTerminatedUpstream,
         Self::DecisionsIncludeAll,
+        Self::AuthzPublic,
+        Self::AuthzPublicWrite,
     ];
 
     /// The stable name discovery publishes.
@@ -324,6 +346,8 @@ impl Relaxation {
             Self::CustodyPlaintext => names::RELAX_CUSTODY_PLAINTEXT,
             Self::TlsTerminatedUpstream => names::RELAX_TLS_TERMINATED_UPSTREAM,
             Self::DecisionsIncludeAll => names::RELAX_DECISIONS_INCLUDE_ALL,
+            Self::AuthzPublic => names::RELAX_AUTHZ_PUBLIC,
+            Self::AuthzPublicWrite => names::RELAX_AUTHZ_PUBLIC_WRITE,
         }
     }
 
@@ -339,6 +363,8 @@ impl Relaxation {
             // (WP-2.11 interpretation): no new control.
             Self::TlsTerminatedUpstream => Control::Tls13Only,
             Self::DecisionsIncludeAll => Control::DecisionsIncludeNamed,
+            Self::AuthzPublic => Control::AuthzPublicNone,
+            Self::AuthzPublicWrite => Control::AuthzPublicReadOnly,
         }
     }
 
@@ -519,6 +545,8 @@ mod tests {
             (Relaxation::Tls12Compat, [true, true, false]),
             (Relaxation::CustodyPlaintext, [true, false, false]),
             (Relaxation::TlsTerminatedUpstream, [true, true, false]),
+            (Relaxation::AuthzPublic, [true, true, false]),
+            (Relaxation::AuthzPublicWrite, [true, false, false]),
         ];
         for (relaxation, permitted) in expected {
             for (profile, permitted) in [Development, Production, Regulated]

@@ -3315,9 +3315,10 @@ produce: use `EdDSA` or `ES256`"
         self.host_identity_suite.as_deref()
     }
 
-    /// The configuration with `relaxation` in force because of the Host's own state, not of any
-    /// setting: the identity key held in plaintext until the custody providers (WP-2.2,
-    /// WP-3.2). It is published and checked like the others.
+    /// The configuration with `relaxation` in force because of what no flat setting carries: the
+    /// Host's own state, the identity key held in plaintext until the custody providers (WP-2.2,
+    /// WP-3.2), or a structured section, the public grants of `host.authz.public` (BUG-0318). It
+    /// is published and checked like the others.
     pub fn with_host_relaxation(mut self, relaxation: crate::assurance::Relaxation) -> Self {
         if !self.host_relaxations.contains(&relaxation) {
             self.host_relaxations.push(relaxation);

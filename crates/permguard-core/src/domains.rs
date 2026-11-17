@@ -308,6 +308,8 @@ pub mod assurance {
     pub const OPERATIONS_DUAL_CONTROL: &str = "operations.dual_control";
     pub const TLS_1_3_ONLY: &str = "tls.1_3_only";
     pub const DECISIONS_INCLUDE_NAMED: &str = "decisions.include_named";
+    pub const AUTHZ_PUBLIC_READ_ONLY: &str = "authz.public_read_only";
+    pub const AUTHZ_PUBLIC_NONE: &str = "authz.public_none";
     pub const RELAX_EVIDENCE_BEST_EFFORT: &str = "evidence.best_effort";
     pub const RELAX_SCHEMA_REGO_INPUT_ABSENT: &str = "schema.rego_input_absent";
     pub const RELAX_GRPC_TRANSPORT_PARITY_PARTIAL: &str = "grpc.transport_parity_partial";
@@ -315,6 +317,8 @@ pub mod assurance {
     pub const RELAX_CUSTODY_PLAINTEXT: &str = "custody.plaintext";
     pub const RELAX_TLS_TERMINATED_UPSTREAM: &str = "tls.terminated_upstream";
     pub const RELAX_DECISIONS_INCLUDE_ALL: &str = "decisions.include_all";
+    pub const RELAX_AUTHZ_PUBLIC: &str = "authz.public";
+    pub const RELAX_AUTHZ_PUBLIC_WRITE: &str = "authz.public_write";
 }
 
 /// Format labels of files the Host writes, bound into their associated data.

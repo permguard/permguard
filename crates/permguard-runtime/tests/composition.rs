@@ -155,3 +155,52 @@ async fn test_an_authority_plane_named_elsewhere_is_refused_without_a_client_to_
     );
     assert_eq!(runs.load(Ordering::SeqCst), 0, "the server host never ran");
 }
+
+/// A configuration that grants a write without a credential is refused before anything binds
+/// under `production`, naming the entry (BUG-0318), and an administrative operation under any
+/// profile (BUG-0202); under `development` the write stands and is published as relaxed.
+#[test]
+fn test_a_public_write_is_refused_from_production_and_published_under_development() {
+    let runs = Arc::new(AtomicUsize::new(0));
+    let composition = composition(&runs);
+    let (file, volume) = fixture("public-grants");
+    let grants = |profile: &str, operations: &str| {
+        std::fs::write(
+            &file,
+            format!(
+                "assurance:\n  profile: {profile}\nworking_dir: {}\npublic:\n  http: 127.0.0.1:0\n\
+                 host:\n  authz:\n    public:\n      - operations: [catalog.read]\n        \
+                 selector: plane/control/*\n      - operations: [{operations}]\n        \
+                 selector: plane/control/*\n",
+                volume.to_str().expect("a UTF-8 path")
+            ),
+        )
+        .expect("the configuration file");
+        composition.config_from(Some(&file), Vec::<(String, String)>::new())
+    };
+
+    let refused = grants("production", "catalog.write, policy.push")
+        .expect_err("production refuses a public write")
+        .to_string();
+    assert!(
+        refused.contains("host.authz.public[1]") && refused.contains("catalog.write"),
+        "{refused}"
+    );
+    for profile in ["development", "production", "regulated"] {
+        let refused = grants(profile, "keys.admin")
+            .expect_err("an administrative operation is never public")
+            .to_string();
+        assert!(refused.contains("never public"), "{profile}: {refused}");
+    }
+
+    let development = grants("development", "catalog.write, policy.push")
+        .expect("development permits a public write");
+    let relaxed = development.relaxations_in_force();
+    for relaxation in [
+        permguard_core::assurance::Relaxation::AuthzPublic,
+        permguard_core::assurance::Relaxation::AuthzPublicWrite,
+    ] {
+        assert!(relaxed.contains(&relaxation), "{relaxation}: {relaxed:?}");
+    }
+    assert_eq!(runs.load(Ordering::SeqCst), 0, "nothing ran");
+}

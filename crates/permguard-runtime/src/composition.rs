@@ -1207,6 +1207,18 @@ impl Composition {
             config = config
                 .with_realms(parsed.realms())
                 .with_context(|| format!("in the configuration file {}", path.display()))?;
+            // The public grants are relaxations like any other (BUG-0202, BUG-0318): checked
+            // against the profile before anything binds, naming the entry the profile refuses,
+            // and published in the assurance block when they stand.
+            let auth = parsed
+                .host_auth()
+                .with_context(|| format!("in the configuration file {}", path.display()))?;
+            auth.check(&config.assurance()).map_err(|refused| {
+                anyhow::anyhow!("in the configuration file {}: {refused}", path.display())
+            })?;
+            for relaxation in auth.relaxations() {
+                config = config.with_host_relaxation(relaxation);
+            }
         }
 
         let config = match &file {
@@ -1277,12 +1289,15 @@ impl Composition {
             })
             .collect();
         if !public.is_empty() {
-            tracing::info!(
+            // A warning, not a note: what the grants name is answered to anybody, and the
+            // assurance block publishes it as `authz.public` (BUG-0318).
+            tracing::warn!(
                 event.name = "authz.public",
                 component = "server",
                 grants = public.len(),
+                profile = config.assurance().profile().as_str(),
                 development_mode = config.development_mode(),
-                "the configuration declares public grants: what they name needs no token"
+                "the configuration declares public grants: what they name needs no credential"
             );
         }
         // The Authority Plane this Host verifies tokens for: its URL, and the audience every

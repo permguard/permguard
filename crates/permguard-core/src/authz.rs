@@ -128,6 +128,45 @@ pub mod operations {
     pub fn is_registered(operation: &str) -> bool {
         ALL.contains(&operation)
     }
+
+    /// What an operation does to what it is granted on: the class decides whether a public grant
+    /// may name it, and under which assurance profile (BUG-0202, BUG-0318).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Class {
+        /// Reads state: the catalog, the lifecycle, a configuration, a trail, a stream.
+        Read,
+        /// Asks a Data Plane for a decision: reads the policies, changes nothing.
+        Decide,
+        /// Changes what is decided or recorded: the catalog, the policies, the event history.
+        Write,
+        /// Administers who may call and the Host's custody: accounts, tokens, the identity, the
+        /// key rings, the memberships, the backups and the collection of garbage.
+        Administrative,
+    }
+
+    /// The class of a registered operation, `None` for one that is not registered. Every
+    /// operation of [`ALL`] has one, which a test holds: an operation added later is classified
+    /// when it is added, never left to a default.
+    pub fn class(operation: &str) -> Option<Class> {
+        Some(match operation {
+            CATALOG_READ | LIFECYCLE_READ | KEYS_READ | CONFIG_READ | IDENTITY_READ
+            | MEMBERSHIP_READ | AUDIT_READ | STREAMS_READ | EVIDENCE_READ | BACKUP_READ => {
+                Class::Read
+            }
+            DECISION_EVALUATE => Class::Decide,
+            CATALOG_WRITE | POLICY_PUSH | EVENT_SUBMIT => Class::Write,
+            ACCOUNTS_READ | ACCOUNTS_WRITE | TOKENS_READ | TOKENS_REVOKE | IDENTITY_ADMIN
+            | KEYS_ADMIN | MEMBERSHIP_ADMIN | BACKUP_MANAGE | GC_MANAGE => Class::Administrative,
+            _ => return None,
+        })
+    }
+
+    /// Whether a public grant may never name `operation`, whatever the profile: who may call, the
+    /// Host's identity, its rings, its memberships, its backups and its collection are
+    /// administered by an authenticated principal only (`2-security/6`, BUG-0202).
+    pub fn never_public(operation: &str) -> bool {
+        class(operation) == Some(Class::Administrative)
+    }
 }
 
 /// The resource types a grant may name, closed like the operations.
@@ -930,6 +969,60 @@ pub struct HostAuth {
     pub public: Vec<PublicGrantRule>,
 }
 
+impl HostAuth {
+    /// The relaxations the public grants amount to: any grant is `authz.public`, and one naming a
+    /// write operation is `authz.public_write` too. Published in the assurance block, so a
+    /// deployment that lets anybody act says so where its posture is read.
+    pub fn relaxations(&self) -> Vec<crate::assurance::Relaxation> {
+        use crate::assurance::Relaxation;
+
+        let mut in_force = Vec::new();
+        if !self.public.is_empty() {
+            in_force.push(Relaxation::AuthzPublic);
+        }
+        if self.public.iter().any(|grant| {
+            grant
+                .operations
+                .iter()
+                .any(|operation| operations::class(operation) == Some(operations::Class::Write))
+        }) {
+            in_force.push(Relaxation::AuthzPublicWrite);
+        }
+        in_force
+    }
+
+    /// Refuses the first public grant `assurance` does not permit, naming its entry and the
+    /// operation: from `production` upward a write operation (BUG-0318), under `regulated` any
+    /// grant at all. Checked before anything binds, as every other relaxation is.
+    pub fn check(&self, assurance: &crate::assurance::Assurance) -> Result<(), String> {
+        use crate::assurance::Relaxation;
+
+        for (position, grant) in self.public.iter().enumerate() {
+            let at = format!("host.authz.public[{position}]");
+            if !assurance.permits(Relaxation::AuthzPublic) {
+                return Err(format!(
+                    "{at} grants without a credential, which the `{}` assurance profile does not                      permit: `{}` is in force; every request names its principal, so remove the                      public grants and give the callers a credential",
+                    assurance.profile(),
+                    Relaxation::AuthzPublic.forbidden_by(),
+                ));
+            }
+            if let Some(write) = grant
+                .operations
+                .iter()
+                .find(|operation| operations::class(operation) == Some(operations::Class::Write))
+                && !assurance.permits(Relaxation::AuthzPublicWrite)
+            {
+                return Err(format!(
+                    "{at}.operations names `{write}`, a write operation, which the `{}` assurance                      profile does not grant without a credential: `{}` is in force; give the                      callers a token, or state `assurance.profile: development` on a developer's                      machine",
+                    assurance.profile(),
+                    Relaxation::AuthzPublicWrite.forbidden_by(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The authenticator of a deployment with no rules: nothing presented is anonymous, anything
 /// presented is unmapped. The default every surface decides with, so a composition that forgot
 /// its mapper is closed to credentials, never open to them.
@@ -1367,5 +1460,108 @@ mod tests {
             operations::ACCOUNTS_WRITE,
             &Resource::plane("authority")
         ));
+    }
+}
+
+#[cfg(test)]
+mod public_grant_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::assurance::{Assurance, AssuranceProfile, Relaxation};
+
+    fn grants(operations: &[&[&str]]) -> HostAuth {
+        HostAuth {
+            public: operations
+                .iter()
+                .map(|names| PublicGrantRule {
+                    operations: names.iter().map(|name| (*name).to_owned()).collect(),
+                    selector: Selector::parse("plane/control/*").expect("a selector"),
+                    resource_types: vec![resource_types::ANY.to_owned()],
+                })
+                .collect(),
+        }
+    }
+
+    /// Every registered operation has a class, so a new one cannot reach a public grant by a
+    /// default nobody chose.
+    #[test]
+    fn test_every_registered_operation_is_classified() {
+        for operation in operations::ALL {
+            assert!(operations::class(operation).is_some(), "{operation}");
+        }
+        assert_eq!(operations::class("catalog.delete"), None);
+        for administrative in [
+            operations::IDENTITY_ADMIN,
+            operations::KEYS_ADMIN,
+            operations::MEMBERSHIP_ADMIN,
+            operations::BACKUP_MANAGE,
+            operations::GC_MANAGE,
+        ] {
+            assert!(operations::never_public(administrative), "{administrative}");
+        }
+        for writes in [
+            operations::CATALOG_WRITE,
+            operations::POLICY_PUSH,
+            operations::EVENT_SUBMIT,
+        ] {
+            assert_eq!(operations::class(writes), Some(operations::Class::Write));
+        }
+    }
+
+    /// A public write is a development relaxation (BUG-0318): refused from `production` upward,
+    /// with the entry and the operation named; any public grant is refused under `regulated`.
+    #[test]
+    fn test_a_public_write_is_refused_from_production_and_any_public_grant_under_regulated() {
+        let reads = grants(&[&[operations::CATALOG_READ, operations::DECISION_EVALUATE]]);
+        let writes = grants(&[
+            &[operations::CATALOG_READ],
+            &[operations::CATALOG_READ, operations::POLICY_PUSH],
+        ]);
+        let development = Assurance::new(AssuranceProfile::Development, []);
+        let production = Assurance::new(AssuranceProfile::Production, []);
+        let regulated = Assurance::new(AssuranceProfile::Regulated, []);
+
+        writes.check(&development).expect("development permits it");
+        let refused = writes
+            .check(&production)
+            .expect_err("production refuses it");
+        assert!(
+            refused.contains("host.authz.public[1]")
+                && refused.contains("policy.push")
+                && refused.contains("authz.public_read_only"),
+            "{refused}"
+        );
+        reads
+            .check(&production)
+            .expect("production permits a public read");
+        let refused = reads.check(&regulated).expect_err("regulated refuses it");
+        assert!(
+            refused.contains("host.authz.public[0]") && refused.contains("authz.public_none"),
+            "{refused}"
+        );
+        HostAuth::default()
+            .check(&regulated)
+            .expect("no public grant is no relaxation");
+        // A deployment that adds the control above its profile gets its refusal.
+        let ratcheted = Assurance::new(
+            AssuranceProfile::Development,
+            [crate::assurance::Control::AuthzPublicReadOnly],
+        );
+        assert!(writes.check(&ratcheted).is_err());
+    }
+
+    /// What the grants amount to is published: any grant, and a write among them.
+    #[test]
+    fn test_the_public_grants_name_their_relaxations() {
+        assert!(HostAuth::default().relaxations().is_empty());
+        assert_eq!(
+            grants(&[&[operations::CATALOG_READ]]).relaxations(),
+            vec![Relaxation::AuthzPublic]
+        );
+        assert_eq!(
+            grants(&[&[operations::EVENT_SUBMIT]]).relaxations(),
+            vec![Relaxation::AuthzPublic, Relaxation::AuthzPublicWrite]
+        );
     }
 }

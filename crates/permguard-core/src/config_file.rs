@@ -1750,18 +1750,18 @@ impl ConfigFile {
                     operations::ALL.join(", ")
                 );
             }
-            // Who may call is never anybody's to change: the Authority Plane's accounts and tokens
-            // are administered by a token, never by a public grant (`2-security/6`).
-            if let Some(administrative) = grant.operations.iter().find(|operation| {
-                matches!(
-                    operation.as_str(),
-                    operations::ACCOUNTS_READ
-                        | operations::ACCOUNTS_WRITE
-                        | operations::TOKENS_READ
-                        | operations::TOKENS_REVOKE
-                )
-            }) {
-                bail!("{at}.operations names `{administrative}`, which is never public");
+            // Who may call, and the Host's custody, are never anybody's to change: accounts, tokens,
+            // the identity, the key rings, the memberships, the backups and the collection are
+            // administered by an authenticated principal, never by a public grant, whatever the
+            // profile (`2-security/6`, BUG-0202).
+            if let Some(administrative) = grant
+                .operations
+                .iter()
+                .find(|operation| operations::never_public(operation))
+            {
+                bail!(
+                    "{at}.operations names `{administrative}`, an administrative operation, which                      is never public: grant it to an authenticated principal"
+                );
             }
             let resource_types = if grant.resource_types.is_empty() {
                 vec![resource_types::ANY.to_owned()]
@@ -2238,6 +2238,29 @@ mod tests {
         .expect("the file parses");
         let error = admin.host_auth().expect_err("never public").to_string();
         assert!(error.contains("never public"), "{error}");
+
+        // Nor any other administrative operation (BUG-0202): who may call and the Host's custody
+        // are administered by an authenticated principal, whatever the profile.
+        for administrative in [
+            "keys.admin",
+            "identity.admin",
+            "membership.admin",
+            "backup.manage",
+            "gc.manage",
+            "accounts.read",
+            "tokens.read",
+            "tokens.revoke",
+        ] {
+            let file = ConfigFile::parse(&format!(
+                "host:\n  authz:\n    public:\n      - operations: [catalog.read, {administrative}]\n        selector: host\n"
+            ))
+            .expect("the file parses");
+            let error = file.host_auth().expect_err(administrative).to_string();
+            assert!(
+                error.contains("host.authz.public[0]") && error.contains(administrative),
+                "{error}"
+            );
+        }
 
         // The credential rules, the sign-in and the setup are gone with the IAM Host: the
         // Authority Plane issues every token.
