@@ -81,22 +81,33 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("a port")
-        .local_addr()
-        .expect("an address")
-        .port()
+/// Three loopback ports nothing listens on at this moment, all held at once so that no two are
+/// the same. The listeners are released before the server is started, a process of its own that
+/// cannot be handed them: another process may take one in between, which [`Upgrade::start`]
+/// answers by choosing three more.
+fn free_ports() -> [u16; 3] {
+    let held: Vec<std::net::TcpListener> = (0..3)
+        .map(|_| std::net::TcpListener::bind("127.0.0.1:0").expect("a port"))
+        .collect();
+    [0, 1, 2].map(|at: usize| held[at].local_addr().expect("an address").port())
 }
+
+/// How many times a start that lost a port to another process is tried again.
+const PORT_ATTEMPTS: usize = 5;
+
+/// What a server says when an address it was configured with is taken.
+const ADDRESS_IN_USE: &str = "Address already in use";
 
 /// A copy of the baseline volume and a configuration of today's schema for it.
 struct Upgrade {
     dir: PathBuf,
     volume: PathBuf,
     config: PathBuf,
-    host: u16,
-    control: u16,
-    data: u16,
+    /// The Host's, the Control Plane's and the Data Plane's ports, chosen again when a start
+    /// loses one.
+    ports: std::cell::Cell<[u16; 3]>,
+    /// The key versions the configuration was last written with, to write it again as it was.
+    versions: std::cell::RefCell<(String, String)>,
 }
 
 impl Upgrade {
@@ -110,9 +121,8 @@ impl Upgrade {
             config: dir.join("config.yml"),
             volume,
             dir,
-            host: free_port(),
-            control: free_port(),
-            data: free_port(),
+            ports: std::cell::Cell::new(free_ports()),
+            versions: std::cell::RefCell::default(),
         };
         upgrade.configure("v2", "v2");
         upgrade
@@ -121,7 +131,8 @@ impl Upgrade {
     /// Today's configuration of the baseline's experimental deployment, with the two key versions
     /// an upgrade from it raises.
     fn configure(&self, pseudonym: &str, zone_keys: &str) {
-        let (host, control, data) = (self.host, self.control, self.data);
+        *self.versions.borrow_mut() = (pseudonym.to_owned(), zone_keys.to_owned());
+        let [host, control, data] = self.ports.get();
         std::fs::write(
             &self.config,
             format!(
@@ -175,8 +186,39 @@ operations:
         .expect("the configuration writes");
     }
 
+    /// The Host's port.
+    fn host(&self) -> u16 {
+        self.ports.get()[0]
+    }
+
+    /// The Data Plane's port.
+    fn data(&self) -> u16 {
+        self.ports.get()[2]
+    }
+
     /// Starts the server: `Ok` once it is ready, `Err` with what it said when it exits first.
+    ///
+    /// A start that exits because an address is taken lost a port to another process between the
+    /// moment it was found free and the moment the server bound it: the same configuration is
+    /// written again over three other ports and the start tried again. Nothing else is retried:
+    /// a server that refuses its configuration is what two of these tests are about.
     fn start(&self) -> Result<Server, String> {
+        let mut said = String::new();
+        for _ in 0..PORT_ATTEMPTS {
+            match self.start_once() {
+                Err(refused) if refused.contains(ADDRESS_IN_USE) => {
+                    said = refused;
+                    self.ports.set(free_ports());
+                    let (pseudonym, zone_keys) = self.versions.borrow().clone();
+                    self.configure(&pseudonym, &zone_keys);
+                }
+                other => return other,
+            }
+        }
+        Err(said)
+    }
+
+    fn start_once(&self) -> Result<Server, String> {
         let log = self.dir.join("server.log");
         let out = std::fs::File::create(&log).expect("a log");
         let mut child = binary()
@@ -190,7 +232,7 @@ operations:
             if let Ok(Some(_)) = child.try_wait() {
                 return Err(std::fs::read_to_string(&log).unwrap_or_default());
             }
-            if get(self.host, "/readyz").0 == 200 {
+            if get(self.host(), "/readyz").0 == 200 {
                 return Ok(Server { child });
             }
             std::thread::sleep(Duration::from_millis(250));
@@ -214,7 +256,7 @@ operations:
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let (status, body) = post(
-                self.data,
+                self.data(),
                 permguard_languages::request::EVALUATION_PATH,
                 &payload,
             );
@@ -385,6 +427,24 @@ fn test_the_capture_is_the_baselines() {
             "the baseline volume holds {store}"
         );
     }
+}
+
+/// A port found free may be taken before the server binds it: the server is a process of its
+/// own and cannot be handed a listener. A start that loses one is tried again over other ports,
+/// the configuration otherwise as it was, so the suite does not fail for what another process
+/// did.
+#[test]
+fn test_a_start_that_loses_a_port_to_another_process_is_tried_again_over_others() {
+    let upgrade = Upgrade::new("lost-port");
+    let lost = upgrade.data();
+    // Another process took the Data Plane's port after it was found free.
+    let taken = std::net::TcpListener::bind(("127.0.0.1", lost)).expect("the port is free");
+
+    let server = upgrade.start().expect("the server starts over other ports");
+    assert_ne!(upgrade.data(), lost, "the port another process holds");
+    assert_eq!(get(upgrade.host(), "/readyz").0, 200);
+    server.stop();
+    drop(taken);
 }
 
 /// Until the operator raises them, the key versions the baseline wrote under refuse the start, and
