@@ -53,6 +53,7 @@ const SHAPED: &[&str] = &[
     "Assurance",
     "GetEffectiveConfigResponse",
     "Setting",
+    "EffectivePublicGrant",
     "GetIdentityResponse",
     "RotateIdentityRequest",
     "RotateIdentityResponse",

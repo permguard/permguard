@@ -180,21 +180,21 @@ fn test_a_public_write_is_refused_from_production_and_published_under_developmen
     };
 
     let refused = grants("production", "catalog.write, policy.push")
-        .expect_err("production refuses a public write")
-        .to_string();
+        .expect_err("production refuses a public write");
+    let refused = format!("{refused:#}");
     assert!(
         refused.contains("host.authz.public[1]") && refused.contains("catalog.write"),
         "{refused}"
     );
     for profile in ["development", "production", "regulated"] {
-        let refused = grants(profile, "keys.admin")
-            .expect_err("an administrative operation is never public")
-            .to_string();
+        let refused =
+            grants(profile, "keys.admin").expect_err("an administrative operation is never public");
+        let refused = format!("{refused:#}");
         assert!(refused.contains("never public"), "{profile}: {refused}");
     }
 
     let development = grants("development", "catalog.write, policy.push")
-        .expect("development permits a public write");
+        .unwrap_or_else(|error| panic!("development permits a public write: {error:#}"));
     let relaxed = development.relaxations_in_force();
     for relaxation in [
         permguard_core::assurance::Relaxation::AuthzPublic,

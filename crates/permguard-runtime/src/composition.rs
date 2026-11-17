@@ -1292,10 +1292,11 @@ impl Composition {
             // A warning, not a note: what the grants name is answered to anybody, and the
             // assurance block publishes it as `authz.public` (BUG-0318).
             tracing::warn!(
-                event.name = "authz.public",
+                // The event is named after the relaxation it reports.
+                event.name = permguard_core::domains::assurance::RELAX_AUTHZ_PUBLIC,
                 component = "server",
                 grants = public.len(),
-                profile = config.assurance().profile().as_str(),
+                assurance = config.assurance().profile().as_str(),
                 development_mode = config.development_mode(),
                 "the configuration declares public grants: what they name needs no credential"
             );

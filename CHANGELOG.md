@@ -17,7 +17,18 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Public grants are bounded by the assurance profile.**
+  `host.authz.public` refuses every administrative operation, whatever the profile: `keys.admin`, `identity.admin`, `membership.admin`, `backup.manage` and `gc.manage` join `accounts.*` and `tokens.*`, so an anonymous caller can no longer be given the Host's key rotation, identity rotation, memberships, backups or collection.
+  From `production` upward a public grant naming `catalog.write`, `policy.push` or `event.submit` refuses to start, and under `regulated` any public grant does; the message names the entry.
+  A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
+  A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
+
+### Added
+
+- **The effective configuration lists the public grants in force.**
+  `GET /host/v1/config/effective`, `GetEffectiveConfig` and `permguard host config show --effective` carry `public_grants`, each with its operations, selector and resource types.
 
 ## [0.1.33] - 2026-11-17
 

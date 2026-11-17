@@ -682,6 +682,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("assurance.IDENTITY_WITNESS", assurance::IDENTITY_WITNESS),
         (
+            "assurance.AUTHZ_PUBLIC_READ_ONLY",
+            assurance::AUTHZ_PUBLIC_READ_ONLY,
+        ),
+        ("assurance.AUTHZ_PUBLIC_NONE", assurance::AUTHZ_PUBLIC_NONE),
+        (
             "assurance.OPERATIONS_DUAL_CONTROL",
             assurance::OPERATIONS_DUAL_CONTROL,
         ),
@@ -713,6 +718,14 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "assurance.RELAX_TLS_TERMINATED_UPSTREAM",
             assurance::RELAX_TLS_TERMINATED_UPSTREAM,
+        ),
+        (
+            "assurance.RELAX_AUTHZ_PUBLIC",
+            assurance::RELAX_AUTHZ_PUBLIC,
+        ),
+        (
+            "assurance.RELAX_AUTHZ_PUBLIC_WRITE",
+            assurance::RELAX_AUTHZ_PUBLIC_WRITE,
         ),
         (
             "assurance.RELAX_DECISIONS_INCLUDE_ALL",
