@@ -22,6 +22,8 @@ pub mod cose;
 pub mod crypto;
 pub mod digest;
 pub mod grammar;
+pub mod instance;
+pub mod jws;
 pub mod limits;
 pub mod manifest;
 pub mod object;

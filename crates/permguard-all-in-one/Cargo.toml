@@ -20,11 +20,13 @@ name = "permguard-all-in-one"
 path = "src/main.rs"
 
 [dependencies]
-permguard-authority-plane-server.workspace = true
-permguard-control-plane-server.workspace = true
+permguard-authority-plane-server = { workspace = true, features = ["bin"] }
+permguard-control-plane-server = { workspace = true, features = ["bin"] }
 permguard-core.workspace = true
-permguard-server.workspace = true
-permguard-data-plane-server.workspace = true
+# The server kit with what a Permguard binary owns: its command line, its process's signals,
+# the Authority Plane's client, the OTLP exporter and the remote custodies.
+permguard-server = { workspace = true, features = ["cli", "signals", "authority-refresh", "otel", "kms"] }
+permguard-data-plane-server = { workspace = true, features = ["bin"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 
 [dev-dependencies]

@@ -46,6 +46,25 @@ ignore = [
     #
     # TO REMOVE: when Dogwood moves off `smartstring`, or when the crate is adopted again.
     { id = "RUSTSEC-2026-0249", reason = "unmaintained `smartstring`, reached only through Dogwood's provider sandbox; reported upstream, no alternative configuration exists" },
+    # `chrono` has no maintainer. It is not a vulnerability: the advisory names no CVE and no
+    # exploit, and offers no safe upgrade, since every version is affected.
+    #
+    # Not ours to migrate. It arrives through the two engines: `cedar-policy-core` links it for
+    # its `datetime` feature, Cedar's `datetime` and `duration` extension, and `regorus` for its
+    # `time` feature, Rego's `time.*` built-ins. Both features are selected in this workspace's
+    # manifest, on purpose: turning either off removes functions a policy may call, so a ledger
+    # that decides today would be refused or decide otherwise. That is a change of the languages
+    # Permguard serves, not of a dependency, and it is not made to quiet an advisory.
+    #
+    # TO REMOVE: when Cedar and regorus move off `chrono`, or when the crate is adopted again.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained `chrono`, linked by Cedar's `datetime` extension and Rego's `time` built-ins; no safe upgrade, and dropping either feature would change what a policy may call" },
+    # `chrono-tz` has no maintainer, on the same terms: no CVE, no exploit, no safe upgrade.
+    #
+    # It arrives through `regorus` alone, for the same `time` feature: the time zones Rego's
+    # `time.*` built-ins take by name.
+    #
+    # TO REMOVE: when regorus moves off `chrono-tz`, or when the crate is adopted again.
+    { id = "RUSTSEC-2026-0555", reason = "unmaintained `chrono-tz`, linked by Rego's `time` built-ins through `regorus`; no safe upgrade, and dropping the feature would change what a policy may call" },
 ]
 
 [licenses]

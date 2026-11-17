@@ -181,73 +181,75 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
                 ),
         );
 
-        Arc::new(
-            Decider::new(
-                root,
-                cache,
-                context.metrics().clone(),
-                None,
-                config.authz_max_evaluations(),
-            )
-            .with_blocking(crate::blocking::shared(context))
-            .with_evaluation(crate::blocking::evaluation(context))
-            .with_evidence(crate::blocking::evidence(context))
-            .with_audit(audit::decision_audit(context))
-            // The log is opened once for the plane, not once per decider: one process marks each
-            // run of a stream once and measures each stream once (WP-6.1).
-            // Signed responses on request, when the deployment offers them and the Host composes
-            // the `data.attest` ring that signs them (WP-6.6b).
-            .with_response_signing(
-                config
-                    .response_signing_enabled()
-                    .then(|| {
-                        let signer = crate::handles::response_signer(context);
-                        // Configured on with no ring to sign with: discovery says `disabled`, and
-                        // the operator hears why.
-                        if signer.is_none() {
-                            tracing::warn!(
-                                event.name = "authz.response_signing_unavailable",
-                                component = "data-plane",
-                                "response signing is enabled and this plane composes no \
-                                 `data.attest` ring: requests for a signed response are refused"
-                            );
-                        }
-                        signer
-                    })
-                    .flatten()
-                    .map(|signer| signing::ResponseSigning {
-                        signer: Arc::new(signer),
-                        validity: config.response_signing_validity(),
-                        clock_skew: config.response_signing_clock_skew(),
-                    }),
-            )
-            .with_journal(
-                crate::decisions::recorder(context),
-                crate::handles::zone_key(
-                    context,
-                    permguard_host::secrets::ZonePurpose::AuditPseudonym,
-                ),
-                config.log_include().clone(),
-            )
-            .with_expiry(config.mirrors_expire_after())
-            .with_staleness(config.mirrors_stale_after())
-            // A little under the transport's own request timeout, so the work stops before the
-            // answer is abandoned rather than after it — the gap is what makes the difference
-            // between a plane that sheds load and one that accumulates it.
-            .with_budget(Some(decision_budget(config)))
-            // The configured assurance profile (WP-2.8): the floor every partition meets at load,
-            // and whether its engine runs supervised. A manifest cannot lower it.
-            .with_profile(config.assurance().profile())
-            // The dedicated worker an embedding application named, in place of this executable.
-            .with_supervisors(Arc::new(match WORKER.get() {
-                Some(executable) => permguard_languages::worker::Supervisors::default()
-                    .started_from(executable.clone()),
-                None => permguard_languages::worker::Supervisors::default(),
-            }))
-            // What this deployment has opted into. A ledger naming a provisional contract it has
-            // not enabled is refused at load rather than served.
-            .with_enabled(enabled(config)),
+        let decider = Decider::new(
+            root,
+            cache,
+            context.metrics().clone(),
+            None,
+            config.authz_max_evaluations(),
         )
+        .with_blocking(crate::blocking::shared(context))
+        .with_evaluation(crate::blocking::evaluation(context))
+        .with_evidence(crate::blocking::evidence(context))
+        .with_audit(audit::decision_audit(context))
+        // The log is opened once for the plane, not once per decider: one process marks each
+        // run of a stream once and measures each stream once (WP-6.1).
+        // Signed responses on request, when the deployment offers them and the Host composes
+        // the `data.attest` ring that signs them (WP-6.6b).
+        .with_response_signing(
+            config
+                .response_signing_enabled()
+                .then(|| {
+                    let signer = crate::handles::response_signer(context);
+                    // Configured on with no ring to sign with: discovery says `disabled`, and
+                    // the operator hears why.
+                    if signer.is_none() {
+                        tracing::warn!(
+                            event.name = "authz.response_signing_unavailable",
+                            component = "data-plane",
+                            "response signing is enabled and this plane composes no \
+                                 `data.attest` ring: requests for a signed response are refused"
+                        );
+                    }
+                    signer
+                })
+                .flatten()
+                .map(|signer| signing::ResponseSigning {
+                    signer: Arc::new(signer),
+                    validity: config.response_signing_validity(),
+                    clock_skew: config.response_signing_clock_skew(),
+                }),
+        )
+        .with_expiry(config.mirrors_expire_after())
+        .with_staleness(config.mirrors_stale_after())
+        // A little under the transport's own request timeout, so the work stops before the
+        // answer is abandoned rather than after it — the gap is what makes the difference
+        // between a plane that sheds load and one that accumulates it.
+        .with_budget(Some(decision_budget(config)))
+        // The configured assurance profile (WP-2.8): the floor every partition meets at load,
+        // and whether its engine runs supervised. A manifest cannot lower it.
+        .with_profile(config.assurance().profile())
+        // The dedicated worker an embedding application named, in place of this executable.
+        .with_supervisors(Arc::new(match WORKER.get() {
+            Some(executable) => {
+                permguard_languages::worker::Supervisors::default().started_from(executable.clone())
+            }
+            None => permguard_languages::worker::Supervisors::default(),
+        }))
+        // What this deployment has opted into. A ledger naming a provisional contract it has
+        // not enabled is refused at load rather than served.
+        .with_enabled(enabled(config));
+        #[cfg(feature = "decision-evidence")]
+        let decider = decider.with_journal(
+            crate::decisions::recorder(context),
+            crate::handles::zone_key(
+                context,
+                permguard_host::secrets::ZonePurpose::AuditPseudonym,
+            ),
+            config.log_include().clone(),
+        );
+
+        Arc::new(decider)
     }))
 }
 

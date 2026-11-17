@@ -14,7 +14,7 @@
 //! expensive work — parsing every policy, building the engine's own program,
 //! checking it against the schema — and hands back an `Evaluator` that is
 //! immutable, shareable and cheap to call. Both are the decision point's
-//! (`permguard_pdp_core::evaluate`); what they read and answer is here. A data plane compiles a partition
+//! (`permguard_evaluator::evaluate`); what they read and answer is here. A data plane compiles a partition
 //! when it loads it and then answers requests out of memory; nothing on the
 //! decision path re-parses a policy.
 //!

@@ -18,5 +18,6 @@ pub mod inspect;
 pub mod objects;
 pub mod offline_ops;
 pub mod reclaim;
+#[cfg(feature = "volume-restore")]
 pub mod restore;
 pub mod workspace;

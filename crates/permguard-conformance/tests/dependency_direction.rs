@@ -177,9 +177,16 @@ const LAYERS: &[(&str, &[&str])] = &[
     // carries it.
     ("permguard-languages", SERVER_STACK),
     ("permguard-language-core", LANGUAGE_CORE),
-    // The decision point's evaluating half links no engine either: the engines link it.
-    ("permguard-pdp-core", LANGUAGE_CORE),
-    ("permguard-language-core", &["permguard-pdp-core"]),
+    // The evaluating contract is beneath the languages: neither it nor a language package links
+    // the kernel that runs it, which selects a language and is never selected by one (phase 6).
+    ("permguard-language-core", &["permguard-evaluator"]),
+    ("permguard-language-cedar", &["permguard-evaluator"]),
+    ("permguard-language-rego", &["permguard-evaluator"]),
+    ("permguard-language-dogwood", &["permguard-evaluator"]),
+    // The kernel is the decision alone, whatever language it selects: no Host, no store, no
+    // ledger, no log, no client, no Plane, no server and no runtime.
+    ("permguard-evaluator", SERVER_STACK),
+    ("permguard-evaluator", NOT_A_DECISION),
     ("permguard-language-cedar", CEDAR_ENGINE),
     ("permguard-language-rego", REGO_ENGINE),
     ("permguard-language-dogwood", DOGWOOD_ENGINE),
@@ -201,7 +208,7 @@ const LAYERS: &[(&str, &[&str])] = &[
     ("permguard-sync", NO_LANGUAGE),
     (
         "permguard-sync",
-        &["permguard-pdp-core", "permguard-language-core"],
+        &["permguard-evaluator", "permguard-language-core"],
     ),
     // The Control Plane's domain serves nothing and composes no other Plane (RD-3): the Authority
     // Plane is registered beside it by its server package.
@@ -224,7 +231,7 @@ const LAYERS: &[(&str, &[&str])] = &[
         &["permguard-core", "permguard-host", "permguard-objects"],
     ),
     ("permguard-language-core", EVIDENCE_RUNTIME),
-    ("permguard-pdp-core", EVIDENCE_RUNTIME),
+    ("permguard-evaluator", EVIDENCE_RUNTIME),
     // The dedicated evaluation worker evaluates and nothing else: no server, no listener, no
     // client, no Host runtime and no async runtime of its own.
     ("permguard-evaluation-worker", SERVER_STACK),
@@ -269,6 +276,38 @@ const LANGUAGE_CORE: &[&str] = &[
     "regorus",
     "jsonschema",
     "dogwood-language",
+];
+
+/// What a decision does not need, and the kernel therefore never links, with any feature: the
+/// Host and its runtime, the default implementations, the ledger and its synchronization, the
+/// evidence logs, the clients and contracts, every Plane, an argument parser and an asynchronous
+/// runtime.
+const NOT_A_DECISION: &[&str] = &[
+    "permguard-host",
+    "permguard-runtime",
+    "permguard-std",
+    "permguard-offline",
+    "permguard-data-plane",
+    "permguard-data-plane-server",
+    "permguard-control-plane",
+    "permguard-control-plane-server",
+    "permguard-authority-plane",
+    "permguard-authority-plane-server",
+    "permguard-embedded",
+    "permguard-mirror",
+    "permguard-sync",
+    "permguard-notp",
+    "permguard-decisions",
+    "permguard-events",
+    "permguard-stream",
+    "permguard-client",
+    "permguard-contracts",
+    "permguard-tls",
+    "permguard-languages",
+    "permguard-evaluation-worker",
+    "clap",
+    "tokio",
+    "rustls",
 ];
 
 /// What the Cedar engine package may not reach: the server stack, the other engines, the catalogue.
@@ -416,6 +455,9 @@ fn carried_with(package: &str, features: &str) -> BTreeSet<String> {
     let output = Command::new(cargo)
         .args([
             "tree",
+            // A coloured repeat marker is not the marker these read.
+            "--color",
+            "never",
             "--locked",
             "--package",
             package,
@@ -461,7 +503,7 @@ fn a_build_links_only_the_engines_it_carries() {
                 "regorus",
                 "jsonschema",
                 "dogwood-language",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
@@ -473,12 +515,12 @@ fn a_build_links_only_the_engines_it_carries() {
                 "cedar-policy",
                 "cedar-policy-core",
                 "dogwood-language",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
             "cedar,rego,evaluate",
-            &["permguard-pdp-core", "regorus", "cedar-policy"][..],
+            &["permguard-evaluator", "regorus", "cedar-policy"][..],
             &["permguard-language-dogwood", "dogwood-language"][..],
         ),
         (
@@ -489,12 +531,12 @@ fn a_build_links_only_the_engines_it_carries() {
                 "permguard-language-rego",
                 "regorus",
                 "jsonschema",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
         ),
         (
             "dogwood,evaluate",
-            &["permguard-language-dogwood", "permguard-pdp-core"][..],
+            &["permguard-language-dogwood", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-rego",
@@ -529,6 +571,9 @@ fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
     let output = Command::new(cargo)
         .args([
             "tree",
+            // A coloured repeat marker is not the marker these read.
+            "--color",
+            "never",
             "--locked",
             "--package",
             package,
@@ -566,7 +611,7 @@ fn features_of(package: &str) -> BTreeMap<String, BTreeSet<String>> {
 
 /// The Control Plane validates what a push carries and evaluates nothing (RD-6): its own build, the
 /// domain's and the server's, carries every language and neither the decision point's evaluating
-/// half (`permguard-pdp-core`) nor the `evaluate` feature that brings it, the routing and the
+/// half (`permguard-evaluator`) nor the `evaluate` feature that brings it, the routing and the
 /// supervised worker. The Data Plane's build carries both.
 #[test]
 fn the_control_plane_validates_without_evaluating() {
@@ -574,12 +619,12 @@ fn the_control_plane_validates_without_evaluating() {
     let data = features_of("permguard-data-plane-server");
     let mut problems = Vec::new();
     for package in ["permguard-control-plane", "permguard-control-plane-server"] {
-        if features_of(package).contains_key("permguard-pdp-core") {
-            problems.push(format!("{package} links permguard-pdp-core"));
+        if features_of(package).contains_key("permguard-evaluator") {
+            problems.push(format!("{package} links permguard-evaluator"));
         }
     }
-    if !data.contains_key("permguard-pdp-core") {
-        problems.push("the Data Plane does not link permguard-pdp-core".to_owned());
+    if !data.contains_key("permguard-evaluator") {
+        problems.push("the Data Plane does not link permguard-evaluator".to_owned());
     }
     for package in [
         "permguard-languages",
@@ -719,11 +764,30 @@ fn the_runtime_is_headless_and_a_server_composes_its_adapters() {
     {
         problems.push("permguard-runtime selects a remote custody or a command line".to_owned());
     }
-    if !features_of("permguard-server")
+    // Nor does the server kit, by itself (phase 6): a remote custody and a command line are what
+    // a binary selects, and every Permguard binary does.
+    if features_of("permguard-server")
         .get("permguard-offline")
-        .is_some_and(|enabled| enabled.contains("kms"))
+        .is_some_and(|enabled| {
+            enabled.contains("kms") || enabled.contains("pkcs11") || enabled.contains("cli")
+        })
     {
-        problems.push("permguard-server does not compose the KMS custody".to_owned());
+        problems.push("permguard-server selects a remote custody or a command line".to_owned());
+    }
+    for binary in [
+        "permguard-all-in-one",
+        "permguard-authority-plane-server",
+        "permguard-control-plane-server",
+        "permguard-data-plane-server",
+    ] {
+        if !features_of(binary)
+            .get("permguard-offline")
+            .is_some_and(|enabled| enabled.contains("kms") && enabled.contains("cli"))
+        {
+            problems.push(format!(
+                "{binary} does not compose the KMS custody and the command line"
+            ));
+        }
     }
     assert!(
         problems.is_empty(),
@@ -790,6 +854,364 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     assert!(
         problems.is_empty(),
         "an embedded Host links no server:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The command line is a library a program embeds (phase 6): built with no feature it links no
+/// engine, no Plane's domain that carries them, no completion generator, and never a server. A
+/// language is a feature, the offline restore brings the Control Plane's domain with every
+/// language it validates, and `cli-bin` is the official binary whole.
+#[test]
+fn the_command_line_library_links_only_what_a_program_selects() {
+    const CEDAR: &[&str] = &["permguard-language-cedar", "cedar-policy"];
+    const REGO: &[&str] = &["permguard-language-rego", "regorus"];
+    const DOGWOOD: &[&str] = &["permguard-language-dogwood", "dogwood-language"];
+    const RESTORE: &[&str] = &["permguard-control-plane"];
+    const COMPLETIONS: &[&str] = &["clap-complete"];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[CEDAR, REGO, DOGWOOD, RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "cedar",
+            &[CEDAR][..],
+            &[REGO, &["permguard-language-dogwood"], RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "rego",
+            &[REGO][..],
+            &[CEDAR, DOGWOOD, RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "cedar,dogwood,rego,volume-restore",
+            &[CEDAR, REGO, DOGWOOD, RESTORE][..],
+            &[COMPLETIONS][..],
+        ),
+        (
+            "cli-bin",
+            &[CEDAR, REGO, DOGWOOD, RESTORE, COMPLETIONS][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-cli", features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent
+            .iter()
+            .flat_map(|names| names.iter())
+            .chain(SERVER_SIDE)
+        {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the command line library links what a program selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The server is a kit until a program selects what it owns (phase 6): built with no feature it
+/// links no argument parser and no OTLP exporter, and each Plane's adapter, as a library, links
+/// the kit and no more. A feature brings what it names: `cli` the parser, `otel` the exporter.
+#[test]
+fn the_server_kit_links_nothing_a_program_owns_until_it_is_selected() {
+    const PARSER: &[&str] = &["clap"];
+    const EXPORTER: &[&str] = &[
+        "opentelemetry",
+        "opentelemetry-otlp",
+        "opentelemetry-sdk",
+        "tracing-opentelemetry",
+    ];
+    let mut problems = Vec::new();
+    for (package, features, carried, absent) in [
+        ("permguard-server", "", &[][..], &[PARSER, EXPORTER][..]),
+        ("permguard-server", "cli", &[PARSER][..], &[EXPORTER][..]),
+        ("permguard-server", "otel", &[EXPORTER][..], &[PARSER][..]),
+        (
+            "permguard-server",
+            "signals,authority-refresh,kms",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-authority-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-control-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-data-plane-server",
+            "",
+            &[][..],
+            &[PARSER, EXPORTER][..],
+        ),
+        (
+            "permguard-data-plane-server",
+            "bin",
+            &[PARSER, EXPORTER][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with(package, features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!(
+                    "{package} built with `{features}` does not link {name}"
+                ));
+            }
+        }
+        for name in absent.iter().flat_map(|names| names.iter()) {
+            if linked.contains(*name) {
+                problems.push(format!("{package} built with `{features}` links {name}"));
+            }
+        }
+        // The kit is what every one of them is built on.
+        if !linked.contains("permguard-runtime") {
+            problems.push(format!(
+                "{package} built with `{features}` links no runtime"
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the server kit links what a program selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The Data Plane is the evaluator and the request model until a capability is named (phase 6):
+/// with no feature it links no Host, no ledger, no synchronization, no evidence and no
+/// asynchronous runtime; each capability then brings its own packages and no other's, and none
+/// brings a server, a transport, a telemetry exporter or a network client.
+#[test]
+fn the_data_plane_links_only_the_capabilities_it_selects() {
+    const HOST: &[&str] = &["permguard-host", "tokio"];
+    const LEDGER: &[&str] = &["permguard-mirror", "permguard-notp"];
+    const SYNC: &[&str] = &["permguard-sync"];
+    const DECISIONS: &[&str] = &["permguard-decisions"];
+    const EVENTS: &[&str] = &["permguard-events"];
+    const STREAM: &[&str] = &["permguard-stream"];
+    // What no profile of the domain links, whatever it selects.
+    const NEVER: &[&str] = &[
+        "permguard-runtime",
+        "permguard-std",
+        "permguard-offline",
+        "permguard-embedded",
+        "permguard-data-plane-server",
+        "permguard-control-plane",
+        "permguard-authority-plane",
+        "clap",
+    ];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[HOST, LEDGER, SYNC, DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "local-ledger",
+            &[HOST, LEDGER][..],
+            &[SYNC, DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "sync",
+            &[HOST, LEDGER, SYNC][..],
+            &[DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "decision-evidence",
+            &[HOST, LEDGER, DECISIONS, STREAM][..],
+            &[SYNC, EVENTS][..],
+        ),
+        (
+            "event-evidence",
+            &[HOST, LEDGER, EVENTS, STREAM][..],
+            &[SYNC, DECISIONS][..],
+        ),
+        (
+            "sync,decision-evidence,event-evidence",
+            &[HOST, LEDGER, SYNC, DECISIONS, EVENTS, STREAM][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-data-plane", features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent
+            .iter()
+            .flat_map(|names| names.iter())
+            .chain(NEVER)
+            .chain(SERVER_STACK)
+            .chain(NO_CLIENT)
+            .chain(
+                NO_LANGUAGE
+                    .iter()
+                    .filter(|name| **name != "permguard-languages"),
+            )
+        {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+        // Every profile is the evaluator's: that is what the Data Plane decides with.
+        if !linked.contains("permguard-evaluator") {
+            problems.push(format!("built with `{features}`, it links no evaluator"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the Data Plane links the capabilities it selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// What a record, its chain and its signed batch do not need (phase 6): the Host and its runtime,
+/// the default implementations, the stream engine, a ledger, a Plane, a client and an
+/// asynchronous runtime.
+const NOT_A_RECORD: &[&str] = &[
+    "permguard-host",
+    "permguard-runtime",
+    "permguard-std",
+    "permguard-stream",
+    "permguard-offline",
+    "permguard-notp",
+    "permguard-mirror",
+    "permguard-sync",
+    "permguard-data-plane",
+    "permguard-control-plane",
+    "permguard-authority-plane",
+    "permguard-embedded",
+    "permguard-client",
+    "permguard-contracts",
+    "permguard-tls",
+    "permguard-languages",
+    "clap",
+    "tokio",
+    "rustls",
+];
+
+/// An evidence model is the record alone (phase 6): built with no feature it links no Host, no
+/// stream engine and no decision point, and neither model links the other. A decision record's
+/// answer from an evaluator's brings the kernel with no language, and still no Host. `storage` and
+/// `stream` are the only way either reaches a Host, and both do.
+#[test]
+fn an_evidence_model_links_no_host_until_a_runtime_is_selected() {
+    let mut problems = Vec::new();
+    for (package, features, other) in [
+        ("permguard-decisions", "", "permguard-events"),
+        ("permguard-decisions", "evaluator", "permguard-events"),
+        ("permguard-events", "", "permguard-decisions"),
+    ] {
+        let linked = carried_with(package, features);
+        for name in NOT_A_RECORD
+            .iter()
+            .chain(SERVER_STACK)
+            .chain(LANGUAGE_CORE)
+            .chain(&[other])
+        {
+            if linked.contains(*name) {
+                problems.push(format!("{package} built with `{features}` links {name}"));
+            }
+        }
+        let evaluates = linked.contains("permguard-evaluator");
+        if evaluates != (features == "evaluator") {
+            problems.push(format!(
+                "{package} built with `{features}`: linking the evaluator is {evaluates}"
+            ));
+        }
+    }
+    // The check reads a real graph: a runtime half does reach the Host and the stream engine.
+    for package in ["permguard-decisions", "permguard-events"] {
+        for features in ["storage", "stream"] {
+            let linked = carried_with(package, features);
+            for name in ["permguard-host", "permguard-stream"] {
+                if !linked.contains(name) {
+                    problems.push(format!(
+                        "{package} built with `{features}` does not link {name}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "an evidence model is the record alone:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The kernel selects its language (phase 6): built with none it links no engine at all, and with
+/// one it links that language's package and engine and no other language's. Dogwood is none of
+/// them: it decides against a history the kernel keeps none of, so no feature of the kernel links
+/// it, and it is validated by its own package and decided by the Data Plane.
+#[test]
+fn the_evaluator_links_only_the_one_engine_it_selects() {
+    const CEDAR: &[&str] = &["permguard-language-cedar"];
+    const REGO: &[&str] = &["permguard-language-rego", "regorus", "jsonschema"];
+    const DOGWOOD: &[&str] = &["permguard-language-dogwood", "dogwood-language"];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[CEDAR, REGO, DOGWOOD, &["cedar-policy", "cedar-policy-core"]][..],
+        ),
+        (
+            "cedar",
+            &["permguard-language-cedar", "cedar-policy"][..],
+            &[REGO, DOGWOOD][..],
+        ),
+        (
+            "rego",
+            &["permguard-language-rego", "regorus"][..],
+            &[CEDAR, DOGWOOD, &["cedar-policy", "cedar-policy-core"]][..],
+        ),
+        (
+            "cedar,rego,threads",
+            &["permguard-language-cedar", "permguard-language-rego"][..],
+            &[DOGWOOD][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-evaluator", features);
+        for name in carried {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent.iter().flat_map(|names| names.iter()) {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+        for name in NOT_A_DECISION.iter().chain(SERVER_STACK) {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the evaluator links the decision alone and the engine it selects:\n  {}",
         problems.join("\n  ")
     );
 }
@@ -865,7 +1287,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
     for (features, carried, absent) in [
         (
             "",
-            &["permguard-language-core", "permguard-pdp-core"][..],
+            &["permguard-language-core", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-rego",
@@ -880,7 +1302,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
             &[
                 "permguard-language-cedar",
                 "cedar-policy",
-                "permguard-pdp-core",
+                "permguard-evaluator",
             ][..],
             &[
                 "permguard-language-rego",
@@ -892,7 +1314,7 @@ fn an_embedded_data_plane_links_only_the_languages_it_selects() {
         ),
         (
             "rego",
-            &["permguard-language-rego", "regorus", "permguard-pdp-core"][..],
+            &["permguard-language-rego", "regorus", "permguard-evaluator"][..],
             &[
                 "permguard-language-cedar",
                 "permguard-language-dogwood",
@@ -974,6 +1396,73 @@ fn a_client_links_only_the_transports_it_selects() {
     assert!(
         problems.is_empty(),
         "a client links the transports it selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
+/// The open-source workspace is closed over itself and the public registry (phase 6): every
+/// package of the resolved graph, development dependencies included, is either a member kept
+/// under this repository's root or a crate of crates.io. A path that leaves the repository is how
+/// another edition's code would arrive, a proprietary one's included, and `deny.toml`, which
+/// refuses a git source and an unknown registry, says nothing of a path.
+#[test]
+fn every_package_is_this_repository_s_or_the_public_registry_s() {
+    const REGISTRY: &str = "registry+https://github.com/rust-lang/crates.io-index";
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let output = Command::new(cargo)
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--all-features",
+            "--locked",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        output.status.success(),
+        "cargo metadata: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("cargo metadata is JSON");
+    let workspace = Path::new(metadata["workspace_root"].as_str().expect("a root"))
+        .canonicalize()
+        .expect("the workspace root exists");
+
+    let mut problems = Vec::new();
+    let mut members = 0;
+    for package in metadata["packages"].as_array().expect("packages") {
+        let name = package["name"].as_str().expect("a name");
+        match package["source"].as_str() {
+            // No source: a path dependency, which stays under the repository's root.
+            None => {
+                members += 1;
+                let manifest = Path::new(package["manifest_path"].as_str().expect("a manifest"));
+                let inside = manifest
+                    .canonicalize()
+                    .is_ok_and(|manifest| manifest.starts_with(&workspace));
+                if !inside {
+                    problems.push(format!(
+                        "{name} is a path dependency outside the repository: {}",
+                        manifest.display()
+                    ));
+                }
+            }
+            Some(source) if source == REGISTRY => {}
+            Some(source) => problems.push(format!("{name} comes from {source}")),
+        }
+    }
+    // The check reads a real graph: the workspace's own packages are the path dependencies.
+    assert!(
+        members >= 36,
+        "the workspace's packages are read: {members}"
+    );
+    assert!(
+        problems.is_empty(),
+        "the workspace reaches outside itself and the public registry:\n  {}",
         problems.join("\n  ")
     );
 }

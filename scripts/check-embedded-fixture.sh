@@ -11,7 +11,8 @@
 # alone: nothing another member selects can be unified into what it links, which is the one thing
 # a profile resolved inside the workspace cannot rule out.
 #
-# For every profile:
+# For every profile, read from `cargo tree` with no colour, since a coloured repeat marker is not
+# the marker this strips and a package would be counted twice:
 #
 #   what it links     no server, listener, transport, telemetry exporter, network client, generated
 #                     contract, TLS stack or default implementation, and no engine it did not
@@ -68,7 +69,7 @@ check() {
     cp "${ROOT}/Cargo.lock" "${FIXTURE}/Cargo.lock"
 
     local linked
-    linked="$(cargo tree --manifest-path "${MANIFEST}" --no-default-features \
+    linked="$(cargo tree --color never --manifest-path "${MANIFEST}" --no-default-features \
         --features "${selection}" --edges normal,build --prefix none --format '{lib}' |
         sed 's/ (\*)$//' | sort -u)"
 

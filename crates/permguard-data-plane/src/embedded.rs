@@ -55,8 +55,8 @@ use permguard_core::{
 use permguard_host::composition::{Authorization, Host, Registration};
 
 use crate::authz::decide::Decider;
+use crate::evaluation::Submitter;
 use crate::evaluation::{Answer, EvaluationRequest, Services};
-use crate::temporal::submit::Submitter;
 use crate::{COMPONENT, PLANE};
 
 // The types the facade's signatures name, from the one place an application imports them: the
@@ -206,15 +206,27 @@ pub struct Handle {
     health: Health,
 }
 
+/// What submits to the temporal interface, when this plane serves it.
+#[cfg(feature = "event-evidence")]
+fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
+    crate::temporal::served(context.config())
+        .then(|| crate::temporal::submitter(context))
+        .flatten()
+}
+
+/// A build with no temporal interface submits nothing.
+#[cfg(not(feature = "event-evidence"))]
+fn submitter(_: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
+    None
+}
+
 impl Handle {
     /// The surfaces the Plane was granted, read once from the context it runs in.
     fn over(context: &PlaneContext<'_>, health: Health) -> Self {
         Self {
             authorization: crate::handles::authorization(context),
             decider: crate::authz::decider(context),
-            submitter: crate::temporal::served(context.config())
-                .then(|| crate::temporal::submitter(context))
-                .flatten(),
+            submitter: submitter(context),
             health,
         }
     }
@@ -651,7 +663,8 @@ pub fn declaration(config: &Config) -> permguard_host::composition::Declaration 
 }
 
 /// The evidence streams the Plane declares under `config`, enabled or not: what a Host registers
-/// before any of them serves.
+/// before any of them serves. Those of the evidence this build carries.
+#[cfg(any(feature = "decision-evidence", feature = "event-evidence"))]
 pub fn streams(config: &Config) -> Vec<permguard_stream::StreamDescriptor> {
     crate::plane::streams(config)
 }

@@ -30,7 +30,13 @@ use permguard_languages::temporal::{SubmitRequest, SubmitResponse};
 
 use crate::authz::decide::Decider;
 use crate::authz::wire::{CheckRequest, CheckResponse, TraceContext};
-use crate::temporal::submit::Submitter;
+#[cfg(feature = "event-evidence")]
+pub use crate::temporal::submit::Submitter;
+
+/// What submits an occurrence to the temporal interface. A build with no `event-evidence` has
+/// none: the type has no value, so nothing can hand one in.
+#[cfg(not(feature = "event-evidence"))]
+pub enum Submitter {}
 
 /// What is asked, in the shape of the interface that defines it.
 #[derive(Debug)]
@@ -192,17 +198,25 @@ pub async fn evaluate(
                     "this surface does not serve the temporal interface",
                 )));
             };
-            // Authorization before anything is read or written, and the source the occurrence
-            // is recorded under: the principal the gate authorized (WP-6.2a).
-            let (source, authorized) =
-                crate::temporal::gate(services.authorization, actor, submitter.root(), &wire)
-                    .map_err(Refused::Denied)?;
-            let token_status = actor.token_status();
-            submitter
-                .submit(&wire, &source, token_status.as_ref(), authorized.as_ref())
-                .await
-                .map(|answered| Answer::Temporal(Box::new(answered)))
-                .map_err(Refused::Failed)
+            #[cfg(not(feature = "event-evidence"))]
+            {
+                let _ = wire;
+                match **submitter {}
+            }
+            #[cfg(feature = "event-evidence")]
+            {
+                // Authorization before anything is read or written, and the source the occurrence
+                // is recorded under: the principal the gate authorized (WP-6.2a).
+                let (source, authorized) =
+                    crate::temporal::gate(services.authorization, actor, submitter.root(), &wire)
+                        .map_err(Refused::Denied)?;
+                let token_status = actor.token_status();
+                submitter
+                    .submit(&wire, &source, token_status.as_ref(), authorized.as_ref())
+                    .await
+                    .map(|answered| Answer::Temporal(Box::new(answered)))
+                    .map_err(Refused::Failed)
+            }
         }
     }
 }

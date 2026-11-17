@@ -223,7 +223,7 @@ pub struct ActionBody {
 /// and the same one cannot be handed to every partition — an input belongs to the partition it
 /// names, and Cedar reads an action's properties somewhere Rego does not.
 ///
-/// `permguard_pdp_core::route::Route::route` turns one of these into one `Query` per partition, and is the only place that
+/// `permguard_evaluator::route::Route::route` turns one of these into one `Query` per partition, and is the only place that
 /// does: the plane serving a request and the CLI deciding one offline call it, so a workspace
 /// cannot be tested against a materialisation that differs from the one it will meet.
 #[derive(Debug, Clone, Default)]
@@ -494,7 +494,7 @@ pub struct Asked {
     pub request_id: Option<String>,
     /// One question per evaluation the caller asked for — a request with no
     /// `evaluations[]` asks exactly one. Logical: materialised per partition by
-    /// `permguard_pdp_core::route::Route::route`, because no single query fits every runtime of a profile.
+    /// `permguard_evaluator::route::Route::route`, because no single query fits every runtime of a profile.
     pub queries: Vec<(Asking, Option<String>)>,
     /// Whether the caller boxcarred: the response shape follows the request's.
     pub boxcarred: bool,

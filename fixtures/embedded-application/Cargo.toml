@@ -28,7 +28,9 @@ registered-cedar = ["dep:permguard-language-cedar"]
 
 [dependencies]
 # The one Permguard package an embedding application names.
-permguard-data-plane = { path = "../../crates/permguard-data-plane", default-features = false }
+# The decision path, the round that fills its mirrors, the decision log and the temporal interface:
+# each capability named, since the Data Plane has none by default.
+permguard-data-plane = { path = "../../crates/permguard-data-plane", default-features = false, features = ["sync", "decision-evidence", "event-evidence"] }
 # A language package the application links itself, with its evaluating half (`registered-cedar`).
 permguard-language-cedar = { path = "../../crates/permguard-language-cedar", features = ["evaluate"], optional = true }
 

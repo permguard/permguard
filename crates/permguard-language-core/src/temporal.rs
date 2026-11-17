@@ -3,7 +3,7 @@
 
 //! The temporal interface's wire model: what a submission carries, what it answers, and which
 //! history a decision ranged over. What a temporal partition is, and how it checks and decides an
-//! occurrence, is the decision point's (`permguard_pdp_core::temporal`).
+//! occurrence, is the remembering role's ([`crate::remembering`]).
 
 /// The name of this interface, as a ledger's `profiles.<name>.type` declares it and as the
 /// discovery document identifies it.

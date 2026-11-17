@@ -253,7 +253,10 @@ operations:
         while Instant::now() < deadline {
             if let Ok(Some(_)) = child.try_wait() {
                 let said = std::fs::read_to_string(log).unwrap_or_default();
-                if !last && said.contains("Address already in use") {
+                // The operating system's own words: `EADDRINUSE` on Unix, error 10048 on Windows.
+                if !last
+                    && (said.contains("Address already in use") || said.contains("os error 10048"))
+                {
                     return None;
                 }
                 panic!("the server exited:\n{said}");

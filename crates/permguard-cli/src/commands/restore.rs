@@ -26,7 +26,6 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use permguard_core::authz::Principal;
 use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::Mutations;
 use permguard_host::restore::{self, Marker, Mode};
@@ -36,6 +35,7 @@ use super::host::{
     INITIATOR, ResetReport, audit_offline, custodian, emergency, hold, open_identity, open_plans,
     refusal_text, reset_report, volume_of, write_new,
 };
+use super::offline_ops::{config_of, planner};
 use crate::args::{Globals, RestoreAction};
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
@@ -294,28 +294,6 @@ fn recovery_key_checked(
         ),
     }
     Ok(())
-}
-
-/// The configuration a restore or a migration reads, refused when it requires dual control: an
-/// offline plan then needs an approval, which an offline volume cannot collect.
-pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
-    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
-        .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
-    if config
-        .assurance()
-        .requires(permguard_core::assurance::Control::OperationsDualControl)
-    {
-        return Err(Failure::usage(
-            "the assurance profile requires dual control, under which an offline restore or \
-             migration needs an approval that no offline volume can collect yet: nothing was \
-             planned",
-        ));
-    }
-    Ok(config)
-}
-
-pub(super) fn planner() -> Result<Principal, Failure> {
-    Principal::new(INITIATOR).map_err(|error| Failure::internal(format!("the planner: {error}")))
 }
 
 fn plan(

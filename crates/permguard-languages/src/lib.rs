@@ -9,7 +9,7 @@
 //! default), and every rule that is asked of all of them at once: the lookups, the manifest gates,
 //! the startup checks, the descriptors. The `evaluate` feature adds what a decision point needs and
 //! a build that only validates does not: the evaluating halves, routing, the evaluation path
-//! (`permguard-pdp-core`) and the supervised worker.
+//! (`permguard-evaluator`) and the supervised worker.
 //!
 //! Split by role, because the two sides of the product ask a language
 //! different things:
@@ -35,32 +35,32 @@
 // the panic boundary, and this package reaches them through the roles and the lookups, never by
 // name. Keeping the concrete types private is what makes the role split a rule the compiler
 // enforces — an ingest path cannot get hold of `Cedar` and call the splitter on it.
-pub use permguard_language_core::{attestation, guard, headroom, names, role};
 #[cfg(feature = "evaluate")]
-pub use permguard_pdp_core::{fanout, warm};
+pub use permguard_evaluator::{fanout, warm};
+pub use permguard_language_core::{attestation, guard, headroom, names, role};
 
 /// Queries, verdicts and how they combine (`permguard-language-core`), and — with the `evaluate`
-/// feature — the evaluating half and the one path every evaluation takes (`permguard-pdp-core`).
+/// feature — the evaluating half and the one path every evaluation takes (`permguard-evaluator`).
 pub mod evaluate {
-    pub use permguard_language_core::evaluate::*;
     #[cfg(feature = "evaluate")]
-    pub use permguard_pdp_core::evaluate::*;
+    pub use permguard_evaluator::evaluate::*;
+    pub use permguard_language_core::evaluate::*;
 }
 
 /// The native request model (`permguard-language-core`), and — with the `evaluate` feature — how
-/// one question is routed to the partitions of a profile (`permguard-pdp-core`).
+/// one question is routed to the partitions of a profile (`permguard-evaluator`).
 pub mod request {
-    pub use permguard_language_core::request::*;
     #[cfg(feature = "evaluate")]
-    pub use permguard_pdp_core::route::*;
+    pub use permguard_evaluator::route::*;
+    pub use permguard_language_core::request::*;
 }
 
 /// The temporal interface's wire model (`permguard-language-core`), and — with the `evaluate`
-/// feature — what a temporal partition is and how it decides (`permguard-pdp-core`).
+/// feature — what a temporal partition is and how it decides (`permguard-evaluator`).
 pub mod temporal {
-    pub use permguard_language_core::temporal::*;
     #[cfg(feature = "evaluate")]
-    pub use permguard_pdp_core::temporal::*;
+    pub use permguard_evaluator::temporal::*;
+    pub use permguard_language_core::temporal::*;
 }
 
 pub mod artifact;
@@ -93,7 +93,7 @@ pub use lookup::register;
 pub use lookup::{Unregistered, language, language_for_media_type, languages};
 /// An engine, both halves of one language: what [`register`] takes.
 #[cfg(feature = "evaluate")]
-pub use permguard_pdp_core::Engine;
+pub use permguard_evaluator::Engine;
 #[cfg(feature = "evaluate")]
 pub use registry::evaluating;
 pub use request::{

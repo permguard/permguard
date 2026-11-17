@@ -52,9 +52,11 @@
 //! does not rely on this: each of its jobs carries its own panic boundary, so only the partition
 //! that came apart is lost (`crate::evaluate::evaluate_all`).
 
-use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use std::sync::{LazyLock, Mutex, mpsc};
+
+#[cfg(feature = "threads")]
+mod threads;
 
 /// A unit of work, owned: the pool outlives any one request, so nothing may be borrowed from one.
 type Job = Box<dyn FnOnce() + Send + 'static>;
@@ -86,6 +88,7 @@ impl std::fmt::Display for Lost {
 ///
 /// Small on purpose. A deep queue only converts a latency problem into a memory one: the jobs at
 /// the back belong to requests whose callers have long since been answered by a timeout.
+#[cfg(feature = "threads")]
 const QUEUE_PER_WORKER: usize = 4;
 
 /// The evaluations the deployment configured to run at once, when it said so before the shared
@@ -126,60 +129,22 @@ impl Fanout {
     /// legitimate answer — the alternative on a machine that cannot spawn a thread is refusing to
     /// decide at all.
     pub fn with_workers(workers: usize) -> Self {
-        let workers = workers.max(1);
-        let (sender, receiver) = mpsc::sync_channel::<Job>(workers * QUEUE_PER_WORKER);
-        let receiver = Arc::new(Mutex::new(receiver));
+        #[cfg(feature = "threads")]
+        {
+            let (sender, started) = threads::start(workers.max(1));
 
-        let mut started = 0usize;
-        for _ in 0..workers {
-            let receiver = Arc::clone(&receiver);
-            // Detached on purpose: the pool lives as long as the process, and a worker that is
-            // waiting for work holds nothing.
-            std::thread::Builder::new()
-                .name("permguard-evaluate".to_owned())
-                .spawn(move || {
-                    loop {
-                        let job = {
-                            let Ok(queue) = receiver.lock() else {
-                                // The queue is poisoned only if a worker panicked while holding
-                                // it, which it cannot: the lock is released before a job runs.
-                                return;
-                            };
-                            queue.recv()
-                        };
-                        let Ok(job) = job else {
-                            return;
-                        };
-                        // A policy engine should not panic. If one does, it takes the request
-                        // down and not the pool: the caller hears a missing answer and denies.
-                        let _ = std::panic::catch_unwind(AssertUnwindSafe(job));
-                    }
-                })
-                .map(|_| started += 1)
-                .unwrap_or_else(|error| {
-                    // Said once, plainly. A pool quietly smaller than it was asked for is a plane
-                    // that got slower for a reason nothing recorded.
-                    tracing::warn!(
-                        event.name = "evaluate.worker_not_started",
-                        component = "languages",
-                        error = %error,
-                        "an evaluation worker could not be started"
-                    );
-                });
+            Self {
+                work: Mutex::new(sender),
+                workers: started,
+            }
         }
-        if started == 0 {
-            tracing::warn!(
-                event.name = "evaluate.pool_empty",
-                component = "languages",
-                asked = workers,
-                "no evaluation worker could be started: every partition will be evaluated on the \
-                 calling thread, one after another"
-            );
-        }
+        // Without the `threads` feature this package starts none: the pool is the caller's own
+        // thread, whatever was asked for, and every partition is evaluated there in order.
+        #[cfg(not(feature = "threads"))]
+        {
+            let _ = workers;
 
-        Self {
-            work: Mutex::new(sender),
-            workers: started,
+            Self::sequential()
         }
     }
 
@@ -198,7 +163,13 @@ impl Fanout {
     /// embedding application asks for. Unbounded, it is sized to the machine, as it always was.
     pub fn shared() -> &'static Fanout {
         static SHARED: LazyLock<Fanout> = LazyLock::new(|| {
-            let cores = std::thread::available_parallelism().map_or(2, std::num::NonZero::get);
+            #[cfg(feature = "threads")]
+            let cores = threads::cores();
+            // No thread is started without the feature, however many cores there are.
+            #[cfg(not(feature = "threads"))]
+            let cores = 1;
+            #[cfg(not(feature = "threads"))]
+            let _ = SHARED_BOUND.set(1);
 
             match shared_workers(cores, SHARED_BOUND.get().copied()) {
                 0 => Fanout::sequential(),
@@ -354,8 +325,6 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use std::sync::Barrier;
-    use std::time::Duration;
 
     #[test]
     fn the_shared_pool_never_outgrows_the_machine_the_cap_or_the_configured_bound() {
@@ -388,6 +357,16 @@ mod tests {
             (0..5).map(|index| (index, true)).collect::<Vec<_>>()
         );
     }
+}
+
+/// The pool with workers: only where the `threads` feature starts them.
+#[cfg(all(test, feature = "threads"))]
+mod threaded_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use std::sync::{Arc, Barrier};
+    use std::time::Duration;
 
     #[test]
     fn two_partitions_are_evaluated_at_the_same_time() {

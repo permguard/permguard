@@ -35,7 +35,7 @@ serde_json.workspace = true
 # An application embedding the Data Plane with this worker named, over the Data Plane's own test
 # support: the Host it composes and the repository's examples as verified mirrors.
 permguard-core.workspace = true
-permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
+permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego", "sync", "decision-evidence", "event-evidence"] }
 permguard-events = { workspace = true, features = ["stream"] }
 permguard-host.workspace = true
 permguard-mirror.workspace = true

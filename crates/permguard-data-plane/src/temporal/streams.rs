@@ -1088,7 +1088,7 @@ impl Streams {
             return Ok(decision_id.clone());
         }
 
-        let decision_id = permguard_decisions::instance::mint();
+        let decision_id = permguard_objects::instance::mint();
         known.decision_id = Some(decision_id.clone());
         held.host.keep_occurrence(&known)?;
 

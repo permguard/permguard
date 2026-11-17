@@ -62,6 +62,8 @@ pub mod stream;
 pub use chain::{ChainError, Verified};
 
 pub use envelope::{BATCH_TYPE, Batch, Envelope, EnvelopeError, Signed};
+/// The whole tree, for a producer that commits a batch itself: the root over its records' digests.
+pub use permguard_canonical::merkle;
 /// Recomputes a Merkle root from a leaf and its inclusion path.
 ///
 /// Re-exported from the stream foundation's tree, which is the same tree the decision log uses:

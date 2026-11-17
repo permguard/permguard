@@ -24,6 +24,7 @@ use permguard_core::{Config, PlaneContext};
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DecisionBatchV1, Declaration, EventBatchV1, Registration,
 };
+#[cfg(feature = "decision-evidence")]
 use permguard_host::secrets::{ZoneHandle, ZonePurpose};
 
 use crate::PLANE;
@@ -50,20 +51,57 @@ pub type Audit = AuditHandle<DataPlaneAudit>;
 /// a plane that keeps no log MACs under nothing (WP-3.3) and appends to no stream (WP-6.1); the
 /// event stream only when it serves the temporal interface (WP-6.2a).
 pub(crate) fn declaration(config: &Config) -> Declaration {
-    use permguard_host::membership::record::TaskType;
-
-    // The task contracts this plane takes part in as a member (WP-4.4, owner decision); the
-    // member's Host consumes `events.import` itself (WP-6.2c1).
+    // The artifacts of the `data.attest` ring, whatever this build records: the ring's public
+    // set is this plane's, and a signed response is the decision path's.
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
         .signs::<permguard_host::composition::DecisionResponseV1>()
         .audits::<DataPlaneAudit>()
         // A mirror a hold names is never reaped (WP-7.2 follow-up, WP-7.3c).
-        .reads_holds()
-        .uses_task(TaskType::PolicyMirror, 1)
-        .handles_task(TaskType::DecisionsShip, 1)
-        .handles_task(TaskType::EventsShip, 1);
+        .reads_holds();
+    // The task contracts this plane takes part in as a member (WP-4.4, owner decision), each only
+    // in a build that carries its capability; the member's Host consumes `events.import` itself
+    // (WP-6.2c1).
+    let declaration = sync_contract(declaration);
+    let declaration = decision_contract(declaration);
+    let declaration = event_contract(declaration);
+    let declaration = event_streams(declaration, config);
+    decision_stream(declaration, config)
+}
+
+/// The member side of `policy.mirror`, in a build that runs the round.
+fn sync_contract(declaration: Declaration) -> Declaration {
+    #[cfg(feature = "sync")]
+    let declaration = declaration.uses_task(
+        permguard_host::membership::record::TaskType::PolicyMirror,
+        1,
+    );
+    declaration
+}
+
+/// The provider side of `decisions.ship`, in a build that keeps the decision log.
+fn decision_contract(declaration: Declaration) -> Declaration {
+    #[cfg(feature = "decision-evidence")]
+    let declaration = declaration.handles_task(
+        permguard_host::membership::record::TaskType::DecisionsShip,
+        1,
+    );
+    declaration
+}
+
+/// The provider side of `events.ship`, in a build that serves the temporal interface.
+fn event_contract(declaration: Declaration) -> Declaration {
+    #[cfg(feature = "event-evidence")]
+    let declaration =
+        declaration.handles_task(permguard_host::membership::record::TaskType::EventsShip, 1);
+    declaration
+}
+
+/// The event stream this plane produces, and reads in a shared mode, when it serves the temporal
+/// interface.
+#[cfg(feature = "event-evidence")]
+fn event_streams(declaration: Declaration, config: &Config) -> Declaration {
     // The legacy event history it stops reading once the volume archived it (WP-6.2d).
     let declaration = if crate::temporal::served(config) {
         declaration
@@ -73,11 +111,22 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
         declaration
     };
     // A shared mode decides on the origins the Host imports, read from its consumer (WP-6.2c2b1).
-    let declaration = if crate::temporal::served(config) && config.events_pull_mode().is_shared() {
+    if crate::temporal::served(config) && config.events_pull_mode().is_shared() {
         declaration.reads_stream(permguard_events::stream::STREAM)
     } else {
         declaration
-    };
+    }
+}
+
+/// A build with no temporal interface declares no event stream.
+#[cfg(not(feature = "event-evidence"))]
+fn event_streams(declaration: Declaration, _: &Config) -> Declaration {
+    declaration
+}
+
+/// The decision stream and the zone keys its records are written under, when the log is on.
+#[cfg(feature = "decision-evidence")]
+fn decision_stream(declaration: Declaration, config: &Config) -> Declaration {
     if config.log_enabled() {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
@@ -88,10 +137,18 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
     }
 }
 
+/// A build with no decision log declares no decision stream and no zone key.
+#[cfg(not(feature = "decision-evidence"))]
+fn decision_stream(declaration: Declaration, _: &Config) -> Declaration {
+    declaration
+}
+
 fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
 }
 
+#[cfg(feature = "sync")]
+#[cfg(feature = "local-ledger")]
 /// The Host's holds (WP-7.3c), for the mirrors' reap: none for a plane no Host registered, which
 /// has no holds to keep; unavailable for a registered plane handed none, which then reaps nothing.
 pub(crate) fn holds(context: &PlaneContext<'_>) -> crate::mirrors::round::Holds {
@@ -115,6 +172,7 @@ pub fn authorization(
     )
 }
 
+#[cfg(feature = "sync")]
 /// The member side of `policy.mirror` (WP-7.2a): the tasks this Host holds and a session on
 /// each, when the Host holds memberships.
 pub(crate) fn mirror_tasks(
@@ -131,6 +189,7 @@ pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
         .flatten()
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The decision batch signer, when the plane's signing ring is composed.
 pub(crate) fn decision_signer(
     context: &PlaneContext<'_>,
@@ -152,6 +211,7 @@ pub(crate) fn response_signer(
         .flatten()
 }
 
+#[cfg(feature = "event-evidence")]
 /// The event batch signer, when the plane's signing ring is composed.
 pub(crate) fn event_signer(
     context: &PlaneContext<'_>,
@@ -184,6 +244,7 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
         .unwrap_or_else(|| unreachable!("a declared schema with a composed recorder"))
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The producer of the decision stream, when the Host composes a stream engine and the log is on
 /// (WP-6.1).
 pub(crate) fn decision_producer(
@@ -195,6 +256,7 @@ pub(crate) fn decision_producer(
         .flatten()
 }
 
+#[cfg(feature = "event-evidence")]
 /// The Host's producer of the event stream, when this plane serves the temporal interface and an
 /// engine is composed (WP-6.2a).
 pub(crate) fn event_producer(
@@ -206,6 +268,7 @@ pub(crate) fn event_producer(
         .flatten()
 }
 
+#[cfg(feature = "event-evidence")]
 /// The version in force of the legacy event history's layout on the volume (WP-6.2d): `None` when
 /// it is not laid out, or when this plane serves no temporal interface and so did not declare it.
 pub(crate) fn events_legacy_layout(context: &PlaneContext<'_>) -> Option<u16> {
@@ -215,6 +278,7 @@ pub(crate) fn events_legacy_layout(context: &PlaneContext<'_>) -> Option<u16> {
         .flatten()
 }
 
+#[cfg(feature = "event-evidence")]
 /// The Host's consumer of the event stream, when this plane decides on imported history and an
 /// engine is composed (WP-6.2c2b1).
 pub(crate) fn event_consumer(
@@ -226,11 +290,13 @@ pub(crate) fn event_consumer(
         .flatten()
 }
 
+#[cfg(any(feature = "decision-evidence", feature = "event-evidence"))]
 /// This Host's `host_id`, when the composition knows it: what the decision stream is named by.
 pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
     registration(context)?.host_id()
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The zone keys of `purpose` the Host holds for this plane: `None` without them, never another
 /// purpose's.
 pub(crate) fn zone_key(

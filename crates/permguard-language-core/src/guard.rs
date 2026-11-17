@@ -10,9 +10,9 @@
 //! an occurrence left durable and unapplied.
 //!
 //! [`Guarded`] wraps a built-in language so every caller that reaches it through the registry gets
-//! the boundary on validation and extraction, and — through `permguard-pdp-core`, which owns the
+//! the boundary on validation and extraction, and — through `permguard-evaluator`, which owns the
 //! evaluating half — on compilation. Evaluation has its own, per job, in
-//! `permguard_pdp_core::evaluate::evaluate_all`; the input check and the temporal entries are
+//! `permguard_evaluator::evaluate::evaluate_all`; the input check and the temporal entries are
 //! wrapped with [`contained`] where they are called, because each of those refuses in its own
 //! terms.
 //!

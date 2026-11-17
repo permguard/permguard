@@ -56,7 +56,7 @@ base64.workspace = true
 permguard-client = { workspace = true, features = ["http", "grpc", "catalog", "notp"] }
 # Transport parity, fault injection and the boundary registry, shared by every plane.
 permguard-conformance.workspace = true
-permguard-data-plane.workspace = true
+permguard-data-plane = { workspace = true, features = ["sync", "decision-evidence", "event-evidence"] }
 ring.workspace = true
 # The file catalog and the key manager the tests compose stores and Host handles with.
 permguard-std = { workspace = true, features = ["catalog", "keys"] }

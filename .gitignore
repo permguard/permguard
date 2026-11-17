@@ -561,6 +561,9 @@ zig-out/
 prebuilt/
 /permguard-benchmark.json
 
-# The reference embedding application takes the workspace's lockfile, copied before each run by
-# `scripts/check-embedded-fixture.sh`: there is no second lockfile to keep.
+# The reference applications take the workspace's lockfile, copied before each run by
+# the `scripts/check-*-fixture.sh` of each: there is no second lockfile to keep.
 /fixtures/embedded-application/Cargo.lock
+/fixtures/embedded-native/Cargo.lock
+/fixtures/evaluator-application/Cargo.lock
+/fixtures/external-plane/Cargo.lock

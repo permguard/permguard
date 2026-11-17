@@ -16,8 +16,11 @@ publish = false
 # Canonical JSON, the Merkle tree and the protocol's instant.
 permguard-canonical.workspace = true
 permguard-core.workspace = true
-# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
-permguard-host.workspace = true
+# The JWS framing a batch is signed with and the key selection it is verified with.
+permguard-objects.workspace = true
+# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11),
+# and the typed signer a Plane holds. A runtime's, never the model's.
+permguard-host = { workspace = true, optional = true }
 # The Host stream engine, for the two halves that are a runtime and not the model: the journal reads
 # the stream's signers, and the registration names the engine's descriptor and codec.
 permguard-stream = { workspace = true, optional = true }
@@ -33,9 +36,9 @@ ring.workspace = true
 # verifier links it alone.
 #
 # The durable journal a producer keeps, its index and the legacy archive read at a migration.
-storage = ["dep:permguard-stream"]
+storage = ["dep:permguard-host", "dep:permguard-stream"]
 # The event log as the Host's stream engine registers it: its name, descriptor and codec.
-stream = ["dep:permguard-stream"]
+stream = ["dep:permguard-host", "dep:permguard-stream"]
 
 [dev-dependencies]
 # Only to prove the domains stay separate: the test digests one value under both domains and

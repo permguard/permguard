@@ -25,7 +25,8 @@ flate2.workspace = true
 # of hashing or signing to keep an eye on.
 ring.workspace = true
 sha2.workspace = true
+# A JWS protected header is JSON: the `kid` it names is written as a JSON string.
+serde_json.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-serde_json.workspace = true
