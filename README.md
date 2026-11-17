@@ -923,10 +923,10 @@ The Host never depends on a concrete plane.
 | `permguard-contracts`              | codecs      | The messages and gRPC stubs of `contracts/proto`, generated once: a feature per contract and side.            |
 | `permguard-mirror`                 | codecs      | The verified local mirror of a ledger: store, proof, checkpoint, layout and state. No network.                |
 | `permguard-sync`                   | codecs      | The round over a Host's `policy.mirror` tasks, each ledger pulled into its mirror. Client-neutral.            |
-| `permguard-decisions`              | codecs      | Decision evidence records, commitments and their verification.                                                |
-| `permguard-events`                 | codecs      | Event evidence records for the temporal interface.                                                            |
+| `permguard-decisions`              | codecs      | Decision evidence: the record, chain and signed batch with no Host; its spool and stream as features.         |
+| `permguard-events`                 | codecs      | Event evidence for the temporal interface: the model with no Host; its journal and stream as features.        |
 | `permguard-language-core`          | languages   | What a language is: roles, artifacts, descriptors, the request model and the shared evaluation path.          |
-| `permguard-evaluator`               | languages   | The evaluating half: the evaluator contract, routing, the evaluation path, its pool and the warm budget.      |
+| `permguard-evaluator`              | languages   | The decision alone: an engine registered, policies compiled, a question answered. No Host, store or server.   |
 | `permguard-language-cedar`         | languages   | Cedar, through the official `cedar-policy` crate.                                                             |
 | `permguard-language-rego`          | languages   | Rego, through the `regorus` interpreter.                                                                      |
 | `permguard-language-dogwood`       | languages   | Dogwood, the temporal governance language, through `dogwood-language`.                                        |
@@ -935,21 +935,49 @@ The Host never depends on a concrete plane.
 | `permguard-authority-plane-server` | planes      | Authority Plane served: its HTTP and gRPC routes, its module and the `permguard-authority-plane` binary.      |
 | `permguard-control-plane`          | planes      | Control Plane domain: catalog, ledger store and NOTP, decision and event stores; serves nothing.              |
 | `permguard-control-plane-server`   | planes      | Control Plane served: its HTTP and gRPC routes, its module and the `permguard-control-plane` binary.          |
-| `permguard-data-plane`             | planes      | Data Plane domain and its embedded facade: mirrors, evaluation and authorization, decision log, history.      |
+| `permguard-data-plane`             | planes      | Data Plane domain: the evaluator, and as features the local ledger, the round, each evidence log.             |
 | `permguard-data-plane-server`      | planes      | Data Plane served: its HTTP and gRPC routes, its module and the `permguard-data-plane` binary.                |
 | `permguard-client`                 | clients     | Client-side access to endpoints, trust material, catalogs, NOTP, decisions, events and tokens.                |
 | `permguard-offline`                | composition | Offline volume administration the server and the command line share: configuration, keys, migrations.         |
 | `permguard-runtime`                | composition | The Host's headless runtime: its composition and its own services.                                            |
 | `permguard-evaluation-worker`      | composition | The dedicated supervised evaluation worker an embedded Data Plane may name.                                   |
-| `permguard-embedded`               | composition | The Data Plane embedded over a Host the headless runtime composes for it.                                     |
-| `permguard-server`                 | composition | Server Host composition: configuration, registration, dependency wiring and lifecycle.                        |
+| `permguard-embedded`               | composition | The Data Plane embedded over a Host the headless runtime composes for it, with the capabilities named.        |
+| `permguard-server`                 | composition | The server kit: composition, listeners, Plane registration; a binary selects the command line and signals.    |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-tls`                    | support     | What a TLS listener and a TLS client share: algorithms, material, binding.                                    |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |
 | `permguard-telemetry`              | support     | Liveness, readiness and metrics.                                                                              |
 | `permguard-std`                    | support     | Default implementations behind feature flags.                                                                 |
-| `permguard-cli`                    | clients     | `permguard`, the command-line interface, and the library Permguard Admin embeds.                              |
+| `permguard-cli`                    | clients     | `permguard`, built under `cli-bin`, and the library Permguard Admin embeds with the languages it names.       |
 | `permguard-conformance`            | tests       | REST/gRPC parity, fault injection, the `kill -9` crash harness and the untrusted-boundary registry.           |
+
+Four compositions are built from these packages, each linking only what it selects; every one is proven by a fixture outside the workspace, under `fixtures/`.
+
+| Composition | What an application names                                      | What it is                                                     |
+| ----------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
+| evaluator   | `permguard-evaluator` with one language                        | the decision alone: no Host, store, ledger, log or server      |
+| Data Plane  | `permguard-data-plane` with the capabilities it uses           | the evaluator, a verified ledger, the round, each evidence log |
+| embedded    | `permguard-embedded` with a language and capabilities          | the Data Plane over a Host composed for it, with no listener   |
+| server      | `permguard-server` and a Plane's server package                | the Planes served, and what a program owns beside them         |
+
+No package has a `full` feature, and none of these has a default one: a build that names nothing links nothing but the decision.
+
+```toml
+# The decision alone, with Cedar.
+permguard-evaluator = { path = "crates/permguard-evaluator", features = ["cedar"] }
+# With a record of each decision, and no Host.
+permguard-decisions = { path = "crates/permguard-decisions", features = ["evaluator"] }
+
+# The Data Plane in a process of your own: a verified local ledger, the round and the decision log.
+permguard-embedded = { path = "crates/permguard-embedded", features = ["cedar", "sync", "decision-evidence"] }
+
+# A server of your own from the kit, with the Data Plane's module registered beside your Planes.
+permguard-server = { path = "crates/permguard-server" }
+permguard-data-plane-server = { path = "crates/permguard-data-plane-server", default-features = false }
+```
+
+The crates are not published: a path or a git dependency on this repository at one tag is how they are named.
+The evaluator links no thread, file, socket or process interface, which a gate holds; no browser or WebAssembly build is claimed, since no engine has been built for one here.
 
 </details>
 
