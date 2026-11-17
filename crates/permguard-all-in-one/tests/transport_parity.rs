@@ -62,8 +62,14 @@ enum Served {
     GrpcOnly,
 }
 
-/// What a server says when an address it was configured with is taken.
-const ADDRESS_IN_USE: &str = "Address already in use";
+/// What a server says when an address it was configured with is taken: the operating system's
+/// own words, `EADDRINUSE` on Unix and `WSAEADDRINUSE`, error 10048, on Windows.
+const ADDRESS_IN_USE: &[&str] = &["Address already in use", "os error 10048"];
+
+/// Whether `said` names an address that was taken.
+fn address_in_use(said: &str) -> bool {
+    ADDRESS_IN_USE.iter().any(|words| said.contains(words))
+}
 
 /// Starts the runtime with every plane serving `served`, and reads its log until it serves.
 ///
@@ -75,7 +81,7 @@ fn start(tag: &str, served: Served) -> Running {
     for _ in 0..3 {
         match start_once(tag, served) {
             Ok(running) => return running,
-            Err(lost) if lost.contains(ADDRESS_IN_USE) => said = lost,
+            Err(lost) if address_in_use(&lost) => said = lost,
             Err(failed) => panic!("the runtime did not start ({served:?}): {failed}"),
         }
     }

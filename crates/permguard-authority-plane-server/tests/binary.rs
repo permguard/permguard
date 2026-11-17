@@ -27,15 +27,20 @@ fn free_port() -> u16 {
         .expect("a free port")
 }
 
-/// What a server says when an address it was configured with is taken.
-const ADDRESS_IN_USE: &str = "Address already in use";
+/// What a server says when an address it was configured with is taken: the operating system's
+/// own words, `EADDRINUSE` on Unix and `WSAEADDRINUSE`, error 10048, on Windows.
+const ADDRESS_IN_USE: &[&str] = &["Address already in use", "os error 10048"];
+
+/// Whether `said` names an address that was taken.
+fn address_in_use(said: &str) -> bool {
+    ADDRESS_IN_USE.iter().any(|words| said.contains(words))
+}
 
 /// Whether the server that ran in `dir` exited because another process held one of its ports:
 /// said on standard error, which a start keeps in `stderr.log`, or in what it logged.
 fn lost_a_port(dir: &std::path::Path, seen: &str) -> bool {
-    seen.contains(ADDRESS_IN_USE)
-        || std::fs::read_to_string(dir.join("stderr.log"))
-            .is_ok_and(|said| said.contains(ADDRESS_IN_USE))
+    address_in_use(seen)
+        || std::fs::read_to_string(dir.join("stderr.log")).is_ok_and(|said| address_in_use(&said))
 }
 
 /// Runs `boot`, which empties `dir`, chooses ports, writes the configuration and starts the

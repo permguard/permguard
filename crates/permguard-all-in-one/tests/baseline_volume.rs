@@ -95,8 +95,14 @@ fn free_ports() -> [u16; 3] {
 /// How many times a start that lost a port to another process is tried again.
 const PORT_ATTEMPTS: usize = 5;
 
-/// What a server says when an address it was configured with is taken.
-const ADDRESS_IN_USE: &str = "Address already in use";
+/// What a server says when an address it was configured with is taken: the operating system's
+/// own words, `EADDRINUSE` on Unix and `WSAEADDRINUSE`, error 10048, on Windows.
+const ADDRESS_IN_USE: &[&str] = &["Address already in use", "os error 10048"];
+
+/// Whether `said` names an address that was taken.
+fn address_in_use(said: &str) -> bool {
+    ADDRESS_IN_USE.iter().any(|words| said.contains(words))
+}
 
 /// A copy of the baseline volume and a configuration of today's schema for it.
 struct Upgrade {
@@ -206,7 +212,7 @@ operations:
         let mut said = String::new();
         for _ in 0..PORT_ATTEMPTS {
             match self.start_once() {
-                Err(refused) if refused.contains(ADDRESS_IN_USE) => {
+                Err(refused) if address_in_use(&refused) => {
                     said = refused;
                     self.ports.set(free_ports());
                     let (pseudonym, zone_keys) = self.versions.borrow().clone();
