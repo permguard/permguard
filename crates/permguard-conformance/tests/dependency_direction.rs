@@ -858,6 +858,68 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     );
 }
 
+/// The command line is a library a program embeds (phase 6): built with no feature it links no
+/// engine, no Plane's domain that carries them, no completion generator, and never a server. A
+/// language is a feature, the offline restore brings the Control Plane's domain with every
+/// language it validates, and `cli-bin` is the official binary whole.
+#[test]
+fn the_command_line_library_links_only_what_a_program_selects() {
+    const CEDAR: &[&str] = &["permguard-language-cedar", "cedar-policy"];
+    const REGO: &[&str] = &["permguard-language-rego", "regorus"];
+    const DOGWOOD: &[&str] = &["permguard-language-dogwood", "dogwood-language"];
+    const RESTORE: &[&str] = &["permguard-control-plane"];
+    const COMPLETIONS: &[&str] = &["clap-complete"];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[CEDAR, REGO, DOGWOOD, RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "cedar",
+            &[CEDAR][..],
+            &[REGO, &["permguard-language-dogwood"], RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "rego",
+            &[REGO][..],
+            &[CEDAR, DOGWOOD, RESTORE, COMPLETIONS][..],
+        ),
+        (
+            "cedar,dogwood,rego,volume-restore",
+            &[CEDAR, REGO, DOGWOOD, RESTORE][..],
+            &[COMPLETIONS][..],
+        ),
+        (
+            "cli-bin",
+            &[CEDAR, REGO, DOGWOOD, RESTORE, COMPLETIONS][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-cli", features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent
+            .iter()
+            .flat_map(|names| names.iter())
+            .chain(SERVER_SIDE)
+        {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the command line library links what a program selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// The server is a kit until a program selects what it owns (phase 6): built with no feature it
 /// links no argument parser and no OTLP exporter, and each Plane's adapter, as a library, links
 /// the kit and no more. A feature brings what it names: `cli` the parser, `otel` the exporter.

@@ -135,6 +135,13 @@ for plane in authority control data; do
     cargo check --locked -p "permguard-${plane}-plane-server" --no-default-features --lib
 done
 
+# The command line as a library: with no language, each one, and what Permguard Admin embeds; the
+# official binary is `cli-bin`, its default.
+for selection in "" cedar rego dogwood "cedar,dogwood,rego,volume-restore"; do
+    printf '==> permguard-cli, its library built with `%s`\n' "${selection}"
+    cargo check --locked -p permguard-cli --no-default-features --features "${selection}" --lib
+done
+
 # A server assembled outside this workspace from the kit: a Plane the workspace does not know
 # beside an open-source one.
 ./scripts/check-external-plane-fixture.sh

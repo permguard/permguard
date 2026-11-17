@@ -86,6 +86,11 @@ is cut.
   Each Plane's server package has a `bin` feature, on by default, that selects them for its binary: a composition that registers a Plane's module in a server of its own names the package with `default-features = false`.
   The binaries and images are built as before, and `fixtures/external-plane` proves, outside the workspace, a Plane the workspace does not know served beside the Data Plane by the kit alone.
   A Plane that serves no route over one transport is registered as it is: its empty router is no longer layered.
+- **The command line library selects its languages, and the binary is `cli-bin`.**
+  `permguard-cli` builds the `permguard` binary under `cli-bin`, on by default: every language, the offline `restore` and the shell completions.
+  A program that embeds the library names the package with `default-features = false` and what it uses: `cedar`, `dogwood`, `rego`, and `volume-restore` for the `restore` command, which links the Control Plane's domain.
+  With no feature the library links no engine: 172 packages where it linked 343.
+  The argument parser stays in the library, since an embedding program runs the same commands through `shell::run_captured`.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.
