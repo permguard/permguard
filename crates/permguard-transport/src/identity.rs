@@ -67,7 +67,9 @@ where
     S: Send + 'static,
 {
     type Stream = TlsStream<I>;
-    type Service = WithPeer<S>;
+    // The handshake's own acceptor wraps the service to hand every request what the TLS layer
+    // knows of the connection (`axum-server` 0.9): the peer's identity is added around that.
+    type Service = WithPeer<axum_server::tls::TlsService<S>>;
     type Future = Pin<Box<dyn Future<Output = io::Result<(Self::Stream, Self::Service)>> + Send>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {

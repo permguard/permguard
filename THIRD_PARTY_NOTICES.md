@@ -48,7 +48,7 @@ says so and its repository is the authority.
 | `autocfg` | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
 | `axum` | 0.8.9 | MIT | https://github.com/tokio-rs/axum |
 | `axum-core` | 0.5.6 | MIT | https://github.com/tokio-rs/axum |
-| `axum-server` | 0.8.0 | MIT | https://github.com/programatik29/axum-server |
+| `axum-server` | 0.9.2 | MIT | https://github.com/programatik29/axum-server |
 | `base64` | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | `base64` | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | `base64ct` | 1.8.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
@@ -393,10 +393,10 @@ says so and its repository is the authority.
 | `toml_edit` | 0.25.15+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `toml_parser` | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `toml_writer` | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
-| `tonic` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
-| `tonic-build` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
-| `tonic-prost` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
-| `tonic-prost-build` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
+| `tonic` | 0.14.9 | MIT | https://github.com/grpc/grpc-rust |
+| `tonic-build` | 0.14.9 | MIT | https://github.com/grpc/grpc-rust |
+| `tonic-prost` | 0.14.9 | MIT | https://github.com/grpc/grpc-rust |
+| `tonic-prost-build` | 0.14.9 | MIT | https://github.com/grpc/grpc-rust |
 | `tonic-types` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
 | `tower` | 0.5.3 | MIT | https://github.com/tower-rs/tower |
 | `tower-http` | 0.7.1 | MIT | https://github.com/tower-rs/tower-http |
