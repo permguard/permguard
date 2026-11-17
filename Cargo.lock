@@ -2662,6 +2662,7 @@ dependencies = [
  "permguard-conformance",
  "permguard-control-plane-server",
  "permguard-core",
+ "permguard-data-plane",
  "permguard-decisions",
  "permguard-events",
  "permguard-host",

@@ -562,7 +562,7 @@ prebuilt/
 /permguard-benchmark.json
 
 # The reference applications take the workspace's lockfile, copied before each run by
-# `scripts/check-embedded-fixture.sh` and `scripts/check-evaluator-fixture.sh`: there is no second
-# lockfile to keep.
+# the `scripts/check-*-fixture.sh` of each: there is no second lockfile to keep.
 /fixtures/embedded-application/Cargo.lock
+/fixtures/embedded-native/Cargo.lock
 /fixtures/evaluator-application/Cargo.lock

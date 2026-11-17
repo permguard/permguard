@@ -1,0 +1,44 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# An application that embeds the whole native composition, as one outside this repository would:
+# its own workspace, one Permguard package, `permguard-embedded`, with no default feature, a
+# feature per language and one per capability of the Data Plane it selects.
+# `scripts/check-native-fixture.sh` resolves, builds and tests it once per named profile, so
+# nothing the repository's workspace unifies can hide what a profile links.
+[package]
+name = "permguard-native-fixture"
+description = "A reference application embedding the Permguard Data Plane over a Host composed for it, with no server, built outside the workspace once per named profile."
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Its own workspace: the repository's would otherwise claim it, and unify its features.
+[workspace]
+
+[features]
+# A language each, none by default.
+cedar = ["permguard-embedded/cedar"]
+rego = ["permguard-embedded/rego"]
+# The Data Plane's capabilities beside the decision path, each named, none by default.
+sync = ["permguard-embedded/sync"]
+decision-evidence = ["permguard-embedded/decision-evidence"]
+event-evidence = ["permguard-embedded/event-evidence"]
+
+[dependencies]
+# The one Permguard package the application names.
+permguard-embedded = { path = "../../crates/permguard-embedded", default-features = false }
+
+[dev-dependencies]
+permguard-core = { path = "../../crates/permguard-core" }
+# The repository's examples as verified mirrors, read by the Data Plane's own test support. No
+# language is named here: the tests decide with what the profile selected, and no more.
+permguard-data-plane = { path = "../../crates/permguard-data-plane", default-features = false, features = ["local-ledger"] }
+permguard-languages = { path = "../../crates/permguard-languages", default-features = false }
+permguard-mirror = { path = "../../crates/permguard-mirror" }
+permguard-objects = { path = "../../crates/permguard-objects" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_norway = "0.9"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }

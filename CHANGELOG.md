@@ -74,6 +74,12 @@ is cut.
   `storage` and `stream` remain the only way either reaches a Host, and a Host's typed signer signs a batch only in a build with one of them.
   The `evaluator` feature of `permguard-decisions` adds `answer`, the record's answer from an evaluator's: its outcome, causes, cited policies and reason code, the mapping the Data Plane records with.
   `permguard_evaluator::engines` names the engines a build selected, and `fixtures/evaluator-application` proves each profile of an application that embeds the evaluator alone, outside the workspace.
+- **The Data Plane's capabilities are features, none by default.**
+  `permguard-data-plane` with no feature is the evaluator and the request model, and links no Host, ledger, log or asynchronous runtime.
+  `local-ledger` brings the Host's handles and the decision path against a verified mirror, `sync` the round over the Host's `policy.mirror` tasks, `decision-evidence` the decision log, `event-evidence` the temporal interface; there is no `full` feature.
+  An application that names `permguard-data-plane` with `default-features = false` now names the capabilities it uses, and `permguard-embedded`, which always carries `local-ledger`, has `sync`, `decision-evidence` and `event-evidence` of its own.
+  A capability a build does not carry is refused at start by name: `dataPlane.decisions.log.enabled` without `decision-evidence`, `dataPlane.events.enabled` without `event-evidence`.
+  The standalone Data Plane, the all-in-one and their images carry every capability, as before.
 - **A Host with no listener is a member.**
   A member opens every session, so an embedded Host, which binds nothing, joins a coordinator from an invitation all the same: `permguard-embedded` with its `membership` feature dials out over the client identity of `admin.tls`, with `admin.addr` unset, verifying the coordinator against its `client_ca` and `crl` on TLS 1.3.
   The membership side is composed for it with no ingress: the replay journal, the pinned peers and the tasks are opened as beside a listener, and nobody enrolls with it; without that identity a configured `host.join` refuses the start.

@@ -41,6 +41,7 @@ pub(crate) fn evaluation(
     )
 }
 
+#[cfg(feature = "event-evidence")]
 /// Whether `actor` may submit an occurrence to the store `zone`/`ledger` names: [`evaluation`]'s
 /// two stages under `event.submit` (WP-6.2a).
 pub(crate) fn submission(

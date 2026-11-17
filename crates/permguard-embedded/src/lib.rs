@@ -152,12 +152,17 @@ impl Builder {
             ))
         })
         .with_startup_check(|config| {
+            // The streams of the evidence this build carries: a build that keeps none declares none.
+            #[cfg(any(feature = "decision-evidence", feature = "event-evidence"))]
+            let streams = permguard_data_plane::embedded::streams(config);
+            #[cfg(not(any(feature = "decision-evidence", feature = "event-evidence")))]
+            let streams = Vec::new();
             register_streams(
                 config,
                 vec![DeclaredStreams {
                     component: permguard_data_plane::COMPONENT,
                     description: "embedded Data Plane",
-                    streams: permguard_data_plane::embedded::streams(config),
+                    streams,
                 }],
             )
         })

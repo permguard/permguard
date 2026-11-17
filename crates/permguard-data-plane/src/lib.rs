@@ -17,23 +17,36 @@
 //! package: hidden from the documentation, and no part of what a version promises. A test holds
 //! the list to that.
 
+#[cfg(feature = "local-ledger")]
 #[doc(hidden)]
 pub mod authz;
+#[cfg(feature = "local-ledger")]
 #[doc(hidden)]
 pub mod blocking;
+#[cfg(feature = "decision-evidence")]
 #[doc(hidden)]
 pub mod decisions;
+#[cfg(feature = "local-ledger")]
 pub mod embedded;
+#[cfg(feature = "local-ledger")]
 #[doc(hidden)]
 pub mod evaluation;
+#[cfg(feature = "local-ledger")]
 #[doc(hidden)]
 pub mod handles;
+#[cfg(feature = "sync")]
 #[doc(hidden)]
 pub mod mirrors;
+#[cfg(feature = "local-ledger")]
 #[doc(hidden)]
 pub mod plane;
+#[cfg(feature = "event-evidence")]
 #[doc(hidden)]
 pub mod temporal;
+
+/// The evaluation the Data Plane runs and the request it answers, with the languages this build
+/// selected: all a build with no capability is.
+pub use permguard_languages::{evaluate, request};
 
 /// The Plane's id, as configuration spells it.
 pub const PLANE: &str = "data";

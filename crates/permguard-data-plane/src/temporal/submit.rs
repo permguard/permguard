@@ -671,7 +671,8 @@ impl Submitter {
         // Recorded before the answer leaves. A plane told to refuse rather than answer unrecorded
         // decisions refuses *here*, with the event already durable — which is the only order that
         // keeps both promises: the history is whole whatever happens next, and no verdict this
-        // plane could not record has left it.
+        // plane could not record has left it. A build with no decision log records none.
+        #[cfg(feature = "decision-evidence")]
         self.decider
             .record_temporal(&crate::authz::decide::TemporalDecision {
                 decision_id: &decision_id,
@@ -717,6 +718,8 @@ impl Submitter {
                 token_status,
             })
             .await?;
+        #[cfg(not(feature = "decision-evidence"))]
+        let _ = (&loaded, &record, started_at);
 
         // An indeterminate result is answered as what it is — the occurrence is durable and
         // receipted, the verdict it did not get is never fabricated as a deny — and counted apart.

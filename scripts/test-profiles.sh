@@ -5,9 +5,9 @@
 #
 # Runs the packages whose features select what a build carries, in every profile, each resolved
 # on its own: the policy languages, the client library's surfaces and transports, the two
-# evidence models, the headless runtime with the offline package it links, and the two reference
-# applications, the embedded Data Plane's and the evaluator's, which are built outside the
-# workspace.
+# evidence models, the headless runtime with the offline package it links, and the reference
+# applications, the embedded Data Plane's, the evaluator's and the native composition's, which are
+# built outside the workspace.
 #
 # The workspace's tests run with every feature, which is one profile: all three languages,
 # evaluating. A language is a feature of the catalogue and evaluating is another, so a build may
@@ -59,7 +59,11 @@ done
 # The embedded Data Plane selects its languages too, none by default. Its tests always decide in
 # every language, so what is proven here is that each selection compiles by itself; what it links
 # is `dependency_direction.rs`'s to prove.
-for selection in "" cedar rego dogwood; do
+# So are its capabilities: the evaluator alone with no feature, then the local ledger, the round,
+# each evidence, and every combination of them.
+for selection in "" cedar rego dogwood local-ledger sync decision-evidence event-evidence \
+    "sync,decision-evidence" "sync,event-evidence" "decision-evidence,event-evidence" \
+    "sync,decision-evidence,event-evidence" "cedar,rego,dogwood,sync,decision-evidence,event-evidence"; do
     printf '==> permguard-data-plane built with `%s`\n' "${selection}"
     cargo check --locked -p permguard-data-plane --no-default-features --features "${selection}"
 done
@@ -100,7 +104,8 @@ run "permguard-runtime, headless" -p permguard-runtime
 
 # The Data Plane embedded over a Host composed for it: by itself, with each language and with the
 # adapter that fetches the Authority Plane's keys; its tests start a Host from a configuration file.
-for selection in "" cedar rego dogwood authority-refresh membership; do
+for selection in "" cedar rego dogwood sync decision-evidence event-evidence \
+    "sync,decision-evidence,event-evidence" authority-refresh membership; do
     printf '==> permguard-embedded built with `%s`\n' "${selection}"
     cargo check --locked -p permguard-embedded --no-default-features --features "${selection}"
 done
@@ -114,5 +119,9 @@ run "permguard-evaluation-worker, the dedicated worker" -p permguard-evaluation-
 # The evaluator alone as an application outside this workspace links it: no language, each
 # language, and each evidence model beside it, with no Host anywhere in the build.
 ./scripts/check-evaluator-fixture.sh
+
+# The whole native composition as an application outside this workspace links it: a Host with no
+# listener, a language, and the Data Plane's capabilities named or refused by name.
+./scripts/check-native-fixture.sh
 
 printf 'ok: every profile compiles and passes its tests on its own\n'

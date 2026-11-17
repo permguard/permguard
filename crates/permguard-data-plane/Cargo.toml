@@ -15,46 +15,67 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
-# The policy languages an embedding application selects, none by default
-# (`11-refactoring/1-dependencies.md`, Feature and profile model): each links one engine package
-# and nothing of the others. The standalone Data Plane selects all three itself.
+# With no feature the Data Plane is the evaluator and the request model, and nothing else
+# (`11-refactoring/1-dependencies.md`, The Data Plane's capabilities). There is no default and no
+# `full`: a server's adapter and `permguard-embedded` name what they serve.
 [features]
+# The policy languages, each linking one engine package and nothing of the others.
 cedar = ["permguard-languages/cedar"]
 dogwood = ["permguard-languages/dogwood"]
 rego = ["permguard-languages/rego"]
+# The decision path against a verified local mirror, on the Host it registers with, and the Data
+# Plane embedded in a process: the Host's handles, the mirror, the bounded pools.
+local-ledger = [
+    "dep:permguard-host",
+    "dep:permguard-mirror",
+    "dep:permguard-objects",
+    "dep:tokio",
+    "dep:anyhow",
+    "dep:tracing",
+    "dep:regex",
+    "dep:ring",
+]
+# The round over the Host's `policy.mirror` tasks, and the service that runs it.
+sync = ["local-ledger", "dep:permguard-sync"]
+# The decision log: the record, its durable spool and its Host stream.
+decision-evidence = ["local-ledger", "dep:permguard-decisions", "dep:permguard-stream"]
+# The temporal interface: the event history, its journal and its Host stream.
+event-evidence = ["local-ledger", "dep:permguard-events", "dep:permguard-stream"]
 
 [dependencies]
-anyhow.workspace = true
-# The verified local mirror: its store, its checkpoint and the pull that proves before it moves.
-# No network client: the mirror is filled over the sessions of the tasks the Host serves.
-permguard-mirror.workspace = true
-# The round over the Host's `policy.mirror` tasks, which this plane runs on its cadence.
-permguard-sync.workspace = true
 permguard-core.workspace = true
-# What a decision record is: the canonical bytes, the chain and the durable spool.
-permguard-decisions = { workspace = true, features = ["storage", "stream", "evaluator"] }
-# The durable event journal and the record contract the temporal interface writes.
-permguard-events = { workspace = true, features = ["storage", "stream"] }
-permguard-stream.workspace = true
-# The `policy.mirror` task messages a mirror round carries over its session (WP-7.2a).
-permguard-notp.workspace = true
-# The randomness the shipping backoff's jitter comes from: a deterministic jitter is no jitter
-# once every plane in a fleet runs the same build.
-ring.workspace = true
-regex.workspace = true
-tracing.workspace = true
-# The handles this plane declares and gets from the Host (P1).
-permguard-host.workspace = true
-serde_json.workspace = true
 # The evaluating half: this package decides. Which languages, the features above say.
 permguard-languages = { workspace = true, features = ["evaluate"] }
-permguard-objects.workspace = true
+serde_json.workspace = true
 # `rc`: a request shares its partition inputs across its evaluations behind an `Arc`, and the
 # decision record serializes them.
 serde = { workspace = true, features = ["rc"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+anyhow = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+# The handles this plane declares and gets from the Host (P1).
+permguard-host = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"], optional = true }
+# The verified local mirror: its store, its checkpoint and the pull that proves before it moves.
+# No network client: the mirror is filled over the sessions of the tasks the Host serves.
+permguard-mirror = { workspace = true, optional = true }
+permguard-objects = { workspace = true, optional = true }
+# The randomness the shipping backoff's jitter comes from: a deterministic jitter is no jitter
+# once every plane in a fleet runs the same build.
+ring = { workspace = true, optional = true }
+regex = { workspace = true, optional = true }
+# The round over the Host's `policy.mirror` tasks, which this plane runs on its cadence.
+permguard-sync = { workspace = true, optional = true }
+# What a decision record is: the canonical bytes, the chain and the durable spool.
+permguard-decisions = { workspace = true, features = ["storage", "stream", "evaluator"], optional = true }
+# The durable event journal and the record contract the temporal interface writes.
+permguard-events = { workspace = true, features = ["storage", "stream"], optional = true }
+permguard-stream = { workspace = true, optional = true }
 
 [dev-dependencies]
+# The tests exercise every capability, whatever the build under test selected.
+permguard-data-plane = { path = ".", features = ["sync", "decision-evidence", "event-evidence"] }
+# The `policy.mirror` task messages a mirror round carries over its session (WP-7.2a).
+permguard-notp.workspace = true
 # The tests decide in every language, whatever features the build under test selected.
 permguard-languages = { workspace = true, features = ["cedar", "dogwood", "rego", "evaluate"] }
 permguard-host = { workspace = true, features = ["test-support"] }

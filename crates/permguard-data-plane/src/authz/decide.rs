@@ -42,7 +42,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use permguard_core::{ApiError, ErrorClass, Metrics, Subject};
-use permguard_languages::attestation::{Evidence, EvidenceMode, EvidenceStatus};
+use permguard_languages::attestation::Evidence;
+#[cfg(feature = "decision-evidence")]
+use permguard_languages::attestation::{EvidenceMode, EvidenceStatus};
 use permguard_languages::request::{Asking, PartitionTarget, Route as _};
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
@@ -56,8 +58,10 @@ use super::{block, store};
 
 const COMPONENT: &str = "data-plane";
 
+#[cfg(feature = "sync")]
 pub use permguard_sync::Warmed;
 
+#[cfg(feature = "sync")]
 impl permguard_sync::Warm for Decider {
     fn warm(&self, mirror: &store::Mirror) -> Warmed {
         Decider::warm(self, mirror)
@@ -412,6 +416,7 @@ impl Loading {
     }
 }
 
+#[cfg(feature = "decision-evidence")]
 /// One temporal decision, as the log records it.
 ///
 /// A struct rather than a dozen arguments, because half of them are strings and a caller that
@@ -484,12 +489,15 @@ pub struct Decider {
     metrics: Metrics,
     audit: Option<AuditTarget>,
     max_evaluations: usize,
+    #[cfg(feature = "decision-evidence")]
     /// Where decisions are recorded, when this plane keeps a log.
     journal: Option<Arc<dyn crate::decisions::DecisionRecorder>>,
     /// Signed responses, when this plane offers them (WP-6.6b).
     response_signing: Option<super::signing::ResponseSigning>,
+    #[cfg(feature = "decision-evidence")]
     /// Which caller-supplied attributes this plane may record in clear.
     include: permguard_core::decisions::IncludeSection,
+    #[cfg(feature = "decision-evidence")]
     /// Turns an identifier into the zone's shared token before it ever leaves this plane
     /// (WP-3.3).
     subjects: Option<Arc<permguard_host::secrets::ZoneHandle>>,
@@ -560,9 +568,12 @@ impl Decider {
             metrics,
             audit: recorder.map(AuditTarget::Direct),
             max_evaluations: max_evaluations.max(1),
+            #[cfg(feature = "decision-evidence")]
             journal: None,
             response_signing: None,
+            #[cfg(feature = "decision-evidence")]
             include: permguard_core::decisions::IncludeSection::default(),
+            #[cfg(feature = "decision-evidence")]
             subjects: None,
             expire_after: None,
             stale_after: None,
@@ -727,6 +738,7 @@ impl Decider {
         self
     }
 
+    #[cfg(feature = "decision-evidence")]
     /// Records every decision this decider answers.
     ///
     /// Separate from [`Self::new`] because a plane that keeps no log is the
@@ -772,6 +784,7 @@ impl Decider {
         &self.cache
     }
 
+    #[cfg(feature = "sync")]
     /// Reads a freshly mirrored ledger, decides whether this engine may serve
     /// it, and compiles it into memory if it may.
     ///
@@ -1550,7 +1563,7 @@ impl Decider {
         // and cost a flush of the same disk the journal is flushing: the
         // operational trail keeps what only it records — lifecycle and
         // administration — and decisions live where they can be proven.
-        if self.journal.is_some() {
+        if self.keeps_a_log() {
             return;
         }
         let Some(audit) = &self.audit else {
@@ -1607,6 +1620,35 @@ impl Decider {
     }
 }
 
+impl Decider {
+    /// Whether this plane keeps a decision log: the journal is then the decision trail.
+    fn keeps_a_log(&self) -> bool {
+        #[cfg(feature = "decision-evidence")]
+        let kept = self.journal.is_some();
+        #[cfg(not(feature = "decision-evidence"))]
+        let kept = false;
+        kept
+    }
+
+    /// A build with no decision log records none: nothing is promised, and every decision says
+    /// so, exactly as a plane whose log is turned off does.
+    #[cfg(not(feature = "decision-evidence"))]
+    #[allow(clippy::too_many_arguments, clippy::unused_async)]
+    async fn journal(
+        &self,
+        _: &Resolved,
+        _: &store::Mirror,
+        _: &Head,
+        evaluated: &[Evaluated],
+        _: Option<&TraceContext>,
+        _: Option<&str>,
+        _: Option<&permguard_core::authz::TokenStatusRef>,
+        _: Instant,
+    ) -> Result<Vec<Evidence>, ApiError> {
+        Ok(evaluated.iter().map(|_| Evidence::disabled()).collect())
+    }
+}
+
 /// Who asked, as the transport saw it (WP-6.6b): the authenticated principal a signed response is
 /// addressed to, and the request digest taken before the transport touched the body.
 #[derive(Debug, Clone, Default)]
@@ -1646,6 +1688,7 @@ struct Signed {
     request_digest: String,
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The zone and the ledger of `mirror` as their 16 UUID bytes: the scope its records' tags and
 /// pseudonyms are keyed by (WP-3.3); `None` for ids that are not UUIDs.
 fn scope_of(mirror: &store::Mirror) -> Option<permguard_decisions::commitment::Scope> {
@@ -1655,6 +1698,7 @@ fn scope_of(mirror: &store::Mirror) -> Option<permguard_decisions::commitment::S
     ))
 }
 
+#[cfg(feature = "decision-evidence")]
 /// A decision whose subject cannot be pseudonymised under its zone's key is not recorded: an
 /// identifier never leaves this plane raw.
 fn unpseudonymizable() -> ApiError {
@@ -1665,6 +1709,7 @@ fn unpseudonymizable() -> ApiError {
     )
 }
 
+#[cfg(feature = "decision-evidence")]
 #[derive(Debug, Clone)]
 struct OwnedDecided {
     id: String,
@@ -1737,6 +1782,7 @@ fn partition_key(
     )
 }
 
+#[cfg(feature = "sync")]
 /// The interfaces `partition` of `head` is compiled for: those it promises, or, for a legacy
 /// partition promising none, the one its runtime implements (IFACE-01).
 fn interfaces_of(head: &Head, partition: &str) -> Vec<String> {
@@ -1769,6 +1815,7 @@ fn descriptor_of(head: &Head, partition: &str) -> Option<&'static str> {
         })
 }
 
+#[cfg(feature = "decision-evidence")]
 /// Each partition of `profile`, with the descriptor digest of the runtime that evaluated it: the
 /// semantics a record was decided under (IFACE-05).
 ///
@@ -1791,6 +1838,7 @@ fn descriptors_of(head: &Head, profile: &str) -> std::collections::BTreeMap<Stri
         .unwrap_or_default()
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The store a question was asked of, by its immutable ids.
 fn store_of(mirror: &store::Mirror, profile: &str) -> serde_json::Value {
     serde_json::json!({
@@ -1800,6 +1848,7 @@ fn store_of(mirror: &store::Mirror, profile: &str) -> serde_json::Value {
     })
 }
 
+#[cfg(feature = "decision-evidence")]
 /// One native evaluation as the canonical question the record commits to (IFACE-05): the
 /// interface, the store, and what was asked, the asserted principal apart from the actor.
 fn native_question(
@@ -1853,6 +1902,7 @@ pub(crate) struct Evaluated {
     pub(crate) causes: Vec<&'static str>,
 }
 
+#[cfg(feature = "decision-evidence")]
 impl OwnedDecided {
     fn borrowed(&self) -> crate::decisions::Decided<'_> {
         crate::decisions::Decided {
@@ -1894,6 +1944,7 @@ impl OwnedDecided {
     }
 }
 
+#[cfg(feature = "decision-evidence")]
 impl Decider {
     /// Writes one decision to the log, when this plane keeps one.
     ///
@@ -2265,6 +2316,7 @@ impl Decider {
     }
 }
 
+#[cfg(feature = "decision-evidence")]
 /// The members of `available` the deployment named in `wanted`.
 ///
 /// An allow-list, applied here rather than at the edge: what a decision *saw*
@@ -2299,6 +2351,7 @@ fn named(
     (!kept.is_empty()).then_some(kept)
 }
 
+#[cfg(feature = "decision-evidence")]
 fn now_rfc3339() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2434,7 +2487,7 @@ impl Plan {
                 decision: permit,
                 request_id,
                 context: Some(DecisionContext {
-                    id: Some(permguard_decisions::instance::mint()),
+                    id: Some(permguard_objects::instance::mint()),
                     reason_admin: Some(reason_admin(&outcome)),
                     reason_user: Some(reason_user(permit)),
                     policies: outcome.determining().to_vec(),
@@ -2627,6 +2680,7 @@ mod tests {
 
     use permguard_languages::Verdict;
 
+    #[cfg(feature = "decision-evidence")]
     /// What a record keeps in clear: nothing unless named, the members named, or every member
     /// under `["*"]` — and nothing when the caller sent nothing, whatever was named.
     #[test]

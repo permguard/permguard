@@ -839,6 +839,96 @@ fn an_embedded_host_links_no_server_and_only_the_adapters_it_selects() {
     );
 }
 
+/// The Data Plane is the evaluator and the request model until a capability is named (phase 6):
+/// with no feature it links no Host, no ledger, no synchronization, no evidence and no
+/// asynchronous runtime; each capability then brings its own packages and no other's, and none
+/// brings a server, a transport, a telemetry exporter or a network client.
+#[test]
+fn the_data_plane_links_only_the_capabilities_it_selects() {
+    const HOST: &[&str] = &["permguard-host", "tokio"];
+    const LEDGER: &[&str] = &["permguard-mirror", "permguard-notp"];
+    const SYNC: &[&str] = &["permguard-sync"];
+    const DECISIONS: &[&str] = &["permguard-decisions"];
+    const EVENTS: &[&str] = &["permguard-events"];
+    const STREAM: &[&str] = &["permguard-stream"];
+    // What no profile of the domain links, whatever it selects.
+    const NEVER: &[&str] = &[
+        "permguard-runtime",
+        "permguard-std",
+        "permguard-offline",
+        "permguard-embedded",
+        "permguard-data-plane-server",
+        "permguard-control-plane",
+        "permguard-authority-plane",
+        "clap",
+    ];
+    let mut problems = Vec::new();
+    for (features, carried, absent) in [
+        (
+            "",
+            &[][..],
+            &[HOST, LEDGER, SYNC, DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "local-ledger",
+            &[HOST, LEDGER][..],
+            &[SYNC, DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "sync",
+            &[HOST, LEDGER, SYNC][..],
+            &[DECISIONS, EVENTS, STREAM][..],
+        ),
+        (
+            "decision-evidence",
+            &[HOST, LEDGER, DECISIONS, STREAM][..],
+            &[SYNC, EVENTS][..],
+        ),
+        (
+            "event-evidence",
+            &[HOST, LEDGER, EVENTS, STREAM][..],
+            &[SYNC, DECISIONS][..],
+        ),
+        (
+            "sync,decision-evidence,event-evidence",
+            &[HOST, LEDGER, SYNC, DECISIONS, EVENTS, STREAM][..],
+            &[][..],
+        ),
+    ] {
+        let linked = carried_with("permguard-data-plane", features);
+        for name in carried.iter().flat_map(|names| names.iter()) {
+            if !linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it does not link {name}"));
+            }
+        }
+        for name in absent
+            .iter()
+            .flat_map(|names| names.iter())
+            .chain(NEVER)
+            .chain(SERVER_STACK)
+            .chain(NO_CLIENT)
+            .chain(
+                NO_LANGUAGE
+                    .iter()
+                    .filter(|name| **name != "permguard-languages"),
+            )
+        {
+            if linked.contains(*name) {
+                problems.push(format!("built with `{features}`, it links {name}"));
+            }
+        }
+        // Every profile is the evaluator's: that is what the Data Plane decides with.
+        if !linked.contains("permguard-evaluator") {
+            problems.push(format!("built with `{features}`, it links no evaluator"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the Data Plane links the capabilities it selects:\n  {}",
+        problems.join("\n  ")
+    );
+}
+
 /// What a record, its chain and its signed batch do not need (phase 6): the Host and its runtime,
 /// the default implementations, the stream engine, a ledger, a Plane, a client and an
 /// asynchronous runtime.

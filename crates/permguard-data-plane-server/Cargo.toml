@@ -27,7 +27,8 @@ anyhow.workspace = true
 axum.workspace = true
 permguard-core.workspace = true
 # The standalone Data Plane selects its languages itself: all three.
-permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego"] }
+# Every language and every capability: the standalone Data Plane serves them all, by name.
+permguard-data-plane = { workspace = true, features = ["cedar", "dogwood", "rego", "sync", "decision-evidence", "event-evidence"] }
 permguard-decisions = { workspace = true, features = ["storage", "stream"] }
 permguard-events = { workspace = true, features = ["storage", "stream"] }
 # The handles this plane declares and gets from the Host (P1).

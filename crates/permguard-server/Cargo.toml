@@ -106,8 +106,8 @@ rcgen.workspace = true
 permguard-objects.workspace = true
 # An application embedding the Data Plane as a member of a served coordinator: the embedded
 # composition whole, and the repository's examples as its verified mirror.
-permguard-embedded = { workspace = true, features = ["cedar", "rego", "membership"] }
-permguard-data-plane = { workspace = true, features = ["cedar", "rego"] }
+permguard-embedded = { workspace = true, features = ["cedar", "rego", "membership", "sync", "decision-evidence", "event-evidence"] }
+permguard-data-plane = { workspace = true, features = ["cedar", "rego", "sync", "decision-evidence", "event-evidence"] }
 permguard-languages = { workspace = true, features = ["cedar", "rego", "evaluate"] }
 permguard-mirror.workspace = true
 serde_norway.workspace = true
