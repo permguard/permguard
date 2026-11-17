@@ -1,0 +1,42 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The ceilings of the reference embedding application on Linux, x86-64, the CI runner: profile,
+# mode, measure, ceiling. Written from the measures the profiles job of the run 44063256630 kept,
+# on `c8dde537`, 2026-11-17, one run on a GitHub-hosted runner: the stripped size with a tenth to
+# spare, the resident memory with a half, the threads of the one-worker profile at the gate's
+# bound, an idle shutdown within a second.
+# Held by `scripts/measure-embedded-fixture.sh --check` in the profiles job.
+none	-	size_bytes	9914380
+cedar	-	size_bytes	17170050
+cedar	default	rss_idle_kb	12396
+cedar	default	rss_loaded_kb	22818
+cedar	default	shutdown_ms	1000
+cedar	one-worker	rss_idle_kb	11922
+cedar	one-worker	rss_loaded_kb	22374
+cedar	one-worker	threads	6
+cedar	one-worker	shutdown_ms	1000
+rego	-	size_bytes	22311450
+rego	default	rss_idle_kb	14940
+rego	default	rss_loaded_kb	20964
+rego	default	shutdown_ms	1000
+rego	one-worker	rss_idle_kb	14676
+rego	one-worker	rss_loaded_kb	20598
+rego	one-worker	threads	6
+rego	one-worker	shutdown_ms	1000
+dogwood	-	size_bytes	24777967
+dogwood	default	rss_idle_kb	12636
+dogwood	default	rss_loaded_kb	12636
+dogwood	default	shutdown_ms	1000
+dogwood	one-worker	rss_idle_kb	12060
+dogwood	one-worker	rss_loaded_kb	12060
+dogwood	one-worker	threads	6
+dogwood	one-worker	shutdown_ms	1000
+cedar,rego,dogwood	-	size_bytes	37485695
+cedar,rego,dogwood	default	rss_idle_kb	16140
+cedar,rego,dogwood	default	rss_loaded_kb	31542
+cedar,rego,dogwood	default	shutdown_ms	1000
+cedar,rego,dogwood	one-worker	rss_idle_kb	15702
+cedar,rego,dogwood	one-worker	rss_loaded_kb	30852
+cedar,rego,dogwood	one-worker	threads	6
+cedar,rego,dogwood	one-worker	shutdown_ms	1000
