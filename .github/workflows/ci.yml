@@ -94,7 +94,7 @@ jobs:
           cargo check -p permguard-std --all-targets --locked
       # nextest runs the test binaries side by side, a process per test; `cargo test` runs the
       # binaries one after another. The doctests are not nextest's, so they run after it.
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: nextest
       - name: tests
@@ -476,7 +476,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests (`permguard-conformance/tests/chart.rs`) render it with helm.
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
-      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-llvm-cov
       # Reported, not gated. A coverage threshold buys tests written to move a number; a number in
