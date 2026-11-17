@@ -283,10 +283,10 @@ says so and its repository is the authority.
 | `prettyplease` | 0.2.37 | MIT OR Apache-2.0 | https://github.com/dtolnay/prettyplease |
 | `proc-macro-crate` | 3.5.0 | MIT OR Apache-2.0 | https://github.com/bkchr/proc-macro-crate |
 | `proc-macro2` | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
-| `prost` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
+| `prost` | 0.14.6 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `prost-build` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
-| `prost-derive` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
-| `prost-types` | 0.14.4 | Apache-2.0 | https://github.com/tokio-rs/prost |
+| `prost-derive` | 0.14.6 | Apache-2.0 | https://github.com/tokio-rs/prost |
+| `prost-types` | 0.14.6 | Apache-2.0 | https://github.com/tokio-rs/prost |
 | `psm` | 0.1.32 | MIT OR Apache-2.0 | https://github.com/rust-lang/stacker/ |
 | `pulldown-cmark` | 0.13.6 | MIT | https://github.com/raphlinus/pulldown-cmark |
 | `pulldown-cmark-to-cmark` | 22.0.3 | Apache-2.0 | https://github.com/Byron/pulldown-cmark-to-cmark |
