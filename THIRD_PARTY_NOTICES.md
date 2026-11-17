@@ -477,7 +477,7 @@ says so and its repository is the authority.
 | `zerocopy-derive` | 0.8.59 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
 | `zerofrom` | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `zerofrom-derive` | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
-| `zeroize` | 1.9.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
+| `zeroize` | 1.9.1 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | `zeroize_derive` | 1.5.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | `zerotrie` | 0.2.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `zerovec` | 0.11.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
