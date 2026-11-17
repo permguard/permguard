@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.33] - 2026-11-17
+
 ### Added
 
 - **The Data Plane embedded in a Rust application.**

@@ -6,9 +6,10 @@
 //! process, environment, wall clock or asynchronous runtime, outside the one file the kernel's
 //! `threads` feature compiles.
 //!
-//! They read the monotonic clock, in two places named here and nowhere else: the kernel, to
-//! measure each evaluation, and the contracts, to tell whether a deadline its caller set has
-//! passed. A deadline does change an answer, to `deadline_exceeded`; the kernel's own
+//! They read the monotonic clock, in two files named here and nowhere else: the kernel, at the
+//! start and the end of each evaluation it measures, and the contracts, to tell whether a
+//! deadline its caller set has passed. Every such read in the text is counted, a start and an
+//! `elapsed` alike; how often one runs is not, since that is the number of partitions. A deadline does change an answer, to `deadline_exceeded`; the kernel's own
 //! `Evaluator` sets none, so what it answers depends on no clock.
 //!
 //! What a build links is `dependency_direction.rs`'s to prove; this reads the sources, because a
@@ -34,13 +35,17 @@ const NEVER_NAMED: &[&str] = &["tokio", "SystemTime", "extern crate", "std as"];
 /// The packages read: the kernel, and the contracts it evaluates through.
 const READ: &[&str] = &["permguard-evaluator", "permguard-language-core"];
 
-/// Where the monotonic clock is read, and how many times in each file: the kernel measuring an
-/// evaluation, the contracts reading what is left of a deadline. Every check of a deadline goes
-/// through that one read.
+/// Where the monotonic clock is read, and how many reads each file writes: the kernel starting
+/// and ending the measure of an evaluation, the contracts reading what is left of a deadline.
+/// These are the reads in the text, `Instant::now` and `elapsed`; how many times one runs is the
+/// caller's: once per partition for the measure, twice per partition for a deadline that is set.
 const MONOTONIC: &[(&str, &str, usize)] = &[
-    ("permguard-evaluator", "evaluate.rs", 1),
+    ("permguard-evaluator", "evaluate.rs", 2),
     ("permguard-language-core", "evaluate.rs", 1),
 ];
+
+/// The ways a source reads the monotonic clock.
+const CLOCK_READS: &[&str] = &["Instant::now", ".elapsed("];
 
 /// The one file that starts a thread, compiled only with the `threads` feature.
 const THREADS: &str = "fanout/threads.rs";
@@ -134,7 +139,10 @@ fn test_the_kernel_reaches_no_operating_system_interface_outside_its_threads_fea
                     problems.push(format!("{named}: `{name}`"));
                 }
             }
-            let reads = code.matches("Instant::now").count();
+            let reads: usize = CLOCK_READS
+                .iter()
+                .map(|read| code.matches(read).count())
+                .sum();
             let allowed = MONOTONIC
                 .iter()
                 .find(|(owner, path, _)| owner == package && relative == Path::new(path))
@@ -153,8 +161,9 @@ fn test_the_kernel_reaches_no_operating_system_interface_outside_its_threads_fea
         "the kernel or its contracts reach an operating system interface:\n  {}",
         problems.join("\n  ")
     );
-    // The check reads real sources: the two reads it allows are there.
-    assert_eq!(clocks, MONOTONIC.len(), "the monotonic clock's reads");
+    // The check reads real sources: the reads it allows are there.
+    let stated: usize = MONOTONIC.iter().map(|(_, _, count)| count).sum();
+    assert_eq!(clocks, stated, "the monotonic clock's reads");
 
     // The file that starts a thread is compiled with the feature alone.
     let pool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../permguard-evaluator/src/fanout.rs");
