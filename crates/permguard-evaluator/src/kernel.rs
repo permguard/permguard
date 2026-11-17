@@ -351,8 +351,10 @@ impl Evaluator {
     /// indeterminate, else any permit is a permit, else it is denied by default.
     ///
     /// It reads the compiled policies and the request, and nothing else: no file, no socket, no
-    /// wall clock, no log. Asked twice, it answers the same. The one thing it reads beside them is
-    /// the monotonic clock, to measure how long each language took: the answer never depends on it.
+    /// wall clock, no log. Asked twice, it answers the same. The monotonic clock is read to measure
+    /// how long each language took, and would be read against a deadline: this sets none, so the
+    /// answer depends on no clock. A caller of [`evaluate_all`](crate::evaluate_all) that sets one
+    /// gets `deadline_exceeded` for a partition that ran out of it.
     pub fn evaluate(&self, request: &Request) -> Result<Decision, Refused> {
         // The input against each compiled schema, before any policy is consulted: a request that
         // is malformed is refused, never denied.

@@ -980,8 +980,9 @@ permguard-data-plane-server = { path = "crates/permguard-data-plane-server", def
 ```
 
 The crates are not published: a path or a git dependency on this repository at one tag is how they are named.
-The evaluator's sources name no thread, file, socket, process or wall clock, which a gate reads from their text; it reads the monotonic clock once, to measure an evaluation.
-No browser or WebAssembly build exists: the evaluator with no engine does not build for `wasm32-unknown-unknown` today, since the object model's cryptography links `getrandom` with no browser backend.
+The evaluator's sources name no thread, file, socket, process or wall clock, which a gate reads from their text, the language contracts' with them; it reads the monotonic clock in two named places, to measure an evaluation and to tell whether a deadline its caller set has passed.
+A deadline does change an answer, to `deadline_exceeded`; the evaluator's own `Evaluator` sets none.
+A browser build is future work, open and not started: the evaluator with no engine does not build for `wasm32-unknown-unknown` today, since the object model's cryptography links `getrandom` with no browser backend.
 
 </details>
 
