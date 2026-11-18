@@ -3639,3 +3639,161 @@ async fn a_call_a_token_allowed_names_its_jti_in_the_access_trail() {
     assert!(record.contains(operations::LIFECYCLE_READ), "{found}");
     assert!(!record.contains(TOKEN_BYTES), "never the token: {found}");
 }
+
+/// BUG-0089: every Host API mutation whose body leaves out `request_id` answers
+/// `request_id_required` over REST, as the contract says and gRPC answers, never a shape error.
+#[tokio::test]
+async fn every_rest_mutation_without_its_request_id_answers_request_id_required() {
+    let router = host_api::routes(facade("no-request-id"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let document: Value = serde_json::from_slice(
+        &std::fs::read(permguard_conformance::contracts::root().join("openapi/host.json"))
+            .expect("host.json reads"),
+    )
+    .expect("host.json is JSON");
+    let mut offences = Vec::new();
+    let mut walked = 0;
+    for (path, operations) in document["paths"].as_object().expect("paths") {
+        for (method, operation) in operations.as_object().expect("operations") {
+            let schema = &operation["requestBody"]["content"]["application/json"]["schema"];
+            let Some(name) = schema["$ref"]
+                .as_str()
+                .and_then(|reference| reference.rsplit('/').next())
+            else {
+                continue;
+            };
+            let body_schema = &document["components"]["schemas"][name];
+            let requires = body_schema["required"]
+                .as_array()
+                .is_some_and(|required| required.iter().any(|field| field == "request_id"));
+            if !requires {
+                continue;
+            }
+            let mut body = walk_body(&document, schema, 1);
+            body.as_object_mut()
+                .expect("an object body")
+                .remove("request_id");
+            let concrete = path
+                .split('/')
+                .map(|segment| {
+                    if segment.starts_with('{') {
+                        match segment {
+                            "{class}" => "security",
+                            "{plane}" => "data",
+                            "{job}" => "objects",
+                            "{ring}" => permguard_host::keys::ring::HOST_OPERATIONS,
+                            _ => "walk",
+                        }
+                    } else {
+                        segment
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method.to_uppercase().as_str())
+                        .uri(&concrete)
+                        .header("authorization", format!("Bearer {ADMIN}"))
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(body.to_string()))
+                        .expect("a request"),
+                )
+                .await
+                .expect("answered");
+            let status = response.status().as_u16();
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("reads")
+                .to_bytes();
+            let answer: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            walked += 1;
+            // A path naming a plan nobody holds is answered `not_found` before its body is read.
+            let unheld = path.starts_with("/host/v1/plans/") && answer["code"] == "plan_unknown";
+            if !unheld && (status != 400 || answer["code"] != "request_id_required") {
+                offences.push(format!(
+                    "{} {path}: {status} {answer}",
+                    method.to_uppercase()
+                ));
+            }
+        }
+    }
+    assert!(walked >= 20, "{walked} mutations walked");
+    assert!(offences.is_empty(), "{}", offences.join("\n"));
+}
+
+/// BUG-0167: a Host API read refuses an unknown, a repeated, an empty or a valueless parameter as
+/// `invalid_argument`, to a caller holding its grant only; nobody and strangers are refused as the
+/// route refuses them, before anything of the query is read.
+#[tokio::test]
+async fn a_malformed_query_is_invalid_to_the_admitted_and_denied_to_everyone_else() {
+    let router = host_api::routes(facade("malformed-query"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let ask = |path: String, who: Option<&'static str>| {
+        let router = router.clone();
+        async move {
+            let mut request = Request::builder().method("GET").uri(&path);
+            if let Some(who) = who {
+                request = request.header("authorization", format!("Bearer {who}"));
+            }
+            let response = router
+                .oneshot(request.body(axum::body::Body::empty()).expect("a request"))
+                .await
+                .expect("answered");
+            let status = response.status().as_u16();
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("reads")
+                .to_bytes();
+            let answer: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            (status, answer)
+        }
+    };
+    let mut offences = Vec::new();
+    for path in [
+        "/host/v1/audit/security/records?resource=host&limt=1",
+        "/host/v1/audit/security/records?resource=host&limit=1&limit=50",
+        "/host/v1/audit/security/records?resource=host&cursor=",
+        "/host/v1/audit/security/checkpoints?resource=host&period=",
+        "/host/v1/audit/security/export?resource=host&frontier",
+        "/host/v1/streams/data/decisions/frontier?resource=host&unknown=1",
+        "/host/v1/members?status=",
+        "/host/v1/plans?status=pending&status=ready",
+    ] {
+        let (status, answer) = ask(path.to_owned(), Some(ADMIN)).await;
+        if status != 400 || answer["code"] != "invalid_argument" {
+            offences.push(format!("{path} as the administrator: {status} {answer}"));
+        }
+        let (status, _) = ask(path.to_owned(), None).await;
+        if status != 401 {
+            offences.push(format!("{path} as nobody: {status}"));
+        }
+        let (status, _) = ask(path.to_owned(), Some(STRANGER)).await;
+        if status != 403 {
+            offences.push(format!("{path} as a stranger: {status}"));
+        }
+    }
+    // `keys.read` on the Host is public in this facade: anyone is admitted, and told.
+    let (status, answer) = ask(
+        "/host/v1/keys/bundle?resource=host&resource=host".to_owned(),
+        None,
+    )
+    .await;
+    if status != 400 || answer["code"] != "invalid_argument" {
+        offences.push(format!("/host/v1/keys/bundle as nobody: {status} {answer}"));
+    }
+    // Absent parameters keep their meaning.
+    let (status, answer) = ask("/host/v1/members".to_owned(), Some(ADMIN)).await;
+    if status != 200 {
+        offences.push(format!(
+            "/host/v1/members as the administrator: {status} {answer}"
+        ));
+    }
+    assert!(offences.is_empty(), "{}", offences.join("\n"));
+}

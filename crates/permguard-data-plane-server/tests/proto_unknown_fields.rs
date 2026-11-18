@@ -37,7 +37,7 @@ fn request() -> EvaluateRequest {
         }),
         evaluations: vec![Evaluation {
             subject: entity("user", "bob"),
-            request_id: "e1".to_owned(),
+            request_id: Some("e1".to_owned()),
             ..Evaluation::default()
         }],
         ..EvaluateRequest::default()

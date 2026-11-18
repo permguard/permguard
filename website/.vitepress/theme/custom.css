@@ -748,6 +748,15 @@
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
 }
 
+/* The footer spans the whole width, the sidebar column too. From 60rem the sidebar is fixed beside
+   the page, below the bar (VitePress sets its z-index to 25, the bar's is 30), so the footer rises
+   over it and stays under the bar. Below 60rem the sidebar is a drawer over everything: untouched. */
+@media (min-width: 60rem) {
+  .pg-footer {
+    z-index: calc(var(--vp-z-index-sidebar) + 1);
+  }
+}
+
 .pg-footer > .pg-section-inner {
   width: 100%;
   max-width: none;
@@ -1476,10 +1485,12 @@
   The planes in the navigation carry the icons of the permguard.com menu: the same glyphs, white,
   in a small tile, before each link of the bar and of the mobile screen.
 */
+.VPNavBarMenuLink[href$="/how-it-works"],
 .VPNavBarMenuLink[href*="command-line"],
 .VPNavBarMenuLink[href*="control-plane"],
 .VPNavBarMenuLink[href*="data-plane"],
 .VPNavBarMenuLink[href*="trust-plane"],
+.VPNavScreenMenuLink[href$="/how-it-works"],
 .VPNavScreenMenuLink[href*="command-line"],
 .VPNavScreenMenuLink[href*="control-plane"],
 .VPNavScreenMenuLink[href*="data-plane"],
@@ -1490,10 +1501,12 @@
   gap: 8px;
 }
 
+.VPNavBarMenuLink[href$="/how-it-works"]::before,
 .VPNavBarMenuLink[href*="command-line"]::before,
 .VPNavBarMenuLink[href*="control-plane"]::before,
 .VPNavBarMenuLink[href*="data-plane"]::before,
 .VPNavBarMenuLink[href*="trust-plane"]::before,
+.VPNavScreenMenuLink[href$="/how-it-works"]::before,
 .VPNavScreenMenuLink[href*="command-line"]::before,
 .VPNavScreenMenuLink[href*="control-plane"]::before,
 .VPNavScreenMenuLink[href*="data-plane"]::before,
@@ -1507,6 +1520,9 @@
   width: 26px;
 }
 
+/* How it works has no glyph on permguard.com: its own shows two steps and the path between them. */
+.VPNavBarMenuLink[href$="/how-it-works"],
+.VPNavScreenMenuLink[href$="/how-it-works"] { --pg-nav-icon: url("/permguard/icons/how_it_works.svg"); }
 .VPNavBarMenuLink[href*="command-line"],
 .VPNavScreenMenuLink[href*="command-line"] { --pg-nav-icon: url("/permguard/icons/command_line.svg"); }
 .VPNavBarMenuLink[href*="control-plane"],
@@ -1516,22 +1532,27 @@
 .VPNavBarMenuLink[href*="trust-plane"],
 .VPNavScreenMenuLink[href*="trust-plane"] { --pg-nav-icon: url("/permguard/icons/trust_plane.svg"); }
 
+.VPNavBarMenuLink[href$="/how-it-works"]:hover::before,
 .VPNavBarMenuLink[href*="-plane"]:hover::before,
 .VPNavBarMenuLink[href*="command-line"]:hover::before,
+.VPNavBarMenuLink.active[href$="/how-it-works"]::before,
 .VPNavBarMenuLink.active[href*="-plane"]::before,
 .VPNavBarMenuLink.active[href*="command-line"]::before {
   border-color: rgb(217 70 239 / 0.55);
 }
 
 /* A link of the mobile screen keeps the full width, so its rule runs across. */
+.VPNavScreenMenuLink[href$="/how-it-works"],
 .VPNavScreenMenuLink[href*="command-line"],
 .VPNavScreenMenuLink[href*="-plane"] {
   display: flex;
 }
 
 /* On the light theme the white glyphs sit on a dark tile. */
+html:not(.dark) .VPNavBarMenuLink[href$="/how-it-works"]::before,
 html:not(.dark) .VPNavBarMenuLink[href*="command-line"]::before,
 html:not(.dark) .VPNavBarMenuLink[href*="-plane"]::before,
+html:not(.dark) .VPNavScreenMenuLink[href$="/how-it-works"]::before,
 html:not(.dark) .VPNavScreenMenuLink[href*="command-line"]::before,
 html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
   background-color: #2a2433;

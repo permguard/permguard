@@ -160,7 +160,7 @@ fn evaluation_from_proto(evaluation: ProtoEvaluation) -> Result<EvaluationBody, 
             .map(|held| inputs_from_proto(held.inputs))
             .transpose()?,
         entities: None,
-        request_id: some(evaluation.request_id),
+        request_id: evaluation.request_id,
     })
 }
 
@@ -427,7 +427,7 @@ mod tests {
                     name: "delete".to_owned(),
                     properties: None,
                 }),
-                request_id: "one".to_owned(),
+                request_id: Some("one".to_owned()),
                 ..ProtoEvaluation::default()
             }],
             evaluations_semantic: EvaluationsSemantic::DenyOnFirstDeny as i32,
@@ -647,7 +647,7 @@ mod tests {
                 .evaluations
                 .iter()
                 .map(|held| ProtoEvaluation {
-                    request_id: held.request_id.clone().unwrap_or_default(),
+                    request_id: held.request_id.clone(),
                     partition_inputs: held.partition_inputs.as_ref().map(|inputs| {
                         crate::v1::PartitionInputs {
                             inputs: inputs_to_proto(inputs),

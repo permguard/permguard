@@ -425,15 +425,6 @@ impl HostApi {
 
     /// `GET /host/v1/plans?status`: the plans whose operation the caller may do on the Host.
     pub fn plans(&self, actor: &Actor, status: Option<&str>) -> Result<PlanList, Refusal> {
-        if let Some(status) = status
-            && !matches!(status, "pending" | "ready" | "consumed" | "expired")
-        {
-            return Err(Refusal::new(
-                ErrorClass::Validation,
-                codes::common::INVALID_ARGUMENT,
-                "`status` is `pending`, `ready`, `consumed` or `expired`",
-            ));
-        }
         // Someone authenticated, holding at least one of the operations' grants: anyone else is
         // refused as every route refuses.
         let holds = |grant: &str| {
@@ -447,6 +438,16 @@ impl HostApi {
             .any(holds)
         {
             return Err(Refusal::Denied(actor.without_grant()));
+        }
+        // The filter is read once the caller is admitted, never before (BUG-0167).
+        if let Some(status) = status
+            && !matches!(status, "pending" | "ready" | "consumed" | "expired")
+        {
+            return Err(Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                "`status` is `pending`, `ready`, `consumed` or `expired`",
+            ));
         }
         let principal = actor.principal()?;
         let _permit = self.bounds.admit(&principal)?;

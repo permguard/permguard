@@ -465,7 +465,8 @@
               "string",
               "null"
             ],
-            "x-grpc-field": "request_id"
+            "x-grpc-field": "request_id",
+            "description": "The evaluation's name, echoed on its answer as written: two evaluations of one request never share one, and an empty or blank one is refused (`invalid_argument`); absent names none."
           }
         },
         "additionalProperties": false,

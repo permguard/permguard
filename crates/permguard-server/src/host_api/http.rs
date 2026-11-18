@@ -13,6 +13,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
+use permguard_core::authz::operations;
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
 use permguard_host::api::audit::{
     AuditCheckpointQuery, AuditCheckpointRequest, AuditExportQuery, AuditQuery,
@@ -172,9 +173,18 @@ impl<T: DeserializeOwned> FromRequest<Served> for Closed<T> {
         let bytes = Bytes::from_request(request, served)
             .await
             .map_err(IntoResponse::into_response)?;
-        serde_json::from_slice(&bytes)
-            .map(Closed)
-            .map_err(|error| refuse(format!("the body is not the request's shape: {error}")))
+        serde_json::from_slice(&bytes).map(Closed).map_err(|error| {
+            // A mutation without its request id answers what the contract and gRPC answer, not
+            // a shape error (BUG-0089, DEC-0007).
+            if error.to_string().starts_with("missing field `request_id`") {
+                return served.refuse(&Refusal::Api(ApiError::new(
+                    ErrorClass::Validation,
+                    codes::host::REQUEST_ID_REQUIRED,
+                    "every mutation carries a `request_id`",
+                )));
+            }
+            refuse(format!("the body is not the request's shape: {error}"))
+        })
     }
 }
 
@@ -260,11 +270,19 @@ async fn key_bundle(
     ActorOf(actor): ActorOf,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let [resource, frontier, cursor, limit] = <[Option<String>; 4]>::try_from(query_members(
+    let ([resource, frontier, cursor, limit], malformed) = read_query(
         query.as_deref(),
-        &["resource", "frontier", "cursor", "limit"],
-    ))
-    .unwrap_or_default();
+        ["resource", "frontier", "cursor", "limit"],
+    );
+    if let Some(malformed) = malformed {
+        return refuse_query(
+            &served,
+            &actor,
+            &[operations::KEYS_READ],
+            resource.as_deref(),
+            &malformed,
+        );
+    }
     let query = KeyBundleQuery {
         resource: resource.unwrap_or_default(),
         frontier,
@@ -309,12 +327,8 @@ async fn streams_list(State(served): State<Served>, ActorOf(actor): ActorOf) -> 
 /// The query of a stream read: `resource`, and for `records` `producer`, `run`, `from` and
 /// `limit`.
 fn stream_query(query: Option<&str>) -> StreamQuery {
-    let [resource, producer, run, from, limit] = <[Option<String>; 5]>::try_from(query_members(
-        query,
-        &["resource", "producer", "run", "from", "limit"],
-    ))
-    .unwrap_or_default();
-    let mut malformed = None;
+    let ([resource, producer, run, from, limit], mut malformed) =
+        read_query(query, ["resource", "producer", "run", "from", "limit"]);
     let [from, limit] = numbers(["from", "limit"], [from, limit], &mut malformed);
     StreamQuery {
         resource: resource.unwrap_or_default(),
@@ -427,12 +441,10 @@ async fn audit_records(
     Path(class): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let [resource, from, to, cursor, limit] = <[Option<String>; 5]>::try_from(query_members(
+    let ([resource, from, to, cursor, limit], mut malformed) = read_query(
         query.as_deref(),
-        &["resource", "from", "to", "cursor", "limit"],
-    ))
-    .unwrap_or_default();
-    let mut malformed = None;
+        ["resource", "from", "to", "cursor", "limit"],
+    );
     let [from, to, limit] = numbers(["from", "to", "limit"], [from, to, limit], &mut malformed);
     let query = AuditQuery {
         resource: resource.unwrap_or_default(),
@@ -456,9 +468,16 @@ async fn audit_checkpoints(
     Path(class): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let [resource, period] =
-        <[Option<String>; 2]>::try_from(query_members(query.as_deref(), &["resource", "period"]))
-            .unwrap_or_default();
+    let ([resource, period], malformed) = read_query(query.as_deref(), ["resource", "period"]);
+    if let Some(malformed) = malformed {
+        return refuse_query(
+            &served,
+            &actor,
+            &[operations::AUDIT_READ],
+            resource.as_deref(),
+            &malformed,
+        );
+    }
     let query = AuditCheckpointQuery {
         resource: resource.unwrap_or_default(),
         period,
@@ -489,12 +508,10 @@ async fn audit_export(
     Path(class): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let [resource, frontier, cursor, limit] = <[Option<String>; 4]>::try_from(query_members(
+    let ([resource, frontier, cursor, limit], mut malformed) = read_query(
         query.as_deref(),
-        &["resource", "frontier", "cursor", "limit"],
-    ))
-    .unwrap_or_default();
-    let mut malformed = None;
+        ["resource", "frontier", "cursor", "limit"],
+    );
     let [frontier, limit] = numbers(["frontier", "limit"], [frontier, limit], &mut malformed);
     let query = AuditExportQuery {
         resource: resource.unwrap_or_default(),
@@ -585,11 +602,17 @@ async fn delete_invite(
     Path(id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let request_id = query_members(query.as_deref(), &["request_id"])
-        .into_iter()
-        .next()
-        .flatten()
-        .unwrap_or_default();
+    let ([request_id], malformed) = read_query(query.as_deref(), ["request_id"]);
+    if let Some(malformed) = malformed {
+        return refuse_query(
+            &served,
+            &actor,
+            &[operations::MEMBERSHIP_ADMIN],
+            None,
+            &malformed,
+        );
+    }
+    let request_id = request_id.unwrap_or_default();
     answer(
         &served,
         StatusCode::OK,
@@ -623,11 +646,25 @@ async fn list_plans(
     ActorOf(actor): ActorOf,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let filters = query_members(query.as_deref(), &["status"]);
+    let ([status], malformed) = read_query(query.as_deref(), ["status"]);
+    if let Some(malformed) = malformed {
+        return refuse_query(
+            &served,
+            &actor,
+            &[
+                operations::GC_MANAGE,
+                operations::IDENTITY_ADMIN,
+                operations::KEYS_ADMIN,
+                operations::MEMBERSHIP_ADMIN,
+            ],
+            None,
+            &malformed,
+        );
+    }
     answer(
         &served,
         StatusCode::OK,
-        served.api.plans(&actor, filters[0].as_deref()),
+        served.api.plans(&actor, status.as_deref()),
     )
 }
 
@@ -715,11 +752,20 @@ async fn list_members(
     ActorOf(actor): ActorOf,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let filters = query_members(query.as_deref(), &["status"]);
+    let ([status], malformed) = read_query(query.as_deref(), ["status"]);
+    if let Some(malformed) = malformed {
+        return refuse_query(
+            &served,
+            &actor,
+            &[operations::MEMBERSHIP_READ],
+            None,
+            &malformed,
+        );
+    }
     answer(
         &served,
         StatusCode::OK,
-        served.api.members(&actor, filters[0].as_deref()),
+        served.api.members(&actor, status.as_deref()),
     )
 }
 
@@ -894,23 +940,76 @@ async fn effective_config(State(served): State<Served>, ActorOf(actor): ActorOf)
     answer(&served, StatusCode::OK, served.api.effective_config(&actor))
 }
 
-/// The values of `names` in `query`, percent-decoded; a name given twice keeps its first value,
-/// and a name nobody declared is ignored. Two filters do not justify a query framework.
-fn query_members(query: Option<&str>, names: &[&str]) -> Vec<Option<String>> {
+/// The values of `names` in `query`, percent-decoded, and why the query is not one of them when
+/// it is not: a parameter nobody declared, one given twice, one without a value or with an empty
+/// one (BUG-0167, DEC-0019). The values read are kept beside the refusal, the first of a repeated
+/// one, so the route still names the resource it authorizes on before it refuses.
+fn query_members(query: Option<&str>, names: &[&str]) -> (Vec<Option<String>>, Option<String>) {
     let mut values: Vec<Option<String>> = vec![None; names.len()];
+    let mut malformed = None;
     for pair in query.unwrap_or_default().split('&') {
+        if pair.is_empty() {
+            continue;
+        }
         let Some((name, value)) = pair.split_once('=') else {
+            malformed.get_or_insert_with(|| format!("`{}` has no value", percent_decode(pair)));
             continue;
         };
-        // An empty value is no filter, as an absent one and as gRPC's empty string are.
-        if let Some(index) = names.iter().position(|wanted| *wanted == name)
-            && values[index].is_none()
-            && !value.is_empty()
-        {
-            values[index] = Some(percent_decode(value));
+        let name = percent_decode(name);
+        let Some(index) = names.iter().position(|wanted| *wanted == name) else {
+            malformed.get_or_insert_with(|| {
+                format!(
+                    "`{name}` is not a parameter of this request: it takes {}",
+                    names.join(", ")
+                )
+            });
+            continue;
+        };
+        if values[index].is_some() {
+            malformed.get_or_insert_with(|| format!("`{name}` is given more than once"));
+            continue;
         }
+        if value.is_empty() {
+            malformed
+                .get_or_insert_with(|| format!("`{name}` is empty: leave it out to mean none"));
+            continue;
+        }
+        values[index] = Some(percent_decode(value));
     }
-    values
+    (values, malformed)
+}
+
+/// [`query_members`] for `N` names.
+fn read_query<const N: usize>(
+    query: Option<&str>,
+    names: [&str; N],
+) -> ([Option<String>; N], Option<String>) {
+    let (values, malformed) = query_members(query, &names);
+    (
+        <[Option<String>; N]>::try_from(values).unwrap_or_else(|_| std::array::from_fn(|_| None)),
+        malformed,
+    )
+}
+
+/// The answer to a query `refuse_query` found malformed: `invalid_argument`, but only to a
+/// caller holding one of `operations` on the route's resource (`resource` when the query named
+/// a well-formed one, the Host otherwise); anyone else is refused as the route refuses them, and
+/// learns nothing of what the query said.
+fn refuse_query(
+    served: &Served,
+    actor: &permguard_core::authz::Actor,
+    operations: &[&str],
+    resource: Option<&str>,
+    malformed: &str,
+) -> Response {
+    let resource = resource
+        .and_then(|resource| permguard_core::authz::Resource::parse(resource).ok())
+        .unwrap_or_else(permguard_core::authz::Resource::host);
+    served.refuse(
+        &served
+            .api
+            .refuse_query(actor, operations, &resource, malformed),
+    )
 }
 
 fn percent_decode(text: &str) -> String {
@@ -943,15 +1042,19 @@ fn percent_decode(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn query_members_decode_and_keep_the_first_value() {
-        let values = super::query_members(
-            Some(
-                "selector=plane%2Fcontrol%2F*&principal=spiffe%3A%2F%2Facme%2Fa&principal=x&other=1",
-            ),
+    fn query_members_decode_and_refuse_what_is_not_one_of_them() {
+        let (values, malformed) = super::query_members(
+            Some("selector=plane%2Fcontrol%2F*&principal=spiffe%3A%2F%2Facme%2Fa"),
             &["principal", "selector"],
         );
+        assert_eq!(malformed, None);
         assert_eq!(values[0].as_deref(), Some("spiffe://acme/a"));
         assert_eq!(values[1].as_deref(), Some("plane/control/*"));
+        assert_eq!(
+            super::query_members(Some(""), &["principal"]),
+            (vec![None], None),
+            "an absent parameter is absent"
+        );
         assert_eq!(
             super::percent_decode("a+b%2"),
             "a b%2",
@@ -959,10 +1062,21 @@ mod tests {
         );
         assert_eq!(super::percent_decode("%zz"), "%zz");
         assert_eq!(super::percent_decode("%41%4a"), "AJ");
-        assert_eq!(
-            super::query_members(Some("principal=&selector=x"), &["principal", "selector"]),
-            vec![None, Some("x".to_owned())],
-            "an empty value is no filter"
-        );
+        // BUG-0167: unknown, repeated, empty and valueless parameters are refused by name.
+        for (query, said) in [
+            ("principal=a&other=1", "`other` is not a parameter"),
+            (
+                "principal=a&principal=b",
+                "`principal` is given more than once",
+            ),
+            ("principal=&selector=x", "`principal` is empty"),
+            ("principal", "`principal` has no value"),
+        ] {
+            let (_, refused) = super::query_members(Some(query), &["principal", "selector"]);
+            let Some(refused) = refused else {
+                panic!("{query} was read as well formed");
+            };
+            assert!(refused.contains(said), "{query}: {refused}");
+        }
     }
 }

@@ -220,5 +220,5 @@ The Server model is unchanged in both deployments: Host functions remain on the 
 
 <nav class="pgx-pager" aria-label="Documentation pages">
   <a class="pgx-pager__previous" href="./getting-started"><span>Previous</span><strong><b aria-hidden="true">←</b> Getting Started</strong></a>
-  <a class="pgx-pager__next" href="./policy-storage"><span>Next</span><strong>Git-like Policy Storage <b aria-hidden="true">→</b></strong></a>
+  <a class="pgx-pager__next" href="./authority-plane"><span>Next</span><strong>Authority Plane <b aria-hidden="true">→</b></strong></a>
 </nav>

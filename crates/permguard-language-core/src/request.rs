@@ -660,12 +660,21 @@ impl CheckRequest {
             // Two evaluations under one name cannot both be answered: a caller joining the
             // answers back to its questions would match the first and lose the second, and so
             // would anything asserting on them. Refused rather than answered ambiguously.
+            // A name is compared as it is echoed, never trimmed, and a present one names
+            // something: an empty one is refused, on every binding (BUG-0217, DEC-0019).
             let mut named_once: Vec<&str> = Vec::new();
             for evaluation in &self.evaluations {
-                let Some(request_id) = named(&evaluation.request_id) else {
+                let Some(request_id) = evaluation.request_id.as_deref() else {
                     continue;
                 };
-                if named_once.contains(&request_id.as_str()) {
+                if request_id.trim().is_empty() {
+                    return Err(malformed(
+                        permguard_core::codes::common::INVALID_ARGUMENT,
+                        "an evaluation's `request_id` is empty: leave it out to name none"
+                            .to_owned(),
+                    ));
+                }
+                if named_once.contains(&request_id) {
                     return Err(malformed(
                         permguard_core::codes::pdp_native::REQUEST_ID_REPEATED,
                         format!(
@@ -674,7 +683,7 @@ impl CheckRequest {
                         ),
                     ));
                 }
-                named_once.push(evaluation.request_id.as_deref().unwrap_or_default().trim());
+                named_once.push(request_id);
             }
 
             for (index, evaluation) in self.evaluations.iter().enumerate() {
@@ -983,6 +992,40 @@ mod tests {
 
         let refused = request.resolve(4).expect_err("five is more than four");
         assert_eq!(refused.code, "too_many_evaluations");
+    }
+
+    /// BUG-0217: an empty evaluation `request_id` is refused, never read as no name while two
+    /// equal names are refused; names are compared as they are echoed, untrimmed.
+    #[test]
+    fn an_empty_evaluation_name_is_refused_and_names_are_compared_as_echoed() {
+        let named = |names: &[Option<&str>]| {
+            let mut request = parse(ONE);
+            request.evaluations = names
+                .iter()
+                .map(|name| EvaluationBody {
+                    request_id: name.map(str::to_owned),
+                    ..EvaluationBody::default()
+                })
+                .collect();
+            request.resolve(16)
+        };
+        for names in [
+            &[Some(""), Some("")][..],
+            &[Some("  ")][..],
+            &[Some("a"), Some("")][..],
+        ] {
+            let refused = named(names).expect_err("an empty name");
+            assert_eq!(refused.code, "invalid_argument", "{names:?}");
+        }
+        let refused = named(&[Some("a"), Some("a")]).expect_err("a repeated name");
+        assert_eq!(refused.code, "request_id_repeated");
+        let resolved = named(&[Some(" a "), Some("a"), None, None]).expect("distinct as written");
+        let echoed: Vec<Option<&str>> = resolved
+            .queries
+            .iter()
+            .map(|(_, name)| name.as_deref())
+            .collect();
+        assert_eq!(echoed, vec![Some(" a "), Some("a"), None, None]);
     }
 
     #[test]

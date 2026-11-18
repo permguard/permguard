@@ -184,12 +184,19 @@ async fn signers(
     axum::extract::Path((zone, ledger)): axum::extract::Path<(String, String)>,
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
-    let mut asked: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
-    for pair in query.as_deref().unwrap_or_default().split('&') {
-        if let Some((name, value)) = pair.split_once('=') {
-            asked.insert(name.to_owned(), percent_decode(value));
+    let asked = match signers_query(query.as_deref()) {
+        Ok(asked) => asked,
+        Err(refused) => {
+            return error(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::common::INVALID_ARGUMENT,
+                    refused,
+                ),
+                surface.disclosure,
+            );
         }
-    }
+    };
     let (zone, ledger) = (&zone, &ledger);
     let bound = |name: &str| -> Result<u64, String> {
         match asked.get(name) {
@@ -252,6 +259,39 @@ async fn signers(
         .into_response()
 }
 
+/// The parameters the signers read takes.
+const SIGNERS_PARAMETERS: &[&str] = &["from_seq", "until_seq"];
+
+/// The signers read's query, or why it is refused: a parameter it does not take, one given
+/// twice, one without a value or with an empty one (BUG-0168, DEC-0019).
+fn signers_query(
+    query: Option<&str>,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let mut asked = std::collections::BTreeMap::new();
+    for pair in query.unwrap_or_default().split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = pair.split_once('=') else {
+            return Err(format!("`{}` has no value", percent_decode(pair)));
+        };
+        let name = percent_decode(name);
+        if !SIGNERS_PARAMETERS.contains(&name.as_str()) {
+            return Err(format!(
+                "`{name}` is not a parameter of this request: it takes {}",
+                SIGNERS_PARAMETERS.join(", ")
+            ));
+        }
+        if value.is_empty() {
+            return Err(format!("`{name}` is empty: leave it out to mean none"));
+        }
+        if asked.insert(name.clone(), percent_decode(value)).is_some() {
+            return Err(format!("`{name}` is given more than once"));
+        }
+    }
+    Ok(asked)
+}
+
 /// Undoes the percent-encoding a caller's client applied to a query value.
 fn percent_decode(value: &str) -> String {
     let bytes = value.replace('+', " ").into_bytes();
@@ -299,6 +339,27 @@ mod tests {
 
     /// A ledger nobody holds is `not_found`; a held ledger whose journal fails is `unavailable`, on
     /// REST and gRPC alike, because both bindings answer through these two functions.
+    /// BUG-0168: a repeated, an unknown, an empty or a valueless parameter is refused by name;
+    /// the bounds a caller gives are read as given.
+    #[test]
+    fn test_the_signers_query_refuses_what_it_does_not_take() {
+        let asked = super::signers_query(Some("from_seq=3&until_seq=9")).expect("well formed");
+        assert_eq!(asked.get("from_seq").map(String::as_str), Some("3"));
+        assert!(super::signers_query(None).expect("absent").is_empty());
+        for (query, said) in [
+            (
+                "from_seq=1&from_seq=2",
+                "`from_seq` is given more than once",
+            ),
+            ("zone=z", "`zone` is not a parameter"),
+            ("from_seq=", "`from_seq` is empty"),
+            ("until_seq", "`until_seq` has no value"),
+        ] {
+            let refused = super::signers_query(Some(query)).expect_err(query);
+            assert!(refused.contains(said), "{query}: {refused}");
+        }
+    }
+
     #[test]
     fn test_the_signers_refusals_tell_an_unheld_ledger_from_an_unreadable_journal() {
         let unheld = not_held("z", "l");

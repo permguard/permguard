@@ -87,7 +87,9 @@ message Evaluation {
   Entity resource = 2;
   Action action = 3;
   google.protobuf.Struct context = 4;
-  string request_id = 6;
+  // Present means present: an empty one is refused as over HTTP, and an absent one names no
+  // evaluation (BUG-0217). `optional` keeps the two apart on the wire.
+  optional string request_id = 6;
   // Present — even with no entries — this replaces the request's defaults
   // whole, exactly as `subject` and `context` do. Never merged key by key.
   // Absent, the evaluation inherits them.

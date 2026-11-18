@@ -67,3 +67,8 @@ permguard authority token forget   # dropped here only: it stays valid until it 
 | `permguard_token_status_lists_expired`       | lists held past their expiry: every token they name refused |
 | `permguard_authority_refresh_failures_total` | fetches of the keys or lists that failed                    |
 | `permguard_token_status_list_rejected_total` | lists refused for their signature, issuer or time           |
+
+<nav class="pgx-pager" aria-label="Documentation pages">
+  <a class="pgx-pager__previous" href="./authority-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Authority Plane</strong></a>
+  <a class="pgx-pager__next" href="./policy-storage"><span>Next</span><strong>Git-like Policy Storage <b aria-hidden="true">→</b></strong></a>
+</nav>

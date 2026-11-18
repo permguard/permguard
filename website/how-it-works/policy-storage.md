@@ -99,6 +99,6 @@ The signature travels in the head statement, not by changing the immutable commi
 <div class="pgx-note"><strong>Git-like, not Git.</strong><span>The object graph, immutable commits and refs are deliberate Git-like semantics. Permguard uses its own canonical policy model and NOTP transfer protocol.</span></div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./architecture"><span>Previous</span><strong><b aria-hidden="true">←</b> Server, Host &amp; Planes</strong></a>
+  <a class="pgx-pager__previous" href="./access-tokens"><span>Previous</span><strong><b aria-hidden="true">←</b> Access Tokens &amp; Clusters</strong></a>
   <a class="pgx-pager__next" href="./bring-your-own-data-plane"><span>Next</span><strong>Bring Your Own Data Plane <b aria-hidden="true">→</b></strong></a>
 </nav>

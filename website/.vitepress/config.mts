@@ -48,36 +48,8 @@ export default defineConfig({
     // `Home` is listed first, and the home page hides it (see `pg-page-home` in custom.css).
     nav: [
       { text: 'Home', link: '/' },
-      {
-        text: 'How it works',
-        activeMatch: '^/how-it-works',
-        items: [
-          {
-            text: 'Start',
-            items: [
-              { text: 'Overview', link: '/how-it-works' },
-              { text: 'Install', link: '/how-it-works/install' },
-              { text: 'Container Images', link: '/how-it-works/container-images' },
-              { text: 'Getting Started', link: '/how-it-works/getting-started' }
-            ]
-          },
-          {
-            text: 'Concepts',
-            items: [
-              { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
-              { text: 'Authority Plane', link: '/how-it-works/authority-plane' },
-              { text: 'Access Tokens & Clusters', link: '/how-it-works/access-tokens' },
-              { text: 'Git-like Policy Storage', link: '/how-it-works/policy-storage' },
-              { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
-              { text: 'Policy Lifecycle', link: '/how-it-works/policy-lifecycle' },
-              { text: 'Decision Lifecycle', link: '/how-it-works/decision-lifecycle' },
-              { text: 'Evidence & Verification', link: '/how-it-works/evidence' },
-              { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
-              { text: 'Policy Languages', link: '/how-it-works/policy-languages' }
-            ]
-          }
-        ]
-      },
+      // A section is a link; its pages are listed by the sidebar of the section, not by a menu.
+      { text: 'How it works', link: '/how-it-works', activeMatch: '^/how-it-works' },
       { text: 'Command Line', link: '/command-line' },
       { text: 'Control Plane', link: '/control-plane' },
       { text: 'Data Plane', link: '/data-plane' },
@@ -90,6 +62,37 @@ export default defineConfig({
         ]
       }
     ],
+    // Only How it works has more than one page, so only its pages carry a sidebar. The key has no
+    // trailing slash so that it matches the overview, `how-it-works.md`, as well as every page under
+    // `how-it-works/`: the overview is a `layout: page`, which VitePress still gives a sidebar.
+    sidebar: {
+      '/how-it-works': [
+        {
+          text: 'Start',
+          items: [
+            { text: 'Overview', link: '/how-it-works' },
+            { text: 'Install', link: '/how-it-works/install' },
+            { text: 'Container Images', link: '/how-it-works/container-images' },
+            { text: 'Getting Started', link: '/how-it-works/getting-started' }
+          ]
+        },
+        {
+          text: 'Concepts',
+          items: [
+            { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
+            { text: 'Authority Plane', link: '/how-it-works/authority-plane' },
+            { text: 'Access Tokens & Clusters', link: '/how-it-works/access-tokens' },
+            { text: 'Git-like Policy Storage', link: '/how-it-works/policy-storage' },
+            { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
+            { text: 'Policy Lifecycle', link: '/how-it-works/policy-lifecycle' },
+            { text: 'Decision Lifecycle', link: '/how-it-works/decision-lifecycle' },
+            { text: 'Evidence & Verification', link: '/how-it-works/evidence' },
+            { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
+            { text: 'Policy Languages', link: '/how-it-works/policy-languages' }
+          ]
+        }
+      ]
+    },
     socialLinks: [
       {
         icon: {

@@ -1763,7 +1763,7 @@ fn evaluation_of(
             }),
             None => None,
         },
-        request_id: text(&evaluation.request_id),
+        request_id: evaluation.request_id.clone(),
     })
 }
 

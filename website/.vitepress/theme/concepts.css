@@ -27,6 +27,60 @@
   --pgx-glow: rgba(217, 70, 239, 0.17);
 }
 
+/* One background for the whole page. VitePress paints the body, the sidebar, the local nav and the
+   document in three tones; on a page of this kind every one of them is the page's own. */
+.pg-page-concepts {
+  --vp-c-bg: var(--pgx-bg);
+  --vp-sidebar-bg-color: var(--pgx-bg);
+  --vp-local-nav-bg-color: var(--pgx-bg);
+  background-color: var(--pgx-bg);
+}
+
+/* The section sidebar reads like the outline on the right: the group is a kicker, its pages hang
+   from one hairline, and the page in view marks it in the brand colour. */
+.pg-page-concepts .VPSidebar .group + .group {
+  border-top: 0;
+  padding-top: 0.5rem;
+}
+
+.pg-page-concepts .VPSidebarItem.level-0 > .item .text {
+  color: var(--pgx-brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pg-page-concepts .VPSidebarItem.level-0 > .items {
+  margin-top: 6px;
+  border-left: 1px solid var(--pgx-line);
+}
+
+.pg-page-concepts .VPSidebarItem.level-1 > .item {
+  padding-left: 16px;
+}
+
+.pg-page-concepts .VPSidebarItem.level-1 > .item > .indicator {
+  left: -1px;
+}
+
+.pg-page-concepts .VPSidebarItem.level-1.is-active > .item > .indicator {
+  background-color: var(--pgx-brand);
+  box-shadow: 0 0 10px var(--pgx-glow);
+}
+
+.pg-page-concepts .VPSidebarItem.level-1 .text {
+  color: var(--pgx-muted);
+}
+
+.pg-page-concepts .VPSidebarItem.level-1.is-link > .item > .link:hover .text {
+  color: var(--pgx-ink);
+}
+
+.pg-page-concepts .VPSidebarItem.level-1.is-active > .item .link > .text {
+  color: var(--pgx-brand);
+}
+
 .pg-page-concepts .VPDoc .container,
 .pg-page-concepts .VPDoc .content,
 .pg-page-concepts .VPDoc .content-container {
@@ -35,6 +89,13 @@
 
 /* Keep the pager-to-footer rhythm identical between VitePress `doc` pages and
    the custom overview page. VitePress otherwise adds 128px on wide screens. */
+/* A tinted section reaches out by half the viewport's slack on each side, which assumes it is
+   centred in the viewport. Beside the sidebar it is centred in the content column, so the column
+   clips it: the band then runs from the sidebar to the window's edge. */
+.pg-page-concepts .VPPage {
+  overflow-x: clip;
+}
+
 .pg-page-concepts .VPDoc {
   overflow-x: clip;
   padding-bottom: var(--pgx-page-end-space);
@@ -539,6 +600,11 @@
   padding-top: 28px;
   border-top: 1px solid var(--pgx-line);
 }
+
+/* Every page writes its own pager; the one VitePress derives from the sidebar would repeat it
+   below. With no edit link and no last-updated line, the footer then holds nothing. */
+.pg-page-concepts .VPDocFooter .prev-next { display: none; }
+.pg-page-concepts .VPDocFooter:not(:has(.edit-info)) { display: none; }
 
 .pgx-pager--next-only { grid-template-columns: minmax(0, 1fr); }
 .pgx-pager--next-only .pgx-pager__next { width: min(100%, 520px); margin-left: auto; }

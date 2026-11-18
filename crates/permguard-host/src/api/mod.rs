@@ -360,6 +360,40 @@ impl HostApi {
         self.admit_on(actor, operation, &Resource::host())
     }
 
+    /// The refusal of a request whose query is malformed (BUG-0167): `invalid_argument` naming
+    /// `detail` to a caller holding one of `operations` on `resource`, and to anyone else the
+    /// denial the route gives them, so a caller without the grant learns nothing of the query.
+    pub fn refuse_query(
+        &self,
+        actor: &Actor,
+        operations: &[&str],
+        resource: &Resource,
+        detail: &str,
+    ) -> Refusal {
+        let mut denied = None;
+        for operation in operations {
+            match self.authorization.authorize(actor, operation, resource) {
+                Ok(_) => {
+                    return Refusal::new(
+                        ErrorClass::Validation,
+                        codes::common::INVALID_ARGUMENT,
+                        detail.to_owned(),
+                    );
+                }
+                Err(denial) => {
+                    denied.get_or_insert(Refusal::from(denial));
+                }
+            }
+        }
+        denied.unwrap_or_else(|| {
+            Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                detail.to_owned(),
+            )
+        })
+    }
+
     /// [`Self::admit`] on `resource`: a grant whose selector covers it (WP-3.4).
     fn admit_on(
         &self,

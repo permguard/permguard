@@ -78,3 +78,8 @@ permguard --authority-endpoint https://permguard.example:8443 --secret-key-file 
 
 The command line obtains, caches and renews its own token; a secret key travels only over verified TLS.
 See [Access Tokens & Clusters](./access-tokens) for how each Plane verifies and revokes them.
+
+<nav class="pgx-pager" aria-label="Documentation pages">
+  <a class="pgx-pager__previous" href="./architecture"><span>Previous</span><strong><b aria-hidden="true">←</b> Server, Host &amp; Planes</strong></a>
+  <a class="pgx-pager__next" href="./access-tokens"><span>Next</span><strong>Access Tokens &amp; Clusters <b aria-hidden="true">→</b></strong></a>
+</nav>

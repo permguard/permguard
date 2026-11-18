@@ -25,6 +25,14 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **Host API reads refuse a query they cannot read.**
+  An unknown, a repeated, an empty or a valueless query parameter answers `400 invalid_argument` naming it, on every Host API read that takes a query; before, it was dropped, the first value kept or the empty one read as absent.
+  The refusal is given only to a caller holding the route's grant: anyone else is refused `401` or `403` as before, and learns nothing of the query.
+  `GET /temporal/v1alpha1/zones/{zone}/ledgers/{ledger}/signers` refuses the same, where it kept the last of a repeated bound.
+- **A Host API mutation without `request_id` answers `request_id_required` over REST**, as the contract says and gRPC answers; it answered `invalid_argument` "missing field".
+- **An evaluation's `request_id` that is empty is refused, over HTTP and gRPC alike.**
+  Two evaluations named `""` were accepted over HTTP while two named `"a"` were refused, and gRPC read `""` as no name; `Evaluation.request_id` is now `optional` in `pdp.proto`, wire compatible, and names are compared as they are echoed, untrimmed.
+
 ### Security
 
 - **A trail deleted whole no longer passes `audit verify`.**
