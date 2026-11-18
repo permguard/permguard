@@ -37,8 +37,16 @@ is cut.
 - **A bearer revokes its own token on every shipped binary.**
   `POST /authority/v1/tokens/{jti}/revoke`, `TokenService/RevokeToken` and `permguard authority token revoke` refused a token without `tokens.revoke` before the handler's own-token rule ran; the route's contract now marks it `own_token`, and another token's `jti` is still `tokens.revoke`'s.
 
+- **A tenant view's decisions verify only through batches of their own stream.**
+  `decisions verify --file` and `decisions list --verify` on a tenant view counted a record as included through any signed batch whose root its path reached; a record now counts only through a batch of its own producer and run covering its sequence, so one member can no longer vouch for records in another member's stream.
+  A record that appears twice is counted once and the copy refused, and the report names each record it cannot account for under `refused`.
+- **A decision archive bound by ids is checked against the ledger its batches sign.**
+  An archive whose `scope_binding` names a zone or ledger by id verified whatever ledger its records were of; the ids are now compared with the resource the proving batches sign, the names with the records, markers included, and the refusal names the binding and the first record or batch outside it.
+
 ### Fixed
 
+- **`decisions verify --file` and `events verify --file` read the declared format first.**
+  An archive of another format is refused as `*_export_type_unsupported` whatever its shape, a file that begins as JSON reports its JSON error, and nesting deeper than 128 levels is refused at once instead of after minutes in the YAML parser.
 - **The command line built with `--features pkcs11` carries the `pkcs11` custody again.**
   Since 0.1.33 the feature named a package the command line no longer links, so every offline command on a volume whose keys are in a token was refused as "built without it"; it now turns on the custody through `permguard-offline`.
   A conformance check refuses any feature that turns on a dev-dependency alone.

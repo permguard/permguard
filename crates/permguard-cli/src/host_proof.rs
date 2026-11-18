@@ -25,6 +25,8 @@ pub struct HostBatch {
     /// The digest of the record at `last_seq`.
     pub head: String,
     pub merkle_root: String,
+    /// The resource the batch's stream belongs to, the canonical text it signs.
+    pub resource: String,
 }
 
 impl HostBatch {
@@ -63,6 +65,7 @@ pub fn host_batch(value: &Value, keys: Option<&[Jwk]>, typ: &str) -> Option<Resu
                 last_seq: envelope.last_seq,
                 head: envelope.head,
                 merkle_root: envelope.merkle_root,
+                resource: envelope.stream_key.resource,
             })
             .map_err(|_| ()),
     )

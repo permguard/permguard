@@ -203,15 +203,16 @@ fn verify_file(globals: &Globals, file: &str, keys: &str) -> Result<ExitCode, Fa
             permguard_core::codes::client::DECISION_EXPORT_UNREADABLE,
         )
     })?;
-    let archive = parse_archive(&text).map_err(|error| {
-        Failure::usage(format!(
+    let archive = parse_archive(&text).map_err(|refused| match refused {
+        crate::export_file::Refused::Format(declared) => format_unsupported(&declared),
+        crate::export_file::Refused::Malformed(error) => Failure::usage(format!(
             "{} is not a Permguard decision export: {error}",
             named.display()
         ))
         .named(
             "validation",
             permguard_core::codes::client::DECISION_EXPORT_MALFORMED,
-        )
+        ),
     })?;
     let (verified, report) = verify_archive(archive, &read_keys(globals, keys)?)?;
     render(&report, globals.output, &trace)?;
@@ -226,11 +227,18 @@ fn verify_file(globals: &Globals, file: &str, keys: &str) -> Result<ExitCode, Fa
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// Whether every record belongs to the scope the archive binds them to (after the review): a
-/// stream's records name its producer and instance; a tenant's decisions name one ledger, the one
-/// bound when it is bound by names (the records carry names, a binding by ids is checked through
-/// the inclusion paths alone).
-fn bound(scope: &DecisionArchiveScope, records: &[Value]) -> bool {
+/// Whether every record belongs to the scope the archive binds them to, and if not, the binding
+/// and the first record or batch outside it (after the review; BUG-0142).
+///
+/// A stream's records name its producer and instance. A tenant is one ledger: the Host batches
+/// that proved the records sign one resource, whose zone and ledger ids are the binding's where it
+/// names an id; the decisions carry the zone and ledger names, which are the binding's where it
+/// names a name. A marker carries no tenant, and is bound through the batch that proved it.
+fn bound(
+    scope: &DecisionArchiveScope,
+    records: &[Value],
+    resources: &std::collections::BTreeSet<String>,
+) -> Result<(), String> {
     let text = |record: &Value, path: &[&str]| -> Option<String> {
         let mut held = record;
         for segment in path {
@@ -238,40 +246,109 @@ fn bound(scope: &DecisionArchiveScope, records: &[Value]) -> bool {
         }
         held.as_str().map(str::to_owned)
     };
+    let named = |record: &Value| {
+        format!(
+            "{}/{} seq {}",
+            text(record, &["stream", "id"]).unwrap_or_default(),
+            text(record, &["stream", "instance"]).unwrap_or_default(),
+            record
+                .get("seq")
+                .and_then(Value::as_u64)
+                .unwrap_or_default()
+        )
+    };
     match scope {
-        DecisionArchiveScope::Stream { pdp, instance } => records.iter().all(|record| {
-            text(record, &["stream", "id"]).as_deref() == Some(pdp.as_str())
-                && text(record, &["stream", "instance"]).as_deref() == Some(instance.as_str())
-        }),
+        DecisionArchiveScope::Stream { pdp, instance } => {
+            match records.iter().find(|record| {
+                text(record, &["stream", "id"]).as_deref() != Some(pdp.as_str())
+                    || text(record, &["stream", "instance"]).as_deref() != Some(instance.as_str())
+            }) {
+                Some(record) => Err(format!(
+                    "the archive is bound to the stream {pdp}/{instance}, and {} is not of it",
+                    named(record)
+                )),
+                None => Ok(()),
+            }
+        }
         DecisionArchiveScope::Tenant { zone, ledger } => {
-            let mut tenants: Vec<(String, String)> = records
-                .iter()
-                .filter(|record| text(record, &["kind"]).as_deref() == Some("decision"))
-                .map(|record| {
-                    (
-                        text(record, &["store", "zone"]).unwrap_or_default(),
-                        text(record, &["store", "ledger"]).unwrap_or_default(),
-                    )
-                })
-                .collect();
-            tenants.sort();
-            tenants.dedup();
+            let binding = format!("{zone}/{ledger}");
             let is_id = |name: &str| {
                 matches!(
                     permguard_core::catalog::Selector::parse(name),
                     permguard_core::catalog::Selector::Id(_)
                 )
             };
-            let by_ids = is_id(zone) || is_id(ledger);
-            match tenants.as_slice() {
-                [] => true,
-                [(held_zone, held_ledger)] => {
-                    by_ids || (held_zone == zone && held_ledger == ledger)
+            // The batches: one ledger, and its ids the binding's where the binding names ids.
+            let mut ledgers = Vec::new();
+            for resource in resources {
+                match permguard_core::authz::Resource::parse(resource) {
+                    Ok(permguard_core::authz::Resource::Ledger {
+                        zone_id, ledger_id, ..
+                    }) => ledgers.push((resource, zone_id, ledger_id)),
+                    _ => {
+                        return Err(format!(
+                            "the archive is bound to {binding}, and a batch proving its records \
+                             signs `{resource}`, which is no ledger"
+                        ));
+                    }
                 }
-                _ => false,
+            }
+            if ledgers.len() > 1 {
+                return Err(format!(
+                    "the archive is bound to {binding}, and the batches proving its records sign \
+                     {} ledgers: {}",
+                    ledgers.len(),
+                    ledgers
+                        .iter()
+                        .map(|(resource, _, _)| format!("`{resource}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            if let Some((resource, zone_id, ledger_id)) = ledgers.first() {
+                let differs = |bound: &str, signed: &str| is_id(bound) && !same(bound, signed);
+                if differs(zone, zone_id) || differs(ledger, ledger_id) {
+                    return Err(format!(
+                        "the archive is bound to {binding}, and the batches proving its records \
+                         sign `{resource}`"
+                    ));
+                }
+            } else if (is_id(zone) || is_id(ledger))
+                && records
+                    .iter()
+                    .any(|record| text(record, &["kind"]).as_deref() == Some("decision"))
+            {
+                // Bound by an id, and no batch signs a resource to compare it with.
+                return Err(format!(
+                    "the archive is bound to {binding} by id, and no batch proving its records \
+                     names the ledger they belong to"
+                ));
+            }
+            // The decisions: the binding's names, where it names names.
+            match records.iter().find(|record| {
+                text(record, &["kind"]).as_deref() == Some("decision")
+                    && ((!is_id(zone)
+                        && text(record, &["store", "zone"]).as_deref() != Some(zone.as_str()))
+                        || (!is_id(ledger)
+                            && text(record, &["store", "ledger"]).as_deref()
+                                != Some(ledger.as_str())))
+            }) {
+                Some(record) => Err(format!(
+                    "the archive is bound to {binding}, and {} decided on {}/{}",
+                    named(record),
+                    text(record, &["store", "zone"]).unwrap_or_default(),
+                    text(record, &["store", "ledger"]).unwrap_or_default()
+                )),
+                None => Ok(()),
             }
         }
     }
+}
+
+/// Whether two ids name the same thing, as hex or as UUID text.
+fn same(left: &str, right: &str) -> bool {
+    let plain = |id: &str| id.replace('-', "").to_ascii_lowercase();
+    plain(left) == plain(right)
 }
 
 /// Whether a stream archive holds whole batches: its records are exactly the sequences the
@@ -311,11 +388,24 @@ fn whole(
     held.len() == records.len() && held == covered
 }
 
-/// An archive, from JSON or YAML.
-fn parse_archive(text: &str) -> Result<DecisionArchive, String> {
-    serde_json::from_str(text)
-        .or_else(|_| serde_norway::from_str(text))
-        .map_err(|error| error.to_string())
+/// An archive, from JSON or YAML, its declared format read first (BUG-0145).
+fn parse_archive(text: &str) -> Result<DecisionArchive, crate::export_file::Refused> {
+    crate::export_file::read(
+        text,
+        permguard_core::domains::interface::DECISIONS_EXPORT_V1,
+    )
+}
+
+/// The refusal of an archive that declares another format.
+fn format_unsupported(declared: &str) -> Failure {
+    Failure::usage(format!(
+        "the archive declares export format `{declared}`; this CLI verifies `{}`",
+        permguard_core::domains::interface::DECISIONS_EXPORT_V1
+    ))
+    .named(
+        "validation",
+        permguard_core::codes::client::DECISION_EXPORT_TYPE_UNSUPPORTED,
+    )
 }
 
 /// Whether `archive` verifies under `keys`, and its report: refused before anything is checked
@@ -327,15 +417,7 @@ fn verify_archive(
     keys: &[Jwk],
 ) -> Result<(bool, DecisionsReport), Failure> {
     if archive.format != permguard_core::domains::interface::DECISIONS_EXPORT_V1 {
-        return Err(Failure::usage(format!(
-            "the archive declares export format `{}`; this CLI verifies `{}`",
-            archive.format,
-            permguard_core::domains::interface::DECISIONS_EXPORT_V1
-        ))
-        .named(
-            "validation",
-            permguard_core::codes::client::DECISION_EXPORT_TYPE_UNSUPPORTED,
-        ));
+        return Err(format_unsupported(&archive.format));
     }
     if archive.summary.truncated {
         return Err(Failure::usage(
@@ -355,9 +437,10 @@ fn verify_archive(
         Some(keys),
     );
     let attributed = archive.records.is_empty() || checked.signatures > 0;
+    let scoped = bound(&archive.scope_binding, &archive.records, &checked.resources);
     let verified = checked.holds()
         && attributed
-        && bound(&archive.scope_binding, &archive.records)
+        && scoped.is_ok()
         && whole(
             &archive.scope_binding,
             &archive.records,
@@ -390,6 +473,11 @@ fn verify_archive(
         &filter_of(&query),
         Some(keys),
     );
+    let mut checked = checked;
+    if let Err(outside) = scoped {
+        // Said in the report, so a refusal for the scope is told from one for a proof.
+        checked.refused.insert(0, outside);
+    }
     report.verified = Some(checked);
     Ok((verified, report))
 }
@@ -816,6 +904,70 @@ mod host_verify {
         assert_eq!(refused.signatures_failed, 1);
     }
 
+    /// BUG-0141: a record is included only through a batch of its own stream and run covering
+    /// its sequence; another producer's batch over the same leaves proves nothing about it.
+    #[test]
+    fn a_tenant_record_is_not_included_through_another_producers_batch() {
+        let key = Key::new("k1");
+        let (records, _, inclusion) = page(&key);
+        let tenant = ReadScope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+        };
+        let bytes: Vec<Vec<u8>> = records
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        let forged = |producer: &str, first: u64| {
+            vec![sealed(
+                &key,
+                permguard_core::domains::protected::DECISION_BATCH,
+                permguard_core::domains::digest::DECISION_RECORD,
+                producer,
+                &"07".repeat(16),
+                first,
+                &bytes,
+            )]
+        };
+        for (proof, what) in [
+            (forged(&"02".repeat(16), 1), "another producer's batch"),
+            (forged(&"01".repeat(16), 900), "a batch of other sequences"),
+        ] {
+            let verified = verify(&tenant, &records, &proof, &inclusion, Some(&[key.jwk()]));
+            assert_eq!(verified.signatures, 1, "{what}: the signature itself holds");
+            assert_eq!(verified.included, Some(0), "{what}");
+            assert_eq!(verified.not_included, Some(2), "{what}");
+            assert!(!verified.holds(), "{what}");
+            assert!(
+                verified.refused[0].contains("its own stream"),
+                "{what}: {:?}",
+                verified.refused
+            );
+        }
+    }
+
+    /// BUG-0143: a record that appears twice is counted once, and the copy is refused by name.
+    #[test]
+    fn a_duplicated_tenant_record_is_refused_and_counted_once() {
+        let key = Key::new("k1");
+        let (mut records, proof, inclusion) = page(&key);
+        records.push(records[1].clone());
+        let tenant = ReadScope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+        };
+        let verified = verify(&tenant, &records, &proof, &inclusion, Some(&[key.jwk()]));
+        assert_eq!(verified.included, Some(2));
+        assert_eq!(verified.not_included, Some(1));
+        assert!(!verified.holds());
+        assert_eq!(verified.refused.len(), 1, "{:?}", verified.refused);
+        assert!(
+            verified.refused[0].contains("seq 2") && verified.refused[0].contains("twice"),
+            "{:?}",
+            verified.refused
+        );
+    }
+
     #[test]
     fn a_host_run_read_as_a_stream_is_attested_by_its_batch() {
         let key = Key::new("k1");
@@ -1195,23 +1347,66 @@ mod archive_verify {
             ledger: ledger.to_owned(),
         };
         let held = [decision("acme", "main"), decision("acme", "main")];
-        assert!(bound(&tenant("acme", "main"), &held));
-        assert!(!bound(&tenant("other", "main"), &held), "relabelled");
-        assert!(!bound(&tenant("acme", "audit"), &held), "relabelled");
+        let none = std::collections::BTreeSet::new();
+        assert!(bound(&tenant("acme", "main"), &held, &none).is_ok());
         assert!(
-            !bound(
-                &tenant("acme", "main"),
-                &[decision("acme", "main"), decision("other", "main")]
-            ),
-            "two tenants in one view"
+            bound(&tenant("other", "main"), &held, &none).is_err(),
+            "relabelled"
         );
-        assert!(bound(
-            &tenant(
-                "00000000-0000-4000-8000-000000000001",
-                "00000000-0000-4000-8000-000000000002"
-            ),
-            &held
-        ));
+        assert!(
+            bound(&tenant("acme", "audit"), &held, &none).is_err(),
+            "relabelled"
+        );
+        let two = bound(
+            &tenant("acme", "main"),
+            &[decision("acme", "main"), decision("other", "main")],
+            &none,
+        )
+        .expect_err("two tenants in one view");
+        assert!(
+            two.contains("acme/main") && two.contains("other/main"),
+            "{two}"
+        );
+
+        // BUG-0142: a binding by ids is checked against the ledger the proving batches sign.
+        let (zone, ledger) = (
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+        );
+        let signed = |zone: &str, ledger: &str| {
+            [format!("plane/data/zone/{zone}/ledger/{ledger}")]
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let other = "00000000-0000-4000-8000-000000000009";
+        assert!(bound(&tenant(zone, ledger), &held, &signed(zone, ledger)).is_ok());
+        let refused = bound(&tenant(zone, ledger), &held, &signed(zone, other))
+            .expect_err("another ledger's batches");
+        assert!(
+            refused.contains(other),
+            "the refusal names what was signed: {refused}"
+        );
+        assert!(
+            bound(&tenant(zone, "main"), &held, &signed(other, ledger)).is_err(),
+            "a mix of id and name: the id is checked against the batch"
+        );
+        assert!(
+            bound(&tenant("acme", ledger), &held, &signed(zone, ledger)).is_ok(),
+            "a mix of name and id, both holding"
+        );
+        assert!(
+            bound(&tenant(zone, ledger), &held, &none).is_err(),
+            "bound by ids with no batch naming the ledger"
+        );
+        let mut both = signed(zone, ledger);
+        both.extend(signed(zone, other));
+        assert!(
+            bound(&tenant("acme", "main"), &held, &both).is_err(),
+            "batches of two ledgers in one tenant view"
+        );
+        // A marker carries no tenant: it is bound through the batch that proved it.
+        let marker = [serde_json::json!({"kind": "marker"})];
+        assert!(bound(&tenant(zone, ledger), &marker, &signed(zone, other)).is_err());
     }
 
     /// After the review: a stream archive holds whole batches, so a record removed from either

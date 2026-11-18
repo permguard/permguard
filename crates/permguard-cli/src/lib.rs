@@ -40,6 +40,7 @@ pub mod check;
 pub mod decisions;
 pub mod engine;
 pub mod events;
+pub mod export_file;
 pub mod host_proof;
 pub mod shell;
 

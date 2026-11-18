@@ -264,6 +264,18 @@ pub struct Verified {
     pub signatures_failed: usize,
     /// Stated rather than implied: without a key set, signatures are not checked.
     pub signatures_checked: bool,
+    /// Each record a tenant view could not account for, and why: one proven by no batch of its
+    /// own stream covering its sequence, or one that appears twice (BUG-0141, BUG-0143).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refused: Vec<String>,
+    /// The resources of the Host batches that proved a tenant view's records, the canonical text
+    /// each signs: what an archive's binding is checked against (BUG-0142).
+    #[serde(skip)]
+    pub resources: std::collections::BTreeSet<String>,
+    /// Whether some record of a tenant view was proven by a legacy envelope, which signs no
+    /// resource.
+    #[serde(skip)]
+    pub unresourced: bool,
 }
 
 impl Verified {
@@ -455,7 +467,7 @@ pub fn verify(
     keys: Option<&[Jwk]>,
 ) -> Verified {
     let (mut verified, mut failed) = (0, 0);
-    let mut roots: Vec<(String, bool)> = Vec::new();
+    let mut roots: Vec<Root> = Vec::new();
     // The batches the producing Hosts' engines sealed (WP-6.2b): their roots are attributed only
     // when their signatures verify under the keys given.
     let mut host_batches = Vec::new();
@@ -467,7 +479,14 @@ pub fn verify(
         ) {
             Some(Ok(batch)) => {
                 verified += usize::from(keys.is_some());
-                roots.push((batch.merkle_root.clone(), keys.is_some()));
+                roots.push(Root {
+                    merkle_root: batch.merkle_root.clone(),
+                    producer: batch.producer.clone(),
+                    run: batch.run.clone(),
+                    first_seq: batch.first_seq,
+                    last_seq: batch.last_seq,
+                    resource: Some(batch.resource.clone()),
+                });
                 host_batches.push(batch);
             }
             Some(Err(())) => failed += usize::from(keys.is_some()),
@@ -488,7 +507,7 @@ pub fn verify(
             match signed {
                 Some(Ok(attested)) => {
                     verified += 1;
-                    roots.push((attested.merkle_root, true));
+                    roots.push(Root::legacy(attested));
                 }
                 Some(Err(_)) | None => failed += 1,
             }
@@ -500,7 +519,7 @@ pub fn verify(
             if let Ok(signed) = serde_json::from_value::<Signed>(envelope.clone())
                 && let Ok(attested) = signed.envelope()
             {
-                roots.push((attested.merkle_root, false));
+                roots.push(Root::legacy(attested));
             }
         }
     }
@@ -538,20 +557,26 @@ pub fn verify(
                 signatures: verified,
                 signatures_failed: failed,
                 signatures_checked: keys.is_some(),
+                refused: Vec::new(),
+                resources: std::collections::BTreeSet::new(),
+                unresourced: false,
             }
         }
         ReadScope::Tenant { .. } => {
-            let (included, missing) = included(records, inclusion, &roots);
+            let inclusion = included(records, inclusion, &roots);
 
             Verified {
                 proof: "inclusion",
                 chain: None,
                 chain_detail: None,
-                included: Some(included),
-                not_included: Some(missing),
+                included: Some(inclusion.proven),
+                not_included: Some(inclusion.missing),
                 signatures: verified,
                 signatures_failed: failed,
                 signatures_checked: keys.is_some(),
+                refused: inclusion.refused,
+                resources: inclusion.resources,
+                unresourced: inclusion.unresourced,
             }
         }
     }
@@ -623,22 +648,99 @@ fn attested(
         .any(|(first, last, _)| (*first..=*last).contains(&verified.last_seq))
 }
 
+/// A Merkle root a proof entry attests, and what for: the stream, the run and the range of
+/// sequences its batch covers, and the resource a Host batch signs.
+struct Root {
+    merkle_root: String,
+    producer: String,
+    run: String,
+    first_seq: u64,
+    last_seq: u64,
+    /// `None` for a legacy envelope, which signs no resource.
+    resource: Option<String>,
+}
+
+impl Root {
+    fn legacy(envelope: permguard_decisions::envelope::Envelope) -> Self {
+        Self {
+            merkle_root: envelope.merkle_root,
+            producer: envelope.stream.id,
+            run: envelope.stream.instance,
+            first_seq: envelope.first_seq,
+            last_seq: envelope.last_seq,
+            resource: None,
+        }
+    }
+
+    /// Whether this root's batch is of `producer`'s run `run` and covers `seq`.
+    fn covers(&self, producer: &str, run: &str, seq: u64) -> bool {
+        same_id(&self.producer, producer)
+            && same_id(&self.run, run)
+            && (self.first_seq..=self.last_seq).contains(&seq)
+    }
+}
+
+/// Whether two ids name the same thing, as hex or as UUID text.
+fn same_id(left: &str, right: &str) -> bool {
+    let plain = |id: &str| id.replace('-', "").to_ascii_lowercase();
+    plain(left) == plain(right)
+}
+
+/// What the inclusion paths of a tenant view proved.
+struct Inclusion {
+    proven: usize,
+    missing: usize,
+    refused: Vec<String>,
+    resources: std::collections::BTreeSet<String>,
+    unresourced: bool,
+}
+
 /// How many records reach a root the producer attested, and how many do not.
 ///
-/// A record is proven when its own digest, carried up its path, reaches a root
-/// that came from a signed envelope. Recomputing the leaf from the record
-/// itself is the part that matters: taking the leaf from the proof would prove
-/// that the proof is consistent with itself.
-fn included(records: &[Value], inclusion: &[Value], roots: &[(String, bool)]) -> (usize, usize) {
-    let mut proven = 0;
-    let mut missing = 0;
+/// A record is proven when its own digest, carried up its path, reaches a root that came from a
+/// signed batch **of its own stream and run covering its sequence**: a root of another
+/// producer's batch proves nothing about this record, however it was reached (BUG-0141).
+/// Recomputing the leaf from the record itself is the part that matters: taking the leaf from the
+/// proof would prove that the proof is consistent with itself. A record that appears twice is
+/// counted once and refused the second time, so a copy is never another decision (BUG-0143).
+fn included(records: &[Value], inclusion: &[Value], roots: &[Root]) -> Inclusion {
+    let mut outcome = Inclusion {
+        proven: 0,
+        missing: 0,
+        refused: Vec::new(),
+        resources: std::collections::BTreeSet::new(),
+        unresourced: false,
+    };
+    let mut seen = std::collections::BTreeSet::new();
     for record in records {
         let seq = record
             .get("seq")
             .and_then(Value::as_u64)
             .unwrap_or_default();
+        let stream = |field: &str| {
+            record
+                .get("stream")
+                .and_then(|stream| stream.get(field))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let (producer, run) = (stream("id"), stream("instance"));
+        let named = format!("{producer}/{run} seq {seq}");
+        let mut refuse = |why: &str| {
+            outcome.missing += 1;
+            outcome.refused.push(format!("{named}: {why}"));
+        };
+        if !seen.insert((
+            producer.replace('-', "").to_ascii_lowercase(),
+            run.replace('-', "").to_ascii_lowercase(),
+            seq,
+        )) {
+            refuse("the record appears twice");
+            continue;
+        }
         let Ok(leaf) = record::digest_of(record) else {
-            missing += 1;
+            refuse("the record has no digest");
             continue;
         };
         // By its sequence and its leaf: a tenant page spans runs that each begin at 1, so a
@@ -647,7 +749,7 @@ fn included(records: &[Value], inclusion: &[Value], roots: &[(String, bool)]) ->
             entry.get("seq").and_then(Value::as_u64) == Some(seq)
                 && entry.get("leaf").and_then(Value::as_str) == Some(leaf.as_str())
         }) else {
-            missing += 1;
+            refuse("no inclusion path names it");
             continue;
         };
         let steps: Vec<merkle::Step> = path
@@ -656,14 +758,23 @@ fn included(records: &[Value], inclusion: &[Value], roots: &[(String, bool)]) ->
             .and_then(|steps| serde_json::from_value(steps).ok())
             .unwrap_or_default();
         let reached = merkle::recompute(&leaf, &steps);
-        if roots.iter().any(|(root, _)| root == &reached) {
-            proven += 1;
-        } else {
-            missing += 1;
+        match roots
+            .iter()
+            .find(|root| root.merkle_root == reached && root.covers(&producer, &run, seq))
+        {
+            Some(root) => {
+                outcome.proven += 1;
+                match &root.resource {
+                    Some(resource) => {
+                        outcome.resources.insert(resource.clone());
+                    }
+                    None => outcome.unresourced = true,
+                }
+            }
+            None => refuse("its path reaches no signed batch of its own stream covering it"),
         }
     }
-
-    (proven, missing)
+    outcome
 }
 
 fn describe(kind: &str, record: &Value) -> String {

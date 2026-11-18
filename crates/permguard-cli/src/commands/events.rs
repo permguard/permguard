@@ -319,30 +319,30 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
             permguard_core::codes::client::EVENT_EXPORT_UNREADABLE,
         )
     })?;
-    let archive: EventArchive = serde_json::from_str(&text)
-        .or_else(|_| serde_norway::from_str(&text))
-        .map_err(|error| {
-            Failure::usage(format!(
-                "{} is not a Permguard event export: {error}",
-                named.display()
-            ))
-            .named(
-                "validation",
-                permguard_core::codes::client::EVENT_EXPORT_MALFORMED,
-            )
-        })?;
-    if archive.format != permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1 {
-        return Err(Failure::usage(format!(
-            "{} declares export format `{}`; this CLI verifies \
+    // The declared format read first, in time linear in the file (BUG-0145).
+    let archive: EventArchive = crate::export_file::read(
+        &text,
+        permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1,
+    )
+    .map_err(|refused| match refused {
+        crate::export_file::Refused::Format(declared) => Failure::usage(format!(
+            "{} declares export format `{declared}`; this CLI verifies \
              `permguard.events.export.v1alpha1`",
             named.display(),
-            archive.format
         ))
         .named(
             "validation",
             permguard_core::codes::client::EVENT_EXPORT_TYPE_UNSUPPORTED,
-        ));
-    }
+        ),
+        crate::export_file::Refused::Malformed(error) => Failure::usage(format!(
+            "{} is not a Permguard event export: {error}",
+            named.display()
+        ))
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENT_EXPORT_MALFORMED,
+        ),
+    })?;
     let scope = read_scope(&archive.scope_binding);
     let keys = verification_keys(globals, query)?;
     let read = Read {
