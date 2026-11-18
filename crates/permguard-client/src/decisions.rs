@@ -218,6 +218,9 @@ pub enum ReadError {
     },
     /// The server refused, and said why.
     Refused {
+        /// The class it named the refusal with (`not_found`, `validation`, …), empty for a denial
+        /// at the gate, which carries none (BUG-0127).
+        class: String,
         /// The code it used.
         code: String,
         /// What it said.
@@ -240,7 +243,7 @@ impl std::fmt::Display for ReadError {
                  {oldest_sequence}: the {} records in between left on the retention schedule",
                 oldest_sequence.saturating_sub(*requested_sequence)
             ),
-            Self::Refused { code, detail } => write!(formatter, "{detail} ({code})"),
+            Self::Refused { code, detail, .. } => write!(formatter, "{detail} ({code})"),
             Self::Unavailable(detail) => write!(formatter, "{detail}"),
         }
     }
@@ -329,6 +332,7 @@ impl DecisionReader for HttpSink {
                 .to_owned()
         };
         Err(ReadError::Refused {
+            class: field("class"),
             code: match field("code").as_str() {
                 "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
                 code => code.to_owned(),
@@ -412,6 +416,7 @@ impl DecisionReader for HttpSink {
         }
 
         Err(ReadError::Refused {
+            class: field("class"),
             code: match field("code").as_str() {
                 "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
                 code => code.to_owned(),

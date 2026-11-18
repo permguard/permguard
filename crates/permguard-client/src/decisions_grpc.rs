@@ -107,6 +107,7 @@ impl DecisionReader for GrpcSink {
                 Err(ReadError::Unavailable(status.message().to_owned()))
             }
             Err(status) => Err(ReadError::Refused {
+                class: crate::grpc::failure_of(status.clone()).class,
                 code: Self::code_of(&status),
                 detail: status.message().to_owned(),
             }),
@@ -201,6 +202,7 @@ impl DecisionReader for GrpcSink {
                 Err(ReadError::Unavailable(status.message().to_owned()))
             }
             Err(status) => Err(ReadError::Refused {
+                class: crate::grpc::failure_of(status.clone()).class,
                 code: Self::code_of(&status),
                 detail: status.message().to_owned(),
             }),

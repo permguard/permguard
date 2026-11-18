@@ -45,6 +45,14 @@ is cut.
 
 ### Fixed
 
+- **A decision export and `decisions get` reach every record of their snapshot.**
+  The Control Plane answered as a page's `high_watermark` the frontier that page reached, so a read bounded by the first page's watermark ended at the second page: an export wrote two pages as complete, and `decisions get` found nothing past the first thousand records. It now answers the snapshot's end, every producer's, as the events read does.
+- **`events verify` and `decisions list --verify` attest a Host's records whichever spelling its id takes.**
+  A batch names its producer as UUID text and a record as 32 hex digits, and the two never compared equal, so no Host-shipped record was ever included; `--pdp` and `--instance` also accept the UUID text.
+- **A batch signed by a key not given is reported as such.**
+  Verifying a view fed by several producers with one producer's keys counted the others' batches as failed signatures; they are now `signatures_unkeyed`, and their records are named as signed by a key not given.
+- **A decision read refused by the server keeps the server's class.**
+  `decisions list`, `export` and `get` on an unknown zone or ledger print class `not_found`, code `scope_unknown`, over HTTP and gRPC, instead of `validation`.
 - **`decisions verify --file` and `events verify --file` read the declared format first.**
   An archive of another format is refused as `*_export_type_unsupported` whatever its shape, a file that begins as JSON reports its JSON error, and nesting deeper than 128 levels is refused at once instead of after minutes in the YAML parser.
 - **The command line built with `--features pkcs11` carries the `pkcs11` custody again.**

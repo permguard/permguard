@@ -292,6 +292,17 @@ fn rest() -> Router {
             "/decisions/v1/zones/acme/ledgers/main-ledger/records",
             get(json(page(DECISION))),
         )
+        // The Control Plane's answer for a ledger it does not hold (BUG-0127).
+        .route(
+            "/decisions/v1/zones/acme/ledgers/nosuch/records",
+            get(|| async {
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    [("content-type", "application/json")],
+                    r#"{"class":"not_found","code":"scope_unknown","message":"no ledger `acme/nosuch`"}"#,
+                )
+            }),
+        )
         .route(
             "/events/v1alpha1/zones/acme/ledgers/main-ledger/records",
             get(json(page(EVENT))),
@@ -678,8 +689,21 @@ impl DecisionLog for Plane {
 
     async fn read(
         &self,
-        _request: Request<proto::ReadRequest>,
+        request: Request<proto::ReadRequest>,
     ) -> Result<Response<proto::ReadResponse>, Status> {
+        // The Control Plane's answer for a ledger it does not hold (BUG-0127).
+        if request.get_ref().ledger == "nosuch" {
+            let mut status = Status::not_found("no ledger `acme/nosuch`");
+            status.metadata_mut().insert(
+                permguard_core::GRPC_ERROR_CLASS,
+                "not_found".parse().expect("ascii"),
+            );
+            status.metadata_mut().insert(
+                permguard_core::GRPC_ERROR_CODE,
+                "scope_unknown".parse().expect("ascii"),
+            );
+            return Err(status);
+        }
         Ok(Response::new(proto::ReadResponse {
             records: vec![DECISION.as_bytes().to_vec()],
             next: "n-1".into(),
@@ -1390,6 +1414,40 @@ fn a_decision_read_that_does_not_verify_exits_two_over_both_transports() {
         );
         // The report is printed before the refusal: what did not verify is shown.
         assert!(!output.stdout.is_empty(), "{scheme}");
+    }
+}
+
+/// BUG-0127: a decision read of a ledger the Control Plane does not hold is refused with the
+/// class the server named, `not_found`, over both transports.
+#[test]
+fn a_decision_read_of_an_unknown_ledger_keeps_the_servers_class() {
+    let dir = scratch("decisions-scope-unknown");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let output = cli(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "--tls-ca-file",
+                &pki.authority.display().to_string(),
+                "decisions",
+                "list",
+                "--zone",
+                "acme",
+                "--ledger",
+                "nosuch",
+                "--control-endpoint",
+                &endpoint,
+            ],
+        );
+        assert_eq!(output.status.code(), Some(64), "{scheme}: {output:?}");
+        let refused: serde_json::Value =
+            serde_json::from_slice(&output.stderr).expect("a JSON refusal");
+        assert_eq!(refused["class"], "not_found", "{scheme}: {refused}");
+        assert_eq!(refused["code"], "scope_unknown", "{scheme}: {refused}");
     }
 }
 

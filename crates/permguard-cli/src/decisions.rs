@@ -262,6 +262,10 @@ pub struct Verified {
     pub signatures: usize,
     /// How many did not.
     pub signatures_failed: usize,
+    /// How many were signed by a key the key set does not carry: not judged, so their records
+    /// are reported as such, never as a signature that failed (BUG-0114).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub signatures_unkeyed: usize,
     /// Stated rather than implied: without a key set, signatures are not checked.
     pub signatures_checked: bool,
     /// Each record a tenant view could not account for, and why: one proven by no batch of its
@@ -468,6 +472,8 @@ pub fn verify(
 ) -> Verified {
     let (mut verified, mut failed) = (0, 0);
     let mut roots: Vec<Root> = Vec::new();
+    // The batches signed by a key not given: their records are named as such.
+    let mut unkeyed: Vec<(crate::host_proof::HostBatch, String)> = Vec::new();
     // The batches the producing Hosts' engines sealed (WP-6.2b): their roots are attributed only
     // when their signatures verify under the keys given.
     let mut host_batches = Vec::new();
@@ -489,7 +495,12 @@ pub fn verify(
                 });
                 host_batches.push(batch);
             }
-            Some(Err(())) => failed += usize::from(keys.is_some()),
+            Some(Err(())) => {
+                match keys.and_then(|keys| crate::host_proof::unkeyed_batch(entry, keys)) {
+                    Some(batch) => unkeyed.push(batch),
+                    None => failed += usize::from(keys.is_some()),
+                }
+            }
             None => {}
         }
     }
@@ -556,6 +567,7 @@ pub fn verify(
                 not_included: None,
                 signatures: verified,
                 signatures_failed: failed,
+                signatures_unkeyed: unkeyed.len(),
                 signatures_checked: keys.is_some(),
                 refused: Vec::new(),
                 resources: std::collections::BTreeSet::new(),
@@ -563,7 +575,7 @@ pub fn verify(
             }
         }
         ReadScope::Tenant { .. } => {
-            let inclusion = included(records, inclusion, &roots);
+            let inclusion = included(records, inclusion, &roots, &unkeyed);
 
             Verified {
                 proof: "inclusion",
@@ -573,6 +585,7 @@ pub fn verify(
                 not_included: Some(inclusion.missing),
                 signatures: verified,
                 signatures_failed: failed,
+                signatures_unkeyed: unkeyed.len(),
                 signatures_checked: keys.is_some(),
                 refused: inclusion.refused,
                 resources: inclusion.resources,
@@ -625,7 +638,8 @@ fn attested(
         host_batches
             .iter()
             .filter(|batch| {
-                batch.producer == verified.stream.id && batch.run == verified.stream.instance
+                crate::host_proof::same_id(&batch.producer, &verified.stream.id)
+                    && crate::host_proof::same_id(&batch.run, &verified.stream.instance)
             })
             .map(|batch| (batch.first_seq, batch.last_seq, batch.head.clone())),
     );
@@ -680,10 +694,10 @@ impl Root {
     }
 }
 
-/// Whether two ids name the same thing, as hex or as UUID text.
-fn same_id(left: &str, right: &str) -> bool {
-    let plain = |id: &str| id.replace('-', "").to_ascii_lowercase();
-    plain(left) == plain(right)
+use crate::host_proof::same_id;
+
+fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// What the inclusion paths of a tenant view proved.
@@ -703,7 +717,12 @@ struct Inclusion {
 /// Recomputing the leaf from the record itself is the part that matters: taking the leaf from the
 /// proof would prove that the proof is consistent with itself. A record that appears twice is
 /// counted once and refused the second time, so a copy is never another decision (BUG-0143).
-fn included(records: &[Value], inclusion: &[Value], roots: &[Root]) -> Inclusion {
+fn included(
+    records: &[Value],
+    inclusion: &[Value],
+    roots: &[Root],
+    unkeyed: &[(crate::host_proof::HostBatch, String)],
+) -> Inclusion {
     let mut outcome = Inclusion {
         proven: 0,
         missing: 0,
@@ -771,7 +790,15 @@ fn included(records: &[Value], inclusion: &[Value], roots: &[Root]) -> Inclusion
                     None => outcome.unresourced = true,
                 }
             }
-            None => refuse("its path reaches no signed batch of its own stream covering it"),
+            None => match unkeyed
+                .iter()
+                .find(|(batch, _)| batch.covers(&producer, &run, seq))
+            {
+                Some((_, kid)) => refuse(&format!(
+                    "its batch is signed by `{kid}`, a key not given: give that producer's keys"
+                )),
+                None => refuse("its path reaches no signed batch of its own stream covering it"),
+            },
         }
     }
     outcome

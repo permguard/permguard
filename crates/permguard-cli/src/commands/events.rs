@@ -776,6 +776,40 @@ mod host_verify {
         assert_eq!((verified.included, verified.not_included), (0, 2));
     }
 
+    /// BUG-0112: the batch an engine seals names its producer as UUID text, the records as 32
+    /// hex digits: the records are included all the same, on a tenant read and on a run.
+    #[test]
+    fn host_records_are_included_whichever_spelling_the_producer_takes() {
+        let key = Key::new("k1");
+        let mut read = page(&key);
+        let bytes: Vec<Vec<u8>> = read
+            .records
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        read.proof = vec![sealed(
+            &key,
+            permguard_core::domains::protected::EVENT_BATCH,
+            permguard_core::domains::digest::EVENT_RECORD,
+            "01010101-0101-0101-0101-010101010101",
+            &"07".repeat(16),
+            1,
+            &bytes,
+        )];
+        let verified = check(&tenant(), &read, Some(&[key.jwk()]));
+        assert_eq!((verified.included, verified.not_included), (2, 0));
+        let run = ReadScope::Stream {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+            class: permguard_events::PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            producer: "01".repeat(16),
+            instance: "07".repeat(16),
+        };
+        let verified = check(&run, &read, Some(&[key.jwk()]));
+        assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
+        assert_eq!(verified.included, 2);
+    }
+
     #[test]
     fn a_host_run_read_as_a_stream_verifies_its_chain() {
         let key = Key::new("k1");

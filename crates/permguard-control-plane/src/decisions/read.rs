@@ -598,7 +598,10 @@ pub fn read_with(
             .seal_v2(key, keys.now(), keys.lifetime())
             .map_err(ReadError::Offset)?,
         oldest_available,
-        high_watermark: observed_frontier.encode(),
+        // The snapshot a bounded read is of: the one it was given, or every producer's end at
+        // this page, never the frontier this page reached, which a later page has always passed
+        // (BUG-0029, BUG-0151). The events read answers the same.
+        high_watermark: window.until.clone().unwrap_or_else(|| end.clone()).encode(),
         more,
         proof,
         inclusion,
@@ -1801,6 +1804,52 @@ mod host_reads {
             .expect("a page");
         assert!(named(&first).iter().all(|(id, _)| *id == hex(&[0xa1; 16])));
         assert!(first.more);
+    }
+
+    /// BUG-0029, BUG-0151: the first page's `high_watermark` is the snapshot's end, every
+    /// producer's, not the frontier that page reached: pages read with it as `until` reach every
+    /// record present at the first page, across runs, and say `more` until they have.
+    #[test]
+    fn a_snapshot_bounded_by_the_first_high_watermark_holds_every_record() {
+        let fixture = Fixture::new("snapshot");
+        let all = named(&fixture.read(&tenant(), &Window::default()).expect("a page"));
+        assert_eq!(all.len(), 5);
+        let first = fixture
+            .read(
+                &tenant(),
+                &Window {
+                    limit_records: 1,
+                    ..Window::default()
+                },
+            )
+            .expect("a page");
+        let until = Frontier::decode(&first.high_watermark).expect("a frontier");
+        let mut seen = named(&first);
+        let (mut from, mut more) = (Some(first.next.clone()), first.more);
+        for _ in 0..20 {
+            if !more {
+                break;
+            }
+            let page = fixture
+                .read(
+                    &tenant(),
+                    &Window {
+                        from: from.clone(),
+                        until: Some(until.clone()),
+                        limit_records: 1,
+                        ..Window::default()
+                    },
+                )
+                .expect("a page");
+            assert_eq!(
+                page.high_watermark, first.high_watermark,
+                "a bounded read keeps the snapshot"
+            );
+            seen.extend(named(&page));
+            from = Some(page.next.clone());
+            more = page.more;
+        }
+        assert_eq!(seen, all, "every record of the snapshot, once, in order");
     }
 
     /// WP-6.1b: a cursor standing in a run behind what the consumer still holds is answered,

@@ -197,16 +197,27 @@ impl Report for DecisionsReport {
                 writeln!(out, "  {} {inclusion}", style::dim("inclusion  "))?;
             }
             let signatures = if verified.signatures_checked {
-                format!(
+                let mut said = format!(
                     "{} verified, {} failed",
                     verified.signatures, verified.signatures_failed
-                )
+                );
+                if verified.signatures_unkeyed > 0 {
+                    said.push_str(&format!(
+                        ", {} by a key not given",
+                        verified.signatures_unkeyed
+                    ));
+                }
+                said
             } else {
                 // Said out loud, because "verified" that quietly skipped the
                 // signatures is worse than no verification at all.
                 "not checked — pass --keys with the producer's published key set".to_owned()
             };
             writeln!(out, "  {} {signatures}", style::dim("signatures "))?;
+            // Each record it could not account for, and why (BUG-0141, BUG-0143, BUG-0114).
+            for refused in &verified.refused {
+                writeln!(out, "  {} {refused}", style::dim("           "))?;
+            }
         }
 
         writeln!(out)?;

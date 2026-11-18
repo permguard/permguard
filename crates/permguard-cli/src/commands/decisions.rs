@@ -158,6 +158,22 @@ fn export_truncated(everything: bool, walked: usize, more: bool) -> bool {
     everything && walked == MAX_PAGES && more
 }
 
+/// A Host id or run as the records print it: UUID text loses its hyphens and its case, so
+/// `--pdp` takes the id either way (BUG-0113). Anything else, a legacy stream's own name
+/// included, is kept as given.
+fn as_records_print(id: &str) -> String {
+    let uuid = id.len() == 36
+        && id.char_indices().all(|(at, character)| match at {
+            8 | 13 | 18 | 23 => character == '-',
+            _ => character.is_ascii_hexdigit(),
+        });
+    if uuid {
+        id.replace('-', "").to_ascii_lowercase()
+    } else {
+        id.to_owned()
+    }
+}
+
 /// The scope an archive binds its records to.
 fn archive_scope(scope: &ReadScope) -> DecisionArchiveScope {
     match scope {
@@ -665,8 +681,8 @@ fn connect(
         return Ok((
             reader,
             ReadScope::Stream {
-                pdp_id: pdp_id.clone(),
-                instance: instance.clone(),
+                pdp_id: as_records_print(pdp_id),
+                instance: as_records_print(instance),
             },
         ));
     }
@@ -738,7 +754,30 @@ fn read_failure(error: ReadError) -> Failure {
             oldest_sequence.saturating_sub(requested_sequence)
         ))
         .named("not_found", permguard_core::codes::stream::OFFSET_EXPIRED),
-        ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
+        // The class the server named it with (BUG-0127): `scope_unknown` is `not_found`, a
+        // denial at the gate carries none, and only a refusal that named nothing is `validation`.
+        ReadError::Refused {
+            class,
+            code,
+            detail,
+        } => {
+            let denied = [
+                permguard_core::codes::common::UNAUTHENTICATED,
+                permguard_core::codes::common::FORBIDDEN,
+            ]
+            .contains(&code.as_str());
+            let class = match class.as_str() {
+                "" if denied => String::new(),
+                "" => "validation".to_owned(),
+                _ => class,
+            };
+            let failed = if class == "unavailable" {
+                Failure::unavailable(detail)
+            } else {
+                Failure::usage(detail)
+            };
+            failed.named(class, code)
+        }
         ReadError::Unavailable(detail) => Failure::unavailable(detail).named(
             "unavailable",
             permguard_core::codes::client::DECISION_LOG_UNREACHABLE,
@@ -944,6 +983,77 @@ mod host_verify {
                 verified.refused
             );
         }
+    }
+
+    /// BUG-0113: a Host run named by UUID text reads the run the records print as hex, and its
+    /// batch, which names its producer as UUID text, attests it.
+    #[test]
+    fn a_host_run_is_read_and_attested_whichever_spelling_its_ids_take() {
+        assert_eq!(
+            as_records_print("01A1E94C-BD78-7A49-923F-C7435DC3FAE4"),
+            "01a1e94cbd787a49923fc7435dc3fae4"
+        );
+        assert_eq!(as_records_print("pdp-eu-west-1"), "pdp-eu-west-1");
+        let batch = crate::host_proof::HostBatch {
+            producer: "01010101-0101-0101-0101-010101010101".to_owned(),
+            run: "07".repeat(16),
+            first_seq: 1,
+            last_seq: 2,
+            head: String::new(),
+            merkle_root: String::new(),
+            resource: String::new(),
+        };
+        assert!(batch.covers(&"01".repeat(16), &"07".repeat(16), 2));
+        assert!(!batch.covers(&"02".repeat(16), &"07".repeat(16), 2));
+
+        // The batch an engine seals names its producer as UUID text, the records as hex.
+        let key = Key::new("k1");
+        let (records, _, inclusion) = page(&key);
+        let bytes: Vec<Vec<u8>> = records
+            .iter()
+            .map(|record| permguard_stream::jcs::canonicalize(record).expect("canonical"))
+            .collect();
+        let proof = vec![sealed(
+            &key,
+            permguard_core::domains::protected::DECISION_BATCH,
+            permguard_core::domains::digest::DECISION_RECORD,
+            "01010101-0101-0101-0101-010101010101",
+            &"07".repeat(16),
+            1,
+            &bytes,
+        )];
+        let stream = ReadScope::Stream {
+            pdp_id: "01".repeat(16),
+            instance: "07".repeat(16),
+        };
+        let verified = verify(&stream, &records, &proof, &inclusion, Some(&[key.jwk()]));
+        assert_eq!(verified.chain, Some(true), "{:?}", verified.chain_detail);
+        assert!(verified.holds());
+    }
+
+    /// BUG-0114: a batch signed by a key the key set does not carry is not a failed signature:
+    /// its records are named as signed by a key not given.
+    #[test]
+    fn a_batch_signed_by_a_key_not_given_is_reported_as_such() {
+        let key = Key::new("k1");
+        let (records, proof, inclusion) = page(&key);
+        let tenant = ReadScope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+        };
+        let other = Key::new("k2");
+        let verified = verify(&tenant, &records, &proof, &inclusion, Some(&[other.jwk()]));
+        assert_eq!(verified.signatures_failed, 0, "not a failed signature");
+        assert_eq!(verified.signatures_unkeyed, 1);
+        assert_eq!(verified.not_included, Some(2));
+        assert!(
+            verified
+                .refused
+                .iter()
+                .all(|why| why.contains("a key not given")),
+            "{:?}",
+            verified.refused
+        );
     }
 
     /// BUG-0143: a record that appears twice is counted once, and the copy is refused by name.
