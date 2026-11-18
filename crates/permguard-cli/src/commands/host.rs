@@ -170,13 +170,27 @@ fn holds(
     use permguard_host::holds::{self, Deadline, HoldStore, NewHold};
 
     let volume = volume_of(globals)?;
-    let held = claim(&volume, trace)?;
-    let store = HoldStore::open(&held)
-        .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
     let now = permguard_core::time::unix_now();
+    // What a change of the holds writes through: the volume claimed with the forensic refusal, the
+    // holds opened, created when absent.
+    let writable = || -> Result<(Volume, HoldStore), Failure> {
+        let held = claim(&volume, trace)?;
+        let store = HoldStore::open(&held)
+            .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
+        Ok((held, store))
+    };
     match action {
+        // A list is a read: it holds the volume without the forensic refusal and opens the holds
+        // creating nothing, so a volume restored for forensics is read and left as it was
+        // (BUG-0188).
         HoldsAction::List => {
-            let listed = store.list().map_err(hold_refused)?;
+            let held = hold(&volume, trace)?;
+            let listed = match HoldStore::open_to_read(&held)
+                .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
+            {
+                Some(store) => store.list().map_err(hold_refused)?,
+                None => Vec::new(),
+            };
             std::mem::forget(held);
             render(
                 &HoldListReport {
@@ -193,6 +207,7 @@ fn holds(
             expires_at,
             review_at,
         } => {
+            let (held, store) = writable()?;
             let mutations = offline_holds(&held, &store, server_config, trace)?;
             std::mem::forget(held);
             let at = |text: String| {
@@ -232,6 +247,7 @@ fn holds(
             )?;
         }
         HoldsAction::Release { id } => {
+            let (held, store) = writable()?;
             let mutations = offline_holds(&held, &store, server_config, trace)?;
             std::mem::forget(held);
             let released =
@@ -430,7 +446,7 @@ pub(super) fn offline_engine(
         trace.say("the volume holds no Host identity yet; records name its volume id".to_owned());
         None
     };
-    Mutations::open_offline_as(held, env!("CARGO_PKG_VERSION"), identity.as_ref())
+    Mutations::open_offline_as(held, permguard_core::build::VERSION, identity.as_ref())
         .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))
 }
 
@@ -444,7 +460,7 @@ pub(super) fn custodian(
     let Some(file) = server_config else {
         return Ok(std::sync::Arc::new(Custodian::development()));
     };
-    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), Some(file))
+    let config = permguard_offline::volume::config(permguard_core::build::VERSION, Some(file))
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
     permguard_offline::volume::custodian(&config, held)
         .map_err(|error| Failure::unavailable(format!("the custody of the keys: {error:#}")))
@@ -1529,12 +1545,12 @@ fn reset(
             }
             let held = claim(&volume, trace)?;
             let config =
-                permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
+                permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
             let custodian = custodian(&held, server_config)?;
             let opened = open_identity(&held, server_config)?;
             let mutations =
-                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
+                Mutations::open_offline_as(&held, permguard_core::build::VERSION, Some(&opened))
                     .map_err(|error| {
                         Failure::unavailable(format!("opening the mutation journal: {error}"))
                     })?;
@@ -1636,7 +1652,7 @@ fn reset(
         ResetAction::Run { confirm_file } => {
             let held = claim(&volume, trace)?;
             let config =
-                permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
+                permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
                     .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
             let custodian = custodian(&held, server_config)?;
             let suite = identity::suite_of(&held)
@@ -1660,10 +1676,11 @@ fn reset(
                     std::sync::Arc::clone(&time),
                 )
                 .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
-                let mutations = Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), None)
-                    .map_err(|error| {
-                        Failure::unavailable(format!("opening the mutation journal: {error}"))
-                    })?;
+                let mutations =
+                    Mutations::open_offline_as(&held, permguard_core::build::VERSION, None)
+                        .map_err(|error| {
+                            Failure::unavailable(format!("opening the mutation journal: {error}"))
+                        })?;
                 let resumed = identity::reset::resume_run(
                     &mutations,
                     &held,
@@ -1955,7 +1972,7 @@ pub(super) fn audit_offline(
         permguard_host::audit::Stamp {
             host_id: identity.host_id(),
             boot_id: identity.boot_id(),
-            build: env!("CARGO_PKG_VERSION").to_owned(),
+            build: permguard_core::build::VERSION.to_owned(),
             config_revision: permguard_host::audit::config_revision(std::iter::empty()),
         },
         time,

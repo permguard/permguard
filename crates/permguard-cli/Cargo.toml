@@ -76,8 +76,8 @@ volume-restore = ["dep:permguard-control-plane"]
 cedar = ["permguard-languages/cedar"]
 dogwood = ["permguard-languages/dogwood"]
 rego = ["permguard-languages/rego"]
-# The `pkcs11` custody of the offline `host` commands: the server's, behind the same feature.
-pkcs11 = ["permguard-server/pkcs11"]
+# The `pkcs11` custody of the offline commands, which reach it through `permguard-offline` (BUG-0342).
+pkcs11 = ["permguard-offline/pkcs11"]
 
 [dev-dependencies]
 # The tests stand real listeners and a real Host API to drive the command line against.

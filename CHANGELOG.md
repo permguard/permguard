@@ -25,6 +25,16 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+### Fixed
+
+- **The command line built with `--features pkcs11` carries the `pkcs11` custody again.**
+  Since 0.1.33 the feature named a package the command line no longer links, so every offline command on a volume whose keys are in a token was refused as "built without it"; it now turns on the custody through `permguard-offline`.
+  A conformance check refuses any feature that turns on a dev-dependency alone.
+- **`permguard host holds list` reads a volume restored for forensics.**
+  It was refused with the commands that write; it now lists the holds and writes nothing, and `host holds add` and `release` are still refused on such a volume.
+- **The command line's offline audit records carry the release version.**
+  `host grants`, `host holds`, the identity reset, `restore` and `migrate` stamped their records and their offline configuration with the workspace version, `0.1.0`, on every released binary; they now carry the version `--version` reports, as the server's records do, and so does the token-status refresh's `User-Agent`.
+
 ### Added
 
 - **The effective configuration lists the public grants in force.**

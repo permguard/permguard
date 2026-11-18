@@ -502,6 +502,100 @@ fn a_forensic_volume_is_never_made_servable() {
     json(&snapshot.plan("forensic", &snapshot.dir.join("again.plan")));
 }
 
+/// Every file under `root` with its length and its bytes' digest, the lock aside: what a reader
+/// must leave as it found.
+fn tree(root: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    let mut found = std::collections::BTreeMap::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).expect("a directory reads") {
+            let path = entry.expect("an entry").path();
+            if path.is_dir() {
+                found.insert(path.clone(), Vec::new());
+                pending.push(path);
+            } else if path.file_name().is_some_and(|name| name != "LOCK") {
+                found.insert(path.clone(), std::fs::read(&path).expect("a file reads"));
+            }
+        }
+    }
+    found
+}
+
+/// BUG-0188: the holds of a volume restored for forensics are read with the offline tools, and
+/// reading them writes nothing; adding or releasing one is still refused.
+#[test]
+fn the_holds_of_a_forensic_volume_are_listed_and_never_written() {
+    let snapshot = Snapshot::new("forensic-holds", "");
+    let added = json(&snapshot.run(&[
+        "host",
+        "holds",
+        "add",
+        "--resource",
+        "plane/control/zone/01a15ea0-0000-7000-8000-000000000000",
+        "--owner",
+        "legal",
+        "--reason",
+        "an incident",
+        "--review-at",
+        "2027-01-01T00:00:00Z",
+    ]));
+    let id = added["id"].as_str().expect("an id").to_owned();
+    snapshot.claim(snapshot.boot().generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+    json(&snapshot.plan("forensic", &plan));
+    json(&snapshot.restore("forensic", &plan));
+
+    let before = tree(&snapshot.volume);
+    let listed = json(&snapshot.run(&["host", "holds", "list"]));
+    let holds = listed["holds"].as_array().expect("the holds");
+    assert_eq!(holds.len(), 1, "{listed}");
+    assert_eq!(holds[0]["id"], id.as_str());
+    assert_eq!(tree(&snapshot.volume), before, "a list wrote to the volume");
+
+    for change in [
+        vec!["host", "holds", "release", &id],
+        vec![
+            "host",
+            "holds",
+            "add",
+            "--resource",
+            "plane/control/zone/01a15ea0-0000-7000-8000-000000000000",
+            "--owner",
+            "legal",
+            "--reason",
+            "another",
+            "--review-at",
+            "2027-01-01T00:00:00Z",
+        ],
+    ] {
+        let refused = snapshot.run(&change);
+        assert!(!refused.status.success(), "{change:?}");
+        assert!(
+            stderr(&refused).contains("nothing is written to it"),
+            "{change:?}: {}",
+            stderr(&refused)
+        );
+    }
+    assert_eq!(tree(&snapshot.volume), before, "a refused change wrote");
+}
+
+/// BUG-0188: a forensic volume that never held a hold lists none, and is left without a holds
+/// directory.
+#[test]
+fn a_forensic_volume_with_no_holds_lists_none_and_creates_nothing() {
+    let snapshot = Snapshot::new("forensic-no-holds", "");
+    snapshot.claim(snapshot.boot().generation + 1);
+    let plan = snapshot.dir.join("restore.plan");
+    json(&snapshot.plan("forensic", &plan));
+    json(&snapshot.restore("forensic", &plan));
+    assert!(!snapshot.volume.join("host/holds").exists(), "no holds yet");
+
+    let before = tree(&snapshot.volume);
+    let listed = json(&snapshot.run(&["host", "holds", "list"]));
+    assert_eq!(listed["holds"], serde_json::json!([]), "{listed}");
+    assert_eq!(tree(&snapshot.volume), before, "a list wrote to the volume");
+}
+
 /// WP-7.9: a receipt confirms one restore of one volume: another volume's, or another
 /// operation's on this volume, is refused and nothing is recorded.
 #[test]

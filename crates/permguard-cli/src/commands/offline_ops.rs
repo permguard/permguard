@@ -401,8 +401,10 @@ fn plan(
     let held = claim(volume, trace)?;
     let custodian = custodian(&held, server_config)?;
     let opened = open_identity(&held, server_config)?;
-    let mutations = Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
-        .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))?;
+    let mutations =
+        Mutations::open_offline_as(&held, permguard_core::build::VERSION, Some(&opened)).map_err(
+            |error| Failure::unavailable(format!("opening the mutation journal: {error}")),
+        )?;
     mutations
         .recover(&permguard_host::identity::Identities(&opened))
         .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
@@ -505,10 +507,11 @@ fn run(
     let held = claim(volume, trace)?;
     let (plan_id, migration) = {
         let opened = open_identity(&held, server_config)?;
-        let mutations = Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
-            .map_err(|error| {
-                Failure::unavailable(format!("opening the mutation journal: {error}"))
-            })?;
+        let mutations =
+            Mutations::open_offline_as(&held, permguard_core::build::VERSION, Some(&opened))
+                .map_err(|error| {
+                    Failure::unavailable(format!("opening the mutation journal: {error}"))
+                })?;
         mutations
             .recover(&permguard_host::identity::Identities(&opened))
             .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
@@ -649,7 +652,7 @@ fn migration_of(
 /// The configuration a restore or a migration reads, refused when it requires dual control: an
 /// offline plan then needs an approval, which an offline volume cannot collect.
 pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
-    let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), server_config)
+    let config = permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
         .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
     if config
         .assurance()
@@ -695,7 +698,7 @@ mod tests {
         if std::fs::write(&file, "public:\n  http: 0.0.0.0:5556\n").is_err() {
             panic!("a configuration file");
         }
-        let config = permguard_offline::volume::config(env!("CARGO_PKG_VERSION"), Some(&file))
+        let config = permguard_offline::volume::config(permguard_core::build::VERSION, Some(&file))
             .unwrap_or_else(|error| panic!("a configuration: {error:#}"));
         let _ = std::fs::remove_file(&file);
         let volume = Path::new("/volume");

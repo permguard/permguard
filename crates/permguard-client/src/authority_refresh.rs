@@ -567,7 +567,8 @@ async fn get(
         .header(http::header::HOST, authority)
         .header(
             http::header::USER_AGENT,
-            concat!("permguard/", env!("CARGO_PKG_VERSION")),
+            // The version this binary reports, the release tag when stamped (BUG-0220).
+            format!("permguard/{}", permguard_core::build::VERSION),
         )
         .body(http_body_util::Empty::<bytes::Bytes>::new())
         .map_err(|error| error.to_string())?;

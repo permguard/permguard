@@ -292,6 +292,22 @@ impl HoldStore {
         })
     }
 
+    /// The holds of `volume` to read, creating nothing: `None` when it has never held one. What a
+    /// reader of a volume that is never written opens, one restored for forensics (BUG-0188).
+    pub fn open_to_read(volume: &Volume) -> Result<Option<Self>, StorageError> {
+        if !volume
+            .host()
+            .subdirs()?
+            .iter()
+            .any(|name| name == DIRECTORY)
+        {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            dir: volume.host().subdir(DIRECTORY, false)?,
+        }))
+    }
+
     /// Every hold, by id. A file that does not read is an error, never skipped: what a hold
     /// keeps is not guessed.
     pub fn list(&self) -> Result<Vec<Hold>, HoldError> {

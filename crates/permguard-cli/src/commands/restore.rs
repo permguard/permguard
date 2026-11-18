@@ -327,8 +327,10 @@ fn plan(
     // through the configured custody.
     let custodian = custodian(&held, server_config)?;
     let opened = open_identity(&held, server_config)?;
-    let mutations = Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
-        .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))?;
+    let mutations =
+        Mutations::open_offline_as(&held, permguard_core::build::VERSION, Some(&opened)).map_err(
+            |error| Failure::unavailable(format!("opening the mutation journal: {error}")),
+        )?;
     mutations
         .recover(&permguard_host::identity::Identities(&opened))
         .and_then(|_| mutations.recover(&restore::Restores(&held)))
