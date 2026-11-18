@@ -404,10 +404,12 @@ fn checking_out_another_ledger_does_not_keep_the_previous_ledgers_checkpoint() {
         "the previous ledger's checkpoint must not survive the rebinding: {:?}",
         status.checkpoint
     );
+    // No policy is pending on the empty ledger, and the manifest `init` wrote is: with no head
+    // the base is empty, and the first `apply` publishes it (BUG-0009, DEC-0003).
     let (_, plan) = ws.plan().unwrap();
     assert!(
-        plan.is_empty(),
-        "an emptied tree has nothing pending on the empty ledger: {plan:?}"
+        plan.actions.is_empty() && plan.manifest_changed,
+        "an emptied tree has only its new manifest pending on the empty ledger: {plan:?}"
     );
 
     // Written for the empty ledger, the apply publishes — for real, and only that.
@@ -1503,4 +1505,186 @@ fn a_clone_of_an_empty_ledger_applies_its_first_policy() {
             .counter,
         1
     );
+}
+
+/// The policy files of `partition`, as the tree holds them.
+fn files_of(store: &FsStore, partition: &str) -> Vec<String> {
+    store
+        .list(partition)
+        .unwrap()
+        .into_iter()
+        .filter(|(name, is_dir)| !is_dir && name.ends_with(".cedar"))
+        .map(|(name, _)| format!("{partition}/{name}"))
+        .collect()
+}
+
+/// BUG-0026, DEC-0003: a policy deleted here is a pending deletion a pull keeps, whatever else
+/// it brings; deleted here and changed there is a conflict that writes nothing.
+#[test]
+fn a_pull_keeps_a_local_deletion_and_refuses_one_the_remote_changed() {
+    let remote = EngineRemote::new("local-delete");
+    let store_a = FsStore::new(scratch("local-delete-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    let store_b = FsStore::new(scratch("local-delete-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    let deleted = files_of(&store_b, "cedar");
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    store_b.remove(&deleted[0]).unwrap();
+
+    // An unrelated remote change: the pull lands it and keeps the deletion pending.
+    store_a
+        .write(
+            "rego/routes.rego",
+            REGO.replace("allow", "allowed").as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "rego").unwrap().counter,
+        2
+    );
+    ws_b.pull(&remote, false).unwrap();
+    assert!(files_of(&store_b, "cedar").is_empty(), "never written back");
+    let (_, plan) = ws_b.plan().unwrap();
+    let deletes = plan
+        .actions
+        .iter()
+        .filter(|action| {
+            matches!(
+                action,
+                permguard_cli::engine::workspace::PlanAction::Delete { .. }
+            )
+        })
+        .count();
+    assert_eq!(deletes, 1, "the deletion is still what apply sends");
+
+    // The remote changes the policy this workspace deleted: a conflict, and nothing moves.
+    store_a
+        .write(
+            "cedar/billing.cedar",
+            CEDAR
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "list").unwrap().counter,
+        3
+    );
+    let refused = ws_b.pull(&remote, false).unwrap_err().to_string();
+    assert!(refused.contains("deleted here"), "{refused}");
+    assert_eq!(ws_b.status().unwrap().checkpoint.unwrap().counter, 2);
+    assert!(files_of(&store_b, "cedar").is_empty());
+}
+
+/// BUG-0017, DEC-0003: a manifest unchanged here takes the remote's change, and a plan is then
+/// empty; one changed on both sides is a conflict naming it, and the checkpoint stays.
+#[test]
+fn a_pull_lands_a_remote_manifest_change_and_refuses_one_changed_on_both_sides() {
+    let remote = EngineRemote::new("manifest-merge");
+    let store_a = FsStore::new(scratch("manifest-merge-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    let store_b = FsStore::new(scratch("manifest-merge-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+
+    let add_profile = |store: &FsStore, name: &str| {
+        let manifest = text(store, "manifest.yml");
+        let added = manifest.replacen(
+            "profiles:\n",
+            &format!(
+                "profiles:\n  {name}: {{ type: permguard.api.pdp.native.v1, partitions: [cedar] }}\n"
+            ),
+            1,
+        );
+        assert_ne!(added, manifest, "the profile is added");
+        store.write("manifest.yml", added.as_bytes()).unwrap();
+    };
+    add_profile(&store_a, "readonly");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "readonly")
+            .unwrap()
+            .counter,
+        2
+    );
+
+    ws_b.pull(&remote, false).unwrap();
+    assert!(text(&store_b, "manifest.yml").contains("readonly"));
+    assert!(ws_b.plan().unwrap().1.is_empty(), "nothing to publish back");
+
+    add_profile(&store_a, "auditors");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "auditors")
+            .unwrap()
+            .counter,
+        3
+    );
+    add_profile(&store_b, "operators");
+    let refused = ws_b.pull(&remote, false).unwrap_err().to_string();
+    assert!(refused.contains("manifest.yml"), "{refused}");
+    assert_eq!(ws_b.status().unwrap().checkpoint.unwrap().counter, 2);
+    assert!(text(&store_b, "manifest.yml").contains("operators"));
+}
+
+/// BUG-0009, BUG-0049, DEC-0003: with no tracked head the manifest is pending; an empty folder is
+/// no part of the snapshot, so a workspace with one publishes what one without it does, and a
+/// clone of it plans nothing.
+#[test]
+fn the_manifest_is_pending_before_the_first_head_and_an_empty_folder_is_nothing() {
+    let remote = EngineRemote::new("empty-folder");
+    let store_a = FsStore::new(scratch("empty-folder-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    assert!(
+        ws_a.plan().unwrap().1.manifest_changed,
+        "nothing tracked: the manifest is pending"
+    );
+    let without = ws_a.refresh().unwrap().root;
+    std::fs::create_dir_all(store_a.root().join("cedar/drafts")).unwrap();
+    assert_eq!(
+        ws_a.refresh().unwrap().root,
+        without,
+        "an empty folder is nothing"
+    );
+
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+    assert!(ws_a.plan().unwrap().1.is_empty());
+
+    let store_b = FsStore::new(scratch("empty-folder-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    assert!(ws_b.plan().unwrap().1.is_empty(), "a clone plans nothing");
 }

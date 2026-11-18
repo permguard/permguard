@@ -256,6 +256,9 @@
 .pgx-hv__node rect { fill: var(--pgx-bg); stroke: var(--pgx-line); }
 .pgx-hv__node--cp rect { stroke: var(--pgx-brand); animation: pgx-hv-glow 4s ease-in-out infinite; }
 .pgx-hv__frame { fill: none; stroke: var(--pgx-line); stroke-dasharray: 4 5; }
+
+/* The languages keep their own colours, one of them black: each sits on a light tile in both themes. */
+.pgx-hv__lang rect { fill: #f4f4f5; stroke: var(--pgx-line); }
 .pgx-hv__pod { fill: var(--pgx-surface-strong); stroke: var(--pgx-line); }
 .pgx-hv__pdp { fill: rgb(204 52 223 / 0.12); stroke: var(--pgx-brand); animation: pgx-hv-glow 3s ease-in-out infinite; }
 .pgx-hv__pdp--2 { animation-delay: 0.5s; }

@@ -150,7 +150,7 @@ pub(crate) fn build_snapshot(
             ));
         }
         refuse_links(&mut context, partition_name)?;
-        let digest = build_directory(&mut context, partition_name, partition_name, 1)?;
+        let (digest, _) = build_directory(&mut context, partition_name, partition_name, 1)?;
         // Cardinality and requirement, from the registry rather than from a rule written here: an
         // author cannot redefine either, and a walker that decided them would be a second opinion
         // about what a partition holds.
@@ -366,12 +366,13 @@ fn declared_artifacts(
 /// Builds one directory into one tree, recursing into subdirectories —
 /// folder structure round-trips: directory names become subtree entry
 /// names, validated by the entry grammar.
+/// Answers the tree's digest and whether it holds anything.
 fn build_directory(
     context: &mut PartitionContext<'_>,
     logical_path: &str,
     fs_path: &str,
     depth: usize,
-) -> Result<Digest> {
+) -> Result<(Digest, bool)> {
     if depth > permguard_objects::limits::MAX_TREE_DEPTH {
         return Err(err(format!("{fs_path}: deeper than the model allows")));
     }
@@ -403,7 +404,13 @@ fn build_directory(
         }
         if is_dir {
             refuse_links(context, &child_fs)?;
-            let digest = build_directory(context, &child_logical, &child_fs, depth + 1)?;
+            let (digest, holds) = build_directory(context, &child_logical, &child_fs, depth + 1)?;
+            // An empty folder is not part of the snapshot: a clone never recreates one, so
+            // publishing it showed every clone a phantom change and two workspaces of one content
+            // traded empty commits (BUG-0049, DEC-0003).
+            if !holds {
+                continue;
+            }
             insert_entry(
                 &mut entries,
                 TreeEntry {
@@ -626,13 +633,14 @@ fn build_directory(
         }
     }
 
+    let holds = !entries.is_empty();
     let tree = Tree {
         entries: entries.into_values().collect(),
     };
     let bytes = tree.encode().map_err(|error| err(error.to_string()))?;
     let digest = inventory::put(context.store, &bytes).map_err(err)?;
     context.snapshot_objects.insert(digest.clone(), bytes);
-    Ok(digest)
+    Ok((digest, holds))
 }
 
 fn insert_entry(

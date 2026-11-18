@@ -25,6 +25,13 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **`pull`, `plan` and `status` compare the whole snapshot three ways: base, local and incoming.**
+  The manifest, schemas and artifacts are merged like policies: a manifest unchanged here since the checkpoint takes the remote's change on `pull`, so the next `apply` no longer reverts it; changed on both sides, `pull` refuses and names it.
+  A policy or artifact deleted here is a pending deletion `pull` keeps, instead of writing it back; deleted here and changed on the remote is a conflict that writes nothing.
+  With no tracked head the base is empty: `plan` and `status` report the manifest and every schema or artifact as pending, and the plan is empty only when `apply` would publish nothing.
+  Other non-policy changes are reported by their path (`cedar/schema.cedarschema`), not as a generic `<partition>/schema`.
+  An empty folder is no longer part of the snapshot, so a clone no longer shows a phantom change and two workspaces of one content no longer trade empty commits.
+
 - **A policy is never hidden in silence by `.permguardignore`, a link or a folder name.**
   A path entry (one with a `/` in it, or starting with one) is anchored to the root and matches whole segments: `cedar/doc` no longer excuses `cedar/documents.cedar`.
   `init` and `clone` write `/tests/` and `/requests/`, anchored, and a name entry that would hide a policy inside a declared partition (`tests/` hiding `cedar/tests/x.cedar`) is refused by `validate`, `plan` and `apply`, naming the file and the entry; a fresh clone's `apply` can no longer delete such a policy from the ledger.

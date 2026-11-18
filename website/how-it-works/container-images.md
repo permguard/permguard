@@ -13,31 +13,36 @@ description: Pull versioned Permguard images from GHCR or Docker Hub and verify 
   <p>Run the complete server, one plane or the CLI on Linux AMD64 and ARM64.</p>
 </div>
 
-<div class="pgx-registry-flow" role="img" aria-label="One Permguard release publishes the same five images to GitHub Container Registry and Docker Hub.">
+<div class="pgx-registry-flow" role="img" aria-label="One Permguard release builds five images once and pushes them, with the same tags and the same digests, to GitHub Container Registry and Docker Hub.">
   <article class="pgx-registry-flow__release"><small>RELEASE</small><strong>vX.Y.Z</strong><span>one source commit</span></article>
   <i aria-hidden="true">→</i>
   <div>
-    <article><small>RECOMMENDED</small><strong>GHCR</strong><span>version tags · latest</span></article>
-    <article><small>COMPATIBILITY</small><strong>Docker Hub</strong><span>version tags only</span></article>
+    <article><small>DEFAULT</small><strong>GHCR</strong><span>version · major.minor · latest</span></article>
+    <article><small>SAME IMAGES</small><strong>Docker Hub</strong><span>version · major.minor · latest</span></article>
   </div>
 </div>
 
 ## Choose the runtime
 
 <div class="pgx-image-grid">
-  <article><small>ALL-IN-ONE</small><strong>Control + Data</strong><code>all-in-one</code><span>One process for local use or compact deployments.</span></article>
+  <article><small>ALL-IN-ONE</small><strong>Every plane</strong><code>all-in-one</code><span>Authority, Control and Data in one process, for local use or compact deployments.</span></article>
   <article><small>AUTHORITY PLANE</small><strong>Issue tokens</strong><code>authority-plane</code><span>Service accounts, access keys and the tokens every Plane verifies.</span></article>
   <article><small>CONTROL PLANE</small><strong>Publish policy</strong><code>control-plane</code><span>Authoritative ledgers and policy distribution.</span></article>
   <article><small>DATA PLANE</small><strong>Make decisions</strong><code>data-plane</code><span>Verified policy close to the workload.</span></article>
   <article><small>COMMAND LINE</small><strong>Automate the CLI</strong><code>cli</code><span>CI jobs and container-native workflows.</span></article>
 </div>
 
+## Two registries, one image
+
+Every release is built once and pushed to both registries with the same tags: the version, its `major.minor` line and `latest`.
+The digests are identical, so either registry serves the same image.
+These docs use GHCR in every example; Docker Hub works the same way under shorter names.
+Use an exact version in production.
+
 ## Pull from GHCR
 
-Use an exact version in production. GHCR also publishes `latest` for discovery and local evaluation.
-
 ```sh
-VERSION=0.1.6
+VERSION=0.1.33
 docker pull ghcr.io/permguard/permguard/all-in-one:${VERSION}
 docker pull ghcr.io/permguard/permguard/authority-plane:${VERSION}
 docker pull ghcr.io/permguard/permguard/control-plane:${VERSION}
@@ -49,10 +54,10 @@ Browse the [Permguard packages on GHCR](https://github.com/orgs/permguard/packag
 
 ## Pull from Docker Hub
 
-Docker Hub receives the same release images under shorter names, with versioned tags only. Do not use an unqualified tag or `latest` there.
+The same images, with the same tags and digests, under shorter names.
 
 ```sh
-VERSION=0.1.6
+VERSION=0.1.33
 docker pull permguard/all-in-one:${VERSION}
 docker pull permguard/authority-plane:${VERSION}
 docker pull permguard/control-plane:${VERSION}
@@ -78,11 +83,11 @@ GitHub publishes build provenance for release images. Verify the exact image you
 
 ```sh
 gh attestation verify \
-  oci://ghcr.io/permguard/permguard/all-in-one:0.1.6 \
+  oci://ghcr.io/permguard/permguard/all-in-one:0.1.33 \
   --repo permguard/permguard
 ```
 
-<div class="pgx-note"><strong>Pin the version.</strong><span>A tag such as <code>0.1.6</code> is readable; a digest is the immutable deployment identity.</span></div>
+<div class="pgx-note"><strong>Pin the version.</strong><span>A tag such as <code>0.1.33</code> is readable; a digest is the immutable deployment identity.</span></div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">
   <a class="pgx-pager__previous" href="./install"><span>Previous</span><strong><b aria-hidden="true">←</b> Install</strong></a>

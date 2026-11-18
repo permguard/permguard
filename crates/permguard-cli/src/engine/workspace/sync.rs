@@ -608,6 +608,12 @@ impl Workspace<'_> {
         for path in &plan.removals {
             self.store.remove(path).map_err(err)?;
         }
+        // A partition the ledger dropped leaves no folder behind once its files went: an
+        // undeclared folder would be dirt the pull made itself. One still holding something the
+        // author keeps stays, and the build names it.
+        for partition in &plan.dropped_partitions {
+            remove_if_empty(self.store, partition)?;
+        }
         Ok(plan)
     }
 
@@ -617,13 +623,56 @@ impl Workspace<'_> {
         let commit = load_commit(self.store, head)?;
         let incoming = head_contents(self.store, head)?;
         let tracked = tracked_head(self.store)?;
+        let mut plan = Materialization::default();
+
+        // The manifest is merged three ways like every other file (DEC-0003, BUG-0017): unchanged
+        // here since the checkpoint, it takes the incoming one; changed here and unchanged there,
+        // it stays the author's, which `apply` sends; changed on both sides, the pull refuses and
+        // names it. Before the first checkpoint there is no base, and a manifest in the tree is
+        // the author's, checked against what lands below.
+        let local_manifest = manifest_file::find(self.store).map_err(err)?;
+        let mut adopting = false;
+        if let (Some(file), Some(previous)) = (local_manifest, &tracked) {
+            let ours = manifest_file::load(self.store)
+                .map_err(err)?
+                .encode()
+                .map_err(|error| err(error.to_string()))?;
+            let base = load_blob_data(self.store, &load_commit(self.store, previous)?.manifest)?;
+            let theirs = load_blob_data(self.store, &commit.manifest)?;
+            if ours != theirs && base != theirs {
+                if ours == base {
+                    let manifest = permguard_objects::manifest::Manifest::decode(&theirs)
+                        .map_err(|error| err(error.to_string()))?;
+                    plan.updates.push((
+                        file.to_owned(),
+                        manifest_file::to_yaml(&manifest).map_err(err)?.into_bytes(),
+                    ));
+                    let previous = permguard_objects::manifest::Manifest::decode(&base)
+                        .map_err(|error| err(error.to_string()))?;
+                    plan.dropped_partitions = previous
+                        .partitions
+                        .keys()
+                        .filter(|name| !manifest.partitions.contains_key(*name))
+                        .cloned()
+                        .collect();
+                    adopting = true;
+                } else {
+                    plan.conflicts.push(Conflict {
+                        path: file.to_owned(),
+                        reason: Reason::BothChanged {
+                            incoming: commit.manifest.clone(),
+                        },
+                    });
+                }
+            }
+        }
 
         // A manifest already in the tree is the author's, and it says which partitions the tree
         // has. A head carrying a partition the manifest does not declare cannot land on it: the
         // files would be written where no build reads them, and the next `plan` — the tracked
         // head against a tree that never declared them — would delete them from the ledger.
         // Refused before a byte is written, naming the partition and both ways out.
-        if manifest_file::find(self.store).map_err(err)?.is_some() {
+        if local_manifest.is_some() && !adopting {
             let manifest = manifest_file::load(self.store).map_err(err)?;
             let root = load_tree(self.store, &commit.tree)?;
             let undeclared: Vec<String> = root
@@ -687,7 +736,6 @@ impl Workspace<'_> {
             // Nothing tracked yet: a clone, where every file is a create.
             None => HeadContents::default(),
         };
-        let mut plan = Materialization::default();
 
         // The manifest: written as manifest.yml only when no manifest file
         // exists — the CLI never picks between two silently, and it does not
@@ -731,6 +779,22 @@ impl Workspace<'_> {
         }
 
         for (id, (digest, canonical)) in &incoming.policies {
+            // Absent here and in the base: the author deleted it, and that deletion is what
+            // `apply` sends — unless the remote changed it since, which only the author can weigh
+            // (DEC-0003, BUG-0026). Never written back.
+            if !local.contains_key(id)
+                && let Some((based, _)) = base.policies.get(id)
+            {
+                if based != digest {
+                    plan.conflicts.push(Conflict {
+                        path: canonical.clone(),
+                        reason: Reason::DeletedHere {
+                            incoming: digest.clone(),
+                        },
+                    });
+                }
+                continue;
+            }
             let Some(held) = local.get(id) else {
                 // Not held here under any name: materialize it — unless the
                 // name it would take is already in use. Writing over that
@@ -827,7 +891,18 @@ impl Workspace<'_> {
         for (path, digest) in &incoming.others {
             let theirs = load_blob_data(self.store, digest)?;
             let Some(ours) = self.store.read(path).map_err(err)? else {
-                plan.creates.push((path.clone(), theirs));
+                // Deleted here since the checkpoint: a pending deletion, or a conflict when the
+                // remote changed it (DEC-0003).
+                match base.others.get(path) {
+                    Some(based) if based == digest => {}
+                    Some(_) => plan.conflicts.push(Conflict {
+                        path: path.clone(),
+                        reason: Reason::DeletedHere {
+                            incoming: digest.clone(),
+                        },
+                    }),
+                    None => plan.creates.push((path.clone(), theirs)),
+                }
                 continue;
             };
             if ours == theirs {
@@ -879,6 +954,23 @@ impl Workspace<'_> {
 
         Ok(plan)
     }
+}
+
+/// Removes `path` when it holds nothing but folders and OS noise; answers whether it went.
+fn remove_if_empty(store: &dyn Store, path: &str) -> Result<bool> {
+    let mut empty = true;
+    for (name, is_dir) in store.list(path).map_err(err)? {
+        let child = format!("{path}/{name}");
+        if is_dir {
+            empty &= remove_if_empty(store, &child)?;
+        } else if !os_noise(&name) {
+            empty = false;
+        }
+    }
+    if empty && store.links(path).map_err(err)?.is_empty() {
+        store.remove(path).map_err(err)?;
+    }
+    Ok(empty)
 }
 
 /// Removes what a directory holds, keeping what `.permguardignore` names and the directories that
@@ -945,6 +1037,8 @@ pub(crate) struct Materialization {
     /// Files the author has to reconcile. Non-empty means the pull does not
     /// happen.
     conflicts: Vec<Conflict>,
+    /// Partitions the incoming manifest no longer declares, whose folders go once empty.
+    dropped_partitions: Vec<String>,
 }
 
 impl Materialization {
@@ -976,6 +1070,11 @@ impl Materialization {
                     "\n  - {path}: the remote dropped it and this workspace changed it — delete \
                      the file to accept the removal, or apply it back"
                 )),
+                Reason::DeletedHere { incoming } => message.push_str(&format!(
+                    "\n  - {path}: deleted here and changed on the remote — restore it from \
+                     `permguard objects cat {incoming}` to keep the change, or keep it deleted \
+                     and pull with --resolved"
+                )),
                 Reason::NameTaken { incoming } => message.push_str(&format!(
                     "\n  - {path}: the remote adds a policy that would be written here, but the \
                      name is taken — move the file aside, or add the policy yourself from \
@@ -1004,6 +1103,8 @@ enum Reason {
     BothChanged { incoming: Digest },
     /// The remote dropped it, and this workspace changed it.
     DroppedThere,
+    /// This workspace deleted it, and the remote changed it.
+    DeletedHere { incoming: Digest },
     /// The remote adds a policy whose file name this workspace already uses
     /// for something else.
     NameTaken { incoming: Digest },
@@ -1141,6 +1242,58 @@ fn read_tree_contents(
     Ok(())
 }
 
+/// The non-policy blobs of the tracked head — schemas and other artifacts — by the path they land
+/// at; none before the first checkpoint.
+pub(crate) fn tracked_others(store: &dyn Store) -> Result<BTreeMap<String, Digest>> {
+    match tracked_head(store)? {
+        Some(head) => Ok(head_contents(store, &head)?.others),
+        None => Ok(BTreeMap::new()),
+    }
+}
+
+/// The non-policy blobs of a snapshot, read from its own objects, by the path they land at: what
+/// [`tracked_others`] answers for the head, so the two compare path by path.
+pub(crate) fn snapshot_others(snapshot: &super::Snapshot) -> BTreeMap<String, Digest> {
+    fn tree_of(
+        snapshot: &super::Snapshot,
+        digest: &Digest,
+    ) -> Option<permguard_objects::object::Tree> {
+        match permguard_objects::object::decode(snapshot.objects.get(digest)?) {
+            Ok(Object::Tree(tree)) => Some(tree),
+            _ => None,
+        }
+    }
+    fn walk(
+        snapshot: &super::Snapshot,
+        directory: &str,
+        digest: &Digest,
+        others: &mut BTreeMap<String, Digest>,
+    ) {
+        let Some(tree) = tree_of(snapshot, digest) else {
+            return;
+        };
+        for item in tree.entries {
+            let path = format!("{directory}/{}", item.name);
+            match item.kind {
+                Kind::Tree => walk(snapshot, &path, &item.digest, others),
+                Kind::Blob if !item.annotations.contains_key(ANNOTATION_POLICY_ID) => {
+                    others.insert(path, item.digest);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut others = BTreeMap::new();
+    if let Some(root) = tree_of(snapshot, &snapshot.root) {
+        for entry in root.entries {
+            if entry.kind == Kind::Tree {
+                walk(snapshot, &entry.name, &entry.digest, &mut others);
+            }
+        }
+    }
+    others
+}
+
 /// The commit this workspace last converged on, or `None` before the first.
 fn tracked_head(store: &dyn Store) -> Result<Option<Digest>> {
     let r#ref = config::read_head(store)
@@ -1173,19 +1326,12 @@ pub(crate) fn previous_identity_maps(
     Ok((by_path, by_alias))
 }
 
-/// What the tracked head *is*, beyond its policies: the shape a plan has to
-/// compare against.
-///
-/// The root tree digest covers everything a commit carries — policies,
-/// schemas, nested folders — and the manifest digest covers the manifest. A
-/// plan that compared only policies would call a changed schema "no changes",
-/// which is exactly the bug this exists to make impossible.
+/// What the tracked head *is*, beyond its policies and artifacts: its manifest, which a plan
+/// compares as it compares every file (DEC-0003). A plan that compared only policies would call a
+/// changed manifest "no changes", which is exactly the bug this exists to make impossible.
 #[derive(Debug, Clone)]
 pub(crate) struct TrackedShape {
-    pub root: Digest,
     pub manifest: Digest,
-    /// Each partition's subtree digest, so a report can name what changed.
-    pub partitions: BTreeMap<String, Digest>,
 }
 
 /// The shape of the tracked head, or `None` when nothing is tracked yet.
@@ -1198,18 +1344,9 @@ pub(crate) fn tracked_shape(store: &dyn Store) -> Result<Option<TrackedShape>> {
     };
     let head = Digest::parse(&checkpoint.head).map_err(|_| err("corrupt checkpoint"))?;
     let commit = load_commit(store, &head)?;
-    let root = load_tree(store, &commit.tree)?;
-    let partitions = root
-        .entries
-        .iter()
-        .filter(|entry| entry.kind == Kind::Tree)
-        .map(|entry| (entry.name.clone(), entry.digest.clone()))
-        .collect();
 
     Ok(Some(TrackedShape {
-        root: commit.tree,
         manifest: commit.manifest,
-        partitions,
     }))
 }
 

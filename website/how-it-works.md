@@ -17,7 +17,7 @@ import { withBase } from 'vitepress'
     <div class="pgx-kicker">How it works</div>
     <h1>Authorization leaves the code.</h1>
     <p>Identity left your applications years ago. Authorization stayed inside them, different in every one. Permguard takes it out, gives it an owner and keeps every decision on record.</p>
-    <div class="pgx-hero-visual" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
+    <div class="pgx-hero-visual" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP through the Permguard SDKs, for Go, Java, .NET, Node.js, Python and Rust, their Policy Enforcement Point; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
       <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 420" aria-hidden="true" focusable="false">
         <defs>
           <linearGradient id="pgx-hv-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="186"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
@@ -27,6 +27,7 @@ import { withBase } from 'vitepress'
           <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V186"/>
           <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H799 V186"/>
           <path class="pgx-hv__flow pgx-hv__flow--identity" d="M170 212 H200"/>
+          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M860 210 H840"/>
           <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M295 270 V336"/>
           <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M520 270 V336"/>
           <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M745 270 V336"/>
@@ -66,6 +67,17 @@ import { withBase } from 'vitepress'
           <rect class="pgx-hv__pod" x="666" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="245" text-anchor="middle">worker · agent</text>
           <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="774" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="245" text-anchor="middle">PDP</text>
         </g>
+        <g class="pgx-hv__node pgx-hv__node--sdk">
+          <rect x="860" y="150" width="160" height="120" rx="14"/>
+          <text class="pgx-hv__k" x="940" y="170" text-anchor="middle">PEP · SDKS</text>
+          <g class="pgx-hv__lang"><title>Go</title><rect x="887" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="893" y="184" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Java</title><rect x="927" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="933" y="184" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>.NET</title><rect x="967" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="973" y="184" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Node.js</title><rect x="887" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="893" y="220" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Python</title><rect x="927" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="933" y="220" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Rust</title><rect x="967" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="973" y="220" width="20" height="20"/></g>
+          <text class="pgx-hv__m" x="940" y="261" text-anchor="middle">in every workload</text>
+        </g>
         <text class="pgx-hv__k" x="200" y="326">EVIDENCE · SIGNED · CHAINED</text>
         <g class="pgx-hv__chain">
           <path class="pgx-hv__link" d="M290 360 H310 M400 360 H420 M510 360 H530 M620 360 H640 M730 360 H750"/>
@@ -82,7 +94,7 @@ import { withBase } from 'vitepress'
           <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM</text>
         </g>
       </svg>
-      <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 600" aria-hidden="true" focusable="false">
+      <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 676" aria-hidden="true" focusable="false">
         <defs>
           <linearGradient id="pgx-hv-compact-flow" gradientUnits="userSpaceOnUse" x1="0" y1="74" x2="0" y2="332"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
         </defs>
@@ -90,8 +102,9 @@ import { withBase } from 'vitepress'
           <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 74 V112"/>
           <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 204 V222"/>
           <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 314 V332"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 424 V458"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 498 V530"/>
+          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M180 424 V440"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 516 V534"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 574 V606"/>
         </g>
         <g class="pgx-hv__node pgx-hv__node--cp">
           <rect x="70" y="14" width="220" height="60" rx="14"/>
@@ -122,17 +135,27 @@ import { withBase } from 'vitepress'
           <rect class="pgx-hv__pod" x="186" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="394" text-anchor="middle">worker</text>
           <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="288" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="394" text-anchor="middle">PDP</text>
         </g>
+        <g class="pgx-hv__node pgx-hv__node--sdk">
+          <rect x="16" y="440" width="328" height="76" rx="14"/>
+          <text class="pgx-hv__k" x="180" y="460" text-anchor="middle">PEP · SDKS IN EVERY WORKLOAD</text>
+          <g class="pgx-hv__lang"><title>Go</title><rect x="44" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="50" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Java</title><rect x="92" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="98" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>.NET</title><rect x="140" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="146" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Node.js</title><rect x="188" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="194" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Python</title><rect x="236" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="242" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><title>Rust</title><rect x="284" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="290" y="476" width="20" height="20"/></g>
+        </g>
         <g class="pgx-hv__chain">
-          <path class="pgx-hv__link" d="M95 478 H109 M173 478 H187 M251 478 H265"/>
-          <rect class="pgx-hv__block pgx-hv__block--1" x="31" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="63" y="483" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--2" x="109" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="141" y="483" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--3" x="187" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="219" y="483" text-anchor="middle">deny</text>
-          <rect class="pgx-hv__block pgx-hv__block--4" x="265" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="297" y="483" text-anchor="middle">permit</text>
+          <path class="pgx-hv__link" d="M95 554 H109 M173 554 H187 M251 554 H265"/>
+          <rect class="pgx-hv__block pgx-hv__block--1" x="31" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="63" y="559" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--2" x="109" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="141" y="559" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--3" x="187" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="219" y="559" text-anchor="middle">deny</text>
+          <rect class="pgx-hv__block pgx-hv__block--4" x="265" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="297" y="559" text-anchor="middle">permit</text>
         </g>
         <g class="pgx-hv__node">
-          <rect x="90" y="530" width="180" height="56" rx="14"/>
-          <text class="pgx-hv__k" x="180" y="552" text-anchor="middle">EXPORT</text>
-          <text class="pgx-hv__s" x="180" y="574" text-anchor="middle">Your SIEM</text>
+          <rect x="90" y="606" width="180" height="56" rx="14"/>
+          <text class="pgx-hv__k" x="180" y="628" text-anchor="middle">EXPORT</text>
+          <text class="pgx-hv__s" x="180" y="650" text-anchor="middle">Your SIEM</text>
         </g>
       </svg>
     </div>

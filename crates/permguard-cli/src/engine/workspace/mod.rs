@@ -95,8 +95,8 @@ pub struct Plan {
     pub unchanged: usize,
     /// Whether the manifest itself differs from the tracked head's.
     pub manifest_changed: bool,
-    /// Partitions whose content differs beyond the policies above: a schema,
-    /// in practice, since a policy would have an action of its own.
+    /// The schemas and other artifacts that differ from the tracked head, by path
+    /// (`<partition>/<file>`): added, changed or removed.
     pub other_changes: Vec<String>,
 }
 
@@ -298,9 +298,10 @@ impl<'a> Workspace<'a> {
         let snapshot = self.refresh()?;
         let previous = sync::tracked_policies(self.store)?;
         let tracked = sync::tracked_shape(self.store)?;
+        let tracked_others = sync::tracked_others(self.store)?;
         Ok((
             snapshot.clone(),
-            diff(&previous, &snapshot, tracked.as_ref()),
+            diff(&previous, &snapshot, tracked.as_ref(), &tracked_others),
         ))
     }
 
@@ -379,6 +380,7 @@ fn diff(
     previous: &BTreeMap<String, PolicyRecord>,
     snapshot: &Snapshot,
     tracked: Option<&sync::TrackedShape>,
+    tracked_others: &BTreeMap<String, permguard_objects::digest::Digest>,
 ) -> Plan {
     let mut actions = Vec::new();
     let mut unchanged = 0;
@@ -400,22 +402,25 @@ fn diff(
             });
         }
     }
-    // What changed that no action above names: the manifest, and any partition
-    // whose subtree moved without one of its policies moving — a schema, in
-    // practice.
-    let manifest_changed = tracked.is_some_and(|tracked| tracked.manifest != snapshot.manifest);
-    let mut other_changes = Vec::new();
-    if let Some(tracked) = tracked
-        && tracked.root != snapshot.root
-    {
-        for (partition, digest) in snapshot_partitions(snapshot) {
-            let moved = tracked.partitions.get(&partition) != Some(&digest);
-            let named = actions.iter().any(|action| action.partition() == partition);
-            if moved && !named {
-                other_changes.push(partition);
-            }
-        }
-    }
+    // What changed that no action above names: the manifest, and every schema or other artifact,
+    // by its path. Base, local and incoming are compared for all of it alike (DEC-0003): with no
+    // tracked head the base is empty, so the manifest and every artifact are pending, and a plan is
+    // empty only when `apply` would publish nothing (BUG-0009). A folder that moved without any
+    // file changing is no change at all, and never reported as a schema (BUG-0049).
+    let manifest_changed = tracked.is_none_or(|tracked| tracked.manifest != snapshot.manifest);
+    let local_others = sync::snapshot_others(snapshot);
+    let mut other_changes: Vec<String> = local_others
+        .iter()
+        .filter(|(path, digest)| tracked_others.get(*path) != Some(*digest))
+        .map(|(path, _)| path.clone())
+        .chain(
+            tracked_others
+                .keys()
+                .filter(|path| !local_others.contains_key(*path))
+                .cloned(),
+        )
+        .collect();
+    other_changes.sort();
 
     Plan {
         actions,
@@ -423,22 +428,4 @@ fn diff(
         manifest_changed,
         other_changes,
     }
-}
-
-/// The partition subtrees of a snapshot, read back out of the objects it built.
-fn snapshot_partitions(snapshot: &Snapshot) -> BTreeMap<String, permguard_objects::digest::Digest> {
-    let Some(bytes) = snapshot.objects.get(&snapshot.root) else {
-        return BTreeMap::new();
-    };
-    let Ok(permguard_objects::object::Object::Tree(root)) =
-        permguard_objects::object::decode(bytes)
-    else {
-        return BTreeMap::new();
-    };
-
-    root.entries
-        .into_iter()
-        .filter(|entry| entry.kind == permguard_objects::object::Kind::Tree)
-        .map(|entry| (entry.name, entry.digest))
-        .collect()
 }

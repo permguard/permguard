@@ -666,11 +666,12 @@ pub fn workspace_command(
                 alias: None,
             });
         }
-        for partition in &plan.other_changes {
+        for path in &plan.other_changes {
+            let (partition, name) = path.split_once('/').unwrap_or((path.as_str(), ""));
             lines.push(PlanLine {
                 op: "update",
-                partition: partition.clone(),
-                name: "schema".to_owned(),
+                partition: partition.to_owned(),
+                name: name.to_owned(),
                 id: String::new(),
                 alias: None,
             });

@@ -195,7 +195,15 @@ fn init_validate_plan_and_status_work_offline() {
     let plan = run(&dir, &["-o", "json", "plan"]);
     assert!(plan.status.success(), "{}", stderr(&plan));
     let parsed: serde_json::Value = serde_json::from_str(&stdout(&plan)).expect("plan JSON");
-    assert_eq!(parsed["changes"].as_array().expect("changes").len(), 2);
+    // Two policies, and the manifest: with nothing tracked it is pending too (BUG-0009).
+    let changes = parsed["changes"].as_array().expect("changes");
+    assert_eq!(changes.len(), 3, "{changes:?}");
+    assert!(
+        changes
+            .iter()
+            .any(|change| change["partition"] == "manifest"),
+        "{changes:?}"
+    );
 
     let status = run(&dir, &["-o", "yaml", "status"]);
     assert!(status.status.success(), "{}", stderr(&status));
