@@ -259,6 +259,39 @@ fn the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one() {
     assert!(module.startup_check(&policies_only).is_ok());
 }
 
+/// BUG-0162: a retention shorter than the build's default look-back plus lateness and skew is
+/// refused naming the key the configuration spells, and the sum it is, never loaded policies.
+#[test]
+fn a_short_event_retention_is_refused_by_its_own_key_and_the_sum_it_falls_short_of() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ALLOWED_LATENESS, SETTING_EVENTS_CLOCK_SKEW, SETTING_EVENTS_ENABLED,
+        SETTING_EVENTS_RETENTION_MINIMUM, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    let module = permguard_data_plane_server::module();
+    let short = deployed_with(&[
+        (SETTING_EVENTS_ENABLED, "true"),
+        (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
+        (SETTING_EVENTS_RETENTION_MINIMUM, "30m"),
+        (SETTING_EVENTS_ALLOWED_LATENESS, "5m"),
+        (SETTING_EVENTS_CLOCK_SKEW, "30s"),
+    ]);
+    let said = module
+        .startup_check(&short)
+        .expect_err("a retention shorter than the default look-back")
+        .to_string();
+    assert!(
+        said.contains("`dataPlane.events.retention.minimum` is 1800s"),
+        "{said}"
+    );
+    assert!(
+        said.contains("plus `allowed_lateness` 300s and `clock_skew` 30s"),
+        "{said}"
+    );
+    assert!(!said.contains("journal.retention_minimum"), "{said}");
+    assert!(!said.contains("loaded policies"), "{said}");
+}
+
 /// A plane that does not serve the temporal interface does not advertise it either.
 ///
 /// A discovery document is a promise about what answers here. Listing an interface a client then

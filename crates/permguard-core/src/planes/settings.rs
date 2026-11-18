@@ -414,8 +414,7 @@ pub fn authority_settings(value: &Value) -> Result<Vec<(String, String)>> {
 }
 
 pub fn plane_settings(value: &Value, keys: PlaneSettingKeys) -> Result<Vec<(String, String)>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let mut settings = Vec::new();
 
     if let Some(public) = section.public {
@@ -565,11 +564,24 @@ fn push_tls_settings(settings: &mut Vec<(String, String)>, keys: PlaneTlsKeys, t
     }
 }
 
+/// A plane section read whole. A retired key is a field only so it is refused by name, so an
+/// unknown field is never answered with it among the valid ones (BUG-0194).
+fn plane_section(value: &Value) -> Result<PlaneSectionConfig> {
+    serde_norway::from_value(value.clone()).map_err(|error| {
+        let said = error.to_string();
+        let said = if said.contains("unknown field") {
+            said.replace("`servers`, ", "").replace(", `servers`", "")
+        } else {
+            said
+        };
+        anyhow::anyhow!(said).context("parsing a plane section")
+    })
+}
+
 /// How the local task is narrowed (WP-7.7), from `mirrors.local`; a file still naming the retired
 /// `mirrors.servers` is refused, saying what replaces it.
 pub fn mirror_local(value: &Value) -> Result<Option<crate::mirrors::MirrorLocal>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(mirrors) = section.mirrors.as_ref() else {
         return Ok(None);
     };
@@ -582,8 +594,7 @@ pub fn mirror_local(value: &Value) -> Result<Option<crate::mirrors::MirrorLocal>
 
 /// The `policy.mirror` tasks this plane narrows (WP-7.2a), from the `mirrors.tasks` list.
 pub fn mirror_task_selections(value: &Value) -> Result<Vec<crate::mirrors::MirrorTaskSelection>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
 
     Ok(section
         .mirrors
@@ -594,8 +605,7 @@ pub fn mirror_task_selections(value: &Value) -> Result<Vec<crate::mirrors::Mirro
 
 /// The aliases this plane assigns (WP-7.2d, F-17), as `dataPlane.mirrors.aliases` declares them.
 pub fn mirror_aliases(value: &Value) -> Result<Vec<crate::mirrors::MirrorAlias>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
 
     Ok(section
         .mirrors
@@ -610,8 +620,7 @@ pub fn mirror_aliases(value: &Value) -> Result<Vec<crate::mirrors::MirrorAlias>>
 /// server with its own trust material has no single-variable form, and an
 /// allow-list of attribute names has none either.
 pub fn log_destination(value: &Value) -> Result<(Option<LogDestination>, IncludeSection)> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(decisions) = section.decisions.as_ref() else {
         return Ok((None, IncludeSection::default()));
     };
@@ -623,8 +632,7 @@ pub fn log_destination(value: &Value) -> Result<(Option<LogDestination>, Include
 
 /// Where this plane ships event records and reads shared history.
 pub fn events_destination(value: &Value) -> Result<Option<crate::decisions::EventDestination>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(events) = section.events.as_ref() else {
         return Ok(None);
     };
@@ -641,8 +649,7 @@ pub fn events_destination(value: &Value) -> Result<Option<crate::decisions::Even
 /// "these keys are trusted" would let any authorized data plane sign an envelope claiming
 /// another's identity.
 pub fn producer_keys(value: &Value) -> Result<Vec<crate::decisions::DecisionProducerSource>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(decisions) = section.decisions.as_ref() else {
         return Ok(Vec::new());
     };
@@ -676,8 +683,7 @@ pub fn producer_keys(value: &Value) -> Result<Vec<crate::decisions::DecisionProd
 ///
 /// Structured, so it comes from the file only: an allow-list of names has no single-variable form.
 pub fn decision_accept(value: &Value) -> Result<Option<IncludeSection>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(decisions) = section.decisions.as_ref() else {
         return Ok(None);
     };
@@ -690,8 +696,7 @@ pub fn decision_accept(value: &Value) -> Result<Option<IncludeSection>> {
 /// What `controlPlane.events.producer_keys` declares: retired (WP-6.2b), read only so the control
 /// plane's start can refuse a configuration that still names it.
 pub fn event_producer_keys(value: &Value) -> Result<Vec<crate::decisions::EventProducerSource>> {
-    let section: PlaneSectionConfig =
-        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let section: PlaneSectionConfig = plane_section(value)?;
     let Some(events) = section.events.as_ref() else {
         return Ok(Vec::new());
     };
@@ -701,12 +706,10 @@ pub fn event_producer_keys(value: &Value) -> Result<Vec<crate::decisions::EventP
     Ok(events.producer_keys().to_vec())
 }
 
+/// A Plane setting written as a boolean, read as every other one is: the same spellings, and a
+/// refusal that names them all (BUG-0218).
 pub fn parse_bool(value: &str) -> Result<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "true" | "yes" | "on" | "1" => Ok(true),
-        "false" | "no" | "off" | "0" => Ok(false),
-        other => anyhow::bail!("`{other}` is not a boolean: expected true or false"),
-    }
+    crate::config::parse_bool(value)
 }
 
 /// Whether the endpoint of `keys` states any TLS material or policy of its own.

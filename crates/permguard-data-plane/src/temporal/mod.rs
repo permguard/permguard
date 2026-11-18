@@ -389,11 +389,20 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
         );
     };
     let default_window = std::time::Duration::from_secs(u64::try_from(default_window).unwrap_or(0));
-    if let Err(why) = bounds.admits(default_window) {
+    if bounds.admits(default_window).is_err() {
+        // Named by the key the configuration spells, and stated as the sum it is: the build's
+        // default look-back, not anything loaded, plus the lateness and skew (BUG-0162).
+        let required = default_window + bounds.allowed_lateness + bounds.clock_skew;
         anyhow::bail!(
-            "`dataPlane.events.journal.retention_minimum` is too short for the temporal runtimes \
-             this build carries: {why}. A partition whose policies look further back than the \
-             journal keeps would answer from a history that had been emptied underneath it"
+            "`dataPlane.events.retention.minimum` is {}s, shorter than the temporal runtime this \
+             build carries requires: its default look-back of {}s, plus `allowed_lateness` {}s \
+             and `clock_skew` {}s, {}s in all. A partition whose policies look further back than \
+             the journal keeps would answer from a history that had been emptied underneath it",
+            bounds.retention_minimum.as_secs(),
+            default_window.as_secs(),
+            bounds.allowed_lateness.as_secs(),
+            bounds.clock_skew.as_secs(),
+            required.as_secs()
         );
     }
 

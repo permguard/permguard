@@ -496,9 +496,10 @@ dataPlane:
   #                                  # load, in the background; 0 is off
   #
   #   retention:
-  #     minimum: "48h"               # a FLOOR, not the answer: the requirement is this plus what
-  #                                  # the loaded policies' longest `max_window` asks for, and a
-  #                                  # configuration shorter than that is refused at startup rather
+  #     minimum: "48h"               # a FLOOR: at start it must cover the build's default
+  #                                  # `max_window` (24h for Dogwood) plus `allowed_lateness` and
+  #                                  # `clock_skew`, or the start is refused; a ledger whose
+  #                                  # policies look further back is refused when it loads, rather
   #                                  # than quietly emptying the windows a policy looks in
   #     allowed_lateness: "5m"       # how late an occurrence may arrive and still be recorded
   #     clock_skew: "30s"            # how far a caller's clock may run ahead of this one

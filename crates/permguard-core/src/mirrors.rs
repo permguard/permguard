@@ -68,8 +68,8 @@ pub struct MirrorsSection {
     #[serde(default)]
     revocation_objective: Option<String>,
     /// The retired server list (WP-7.7): read only so a file still naming it is refused with what
-    /// replaces it, rather than with an unknown field.
-    #[serde(default)]
+    /// replaces it, rather than with an unknown field; a null names it too (BUG-0194).
+    #[serde(default, deserialize_with = "present")]
     servers: Option<Retired>,
     /// How the local task of a process hosting both Planes is narrowed (WP-7.7). Absent, it
     /// follows every zone and ledger of its own Control Plane.
@@ -144,6 +144,13 @@ impl<'de> Deserialize<'de> for Retired {
         serde::de::IgnoredAny::deserialize(deserializer)?;
         Ok(Self)
     }
+}
+
+/// A retired key named at all, a null or an empty value included: serde reads a null as absent
+/// for an `Option`, unless the field reads it itself (BUG-0194).
+fn present<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Retired>, D::Error> {
+    serde::de::IgnoredAny::deserialize(deserializer)?;
+    Ok(Some(Retired))
 }
 
 /// The local task's narrowing, as the file declares it.
@@ -388,6 +395,33 @@ mod tests {
             .is_err(),
             "an alias is closed"
         );
+    }
+
+    /// BUG-0194: the retired key named with a null, or with nothing after it, is named all the
+    /// same, and an unknown field is never answered with `servers` among the valid ones.
+    #[test]
+    fn a_null_server_list_is_still_retired_and_never_offered() {
+        for text in [
+            "servers: ~\n",
+            "servers:\n",
+            "servers: null\n",
+            "servers: []\n",
+        ] {
+            let section: MirrorsSection = serde_norway::from_str(text).expect("parses");
+            assert!(section.names_servers(), "{text:?}");
+        }
+        let section: MirrorsSection =
+            serde_norway::from_str("interval: \"15s\"\n").expect("parses");
+        assert!(!section.names_servers(), "absent is not named");
+
+        let section: serde_norway::Value =
+            serde_norway::from_str("mirrors:\n  intervall: \"15s\"\n").expect("YAML");
+        let refused = format!(
+            "{:#}",
+            crate::planes::settings::mirror_local(&section).expect_err("an unknown field")
+        );
+        assert!(refused.contains("intervall"), "{refused}");
+        assert!(!refused.contains("`servers`"), "{refused}");
     }
 
     /// WP-7.7: the retired server list is refused by name; the local task is narrowed by

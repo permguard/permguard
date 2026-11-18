@@ -6745,7 +6745,11 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "on" | "1" => Ok(true),
         "false" | "no" | "off" | "0" => Ok(false),
-        other => bail!("`{other}` is not a boolean: expected true or false"),
+        // Every spelling it takes, named (BUG-0218).
+        other => bail!(
+            "`{other}` is not a boolean: expected true or false (yes, on and 1 also read as true; \
+             no, off and 0 as false)"
+        ),
     }
 }
 
@@ -7093,6 +7097,25 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// BUG-0218: a refused boolean names every spelling that is read.
+    #[test]
+    fn a_refused_boolean_names_every_spelling_read() {
+        for (spelled, read) in [
+            ("yes", true),
+            ("On", true),
+            ("1", true),
+            ("no", false),
+            ("OFF", false),
+            ("0", false),
+        ] {
+            assert_eq!(parse_bool(spelled).expect(spelled), read, "{spelled}");
+        }
+        let refused = parse_bool("maybe").expect_err("not a boolean").to_string();
+        for spelling in ["true", "false", "yes", "on", "1", "no", "off", "0"] {
+            assert!(refused.contains(spelling), "{spelling}: {refused}");
+        }
+    }
 
     /// WP-8.1: `client_auth: optional` needs an authority for the certificates presented, and
     /// cannot stand beside an allow list; `required` and a plain TLS listener pass unchecked.

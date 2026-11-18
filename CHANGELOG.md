@@ -45,6 +45,12 @@ is cut.
 
 ### Fixed
 
+- **A null `dataPlane.mirrors.servers` is refused as retired.**
+  `servers: ~` and `servers:` started as if the key were absent; they now stop the start with the retirement message, as a list does, and an unknown field under `dataPlane` no longer offers `servers` among the valid ones.
+- **A refused boolean setting names every spelling it reads.**
+  `true`, `yes`, `on` and `1`, and `false`, `no`, `off` and `0`, are read as before; the refusal of anything else now says so instead of "expected true or false".
+- **A too-short event retention is refused by its own key.**
+  The start check names `dataPlane.events.retention.minimum` and states the figure it falls short of, the build's default look-back plus `allowed_lateness` and `clock_skew`, instead of a key that does not exist and the loaded policies; `config.template.yml` describes the same bound.
 - **A membership's lease bounds and task limits are each at least 1.**
   An approval whose lease policy sets `offline_grace_seconds` or `clock_skew_seconds` to `0`, and an invitation, a join or an approval whose task sets `max_body_bytes`, `max_batch_records` or `retention_seconds` to `0`, are refused `400 invalid_argument` naming the bound, as the contract's `minimum: 1` states; a manifest read back with such a value is refused too.
 - **The event signers asked by name tell nobody which zones and ledgers exist.**
