@@ -45,6 +45,12 @@ is cut.
 
 ### Fixed
 
+- **The event signers asked by name tell nobody which zones and ledgers exist.**
+  `GET …/events/v1alpha1/signers` and `GetSigners` answered an existing name `200` and a missing one `404 scope_unknown` to anybody; asked by name they are now gated as the event reads are, `evidence.read` on the ledger, so a caller who may not read it gets the same refusal either way. Asked by ids they stay open.
+- **An event read of ids nothing ever held is `scope_unknown`, not an empty page.**
+  As the decision read already answered; a ledger deleted from the catalog keeps its events readable by its old ids.
+- **The shipped configurations name the grant the evidence reads take.**
+  The decision and event reads are `evidence.read`'s, which no configuration grants publicly; each `config*.yml` says so beside its public grants.
 - **A workspace command that dies no longer leaves the workspace locked.**
   `.permguard/lock` is now an operating system lock, released however the command ends, `SIGTERM` and `SIGKILL` included; the file stays between commands. A lock a live command holds is still honoured, refused as `unavailable` `workspace_locked`, exit 69, not as a usage error.
 - **A failed `clone` leaves its destination as it found it.**

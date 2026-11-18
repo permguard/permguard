@@ -160,6 +160,7 @@ impl EventLog for crate::served::Served<EventFacade> {
         &self,
         request: Request<GetSignersRequest>,
     ) -> Result<Response<GetSignersResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         let asked = request.into_inner();
 
         let filter = |held: String| (!held.is_empty()).then_some(held);
@@ -191,8 +192,16 @@ impl EventLog for crate::served::Served<EventFacade> {
         };
         let (facade, zone, ledger, disclosure) =
             (self.0.clone(), asked.zone, asked.ledger, self.0.disclosure);
+        let denied = self.0.clone();
         let document = tokio::task::spawn_blocking(move || {
-            facade.signers_of(&zone, &ledger, asked.from_seq, asked.until_seq, &wanted)
+            facade.signers_of(
+                &actor,
+                &zone,
+                &ledger,
+                asked.from_seq,
+                asked.until_seq,
+                &wanted,
+            )
         })
         .await
         .map_err(|error| {
@@ -206,7 +215,14 @@ impl EventLog for crate::served::Served<EventFacade> {
                 disclosure,
             )
         })?
-        .map_err(|error| status_of(&error, disclosure))?;
+        .map_err(|refused| match refused {
+            // Asked by a name the caller may not read: the reads' own refusal (BUG-0149).
+            crate::evidence::Gated::Denied(denial) => {
+                denied.denied("signers");
+                crate::wire::grpc_denial(&denial)
+            }
+            crate::evidence::Gated::Refused(error) => status_of(&error, disclosure),
+        })?;
 
         let truncated = document.truncated;
         let next = document.next.map(|held| crate::v1::StreamCursor {

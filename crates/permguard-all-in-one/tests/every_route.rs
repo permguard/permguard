@@ -197,7 +197,20 @@ fn routes_of(document: &Value, seed: &mut usize) -> Vec<Route> {
                         .iter()
                         .find(|parameter| parameter["name"] == name)
                         .and_then(|parameter| parameter["schema"]["enum"][0].as_str())
-                        .map_or_else(|| "walk".to_owned(), str::to_owned)
+                        .map_or_else(
+                            // An open route is open by ids: a zone or a ledger named by a name is
+                            // gated as the reads are, so nobody learns which names exist.
+                            || {
+                                if endpoint["credential"] == "no"
+                                    && (name == "zone" || name == "ledger")
+                                {
+                                    "00000000-0000-4000-8000-00000000000a".to_owned()
+                                } else {
+                                    "walk".to_owned()
+                                }
+                            },
+                            str::to_owned,
+                        )
                 })
                 .collect::<Vec<_>>()
                 .join("/");

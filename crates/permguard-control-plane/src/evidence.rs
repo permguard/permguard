@@ -17,8 +17,11 @@
 //! | the scope is resolved | the ledger exactly, or the whole plane   | `403`                          |
 //! |                       | for a legacy stream mixing tenants       |                                |
 //!
-//! The signers, the discovery documents and the legacy ingest are not evidence reads and stay as
-//! they are.
+//! The discovery documents and the legacy ingest are not evidence reads and stay as they are. The
+//! signers stay open by ids, which name no ledger to whoever does not hold them already; asked by
+//! a name, they go through this gate, so a name is never looked up for a caller who may not learn
+//! whether it exists (BUG-0149). A tenant named by ids nothing ever held, in the catalog, the
+//! store or the Host's consumer, is unknown, not an empty page (BUG-0150).
 
 use permguard_core::AccessDenial;
 use permguard_core::authz::{Actor, Resource, operations};
@@ -30,6 +33,13 @@ use permguard_host::composition::Authorization;
 pub enum Gated<E> {
     Denied(AccessDenial),
     Refused(E),
+}
+
+/// A refusal of the read itself, once the gate let the caller through.
+impl<E> From<E> for Gated<E> {
+    fn from(refused: E) -> Self {
+        Self::Refused(refused)
+    }
 }
 
 /// The plane's resource, what nothing-granted is checked under.

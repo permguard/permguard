@@ -549,6 +549,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
     let facade = facade(&fixture);
     let document = facade
         .signers_of(
+            &permguard_core::authz::Actor::Anonymous,
             ZONE,
             LEDGER,
             0,
@@ -576,6 +577,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
     // Narrowed to one producer, and resumed past the first stream.
     let narrowed = facade
         .signers_of(
+            &permguard_core::authz::Actor::Anonymous,
             ZONE,
             LEDGER,
             0,
@@ -589,6 +591,7 @@ fn the_signers_read_answers_each_consumer_run_in_stream_order() {
     assert_eq!(narrowed.streams.len(), 1);
     let after = facade
         .signers_of(
+            &permguard_core::authz::Actor::Anonymous,
             ZONE,
             LEDGER,
             0,
@@ -691,6 +694,7 @@ fn the_signers_read_narrows_the_consumer_runs_by_class() {
     let facade = facade(&fixture);
     let none = facade
         .signers_of(
+            &permguard_core::authz::Actor::Anonymous,
             ZONE,
             LEDGER,
             0,
@@ -704,6 +708,7 @@ fn the_signers_read_narrows_the_consumer_runs_by_class() {
     assert!(none.streams.is_empty());
     let one = facade
         .signers_of(
+            &permguard_core::authz::Actor::Anonymous,
             ZONE,
             LEDGER,
             0,
@@ -833,4 +838,61 @@ fn an_export_reads_a_run_longer_than_two_examination_bounds_to_its_end() {
         "found on the third page, after two bounded ones"
     );
     assert_eq!(pages, 3);
+}
+
+/// BUG-0150: a tenant named by ids nothing ever held is no ledger: `scope_unknown`, never an empty
+/// page; a tenant the consumer holds is read as before.
+#[test]
+fn a_tenant_read_by_ids_nothing_held_is_unknown() {
+    let fixture = Fixture::new("never-held");
+    let facade = facade(&fixture);
+    let anybody = permguard_core::authz::Actor::Anonymous;
+    let never = Scope::Tenant {
+        zone: "00000000-0000-4000-8000-0000000000aa".to_owned(),
+        ledger: "00000000-0000-4000-8000-0000000000bb".to_owned(),
+    };
+    assert!(matches!(
+        facade.gate(&anybody, never),
+        Err(crate::evidence::Gated::Refused(
+            crate::events::read::ReadError::Unknown(_)
+        ))
+    ));
+    assert!(
+        facade.gate(&anybody, tenant()).is_ok(),
+        "a held tenant reads"
+    );
+}
+
+/// BUG-0149: asked by a name, the signers are gated as the reads are, so a caller who may not read
+/// the ledger gets one refusal whether the name exists or not; asked by ids, the route stays open.
+#[test]
+fn the_signers_by_name_tell_nobody_which_ledgers_exist() {
+    let fixture = Fixture::new("signers-oracle");
+    let mut facade = facade(&fixture);
+    facade.authorization = Arc::new(permguard_host::composition::Authorization::closed());
+    let anybody = permguard_core::authz::Actor::Anonymous;
+    let asked = crate::events::facade::StreamsAsked::default();
+    let refusal = |zone: &str, ledger: &str| match facade
+        .signers_of(&anybody, zone, ledger, 0, 0, &asked)
+    {
+        Err(crate::evidence::Gated::Denied(denial)) => format!("{denial:?}"),
+        Err(crate::evidence::Gated::Refused(error)) => panic!("{zone}/{ledger}: refused {error:?}"),
+        Ok(_) => panic!("{zone}/{ledger}: answered"),
+    };
+    let held = refusal(ZONE, LEDGER);
+    assert_eq!(refusal("nope", LEDGER), held, "a missing zone");
+    assert_eq!(refusal(ZONE, "nope"), held, "a missing ledger");
+    // By ids, which name no ledger to whoever does not hold them already, the route is open.
+    assert!(
+        facade
+            .signers_of(
+                &anybody,
+                "00000000-0000-4000-8000-0000000000aa",
+                "00000000-0000-4000-8000-0000000000bb",
+                0,
+                0,
+                &asked
+            )
+            .is_ok()
+    );
 }

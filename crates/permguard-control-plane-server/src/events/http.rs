@@ -68,6 +68,7 @@ pub fn routes(facade: EventFacade) -> Router {
 
 async fn signers(
     State(facade): State<EventFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Response {
@@ -151,20 +152,25 @@ async fn signers(
     let answered = {
         let facade = facade.clone();
         tokio::task::spawn_blocking(move || {
-            facade.signers_of(&zone, &ledger, from_seq, until_seq, &wanted)
+            facade.signers_of(&actor, &zone, &ledger, from_seq, until_seq, &wanted)
         })
         .await
         .unwrap_or_else(|error| {
-            Err(ApiError::new(
+            Err(crate::evidence::Gated::Refused(ApiError::new(
                 ErrorClass::Unavailable,
                 permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
-            ))
+            )))
         })
     };
     match answered {
         Ok(document) => (StatusCode::OK, Json(document)).into_response(),
-        Err(error) => refuse(&facade, error),
+        // Asked by a name the caller may not read: the reads' own refusal (BUG-0149).
+        Err(crate::evidence::Gated::Denied(denial)) => {
+            facade.denied("signers");
+            wire::http_denial(&denial)
+        }
+        Err(crate::evidence::Gated::Refused(error)) => refuse(&facade, error),
     }
 }
 

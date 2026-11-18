@@ -422,6 +422,7 @@
       "get": {
         "operationId": "getEventSigners",
         "summary": "Which key signed which stretch of each producer stream of one ledger",
+        "description": "Open when the zone and the ledger are named by id. Named by a name, the read is gated as the event reads are, `evidence.read` on the ledger, before the name is looked up: a caller who may not read the ledger is refused alike whether the name exists or not.",
         "parameters": [
           {
             "name": "zone",
@@ -542,6 +543,26 @@
           },
           "400": {
             "description": "A malformed bound or cursor, or a range crossing too many spans.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Named by a name, and the caller presents no credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Named by a name the caller may not read, whether it exists or not.",
             "content": {
               "application/json": {
                 "schema": {

@@ -62,6 +62,17 @@ impl EventFacade {
 
         evidence::admitted(&self.authorization, actor).map_err(Gated::Denied)?;
         let scope = match read::canonical(self.catalog.as_ref(), scope) {
+            // Ids are taken as given; whether anything ever held them is asked here (BUG-0150).
+            Ok(Scope::Tenant { zone, ledger })
+                if !read::held_by_ids(self.catalog.as_ref(), &self.sources(), &zone, &ledger)
+                    .map_err(Gated::Refused)? =>
+            {
+                evidence::unknown(&self.authorization, actor).map_err(Gated::Denied)?;
+                return Err(Gated::Refused(read::ReadError::Unknown(format!(
+                    "`{zone}/{ledger}` is not a ledger this store holds: ids neither the catalog, \
+                     the event store nor the Host's stream holds"
+                ))));
+            }
             Ok(scope) => scope,
             Err(error @ read::ReadError::Unknown(_)) => {
                 evidence::unknown(&self.authorization, actor).map_err(Gated::Denied)?;
@@ -130,39 +141,61 @@ impl EventFacade {
     /// bounded page of [`SIGNERS_STREAM_CEILING`] streams, walked and cut at the directory —
     /// never collected whole and trimmed — and a truncated page carries `next`, the cursor the
     /// following ask passes back as `after`.
+    ///
+    /// Open by ids, which name no ledger to whoever does not hold them already. Asked by a name,
+    /// it is gated as the reads are, before the name is looked up: a caller who may not read the
+    /// ledger gets the same refusal whether the name exists or not, so the route tells nobody
+    /// which zones and ledgers there are (BUG-0149).
     pub fn signers_of(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         from_seq: u64,
         until_seq: u64,
         ask: &StreamsAsked,
-    ) -> Result<SignersDocument, ApiError> {
-        let scope = super::read::canonical(
-            self.catalog.as_ref(),
-            Scope::Tenant {
-                zone: zone.to_owned(),
-                ledger: ledger.to_owned(),
-            },
-        )
-        .map_err(|error| match error {
-            super::read::ReadError::Unknown(detail) => ApiError::new(
-                ErrorClass::NotFound,
-                permguard_core::codes::stream::SCOPE_UNKNOWN,
-                detail,
-            ),
-            other => ApiError::new(
-                ErrorClass::Unavailable,
-                permguard_core::codes::stream::STORE_UNAVAILABLE,
-                other.to_string(),
-            ),
+    ) -> Result<SignersDocument, crate::evidence::Gated<ApiError>> {
+        use crate::evidence::Gated;
+
+        let asked = Scope::Tenant {
+            zone: zone.to_owned(),
+            ledger: ledger.to_owned(),
+        };
+        let by_ids = [zone, ledger].iter().all(|text| {
+            matches!(
+                permguard_core::catalog::Selector::parse(text),
+                permguard_core::catalog::Selector::Id(_)
+            )
+        });
+        let resolved = if by_ids {
+            super::read::canonical(self.catalog.as_ref(), asked)
+        } else {
+            match self.gate(actor, asked) {
+                Ok(scope) => Ok(scope),
+                Err(Gated::Denied(denial)) => return Err(Gated::Denied(denial)),
+                Err(Gated::Refused(error)) => Err(error),
+            }
+        };
+        let scope = resolved.map_err(|error| {
+            Gated::Refused(match error {
+                super::read::ReadError::Unknown(detail) => ApiError::new(
+                    ErrorClass::NotFound,
+                    permguard_core::codes::stream::SCOPE_UNKNOWN,
+                    detail,
+                ),
+                other => ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
+                    other.to_string(),
+                ),
+            })
         })?;
         let Scope::Tenant { zone, ledger } = scope else {
-            return Err(ApiError::new(
+            return Err(Gated::Refused(ApiError::new(
                 ErrorClass::Internal,
                 permguard_core::codes::stream::SCOPE_MISMATCH,
                 "a tenant scope resolved to something else",
-            ));
+            )));
         };
         let until = if until_seq == 0 { u64::MAX } else { until_seq };
 
@@ -206,7 +239,7 @@ impl EventFacade {
 
             let spans = signers.covering(from_seq, until);
             if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
-                return Err(ApiError::new(
+                return Err(Gated::Refused(ApiError::new(
                     ErrorClass::Validation,
                     permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
                     format!(
@@ -214,7 +247,7 @@ impl EventFacade {
                          `until_seq`",
                         permguard_stream::MAX_SIGNER_SPANS
                     ),
-                ));
+                )));
             }
             answered.push(StreamSignersView {
                 producer_class: stream.producer.class,
@@ -281,7 +314,7 @@ impl EventFacade {
                 }
                 let spans = signers.covering(from_seq, until);
                 if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
-                    return Err(ApiError::new(
+                    return Err(Gated::Refused(ApiError::new(
                         ErrorClass::Validation,
                         permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
                         format!(
@@ -289,7 +322,7 @@ impl EventFacade {
                              `from_seq` and `until_seq`",
                             permguard_stream::MAX_SIGNER_SPANS
                         ),
-                    ));
+                    )));
                 }
                 answered.push(StreamSignersView {
                     spans: spans.to_vec(),

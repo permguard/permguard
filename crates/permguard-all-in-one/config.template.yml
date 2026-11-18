@@ -142,6 +142,10 @@ host:
   # `host grants bootstrap`.
   # What anybody may do without a credential: nothing, in production. Declared here, never
   # journaled; the development configurations open the catalog, pushes and evaluations this way.
+  # The decision and event reads, and the event signers asked by name, are `evidence.read`'s:
+  # read them with a token whose scopes name `evidence.read` on the ledger, or on
+  # `plane/control/*` for every ledger. An administrative operation is never public, and from
+  # `production` upward neither is a write.
   # authz:
   #   public:
   #     - operations: [decision.evaluate]

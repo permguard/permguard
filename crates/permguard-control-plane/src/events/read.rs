@@ -255,7 +255,10 @@ pub struct Sources<'a> {
 /// Whether `scope` reads the legacy store, and the consumer runs it covers: a stream scope naming
 /// a `host_id` and a run the consumer holds reads that run alone; a tenant scope reads the legacy
 /// store, then every run of its ledger by producer and opening order (WP-6.2b, as WP-6.1b).
-fn sources_of(sources: &Sources<'_>, scope: &Scope) -> Result<(bool, Vec<HostRun>), ReadError> {
+pub(crate) fn sources_of(
+    sources: &Sources<'_>,
+    scope: &Scope,
+) -> Result<(bool, Vec<HostRun>), ReadError> {
     let unavailable = |error: String| ReadError::Unavailable(error);
     let Some(host) = sources.host else {
         return Ok((true, Vec::new()));
@@ -1084,6 +1087,53 @@ fn identify(
              by name or by identity, and neither form matched"
         ))
     })
+}
+
+/// Whether a tenant named by ids is a ledger anything holds or held: the catalog, the legacy
+/// store's view, or the Host's consumer. Ids nobody ever held are no ledger, and a read of them is
+/// answered `scope_unknown`, never an empty page; a ledger deleted from the catalog keeps its
+/// events readable by its old ids (BUG-0150).
+pub fn held_by_ids(
+    catalog: Option<&std::sync::Arc<dyn permguard_core::catalog::Catalog>>,
+    sources: &Sources<'_>,
+    zone: &str,
+    ledger: &str,
+) -> Result<bool, ReadError> {
+    use permguard_core::catalog::Selector;
+
+    // Only ids are taken as given: a name either resolved through the catalog or, with no
+    // catalog composed, is the store's own key.
+    let ids = [zone, ledger]
+        .iter()
+        .all(|text| matches!(Selector::parse(text), Selector::Id(_)));
+    if !ids {
+        return Ok(true);
+    }
+    let catalogued = catalog.is_some_and(|catalog| {
+        catalog
+            .get_ledger(
+                &Selector::Id(zone.to_owned()),
+                &Selector::Id(ledger.to_owned()),
+            )
+            .is_ok()
+    });
+    if catalogued {
+        return Ok(true);
+    }
+    let scope = Scope::Tenant {
+        zone: zone.to_owned(),
+        ledger: ledger.to_owned(),
+    };
+    let viewed = sources
+        .store
+        .scope_path(&scope)
+        .map_err(|error| ReadError::Unavailable(error.to_string()))?
+        .is_dir();
+    if viewed {
+        return Ok(true);
+    }
+    let (_, runs) = sources_of(sources, &scope)?;
+    Ok(!runs.is_empty())
 }
 
 /// The scope a read is served from, with its zone and ledger canonicalized.

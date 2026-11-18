@@ -41,6 +41,9 @@ host:
   # `host grants bootstrap`.
   # What anybody may do without a credential: a development convenience, declared here and
   # never journaled. A production deployment declares none.
+  # The decision and event reads, and the event signers asked by name, are `evidence.read`'s
+  # and are not granted here: read them with a token whose scopes name `evidence.read` on the
+  # ledger, or on `plane/control/*` for every ledger.
   authz:
     public:
       - operations: [catalog.read, catalog.write, policy.push]
