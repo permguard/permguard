@@ -66,6 +66,17 @@ impl AnyRemote {
             Self::Grpc(remote) => remote.verify_discovery(),
         }
     }
+
+    /// The last failure this remote met, taken, with the class and code the engine's `String`
+    /// cannot carry: what a command reports a remote's refusal or absence with (BUG-0002).
+    pub fn take_failure(&self) -> Option<crate::failure::Failure> {
+        match self {
+            #[cfg(feature = "http")]
+            Self::Http(remote) => remote.take_failure(),
+            #[cfg(feature = "grpc")]
+            Self::Grpc(remote) => remote.take_failure(),
+        }
+    }
 }
 
 impl Remote for AnyRemote {

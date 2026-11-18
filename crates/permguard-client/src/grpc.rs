@@ -371,24 +371,35 @@ impl GrpcChannel {
     /// The discovery document — the proof this endpoint is a Permguard
     /// control plane — before the remote is remembered.
     pub fn verify_discovery(&self) -> Result<(), String> {
-        let mut client = proto::control_plane_client::ControlPlaneClient::new(self.channel.clone());
-        let answer = self
-            .call(
-                "GetServerConfiguration",
-                client.get_server_configuration(proto::GetServerConfigurationRequest {}),
-            )
+        let document = self
+            .discovery()
             .map_err(|status| status.message().to_owned())?;
-        let value: serde_json::Value = serde_json::from_str(&answer.document_json)
-            .map_err(|error| format!("the discovery document does not parse: {error}"))?;
-        if value
-            .get("plane")
-            .and_then(|plane| plane.as_str())
-            .is_none()
-        {
-            return Err("this endpoint answers, but not with a Permguard plane".to_owned());
-        }
-        Ok(())
+        plane_document(&document)
     }
+
+    /// The discovery document's JSON, or the status that refused it.
+    fn discovery(&self) -> Result<String, tonic::Status> {
+        let mut client = proto::control_plane_client::ControlPlaneClient::new(self.channel.clone());
+        self.call(
+            "GetServerConfiguration",
+            client.get_server_configuration(proto::GetServerConfigurationRequest {}),
+        )
+        .map(|answer| answer.document_json)
+    }
+}
+
+/// Whether `document` is a Permguard plane's discovery document.
+fn plane_document(document: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(document)
+        .map_err(|error| format!("the discovery document does not parse: {error}"))?;
+    if value
+        .get("plane")
+        .and_then(|plane| plane.as_str())
+        .is_none()
+    {
+        return Err("this endpoint answers, but not with a Permguard plane".to_owned());
+    }
+    Ok(())
 }
 
 /// A tonic status, in the same sentence shape HTTP refusals take, so scripts
@@ -396,30 +407,6 @@ impl GrpcChannel {
 /// The metadata keys the server puts the structured half of a refusal in —
 /// the same two the planes write, so a client reads one convention.
 pub use permguard_core::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
-
-/// A refusal, in the **same shape both transports produce**: the sentence, then
-/// the class and the stable code in parentheses.
-///
-/// That symmetry is not cosmetic. A caller that has to tell "this ref does not
-/// exist yet" from "this failed" reads the code, and a transport that spelled
-/// its refusals differently would make every such caller wrong on one of the
-/// two. The class and the code ride as metadata (the server sets them); when
-/// they are absent — an older server, or a status tonic produced itself — they
-/// are derived from the gRPC code rather than left out.
-fn refusal(status: &tonic::Status) -> String {
-    let metadata = |key: &str| {
-        status
-            .metadata()
-            .get(key)
-            .and_then(|value| value.to_str().ok())
-            .map(ToOwned::to_owned)
-    };
-    let (derived_class, derived_code) = classify(status.code());
-    let class = metadata(GRPC_ERROR_CLASS).unwrap_or_else(|| derived_class.to_owned());
-    let code = metadata(GRPC_ERROR_CODE).unwrap_or_else(|| derived_code.to_owned());
-
-    format!("{} ({class}/{code})", status.message())
-}
 
 /// The class and code a gRPC status means, when the server named neither.
 fn classify(code: tonic::Code) -> (&'static str, &'static str) {
@@ -1076,6 +1063,8 @@ pub struct GrpcRemote {
     /// The batch compression the last negotiation advertised — the transport
     /// concern, exactly as on HTTP.
     compression: RefCell<Option<String>>,
+    /// The last failure, with the class and code a string loses (BUG-0002, BUG-0087).
+    failed: RefCell<Option<CatalogFailure>>,
 }
 
 #[cfg(feature = "notp")]
@@ -1089,7 +1078,23 @@ impl GrpcRemote {
             channel: GrpcChannel::connect(url, tls, narrator)?,
             ids: RefCell::new(None),
             compression: RefCell::new(None),
+            failed: RefCell::new(None),
         })
+    }
+
+    /// The last failure this remote met, taken: its class and code, which the `String` the
+    /// engine sees cannot carry.
+    pub fn take_failure(&self) -> Option<CatalogFailure> {
+        self.failed.borrow_mut().take()
+    }
+
+    /// Keeps the status as a failure for [`take_failure`](Self::take_failure) and answers its
+    /// sentence, the class and code left to the fields (BUG-0087).
+    fn refused(&self, status: tonic::Status) -> String {
+        let failure = failure_of(status);
+        let said = failure.detail.clone();
+        *self.failed.borrow_mut() = Some(failure);
+        said
     }
 
     /// Pre-binds the resolved GUIDs, for workspaces that already carry them.
@@ -1099,7 +1104,11 @@ impl GrpcRemote {
 
     /// The discovery check `remote add` runs before remembering the remote.
     pub fn verify_discovery(&self) -> Result<(), String> {
-        self.channel.verify_discovery()
+        let document = self
+            .channel
+            .discovery()
+            .map_err(|status| self.refused(status))?;
+        plane_document(&document)
     }
 
     fn store(&self) -> proto::git_like_store_client::GitLikeStoreClient<AuthChannel> {
@@ -1164,7 +1173,7 @@ impl Remote for GrpcRemote {
                     zone: zone.to_owned(),
                 }),
             )
-            .map_err(|status| refusal(&status))?
+            .map_err(|status| self.refused(status))?
             .zone
             .ok_or_else(|| "the answer carries no zone".to_owned())?;
         let ledger = self
@@ -1176,7 +1185,7 @@ impl Remote for GrpcRemote {
                     ledger: ledger.to_owned(),
                 }),
             )
-            .map_err(|status| refusal(&status))?
+            .map_err(|status| self.refused(status))?
             .ledger
             .ok_or_else(|| "the answer carries no ledger".to_owned())?;
         self.bind(&zone.id, &ledger.id);
@@ -1191,7 +1200,7 @@ impl Remote for GrpcRemote {
                 "GetKeyRing",
                 client.get_key_ring(proto::GetKeyRingRequest {}),
             )
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         Ok(answer.jwks)
     }
 
@@ -1211,7 +1220,7 @@ impl Remote for GrpcRemote {
                 ref_digest: parse_digest(&answer.ref_digest)?.to_string(),
             })),
             Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
-            Err(status) => Err(refusal(&status)),
+            Err(status) => Err(self.refused(status)),
         }
     }
 
@@ -1240,7 +1249,7 @@ impl Remote for GrpcRemote {
         let answer = self
             .channel
             .call("NegotiatePush", client.negotiate_push(wire))
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         self.remember_compression(&answer.compression);
         Ok(NegotiatePushResponse {
             missing: parse_digests(answer.missing)?,
@@ -1277,7 +1286,7 @@ impl Remote for GrpcRemote {
         let answer = self
             .channel
             .call("UploadObjects", client.upload_objects(wire))
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         Ok(UploadObjectsResponse {
             received: parse_digests(answer.received)?,
             remaining: answer.remaining,
@@ -1299,7 +1308,7 @@ impl Remote for GrpcRemote {
         let answer = self
             .channel
             .call("CommitPush", client.commit_push(wire))
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         Ok(CommitPushResponse {
             head: parse_digest(&answer.head)?,
             counter: answer.counter,
@@ -1333,7 +1342,7 @@ impl Remote for GrpcRemote {
         let answer = self
             .channel
             .call("NegotiatePull", client.negotiate_pull(wire))
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         self.remember_compression(&answer.compression);
         Ok(NegotiatePullResponse {
             head: parse_digest(&answer.head)?,
@@ -1366,7 +1375,7 @@ impl Remote for GrpcRemote {
         let mut answer = self
             .channel
             .call("FetchObjects", client.fetch_objects(wire))
-            .map_err(|status| refusal(&status))?;
+            .map_err(|status| self.refused(status))?;
         if !answer.compression.is_empty() {
             if answer.compression != compress::DEFLATE {
                 return Err(format!(

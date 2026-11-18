@@ -39,6 +39,8 @@ pub struct HttpRemote {
     /// here because compression is this transport's concern, invisible to
     /// the engine: batches leave compressed and arrive decompressed.
     compression: RefCell<Option<String>>,
+    /// The last failure, with the class and code a string loses (BUG-0002, BUG-0087).
+    failed: RefCell<Option<crate::failure::Failure>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,10 +77,34 @@ impl HttpRemote {
             narrator,
             ids: RefCell::new(None),
             compression: RefCell::new(None),
+            failed: RefCell::new(None),
         })
     }
 
-    /// One finished exchange, told to whoever is listening.
+    /// The last failure this remote met, taken: its class and code, which the `String` the
+    /// engine sees cannot carry.
+    pub fn take_failure(&self) -> Option<crate::failure::Failure> {
+        self.failed.borrow_mut().take()
+    }
+
+    /// Keeps `failure` for [`take_failure`](Self::take_failure) and answers its sentence.
+    fn failed(&self, failure: crate::failure::Failure) -> String {
+        let said = failure.detail.clone();
+        *self.failed.borrow_mut() = Some(failure);
+        said
+    }
+
+    /// A transport that could not reach the server: the world's, not the caller's.
+    fn unreachable(&self, error: &crate::http::Error) -> String {
+        self.failed(crate::failure::Failure {
+            class: "unavailable".to_owned(),
+            reason: error.reason().to_owned(),
+            detail: error.to_string(),
+            usage: false,
+        })
+    }
+
+    /// One exchange, told to whoever is listening.
     fn narrate(&self, method: &str, path: &str, sent: usize, status: u16, received: usize) {
         self.narrator
             .exchange(method, path, sent, &status.to_string(), received);
@@ -120,10 +146,10 @@ impl HttpRemote {
         let answer = self
             .client
             .request_raw(&self.endpoint, "GET", path, "application/json", None)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| self.unreachable(&error))?;
         self.narrate("GET", path, 0, answer.status, answer.body.len());
         if answer.status != 200 {
-            return Err(refusal(&answer.body, answer.status));
+            return Err(self.failed(refusal(&answer.body, answer.status)));
         }
         Ok(answer.body)
     }
@@ -138,10 +164,10 @@ impl HttpRemote {
                 permguard_notp::MEDIA_TYPE,
                 Some(body),
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| self.unreachable(&error))?;
         self.narrate("POST", path, body.len(), answer.status, answer.body.len());
         if answer.status != 200 {
-            return Err(refusal(&answer.body, answer.status));
+            return Err(self.failed(refusal(&answer.body, answer.status)));
         }
         Ok(answer.body)
     }
@@ -157,10 +183,34 @@ impl HttpRemote {
     }
 }
 
-fn refusal(body: &[u8], status: u16) -> String {
-    match serde_json::from_slice::<Refusal>(body) {
-        Ok(refusal) => format!("{} ({}/{})", refusal.message, refusal.class, refusal.code),
-        Err(_) => format!("the server answered {status}"),
+/// A refusal, as every other client of this crate reads one: the server's class, code and
+/// sentence; a denial at a listener's gate, its code and no class (TC-1); anything else, the status
+/// (BUG-0087).
+fn refusal(body: &[u8], status: u16) -> crate::failure::Failure {
+    if let Ok(refusal) = serde_json::from_slice::<Refusal>(body) {
+        return crate::failure::Failure {
+            usage: matches!(
+                refusal.class.as_str(),
+                "validation" | "conflict" | "not_found"
+            ),
+            class: refusal.class,
+            reason: refusal.code,
+            detail: refusal.message,
+        };
+    }
+    match serde_json::from_slice::<permguard_core::api::WireDenial>(body) {
+        Ok(denial) if matches!(status, 401 | 403) => crate::failure::Failure {
+            class: String::new(),
+            reason: denial.code,
+            detail: denial.message,
+            usage: true,
+        },
+        _ => crate::failure::Failure {
+            class: "internal".to_owned(),
+            reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
+            detail: format!("the server answered {status}"),
+            usage: false,
+        },
     }
 }
 
@@ -209,12 +259,12 @@ impl Remote for HttpRemote {
         let answer = self
             .client
             .request_raw(&self.endpoint, "GET", &path, "application/json", None)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| self.unreachable(&error))?;
         if answer.status == 404 {
             return Ok(None);
         }
         if answer.status != 200 {
-            return Err(refusal(&answer.body, answer.status));
+            return Err(self.failed(refusal(&answer.body, answer.status)));
         }
         // A closed message: a label this client does not know is refused, never skipped.
         let answered = GetRefResponse::decode(&answer.body)
