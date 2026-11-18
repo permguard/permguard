@@ -25,6 +25,18 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+### Security
+
+- **Narrowing an account's scopes revokes the tokens that held what it removes.**
+  `PUT /authority/v1/service-accounts/{name}/scopes` and `permguard authority scopes set` revoke, with no flag, every live token of the account holding an operation the new scopes no longer grant where it holds it, and answer how many in `tokens_revoked`; `revoke_tokens` and `--revoke-tokens` still revoke every live token of the account.
+  Before, a token kept what it carried until it expired unless the flag was given.
+- **Resuming a suspended account no longer brings its old tokens back.**
+  The tokens it held when suspended are `INVALID` once it resumes; it obtains new ones.
+- **Wrong secrets no longer use up an access key's token budget.**
+  The 60 tokens a minute of an access key count only requests that proved its secret; refused proofs count against their source's 300 a minute, so anybody who knows an access key can no longer keep its account from obtaining tokens.
+- **A bearer revokes its own token on every shipped binary.**
+  `POST /authority/v1/tokens/{jti}/revoke`, `TokenService/RevokeToken` and `permguard authority token revoke` refused a token without `tokens.revoke` before the handler's own-token rule ran; the route's contract now marks it `own_token`, and another token's `jti` is still `tokens.revoke`'s.
+
 ### Fixed
 
 - **The command line built with `--features pkcs11` carries the `pkcs11` custody again.**

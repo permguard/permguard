@@ -284,7 +284,8 @@ message SetScopesRequest {
   string name = 2;
   repeated Scope scopes = 3;
   optional uint64 expected_revision = 4;
-  // Whether the account's live tokens are revoked too, so a narrowing holds at once.
+  // Whether every live token of the account is revoked; those holding a scope the change removes
+  // are revoked whether or not this is asked.
   bool revoke_tokens = 5;
 }
 

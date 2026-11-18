@@ -61,7 +61,8 @@ permguard authority scopes set billing --scope 'decision.evaluate@plane/data/*' 
 | scopes      | at most 64, each operations on a selector they apply to: one that never allows is refused  |
 | access keys | at most two live per account; `pgak_` and 20 characters, the secret `pgsk_` and 43         |
 | secrets     | answered once, in the file they are written to; the Authority Plane keeps an Argon2id hash |
-| suspension  | a suspended account obtains no token, and every token it holds is refused                  |
+| narrowing   | a token holding what new scopes remove is revoked at once; `--revoke-tokens` revokes all   |
+| suspension  | a suspended account obtains no token; the tokens it held stay refused, after a resume too  |
 | deletion    | an account or a key deleted takes every live token it obtained with it                     |
 
 ## Tokens

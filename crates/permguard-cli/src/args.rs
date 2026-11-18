@@ -2957,7 +2957,8 @@ pub enum ScopesAction {
         /// `<operations>@<selector>`, the operations comma separated; repeated for each scope.
         #[arg(long = "scope", value_name = "OPS@SELECTOR")]
         scopes: Vec<String>,
-        /// Revoke the account's live tokens too, so a narrowing holds at once.
+        /// Revoke every live token of the account; those holding a scope the change removes are
+        /// revoked without it.
         #[arg(long)]
         revoke_tokens: bool,
     },

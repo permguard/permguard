@@ -243,6 +243,17 @@ fn invalid(message: impl Into<String>) -> Refusal {
 }
 
 /// The bearer's principal, when `jti` names the very token it presents.
+/// Whether every operation `held` grants, where it grants it, is granted by `scopes` too.
+fn granted_within(held: &[TokenScope], scopes: &[TokenScope]) -> bool {
+    held.iter().all(|scope| {
+        scope.operations.iter().all(|operation| {
+            scopes.iter().any(|granted| {
+                granted.operations.contains(operation) && granted.selector.covers(&scope.selector)
+            })
+        })
+    })
+}
+
 fn own_token(actor: &Actor, jti: &str) -> Option<String> {
     let Actor::Authenticated(context) = actor else {
         return None;
@@ -441,7 +452,8 @@ pub struct SetScopes {
     pub scopes: Vec<ScopeView>,
     #[serde(default)]
     pub expected_revision: Option<u64>,
-    /// Revokes the account's live tokens too, so a narrowing holds at once.
+    /// Revokes every live token of the account, not only those holding a scope the change
+    /// removes, which are revoked whether or not this is asked.
     #[serde(default)]
     pub revoke_tokens: bool,
 }
@@ -853,16 +865,19 @@ impl Authority {
             access_keys::burn(&request.client_secret);
             return Err(TokenRefusal::InvalidClient);
         }
-        self.limiter
-            .admit(&request.client_id, CLIENT_REQUESTS_PER_MINUTE, now)?;
         let Some((account, key)) = self.accounts.by_access_key(&request.client_id) else {
             access_keys::burn(&request.client_secret);
             return Err(TokenRefusal::InvalidClient);
         };
-        if !access_keys::verify(&request.client_secret, &key.secret_hash)
-            || account.status != Status::Active
-            || !key.is_live(now)
-        {
+        if !access_keys::verify(&request.client_secret, &key.secret_hash) {
+            return Err(TokenRefusal::InvalidClient);
+        }
+        // Only a request that proved the key counts against it: an access key is no secret, and
+        // wrong secrets counted here would let anybody who knows one keep its account from
+        // obtaining tokens (BUG-0334). Refused proofs stay limited at their source, above.
+        self.limiter
+            .admit(&request.client_id, CLIENT_REQUESTS_PER_MINUTE, now)?;
+        if account.status != Status::Active || !key.is_live(now) {
             return Err(TokenRefusal::InvalidClient);
         }
         let scopes = narrowed(&account.scopes, request.scope.as_deref())?;
@@ -1327,7 +1342,7 @@ impl Authority {
     }
 
     /// `POST /authority/v1/service-accounts/{name}/suspend` and `/resume`: the account's live
-    /// tokens follow, `SUSPENDED` and `VALID` again.
+    /// tokens are `SUSPENDED` while it is, and `INVALID` once it resumes, which obtains new ones.
     pub fn set_account_status(
         &self,
         actor: &Actor,
@@ -1347,12 +1362,15 @@ impl Authority {
                 status::SUSPENDED,
             )
         } else {
+            // A resumed account obtains new tokens; those it held when suspended end for good,
+            // so a suspension is never undone for a token somebody may have taken meanwhile
+            // (BUG-0340).
             (
                 "authority.accounts.resume",
                 actions::RESUMED,
                 Status::Active,
                 status::SUSPENDED,
-                status::VALID,
+                status::INVALID,
             )
         };
         self.transact(
@@ -1471,8 +1489,8 @@ impl Authority {
         .map(|(deleted, _)| deleted)
     }
 
-    /// `PUT /authority/v1/service-accounts/{name}/scopes`: replaced whole; the live tokens of the
-    /// account revoked too when asked.
+    /// `PUT /authority/v1/service-accounts/{name}/scopes`: replaced whole; the live tokens holding
+    /// a scope it removes revoked at once, and every live token of the account when asked.
     pub fn set_scopes(
         &self,
         actor: &Actor,
@@ -1518,19 +1536,22 @@ impl Authority {
                         now,
                     )
                     .map_err(failure)?;
-                let revoked = if set.revoke_tokens {
-                    self.registry
-                        .set_status(
-                            None,
-                            |token| token.account == name,
-                            status::INVALID,
-                            &principal,
-                            now,
-                        )
-                        .map_err(token_failure)?
-                } else {
-                    0
-                };
+                // A narrowing holds at once: a live token holding anything the new scopes do not
+                // grant is revoked, and with `revoke_tokens` every live token of the account is
+                // (BUG-0339). A widening revokes nothing.
+                let revoked = self
+                    .registry
+                    .set_status(
+                        None,
+                        |token| {
+                            token.account == name
+                                && (set.revoke_tokens || !granted_within(&token.scopes, &scopes))
+                        },
+                        status::INVALID,
+                        &principal,
+                        now,
+                    )
+                    .map_err(token_failure)?;
                 Ok(Applied {
                     revision: written.revision,
                     target: Some(written.name.clone()),
@@ -1886,6 +1907,48 @@ mod tests {
         assert_eq!(
             source_key("2001:db8:1:2:3:4:5:6"),
             "source:2001:db8:1:2::/64"
+        );
+    }
+
+    /// A token's scopes are within new scopes when every operation it holds is granted where it
+    /// holds it: a narrowing that takes any away is not (BUG-0339).
+    #[test]
+    fn a_token_is_within_new_scopes_only_when_they_grant_all_it_holds() {
+        let held = [scope(
+            &["decision.evaluate", "catalog.read"],
+            "plane/data/zone/z/*",
+        )];
+        assert!(granted_within(
+            &held,
+            &[scope(
+                &["decision.evaluate", "catalog.read"],
+                "plane/data/*"
+            )]
+        ));
+        assert!(granted_within(
+            &held,
+            &[
+                scope(&["decision.evaluate"], "plane/data/*"),
+                scope(&["catalog.read"], "plane/data/zone/z/*"),
+            ]
+        ));
+        assert!(
+            !granted_within(&held, &[scope(&["decision.evaluate"], "plane/data/*")]),
+            "an operation taken away"
+        );
+        assert!(
+            !granted_within(
+                &held,
+                &[scope(
+                    &["decision.evaluate", "catalog.read"],
+                    "plane/data/zone/other/*"
+                )]
+            ),
+            "a resource taken away"
+        );
+        assert!(
+            granted_within(&[], &[]),
+            "a token holding nothing loses nothing"
         );
     }
 

@@ -166,9 +166,15 @@ fn serve(
         .with_plane_handles("authority", Arc::new(registration)),
     ));
     let context = PlaneContext::new(server, "authority");
-    let router = module
-        .http_routes(&context)
-        .merge(module.grpc_routes(&context));
+    // Behind the admission layer every binary puts in front of a Plane's routes: a route its
+    // contract closes is asked only with standing under it, as on a shipped server (BUG-0333).
+    let router = permguard_server::plane::admission::admitted(
+        module
+            .http_routes(&context)
+            .merge(module.grpc_routes(&context)),
+        "authority",
+        Arc::new(Authorization::closed()),
+    );
     let authenticator = Arc::new(TokenAuthenticator {
         trust: Arc::clone(&trust) as Arc<dyn Trust>,
         inner: Arc::new(PrincipalMapper::empty()),
@@ -427,6 +433,16 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
             ),
             "{unaccepted}"
         );
+        // Wrong secrets past the key's 60 a minute never use up its budget: each stays
+        // `invalid_client`, and the right secret obtains its token after them (BUG-0334).
+        for attempt in 0..61 {
+            let refused = alone(&wrong, &["authority", "whoami"]);
+            let refused: Value = serde_json::from_slice(&refused.stderr).expect("JSON");
+            assert_eq!(
+                refused["code"], "invalid_client",
+                "{scheme}: attempt {attempt}: {refused}"
+            );
+        }
 
         // `whoami` names the token in use, never shows it.
         let whoami = |secret: &Path| {
@@ -458,6 +474,17 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
         // The next command obtains another; forgetting drops it, once.
         let renewed = whoami(&secret);
         assert_ne!(renewed["jti"], kept_jti.as_str(), "{renewed}");
+        // Another token's `jti` stays `tokens.revoke`'s: refused, and nothing about that token
+        // is told (BUG-0333 AC4). The kept token asks, so no token is obtained.
+        let other = jti_of(token.trim());
+        let foreign = alone(&secret, &["authority", "tokens", "revoke", &other]);
+        assert!(!foreign.status.success(), "{scheme}: {foreign:?}");
+        let foreign_said = String::from_utf8_lossy(&foreign.stderr).into_owned();
+        assert!(
+            foreign_said.contains("forbidden"),
+            "{scheme}: {foreign_said}"
+        );
+        assert!(!foreign_said.contains(&other), "{scheme}: {foreign_said}");
         for forgotten in [true, false] {
             let output = alone(&secret, &["authority", "token", "forget"]);
             assert!(output.status.success(), "{scheme}: {output:?}");
@@ -498,6 +525,71 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
         );
         let invalid = as_admin(&["authority", "tokens", "list", "--status", "invalid"]);
         assert!(invalid.to_string().contains(&jti), "{invalid}");
+
+        let obtain = |name: &str| {
+            let file = dir.join(format!("{account}-{name}.jwt"));
+            let issued = run(
+                &access_key,
+                &secret,
+                &[
+                    "authority",
+                    "token",
+                    "--out",
+                    file.to_str().expect("a UTF-8 path"),
+                ],
+            );
+            assert!(issued.status.success(), "{scheme}: {issued:?}");
+            std::fs::read_to_string(&file)
+                .expect("the token is written")
+                .trim()
+                .to_owned()
+        };
+        let verifies = |token: &str| verifier.authenticate(None, Some(token)).is_ok();
+
+        // Setting the scopes it already holds takes nothing away and revokes nothing; a narrowing
+        // revokes, without being asked, every live token holding what it removes (BUG-0339).
+        let held = obtain("held");
+        let same = as_admin(&[
+            "authority",
+            "scopes",
+            "set",
+            &account,
+            "--scope",
+            "decision.evaluate@plane/data/*",
+        ]);
+        assert_eq!(same["tokens_revoked"], 0, "{scheme}: {same}");
+        assert!(verifies(&held), "{scheme}: a token within the scopes stays");
+        let narrowed = as_admin(&[
+            "authority",
+            "scopes",
+            "set",
+            &account,
+            "--scope",
+            "decision.evaluate@plane/data/zone/z/*",
+        ]);
+        assert!(
+            narrowed["tokens_revoked"]
+                .as_u64()
+                .is_some_and(|count| count >= 1),
+            "{scheme}: {narrowed}"
+        );
+        assert!(!verifies(&held), "{scheme}: a narrowing holds at once");
+
+        // A suspension's tokens end for good: resuming obtains new ones and never brings the
+        // old back (BUG-0340).
+        let before = obtain("before-suspension");
+        assert!(verifies(&before), "{scheme}");
+        as_admin(&["authority", "service-accounts", "suspend", &account]);
+        assert!(!verifies(&before), "{scheme}: suspended");
+        as_admin(&["authority", "service-accounts", "resume", &account]);
+        assert!(
+            !verifies(&before),
+            "{scheme}: still refused after the resume"
+        );
+        assert!(
+            verifies(&obtain("after-resume")),
+            "{scheme}: a new token serves"
+        );
 
         // The account goes with its keys.
         as_admin(&["authority", "service-accounts", "delete", &account]);

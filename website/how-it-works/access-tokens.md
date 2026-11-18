@@ -39,6 +39,8 @@ A token refused at any step is `401` with `WWW-Authenticate: Bearer error="inval
 ## Revocation
 
 A token revoked, an account suspended or deleted, a key deleted: the Authority Plane marks each token in its status list, and every Plane refuses it once it holds the new list, within half the list's `ttl`.
+An account's scopes narrowed revoke every live token holding what they remove, with no flag; `--revoke-tokens` revokes all of the account's.
+A suspended account's tokens are refused for good: resuming it lets it obtain new ones, never the old back.
 
 ```sh
 permguard authority tokens list --account billing

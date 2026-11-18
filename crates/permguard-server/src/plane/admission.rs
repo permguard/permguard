@@ -112,6 +112,8 @@ fn rows_of(document: &serde_json::Value) -> Vec<Row> {
             );
             let plane = text("plane");
             let requires = Requirement::of(&text("operation"));
+            // The route may name the bearer's own token, which any bearer may ask about.
+            let own_token = endpoint["own_token"].as_bool().unwrap_or(false);
             rows.push(Row {
                 plane: plane.clone(),
                 route: AdmittedRoute {
@@ -119,6 +121,7 @@ fn rows_of(document: &serde_json::Value) -> Vec<Row> {
                     path: path.clone(),
                     requires: requires.clone(),
                     scopes: scopes.clone(),
+                    own_token,
                 },
             });
             if let Some(rpc) = operation["x-grpc-rpc"].as_str() {
@@ -129,6 +132,7 @@ fn rows_of(document: &serde_json::Value) -> Vec<Row> {
                         path: format!("/{rpc}"),
                         requires,
                         scopes,
+                        own_token,
                     },
                 });
             }

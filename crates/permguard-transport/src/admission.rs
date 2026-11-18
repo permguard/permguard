@@ -73,6 +73,11 @@ pub struct AdmittedRoute {
     pub path: String,
     pub requires: Requirement,
     pub scopes: Vec<Resource>,
+    /// Whether the bearer of an access token may ask this route whatever it holds, because the
+    /// route may name the bearer's own token (`own_token` in the contract): revoking one's own
+    /// token widens nothing. The handler decides which token is named; any other stays under
+    /// [`requires`](Self::requires) there (BUG-0333).
+    pub own_token: bool,
 }
 
 impl AdmittedRoute {
@@ -164,6 +169,13 @@ where
         });
         if let Some(route) = route {
             let actor = crate::actor::actor_of(request.extensions());
+            let bearer = matches!(
+                actor.as_ref(),
+                permguard_core::authz::Actor::Authenticated(context) if context.token().is_some()
+            );
+            if route.own_token && bearer {
+                return Box::pin(self.inner.call(request));
+            }
             // An operation is held when it is held anywhere under any one of the scopes.
             let held = |operation: &str| -> Result<(), permguard_core::AccessDenial> {
                 let mut refused = None;
@@ -277,18 +289,21 @@ mod tests {
                 path: "/catalog/v1/zones/{zone}".to_owned(),
                 requires: Requirement::of("catalog.read"),
                 scopes: vec![Resource::plane("control")],
+                own_token: false,
             },
             AdmittedRoute {
                 method: Some(Method::POST),
                 path: "/catalog/v1/zones".to_owned(),
                 requires: Requirement::of("catalog.write + policy.push"),
                 scopes: vec![Resource::host(), Resource::plane("control")],
+                own_token: false,
             },
             AdmittedRoute {
                 method: None,
                 path: "/permguard.control.v1.Catalog/CreateZone".to_owned(),
                 requires: Requirement::of("catalog.write | keys.admin"),
                 scopes: vec![Resource::plane("control")],
+                own_token: false,
             },
         ]
     }
@@ -367,6 +382,57 @@ mod tests {
             .await,
             200,
             "a gRPC refusal is a 200 with a grpc-status"
+        );
+    }
+
+    /// A route that may name the bearer's own token admits any bearer of a token, whatever it
+    /// holds, and the handler decides which token is named; nobody, and a caller with no token,
+    /// is still refused by the requirement (BUG-0333).
+    #[tokio::test]
+    async fn a_route_naming_the_own_token_admits_any_bearer_and_nobody_else() {
+        let revoke = |own_token| AdmittedRoute {
+            method: Some(Method::POST),
+            path: "/authority/v1/tokens/{jti}/revoke".to_owned(),
+            requires: Requirement::of("tokens.revoke"),
+            scopes: vec![Resource::plane("authority")],
+            own_token,
+        };
+        let router = |own_token| {
+            Router::new()
+                .route(
+                    "/authority/v1/tokens/{jti}/revoke",
+                    post(|| async { "revoked" }),
+                )
+                .route_layer(AdmissionLayer::new(
+                    Arc::new(ByToken),
+                    vec![revoke(own_token)],
+                ))
+        };
+        let path = "/authority/v1/tokens/0198f2aa-0000-7000-8000-000000000001/revoke";
+        let evaluator = || Some(bearer("decision.evaluate", "plane/data/*"));
+        assert_eq!(
+            ask(&router(true), Method::POST, path, evaluator(), false).await,
+            200,
+            "a bearer reaches the handler, which decides whose token it is"
+        );
+        assert_eq!(
+            ask(&router(false), Method::POST, path, evaluator(), false).await,
+            403,
+            "without the flag the route stays the operation's"
+        );
+        assert_eq!(
+            ask(&router(true), Method::POST, path, None, false).await,
+            401
+        );
+        let certificate = Actor::Authenticated(ActorContext::new(
+            Principal::new("cert:sha256:ab").expect("a principal"),
+            Credential::Certificate,
+            None,
+        ));
+        assert_eq!(
+            ask(&router(true), Method::POST, path, Some(certificate), false).await,
+            403,
+            "a caller with no token has no own token to name"
         );
     }
 

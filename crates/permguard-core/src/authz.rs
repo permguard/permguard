@@ -408,6 +408,15 @@ impl Selector {
     pub fn covers_whole(&self, resource: &Resource) -> bool {
         self.descendants && self.contains(resource)
     }
+
+    /// Whether everything `other` selects, this selects too.
+    pub fn covers(&self, other: &Selector) -> bool {
+        if other.descendants {
+            self.covers_whole(&other.prefix)
+        } else {
+            self.contains(&other.prefix)
+        }
+    }
 }
 
 impl fmt::Display for Selector {
@@ -1466,6 +1475,30 @@ mod tests {
             &Resource::plane("authority")
         ));
     }
+}
+
+/// A selector covers another when everything the other selects it selects too (BUG-0339).
+#[test]
+fn a_selector_covers_what_it_selects_whole() {
+    let selector = |text: &str| Selector::parse(text).unwrap_or_else(|_| unreachable!("{text}"));
+    let data = selector("plane/data/*");
+    assert!(data.covers(&selector("plane/data/*")));
+    assert!(data.covers(&selector("plane/data/zone/z/*")));
+    assert!(data.covers(&selector("plane/data/zone/z")));
+    assert!(data.covers(&selector("plane/data")));
+    assert!(!data.covers(&selector("plane/control/*")));
+    let zone = selector("plane/data/zone/z/*");
+    assert!(
+        !zone.covers(&data),
+        "a narrower selector does not cover a wider one"
+    );
+    assert!(!zone.covers(&selector("plane/data/zone/other/*")));
+    let exact = selector("plane/data/zone/z");
+    assert!(exact.covers(&selector("plane/data/zone/z")));
+    assert!(
+        !exact.covers(&zone),
+        "an exact selector covers nothing below it"
+    );
 }
 
 #[cfg(test)]

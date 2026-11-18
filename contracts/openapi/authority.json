@@ -464,7 +464,8 @@
           "category": "tokens",
           "credential": "access token",
           "operation": "tokens.revoke",
-          "target": "plane/authority"
+          "target": "plane/authority",
+          "own_token": true
         }
       }
     },
@@ -1042,7 +1043,7 @@
       "post": {
         "operationId": "resumeServiceAccount",
         "summary": "Resume a suspended service account",
-        "description": "Under `accounts.write` on `plane/authority`. Resume a suspended service account: its suspended tokens are `VALID` again while they serve.",
+        "description": "Under `accounts.write` on `plane/authority`. Resume a suspended service account: it obtains tokens again, and the tokens it held when suspended are `INVALID`, never `VALID` again.",
         "parameters": [
           {
             "name": "name",
@@ -1233,7 +1234,7 @@
       "put": {
         "operationId": "setServiceAccountScopes",
         "summary": "Set a service account's scopes",
-        "description": "Under `accounts.write` on `plane/authority`: replaced whole, at most 64, each coherent (every operation applies under its selector). A token already issued keeps what it carries until it expires, unless `revoke_tokens` revokes the account's live tokens.",
+        "description": "Under `accounts.write` on `plane/authority`: replaced whole, at most 64, each coherent (every operation applies under its selector). A narrowing holds at once: every live token holding an operation the new scopes do not grant where it holds it is revoked, and `revoke_tokens` revokes every live token of the account.",
         "parameters": [
           {
             "name": "name",
@@ -1996,7 +1997,7 @@
           },
           "revoke_tokens": {
             "type": "boolean",
-            "description": "Revoke the account's live tokens too, so a narrowing holds at once.",
+            "description": "Revoke every live token of the account; those holding a scope the change removes are revoked without it.",
             "x-grpc-field": "revoke_tokens"
           }
         },
