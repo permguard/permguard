@@ -480,6 +480,22 @@ fn object(snapshot: &Snapshot, digest: &str) -> Result<Vec<u8>> {
         .ok_or_else(|| err(format!("the snapshot is missing {digest}")))
 }
 
+/// Refuses a document at `path` that names a member twice in one object: read as JSON it would be
+/// decided on whichever came last, and never as the plane decides it, which refuses it
+/// (BUG-0055, DEC-0004).
+fn refuse_repeated(path: &str, bytes: &[u8]) -> Result<()> {
+    match std::str::from_utf8(bytes)
+        .ok()
+        .and_then(permguard_languages::members::repeated_member)
+    {
+        Some(member) => Err(err(format!(
+            "{path}: the member `{member}` appears twice in one object, and a request whose \
+             bytes mean two things is refused"
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// The request a case names, and the profile it is asked under.
 ///
 /// Read out here rather than inside `run`, because `--remote` needs the same two things and
@@ -492,6 +508,7 @@ pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String
             located.source, located.request
         ))
     })?;
+    refuse_repeated(&located.request, &bytes)?;
     let payload: Value = serde_json::from_slice(&bytes)
         .map_err(|error| err(format!("{}: not JSON: {error}", located.request)))?;
 
@@ -1028,6 +1045,7 @@ fn run_temporal(
             .read(path)
             .map_err(err)?
             .ok_or_else(|| err(format!("{}: no event at {path}", located.source)))?;
+        refuse_repeated(path, &bytes)?;
         documents.push((
             path.clone(),
             serde_json::from_slice::<Value>(&bytes)

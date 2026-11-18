@@ -186,6 +186,11 @@ pub struct ProfileSection {
 /// server would refuse — then asks this build whether it could serve the result at all, which is
 /// the question the plane asks at load and the control plane asks at ingest.
 pub fn from_yaml(bytes: &[u8]) -> Result<Manifest, String> {
+    // Read as a YAML value first: a mapping that repeats a key is refused there, naming the key,
+    // where the typed maps below (`runtimes`, `partitions`, `profiles`) would keep the last entry
+    // and drop the first in silence (BUG-0211, DEC-0004).
+    serde_norway::from_slice::<serde_norway::Value>(bytes)
+        .map_err(|error| format!("does not parse: {error}"))?;
     let file: ManifestFile =
         serde_norway::from_slice(bytes).map_err(|error| format!("does not parse: {error}"))?;
     let manifest = to_model(&file)?;
@@ -418,6 +423,30 @@ profiles:
                 .expect("the partition accepts an input")
                 .required
         );
+    }
+
+    /// BUG-0211: a key repeated inside `partitions:`, `runtimes:` or `profiles:` is refused,
+    /// naming it, rather than the second entry silently replacing the first.
+    #[test]
+    fn a_key_repeated_inside_a_section_is_refused_by_name() {
+        for (section, repeated) in [
+            (
+                "partitions:\n",
+                "partitions:\n  p:\n    runtime: cedar\n    schema: true\n",
+            ),
+            (
+                "runtimes:\n",
+                "runtimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine:   { name: permguard, constraint: \">=0.1.0 <0.2.0\" }\n",
+            ),
+            (
+                "profiles:\n",
+                "profiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [p] }\n",
+            ),
+        ] {
+            let doubled = WELL_FORMED.replacen(section, repeated, 1);
+            let refused = from_yaml(doubled.as_bytes()).expect_err(section);
+            assert!(refused.contains("duplicate"), "{section}: {refused}");
+        }
     }
 
     /// A key nobody knows is a refusal, not a shrug.

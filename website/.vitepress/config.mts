@@ -72,7 +72,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/how-it-works' },
             { text: 'Install', link: '/how-it-works/install' },
-            { text: 'Container Images', link: '/how-it-works/container-images' },
+            { text: 'Containers', link: '/how-it-works/container-images' },
             { text: 'Getting Started', link: '/how-it-works/getting-started' }
           ]
         },

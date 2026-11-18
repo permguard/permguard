@@ -697,8 +697,15 @@ impl CheckRequest {
         }
 
         Ok(Asked {
-            profile: verbatim(&self.profile, "profile")?
-                .unwrap_or_else(|| DEFAULT_PROFILE.to_owned()),
+            // A stated profile names one, even when empty: an empty one is no profile the ledger
+            // declares, and the lookup says which it does (BUG-0012). Only an absent one is
+            // `default`.
+            profile: match &self.profile {
+                None => DEFAULT_PROFILE.to_owned(),
+                Some(stated) => {
+                    verbatim(&self.profile, "profile")?.unwrap_or_else(|| stated.clone())
+                }
+            },
             request_id: named(&self.request_id),
             semantic: self
                 .options
@@ -981,6 +988,28 @@ mod tests {
         assert_eq!(resolved.queries[0].0.action.name, "READ");
         // The offline engine reads the same request the same way.
         assert!(with("/profile", "gateway ").asked(256).is_err());
+    }
+
+    /// BUG-0012: a stated profile names one, even empty; only an absent one is `default`, so an
+    /// empty one meets the lookup's `profile_unknown`, which names what the ledger declares.
+    #[test]
+    fn an_empty_profile_is_not_the_default() {
+        let base: serde_json::Value = serde_json::from_str(ONE).expect("JSON");
+        let with = |profile: Option<&str>| {
+            let mut body = base.clone();
+            if let Some(profile) = profile {
+                body["profile"] = serde_json::json!(profile);
+            }
+            serde_json::from_value::<CheckRequest>(body)
+                .expect("parses")
+                .resolve(256)
+                .expect("resolved")
+                .profile
+        };
+        assert_eq!(with(None), DEFAULT_PROFILE);
+        assert_eq!(with(Some("")), "");
+        assert_eq!(with(Some("  ")), "  ");
+        assert_eq!(with(Some("gateway")), "gateway");
     }
 
     #[test]

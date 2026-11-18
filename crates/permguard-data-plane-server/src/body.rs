@@ -32,6 +32,18 @@ pub(crate) fn json(headers: &HeaderMap, body: &[u8], what: &str) -> Result<Value
                  anything larger as the string it is"
             ),
         ),
+        // A repeated name is said by its path, `subject.properties.role`, not by its last
+        // segment alone (BUG-0055).
+        permguard_stream::jcs::CanonicalError::DuplicateName(name) => {
+            let path = std::str::from_utf8(body)
+                .ok()
+                .and_then(permguard_languages::members::repeated_member)
+                .unwrap_or(name);
+            malformed(format!(
+                "{what}: the member `{path}` appears twice in one object, and a request whose \
+                 bytes mean two things is refused"
+            ))
+        }
         error => malformed(format!("{what}: {error}")),
     })
 }

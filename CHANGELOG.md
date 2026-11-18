@@ -25,6 +25,12 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A request naming a member twice is refused by `check` and `test` too.**
+  The data plane already refused it; `permguard check -f` now exits 64 and `permguard test` fails the case, naming the path (`subject.properties.role`), instead of evaluating or sending the copy a JSON reader keeps, and the plane's refusal names the path as well.
+- **A manifest repeating a key under `runtimes:`, `partitions:` or `profiles:` is refused**, naming the key, instead of the second entry silently replacing the first.
+- **An empty profile is no longer the default one.**
+  `"profile": ""` is looked up as stated and refused `profile_unknown`, which names the profiles the ledger declares; `permguard check --profile ""` exits 64. Only an absent profile is `default`.
+
 - **A name with whitespace around it is refused before anything is decided.**
   `zone`, `ledger`, `profile`, `subject.type`, `subject.id`, `resource.type`, `resource.id`, `action.name` and `principal` with leading or trailing whitespace (space, tab, newline, carriage return, vertical tab, NBSP) answer `400 invalid_argument` naming the field, over HTTP and gRPC, in `permguard check` and in `permguard test` alike; before, `"admin "` was decided as `admin` and `"gateway "` answered by the `gateway` profile.
   A temporal event's `event_id`, `kind`, `action` and `occurred_at` follow the same rule, so an event is recorded, indexed and echoed under the same bytes.

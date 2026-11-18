@@ -24,6 +24,7 @@ mod evaluating_guard;
 pub mod guard;
 pub mod headroom;
 pub mod input;
+pub mod members;
 pub mod names;
 pub mod occurrence;
 pub mod partition;

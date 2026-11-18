@@ -125,6 +125,6 @@ curl -sS -X POST http://127.0.0.1:7443/access/v1/evaluation \
 This quickstart uses the remote HTTP PDP to make the wire contract visible. Production placement is not constrained to a network service: the same decision capability can run embedded, as a sidecar or behind a remote API.
 
 <nav class="pgx-pager" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./container-images"><span>Previous</span><strong><b aria-hidden="true">←</b> Container Images</strong></a>
+  <a class="pgx-pager__previous" href="./container-images"><span>Previous</span><strong><b aria-hidden="true">←</b> Containers</strong></a>
   <a class="pgx-pager__next" href="./architecture"><span>Next</span><strong>Server, Host &amp; Planes <b aria-hidden="true">→</b></strong></a>
 </nav>

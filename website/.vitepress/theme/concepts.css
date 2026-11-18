@@ -346,6 +346,15 @@
   margin-top: 68px;
 }
 
+/* The flow was drawn for a centred hero. Inside a section it keeps the hero's centred steps and
+   leaves room for what follows; only the vertical margins change, so the narrow layout still
+   centres it horizontally. */
+.pgx-section > .pgx-flow {
+  margin-top: 0;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
 .pgx-flow__track {
   position: absolute;
   top: 50%;
@@ -483,6 +492,10 @@
 .pgx-cards--3,
 .pgx-principles {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pgx-cards--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .pgx-card {
@@ -1525,7 +1538,7 @@
   .pgx-flow { grid-template-columns: 1fr; width: min(100%, 190px); margin: 48px auto 0; }
   .pgx-flow__track { top: 5%; bottom: 5%; left: 50%; width: 1px; height: auto; }
   .pgx-flow__track i { animation: pgx-travel-down 8s ease-in-out infinite; }
-  .pgx-cards--3, .pgx-principles { grid-template-columns: 1fr; }
+  .pgx-cards--2, .pgx-cards--3, .pgx-principles { grid-template-columns: 1fr; }
   .pgx-section-head { align-items: start; flex-direction: column; }
   .pgx-system-map__host { align-items: start; flex-direction: column; }
   .pgx-system-map__planes, .pgx-system-map__protocols { grid-template-columns: 1fr; }

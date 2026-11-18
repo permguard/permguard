@@ -2477,3 +2477,57 @@ fn host_identity_pins_are_canonical_private_idempotent_and_conflict_safe() {
         serde_json::from_str(&stdout(&removed)).expect("the answer is JSON");
     assert_eq!(parsed["pins"].as_array().expect("pins").len(), 0);
 }
+
+/// BUG-0055, BUG-0012: a request naming a member twice, and an empty profile, are refused before
+/// anything is asked, by `check` with exit 64 and by `test` naming the path; a de-duplicated copy
+/// is never evaluated or sent.
+#[test]
+fn an_ambiguous_request_is_refused_by_check_and_test() {
+    let dir = scratch("ambiguous-request");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    let repeated = r#"{"subject":{"type":"u","id":"a","properties":{"role":"x","role":"admin"}},
+        "action":{"name":"read"},"resource":{"type":"d","id":"b"}}"#;
+    std::fs::write(dir.join("requests/probe.json"), repeated).expect("written");
+
+    let checked = run(&dir, &["check", "-f", "requests/probe.json"]);
+    assert_eq!(checked.status.code(), Some(64), "{}", stderr(&checked));
+    assert!(
+        stderr(&checked).contains("subject.properties.role"),
+        "{}",
+        stderr(&checked)
+    );
+
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: probe\n  request: ../requests/probe.json\n  expect: { decision: deny }\n",
+    )
+    .expect("the cases are written");
+    let tested = run(&dir, &["test"]);
+    assert!(!tested.status.success(), "{}", stdout(&tested));
+    let said = format!("{}{}", stdout(&tested), stderr(&tested));
+    assert!(said.contains("subject.properties.role"), "{said}");
+
+    let whole = r#"{"subject":{"type":"u","id":"a"},"action":{"name":"read"},
+        "resource":{"type":"d","id":"b"}}"#;
+    std::fs::write(dir.join("requests/whole.json"), whole).expect("written");
+    for profile in ["", "  "] {
+        let checked = run(
+            &dir,
+            &["check", "-f", "requests/whole.json", "--profile", profile],
+        );
+        assert_eq!(
+            checked.status.code(),
+            Some(64),
+            "{profile:?}: {}",
+            stderr(&checked)
+        );
+        assert!(
+            stderr(&checked).contains("profile is empty"),
+            "{}",
+            stderr(&checked)
+        );
+    }
+}

@@ -56,6 +56,24 @@ use crate::trace::Trace;
 /// Runs the command.
 pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
+    // The request is read, and refused if it is ambiguous, before anything is resolved or asked:
+    // a usage error is the caller's, whatever plane they would have asked.
+    let mut payload = document(globals, args)?;
+    if let Some(profile) = &args.profile {
+        payload["profile"] = Value::String(profile.clone());
+    }
+    // A stated profile names one: an empty one is refused here, the same over HTTP and gRPC,
+    // where gRPC would carry it as no profile and decide under `default` (BUG-0012, DEC-0004).
+    if payload
+        .get("profile")
+        .and_then(Value::as_str)
+        .is_some_and(|profile| profile.trim().is_empty())
+    {
+        return Err(Failure::usage(
+            "the profile is empty: name one of the ledger's profiles, or leave it out for \
+             `default`",
+        ));
+    }
     let store = open_store(globals, &trace)?;
     let asked = Asked {
         zone: args.zone.clone(),
@@ -71,11 +89,7 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
         &trace,
     )?;
 
-    let mut payload = document(globals, args)?;
     apply_store(&mut payload, &target)?;
-    if let Some(profile) = &args.profile {
-        payload["profile"] = Value::String(profile.clone());
-    }
     trace.say(format!(
         "asking {} about {}",
         target.endpoint,
@@ -129,6 +143,14 @@ fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
             std::fs::read_to_string(&named)
                 .map_err(|error| Failure::usage(format!("reading {}: {error}", named.display())))?
         };
+        // A member named twice is refused here, as the plane refuses it, rather than sent as the
+        // de-duplicated copy a JSON value keeps (BUG-0055, DEC-0004).
+        if let Some(member) = permguard_languages::members::repeated_member(&text) {
+            return Err(Failure::usage(format!(
+                "the member `{member}` appears twice in one object, and a request whose bytes \
+                 mean two things is refused"
+            )));
+        }
         let payload: Value = serde_json::from_str(&text)
             .map_err(|error| Failure::usage(format!("the request is not valid JSON: {error}")))?;
         if !payload.is_object() {

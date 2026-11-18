@@ -37,7 +37,7 @@
 // enforces — an ingest path cannot get hold of `Cedar` and call the splitter on it.
 #[cfg(feature = "evaluate")]
 pub use permguard_evaluator::{fanout, warm};
-pub use permguard_language_core::{attestation, guard, headroom, names, role};
+pub use permguard_language_core::{attestation, guard, headroom, members, names, role};
 
 /// Queries, verdicts and how they combine (`permguard-language-core`), and — with the `evaluate`
 /// feature — the evaluating half and the one path every evaluation takes (`permguard-evaluator`).
