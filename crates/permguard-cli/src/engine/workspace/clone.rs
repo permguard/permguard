@@ -23,10 +23,14 @@ const IGNORE_FILE: &str = ".permguardignore";
 /// Clones `zone`/`ledger` of the remote at `base` into `target`, over `remote`, connected to that
 /// same URL by the caller.
 ///
-/// Like git, a destination that exists and is not empty is refused rather than merged into. The
-/// workspace names `base` as `origin`, gets the `.permguardignore` that `init` writes, and checks
-/// out the ledger's default ref. A clone that fails half-way leaves the folder it created; whether
-/// to remove it is the caller's choice.
+/// Like git, a destination that exists and is not empty is refused rather than merged into, and
+/// left untouched. The workspace names `base` as `origin`, gets the `.permguardignore` that `init`
+/// writes, and checks out the ledger's default ref; a ledger with no history yet gets the manifest
+/// `init` writes by default, so its first `apply` creates that history (BUG-0213).
+///
+/// A clone that fails after it began writing undoes what it wrote, so the same clone can be run
+/// again (BUG-0068): a folder it created is removed whole; in an empty folder that was already
+/// there, only the entries a clone writes are removed, never anything else.
 pub fn clone(
     target: &Path,
     base: &str,
@@ -44,6 +48,52 @@ pub fn clone(
             target.display()
         )));
     }
+    let existed = target.exists();
+    let cloned = clone_into(target, base, zone, ledger, remote);
+    if cloned.is_err() {
+        undo(target, existed);
+    }
+    cloned
+}
+
+/// The entries a clone writes at the top of its destination.
+const WRITTEN: &[&str] = &[".permguard", IGNORE_FILE, "manifest.yml"];
+
+/// Undoes a clone that failed: the folder removed when the clone created it; otherwise only the
+/// entries a clone writes, so nothing the folder held besides is touched.
+fn undo(target: &Path, existed: bool) {
+    if !existed {
+        let _ = std::fs::remove_dir_all(target);
+        return;
+    }
+    for name in WRITTEN {
+        let path = target.join(name);
+        let _ = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+    }
+}
+
+/// The language `init` authors in when none is named, or the first this build carries.
+fn default_language() -> Option<&'static str> {
+    let languages = permguard_languages::languages();
+    languages
+        .iter()
+        .find(|language| language.name() == "cedar")
+        .or_else(|| languages.first())
+        .map(|language| language.name())
+}
+
+/// The clone itself, into a destination known to be absent or empty.
+fn clone_into(
+    target: &Path,
+    base: &str,
+    zone: &str,
+    ledger: &str,
+    remote: &dyn Remote,
+) -> Result<PullOutcome> {
     std::fs::create_dir_all(target)
         .map_err(|error| err(format!("creating {}: {error}", target.display())))?;
     let store = FsStore::new(target);
@@ -64,7 +114,13 @@ pub fn clone(
             .write(IGNORE_FILE, DEFAULT_IGNORES.as_bytes())
             .map_err(err)?;
     }
-    workspace.checkout(remote, ORIGIN, zone, ledger, DEFAULT_REF)
+    let pulled = workspace.checkout(remote, ORIGIN, zone, ledger, DEFAULT_REF)?;
+    if pulled.counter == 0 && !store.exists("manifest.yml") && !store.exists("manifest.yaml") {
+        let language = default_language()
+            .ok_or_else(|| err("this build carries no policy language to author in"))?;
+        workspace.init(ledger, &[language])?;
+    }
+    Ok(pulled)
 }
 
 /// The ledger a workspace tracks, and where it is pulled from.

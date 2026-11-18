@@ -470,22 +470,28 @@ impl Workspace<'_> {
 
             return Ok(outcome);
         }
+        // A ledger with no ref yet is not an error to bind to: the first apply will create it. The
+        // binding stays; there is nothing to pull. Asked of the remote, as a switch asks it, rather
+        // than read from the wording of a failed pull, which every server words its own way.
+        let empty = || PullOutcome {
+            head: String::new(),
+            counter: 0,
+            fetched: 0,
+            materialized: Vec::new(),
+            updated: Vec::new(),
+            removed: Vec::new(),
+            previous_counter: None,
+        };
+        if remote.get_ref(r#ref).map_err(err)?.is_none() {
+            return Ok(empty());
+        }
         match self.pull(remote, false) {
             Ok(outcome) => Ok(outcome),
-            // A ledger with no ref yet is not an error to bind to: the first
-            // apply will create it. The binding stays; the pull found nothing.
+            // The ref went between the question and the pull.
             Err(error)
                 if error.message.contains("not_found") || error.message.contains("no ref") =>
             {
-                Ok(PullOutcome {
-                    head: String::new(),
-                    counter: 0,
-                    fetched: 0,
-                    materialized: Vec::new(),
-                    updated: Vec::new(),
-                    removed: Vec::new(),
-                    previous_counter: None,
-                })
+                Ok(empty())
             }
             Err(error) => Err(error),
         }

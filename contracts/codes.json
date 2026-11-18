@@ -126,6 +126,12 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.WORKSPACE_LOCKED": {
+      "code": "workspace_locked",
+      "contract": "6-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
     "client.EVENT_EXPORT_MALFORMED": {
       "code": "event_export_malformed",
       "contract": "6-command-line/1-command-line.md",

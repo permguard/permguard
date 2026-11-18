@@ -441,6 +441,29 @@ pub enum WorkspaceOp {
     Verify,
 }
 
+/// Whether `name` can name a remote: one a reference `<remote>/<zone>/<ledger>` can carry, and a
+/// configuration file and a terminal show as written (BUG-0214). ASCII letters, digits, `.`, `_`
+/// and `-`, beginning with a letter or a digit, at most 63 characters.
+fn remote_name_valid(name: &str) -> Result<(), Failure> {
+    let valid = (1..=63).contains(&name.len())
+        && name
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || ".-_".contains(character));
+    if valid {
+        Ok(())
+    } else {
+        Err(Failure::usage(format!(
+            "`{}` is not a remote name: ASCII letters, digits, `.`, `_` and `-`, beginning with a \
+             letter or a digit, at most 63 characters",
+            name.escape_debug()
+        )))
+    }
+}
+
 fn lock_holder() -> String {
     format!(
         "pid {} since {}",
@@ -525,9 +548,17 @@ pub fn workspace_command(
             | WorkspaceOp::Clone { .. }
     );
     let _workspace_lock = if mutating && store.exists(".permguard") {
+        use crate::engine::lock::{LockGuard, Refused};
         Some(
-            crate::engine::lock::LockGuard::acquire(&store, &lock_holder())
-                .map_err(Failure::usage)?,
+            LockGuard::acquire(&globals.workdir, &lock_holder()).map_err(|refused| {
+                // A busy workspace is no mistake of the caller's (BUG-0212): it is unavailable
+                // until the other command finishes.
+                let code = match refused {
+                    Refused::Held(_) => permguard_core::codes::client::WORKSPACE_LOCKED,
+                    Refused::Unusable(_) => permguard_core::codes::common::UNAVAILABLE,
+                };
+                Failure::unavailable(refused).named("unavailable", code)
+            })?,
         )
     } else {
         None
@@ -651,6 +682,7 @@ pub fn workspace_command(
         }
         WorkspaceOp::Remote(action) => match action {
             RemoteAction::Add { name, url } => {
+                remote_name_valid(&name)?;
                 let mut config = ws.config().map_err(usage)?;
                 // A name already taken is refused, as `git remote add` refuses it. Replacing the
                 // URL under the name the tracked ledger points at redirects every push, and doing
@@ -754,29 +786,29 @@ pub fn workspace_command(
         WorkspaceOp::Checkout { reference } => {
             let (remote_name, zone, ledger, r#ref) =
                 reference::parse_reference(&reference).map_err(usage)?;
-            let mut config = ws.config().map_err(usage)?;
-            let url = match config.remotes.get(&remote_name) {
-                Some(remote) => remote.url.clone(),
-                None => {
-                    // The fallback chain: CLI configuration, then the
-                    // localhost default — and the resolved URL is remembered
-                    // under the name, so the next command finds it.
-                    let url = fallback_url(trace)?;
-                    config.remotes.insert(
-                        remote_name.clone(),
-                        crate::engine::workspace::config::RemoteConfig {
-                            url: url.clone(),
-                            tls_ca_file: None,
-                        },
-                    );
-                    ws.save_config(&config).map_err(usage)?;
-                    url
-                }
+            remote_name_valid(&remote_name)?;
+            let config = ws.config().map_err(usage)?;
+            // The fallback chain: CLI configuration, then the localhost default.
+            let (url, remembered) = match config.remotes.get(&remote_name) {
+                Some(remote) => (remote.url.clone(), true),
+                None => (fallback_url(trace)?, false),
             };
             let remote = connect(&url)?;
             let pulled = ws
                 .checkout(&remote, &remote_name, &zone, &ledger, &r#ref)
                 .map_err(usage)?;
+            // The resolved URL is remembered under the name, so the next command finds it, once
+            // the checkout succeeded: a failed one leaves the configuration as it was (BUG-0111).
+            if !remembered {
+                let mut config = ws.config().map_err(usage)?;
+                config.remotes.entry(remote_name.clone()).or_insert(
+                    crate::engine::workspace::config::RemoteConfig {
+                        url: url.clone(),
+                        tls_ca_file: None,
+                    },
+                );
+                ws.save_config(&config).map_err(usage)?;
+            }
             render(
                 &PullReport {
                     action: "checkout",

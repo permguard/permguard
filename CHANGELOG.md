@@ -45,6 +45,16 @@ is cut.
 
 ### Fixed
 
+- **A workspace command that dies no longer leaves the workspace locked.**
+  `.permguard/lock` is now an operating system lock, released however the command ends, `SIGTERM` and `SIGKILL` included; the file stays between commands. A lock a live command holds is still honoured, refused as `unavailable` `workspace_locked`, exit 69, not as a usage error.
+- **A failed `clone` leaves its destination as it found it.**
+  A folder the clone created is removed, an empty folder that was there keeps nothing the clone wrote, and the same clone can be run again; a folder that is not empty is still refused and left untouched.
+- **A clone of an empty ledger can apply at once.**
+  It holds the manifest `init` writes by default, so the first `apply` creates the ledger's history as the clone announces; `checkout` of a ledger with no history asks the server for its ref instead of reading the wording of a failed pull.
+- **A failed `checkout` leaves the workspace configuration unchanged.**
+  A remote it names and does not know is remembered only once the checkout succeeded.
+- **`remote add` and `checkout` refuse a remote name a reference cannot carry.**
+  A name is ASCII letters, digits, `.`, `_` and `-`, beginning with a letter or a digit, at most 63 characters; `a/b`, the empty name and names with spaces or control characters are refused with exit 64.
 - **A decision export and `decisions get` reach every record of their snapshot.**
   The Control Plane answered as a page's `high_watermark` the frontier that page reached, so a read bounded by the first page's watermark ended at the second page: an export wrote two pages as complete, and `decisions get` found nothing past the first thousand records. It now answers the snapshot's end, every producer's, as the events read does.
 - **`events verify` and `decisions list --verify` attest a Host's records whichever spelling its id takes.**

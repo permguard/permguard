@@ -387,17 +387,100 @@ fn a_held_lock_refuses_the_second_command_and_names_the_holder() {
     write_sources(&dir);
     assert!(run(&dir, &["init", "cli-test"]).status.success());
 
+    // BUG-0212: a lock file a command that died left behind locks nothing.
     std::fs::write(dir.join(".permguard/lock"), "pid 424242").expect("the lock writes");
     let output = run(&dir, &["plan"]);
+    assert!(output.status.success(), "{}", stderr(&output));
 
-    assert_eq!(output.status.code(), Some(64));
-    let text = stderr(&output);
-    assert!(text.contains("pid 424242"), "{text}");
-    assert!(text.contains(".permguard/lock"), "{text}");
+    // A lock a live process holds is honoured, named, and not the caller's mistake.
+    let mut held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dir.join(".permguard/lock"))
+        .expect("the lock opens");
+    held.try_lock().expect("this process holds the lock");
+    {
+        use std::io::{Seek as _, Write as _};
+        held.set_len(0).expect("emptied");
+        held.seek(std::io::SeekFrom::Start(0)).expect("rewound");
+        held.write_all(b"pid 424242").expect("the holder writes");
+    }
+    let output = run(&dir, &["-o", "json", "plan"]);
+    assert_eq!(output.status.code(), Some(69));
+    let refused: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("a JSON refusal");
+    assert_eq!(refused["class"], "unavailable", "{refused}");
+    assert_eq!(refused["code"], "workspace_locked", "{refused}");
+    let message = refused["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("pid 424242") || message.contains("holder unknown"),
+        "{message}"
+    );
 
     // Read-only commands never take the lock.
     let history = run(&dir, &["history"]);
     assert!(history.status.success(), "{}", stderr(&history));
+    held.unlock().expect("released");
+}
+
+/// BUG-0214: a remote name is one a reference can carry and a terminal shows as written.
+#[test]
+fn a_remote_name_a_reference_cannot_carry_is_refused() {
+    let dir = scratch("remote-names");
+    write_sources(&dir);
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+    for name in [
+        "a/b",
+        "",
+        "n\nl",
+        "c\tt",
+        "e\u{1b}x",
+        "origin ",
+        "..",
+        "-x",
+        "ü",
+        &"r".repeat(64),
+    ] {
+        let output = run(&dir, &["remote", "add", "--", name, "http://127.0.0.1:1"]);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{name:?}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("is not a remote name"),
+            "{name:?}: {}",
+            stderr(&output)
+        );
+    }
+    let config = std::fs::read_to_string(dir.join(".permguard/config")).expect("the config");
+    assert!(!config.contains("a/b"), "nothing is saved: {config}");
+}
+
+/// BUG-0111: a checkout that fails leaves the workspace's configuration as it was, a remote it
+/// named and could not reach included.
+#[test]
+fn a_failed_checkout_leaves_the_configuration_unchanged() {
+    let dir = scratch("checkout-failed");
+    write_sources(&dir);
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+    let before = std::fs::read(dir.join(".permguard/config")).expect("the config");
+    let output = run(
+        &dir,
+        &[
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "checkout",
+            "nosuch/acme/main",
+        ],
+    );
+    assert!(!output.status.success(), "nothing listens there");
+    assert_eq!(
+        std::fs::read(dir.join(".permguard/config")).expect("the config"),
+        before,
+        "the configuration is unchanged"
+    );
 }
 
 #[test]

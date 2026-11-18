@@ -323,6 +323,8 @@ pub mod client {
     pub const DECISION_EXPORT_TRUNCATED: &str = "decision_export_truncated";
     pub const DECISION_EXPORT_TYPE_UNSUPPORTED: &str = "decision_export_type_unsupported";
     pub const DECISION_EXPORT_UNREADABLE: &str = "decision_export_unreadable";
+    /// Another live permguard command holds the workspace's lock (BUG-0212).
+    pub const WORKSPACE_LOCKED: &str = "workspace_locked";
     pub const EVENT_EXPORT_MALFORMED: &str = "event_export_malformed";
     pub const EVENT_EXPORT_TRUNCATED: &str = "event_export_truncated";
     pub const EVENT_EXPORT_TYPE_UNSUPPORTED: &str = "event_export_type_unsupported";
@@ -779,6 +781,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::DECISION_EXPORT_TRUNCATED,
         client::DECISION_EXPORT_TYPE_UNSUPPORTED,
         client::DECISION_EXPORT_UNREADABLE,
+        client::WORKSPACE_LOCKED,
         client::EVENT_EXPORT_MALFORMED,
         client::EVENT_EXPORT_TRUNCATED,
         client::EVENT_EXPORT_TYPE_UNSUPPORTED,

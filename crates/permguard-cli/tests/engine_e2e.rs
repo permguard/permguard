@@ -227,10 +227,10 @@ fn the_whole_developer_flow() {
     );
     ws_a.save_config(&config).unwrap();
 
-    // Checkout binds the ledger (resolving names to GUIDs) — the ref does
-    // not exist yet, so the pull inside reports it cleanly.
+    // Checkout binds the ledger (resolving names to GUIDs) — the ref does not exist yet, so the
+    // ledger is bound empty and there is nothing to pull.
     let checkout = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
-    assert!(checkout.is_err(), "the ref does not exist yet");
+    assert_eq!(checkout.expect("an empty ledger is bound").counter, 0);
 
     // Plan: two creates, one per language.
     let (_, plan) = ws_a.plan().unwrap();
@@ -1113,8 +1113,9 @@ fn nested_folders_and_schemas() {
         snapshot.policies
     );
 
+    // An empty ref is fine at bind: the ledger is bound, with nothing to pull.
     ws.checkout(&remote, "origin", "z", "l", "main")
-        .unwrap_err(); // empty ref is fine at bind…
+        .expect("an empty ledger is bound");
     let mut config = ws.config().unwrap();
     config.remotes.insert(
         "origin".into(),
@@ -1265,7 +1266,7 @@ fn a_dogwood_bundle_the_cli_builds_is_accepted_by_the_control_plane() {
     );
     workspace.save_config(&config).unwrap();
     let checkout = workspace.checkout(&remote, "origin", "delivery", "session-ledger", "main");
-    assert!(checkout.is_err(), "the ref does not exist yet");
+    assert_eq!(checkout.expect("an empty ledger is bound").counter, 0);
 
     // The CLI validates the bundle locally...
     let (_, plan) = workspace.plan().expect("the Dogwood workspace validates");
@@ -1403,4 +1404,103 @@ fn a_clone_is_a_workspace_bound_to_its_ledger_and_pulled() {
     let refused = clone(&target, "test://", "delivery", "main-ledger", &remote).unwrap_err();
     assert!(refused.to_string().contains("is not empty"), "{refused}");
     assert!(target.join("manifest.yml").is_file());
+}
+
+/// A remote nothing answers at: every call fails as a closed port does.
+struct Unreachable;
+
+impl Remote for Unreachable {
+    fn resolve(&self, _zone: &str, _ledger: &str) -> Result<(String, String), String> {
+        Err("nothing is listening".into())
+    }
+    fn keyring(&self) -> Result<Vec<u8>, String> {
+        Err("nothing is listening".into())
+    }
+    fn get_ref(&self, _ref: &str) -> Result<Option<RefAnswer>, String> {
+        Err("nothing is listening".into())
+    }
+    fn negotiate_push(
+        &self,
+        _request: &NegotiatePushRequest,
+    ) -> Result<NegotiatePushResponse, String> {
+        Err("nothing is listening".into())
+    }
+    fn upload(&self, _request: &UploadObjectsRequest) -> Result<UploadObjectsResponse, String> {
+        Err("nothing is listening".into())
+    }
+    fn commit_push(&self, _request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
+        Err("nothing is listening".into())
+    }
+    fn negotiate_pull(
+        &self,
+        _request: &NegotiatePullRequest,
+    ) -> Result<NegotiatePullResponse, String> {
+        Err("nothing is listening".into())
+    }
+    fn fetch(&self, _request: &FetchObjectsRequest) -> Result<FetchObjectsResponse, String> {
+        Err("nothing is listening".into())
+    }
+}
+
+/// BUG-0068: a clone that fails leaves the destination as it found it, so the same clone runs
+/// again; a destination that is not empty is refused and nothing in it is touched.
+#[test]
+fn a_failed_clone_leaves_its_destination_as_it_found_it() {
+    use permguard_cli::engine::workspace::clone::clone;
+
+    // A folder the clone would create is not left behind.
+    let root = scratch("clone-failed");
+    let target = root.join("main-ledger");
+    clone(&target, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
+    assert!(!target.exists(), "the folder it created is removed");
+
+    // An empty folder that was there stays, empty.
+    std::fs::create_dir_all(&target).unwrap();
+    clone(&target, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
+    assert!(target.is_dir());
+    assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0, "left empty");
+
+    // A folder holding the author's files is refused, and they stay.
+    let held = root.join("held");
+    std::fs::create_dir_all(&held).unwrap();
+    std::fs::write(held.join("notes.txt"), "mine").unwrap();
+    let refused = clone(&held, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
+    assert!(refused.to_string().contains("is not empty"), "{refused}");
+    assert_eq!(
+        std::fs::read_to_string(held.join("notes.txt")).unwrap(),
+        "mine"
+    );
+
+    // Once the remote answers, the same clone succeeds into the same folder.
+    let remote = EngineRemote::new("clone-retry");
+    let pulled = clone(&target, "test://", "delivery", "main-ledger", &remote).unwrap();
+    assert_eq!(pulled.counter, 0);
+}
+
+/// BUG-0213: a clone of a ledger with no history holds the manifest `init` writes, so its first
+/// `apply` creates that history, with no `init` in between.
+#[test]
+fn a_clone_of_an_empty_ledger_applies_its_first_policy() {
+    use permguard_cli::engine::workspace::clone::clone;
+
+    let remote = EngineRemote::new("clone-empty");
+    let target = scratch("clone-empty").join("main-ledger");
+    let pulled = clone(&target, "test://", "delivery", "main-ledger", &remote).unwrap();
+    assert_eq!(pulled.counter, 0);
+    assert!(
+        target.join("manifest.yml").is_file(),
+        "the manifest `init` writes"
+    );
+    let store = FsStore::new(&target);
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let workspace = Workspace::open(&store);
+    assert_eq!(
+        workspace
+            .apply(&remote, "alice@acme.com", "first")
+            .unwrap()
+            .counter,
+        1
+    );
 }

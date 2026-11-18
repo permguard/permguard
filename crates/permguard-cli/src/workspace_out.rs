@@ -161,7 +161,8 @@ impl Report for PullReport {
         if self.counter == 0 {
             return writeln!(
                 out,
-                "{} The ledger is empty — the first `apply` will create its history.",
+                "{} The ledger is empty: the workspace holds the manifest `init` writes, and the \
+                 first `apply` will create its history.",
                 style::bold("Bound.")
             );
         }
