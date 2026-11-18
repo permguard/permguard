@@ -35,6 +35,9 @@ Every request with a bearer token is checked, in order, before anything is decid
 6. its scopes, against the operation and the resource the request names.
 
 A token refused at any step is `401` with `WWW-Authenticate: Bearer error="invalid_token"`; a token without the scope is `403` with `error="insufficient_scope"`.
+A request that presents a bearer token is decided by that token, whatever client certificate its connection carries: a token that does not verify is refused as above, never set aside for the certificate, and a valid one acts as its account, the certificate deciding nothing.
+The audit record of such a request names the token's principal, `sa:<account>`, so it says which credential decided.
+A bearer token is checked only over TLS, on a loopback address, or behind a TLS terminator a listener declares, in its own block or for every listener with `public.tls.terminated_upstream`.
 
 ## Revocation
 

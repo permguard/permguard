@@ -251,6 +251,8 @@ fn routes_of(document: &Value, seed: &mut usize) -> Vec<Route> {
 }
 
 #[test]
+// The Data Plane listens beyond loopback in the clear, its own block declaring the TLS terminator
+// in front of it: the administrator's bearer token is admitted there as on the others (BUG-0322).
 fn every_route_refuses_nobody_and_a_forged_token_and_admits_the_administrator() {
     let dir = std::env::temp_dir().join(format!("permguard-every-route-{}", std::process::id()));
     let ((authority, control, data, host), mut child, seen) = booted(&dir, || {
@@ -274,7 +276,7 @@ fn every_route_refuses_nobody_and_a_forged_token_and_admits_the_administrator() 
                  controlPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{control} }}\n\
                  \x20 decisions: {{ enabled: \"true\" }}\n\
                  \x20 events: {{ enabled: \"true\" }}\n\
-                 dataPlane:\n  public:\n    http: {{ addr: 127.0.0.1:{data} }}\n\
+                 dataPlane:\n  public:\n    http: {{ addr: 0.0.0.0:{data}, tls: {{ terminated_upstream: true }} }}\n\
                  \x20 mirrors: {{ enabled: \"true\", interval: 5s }}\n\
                  \x20 decisions:\n    log: {{ enabled: \"true\" }}\n\
                  \x20 events:\n    enabled: \"true\"\n    directory: data/events\n"

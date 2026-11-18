@@ -314,7 +314,13 @@ impl Service for PlaneService {
                     };
                     let router =
                         admission::admitted(router, self.module.id(), Arc::clone(&admission));
-                    (endpoint.addr, endpoint.protocol, router, endpoint.tls)
+                    (
+                        endpoint.addr,
+                        endpoint.protocol,
+                        router,
+                        endpoint.tls,
+                        endpoint.terminated_upstream,
+                    )
                 })
                 .collect();
 
@@ -323,10 +329,17 @@ impl Service for PlaneService {
             // Load, listed as such, and refuses the same way.
             let lifecycle = context.health().lifecycle().clone();
             lifecycle.initialize(self.module.id());
-            for (configured, protocol, router, tls) in surfaces {
+            for (configured, protocol, router, tls, terminated_upstream) in surfaces {
                 let router = gated(router, lifecycle.clone(), self.module.id());
                 let surface = self
-                    .start_surface(context, configured, protocol, router, tls)
+                    .start_surface(
+                        context,
+                        configured,
+                        protocol,
+                        router,
+                        tls,
+                        terminated_upstream,
+                    )
                     .await?;
                 self.running
                     .lock()
@@ -420,6 +433,7 @@ impl PlaneService {
         protocol: &'static str,
         router: Router,
         secured: Option<TlsSettings>,
+        terminated_upstream: bool,
     ) -> Result<Surface> {
         if let Some(settings) = &secured {
             settings
@@ -433,7 +447,9 @@ impl PlaneService {
             .metrics(context.metrics().clone())
             .authenticator(context.authenticator())
             .client_authentication(self.module.client_authentication_paths())
-            .upstream_tls(context.config().public_tls_terminated_upstream())
+            // A TLS terminator declared for this listener, in its own block, or for every one
+            // (BUG-0322): the bearer rule reads the declaration the start check accepted.
+            .upstream_tls(terminated_upstream || context.config().public_tls_terminated_upstream())
             .start()
             .await
             .with_context(|| format!("starting the {} surface", self.module.description()))?;

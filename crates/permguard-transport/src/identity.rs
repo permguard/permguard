@@ -152,12 +152,14 @@ pub use permguard_tls::{EXPORTER_LABEL, channel_binding};
 pub fn identity_of(certificate: &CertificateDer<'_>) -> Option<PeerIdentity> {
     let (_, parsed) = X509Certificate::from_der(certificate.as_ref()).ok()?;
 
-    let common_name = parsed
-        .subject()
-        .iter_common_name()
-        .next()
-        .and_then(|attribute| attribute.as_str().ok())
-        .map(str::to_owned);
+    // The Common Name only when the subject carries exactly one: with two or more, which one names
+    // the holder is the order they were written in, and an identity that depends on order is no
+    // identity (BUG-0051). Such a certificate is named by its `dn:` or `sha256:` alone.
+    let mut names = parsed.subject().iter_common_name();
+    let common_name = match (names.next(), names.next()) {
+        (Some(only), None) => only.as_str().ok().map(str::to_owned),
+        _ => None,
+    };
 
     // The URI names, in certificate order: what a mapper rule reads a principal from (WP-2.4).
     // A SAN extension that does not parse yields no names, and the certificate still has its
@@ -209,6 +211,49 @@ mod tests {
         let nonsense = CertificateDer::from(vec![0_u8; 16]);
 
         assert!(identity_of(&nonsense).is_none());
+    }
+
+    /// A self-signed certificate whose subject carries `names` as Common Names, in order.
+    fn certificate_named(names: &[&str]) -> CertificateDer<'static> {
+        let mut params = rcgen::CertificateParams::default();
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        for (at, name) in names.iter().enumerate() {
+            // rcgen keeps one entry per type: a second Common Name goes in under its OID.
+            let kind = if at == 0 {
+                rcgen::DnType::CommonName
+            } else {
+                rcgen::DnType::CustomDnType(vec![2, 5, 4, 3])
+            };
+            params.distinguished_name.push(kind, *name);
+        }
+        let key = rcgen::KeyPair::generate().unwrap_or_else(|_| unreachable!("a key"));
+        params
+            .self_signed(&key)
+            .unwrap_or_else(|_| unreachable!("a certificate"))
+            .der()
+            .clone()
+    }
+
+    /// BUG-0051: a subject with more than one Common Name has none to be identified by, whatever
+    /// their order; a subject with one keeps it.
+    #[test]
+    fn test_a_subject_with_two_common_names_is_named_by_neither() {
+        let one = identity_of(&certificate_named(&["local-operator"]))
+            .unwrap_or_else(|| unreachable!("an identity"));
+        assert_eq!(one.common_name(), Some("local-operator"));
+        for names in [
+            ["local-operator", "intruder"],
+            ["intruder", "local-operator"],
+        ] {
+            let both = identity_of(&certificate_named(&names))
+                .unwrap_or_else(|| unreachable!("an identity"));
+            assert_eq!(both.common_name(), None, "{names:?}");
+            assert_eq!(
+                both.fingerprint().len(),
+                64,
+                "still named by its fingerprint"
+            );
+        }
     }
 
     #[test]

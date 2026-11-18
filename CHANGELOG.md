@@ -45,6 +45,12 @@ is cut.
 
 ### Fixed
 
+- **A client certificate with more than one Common Name is matched by no `cn:` entry.**
+  The allow list read the first Common Name only, so `CN=local-operator, CN=intruder` passed where `CN=intruder, CN=local-operator` did not; such a certificate is now named by its `dn:` or `sha256:` alone.
+- **A listener that declares its own TLS terminator admits bearer tokens.**
+  `tls.terminated_upstream: true` in a listener's own block, as the template shows, was checked at start and ignored by the bearer rule, which read only `public.tls.terminated_upstream`; either form now admits a token over that cleartext socket.
+- **The rule between a client certificate and a bearer token is written down.**
+  A request presenting a bearer token is decided by it whatever certificate the connection carries: a token that does not verify is refused `401 invalid_token`, a valid one acts as its account, and the audit record names its principal.
 - **A null `dataPlane.mirrors.servers` is refused as retired.**
   `servers: ~` and `servers:` started as if the key were absent; they now stop the start with the retirement message, as a list does, and an unknown field under `dataPlane` no longer offers `servers` among the valid ones.
 - **A refused boolean setting names every spelling it reads.**
