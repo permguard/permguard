@@ -169,12 +169,13 @@ A secret key is written once to a new file only its owner reads, and never print
 
 ## Audit
 
-| Command                  | Grant        | State   | Why |
-| ------------------------ | ------------ | ------- | --- |
-| `host audit query`       | `audit.read` | present |     |
-| `host audit checkpoints` | `audit.read` | present |     |
-| `host audit export`      | `audit.read` | present |     |
-| `audit verify`           | offline      | server  |     |
+| Command                  | Grant              | State   | Why |
+| ------------------------ | ------------------ | ------- | --- |
+| `host audit query`       | `audit.read`       | present |     |
+| `host audit checkpoints` | `audit.read`       | present |     |
+| `host audit checkpoint`  | `audit.checkpoint` | present |     |
+| `host audit export`      | `audit.read`       | present |     |
+| `audit verify`           | offline            | server  |     |
 
 ## Streams
 

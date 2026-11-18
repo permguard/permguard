@@ -2007,7 +2007,8 @@ pub enum BundleAction {
     },
 }
 
-/// `permguard host audit …` (TC-2), under `audit.read` on the resource.
+/// `permguard host audit …` (TC-2), under `audit.read` on the resource; `checkpoint` under
+/// `audit.checkpoint`.
 #[derive(Debug, Subcommand)]
 pub enum AuditAction {
     /// Print one page of a trail's records, its gaps and the cursor of the next page.
@@ -2048,6 +2049,23 @@ pub enum AuditAction {
         /// One UTC day, `YYYY-MM-DD`; every day when left out.
         #[arg(long)]
         period: Option<String>,
+    },
+    /// Checkpoint a trail now, up to its last record, and print the checkpoint: keep it apart,
+    /// and `audit verify --checkpoint` proves the trail from it.
+    #[command(
+        after_help = "Examples:\n  permguard host audit checkpoint --class security --resource host\n  permguard host audit checkpoint --class security --resource host --out held.cose"
+    )]
+    Checkpoint {
+        /// The trail's class.
+        #[arg(long)]
+        class: String,
+        /// The trail's resource, in the Host API's grammar.
+        #[arg(long)]
+        resource: String,
+        /// A new owner-only file that receives the checkpoint's COSE envelope, the file
+        /// `audit verify --checkpoint` reads.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
     },
     /// Write a trail's export, every page at one frontier with its verification metadata, to a
     /// new owner-only file.

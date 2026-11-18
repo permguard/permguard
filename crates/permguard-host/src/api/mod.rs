@@ -181,15 +181,18 @@ impl Mutation {
     }
 }
 
-/// Where the audit trail recorded a mutation. `seq` and `digest` arrive with the sealed trail
-/// (WP-3.5, WP-3.7): until then they are absent, never invented (owner decision, 2026-10-06).
+/// Where the audit trail recorded a mutation: the trail as the audit routes name it
+/// (`<class>:<resource>`, `security:host` for every Host API mutation) and the `seq` and `digest`
+/// of the operation's intent record, which the records of its other phases follow under the same
+/// operation id (BUG-0095). They are absent, never invented, only for an operation this process
+/// did not record itself: one reconciled after a restart (owner decision, 2026-10-06).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuditReference {
     /// The trail that recorded the event.
     pub trail: String,
-    /// The event's position in the trail, once the trail numbers them.
+    /// The position of the operation's intent record in the trail.
     pub seq: Option<u64>,
-    /// The event's digest, once the trail seals them.
+    /// The digest of that record, as the audit routes answer it.
     pub digest: Option<String>,
 }
 
@@ -548,13 +551,24 @@ impl HostApi {
 
     /// Mints the receipt of the operation `operation_id`, which produced `revision`.
     fn receipt(&self, operation_id: OperationId, revision: u64) -> Receipt {
+        let recorded = self
+            .mutations
+            .as_ref()
+            .and_then(|mutations| mutations.intent_recorded(&operation_id));
         Receipt {
             operation_id: operation_id.to_string(),
             revision,
-            audit: AuditReference {
-                trail: self.trail.clone(),
-                seq: None,
-                digest: None,
+            audit: match recorded {
+                Some(recorded) => AuditReference {
+                    trail: recorded.trail,
+                    seq: Some(recorded.seq),
+                    digest: Some(recorded.digest.to_string()),
+                },
+                None => AuditReference {
+                    trail: self.trail.clone(),
+                    seq: None,
+                    digest: None,
+                },
             },
         }
     }

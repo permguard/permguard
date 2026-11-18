@@ -9,8 +9,8 @@
 use tonic::{Request, Response, Status};
 
 use permguard_host::api::audit::{
-    AuditAnchorView, AuditCheckpointQuery, AuditCheckpointView, AuditExportQuery, AuditGapView,
-    AuditQuery, AuditRecordView,
+    AuditAnchorView, AuditCheckpointQuery, AuditCheckpointRequest, AuditCheckpointView,
+    AuditExportQuery, AuditGapView, AuditQuery, AuditRecordView,
 };
 
 use permguard_host::api::streams::{AnchorView, StreamQuery};
@@ -130,6 +130,30 @@ impl EvidenceService for Served {
             keys: held.keys.map(ring_out).transpose()?,
             omitted: held.omitted,
             verification_keys: held.verification_keys,
+        }))
+    }
+
+    async fn checkpoint_audit(
+        &self,
+        request: Request<v1::CheckpointAuditRequest>,
+    ) -> Answer<v1::CheckpointAuditResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        let taken = self
+            .api
+            .audit_checkpoint(
+                &actor,
+                &request.class,
+                &AuditCheckpointRequest {
+                    resource: request.resource,
+                },
+            )
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::CheckpointAuditResponse {
+            class: taken.class,
+            resource: taken.resource,
+            checkpoint: checkpoints(taken.checkpoint.into_iter().collect())?.pop(),
+            verification_keys: taken.verification_keys,
         }))
     }
 

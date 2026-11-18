@@ -958,3 +958,72 @@ fn concurrent_operations_that_applied_all_answer_applied() {
     assert_eq!(engine.pending(), 0, "every outcome is recorded");
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// BUG-0095: a receipt names the intent record of its operation, which the Host's audit engine
+/// answers at that sequence with that digest.
+#[test]
+fn the_intent_record_of_an_operation_is_remembered_where_the_trail_wrote_it() {
+    let root = scratch("intent-recorded");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let audit = Arc::new(
+        crate::audit::Engine::open(
+            &volume,
+            crate::audit::Stamp {
+                host_id: [1; 16],
+                boot_id: [2; 16],
+                build: "9.9.9".to_owned(),
+                config_revision: permguard_objects::digest::Digest::compute(b"settings"),
+            },
+            Arc::clone(&time),
+            None,
+        )
+        .expect("the audit engine opens"),
+    );
+    let engine = Mutations::open(
+        &volume,
+        Arc::clone(&audit) as Arc<dyn Projection>,
+        Arc::clone(&time),
+    )
+    .expect("the journal opens");
+    let ledger = Ledger::default();
+    let mut ids = Vec::new();
+    for request in ["r1", "r2"] {
+        let begin = Begin {
+            action: "host.membership.invited",
+            ..begin(Some(request), request)
+        };
+        engine
+            .run(begin, |applying| {
+                ids.push(applying.operation_id());
+                Ok::<_, Failure<String>>(ledger.apply(applying, "z1"))
+            })
+            .expect("applied");
+    }
+    let page = audit
+        .read(
+            crate::audit::Class::Security,
+            crate::audit::HOST,
+            &crate::audit::query::Query::default(),
+        )
+        .expect("read");
+    for id in &ids {
+        let recorded = engine.intent_recorded(id).expect("remembered");
+        assert_eq!(recorded.trail, "security:host");
+        let record = page
+            .records
+            .iter()
+            .find(|record| record.seq == recorded.seq)
+            .expect("the trail holds the record at that sequence");
+        assert_eq!(record.operation_id, Some(*id.as_bytes()));
+        assert_eq!(record.phase.as_deref(), Some("intent"));
+        let bytes = record.encode().expect("encodes");
+        assert_eq!(crate::audit::record::digest_of(&bytes), recorded.digest);
+    }
+    assert_ne!(
+        engine.intent_recorded(&ids[0]).map(|recorded| recorded.seq),
+        engine.intent_recorded(&ids[1]).map(|recorded| recorded.seq),
+        "each operation its own record"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

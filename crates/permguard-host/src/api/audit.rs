@@ -10,6 +10,8 @@
 //! | `GET /host/v1/audit/{class}/checkpoints`  | the signed checkpoints and the `host.operations` set     |
 //! | `GET /host/v1/audit/{class}/export`       | one page up to a fixed frontier; the first page carries  |
 //! |                                           | the checkpoints and the `host.operations` set too        |
+//! | `POST /host/v1/audit/{class}/checkpoints` | an on-demand checkpoint up to the trail's last record,   |
+//! |                                           | under `audit.checkpoint` (BUG-0081)                      |
 //!
 //! The resource is authorized before the class or any filter is read, so a caller without the
 //! grant learns nothing of what the query names. Each record travels as its canonical bytes
@@ -78,6 +80,26 @@ pub struct AuditCheckpointQuery {
     /// One UTC day, `YYYY-MM-DD`; every day when absent.
     #[serde(default)]
     pub period: Option<String>,
+}
+
+/// `POST /host/v1/audit/{class}/checkpoints`'s body.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuditCheckpointRequest {
+    /// The trail's resource, in the Host API's grammar.
+    pub resource: String,
+}
+
+/// What `POST /host/v1/audit/{class}/checkpoints` answers: the checkpoint that covers the trail
+/// up to its last record, written now or already there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditCheckpointTaken {
+    pub class: String,
+    pub resource: String,
+    /// `None` when the trail holds no record.
+    pub checkpoint: Option<AuditCheckpointView>,
+    /// What `keys export` prints for `host.operations`, which `audit verify --keys` reads.
+    pub verification_keys: Option<String>,
 }
 
 /// One record: its canonical bytes and what a reader looks for first.
@@ -290,9 +312,21 @@ impl HostApi {
         resource: &str,
         malformed: Option<&str>,
     ) -> Result<(&crate::audit::Engine, Class, String, super::Admitted<'_>), Refusal> {
+        self.audit_trail_under(actor, operations::AUDIT_READ, class, resource, malformed)
+    }
+
+    /// The class and resource of an audit route, `operation` admitted on the resource first.
+    fn audit_trail_under(
+        &self,
+        actor: &Actor,
+        operation: &str,
+        class: &str,
+        resource: &str,
+        malformed: Option<&str>,
+    ) -> Result<(&crate::audit::Engine, Class, String, super::Admitted<'_>), Refusal> {
         let resource =
             Resource::parse(resource).map_err(|error| invalid(format!("`resource`: {error}")))?;
-        let admitted = self.admit_on(actor, operations::AUDIT_READ, &resource)?;
+        let admitted = self.admit_on(actor, operation, &resource)?;
         if let Some(malformed) = malformed {
             return Err(invalid(malformed.to_owned()));
         }
@@ -371,6 +405,62 @@ impl HostApi {
             checkpoints: checkpoints(list.files),
             omitted: list.omitted as u64,
             keys: self.operations_keys(),
+            verification_keys: self.verification_keys(),
+        })
+    }
+
+    /// `POST /host/v1/audit/{class}/checkpoints`: checkpoints the trail up to its last record now,
+    /// under `audit.checkpoint` on the resource (BUG-0081). The current day is then covered by a
+    /// signature, not only by the hash chain whose last link nothing follows; a trail already
+    /// covered answers its newest checkpoint and writes none.
+    pub fn audit_checkpoint(
+        &self,
+        actor: &Actor,
+        class: &str,
+        request: &AuditCheckpointRequest,
+    ) -> Result<AuditCheckpointTaken, Refusal> {
+        let (engine, class, resource, _admitted) = self.audit_trail_under(
+            actor,
+            operations::AUDIT_CHECKPOINT,
+            class,
+            &request.resource,
+            None,
+        )?;
+        if !engine.seals() {
+            return Err(unavailable(
+                "this process seals no audit trail: no `host.operations` signer is composed",
+            ));
+        }
+        // A trail that does not exist is not created to be checkpointed.
+        let held = engine
+            .trails_held()
+            .map_err(|error| unavailable(error.to_string()))?
+            .contains(&(class, resource.clone()));
+        let newest = if held {
+            engine
+                .checkpoint(class, &resource)
+                .map_err(|error| unavailable(error.to_string()))?
+        } else {
+            None
+        };
+        let checkpoint = match newest {
+            None => None,
+            Some(name) => {
+                let period = name.split('.').next().unwrap_or_default().to_owned();
+                engine
+                    .checkpoints(class, &resource, Some(&period))
+                    .map_err(refusal)?
+                    .files
+                    .into_iter()
+                    .find(|file| file.name == name)
+                    .map(|file| checkpoints(vec![file]))
+                    .and_then(|mut views| views.pop())
+            }
+        };
+        Ok(AuditCheckpointTaken {
+            class: class.as_str().to_owned(),
+            resource,
+            checkpoint,
             verification_keys: self.verification_keys(),
         })
     }
@@ -558,6 +648,74 @@ mod tests {
         // The export document `audit verify --keys` reads.
         let document = held.verification_keys.expect("the key document");
         crate::audit::checkpoint::Keys::from_document(&document).expect("the keys read");
+    }
+
+    /// BUG-0081: an on-demand checkpoint, under its own grant, signs the trail up to its last
+    /// record; one already covering it is answered again, and a trail with no record gets none.
+    #[tokio::test]
+    async fn an_on_demand_checkpoint_needs_its_grant_and_signs_up_to_the_last_record() {
+        const SEALER: &str = "spiffe://acme/sealer";
+        let api = audited("on-demand").await;
+        crate::api::testing::grant_to(
+            SEALER,
+            &[operations::AUDIT_CHECKPOINT],
+            &Selector::under(Resource::parse("plane/control").expect("a resource")).to_string(),
+        );
+        let request = AuditCheckpointRequest {
+            resource: "plane/control".to_owned(),
+        };
+        // `audit.read` does not make the Host sign.
+        let refused = api
+            .audit_checkpoint(&actor(AUDITOR), "security", &request)
+            .expect_err("a reader");
+        assert!(
+            matches!(&refused, Refusal::Denied(denial) if denial.http_status() == 403),
+            "{refused:?}"
+        );
+        // A process that seals nothing says so.
+        let refused = api
+            .audit_checkpoint(&actor(SEALER), "security", &request)
+            .expect_err("no signer");
+        assert_eq!(
+            refused.error().map(|error| error.code()),
+            Some(codes::host::AUDIT_UNAVAILABLE)
+        );
+        let engine = api.audit.as_ref().expect("an engine");
+        let ring = api.keys.ring(HOST_OPERATIONS).expect("the ring");
+        engine.seal_with(Arc::clone(ring) as Arc<dyn crate::audit::checkpoint::CheckpointSigner>);
+        let taken = api
+            .audit_checkpoint(&actor(SEALER), "security", &request)
+            .expect("checkpointed");
+        let checkpoint = taken.checkpoint.expect("a checkpoint");
+        let envelope = URL_SAFE_NO_PAD
+            .decode(&checkpoint.envelope)
+            .expect("base64url");
+        let read = crate::audit::checkpoint::read_unverified(&envelope).expect("a checkpoint");
+        assert_eq!(
+            (read.first_seq, read.last_seq),
+            (0, 2),
+            "up to the last record"
+        );
+        assert!(taken.verification_keys.is_some());
+        // Covered already: the same checkpoint, none written.
+        let again = api
+            .audit_checkpoint(&actor(SEALER), "security", &request)
+            .expect("checkpointed");
+        assert_eq!(
+            again.checkpoint.map(|view| view.name),
+            Some(checkpoint.name)
+        );
+        // A trail that holds no record gets no checkpoint, and is not created.
+        let empty = api
+            .audit_checkpoint(&actor(SEALER), "operations", &request)
+            .expect("answered");
+        assert!(empty.checkpoint.is_none());
+        assert!(
+            !engine
+                .trails_held()
+                .expect("listed")
+                .contains(&(Class::Operations, "plane/control".to_owned()))
+        );
     }
 
     #[tokio::test]

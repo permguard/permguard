@@ -3122,10 +3122,14 @@ fn walk_body(document: &Value, schema: &Value, seed: usize) -> Value {
                 .flatten()
                 .filter_map(Value::as_str)
             {
-                object.insert(
-                    name.to_owned(),
-                    walk_body(document, &schema["properties"][name], seed),
-                );
+                // A body that names its resource names `host`, as the walked queries and gRPC
+                // messages do: the route is then asked about authorization, not the grammar.
+                let value = if name == "resource" {
+                    json!("host")
+                } else {
+                    walk_body(document, &schema["properties"][name], seed)
+                };
+                object.insert(name.to_owned(), value);
             }
             Value::Object(object)
         }

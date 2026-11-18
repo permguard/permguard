@@ -82,6 +82,9 @@ pub mod operations {
     /// Read the audit trails of a resource: their records, checkpoints and exports (WP-3.7,
     /// owner decision of 2026-10-11).
     pub const AUDIT_READ: &str = "audit.read";
+    /// Checkpoint an audit trail of a resource on demand, up to its last record: the Host signs
+    /// under `host.operations` on the caller's request (BUG-0081).
+    pub const AUDIT_CHECKPOINT: &str = "audit.checkpoint";
     /// Read the Host's streams: their descriptors, frontiers, records, signers, subscriptions,
     /// gaps and anchors (WP-5.7).
     pub const STREAMS_READ: &str = "streams.read";
@@ -117,6 +120,7 @@ pub mod operations {
         MEMBERSHIP_READ,
         MEMBERSHIP_ADMIN,
         AUDIT_READ,
+        AUDIT_CHECKPOINT,
         STREAMS_READ,
         EVIDENCE_READ,
         BACKUP_MANAGE,
@@ -156,7 +160,9 @@ pub mod operations {
             DECISION_EVALUATE => Class::Decide,
             CATALOG_WRITE | POLICY_PUSH | EVENT_SUBMIT => Class::Write,
             ACCOUNTS_READ | ACCOUNTS_WRITE | TOKENS_READ | TOKENS_REVOKE | IDENTITY_ADMIN
-            | KEYS_ADMIN | MEMBERSHIP_ADMIN | BACKUP_MANAGE | GC_MANAGE => Class::Administrative,
+            | KEYS_ADMIN | MEMBERSHIP_ADMIN | BACKUP_MANAGE | GC_MANAGE | AUDIT_CHECKPOINT => {
+                Class::Administrative
+            }
             _ => return None,
         })
     }
@@ -454,7 +460,9 @@ pub fn operation_fits(operation: &str, selector: &Selector) -> bool {
         | op::BACKUP_READ
         | op::BACKUP_MANAGE => host,
         // A Plane's rings are read under it, a key bundle's resource a Plane's (WP-3.4).
-        op::KEYS_READ | op::AUDIT_READ | op::STREAMS_READ => host || plane(None),
+        op::KEYS_READ | op::AUDIT_READ | op::AUDIT_CHECKPOINT | op::STREAMS_READ => {
+            host || plane(None)
+        }
         op::GC_MANAGE => plane(None),
         op::CATALOG_READ | op::CATALOG_WRITE | op::POLICY_PUSH | op::EVIDENCE_READ => {
             plane(Some("control"))
@@ -613,6 +621,7 @@ pub fn per_host_reach(operation: &str, resource: &Resource) -> bool {
             | op::BACKUP_READ
             | op::BACKUP_MANAGE
             | op::AUDIT_READ
+            | op::AUDIT_CHECKPOINT
             | op::STREAMS_READ
             | op::GC_MANAGE
     ) && match resource {

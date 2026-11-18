@@ -102,8 +102,16 @@ impl HostProjection {
 
 impl Projection for HostProjection {
     fn project(&self, event: &AuditEvent<'_>) -> Result<(), String> {
-        self.engine
-            .append(event, self.policy.as_deref())
+        self.project_recorded(event).map(|_| ())
+    }
+
+    fn project_recorded(
+        &self,
+        event: &AuditEvent<'_>,
+    ) -> Result<Option<crate::audit::Recorded>, String> {
+        let recorded = self
+            .engine
+            .record(event, self.policy.as_deref())
             .map_err(|refused| refused.to_string())?;
         if let Some(also) = &self.also {
             // The destination sinks answer at once (the log stream); one that would wait is not
@@ -125,7 +133,7 @@ impl Projection for HostProjection {
                 ),
             }
         }
-        Ok(())
+        Ok(recorded)
     }
 }
 
@@ -134,12 +142,53 @@ impl Projection for HostProjection {
 pub trait Projection: Send + Sync {
     /// Writes `event` durably, or says why it could not.
     fn project(&self, event: &AuditEvent<'_>) -> Result<(), String>;
+
+    /// Writes `event` as [`Projection::project`] does, and answers where the trail recorded it
+    /// when the projection knows (BUG-0095).
+    fn project_recorded(
+        &self,
+        event: &AuditEvent<'_>,
+    ) -> Result<Option<crate::audit::Recorded>, String> {
+        self.project(event).map(|()| None)
+    }
 }
 
 impl Projection for crate::audit::Engine {
     fn project(&self, event: &AuditEvent<'_>) -> Result<(), String> {
         self.append(event, None)
             .map_err(|refused| refused.to_string())
+    }
+
+    fn project_recorded(
+        &self,
+        event: &AuditEvent<'_>,
+    ) -> Result<Option<crate::audit::Recorded>, String> {
+        self.record(event, None)
+            .map_err(|refused| refused.to_string())
+    }
+}
+
+/// How many operations' intent records [`Mutations::intent_recorded`] remembers: far more than
+/// are ever in flight, so every receipt of this process finds its own.
+const RECENT_INTENTS: usize = 4096;
+
+/// Where the intent records of the latest operations were written, oldest first out.
+#[derive(Debug, Default)]
+struct RecentIntents {
+    order: std::collections::VecDeque<OperationId>,
+    by_operation: BTreeMap<OperationId, crate::audit::Recorded>,
+}
+
+impl RecentIntents {
+    fn remember(&mut self, operation_id: OperationId, recorded: crate::audit::Recorded) {
+        if self.by_operation.insert(operation_id, recorded).is_none() {
+            self.order.push_back(operation_id);
+        }
+        while self.order.len() > RECENT_INTENTS {
+            if let Some(oldest) = self.order.pop_front() {
+                self.by_operation.remove(&oldest);
+            }
+        }
     }
 }
 
@@ -447,6 +496,8 @@ pub struct Mutations {
     compact_after: usize,
     /// The backup barrier (WP-7.8) and the operations it waits for.
     gate: Mutex<Gate>,
+    /// Where the intent records of the latest operations were written (BUG-0095).
+    intents: Mutex<RecentIntents>,
     /// Signalled whenever an operation leaves, so a barrier waiting for them wakes.
     drained: Condvar,
 }
@@ -586,6 +637,7 @@ impl Mutations {
             health: OnceLock::new(),
             compact_after: COMPACT_AFTER,
             gate: Mutex::new(Gate::default()),
+            intents: Mutex::new(RecentIntents::default()),
             drained: Condvar::new(),
         };
         {
@@ -938,12 +990,20 @@ impl Mutations {
         crash::point("mutation.intent_written");
 
         // 3: its audit record.
-        if let Err(error) = self.project_phase(&intent, AuditPhase::Intent, None) {
-            self.fail(
-                operation_id,
-                format!("the audit intent was not written: {error}"),
-            );
-            return Err(MutationError::AuditUnavailable(error));
+        match self.project_phase(&intent, AuditPhase::Intent, None) {
+            Ok(Some(recorded)) => self
+                .intents
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remember(operation_id, recorded),
+            Ok(None) => {}
+            Err(error) => {
+                self.fail(
+                    operation_id,
+                    format!("the audit intent was not written: {error}"),
+                );
+                return Err(MutationError::AuditUnavailable(error));
+            }
         }
         crash::point("mutation.intent_audited");
 
@@ -1154,7 +1214,7 @@ impl Mutations {
         intent: &Intent,
         phase: AuditPhase,
         target: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<Option<crate::audit::Recorded>, String> {
         let subject = match &intent.initiator {
             Initiator::Principal(name) => Subject::Principal(name),
             Initiator::System(name) => Subject::System(name),
@@ -1170,7 +1230,19 @@ impl Mutations {
         if let Some(target) = target.or(intent.target.as_deref()) {
             event = event.on(target);
         }
-        self.projection.project(&event)
+        self.projection.project_recorded(&event)
+    }
+
+    /// Where the intent record of `operation_id` was written, when this process wrote it
+    /// recently: what a receipt names (BUG-0095). An operation reconciled after a restart has
+    /// none here.
+    pub fn intent_recorded(&self, operation_id: &OperationId) -> Option<crate::audit::Recorded> {
+        self.intents
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .by_operation
+            .get(operation_id)
+            .cloned()
     }
 
     /// Appends `entry`, flushed, and folds it into the state; folds the journal into the

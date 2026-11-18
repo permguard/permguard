@@ -1846,10 +1846,16 @@ fn the_object_sweep_is_planned_and_run_over_both_transports() {
                 .is_some_and(|id| !id.is_empty()),
             "{scheme}: {ran}"
         );
+        // BUG-0095: the receipt names the trail as the audit routes do, and the record.
+        assert_eq!(
+            ran["receipt"]["audit"]["trail"], "security:host",
+            "{scheme}: {ran}"
+        );
+        assert!(ran["receipt"]["audit"]["seq"].is_u64(), "{scheme}: {ran}");
         assert!(
-            ran["receipt"]["audit"]["trail"]
+            ran["receipt"]["audit"]["digest"]
                 .as_str()
-                .is_some_and(|trail| !trail.is_empty()),
+                .is_some_and(|digest| !digest.is_empty()),
             "{scheme}: {ran}"
         );
         let again = cli(

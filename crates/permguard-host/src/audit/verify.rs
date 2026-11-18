@@ -79,6 +79,9 @@ pub struct TrailReport {
     /// The keys that signed the checkpoints verified, each once, with the ring it came from when
     /// the volume's keys were read: this Host's, or one an identity reset retired (BUG-0107).
     pub signed_by: Vec<String>,
+    /// The last record a verified checkpoint signs; the records after it are held by the hash
+    /// chain alone (BUG-0081).
+    pub signed_through: Option<u64>,
 }
 
 impl TrailReport {
@@ -167,10 +170,15 @@ impl Report {
     /// The report as `audit verify` prints it.
     pub fn render(&self) -> String {
         let mut out = String::new();
+        // Keys are only as independent as the signatures checked with them (BUG-0081).
+        let checked = self.trails.iter().any(|trail| trail.checkpoints > 0);
         let _ = writeln!(
             out,
             "keys: {}",
-            if self.independent {
+            if self.independent && !checked {
+                "independent (--keys), yet no checkpoint was signed: no signature was checked \
+                 against them"
+            } else if self.independent {
                 "independent (--keys)"
             } else {
                 "the volume's own: not independent; pass --keys with the `host.operations` keys \
@@ -219,6 +227,18 @@ impl Report {
             );
             if !trail.signed_by.is_empty() {
                 let _ = writeln!(out, "  signed by: {}", trail.signed_by.join(", "));
+            }
+            if let Some(last) = trail.last_seq {
+                let first = trail
+                    .signed_through
+                    .map_or(trail.first_seq.unwrap_or(0), |signed| signed + 1);
+                if first <= last {
+                    let _ = writeln!(
+                        out,
+                        "  ! records {first}..={last} are held by the hash chain alone, signed by \
+                         no checkpoint yet: `permguard host audit checkpoint` signs them"
+                    );
+                }
             }
             if trail.witnessed > 0 {
                 let _ = writeln!(
@@ -711,6 +731,7 @@ fn check(
         });
     }
     report.checkpoints = verified.len();
+    report.signed_through = verified.iter().map(|entry| entry.checkpoint.last_seq).max();
     for entry in &verified {
         let said = match keys.origin_of(&entry.kid) {
             Some(origin) => format!("{} ({origin})", entry.kid),

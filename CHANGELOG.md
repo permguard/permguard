@@ -43,6 +43,12 @@ is cut.
   A first start refused after it provisioned the identity, and before its audit opened, left the identity with no `host.identity.provisioned` record for good; the next start now writes it, with the warning `host.identity_provisioning_recorded_late`.
 - **A legacy audit migration refused for a stray file leaves nothing building.**
   What the refused build wrote is removed with its intent, so moving the file out and migrating again works, at start or with `migrate audit`, without `migrate recover`.
+- **An audit trail can be checkpointed on demand.**
+  `POST /host/v1/audit/{class}/checkpoints`, `EvidenceService/CheckpointAudit` and `permguard host audit checkpoint --class <c> --resource <r> [--out FILE]` sign the trail up to its last record (`YYYY-MM-DD.<seq>.cose`), so the current day no longer rests on the hash chain alone; `--out` writes the envelope that `audit verify --checkpoint` reads.
+  It is under the new operation `audit.checkpoint`, administrative and never public; `audit.read` does not grant it.
+  `audit verify` no longer prints `keys: independent` bare when no checkpoint signature was checked, and names under each trail the records held by the hash chain alone.
+- **A mutation's receipt names its audit record.**
+  `receipt.audit` names the trail as the audit routes do (`security:host`, it said `host`) and carries the `seq` and `digest` of the operation's intent record, which `GET /host/v1/audit/security/records` answers; they stay `null` only for an operation reconciled after a restart.
 - **A trail whose `META.cbor` is missing is said to be missing.**
   The sweep logged `not canonical CBOR: truncated input` for it; it now logs `its META.cbor is missing`.
 

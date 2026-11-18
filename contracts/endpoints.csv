@@ -56,6 +56,7 @@ authority,tokens,POST,/authority/v1/token,access key and secret key,,
 authority,tokens,GET,/authority/v1/tokens,access token,tokens.read,plane/authority
 authority,tokens,POST,/authority/v1/tokens/{jti}/revoke,access token,tokens.revoke,plane/authority
 host,audit,GET,/host/v1/audit/{class}/checkpoints,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
+host,audit,POST,/host/v1/audit/{class}/checkpoints,access token,audit.checkpoint,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,audit,GET,/host/v1/audit/{class}/export,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,audit,GET,/host/v1/audit/{class}/records,access token,audit.read,host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]
 host,backup,POST,/host/v1/backup/abort,access token,backup.manage,host

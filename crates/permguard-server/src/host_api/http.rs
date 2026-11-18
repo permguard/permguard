@@ -14,7 +14,9 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
-use permguard_host::api::audit::{AuditCheckpointQuery, AuditExportQuery, AuditQuery};
+use permguard_host::api::audit::{
+    AuditCheckpointQuery, AuditCheckpointRequest, AuditExportQuery, AuditQuery,
+};
 use permguard_host::api::members::{
     AppraiseMember, ApproveMember, ChangeMember, ChangeMemberRecord, CreateInvite, JoinMembership,
     PlanMemberRevoke, RunMemberRevoke, SyncMembership, VerifyMember,
@@ -93,7 +95,10 @@ fn host_routes() -> Router<Served> {
         .route("/host/v1/memberships/join", post(join_membership))
         .route("/host/v1/memberships/{id}/sync", post(sync_membership))
         .route("/host/v1/audit/{class}/records", get(audit_records))
-        .route("/host/v1/audit/{class}/checkpoints", get(audit_checkpoints))
+        .route(
+            "/host/v1/audit/{class}/checkpoints",
+            get(audit_checkpoints).post(audit_checkpoint),
+        )
         .route("/host/v1/audit/{class}/export", get(audit_export))
         // The stream reads (WP-5.7a); batches travel on the task transport (owner decision).
         .route("/host/v1/streams", get(streams_list))
@@ -462,6 +467,19 @@ async fn audit_checkpoints(
         &served,
         StatusCode::OK,
         served.api.audit_checkpoints(&actor, &class, &query),
+    )
+}
+
+async fn audit_checkpoint(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(class): Path<String>,
+    Closed(request): Closed<AuditCheckpointRequest>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.audit_checkpoint(&actor, &class, &request),
     )
 }
 

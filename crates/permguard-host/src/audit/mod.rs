@@ -711,6 +711,15 @@ pub trait EgressFloor: Send + Sync {
     fn acknowledged(&self, class: Class, resource: &str) -> Option<Option<String>>;
 }
 
+/// Where a `security` record was written: its trail as the audit routes name it
+/// (`<class>:<resource>`), its sequence and its digest (BUG-0095).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recorded {
+    pub trail: String,
+    pub seq: u64,
+    pub digest: Digest,
+}
+
 /// The audit engine of one process.
 pub struct Engine {
     inner: Arc<Inner>,
@@ -1187,6 +1196,16 @@ impl Engine {
         event: &AuditEvent<'_>,
         policy: Option<&dyn Pseudonymizer>,
     ) -> Result<(), Refused> {
+        self.record(event, policy).map(|_| ())
+    }
+
+    /// Appends `event` as [`Engine::append`] does, and answers where a `security` record was
+    /// written; an `operations` or `access` record, written later or counted, answers `None`.
+    pub fn record(
+        &self,
+        event: &AuditEvent<'_>,
+        policy: Option<&dyn Pseudonymizer>,
+    ) -> Result<Option<Recorded>, Refused> {
         let schema = self
             .inner
             .registry
@@ -1195,10 +1214,10 @@ impl Engine {
             .ok_or_else(|| Refused::Unregistered(event.action().to_owned()))?;
         let record = self.inner.build(schema, event, policy)?;
         match schema.class {
-            Class::Security => self.inner.write(record).map_err(Refused::Storage),
+            Class::Security => self.inner.write(record).map(Some).map_err(Refused::Storage),
             Class::Operations => {
                 self.inner.write_or_count(record);
-                Ok(())
+                Ok(None)
             }
             Class::Access => {
                 let sender = self
@@ -1209,7 +1228,7 @@ impl Engine {
                 let Some(sender) = sender else {
                     // Closed: the process is stopping, and the record is written here instead.
                     self.inner.write_access(record);
-                    return Ok(());
+                    return Ok(None);
                 };
                 let resource = record.resource.clone();
                 match sender.try_send(Box::new(record)) {
@@ -1225,7 +1244,7 @@ impl Engine {
                             .or_default() += 1;
                     }
                 }
-                Ok(())
+                Ok(None)
             }
         }
     }
@@ -1434,18 +1453,24 @@ impl Inner {
 
     /// Appends `record` to its trail, opening the trail on first use; a record that starts a new
     /// day seals the days before it and deletes what retention allows.
-    fn write(&self, record: AuditRecord) -> Result<(), String> {
+    fn write(&self, record: AuditRecord) -> Result<Recorded, String> {
         let class = Class::parse(record.trail.split(':').next().unwrap_or_default())
             .ok_or_else(|| format!("`{}` names no class", record.trail))?;
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (class, record.resource.clone());
         let trail = self.trail(&mut open, class, &record.resource)?;
+        let name = record.trail.clone();
         match trail.append(record) {
             Ok(new_day) => {
+                let recorded = Recorded {
+                    trail: name,
+                    seq: trail.next_seq().saturating_sub(1),
+                    digest: trail.head().clone(),
+                };
                 if new_day && let Some(today) = trail.last_day().map(ToOwned::to_owned) {
                     self.maintain(trail, class, &key.1, &today);
                 }
-                Ok(())
+                Ok(recorded)
             }
             Err(error) => {
                 // Reopened at the next record: what a failed append left at the end of the day

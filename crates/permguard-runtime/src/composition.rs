@@ -2289,7 +2289,13 @@ impl Composition {
                             resource_types: grant.resource_types,
                         }),
                 ),
-                trail: audit.name().to_owned(),
+                // The trail every Host API mutation is recorded in, as the audit routes name it
+                // (BUG-0095): never the name of the sink.
+                trail: format!(
+                    "{}:{}",
+                    permguard_host::audit::Class::Security.as_str(),
+                    permguard_host::audit::HOST
+                ),
                 mutations: Some(Arc::clone(&mutations)),
                 identity: Some(Arc::clone(&host_identity)),
                 time: Arc::clone(&time),

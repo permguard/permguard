@@ -8,8 +8,9 @@
 
 use permguard_host::api::Planned;
 use permguard_host::api::audit::{
-    AuditAnchorView, AuditCheckpointQuery, AuditCheckpointView, AuditCheckpoints, AuditExportPage,
-    AuditExportQuery, AuditGapView, AuditQuery, AuditRecordPage, AuditRecordView,
+    AuditAnchorView, AuditCheckpointQuery, AuditCheckpointRequest, AuditCheckpointTaken,
+    AuditCheckpointView, AuditCheckpoints, AuditExportPage, AuditExportQuery, AuditGapView,
+    AuditQuery, AuditRecordPage, AuditRecordView,
 };
 use permguard_host::api::backups::{
     AbortBackup, BackupEnded, BackupList, BackupPrepared, BackupView, FinalizeBackup, PrepareBackup,
@@ -58,6 +59,12 @@ pub trait Operations {
         class: &str,
         query: &AuditCheckpointQuery,
     ) -> Result<AuditCheckpoints, Failure>;
+    /// `POST /host/v1/audit/{class}/checkpoints`, `EvidenceService.CheckpointAudit`.
+    fn audit_checkpoint(
+        &self,
+        class: &str,
+        request: &AuditCheckpointRequest,
+    ) -> Result<AuditCheckpointTaken, Failure>;
     /// `GET /host/v1/audit/{class}/export`, `EvidenceService.ExportAudit`: one page.
     fn audit_export(
         &self,
@@ -173,6 +180,17 @@ impl Operations for RestHost {
                 ("period", asked.period.clone()),
             ])
         ))
+    }
+
+    fn audit_checkpoint(
+        &self,
+        class: &str,
+        request: &AuditCheckpointRequest,
+    ) -> Result<AuditCheckpointTaken, Failure> {
+        self.post(
+            &format!("/host/v1/audit/{}/checkpoints", segment(class)?),
+            &json(request)?,
+        )
     }
 
     fn audit_export(
@@ -544,6 +562,31 @@ impl Operations for GrpcHost {
             checkpoints: checkpoints_in(answer.checkpoints),
             omitted: answer.omitted,
             keys: answer.keys.map(ring_in),
+            verification_keys: answer.verification_keys,
+        })
+    }
+
+    fn audit_checkpoint(
+        &self,
+        class: &str,
+        request: &AuditCheckpointRequest,
+    ) -> Result<AuditCheckpointTaken, Failure> {
+        segment(class)?;
+        let answer = self
+            .0
+            .run(
+                "CheckpointAudit",
+                self.evidence_client()
+                    .checkpoint_audit(proto::CheckpointAuditRequest {
+                        class: class.to_owned(),
+                        resource: request.resource.clone(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(AuditCheckpointTaken {
+            class: answer.class,
+            resource: answer.resource,
+            checkpoint: checkpoints_in(answer.checkpoint.into_iter().collect()).pop(),
             verification_keys: answer.verification_keys,
         })
     }

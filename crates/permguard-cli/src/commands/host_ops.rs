@@ -274,6 +274,37 @@ pub(super) fn audit(
                 .map_err(failed)?;
             render_json(&held, globals, trace)?;
         }
+        AuditAction::Checkpoint {
+            class,
+            resource,
+            out,
+        } => {
+            let reserved = out
+                .as_deref()
+                .map(|out| reserve(globals, out))
+                .transpose()?;
+            let taken = host
+                .audit_checkpoint(
+                    &class,
+                    &permguard_host::api::audit::AuditCheckpointRequest { resource },
+                )
+                .map_err(failed)?;
+            if let Some(reserved) = reserved {
+                let checkpoint = taken.checkpoint.as_ref().ok_or_else(|| {
+                    Failure::usage(format!(
+                        "the trail `{}:{}` holds no record: there is no checkpoint to write",
+                        taken.class, taken.resource
+                    ))
+                })?;
+                let envelope = base64::Engine::decode(
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                    &checkpoint.envelope,
+                )
+                .map_err(Failure::internal)?;
+                reserved.fill(&envelope)?;
+            }
+            render_json(&taken, globals, trace)?;
+        }
         AuditAction::Export {
             class,
             resource,
@@ -763,6 +794,13 @@ mod tests {
             _: &str,
             _: &AuditCheckpointQuery,
         ) -> Result<AuditCheckpoints, ClientFailure> {
+            unreachable!()
+        }
+        fn audit_checkpoint(
+            &self,
+            _: &str,
+            _: &permguard_host::api::audit::AuditCheckpointRequest,
+        ) -> Result<permguard_host::api::audit::AuditCheckpointTaken, ClientFailure> {
             unreachable!()
         }
         fn effective_config(&self) -> Result<Effective, ClientFailure> {

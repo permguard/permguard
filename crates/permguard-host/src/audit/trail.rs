@@ -209,6 +209,11 @@ impl Trail {
         self.next_seq
     }
 
+    /// The digest of the last record appended, the one the next record chains to.
+    pub fn head(&self) -> &Digest {
+        &self.previous
+    }
+
     /// Appends `record`, giving it its sequence and the previous record's digest, and flushes the
     /// day file before returning. An append that fails leaves the day file as it found it.
     /// Answers whether the record started a new day file.

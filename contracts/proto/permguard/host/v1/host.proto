@@ -104,6 +104,8 @@ service EvidenceService {
   rpc ListAuditCheckpoints(ListAuditCheckpointsRequest) returns (ListAuditCheckpointsResponse);
   // `GET /host/v1/audit/{class}/export`.
   rpc ExportAudit(ExportAuditRequest) returns (ExportAuditResponse);
+  // `POST /host/v1/audit/{class}/checkpoints`.
+  rpc CheckpointAudit(CheckpointAuditRequest) returns (CheckpointAuditResponse);
   // `GET /host/v1/streams`.
   rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse);
   // `GET /host/v1/streams/{plane}/{type}/frontier`.
@@ -745,7 +747,9 @@ message Receipt {
   AuditReference audit = 3;
 }
 
-// Where the audit trail recorded a mutation; `seq` and `digest` arrive with the sealed trail.
+// Where the audit trail recorded a mutation: the trail as the audit routes name it
+// (`security:host`), and the seq and digest of the operation's intent record; seq and digest are
+// absent only for an operation reconciled after a restart.
 message AuditReference {
   string trail = 1;
   optional uint64 seq = 2;
@@ -929,6 +933,20 @@ message AuditCheckpoint {
   string name = 1;
   bytes envelope = 2;
   optional bytes witness = 3;
+}
+// `POST /host/v1/audit/{class}/checkpoints` (BUG-0081), under `audit.checkpoint` on `resource`:
+// the trail checkpointed now up to its last record.
+message CheckpointAuditRequest {
+  string class = 1;
+  string resource = 2;
+}
+message CheckpointAuditResponse {
+  string class = 1;
+  string resource = 2;
+  // The checkpoint covering the trail up to its last record; absent when the trail holds none.
+  AuditCheckpoint checkpoint = 3;
+  // What `keys export` prints for `host.operations`.
+  optional string verification_keys = 4;
 }
 // `GET /host/v1/audit/{class}/checkpoints` (WP-3.7), under `audit.read` on `resource`.
 message ListAuditCheckpointsRequest {

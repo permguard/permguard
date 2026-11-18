@@ -4084,6 +4084,101 @@
           "operation": "audit.read",
           "target": "host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]"
         }
+      },
+      "post": {
+        "operationId": "checkpointAudit",
+        "summary": "Checkpoint an audit trail now",
+        "description": "Under `audit.checkpoint` on `resource` (BUG-0081): an administrative operation, never public. Seals the trail's ended days and writes an on-demand checkpoint up to its last record (`YYYY-MM-DD.<seq>.cose`), signed under the Host's `host.operations` key, so the current day is covered by a signature and not only by the hash chain. A trail the newest checkpoint already covers writes none and answers that checkpoint; a trail that holds no record answers none and is not created. Keep the envelope apart: `audit verify --checkpoint` proves the trail from it.",
+        "parameters": [
+          {
+            "name": "class",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's class: `security`, `operations` or `access`; another is `invalid_argument`, answered only once `resource` is admitted.",
+            "x-grpc-field": "class"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The trail's resource.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditCheckpointRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The checkpoint that covers the trail up to its last record, and the `keys export` document of `host.operations`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditCheckpointTaken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, a resource that is not one of the grammar's or an unknown class (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No audit trail is open on this process, this process seals none, or the trail could not be checkpointed (`audit_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/CheckpointAudit",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "audit",
+          "credential": "access token",
+          "operation": "audit.checkpoint",
+          "target": "host | plane/<data|control|authority>[/zone/<zone_id>[/ledger/<ledger_id>]]"
+        }
       }
     },
     "/host/v1/audit/{class}/export": {
@@ -5786,7 +5881,7 @@
         "properties": {
           "trail": {
             "type": "string",
-            "description": "The audit trail that recorded the event.",
+            "description": "The audit trail that recorded the mutation, as the audit routes name it: `<class>:<resource>`, `security:host` for every Host API mutation.",
             "x-grpc-field": "trail"
           },
           "seq": {
@@ -5794,7 +5889,7 @@
               "integer",
               "null"
             ],
-            "description": "The event's position in the trail; `null` until the trail numbers its events (WP-3.5).",
+            "description": "The position in the trail of the operation's intent record; the records of its later phases carry the same `operation_id`. `null` only for an operation reconciled after a restart, which this process did not record itself.",
             "x-grpc-field": "seq"
           },
           "digest": {
@@ -5802,7 +5897,7 @@
               "string",
               "null"
             ],
-            "description": "The event's digest; `null` until the trail seals its events (WP-3.7).",
+            "description": "The digest of that intent record, as `GET /host/v1/audit/{class}/records` answers it; `null` exactly when `seq` is.",
             "x-grpc-field": "digest"
           }
         },
@@ -5814,7 +5909,7 @@
         "additionalProperties": false,
         "description": "Where the audit trail recorded a mutation.",
         "x-grpc-message": "permguard.host.v1.AuditReference",
-        "x-grpc-note": "`seq` and `digest` are present and `null` until the sealed trail produces them (owner decision, 2026-10-06); they are never invented."
+        "x-grpc-note": "`seq` and `digest` are present, and `null` only for an operation reconciled after a restart (owner decision, 2026-10-06); they are never invented."
       },
       "Receipt": {
         "type": "object",
@@ -11087,6 +11182,68 @@
         "additionalProperties": false,
         "description": "What a sweep kept for one reason.",
         "x-grpc-message": "permguard.host.v1.GcKept"
+      },
+      "AuditCheckpointRequest": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The trail's resource, in the Host API's grammar: `host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`. Authorized under `audit.checkpoint` before the class is read.",
+            "x-grpc-field": "resource"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "additionalProperties": false,
+        "description": "`POST /host/v1/audit/{class}/checkpoints`'s body.",
+        "x-grpc-message": "permguard.host.v1.CheckpointAuditRequest",
+        "x-grpc-only": [
+          "class"
+        ],
+        "x-grpc-note": "`class` travels in the path on REST."
+      },
+      "AuditCheckpointTaken": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "x-grpc-field": "class"
+          },
+          "resource": {
+            "type": "string",
+            "x-grpc-field": "resource"
+          },
+          "checkpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AuditCheckpoint"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The checkpoint covering the trail up to its last record; `null` when the trail holds no record.",
+            "x-grpc-field": "checkpoint"
+          },
+          "verification_keys": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What `keys export` prints for `host.operations`, which `audit verify --keys` reads.",
+            "x-grpc-field": "verification_keys"
+          }
+        },
+        "required": [
+          "class",
+          "resource",
+          "checkpoint",
+          "verification_keys"
+        ],
+        "additionalProperties": false,
+        "description": "What an on-demand checkpoint answers.",
+        "x-grpc-message": "permguard.host.v1.CheckpointAuditResponse"
       }
     }
   },
