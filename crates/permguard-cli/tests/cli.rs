@@ -2531,3 +2531,95 @@ fn an_ambiguous_request_is_refused_by_check_and_test() {
         );
     }
 }
+
+/// DEC-0002 (BUG-0015, BUG-0030, BUG-0048, BUG-0205): a policy is never hidden in silence — not
+/// by a name entry reaching into a partition, not behind a link, not in a folder named like OS
+/// noise, not in a declared partition an entry hides whole.
+#[test]
+fn a_policy_is_never_hidden_in_silence() {
+    let dir = scratch("hidden-policies");
+    write_sources(&dir);
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+    let policy = "permit(principal, action == Action::\"list\", resource);\n";
+
+    // The default list is anchored: a partition's own `tests/` folder is built.
+    std::fs::create_dir_all(dir.join("app/tests")).expect("a folder");
+    std::fs::write(dir.join("app/tests/listing.cedar"), policy).expect("written");
+    let valid = run(&dir, &["validate"]);
+    assert!(
+        valid.status.success(),
+        "{}{}",
+        stdout(&valid),
+        stderr(&valid)
+    );
+    assert!(stdout(&valid).contains("3 policies"), "{}", stdout(&valid));
+
+    // A name entry written the old way hides it, and is refused, naming the file and the entry.
+    std::fs::write(dir.join(".permguardignore"), "tests/\n").expect("written");
+    let refused = run(&dir, &["validate"]);
+    assert_eq!(refused.status.code(), Some(64), "{}", stdout(&refused));
+    let said = format!("{}{}", stdout(&refused), stderr(&refused));
+    assert!(
+        said.contains("app/tests/listing.cedar") && said.contains("`tests/`"),
+        "{said}"
+    );
+    std::fs::remove_dir_all(dir.join("app/tests")).expect("removed");
+    std::fs::write(dir.join(".permguardignore"), "").expect("written");
+
+    // A folder named like OS noise is an ordinary folder.
+    std::fs::create_dir_all(dir.join("app/desktop.ini")).expect("a folder");
+    std::fs::write(dir.join("app/desktop.ini/listing.cedar"), policy).expect("written");
+    let walked = run(&dir, &["validate"]);
+    assert!(
+        walked.status.success(),
+        "{}{}",
+        stdout(&walked),
+        stderr(&walked)
+    );
+    assert!(
+        stdout(&walked).contains("3 policies"),
+        "{}",
+        stdout(&walked)
+    );
+    std::fs::remove_dir_all(dir.join("app/desktop.ini")).expect("removed");
+
+    // A link is refused by name, and silent once excused; its target is never read.
+    #[cfg(unix)]
+    {
+        let outside = scratch("hidden-policies-target");
+        std::fs::write(outside.join("secret.cedar"), policy).expect("written");
+        std::os::unix::fs::symlink(outside.join("secret.cedar"), dir.join("app/linked.cedar"))
+            .expect("linked");
+        let refused = run(&dir, &["validate"]);
+        assert_eq!(refused.status.code(), Some(64), "{}", stdout(&refused));
+        let said = format!("{}{}", stdout(&refused), stderr(&refused));
+        assert!(
+            said.contains("app/linked.cedar") && said.contains("symbolic link"),
+            "{said}"
+        );
+        std::fs::write(dir.join(".permguardignore"), "app/linked.cedar\n").expect("written");
+        let excused = run(&dir, &["validate"]);
+        assert!(
+            excused.status.success(),
+            "{}{}",
+            stdout(&excused),
+            stderr(&excused)
+        );
+        assert!(
+            stdout(&excused).contains("2 policies"),
+            "{}",
+            stdout(&excused)
+        );
+        std::fs::remove_file(dir.join("app/linked.cedar")).expect("removed");
+    }
+
+    // A declared partition an entry hides whole is refused, naming both.
+    std::fs::write(dir.join(".permguardignore"), "/app/\n").expect("written");
+    let refused = run(&dir, &["validate"]);
+    assert_eq!(refused.status.code(), Some(64), "{}", stdout(&refused));
+    let said = format!("{}{}", stdout(&refused), stderr(&refused));
+    assert!(
+        said.contains("partition `app`") && said.contains("`/app/`"),
+        "{said}"
+    );
+}

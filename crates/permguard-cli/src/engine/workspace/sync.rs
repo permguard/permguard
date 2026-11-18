@@ -895,7 +895,7 @@ fn clear_tree(
         // What the operating system dropped goes with the folder: keeping a partition alive for
         // a `.DS_Store` would leave a folder the new manifest does not declare — dirt, by the
         // build's own rule, made by the checkout itself.
-        if !os_noise(&name) && super::build::ignored(ignores, &child, is_dir) {
+        if !(os_noise(&name) && !is_dir) && super::build::ignored(ignores, &child, is_dir) {
             kept = true;
             continue;
         }

@@ -23,6 +23,12 @@ pub trait Store: Send + Sync {
     /// Lists the entries of a directory: `(name, is_directory)`. An absent
     /// directory lists empty.
     fn list(&self, path: &str) -> Result<Vec<(String, bool)>, String>;
+    /// The names of the symbolic links directly in a directory, which [`Store::list`] leaves out
+    /// and nothing follows: so a caller can refuse one rather than lose it in silence. A store
+    /// with no links answers none.
+    fn links(&self, _path: &str) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
     /// Creates a file only if it does not exist — atomically, the primitive
     /// the lock is built on. `false` means someone else holds it.
     fn create_exclusive(&self, path: &str, bytes: &[u8]) -> Result<bool, String>;
@@ -223,6 +229,28 @@ impl Store for FsStore {
         }
         listed.sort();
         Ok(listed)
+    }
+
+    fn links(&self, path: &str) -> Result<Vec<String>, String> {
+        let resolved = self.resolve(path)?;
+        self.refuse_links(path)?;
+        let entries = match fs::read_dir(&resolved) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(format!("listing {path}: {error}")),
+        };
+        let mut links = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("listing {path}: {error}"))?;
+            let kind = entry
+                .file_type()
+                .map_err(|error| format!("listing {path}: {error}"))?;
+            if kind.is_symlink() {
+                links.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        links.sort();
+        Ok(links)
     }
 
     fn create_exclusive(&self, path: &str, bytes: &[u8]) -> Result<bool, String> {

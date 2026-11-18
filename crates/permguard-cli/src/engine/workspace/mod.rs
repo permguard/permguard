@@ -35,8 +35,9 @@ pub const DEFAULT_REF: &str = "main";
 /// list is a starting point the author edits, not a rule.
 pub const DEFAULT_IGNORES: &str = "\
 # What Permguard never reads, one per line, as .gitignore reads them: a name matches a file or
-# folder of that name at any depth, a path with a `/` is a prefix from the workspace root, and a
-# trailing `/` names a folder. Everything else that is not the manifest, a declared partition or
+# folder of that name at any depth, a path with a `/` in it, or starting with one, is anchored to
+# the workspace root and matches whole segments, and a trailing `/` names a folder. A name entry
+# that would hide a policy inside a partition is refused. Everything else that is not the manifest, a declared partition or
 # `.permguard/` is refused: a policy in a folder nobody compiles is a policy nobody enforces. What
 # an operating system drops on its own (.DS_Store, Thumbs.db, desktop.ini) is never read and
 # needs no line here.
@@ -45,8 +46,8 @@ pub const DEFAULT_IGNORES: &str = "\
 .gitattributes
 .github/
 README.md
-requests/
-tests/
+/requests/
+/tests/
 ";
 
 /// One policy of a snapshot, as plans and reports show it.

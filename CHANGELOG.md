@@ -25,6 +25,14 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A policy is never hidden in silence by `.permguardignore`, a link or a folder name.**
+  A path entry (one with a `/` in it, or starting with one) is anchored to the root and matches whole segments: `cedar/doc` no longer excuses `cedar/documents.cedar`.
+  `init` and `clone` write `/tests/` and `/requests/`, anchored, and a name entry that would hide a policy inside a declared partition (`tests/` hiding `cedar/tests/x.cedar`) is refused by `validate`, `plan` and `apply`, naming the file and the entry; a fresh clone's `apply` can no longer delete such a policy from the ledger.
+  An entry that hides a declared partition whole is refused, naming both.
+  A symbolic link in the workspace is refused by name unless `.permguardignore` excuses it; it is never followed or read either way.
+  Only a file named `.DS_Store`, `Thumbs.db` or `desktop.ini` is OS noise; a folder with such a name is walked like any other.
+  An existing workspace whose `.permguardignore` lists `tests/` or `requests/` keeps working until a partition holds a folder of that name; anchor the entries to be safe.
+
 - **A request naming a member twice is refused by `check` and `test` too.**
   The data plane already refused it; `permguard check -f` now exits 64 and `permguard test` fails the case, naming the path (`subject.properties.role`), instead of evaluating or sending the copy a JSON reader keeps, and the plane's refusal names the path as well.
 - **A manifest repeating a key under `runtimes:`, `partitions:` or `profiles:` is refused**, naming the key, instead of the second entry silently replacing the first.

@@ -205,6 +205,99 @@
   text-align: center;
 }
 
+/*
+  The overview's hero picture: the Control Plane hands signed policy to a PDP beside every workload,
+  identities come from your IdP, and every decision joins a signed chain that ends in your SIEM.
+  Inline SVG drawn with the page's tokens, so both themes follow; the motion is CSS only and stops
+  under reduced motion, leaving the whole diagram. A narrow box swaps to the vertical drawing, so
+  no label is ever scaled below reading size.
+*/
+.pgx-hero-visual {
+  container-type: inline-size;
+  width: 100%;
+  margin: 52px auto 0;
+  padding: 24px;
+  overflow: hidden;
+  border: 1px solid var(--pgx-line);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    var(--pgx-surface);
+}
+
+.pgx-hv { display: block; width: 100%; height: auto; overflow: visible; }
+.pgx-hv--compact { display: none; max-width: 420px; margin: 0 auto; }
+
+@container (max-width: 720px) {
+  .pgx-hv--wide { display: none; }
+  .pgx-hv--compact { display: block; }
+}
+
+.pgx-hv text { font-family: inherit; }
+.pgx-hv__k { fill: var(--pgx-brand); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.pgx-hv__s { fill: var(--pgx-ink); font-size: 15px; font-weight: 600; }
+.pgx-hv__m { fill: var(--pgx-muted); font-size: 12px; }
+.pgx-hv__p { fill: var(--pgx-ink); font-size: 12px; }
+.pgx-hv__d { fill: var(--pgx-brand); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+
+/* The vertical drawing is shown small: its labels start larger so a phone still reads them. */
+.pgx-hv--compact .pgx-hv__k { font-size: 12px; }
+.pgx-hv--compact .pgx-hv__s { font-size: 16px; }
+.pgx-hv--compact .pgx-hv__p,
+.pgx-hv--compact .pgx-hv__m { font-size: 14px; }
+.pgx-hv--compact .pgx-hv__d { font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .pgx-hero-visual { margin-top: 36px; padding: 10px; border-radius: 16px; }
+}
+
+.pgx-hv__node rect { fill: var(--pgx-bg); stroke: var(--pgx-line); }
+.pgx-hv__node--cp rect { stroke: var(--pgx-brand); animation: pgx-hv-glow 4s ease-in-out infinite; }
+.pgx-hv__frame { fill: none; stroke: var(--pgx-line); stroke-dasharray: 4 5; }
+.pgx-hv__pod { fill: var(--pgx-surface-strong); stroke: var(--pgx-line); }
+.pgx-hv__pdp { fill: rgb(204 52 223 / 0.12); stroke: var(--pgx-brand); animation: pgx-hv-glow 3s ease-in-out infinite; }
+.pgx-hv__pdp--2 { animation-delay: 0.5s; }
+.pgx-hv__pdp--3 { animation-delay: 1s; }
+.pgx-hv__pdp--4 { animation-delay: 1.5s; }
+.pgx-hv__pdp--5 { animation-delay: 2s; }
+.pgx-hv__pdp--6 { animation-delay: 2.5s; }
+
+.pgx-hv__flow {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 2 10;
+  animation: pgx-hv-flow 1.2s linear infinite;
+}
+.pgx-hv__flow--identity { stroke: var(--pgx-muted); }
+.pgx-hv__flow--evidence { stroke: var(--pgx-brand); opacity: 0.7; }
+
+.pgx-hv__link { fill: none; stroke: var(--pgx-line); stroke-width: 2; }
+.pgx-hv__block { fill: var(--pgx-bg); stroke: var(--pgx-line); animation: pgx-hv-block 6s linear infinite; }
+.pgx-hv__block--2 { animation-delay: 1s; }
+.pgx-hv__block--3 { animation-delay: 2s; }
+.pgx-hv__block--4 { animation-delay: 3s; }
+.pgx-hv__block--5 { animation-delay: 4s; }
+.pgx-hv__block--6 { animation-delay: 5s; }
+
+@keyframes pgx-hv-flow { to { stroke-dashoffset: -24; } }
+
+@keyframes pgx-hv-glow {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 8px rgb(217 70 239 / 0.55)); }
+}
+
+@keyframes pgx-hv-block {
+  0%, 16%, 100% { fill: var(--pgx-bg); stroke: var(--pgx-line); }
+  4%, 10% { fill: rgb(204 52 223 / 0.14); stroke: var(--pgx-brand); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pgx-hv * { animation: none !important; }
+}
+
 .pgx-kicker {
   color: var(--pgx-brand);
   font-size: 13px;

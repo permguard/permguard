@@ -140,6 +140,16 @@ pub(crate) fn build_snapshot(
             problems: &mut problems,
             one_policy_per_file,
         };
+        // A partition the manifest declares is compiled: an entry hiding it whole would publish
+        // an empty partition while its author believes their policies are enforced (BUG-0205).
+        if let Some(entry) = hiding_entry(&ignores, partition_name, true) {
+            context.problems.push(format!(
+                "the partition `{partition_name}` the manifest declares is hidden by the \
+                 `.permguardignore` entry `{entry}`: a declared partition is compiled, so remove \
+                 or anchor the entry, or rename the partition"
+            ));
+        }
+        refuse_links(&mut context, partition_name)?;
         let digest = build_directory(&mut context, partition_name, partition_name, 1)?;
         // Cardinality and requirement, from the registry rather than from a rule written here: an
         // author cannot redefine either, and a walker that decided them would be a second opinion
@@ -370,10 +380,29 @@ fn build_directory(
     for (name, is_dir) in context.store.list(fs_path).map_err(err)? {
         let child_fs = format!("{fs_path}/{name}");
         let child_logical = format!("{logical_path}/{name}");
-        if os_noise(&name) || ignored(context.ignores, &child_fs, is_dir) {
+        if !is_dir && os_noise(&name) {
+            continue;
+        }
+        if let Some(entry) = hiding_entry(context.ignores, &child_fs, is_dir) {
+            // A name entry reaches into every partition: one written for the folders beside the
+            // manifest (`tests/`) also hides `cedar/tests/<policy>`, which a fresh clone then
+            // never sees and its next `apply` deletes from the ledger. A path entry is the
+            // author's own choice of this place, and stands (BUG-0015, DEC-0002).
+            if name_entry(entry) {
+                for hidden in readable_under(context, &child_fs, is_dir)? {
+                    context.problems.push(format!(
+                        "`{hidden}` is a file of the partition `{}` and the `.permguardignore` \
+                         entry `{entry}` hides it: a hidden policy is one nobody enforces, so \
+                         anchor the entry to the root (`/{}`), move the file, or remove it",
+                        context.partition,
+                        entry.trim_start_matches('/')
+                    ));
+                }
+            }
             continue;
         }
         if is_dir {
+            refuse_links(context, &child_fs)?;
             let digest = build_directory(context, &child_logical, &child_fs, depth + 1)?;
             insert_entry(
                 &mut entries,
@@ -625,9 +654,66 @@ fn insert_entry(
 /// they sit in rather than keeping the folder alive for them.
 pub(crate) const OS_NOISE: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini"];
 
-/// Whether this is one of the files an operating system drops on its own.
+/// Whether this is the name of a file an operating system drops on its own. Only a **file** of
+/// that name is noise: a folder named `desktop.ini` is an ordinary folder, walked or refused like
+/// any other, never a place a policy disappears into (BUG-0048, DEC-0002).
 pub(crate) fn os_noise(name: &str) -> bool {
     OS_NOISE.contains(&name)
+}
+
+/// The refusal of a symbolic link: it is never followed or read, so what it points at is never
+/// published, and it is never dropped in silence either — the next `apply` would delete from the
+/// ledger the policy the author linked in (BUG-0030, DEC-0002).
+fn link_refusal(path: &str) -> String {
+    format!(
+        "`{path}` is a symbolic link, and links are not followed: put the file itself there, \
+         remove the link, or list it in `.permguardignore`"
+    )
+}
+
+/// Refuses every link directly under `path` that `.permguardignore` does not excuse.
+fn refuse_links(context: &mut PartitionContext<'_>, path: &str) -> Result<()> {
+    for name in context.store.links(path).map_err(err)? {
+        let child = format!("{path}/{name}");
+        if !ignored(context.ignores, &child, false) {
+            context.problems.push(link_refusal(&child));
+        }
+    }
+    Ok(())
+}
+
+/// The files under `path` (or `path` itself, a file) the partition would read: its policy files
+/// and the artifacts its language knows. What an ignore entry would hide from the build.
+fn readable_under(context: &PartitionContext<'_>, path: &str, is_dir: bool) -> Result<Vec<String>> {
+    let readable = |name: &str| {
+        let extension = name.rsplit('.').next().unwrap_or_default();
+        context.authoring.file_extensions().contains(&extension)
+            || permguard_languages::artifact::classify(context.plugin.artifacts(), name).is_some()
+    };
+    if !is_dir {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        return Ok(if readable(name) {
+            vec![path.to_owned()]
+        } else {
+            Vec::new()
+        });
+    }
+    let mut found = Vec::new();
+    for (name, child_is_dir) in context.store.list(path).map_err(err)? {
+        found.extend(readable_under(
+            context,
+            &format!("{path}/{name}"),
+            child_is_dir,
+        )?);
+    }
+    Ok(found)
+}
+
+/// Whether `entry` is a name entry, matching at any depth, rather than a path anchored to the
+/// workspace root.
+fn name_entry(entry: &str) -> bool {
+    let entry = entry.strip_suffix('/').unwrap_or(entry);
+    !entry.starts_with('/') && !entry.contains('/')
 }
 
 /// Whether `.permguardignore` excuses this path.
@@ -638,23 +724,36 @@ pub(crate) fn os_noise(name: &str) -> bool {
 /// partition than beside one; a path with a `/` in it is a prefix from the workspace root. A
 /// trailing `/` says the entry names a folder, never a file of that name.
 pub(crate) fn ignored(ignores: &[String], path: &str, is_dir: bool) -> bool {
+    hiding_entry(ignores, path, is_dir).is_some()
+}
+
+/// The first `.permguardignore` entry that excuses this path.
+///
+/// A path entry — one with a `/` inside it, or one starting with `/` — is anchored to the root and
+/// matches whole segments: the path itself and what is under it, never a longer name that merely
+/// starts alike (`cedar/doc` is not `cedar/documents.cedar`, BUG-0010, DEC-0002).
+pub(crate) fn hiding_entry<'a>(ignores: &'a [String], path: &str, is_dir: bool) -> Option<&'a str> {
     let segments: Vec<&str> = path.split('/').collect();
     let (last, ancestors) = segments.split_last().unwrap_or((&path, &[]));
-    ignores.iter().any(|entry| {
-        let (entry, folder_only) = match entry.strip_suffix('/') {
-            Some(folder) => (folder, true),
-            None => (entry.as_str(), false),
-        };
-        if entry.contains('/') {
-            if folder_only {
-                (path == entry && is_dir) || path.starts_with(&format!("{entry}/"))
+    ignores
+        .iter()
+        .find(|entry| {
+            let (entry, folder_only) = match entry.strip_suffix('/') {
+                Some(folder) => (folder, true),
+                None => (entry.as_str(), false),
+            };
+            let (entry, anchored) = match entry.strip_prefix('/') {
+                Some(rooted) => (rooted, true),
+                None => (entry, entry.contains('/')),
+            };
+            if anchored {
+                (path == entry && (!folder_only || is_dir))
+                    || path.starts_with(&format!("{entry}/"))
             } else {
-                path.starts_with(entry)
+                ancestors.contains(&entry) || (*last == entry && (!folder_only || is_dir))
             }
-        } else {
-            ancestors.contains(&entry) || (*last == entry && (!folder_only || is_dir))
-        }
-    })
+        })
+        .map(String::as_str)
 }
 
 /// The root entries that are not part of this workspace.
@@ -666,13 +765,19 @@ pub(crate) fn ignored(ignores: &[String], path: &str, is_dir: bool) -> bool {
 /// are named, because each is right somewhere: into a partition, away, or excused by name.
 fn root_dirt(store: &dyn Store, manifest: &Manifest, ignores: &[String]) -> Result<Vec<String>> {
     let mut dirt = Vec::new();
+    // A link is never followed, and never dropped in silence either (BUG-0030).
+    for name in store.links("").map_err(err)? {
+        if !ignored(ignores, &name, false) {
+            dirt.push(link_refusal(&name));
+        }
+    }
     for (name, is_dir) in store.list("").map_err(err)? {
         let known = name == ".permguard"
             || name == ".permguardignore"
             || name == super::manifest_file::MANIFEST_YML
             || name == super::manifest_file::MANIFEST_YAML
             || (is_dir && manifest.partitions.contains_key(&name));
-        if known || os_noise(&name) || ignored(ignores, &name, is_dir) {
+        if known || (!is_dir && os_noise(&name)) || ignored(ignores, &name, is_dir) {
             continue;
         }
         dirt.push(format!(
@@ -740,6 +845,29 @@ mod ignore_tests {
         assert!(ignored(&ignores, "README.md", false));
         assert!(!ignored(&ignores, "README.md.bak", false));
         assert!(!ignored(&ignores, "cedar/documents.cedar", false));
+    }
+
+    /// BUG-0010: a path entry matches whole segments, never a name that merely starts alike; a
+    /// leading `/` anchors an entry to the root.
+    #[test]
+    fn a_path_entry_matches_whole_segments_and_a_leading_slash_anchors() {
+        let ignores = entries(&["cedar/doc", "/tests/", "/notes.md"]);
+        assert!(ignored(&ignores, "cedar/doc", false));
+        assert!(ignored(&ignores, "cedar/doc", true));
+        assert!(ignored(&ignores, "cedar/doc/old.cedar", false));
+        assert!(!ignored(&ignores, "cedar/documents.cedar", false));
+        assert!(!ignored(&ignores, "cedar/document-owners.cedar", false));
+        assert!(ignored(&ignores, "tests", true));
+        assert!(ignored(&ignores, "tests/cases.yml", false));
+        assert!(
+            !ignored(&ignores, "cedar/tests", true),
+            "anchored to the root"
+        );
+        assert!(ignored(&ignores, "notes.md", false));
+        assert!(!ignored(&ignores, "cedar/notes.md", false));
+        assert!(!super::name_entry("/tests/"));
+        assert!(!super::name_entry("cedar/doc"));
+        assert!(super::name_entry("tests/"));
     }
 }
 

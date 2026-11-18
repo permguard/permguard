@@ -17,6 +17,125 @@ import { withBase } from 'vitepress'
     <div class="pgx-kicker">How it works</div>
     <h1>Authorization leaves the code.</h1>
     <p>Identity left your applications years ago. Authorization stayed inside them, different in every one. Permguard takes it out, gives it an owner and keeps every decision on record.</p>
+    <div class="pgx-hero-visual" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
+      <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 420" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="pgx-hv-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="186"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
+        </defs>
+        <g class="pgx-hv__flows">
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H349 V186"/>
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V186"/>
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H799 V186"/>
+          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M170 212 H200"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M295 270 V336"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M520 270 V336"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M745 270 V336"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M840 360 H870"/>
+        </g>
+        <g class="pgx-hv__node pgx-hv__node--cp">
+          <rect x="400" y="20" width="240" height="64" rx="14"/>
+          <text class="pgx-hv__k" x="520" y="46" text-anchor="middle">CONTROL PLANE</text>
+          <text class="pgx-hv__s" x="520" y="68" text-anchor="middle">versioned · signed policy</text>
+        </g>
+        <g class="pgx-hv__node">
+          <rect x="20" y="180" width="150" height="64" rx="14"/>
+          <text class="pgx-hv__k" x="95" y="206" text-anchor="middle">IDENTITY</text>
+          <text class="pgx-hv__s" x="95" y="228" text-anchor="middle">Your IdP</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="200" y="150" width="190" height="120" rx="16"/>
+          <text class="pgx-hv__m" x="216" y="172">cluster · eu-west</text>
+          <rect class="pgx-hv__pod" x="216" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="205" text-anchor="middle">orders · app</text>
+          <rect class="pgx-hv__pdp" x="324" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="205" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="216" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="245" text-anchor="middle">planner · agent</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="324" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="245" text-anchor="middle">PDP</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="425" y="150" width="190" height="120" rx="16"/>
+          <text class="pgx-hv__m" x="441" y="172">cluster · us-east</text>
+          <rect class="pgx-hv__pod" x="441" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="205" text-anchor="middle">billing · api</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="549" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="205" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="441" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="245" text-anchor="middle">support · agent</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="549" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="245" text-anchor="middle">PDP</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="650" y="150" width="190" height="120" rx="16"/>
+          <text class="pgx-hv__m" x="666" y="172">edge</text>
+          <rect class="pgx-hv__pod" x="666" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="205" text-anchor="middle">gateway</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="774" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="205" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="666" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="245" text-anchor="middle">worker · agent</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="774" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="245" text-anchor="middle">PDP</text>
+        </g>
+        <text class="pgx-hv__k" x="200" y="326">EVIDENCE · SIGNED · CHAINED</text>
+        <g class="pgx-hv__chain">
+          <path class="pgx-hv__link" d="M290 360 H310 M400 360 H420 M510 360 H530 M620 360 H640 M730 360 H750"/>
+          <rect class="pgx-hv__block pgx-hv__block--1" x="200" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="245" y="365" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--2" x="310" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="355" y="365" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--3" x="420" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="465" y="365" text-anchor="middle">deny</text>
+          <rect class="pgx-hv__block pgx-hv__block--4" x="530" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="575" y="365" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--5" x="640" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="685" y="365" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--6" x="750" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="795" y="365" text-anchor="middle">deny</text>
+        </g>
+        <g class="pgx-hv__node">
+          <rect x="870" y="328" width="150" height="64" rx="14"/>
+          <text class="pgx-hv__k" x="945" y="354" text-anchor="middle">EXPORT</text>
+          <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM</text>
+        </g>
+      </svg>
+      <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 600" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="pgx-hv-compact-flow" gradientUnits="userSpaceOnUse" x1="0" y1="74" x2="0" y2="332"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
+        </defs>
+        <g class="pgx-hv__flows">
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 74 V112"/>
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 204 V222"/>
+          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 314 V332"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 424 V458"/>
+          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 498 V530"/>
+        </g>
+        <g class="pgx-hv__node pgx-hv__node--cp">
+          <rect x="70" y="14" width="220" height="60" rx="14"/>
+          <text class="pgx-hv__k" x="180" y="38" text-anchor="middle">CONTROL PLANE</text>
+          <text class="pgx-hv__s" x="180" y="60" text-anchor="middle">versioned · signed policy</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="16" y="112" width="328" height="92" rx="16"/>
+          <text class="pgx-hv__m" x="32" y="134">cluster · eu-west</text>
+          <rect class="pgx-hv__pod" x="32" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="174" text-anchor="middle">orders</text>
+          <rect class="pgx-hv__pdp" x="134" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="174" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="186" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="174" text-anchor="middle">planner</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="288" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="174" text-anchor="middle">PDP</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="16" y="222" width="328" height="92" rx="16"/>
+          <text class="pgx-hv__m" x="32" y="244">cluster · us-east</text>
+          <rect class="pgx-hv__pod" x="32" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="284" text-anchor="middle">billing</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="134" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="284" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="186" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="284" text-anchor="middle">support</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="288" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="284" text-anchor="middle">PDP</text>
+        </g>
+        <g class="pgx-hv__cluster">
+          <rect class="pgx-hv__frame" x="16" y="332" width="328" height="92" rx="16"/>
+          <text class="pgx-hv__m" x="32" y="354">edge</text>
+          <rect class="pgx-hv__pod" x="32" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="394" text-anchor="middle">gateway</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="134" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="394" text-anchor="middle">PDP</text>
+          <rect class="pgx-hv__pod" x="186" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="394" text-anchor="middle">worker</text>
+          <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="288" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="394" text-anchor="middle">PDP</text>
+        </g>
+        <g class="pgx-hv__chain">
+          <path class="pgx-hv__link" d="M95 478 H109 M173 478 H187 M251 478 H265"/>
+          <rect class="pgx-hv__block pgx-hv__block--1" x="31" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="63" y="483" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--2" x="109" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="141" y="483" text-anchor="middle">permit</text>
+          <rect class="pgx-hv__block pgx-hv__block--3" x="187" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="219" y="483" text-anchor="middle">deny</text>
+          <rect class="pgx-hv__block pgx-hv__block--4" x="265" y="458" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="297" y="483" text-anchor="middle">permit</text>
+        </g>
+        <g class="pgx-hv__node">
+          <rect x="90" y="530" width="180" height="56" rx="14"/>
+          <text class="pgx-hv__k" x="180" y="552" text-anchor="middle">EXPORT</text>
+          <text class="pgx-hv__s" x="180" y="574" text-anchor="middle">Your SIEM</text>
+        </g>
+      </svg>
+    </div>
   </section>
 
   <section class="pgx-section">

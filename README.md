@@ -401,9 +401,10 @@ A workspace holds exactly four things: the manifest, the partition folders it de
 Anything else, such as a `.cedar` file beside the partitions, a `documents.cedr` inside one, or a folder nobody declared, is refused by every command until it is moved into a partition, removed, or listed in `.permguardignore`.
 A policy in a folder nobody compiles is a policy nobody enforces, and the author who put it there believes otherwise.
 
-`init` and `clone` write a `.permguardignore` for the usual neighbours (`README.md`, `requests/`, `tests/`, `.git/`).
-It reads like `.gitignore`: a name matches at any depth, a path with a `/` is a prefix from the root, and it is a starting point, not a rule.
-What an operating system drops on its own (`.DS_Store`, `Thumbs.db`, `desktop.ini`) is never read and needs no entry.
+`init` and `clone` write a `.permguardignore` for the usual neighbours (`README.md`, `/requests/`, `/tests/`, `.git/`).
+It reads like `.gitignore`: a name matches at any depth, a path with a `/` in it, or starting with one, is anchored to the root and matches whole segments, and it is a starting point, not a rule.
+A name entry that would hide a policy inside a declared partition, an entry that hides a declared partition whole, and a symbolic link nobody excused are refused by name: a link is never followed.
+What an operating system drops on its own, a file named `.DS_Store`, `Thumbs.db` or `desktop.ini`, is never read and needs no entry; a folder with such a name is an ordinary folder.
 `checkout` of another ledger refuses while the tree holds changes not applied to the one it tracks, and, on a clean tree, replaces the manifest and the partitions with the other ledger's, like `git checkout`, not like a merge.
 An empty ledger is an empty workspace: `init` gives it a shape again and keeps the binding.
 

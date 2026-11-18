@@ -17,21 +17,35 @@ description: Create, test, publish and evaluate a Permguard policy in a few minu
   <span>Create</span><i></i><span>Test</span><i></i><span>Publish</span><i></i><span>Decide</span>
 </div>
 
-You need the [Permguard CLI](./install), Rust 1.97 or newer, and [Task](https://taskfile.dev/).
+You need the [Permguard CLI](./install) and Docker.
 
 ## 1. Start Permguard
 
-From a clone of the repository, in terminal one:
+Run the all-in-one image from GHCR with the configuration of the same release.
+Use the release your CLI reports with `permguard version`.
 
 ```sh
-task run:all
+VERSION=0.1.33
+curl -fsSLo permguard.yml \
+  "https://raw.githubusercontent.com/permguard/permguard/v${VERSION}/crates/permguard-all-in-one/config.docker.yml"
+
+docker run -d --name permguard \
+  -p 5443:5443 -p 6443:6443 -p 7443:7443 -p 8443:8443 \
+  -v "$PWD/permguard.yml:/etc/permguard/config.yml:ro" \
+  ghcr.io/permguard/permguard/all-in-one:${VERSION}
 ```
 
-This starts one Server with the Host on `:5443`, Control Plane on `:6443` and Data Plane on `:7443`.
+This starts one Server with the Host on `:5443`, the Authority Plane on `:8443`, the Control Plane on `:6443` and the Data Plane on `:7443`.
+Every plane reports `serving` when it is ready:
+
+```sh
+curl -s http://127.0.0.1:5443/.well-known/server-configuration | jq '.planes | map_values(.state)'
+```
+
+The configuration runs under the `development` profile, with the public grants this quickstart needs: never expose it.
+The same image is on Docker Hub as `permguard/all-in-one`; see [Containers](./container-images).
 
 ## 2. Create a workspace
-
-In terminal two:
 
 ```sh
 mkdir -p /tmp/permguard-quickstart
@@ -74,7 +88,7 @@ cat > /tmp/permguard-quickstart/tests/quickstart.yml <<'YAML'
   expect: { decision: permit, policies: [alice-can-read] }
 YAML
 
-printf 'requests/\ntests/\n' >> /tmp/permguard-quickstart/.permguardignore
+printf '/requests/\n/tests/\n' >> /tmp/permguard-quickstart/.permguardignore
 ```
 
 ## 3. Prove it locally
@@ -121,6 +135,10 @@ curl -sS -X POST http://127.0.0.1:7443/access/v1/evaluation \
 ```
 
 <div class="pgx-outcome"><span>permit</span><p>The answer names the policy version and carries a decision identity that can be joined to its evidence.</p></div>
+
+The Data Plane mirrors the new head within seconds: if `check` answers before the ledger has arrived, run it again.
+
+When you are done, `docker rm -f -v permguard` removes the server and its data.
 
 This quickstart uses the remote HTTP PDP to make the wire contract visible. Production placement is not constrained to a network service: the same decision capability can run embedded, as a sidecar or behind a remote API.
 

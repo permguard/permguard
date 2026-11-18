@@ -1,6 +1,7 @@
 # What Permguard never reads, as .gitignore reads them: a name matches at any depth, a path with a `/`
-# is a prefix from the workspace root. Everything else beside the manifest and the partitions is refused.
+# in it, or starting with one, is anchored to the workspace root. Everything else beside the manifest and
+# the partitions is refused.
 README.md
-requests/
-tests/
+/requests/
+/tests/
 release-pipeline.md

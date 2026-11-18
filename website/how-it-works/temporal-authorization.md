@@ -72,9 +72,19 @@ Pin `until` when a reader needs a fixed snapshot. `high_watermark` says how far 
 
 ## Run the experimental path
 
+Dogwood and the event stores are off in an ordinary server.
+Start the all-in-one image as in [Getting Started](./getting-started), with both turned on:
+
 ```sh
-task run:experimental
+docker run -d --name permguard \
+  -p 5443:5443 -p 6443:6443 -p 7443:7443 -p 8443:8443 \
+  -e PERMGUARD_EXPERIMENTAL_DOGWOOD_ENABLED=true \
+  -e PERMGUARD_EVENTS_ENABLED=true \
+  -v "$PWD/permguard.yml:/etc/permguard/config.yml:ro" \
+  ghcr.io/permguard/permguard/all-in-one:${VERSION}
 ```
+
+The Data Plane then advertises `permguard.api.pdp.temporal.v1alpha1` beside the native interface.
 
 The example in `examples/dogwood-session-access` shows login history controlling later document access.
 
