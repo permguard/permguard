@@ -1592,6 +1592,58 @@ fn a_denial_reads_the_same_over_https_and_grpcs() {
             "{command:?}"
         );
     }
+    // A workspace command reads the same denial the same way (BUG-0087): its own remote client
+    // no longer reports it as `validation`/`usage`, nor prints a `(class/code)` suffix.
+    let workspace = dir.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let init = cli(
+        &dir,
+        &[
+            "-w",
+            workspace.to_str().unwrap(),
+            "init",
+            "denied-workspace",
+        ],
+    );
+    assert!(init.status.success(), "{init:?}");
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let output = cli(
+            &dir,
+            &[
+                "-w",
+                workspace.to_str().unwrap(),
+                "-o",
+                "json",
+                "--tls-ca-file",
+                pki.authority.to_str().unwrap(),
+                "--token-file",
+                token.to_str().unwrap(),
+                "remote",
+                "add",
+                &format!("r{scheme}"),
+                &endpoint,
+            ],
+        );
+        let failure: Value = serde_json::from_slice(&output.stderr)
+            .unwrap_or_else(|_| panic!("remote add {scheme}: {output:?}"));
+        assert_eq!(
+            (
+                output.status.code(),
+                failure["class"].clone(),
+                failure["code"].clone()
+            ),
+            (Some(64), Value::Null, Value::from("unauthenticated")),
+            "remote add {scheme}: {failure}"
+        );
+        assert!(
+            !failure["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("(/"),
+            "{failure}"
+        );
+    }
 }
 
 /// TC-1: the token and the client key from the configuration: `auth.token_file` relative to the

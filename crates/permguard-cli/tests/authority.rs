@@ -461,6 +461,14 @@ fn the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_
         );
         let kept_in = PathBuf::from(kept["kept_in"].as_str().expect("where it is kept"));
         assert!(kept_in.is_file(), "{scheme}: {kept}");
+        // Beside the configuration file the command reads, `PERMGUARD_CONFIG` here, not under the
+        // home directory's own (BUG-0338).
+        assert_eq!(
+            kept_in.parent(),
+            Some(dir.join("tokens").as_path()),
+            "{kept}"
+        );
+        assert!(!dir.join(".permguard").join("tokens").exists(), "{scheme}");
         let kept_jti = kept["jti"].as_str().expect("a jti").to_owned();
 
         // Its own bearer revokes it, without `tokens.revoke`, and it is kept no more.

@@ -615,7 +615,8 @@ fn a_pull_undoes_what_the_plane_compressed() {
 #[test]
 fn a_status_becomes_the_same_refusal_vocabulary_http_produces() {
     let (url, _) = serve();
-    let error = remote(&url)
+    let remote = remote(&url);
+    let error = remote
         .commit_push(&CommitPushRequest {
             r#ref: "main".into(),
             new_head: Digest::compute(b"new"),
@@ -628,13 +629,14 @@ fn a_status_becomes_the_same_refusal_vocabulary_http_produces() {
         })
         .expect_err("the plane aborts the commit");
 
-    // The sentence, then the class and the stable code in parentheses —
-    // exactly the shape the HTTP binding produces. That symmetry is the point
-    // of the test: a caller that has to tell "no such ref" from "this failed"
-    // reads the code, and a transport that spelled refusals its own way would
-    // make every such caller wrong on one of the two.
+    // The sentence, and beside it the class and the stable code — exactly what
+    // the HTTP binding keeps. That symmetry is the point of the test: a caller
+    // that has to tell "no such ref" from "this failed" reads the code, and a
+    // transport that spelled refusals its own way would make every such caller
+    // wrong on one of the two (BUG-0087).
     assert!(error.contains("the ref moved"), "{error}");
-    assert!(error.contains("(conflict/"), "{error}");
+    let failure = remote.take_failure().expect("the refusal is kept");
+    assert_eq!(failure.class, "conflict", "{error}");
 }
 
 #[test]

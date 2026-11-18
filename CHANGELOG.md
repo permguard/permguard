@@ -45,6 +45,12 @@ is cut.
 
 ### Fixed
 
+- **Workspace commands report a plane's answer as every other command does.**
+  `pull`, `verify`, `clone`, `checkout`, `apply` and `remote add` turned every remote failure into `validation`/`usage`, exit 64: an unreachable plane now exits 69 with class `unavailable`, a denial at the gate carries its code (`unauthenticated`, `forbidden`) and no class, and a plane's refusal its own class and code, over REST and gRPC alike; messages no longer carry a `(class/code)` suffix.
+- **`--tls-skip-verify` is refused over `grpcs://` only.**
+  A plain `grpc://` endpoint has no certificate to verify, and the flag is accepted there as over `http://`.
+- **The client's token is cached beside the configuration file the command reads.**
+  `tokens/` next to the file `--config` or `PERMGUARD_CONFIG` names, `~/.permguard/tokens/` with the default one, so a command run with another configuration keeps nothing under the home directory.
 - **A client certificate with more than one Common Name is matched by no `cn:` entry.**
   The allow list read the first Common Name only, so `CN=local-operator, CN=intruder` passed where `CN=intruder, CN=local-operator` did not; such a certificate is now named by its `dn:` or `sha256:` alone.
 - **A listener that declares its own TLS terminator admits bearer tokens.**

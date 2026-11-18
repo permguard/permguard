@@ -165,7 +165,9 @@ impl GrpcChannel {
             return Err("a gRPC endpoint is a host and a port only — no path".to_owned());
         }
         tls.token_allowed(secure)?;
-        if tls.skip_verify {
+        // Only over grpcs: a plain `grpc://` endpoint has no certificate to verify, and the flag
+        // means nothing there, as over `http://` (BUG-0331).
+        if secure && tls.skip_verify {
             // tonic verifies or refuses; there is no insecure TLS mode, and
             // pretending otherwise would be worse than saying so.
             return Err(
@@ -1908,6 +1910,27 @@ mod request_tests {
 
     use super::*;
     use serde_json::json;
+
+    /// BUG-0331: skipping verification means nothing over plain `grpc://`, which has no
+    /// certificate, and is accepted there as over `http://`; over `grpcs://` it stays refused.
+    #[test]
+    fn skip_verify_is_refused_over_grpcs_only() {
+        let tls = TlsOptions {
+            skip_verify: true,
+            ..TlsOptions::default()
+        };
+        let plain =
+            GrpcChannel::connect("grpc://127.0.0.1:1", &tls, Box::new(crate::narrate::Silent));
+        assert!(plain.is_ok(), "{:?}", plain.err());
+        let refused = GrpcChannel::connect(
+            "grpcs://127.0.0.1:1",
+            &tls,
+            Box::new(crate::narrate::Silent),
+        )
+        .err()
+        .expect("refused over grpcs");
+        assert!(refused.contains("not supported over grpcs"), "{refused}");
+    }
 
     fn payload(extra: serde_json::Value) -> serde_json::Value {
         let mut body = json!({

@@ -464,6 +464,20 @@ fn remote_name_valid(name: &str) -> Result<(), Failure> {
     }
 }
 
+/// What a command that talked to `remote` failed with: when the remote met a failure, its class,
+/// its code and its exit, the engine's sentence kept, as every other command reports a plane's
+/// answer (`Failure::from_client`); otherwise the engine's own refusal, the caller's to fix
+/// (BUG-0002, BUG-0087).
+fn remote_failed(remote: &AnyRemote, error: impl std::fmt::Display) -> Failure {
+    match remote.take_failure() {
+        Some(failure) => Failure {
+            message: error.to_string(),
+            ..Failure::from_client(&failure)
+        },
+        None => Failure::usage(error),
+    }
+}
+
 fn lock_holder() -> String {
     format!(
         "pid {} since {}",
@@ -697,7 +711,9 @@ pub fn workspace_command(
                 // Verified before it is remembered: the discovery document
                 // is the proof the URL is a Permguard plane.
                 let remote = connect(&url)?;
-                remote.verify_discovery().map_err(usage)?;
+                remote
+                    .verify_discovery()
+                    .map_err(|error| remote_failed(&remote, error))?;
                 config.remotes.insert(
                     name.clone(),
                     crate::engine::workspace::config::RemoteConfig {
@@ -765,7 +781,7 @@ pub fn workspace_command(
             let remote = connect(&base)?;
             let pulled =
                 crate::engine::workspace::clone::clone(&target, &base, &zone, &ledger, &remote)
-                    .map_err(usage)?;
+                    .map_err(|error| remote_failed(&remote, error))?;
             render(
                 &PullReport {
                     action: "clone",
@@ -796,7 +812,7 @@ pub fn workspace_command(
             let remote = connect(&url)?;
             let pulled = ws
                 .checkout(&remote, &remote_name, &zone, &ledger, &r#ref)
-                .map_err(usage)?;
+                .map_err(|error| remote_failed(&remote, error))?;
             // The resolved URL is remembered under the name, so the next command finds it, once
             // the checkout succeeded: a failed one leaves the configuration as it was (BUG-0111).
             if !remembered {
@@ -828,7 +844,9 @@ pub fn workspace_command(
         }
         WorkspaceOp::Pull { resolved } => {
             let remote = tracked_remote(trace)?;
-            let pulled = ws.pull(&remote, resolved).map_err(usage)?;
+            let pulled = ws
+                .pull(&remote, resolved)
+                .map_err(|error| remote_failed(&remote, error))?;
             render(
                 &PullReport {
                     action: "pull",
@@ -882,19 +900,21 @@ pub fn workspace_command(
             let mut changes = plan_lines(&plan.actions);
             changes.extend(shape_lines(&plan));
             let applied = ws.apply(&remote, &author, &message).map_err(|error| {
+                let failed = remote_failed(&remote, &error);
                 // The compare-and-swap lost: somebody applied first. The way
                 // out is always the same, so say it here, once.
-                if error
-                    .message
-                    .contains(permguard_core::codes::notp::REF_CONFLICT)
+                if failed.code == permguard_core::codes::notp::REF_CONFLICT
                     || error.message.contains("ref moved")
                 {
-                    Failure::usage(format!(
-                        "{error}. Someone applied before you: run `permguard pull`, \
-                         review, and apply again"
-                    ))
+                    Failure {
+                        message: format!(
+                            "{error}. Someone applied before you: run `permguard pull`, \
+                             review, and apply again"
+                        ),
+                        ..failed
+                    }
                 } else {
-                    usage(error)
+                    failed
                 }
             })?;
             render(
@@ -1210,7 +1230,7 @@ pub fn workspace_command(
                     // Ran and did not pass: exit 2 (TC-1, owner decision of 2026-10-10).
                     Failure::not_passed(error, permguard_core::codes::client::HEAD_UNVERIFIED)
                 } else {
-                    usage(error)
+                    remote_failed(&remote, error)
                 }
             })?;
             render(

@@ -4,7 +4,8 @@
 //! The command line as a service account (`2-security/7` The client): its access key and secret
 //! key, from the flags or the configuration, obtain a token at the Authority Plane's token
 //! endpoint; every command that reaches a Plane or a Host API sends it when no `--token-file` is
-//! given. The token is kept under `~/.permguard/tokens/`, in a file only its owner reads, keyed by
+//! given. The token is kept in `tokens/` beside the configuration file the command reads,
+//! `~/.permguard/tokens/` by default, in a file only its owner reads, keyed by
 //! the access key, whether flagged, configured or named by the key file, its secret key, the
 //! Authority Plane and what it asked for, and reused until a minute before it expires. Nothing here traces a secret or a token: the trace names the access key and the expiry.
 
@@ -149,7 +150,7 @@ fn source(
         "the access key {access_key} obtains its tokens at {endpoint}"
     ));
     let scope = scope(store);
-    let cache = cache_path(&access_key, &secret, &endpoint, scope.as_deref());
+    let cache = cache_path(store, &access_key, &secret, &endpoint, scope.as_deref());
     TokenSource::new(&endpoint, &access_key, secret, scope, tls)
         .map(|source| Some((source, cache)))
         .map_err(|failure| Failure::from_client(&failure))
@@ -220,6 +221,7 @@ pub fn client_cache(globals: &Globals, store: &Store) -> Result<Option<PathBuf>,
         )
     })?;
     Ok(cache_path(
+        store,
         &access_key,
         &secret,
         &endpoint,
@@ -247,15 +249,18 @@ fn cache_name(access_key: &str, secret: &str, endpoint: &str, scope: Option<&str
         .collect()
 }
 
-/// Where the token for this client is kept: none without a home directory.
+/// Where the token for this client is kept: in `tokens/` beside the configuration file the
+/// command reads, so `--config` and `PERMGUARD_CONFIG` move the cache with it; with the default
+/// file, `~/.permguard/tokens/` (BUG-0338).
 fn cache_path(
+    store: &Store,
     access_key: &str,
     secret: &str,
     endpoint: &str,
     scope: Option<&str>,
 ) -> Option<PathBuf> {
-    let home = crate::settings::home_directory().ok()?;
-    Some(home.join(".permguard").join("tokens").join(format!(
+    let folder = store.path().parent()?;
+    Some(folder.join("tokens").join(format!(
         "{}.json",
         cache_name(access_key, secret, endpoint, scope)
     )))

@@ -50,7 +50,7 @@ permguard authority tokens list --account billing
 permguard authority tokens revoke <jti>
 ```
 
-The command line keeps its client's token under `~/.permguard/tokens/` until a minute before it expires.
+The command line keeps its client's token in `tokens/` beside the configuration file it reads, `~/.permguard/tokens/` by default and next to the file `--config` or `PERMGUARD_CONFIG` names otherwise, until a minute before it expires.
 A token's bearer may always revoke its own, without `tokens.revoke`:
 
 ```sh

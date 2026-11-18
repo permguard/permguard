@@ -37,7 +37,9 @@ pub fn inspect_command(
     let tls = crate::target::tls(globals, &store, trace)?;
     // gRPC verifies or refuses: skipping verification over grpcs is a usage error, said here
     // rather than reported as a plane that could not be reached.
-    if tls.skip_verify && (control.is_grpc() || data.is_grpc()) {
+    // Over `grpcs://` only: a plain `grpc://` plane has no certificate to verify (BUG-0331).
+    let grpcs = |endpoint: &permguard_client::Endpoint| endpoint.is_grpc() && endpoint.is_tls();
+    if tls.skip_verify && (grpcs(&control) || grpcs(&data)) {
         return Err(Failure::usage(
             "--tls-skip-verify is not supported over grpcs: trust the CA with --tls-ca-file",
         ));

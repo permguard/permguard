@@ -421,7 +421,8 @@ fn a_refusal_carries_the_servers_own_words() {
     );
     let stub = serve(routes);
 
-    let error = connected(&stub)
+    let remote = connected(&stub);
+    let error = remote
         .commit_push(&CommitPushRequest {
             r#ref: "main".into(),
             new_head: Digest::compute(b"new"),
@@ -434,7 +435,13 @@ fn a_refusal_carries_the_servers_own_words() {
         })
         .expect_err("a conflict is a refusal");
     assert!(error.contains("the ref moved"), "{error}");
-    assert!(error.contains("ref_conflict"), "{error}");
+    // The class and the code travel beside the sentence, never inside it (BUG-0087).
+    assert!(!error.contains("ref_conflict"), "{error}");
+    let failure = remote.take_failure().expect("the refusal is kept");
+    assert_eq!(
+        (failure.class.as_str(), failure.reason.as_str()),
+        ("conflict", "ref_conflict")
+    );
 }
 
 #[test]

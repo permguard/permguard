@@ -582,14 +582,35 @@ fn an_unreachable_server_is_an_error_not_a_hang_or_a_panic() {
     write_sources(&dir);
     assert!(run(&dir, &["init", "cli-test"]).status.success());
 
-    // Nothing listens on this port; the refusal must be clean on both transports.
-    let http = run(&dir, &["remote", "add", "origin", "http://127.0.0.1:1"]);
-    assert_eq!(http.status.code(), Some(64), "{}", stderr(&http));
-    assert!(!stderr(&http).contains("panicked"));
-
-    let grpc = run(&dir, &["remote", "add", "origin", "grpc://127.0.0.1:1"]);
-    assert_eq!(grpc.status.code(), Some(64), "{}", stderr(&grpc));
-    assert!(!stderr(&grpc).contains("panicked"));
+    // Nothing listens on this port; the refusal must be clean on both transports, and it is the
+    // world's, not the caller's: exit 69, class `unavailable`, as every other command says a plane
+    // it cannot reach (BUG-0002).
+    for url in ["http://127.0.0.1:1", "grpc://127.0.0.1:1"] {
+        for asked in [
+            vec!["remote", "add", "origin", url],
+            vec!["clone", &format!("{url}/acme/main"), "unreachable-clone"],
+        ] {
+            let asked: Vec<&str> = asked.iter().map(|word| word.as_ref()).collect();
+            let output = run(&dir, &[&["-o", "json"][..], &asked].concat());
+            assert_eq!(
+                output.status.code(),
+                Some(69),
+                "{asked:?}: {}",
+                stderr(&output)
+            );
+            let said = stderr(&output);
+            assert!(!said.contains("panicked"), "{said}");
+            let refused: serde_json::Value =
+                serde_json::from_str(said.trim()).unwrap_or_else(|_| panic!("JSON: {said}"));
+            assert_eq!(refused["class"], "unavailable", "{asked:?}: {refused}");
+            assert!(
+                !refused["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("(unavailable/")
+            );
+        }
+    }
 }
 
 #[test]

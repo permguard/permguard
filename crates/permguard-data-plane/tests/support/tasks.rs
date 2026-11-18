@@ -220,12 +220,13 @@ fn answer(
     )
     .map_err(failed)?;
     remote.bind(&request.zone, &request.ledger);
-    let not_found = |error: String| {
-        if error.contains("not_found") {
+    // Told by the class the remote met, not by the wording of its sentence: the coordinator's
+    // provider answers a ledger with no history `not_found`.
+    let not_found = |error: String| match remote.take_failure() {
+        Some(failure) if failure.class == "not_found" => {
             refused(permguard_core::codes::common::NOT_FOUND, error)
-        } else {
-            failed(error)
         }
+        _ => failed(error),
     };
     match request.operation {
         MirrorOperation::KeyRing => remote.keyring().map_err(failed),
