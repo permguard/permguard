@@ -1811,3 +1811,171 @@ fn retention_waits_for_the_acknowledged_seal_of_an_exported_trail() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// The `audit verify` report of the volume at `root`, with the keys the volume holds.
+fn verified(root: &std::path::Path) -> verify::Report {
+    verify::verify_directory(root, None, None).expect("verified")
+}
+
+/// BUG-0156: a trail removed whole, its sealed days, checkpoints and `META.cbor` with it, passed
+/// verification where removing one of its days failed, and the Host recreated it at seq 0 without
+/// a word.
+#[test]
+fn a_trail_deleted_whole_fails_verification_and_the_next_start_records_its_loss() {
+    let root = scratch("deleted-whole");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, Arc::clone(&time));
+    zone(&engine, "a");
+    start(&engine);
+    wall.jump(DAY);
+    zone(&engine, "b");
+    drop(engine);
+    let before = verified(&root);
+    assert!(before.sound(), "{}", before.render());
+    assert!(before.warnings.is_empty(), "{}", before.render());
+
+    let dir =
+        trail::directory(&trails_of(&volume), Class::Security, CONTROL, false).expect("trail");
+    std::fs::remove_dir_all(dir.path()).expect("removed");
+    let after = verified(&root);
+    assert!(!after.sound(), "{}", after.render());
+    assert!(
+        after.render().contains("deleted whole"),
+        "{}",
+        after.render()
+    );
+
+    // The next start says so in the Host's own security trail.
+    let reopened = open_engine(&volume, Arc::clone(&time));
+    let host =
+        trail::directory(&trails_of(&volume), Class::Security, HOST, false).expect("security:host");
+    let records = trail::read_day(&host, &trail::day_name((START + DAY) as u64)).expect("read");
+    assert!(
+        records
+            .iter()
+            .any(|record| record.action == AUDIT_TRAIL_LOST
+                && record.target.as_deref() == Some("security:plane/control")),
+        "{records:?}"
+    );
+    // The trail recreated at seq 0 does not bring back what was deleted.
+    zone(&reopened, "c");
+    drop(reopened);
+    let recreated = verified(&root);
+    assert!(!recreated.sound(), "{}", recreated.render());
+    assert!(
+        recreated
+            .render()
+            .contains("a Host found this trail deleted whole"),
+        "{}",
+        recreated.render()
+    );
+    // Found once: a later start records nothing more.
+    drop(open_engine(&volume, Arc::clone(&time)));
+    let again = trail::read_day(&host, &trail::day_name((START + DAY) as u64)).expect("read");
+    assert_eq!(
+        again
+            .iter()
+            .filter(|record| record.action == AUDIT_TRAIL_LOST)
+            .count(),
+        1
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// BUG-0156: the provisioning of a Host identity is the first record of `security:host`, so a
+/// volume with an identity and without that trail lost it; a volume with no index is said to have
+/// none.
+#[test]
+fn a_host_identity_without_its_security_trail_fails_verification() {
+    let root = scratch("identity-no-trail");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let (engine, _ring) = sealing(&volume, Arc::clone(&time));
+    start(&engine);
+    drop(engine);
+    let identity = volume
+        .host()
+        .subdir(crate::identity::DIRECTORY, true)
+        .expect("identity");
+    std::fs::write(identity.child_path(crate::identity::INIT), b"init").expect("written");
+    std::fs::remove_dir_all(
+        volume
+            .host()
+            .subdir(DIRECTORY, false)
+            .and_then(|dir| dir.subdir(index::DIRECTORY, false))
+            .expect("the index")
+            .path(),
+    )
+    .expect("removed");
+    let report = verified(&root);
+    assert!(!report.sound(), "{}", report.render());
+    let rendered = report.render();
+    assert!(rendered.contains("holds a Host identity"), "{rendered}");
+    assert!(
+        rendered.contains("keeps no index of its trails"),
+        "{rendered}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// BUG-0078: a `META.cbor` really missing is said to be missing, not undecodable.
+#[test]
+fn a_missing_meta_is_reported_missing() {
+    let root = scratch("meta-missing");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let engine = open_engine(&volume, time);
+    zone(&engine, "a");
+    let dir =
+        trail::directory(&trails_of(&volume), Class::Security, CONTROL, false).expect("trail");
+    std::fs::remove_file(dir.child_path(trail::META)).expect("removed");
+    let error = engine.trails_held().expect_err("refused").to_string();
+    assert!(error.contains("META.cbor is missing"), "{error}");
+    assert!(!error.contains("CBOR:"), "{error}");
+    drop(engine);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// BUG-0107: after an identity reset the checkpoints sealed before it are signed by the retired
+/// ring's keys, which a verification with the volume's keys reads too, saying which ring signed.
+#[test]
+fn the_volume_keys_include_the_rings_an_identity_reset_retired() {
+    let root = scratch("retired-ring");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, ring) = sealing(&volume, Arc::clone(&time));
+    zone(&engine, "a");
+    wall.jump(DAY);
+    zone(&engine, "b");
+    drop(engine);
+    drop(ring);
+    // What a reset does to the ring: it moves under `retired/<old host id>/`.
+    let keys = volume
+        .host()
+        .subdir(crate::keys::ring::DIRECTORY, false)
+        .expect("keys");
+    let retired = keys
+        .path()
+        .join(crate::keys::ring::RETIRED)
+        .join("old-host");
+    std::fs::create_dir_all(&retired).expect("retired");
+    std::fs::rename(
+        keys.path().join(crate::keys::ring::HOST_OPERATIONS),
+        retired.join(crate::keys::ring::HOST_OPERATIONS),
+    )
+    .expect("moved");
+    let (engine, _ring) = sealing(&volume, Arc::clone(&time));
+    wall.jump(DAY);
+    zone(&engine, "c");
+    drop(engine);
+    let report = verified(&root);
+    assert!(report.sound(), "{}", report.render());
+    let rendered = report.render();
+    assert!(
+        rendered.contains("(the ring retired with host old-host)"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("(this Host's ring)"), "{rendered}");
+    let _ = std::fs::remove_dir_all(root);
+}

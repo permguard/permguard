@@ -14,10 +14,14 @@
 //! | anchor      | a checkpoint it names that the trail lacks or that is not the seal of `through`    |
 //! | coverage    | an ended day left unsealed, a sealed day whose file is gone                       |
 //! | held        | a checkpoint kept outside the volume that the trail no longer leads to and from    |
+//! | whole       | a trail the volume's index names and the volume lacks, one a Host found deleted    |
+//! |             | whole, a `security:host` trail missing beside a Host identity (BUG-0156)          |
 //!
 //! The keys are the `host.operations` public keys kept apart from the volume (`--keys`, the
-//! output of `keys export`); without them the keys the volume publishes are used, and the report
-//! says it is not independent. A checkpoint signed by a key revoked since stands, as a warning,
+//! output of `keys export`); without them the keys the volume holds are used, its own ring and
+//! every ring an identity reset retired, and the report says it is not independent and which ring
+//! signed each trail's checkpoints (BUG-0107). Keys kept apart from before a reset must include
+//! the retired ring's: `keys export --directory host/keys/retired/<host_id>/host.operations`. A checkpoint signed by a key revoked since stands, as a warning,
 //! when a later checkpoint by a key that is not revoked chains over it (owner decision of
 //! 2026-10-11, after the review). Every day before a trail's last day file has ended, and the
 //! Host seals it before it writes the next one, so one left unsealed fails; only the last day is
@@ -70,6 +74,9 @@ pub struct TrailReport {
     pub problems: Vec<String>,
     /// Problems beyond [`MAX_PROBLEMS`], counted.
     pub more_problems: usize,
+    /// The keys that signed the checkpoints verified, each once, with the ring it came from when
+    /// the volume's keys were read: this Host's, or one an identity reset retired (BUG-0107).
+    pub signed_by: Vec<String>,
 }
 
 impl TrailReport {
@@ -96,6 +103,9 @@ pub struct Report {
     pub trails: Vec<TrailReport>,
     /// The legacy JSON-lines chain, when the directory or the volume holds one (WP-3.8).
     pub legacy: Option<LegacyReport>,
+    /// What concerns the volume rather than one trail: a volume that keeps no index of its trails
+    /// (BUG-0156).
+    pub warnings: Vec<String>,
 }
 
 /// What verifying the legacy JSON-lines chain found.
@@ -165,6 +175,9 @@ impl Report {
                  kept apart"
             }
         );
+        for warning in &self.warnings {
+            let _ = writeln!(out, "! {warning}");
+        }
         for trail in &self.trails {
             let range = match (trail.first_seq, trail.last_seq) {
                 (Some(first), Some(last)) => format!("records {first}..={last}"),
@@ -202,6 +215,9 @@ impl Report {
                     .map(|held| format!(", verified from the checkpoint held: {held}"))
                     .unwrap_or_default()
             );
+            if !trail.signed_by.is_empty() {
+                let _ = writeln!(out, "  signed by: {}", trail.signed_by.join(", "));
+            }
             if trail.witnessed > 0 {
                 let _ = writeln!(
                     out,
@@ -283,6 +299,7 @@ pub fn verify_directory(
         return Ok(Report {
             independent,
             trails: Vec::new(),
+            warnings: Vec::new(),
             legacy: Some(LegacyReport {
                 directory: directory.display().to_string(),
                 outcome: super::jsonl::verify(directory, Some(&keys)),
@@ -306,6 +323,7 @@ pub fn verify_directory(
     };
     let dir = Dir::open(&trails).map_err(|error| error.to_string())?;
     let mut reports = verify_trails(&dir, &keys).map_err(|error| error.to_string())?;
+    let warnings = whole_trails(&host, &mut reports);
     // The legacy chain the volume migrated, beside its trails.
     let migrated = host.join(DIRECTORY).join(super::jsonl::DIRECTORY);
     let legacy = super::jsonl::holds_chain(&migrated).then(|| LegacyReport {
@@ -355,7 +373,92 @@ pub fn verify_directory(
         independent,
         trails: reports,
         legacy,
+        warnings,
     })
+}
+
+/// Adds to `reports` what the trails present cannot say about themselves (BUG-0156): a trail the
+/// index of the volume whose `host/` directory is `host` names and the volume no longer holds, a
+/// trail a Host found deleted whole, and a `security:host` trail missing from a volume with a Host
+/// identity. Answers the warnings about the volume itself.
+fn whole_trails(host: &Path, reports: &mut Vec<TrailReport>) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let index_path = host.join(DIRECTORY).join(super::index::DIRECTORY);
+    let entries = if index_path.is_dir() {
+        Dir::open(&index_path)
+            .and_then(|dir| super::index::entries(&dir))
+            .map_err(|error| error.to_string())
+    } else {
+        Ok(Vec::new())
+    };
+    match entries {
+        Err(error) => warnings.push(format!(
+            "the index of the volume's trails does not read ({error}): a trail deleted whole \
+             would go unnoticed"
+        )),
+        Ok(entries) if entries.is_empty() && !reports.is_empty() => warnings.push(
+            "the volume keeps no index of its trails: a trail deleted whole would go unnoticed \
+             (a Host of this build writes it as it starts)"
+                .to_owned(),
+        ),
+        Ok(entries) => {
+            for entry in entries {
+                let resource = match &entry.resource {
+                    Ok(resource) => resource.clone(),
+                    Err(_) => entry.digest.clone(),
+                };
+                let at = reports.iter().position(|report| {
+                    report.class == entry.class.as_str()
+                        && (report.resource == resource
+                            || trail::resource_digest(&report.resource) == entry.digest)
+                });
+                let at = at.unwrap_or_else(|| {
+                    let mut report = TrailReport {
+                        class: entry.class.as_str().to_owned(),
+                        resource: resource.clone(),
+                        ..TrailReport::default()
+                    };
+                    report.problem(
+                        "the volume's index names this trail and the volume no longer holds it: \
+                         it was deleted whole, with its records and checkpoints",
+                    );
+                    reports.push(report);
+                    reports.len() - 1
+                });
+                let report = &mut reports[at];
+                if let Err(error) = &entry.resource {
+                    report.problem(format!("the volume's index entry for this trail: {error}"));
+                }
+                if let Some(day) = &entry.lost {
+                    report.problem(format!(
+                        "a Host found this trail deleted whole on {day}; what it recorded before \
+                         is gone"
+                    ));
+                }
+            }
+        }
+    }
+    // The provisioning of a Host identity is the first record of its `security:host` trail.
+    let provisioned = host
+        .join(crate::identity::DIRECTORY)
+        .join(crate::identity::INIT)
+        .is_file();
+    if provisioned
+        && !reports.iter().any(|report| {
+            report.class == Class::Security.as_str() && report.resource == super::HOST
+        })
+    {
+        let mut report = TrailReport {
+            class: Class::Security.as_str().to_owned(),
+            resource: super::HOST.to_owned(),
+            ..TrailReport::default()
+        };
+        report.problem(
+            "the volume holds a Host identity, and the trail that records its provisioning is gone",
+        );
+        reports.push(report);
+    }
+    warnings
 }
 
 /// The key document at `path`.
@@ -365,18 +468,50 @@ fn keys_from(path: &Path) -> Result<Keys, String> {
     Keys::from_document(&text)
 }
 
-/// The `host.operations` keys the volume whose `host/` directory is `host` publishes.
+/// The `host.operations` keys the volume whose `host/` directory is `host` holds: its own ring,
+/// and every ring an identity reset retired under `keys/retired/<host_id>/`, whose keys signed the
+/// checkpoints sealed before it (BUG-0107).
 fn volume_keys(host: &Path) -> Result<Keys, String> {
-    let ring = host
-        .join(crate::keys::ring::DIRECTORY)
-        .join(crate::keys::ring::HOST_OPERATIONS);
-    let text = crate::keys::ring::export(&ring).map_err(|error| {
-        format!(
-            "the volume publishes no `host.operations` keys ({error}); pass --keys with the keys \
-             kept apart"
-        )
-    })?;
-    Keys::from_document(&text)
+    let keys_dir = host.join(crate::keys::ring::DIRECTORY);
+    let mut keys = Keys::default();
+    let mut unread = Vec::new();
+    match crate::keys::ring::export(&keys_dir.join(crate::keys::ring::HOST_OPERATIONS)) {
+        Ok(text) => keys.absorb(Keys::from_document(&text)?, "this Host's ring"),
+        Err(error) => unread.push(error.to_string()),
+    }
+    let retired = keys_dir.join(crate::keys::ring::RETIRED);
+    let mut hosts: Vec<_> = std::fs::read_dir(&retired)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    hosts.sort();
+    for host_id in hosts {
+        let ring = retired
+            .join(&host_id)
+            .join(crate::keys::ring::HOST_OPERATIONS);
+        if !ring.is_dir() {
+            continue;
+        }
+        let text = crate::keys::ring::export(&ring)
+            .map_err(|error| format!("the ring retired with host {host_id}: {error}"))?;
+        keys.absorb(
+            Keys::from_document(&text)?,
+            &format!("the ring retired with host {host_id}"),
+        );
+    }
+    if keys.is_empty() {
+        return Err(format!(
+            "the volume publishes no `host.operations` keys ({}); pass --keys with the keys kept \
+             apart",
+            unread.join("; ")
+        ));
+    }
+    Ok(keys)
 }
 
 /// The `host/` directory of the volume `directory` lies in, when it publishes `host.operations`
@@ -543,6 +678,15 @@ fn check(
         });
     }
     report.checkpoints = verified.len();
+    for entry in &verified {
+        let said = match keys.origin_of(&entry.kid) {
+            Some(origin) => format!("{} ({origin})", entry.kid),
+            None => entry.kid.clone(),
+        };
+        if !report.signed_by.contains(&said) {
+            report.signed_by.push(said);
+        }
+    }
     if report.witnessed == 0 {
         report.unwitnessed.clear();
     } else if report.unwitnessed.len() > MAX_UNWITNESSED {

@@ -27,6 +27,18 @@ is cut.
 
 ### Security
 
+- **A trail deleted whole no longer passes `audit verify`.**
+  The volume keeps an index of its trails in `host/audit/index`, written before each trail's directory exists; a volume written by an earlier build has its trails adopted at the next start.
+  `audit verify` fails on a trail the index names and the volume lacks, and on a volume with a Host identity and no `security:host` trail; a volume that keeps no index is said to have none.
+  A Host that starts and finds an indexed trail gone logs `audit.trail_lost` at ERROR and records `host.audit.trail_lost` in `security:host`; the trail it recreates afterwards keeps `audit verify` failing, since what it held is gone.
+- **`audit verify` without `--keys` verifies the checkpoints sealed before an identity reset.**
+  It reads the volume's own `host.operations` ring and every ring a reset retired under `host/keys/retired/<host_id>/`, and says under each trail which keys signed it and from which ring.
+  Keys kept apart for `--keys` must include the retired ring's: `keys export --directory host/keys/retired/<host_id>/host.operations`.
+- **Every `audit` log line carries the record's phase and outcome.**
+  `audit.phase` (`intent`, `applied`, `failed`, `reconciled`, absent for a simple observation) and `audit.outcome` (`ok`, `refused`, `failed`, `indeterminate`) are the trail's own, so a log consumer tells a refused or racing approval from a granted one.
+- **A trail whose `META.cbor` is missing is said to be missing.**
+  The sweep logged `not canonical CBOR: truncated input` for it; it now logs `its META.cbor is missing`.
+
 - **Narrowing an account's scopes revokes the tokens that held what it removes.**
   `PUT /authority/v1/service-accounts/{name}/scopes` and `permguard authority scopes set` revoke, with no flag, every live token of the account holding an operation the new scopes no longer grant where it holds it, and answer how many in `tokens_revoked`; `revoke_tokens` and `--revoke-tokens` still revoke every live token of the account.
   Before, a token kept what it carried until it expired unless the flag was given.

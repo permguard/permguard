@@ -78,6 +78,10 @@ impl AuditSink for TracingAuditSink {
             audit.target = event.target(),
             audit.continuity.id = event.continuity_id(),
             audit.continuity.position = event.continuity_position(),
+            // The phase and the outcome, so the log tells an intent from its result and a refused
+            // action from a granted one, as the trail does (BUG-0197).
+            audit.phase = event.operation().map(|(_, phase)| phase.as_str()),
+            audit.outcome = event.recorded_outcome().as_str(),
             "audit"
         );
 

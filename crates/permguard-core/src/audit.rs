@@ -321,6 +321,20 @@ impl<'a> AuditEvent<'a> {
         self.outcome
     }
 
+    /// How the action ended as every sink records it: what the caller said, else `refused` for an
+    /// action whose name ends in `.refused` and `ok` for any other.
+    ///
+    /// One rule for the trail and the log, so a log line never calls `ok` what the trail calls
+    /// `refused` (BUG-0197).
+    pub fn recorded_outcome(&self) -> AuditOutcome {
+        self.outcome
+            .unwrap_or(if self.action.ends_with(".refused") {
+                AuditOutcome::Refused
+            } else {
+                AuditOutcome::Ok
+            })
+    }
+
     /// The facts.
     pub fn facts(&self) -> &'a [(&'a str, Fact<'a>)] {
         self.facts

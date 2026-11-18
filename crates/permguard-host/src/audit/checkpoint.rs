@@ -304,6 +304,32 @@ pub struct Signed {
 pub struct Keys {
     keys: BTreeMap<String, (Suite, Vec<u8>)>,
     revoked: BTreeSet<String>,
+    /// Where each key came from, when the set was gathered from more than one ring: this Host's,
+    /// or one an identity reset retired (BUG-0107).
+    origins: BTreeMap<String, String>,
+}
+
+impl Keys {
+    /// Adds `other`'s keys and revocations, each key said to come from `origin`.
+    pub fn absorb(&mut self, other: Keys, origin: &str) {
+        for (kid, key) in other.keys {
+            self.origins
+                .entry(kid.clone())
+                .or_insert_with(|| origin.to_owned());
+            self.keys.entry(kid).or_insert(key);
+        }
+        self.revoked.extend(other.revoked);
+    }
+
+    /// Where the key `kid` came from, when the set was gathered with [`absorb`](Self::absorb).
+    pub fn origin_of(&self, kid: &str) -> Option<&str> {
+        self.origins.get(kid).map(String::as_str)
+    }
+
+    /// Whether the set holds no key.
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
 }
 
 impl Keys {

@@ -3074,6 +3074,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "zeroize",
 ]
 

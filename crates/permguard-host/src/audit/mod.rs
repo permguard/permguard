@@ -34,6 +34,7 @@
 //! deletes sealed days only, so without a signer nothing is deleted.
 
 pub mod checkpoint;
+pub mod index;
 pub mod jsonl;
 pub mod pseudonym;
 pub mod query;
@@ -48,7 +49,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use permguard_core::Pseudonymizer;
 use permguard_core::server::Health;
-use permguard_core::{AuditError, AuditEvent, AuditOutcome, AuditSink, BoxFuture, Fact, Subject};
+use permguard_core::{AuditError, AuditEvent, AuditSink, BoxFuture, Fact, Subject};
 use permguard_objects::digest::Digest;
 
 use crate::storage::Dir;
@@ -164,6 +165,8 @@ pub const AUDIT_AUTHZ_BOOTSTRAP: &str = "host.authz.bootstrap";
 
 /// never the token.
 pub const AUTHZ_TOKEN: &str = "host.authz.token";
+/// A trail the volume's index names, found gone when the Host started (BUG-0156).
+pub const AUDIT_TRAIL_LOST: &str = "host.audit.trail_lost";
 
 /// Every action the process records, with its class (owner decisions of 2026-10-07).
 pub const REGISTRY: &[ActionSchema] = &[
@@ -249,6 +252,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.plan.consumed", HOST),
     // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
     action("host.identity.provisioned", Class::Security, HOST),
+    // A trail deleted whole, found at start (BUG-0156): its target names the trail.
+    action(AUDIT_TRAIL_LOST, Class::Security, HOST),
     mutation("host.identity.rotated", HOST),
     // Its reset (WP-4.1): planned, then run.
     mutation("host.identity.reset_planned", HOST),
@@ -667,6 +672,8 @@ pub struct Stamp {
 
 struct Inner {
     trails: Dir,
+    /// The trails the volume ever held (BUG-0156), each named before its directory exists.
+    index: Dir,
     registry: &'static [ActionSchema],
     stamp: Stamp,
     time: Arc<TimeGuard>,
@@ -707,6 +714,8 @@ pub trait EgressFloor: Send + Sync {
 /// The audit engine of one process.
 pub struct Engine {
     inner: Arc<Inner>,
+    /// The trails the index names that this start found gone (BUG-0156).
+    found_lost: Vec<String>,
     access: Mutex<Option<SyncSender<Box<AuditRecord>>>>,
     writer: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
@@ -727,7 +736,24 @@ impl Engine {
         time: Arc<TimeGuard>,
         pseudonyms: Option<ResourcePseudonyms>,
     ) -> Result<Self, Refused> {
-        Self::with_registry(volume, REGISTRY, stamp, time, pseudonyms)
+        let engine = Self::with_registry(volume, REGISTRY, stamp, time, pseudonyms)?;
+        for trail in engine.found_lost.clone() {
+            // The trail is gone and its records with it; what is left is to say so where the
+            // Host's own security record is kept (BUG-0156).
+            if let Err(error) = engine.append(
+                &AuditEvent::system(AUDIT_TRAIL_LOST, "permguard").on(&trail),
+                None,
+            ) {
+                tracing::error!(
+                    event.name = "audit.trail_lost_unrecorded",
+                    component = "host",
+                    trail = %trail,
+                    error = %error,
+                    "the loss of an audit trail could not be recorded"
+                );
+            }
+        }
+        Ok(engine)
     }
 
     /// Removes the sealed `access` and `operations` day files older than `retention`, from the
@@ -778,13 +804,25 @@ impl Engine {
         queue: usize,
     ) -> Result<Self, Refused> {
         check_registry(registry).map_err(Refused::Fact)?;
-        let trails = volume
-            .host()
-            .subdir(DIRECTORY, true)
-            .and_then(|dir| dir.subdir(TRAILS, true))
-            .map_err(|error| Refused::Storage(error.to_string()))?;
+        let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
+        let audit = volume.host().subdir(DIRECTORY, true).map_err(storage)?;
+        let trails = audit.subdir(TRAILS, true).map_err(storage)?;
+        let index = audit.subdir(index::DIRECTORY, true).map_err(storage)?;
+        // A trail the index names and the volume lacks was deleted whole: said now, and kept
+        // said, rather than recreated at seq 0 as if it never existed (BUG-0156).
+        let found_lost = index::reconcile(&index, &trails, &trail::day_name(time.now_secs()))
+            .map_err(storage)?;
+        for trail in &found_lost {
+            tracing::error!(
+                event.name = "audit.trail_lost",
+                component = "host",
+                trail = %trail,
+                "an audit trail the volume held is gone: its records were deleted with it"
+            );
+        }
         let inner = Arc::new(Inner {
             trails,
+            index,
             registry,
             stamp,
             time,
@@ -820,6 +858,7 @@ impl Engine {
         };
         Ok(Self {
             inner,
+            found_lost,
             access: Mutex::new(Some(sender)),
             writer: Mutex::new(Some(writer)),
         })
@@ -875,8 +914,10 @@ impl Engine {
                     .and_then(|dir| dir.read(trail::META))
                     .map_err(|error| error.to_string())
                     .and_then(|meta| {
-                        record::TrailMeta::decode(&meta.unwrap_or_default())
-                            .map_err(|error| error.to_string())
+                        // A missing file is said to be missing, never decoded as an empty one
+                        // and called corrupt (BUG-0078).
+                        let meta = meta.ok_or_else(|| format!("its {} is missing", trail::META))?;
+                        record::TrailMeta::decode(&meta).map_err(|error| error.to_string())
                     })
                     .and_then(|meta| {
                         // A `META.cbor` naming a resource kept elsewhere would open another trail.
@@ -1240,13 +1281,7 @@ impl Inner {
                 )));
             }
         };
-        let outcome = event
-            .outcome()
-            .unwrap_or(if schema.action.ends_with(".refused") {
-                AuditOutcome::Refused
-            } else {
-                AuditOutcome::Ok
-            });
+        let outcome = event.recorded_outcome();
         if event.target().is_some_and(looks_secret) {
             return Err(Refused::Fact(format!(
                 "the target of `{}` is shaped like a token, a key or a proof",
@@ -1322,6 +1357,9 @@ impl Inner {
                 Class::Security => self.retention_security.get().copied(),
                 Class::Operations | Class::Access => self.retention.get().copied(),
             };
+            // Named in the index before its directory exists, so no moment holds a trail the
+            // index does not know (BUG-0156).
+            index::record(&self.index, class, resource).map_err(|error| error.to_string())?;
             let trail = Trail::open(&self.trails, class, resource, retention)
                 .map_err(|error| error.to_string())?;
             open.insert(key.clone(), trail);
