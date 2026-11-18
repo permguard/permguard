@@ -439,6 +439,10 @@ impl Catalog for FileCatalog {
                 selector: zone.to_string(),
             })?;
 
+        // A rename to the name it has changes nothing: no revision, no write (BUG-0147).
+        if found.name == name {
+            return Ok(found.clone());
+        }
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;
@@ -630,6 +634,10 @@ impl Catalog for FileCatalog {
                 selector: ledger.to_string(),
             })?;
 
+        // A rename to the name it has changes nothing: no revision, no write (BUG-0147).
+        if found.name == name {
+            return Ok(found.clone());
+        }
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;
@@ -722,6 +730,10 @@ impl Catalog for FileCatalog {
             });
         }
 
+        // A state it is already in changes nothing: no revision, no write (BUG-0147).
+        if found.state == state {
+            return Ok(found.clone());
+        }
         found.state = state;
         found.updated_at = permguard_core::time::unix_now();
         found.revision += 1;

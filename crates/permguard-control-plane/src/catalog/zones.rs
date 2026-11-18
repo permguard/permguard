@@ -102,6 +102,12 @@ pub async fn rename(
         return Ok(Zone::public(done));
     }
     let resolved = facade.resolve_zone(actor, operations::CATALOG_WRITE, zone)?;
+    // A rename to the name it has, at the revision expected, changes nothing: the zone is answered
+    // as it is, its revision unmoved and nothing recorded as applied (BUG-0147). At another
+    // revision the store refuses it, as it refuses any change.
+    if resolved.name == name && resolved.revision == expected_revision {
+        return Ok(Zone::public(resolved));
+    }
     let id = Selector::Id(resolved.id.clone());
     facade
         .mutate(

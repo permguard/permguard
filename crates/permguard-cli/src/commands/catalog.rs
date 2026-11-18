@@ -79,7 +79,9 @@ pub fn catalog_command(
                 render(
                     &workspace_out::ZoneListReport {
                         zones: listed.into_iter().map(Into::into).collect(),
-                        page,
+                        // A window, `--page` or `--size`, is a page: the first when only its size
+                        // is given (BUG-0003).
+                        page: page.or(size.map(|_| 0)),
                     },
                     globals.output,
                     trace,
@@ -194,7 +196,7 @@ pub fn catalog_command(
                     &workspace_out::LedgerListReport {
                         zone,
                         ledgers: listed.into_iter().map(Into::into).collect(),
-                        page,
+                        page: page.or(size.map(|_| 0)),
                     },
                     globals.output,
                     trace,

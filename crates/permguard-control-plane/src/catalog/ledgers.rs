@@ -169,6 +169,10 @@ pub async fn rename(
         return Ok(Ledger::public(done));
     }
     let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
+    // A rename to the name it has, at the revision expected, changes nothing (BUG-0147).
+    if resolved.name == name && resolved.revision == expected_revision {
+        return Ok(Ledger::public(resolved));
+    }
     let (zone_id, id) = (
         Selector::Id(zone.id.clone()),
         Selector::Id(resolved.id.clone()),
@@ -310,6 +314,11 @@ async fn set_state(
         return Ok(Ledger::public(done));
     }
     let (zone, resolved) = facade.resolve_ledger(actor, operations::CATALOG_WRITE, zone, ledger)?;
+    // A restore of an active ledger, or an archive of an archived one, at the revision expected,
+    // changes nothing: answered as it is, nothing applied (BUG-0147).
+    if resolved.state == state && resolved.revision == expected_revision {
+        return Ok(Ledger::public(resolved));
+    }
     let (zone_id, id) = (
         Selector::Id(zone.id.clone()),
         Selector::Id(resolved.id.clone()),

@@ -512,7 +512,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 128
             },
             "description": "The delete's request id, repeated by a retry (WP-7.3a).",
             "x-grpc-field": "request_id"
@@ -1085,7 +1086,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 128
             },
             "description": "The delete's request id, repeated by a retry (WP-7.3a).",
             "x-grpc-field": "request_id"
@@ -1781,6 +1783,7 @@
           "request_id": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 128,
             "description": "The change's request id, chosen by the caller and repeated by a retry: the same id with the same body learns the first answer, with another body is `request_id_reused` (WP-7.3a)."
           },
           "expected_revision": {
@@ -2131,6 +2134,7 @@
           "request_id": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 128,
             "description": "The change's request id, repeated by a retry (WP-7.3a)."
           },
           "expected_revision": {
@@ -2280,6 +2284,7 @@
           "request_id": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 128,
             "description": "The import's request id, repeated by a retry."
           },
           "mode": {

@@ -45,6 +45,14 @@ is cut.
 
 ### Fixed
 
+- **A catalog change that changes nothing moves no revision.**
+  A rename of a zone or a ledger to the name it has, a restore of an active ledger and an archive of an archived one, at the revision expected, are answered with the record as it is: the revision and `updated_at` stay, the trail records nothing applied, and a client holding that revision can still change it.
+- **A catalog change's `request_id` is at most 128 bytes.**
+  As the Host API bounds it; a longer one, or one carrying a control character, is refused `400 invalid_argument` before anything is recorded, where an id over 256 KiB was answered `503` "corruption". The catalog contract and the proto state the bound.
+- **`zones list` and `ledgers list` report a page as a page.**
+  `--size` alone answers `page: 0`, and an empty page says it is one instead of calling the catalog or the zone empty.
+- **An unknown query parameter is refused naming the request.**
+  A catalog delete was told its parameter "is not a parameter of this read".
 - **Workspace commands report a plane's answer as every other command does.**
   `pull`, `verify`, `clone`, `checkout`, `apply` and `remote add` turned every remote failure into `validation`/`usage`, exit 64: an unreachable plane now exits 69 with class `unavailable`, a denial at the gate carries its code (`unauthenticated`, `forbidden`) and no class, and a plane's refusal its own class and code, over REST and gRPC alike; messages no longer carry a `(class/code)` suffix.
 - **`--tls-skip-verify` is refused over `grpcs://` only.**

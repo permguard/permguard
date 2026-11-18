@@ -42,7 +42,7 @@ pub fn parse(
         let name = percent_decode(name);
         if !allowed.contains(&name.as_str()) {
             return Err(invalid(format!(
-                "`{name}` is not a parameter of this read: it takes {}",
+                "`{name}` is not a parameter of this request: it takes {}",
                 allowed.join(", ")
             )));
         }
@@ -165,6 +165,26 @@ mod tests {
 
     fn code(error: ApiError) -> String {
         error.code().to_owned()
+    }
+
+    /// BUG-0170: an unknown parameter is refused naming the request, never calling a delete a
+    /// read; what it takes is listed.
+    #[test]
+    fn an_unknown_parameter_names_the_request_not_a_read() {
+        let Err(refused) = parse(
+            Some("request_id=d1&expected_revision=1&foo=1"),
+            &["request_id", "expected_revision"],
+            &[],
+        ) else {
+            panic!("an unknown parameter is refused");
+        };
+        let said = refused.to_string();
+        assert!(
+            said.contains("is not a parameter of this request"),
+            "{said}"
+        );
+        assert!(!said.contains("read"), "{said}");
+        assert!(said.contains("request_id, expected_revision"), "{said}");
     }
 
     /// WP-5.5: a read takes the parameters it names, each once, with values that parse; anything

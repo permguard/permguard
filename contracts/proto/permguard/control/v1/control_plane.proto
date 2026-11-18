@@ -190,8 +190,8 @@ message ServingProgress {
   bool stale = 6;
 }
 
-// Every change names the `request_id` a retry repeats, and a change of a record the
-// `expected_revision` it read the record at, 0 being none (WP-7.3a).
+// Every change names the `request_id` a retry repeats, printable text of 1 to 128 bytes, and a
+// change of a record the `expected_revision` it read the record at, 0 being none (WP-7.3a).
 message CreateZoneRequest { string name = 1; string request_id = 2; }
 // A page of the listing: 0-based `page`, at most `size` per page. Both absent
 // means everything — the shape a synchronizing mirror wants, and what every

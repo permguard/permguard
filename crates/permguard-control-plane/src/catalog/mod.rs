@@ -430,6 +430,19 @@ impl CatalogFacade {
             )
             .into());
         }
+        // Bounded as the Host API bounds it, before any intent: an id the journal could not
+        // keep is the caller's to shorten, never a storage fault to retry (BUG-0148).
+        let bound = permguard_host::api::MAX_REQUEST_ID_BYTES;
+        if change.request_id.len() > bound || change.request_id.chars().any(char::is_control) {
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                format!(
+                    "a catalog change's `request_id` is printable text of at most {bound} bytes"
+                ),
+            )
+            .into());
+        }
         let Some(mutations) = &self.mutations else {
             return Err(ApiError::new(
                 ErrorClass::Unavailable,

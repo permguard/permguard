@@ -778,10 +778,15 @@ pub struct ZoneListReport {
 impl Report for ZoneListReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         if self.zones.is_empty() {
-            return writeln!(
-                out,
-                "no zones yet: create one with `permguard zones create <name>`"
-            );
+            // An empty page says nothing of the catalog: only an unpaged listing may say it is
+            // empty (BUG-0003).
+            return match self.page {
+                Some(page) => writeln!(out, "no zones on page {page}"),
+                None => writeln!(
+                    out,
+                    "no zones yet: create one with `permguard zones create <name>`"
+                ),
+            };
         }
 
         writeln!(out, "{}", style::dim(&format!("{:<38} name", "id")))?;
@@ -920,7 +925,10 @@ pub struct LedgerListReport {
 impl Report for LedgerListReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         if self.ledgers.is_empty() {
-            return writeln!(out, "the zone `{}` holds no ledgers yet", self.zone);
+            return match self.page {
+                Some(page) => writeln!(out, "no ledgers of `{}` on page {page}", self.zone),
+                None => writeln!(out, "the zone `{}` holds no ledgers yet", self.zone),
+            };
         }
 
         writeln!(out, "{}", style::dim(&format!("{:<38} name", "id")))?;
@@ -945,6 +953,40 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// BUG-0003: an empty page says it is a page, never that the catalog or the zone is empty;
+    /// an unpaged empty listing still says so.
+    #[test]
+    fn an_empty_page_is_not_an_empty_catalog() {
+        fn said(report: &impl Report) -> String {
+            let mut out = Vec::new();
+            report.render_terminal(&mut out).expect("renders");
+            String::from_utf8(out).expect("text")
+        }
+        let page = said(&ZoneListReport {
+            zones: Vec::new(),
+            page: Some(9),
+        });
+        assert!(page.contains("no zones on page 9"), "{page}");
+        assert!(!page.contains("create one"), "{page}");
+        assert!(
+            said(&ZoneListReport {
+                zones: Vec::new(),
+                page: None
+            })
+            .contains("no zones yet")
+        );
+        let ledgers = said(&LedgerListReport {
+            zone: "acme".to_owned(),
+            ledgers: Vec::new(),
+            page: Some(0),
+        });
+        assert!(
+            ledgers.contains("no ledgers of `acme` on page 0"),
+            "{ledgers}"
+        );
+        assert!(!ledgers.contains("holds no ledgers yet"), "{ledgers}");
+    }
 
     /// Renders a report to text — colors off would need a TTY anyway, and
     /// these run piped, so the bytes are exactly what a script would see.

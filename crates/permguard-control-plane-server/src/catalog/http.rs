@@ -1219,6 +1219,109 @@ mod tests {
         );
     }
 
+    /// BUG-0147: a request that would leave the record as it is changes nothing: answered as it
+    /// is, its revision unmoved, nothing applied on the trail, and a client holding that revision
+    /// still changes it. BUG-0148: a request id over 128 bytes is refused before any intent.
+    #[tokio::test]
+    async fn a_change_that_changes_nothing_moves_no_revision_and_applies_nothing() {
+        let root = scratch("no-op");
+        let trail = Arc::new(Trail::default());
+        let routes = transacted(
+            &root,
+            Arc::new(FileCatalog::new(root.join("catalog"))),
+            &trail,
+        );
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&named("delivery")),
+        )
+        .await;
+        send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones/delivery/ledgers",
+            Some(&named("policies")),
+        )
+        .await;
+        let ledger = "/catalog/v1/zones/delivery/ledgers/policies";
+        let applied = || {
+            trail
+                .records
+                .lock()
+                .expect("lock")
+                .iter()
+                .filter(|(_, phase, _)| *phase == "applied")
+                .count()
+        };
+        let before = applied();
+        for (method, path, body) in [
+            (
+                "PATCH",
+                "/catalog/v1/zones/delivery".to_owned(),
+                r#"{"name":"delivery","request_id":"n-zone","expected_revision":1}"#,
+            ),
+            (
+                "PATCH",
+                ledger.to_owned(),
+                r#"{"name":"policies","request_id":"n-ledger","expected_revision":1}"#,
+            ),
+            (
+                "POST",
+                format!("{ledger}/restore"),
+                r#"{"request_id":"n-restore","expected_revision":1}"#,
+            ),
+        ] {
+            let (status, answer) = send(&routes, method, &path, Some(body)).await;
+            assert_eq!(status, 200, "{path}: {answer}");
+            let read: serde_json::Value = serde_json::from_str(&answer).expect("JSON");
+            assert_eq!(read["revision"].as_u64(), Some(1), "{path}: {answer}");
+        }
+        assert_eq!(applied(), before, "nothing applied");
+        // An archived ledger archived again: revision 2 stays 2.
+        send(
+            &routes,
+            "POST",
+            &format!("{ledger}/archive"),
+            Some(r#"{"request_id":"a-1","expected_revision":1}"#),
+        )
+        .await;
+        let after_archive = applied();
+        let (status, again) = send(
+            &routes,
+            "POST",
+            &format!("{ledger}/archive"),
+            Some(r#"{"request_id":"a-2","expected_revision":2}"#),
+        )
+        .await;
+        assert_eq!(status, 200, "{again}");
+        assert!(again.contains(r#""revision":2"#), "{again}");
+        assert_eq!(applied(), after_archive, "nothing applied");
+        // A second client holding the zone's revision 1 still renames it.
+        let (status, renamed) = send(
+            &routes,
+            "PATCH",
+            "/catalog/v1/zones/delivery",
+            Some(r#"{"name":"shipping","request_id":"rename-1","expected_revision":1}"#),
+        )
+        .await;
+        assert_eq!(status, 200, "{renamed}");
+
+        let long = "r".repeat(129);
+        let (status, refused) = send(
+            &routes,
+            "POST",
+            "/catalog/v1/zones",
+            Some(&format!(r#"{{"name":"other","request_id":"{long}"}}"#)),
+        )
+        .await;
+        assert_eq!(status, 400, "{refused}");
+        assert!(refused.contains("invalid_argument"), "{refused}");
+        assert!(refused.contains("128 bytes"), "{refused}");
+        assert!(!refused.contains("corruption"), "{refused}");
+    }
+
     /// WP-7.10: `POST …/export` answers the archive and what it binds under the caller's
     /// `catalog.read`; without the Host's signer it is `503 unavailable`, and a body that is not
     /// a closed JSON `{}` is refused before anything is read.
