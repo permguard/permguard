@@ -429,11 +429,19 @@ impl Task {
         for requirement in &self.assurance_requirements {
             name(requirement, "an assurance requirement")?;
         }
-        // Both are enforced (WP-4.4): a 0 would refuse every session or every message.
-        if self.limits.max_concurrency == 0 || self.limits.max_rate_per_minute == 0 {
-            return Err(RecordError(
-                "a task's `max_concurrency` and `max_rate_per_minute` are at least 1".to_owned(),
-            ));
+        // Every limit is enforced (WP-4.4) and at least 1, as the contract's `TaskLimits` states:
+        // a 0 would refuse every session, every message or every record, or keep nothing
+        // (BUG-0094).
+        for (limit, value) in [
+            ("max_body_bytes", self.limits.max_body_bytes),
+            ("max_concurrency", self.limits.max_concurrency),
+            ("max_rate_per_minute", self.limits.max_rate_per_minute),
+            ("max_batch_records", self.limits.max_batch_records),
+            ("retention_seconds", self.limits.retention_seconds),
+        ] {
+            if value == 0 {
+                return Err(RecordError(format!("a task's `{limit}` is at least 1")));
+            }
         }
         check_version(self.version)
     }
@@ -637,16 +645,26 @@ impl LeasePolicy {
         Ok(policy)
     }
 
-    /// `revoke_after` is greater than `dormant_after`, and no bound is zero.
+    /// `revoke_after` is greater than `dormant_after`, and no bound is zero: every one is at
+    /// least 1, as the contract's `LeasePolicy` states (BUG-0093). A zero grace or skew would end
+    /// a lease the moment it is issued, or accept no clock but the coordinator's.
     pub fn check(&self) -> Result<(), RecordError> {
+        for (bound, seconds) in [
+            ("max_session_seconds", self.max_session_seconds),
+            ("offline_grace_seconds", self.offline_grace_seconds),
+            ("clock_skew_seconds", self.clock_skew_seconds),
+            ("dormant_after_seconds", self.dormant_after_seconds),
+            ("revoke_after_seconds", self.revoke_after_seconds),
+        ] {
+            if seconds == 0 {
+                return Err(RecordError(format!(
+                    "a lease policy's `{bound}` is at least 1"
+                )));
+            }
+        }
         if self.revoke_after_seconds <= self.dormant_after_seconds {
             return Err(RecordError(
                 "a lease policy's revoke_after is greater than its dormant_after".to_owned(),
-            ));
-        }
-        if self.max_session_seconds == 0 || self.dormant_after_seconds == 0 {
-            return Err(RecordError(
-                "a lease policy bounds sessions and dormancy above zero".to_owned(),
             ));
         }
         Ok(())

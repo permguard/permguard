@@ -45,6 +45,8 @@ is cut.
 
 ### Fixed
 
+- **A membership's lease bounds and task limits are each at least 1.**
+  An approval whose lease policy sets `offline_grace_seconds` or `clock_skew_seconds` to `0`, and an invitation, a join or an approval whose task sets `max_body_bytes`, `max_batch_records` or `retention_seconds` to `0`, are refused `400 invalid_argument` naming the bound, as the contract's `minimum: 1` states; a manifest read back with such a value is refused too.
 - **The event signers asked by name tell nobody which zones and ledgers exist.**
   `GET …/events/v1alpha1/signers` and `GetSigners` answered an existing name `200` and a missing one `404 scope_unknown` to anybody; asked by name they are now gated as the event reads are, `evidence.read` on the ledger, so a caller who may not read it gets the same refusal either way. Asked by ids they stay open.
 - **An event read of ids nothing ever held is `scope_unknown`, not an empty page.**

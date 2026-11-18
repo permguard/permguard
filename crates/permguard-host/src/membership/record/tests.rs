@@ -828,6 +828,9 @@ fn capabilities_are_listed_in_order_and_each_once() {
     );
 }
 
+/// A bound by name, and the edit that sets it to zero.
+type Zeroed<T> = (&'static str, fn(&mut T));
+
 /// WP-4.4 (review): a task's concurrency and rate are enforced, so neither may be 0.
 #[test]
 fn a_task_refuses_a_zero_concurrency_or_rate() {
@@ -846,12 +849,52 @@ fn a_task_refuses_a_zero_concurrency_or_rate() {
         }
     };
     assert!(task(|_| {}).check().is_ok());
-    assert!(task(|limits| limits.max_concurrency = 0).check().is_err());
-    assert!(
-        task(|limits| limits.max_rate_per_minute = 0)
-            .check()
-            .is_err()
-    );
+    // BUG-0094: every limit, each named in its refusal.
+    let zeroed: [Zeroed<Limits>; 5] = [
+        ("max_body_bytes", |limits| limits.max_body_bytes = 0),
+        ("max_concurrency", |limits| limits.max_concurrency = 0),
+        ("max_rate_per_minute", |limits| {
+            limits.max_rate_per_minute = 0
+        }),
+        ("max_batch_records", |limits| limits.max_batch_records = 0),
+        ("retention_seconds", |limits| limits.retention_seconds = 0),
+    ];
+    for (limit, edit) in zeroed {
+        let refused = task(edit).check().expect_err(limit).0;
+        assert!(refused.contains(limit), "{limit}: {refused}");
+    }
+}
+
+/// BUG-0093: no bound of a lease policy is zero, each named in its refusal, so a manifest read
+/// back with one is refused too.
+#[test]
+fn a_lease_policy_refuses_every_zero_bound() {
+    assert!(policy().check().is_ok());
+    let zeroed: [Zeroed<LeasePolicy>; 5] = [
+        ("max_session_seconds", |policy| {
+            policy.max_session_seconds = 0
+        }),
+        ("offline_grace_seconds", |policy| {
+            policy.offline_grace_seconds = 0
+        }),
+        ("clock_skew_seconds", |policy| policy.clock_skew_seconds = 0),
+        ("dormant_after_seconds", |policy| {
+            policy.dormant_after_seconds = 0
+        }),
+        ("revoke_after_seconds", |policy| {
+            policy.revoke_after_seconds = 0
+        }),
+    ];
+    for (bound, edit) in zeroed {
+        let mut zero = policy();
+        edit(&mut zero);
+        let refused = zero.check().expect_err(bound).0;
+        assert!(refused.contains(bound), "{bound}: {refused}");
+        assert!(
+            LeasePolicy::read(zero.value().expect("encodes")).is_err(),
+            "{bound}: read back"
+        );
+    }
 }
 
 /// WP-4.5: a manifest pins one current set per owner and ring, and a retiring one only beside a

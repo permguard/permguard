@@ -1729,6 +1729,10 @@ impl HostApi {
             dormant_after_seconds: view.dormant_after_seconds,
             revoke_after_seconds: view.revoke_after_seconds,
         });
+        // Every bound at least 1, the refusal naming it, before anything is signed (BUG-0093).
+        if let Some(policy) = &lease_policy {
+            policy.check().map_err(|error| invalid(error.0))?;
+        }
         let (approvals, evidence) = match &approve.assurance {
             Some(offered) => offer(&offered.approvals, &offered.evidence)?,
             None => (Vec::new(), Vec::new()),
