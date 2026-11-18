@@ -367,8 +367,10 @@ fn uid(kind: &str, id: &str, what: &str) -> Result<EntityUid, String> {
 
 /// The action of a request: `read` is `Action::"read"`, and a qualified
 /// `acme::Action::read` keeps the type the caller named.
+/// The action's uid from its name as sent: never trimmed, so `"read "` is not `read` (BUG-0058).
+/// The request refuses a padded name before it gets here; this keeps the engine from deciding
+/// on a name nobody sent should one ever arrive.
 fn action_uid(name: &str) -> Result<EntityUid, String> {
-    let name = name.trim();
     if name.is_empty() {
         return Err("cedar: the action names nothing".to_owned());
     }
@@ -398,6 +400,20 @@ mod tests {
     use super::*;
     use permguard_language_core::evaluate::{Action, Entity, Resolution, resolve};
     use serde_json::Map;
+
+    /// BUG-0058: a padded action name is a different action, never the trimmed one.
+    #[test]
+    fn a_padded_action_name_is_not_the_trimmed_action() {
+        let read = action_uid("Action::read").expect("a name");
+        for padded in ["Action::read ", " Action::read", "Action::read\t"] {
+            assert_ne!(
+                action_uid(padded).ok(),
+                Some(read.clone()),
+                "{padded:?} is not `Action::read`"
+            );
+        }
+        assert!(action_uid("").is_err());
+    }
 
     fn stored(id: &str, source: &str) -> StoredPolicy {
         StoredPolicy {

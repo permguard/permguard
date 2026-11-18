@@ -543,13 +543,22 @@ fn uid_literal(reference: &EntityRef) -> String {
     format!("{}::\"{}\"", reference.kind, reference.id.escape_debug())
 }
 
+/// A required field as the caller sent it. Never trimmed: the id an event is indexed under, the
+/// one its record keeps and the one its receipt echoes are the same bytes, so whitespace around
+/// one is refused rather than dropped (DEC-0004 option B, BUG-0161).
 fn required(value: &Option<String>, field: &'static str) -> Result<String, Malformed> {
-    value
-        .as_deref()
-        .map(str::trim)
-        .filter(|held| !held.is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| missing(field))
+    match value.as_deref() {
+        None => Err(missing(field)),
+        Some(text) if text.trim().is_empty() => Err(missing(field)),
+        Some(text) if text.trim() != text => Err(Malformed::new(
+            permguard_core::codes::common::INVALID_ARGUMENT,
+            format!(
+                "`event.data.{field}` is {text:?}, with whitespace around it: an event is \
+                 recorded, indexed and answered under the bytes sent, so state it without it"
+            ),
+        )),
+        Some(text) => Ok(text.to_owned()),
+    }
 }
 
 fn missing(field: &str) -> Malformed {
@@ -710,6 +719,24 @@ mod tests {
         }
 
         serde_json::from_value(base).expect("the body parses")
+    }
+
+    /// BUG-0161: an event id with whitespace around it is refused, never indexed trimmed and
+    /// recorded padded; the id read is the bytes sent.
+    #[test]
+    fn a_padded_event_id_is_refused_and_an_id_is_read_as_sent() {
+        for padded in [" pad2", "pad2 ", "\tpad2", "pad2\u{a0}"] {
+            let refused = body(json!({"event_id": padded})).read().expect_err(padded);
+            assert_eq!(refused.code, "invalid_argument", "{padded:?}");
+        }
+        let blank = body(json!({"event_id": "  "}))
+            .read()
+            .expect_err("names nothing");
+        assert_eq!(blank.code, "field_required");
+        let read = body(json!({"event_id": "pad 2"}))
+            .read()
+            .expect("inner space is significant");
+        assert_eq!(read.event_id, "pad 2");
     }
 
     /// The two spellings of one reference are one reference.

@@ -25,6 +25,11 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A name with whitespace around it is refused before anything is decided.**
+  `zone`, `ledger`, `profile`, `subject.type`, `subject.id`, `resource.type`, `resource.id`, `action.name` and `principal` with leading or trailing whitespace (space, tab, newline, carriage return, vertical tab, NBSP) answer `400 invalid_argument` naming the field, over HTTP and gRPC, in `permguard check` and in `permguard test` alike; before, `"admin "` was decided as `admin` and `"gateway "` answered by the `gateway` profile.
+  A temporal event's `event_id`, `kind`, `action` and `occurred_at` follow the same rule, so an event is recorded, indexed and echoed under the same bytes.
+  Whitespace inside a name, and its case, stay significant. A PEP that pads its names has a bug, and is now told.
+
 - **Host API reads refuse a query they cannot read.**
   An unknown, a repeated, an empty or a valueless query parameter answers `400 invalid_argument` naming it, on every Host API read that takes a query; before, it was dropped, the first value kept or the empty one read as absent.
   The refusal is given only to a caller holding the route's grant: anyone else is refused `401` or `403` as before, and learns nothing of the query.

@@ -93,6 +93,20 @@ export default defineConfig({
         }
       ]
     },
+    search: {
+      provider: 'local',
+      options: {
+        // A page draws its title in its hero, a raw HTML `<h1>` the search index neither anchors nor
+        // counts, so a page without a Markdown `#` heading of its own is indexed under its
+        // frontmatter title and description, as in the handbook.
+        _render(src, env, md) {
+          const html = md.render(src, env)
+          const { title, description } = env.frontmatter ?? {}
+          if (!title || /^#\s/m.test(src)) return html
+          return md.render(`# ${title}\n\n${description ?? ''}\n`, {}) + html
+        }
+      }
+    },
     socialLinks: [
       {
         icon: {

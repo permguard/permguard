@@ -228,13 +228,10 @@ fn decision_to_proto(decision: Decision) -> ProtoDecision {
 
 /// An empty proto string is an absent field: proto3 has no other way to say it,
 /// and the contract's "absent" and "empty" mean the same thing here — a name
-/// nobody wrote.
+/// nobody wrote. Anything else crosses as written, whitespace included, so a
+/// padded name is refused over gRPC as it is over HTTP (DEC-0004).
 fn some(value: String) -> Option<String> {
-    if value.trim().is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    if value.is_empty() { None } else { Some(value) }
 }
 
 /// One proto `Struct`, as the JSON both transports agree on.
@@ -581,6 +578,31 @@ mod tests {
             round_tripped["number"].as_f64() == Some(1.5),
             "and one that is not stays as it was"
         );
+    }
+
+    /// DEC-0004: a padded name crosses gRPC as written and is refused as it is over HTTP, and a
+    /// blank one is not read as absent.
+    #[test]
+    fn a_padded_proto_name_is_refused_as_over_http() {
+        // The profile is read after the evaluations; the language core's own test covers it.
+        for (zone, ledger, profile) in [
+            ("acme\t", "basics", ""),
+            ("acme", "basics\n", ""),
+            ("acme\u{a0}", "basics", "gateway "),
+        ] {
+            let payload = request_from_proto(EvaluateRequest {
+                zone: zone.to_owned(),
+                ledger: ledger.to_owned(),
+                profile: profile.to_owned(),
+                ..EvaluateRequest::default()
+            })
+            .expect("it converts");
+            assert_eq!(
+                payload.resolve(256).expect_err("refused").code,
+                "invalid_argument",
+                "{zone:?} {ledger:?} {profile:?}"
+            );
+        }
     }
 
     #[test]

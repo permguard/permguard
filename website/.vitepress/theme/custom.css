@@ -87,6 +87,39 @@
   background-color: currentcolor;
 }
 
+/* The search field belongs to the dark shell on both themes: a dark field with the hairline and the
+   violet hover of the plane tiles. The hairline is an inset shadow, not a border: the bar is measured
+   to the pixel, and two pixels more push `latest` into the overflow menu at 1440. Below 48rem
+   VitePress draws a bare magnifier as tall as the bar, which keeps no field. */
+.VPNavBar .VPNavBarSearchButton {
+  color: #a8a9b0;
+  transition: box-shadow 0.22s ease, color 0.22s ease;
+}
+
+.VPNavBar .VPNavBarSearchButton:hover {
+  color: #f4f4f5;
+}
+
+@media (min-width: 48rem) {
+  .VPNavBar .VPNavBarSearchButton {
+    --vp-c-bg-alt: rgb(255 255 255 / 0.04);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+
+  .VPNavBar .VPNavBarSearchButton:hover {
+    box-shadow: inset 0 0 0 1px rgb(217 70 239 / 0.55);
+  }
+}
+
+/* Between 80rem and 90rem the full field would push planes into the overflow menu; there it keeps
+   only its magnifier, as VitePress does on a phone. The shortcut still opens it. */
+@media (min-width: 80rem) and (max-width: 89.999rem) {
+  .VPNavBar .VPNavBarSearchButton .text,
+  .VPNavBar .VPNavBarSearchButton .keys {
+    display: none;
+  }
+}
+
 /* The documentation theme may be light, but the shared site shell remains dark. */
 .VPNavScreen {
   --vp-c-bg: #191a1c;

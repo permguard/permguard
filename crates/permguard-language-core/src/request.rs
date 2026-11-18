@@ -549,14 +549,14 @@ impl CheckRequest {
     /// a refusal that names it, because a PDP that guessed would be answering a
     /// question nobody asked.
     pub fn resolve(&self, max_evaluations: usize) -> Result<Resolved, Malformed> {
-        let zone = named(&self.zone).ok_or_else(|| {
+        let zone = verbatim(&self.zone, "zone")?.ok_or_else(|| {
             malformed(
                 permguard_core::codes::pdp_native::ZONE_REQUIRED,
                 "the request names no zone: `zone` and `ledger` say which policy store to decide \
                  against, and there is no default",
             )
         })?;
-        let ledger = named(&self.ledger).ok_or_else(|| {
+        let ledger = verbatim(&self.ledger, "ledger")?.ok_or_else(|| {
             malformed(
                 permguard_core::codes::pdp_native::LEDGER_REQUIRED,
                 "the request names no ledger: `zone` and `ledger` say which policy store to \
@@ -616,7 +616,7 @@ impl CheckRequest {
             // from the audit record with no error — the one place a silent loss is least
             // acceptable.
             for (field, value) in [("type", &principal.kind), ("id", &principal.id)] {
-                if named(value).is_none() {
+                if verbatim(value, &format!("principal.{field}"))?.is_none() {
                     return Err(malformed(
                         permguard_core::codes::pdp_native::FIELD_REQUIRED,
                         format!(
@@ -697,7 +697,8 @@ impl CheckRequest {
         }
 
         Ok(Asked {
-            profile: named(&self.profile).unwrap_or_else(|| DEFAULT_PROFILE.to_owned()),
+            profile: verbatim(&self.profile, "profile")?
+                .unwrap_or_else(|| DEFAULT_PROFILE.to_owned()),
             request_id: named(&self.request_id),
             semantic: self
                 .options
@@ -799,7 +800,9 @@ impl CheckRequest {
             resource: entity(resource, "resource", index)?,
             action: Action {
                 name: action
-                    .and_then(|action| named(&action.name))
+                    .map(|action| verbatim(&action.name, "action.name"))
+                    .transpose()?
+                    .flatten()
                     .ok_or_else(|| missing("action", index))?,
                 properties: action
                     .and_then(|action| action.properties.clone())
@@ -820,8 +823,10 @@ fn pick<'a>(
 
 fn entity(body: Option<&EntityBody>, what: &str, index: usize) -> Result<Entity, Malformed> {
     let body = body.ok_or_else(|| missing(what, index))?;
-    let kind = named(&body.kind).ok_or_else(|| missing(&format!("{what}.type"), index))?;
-    let id = named(&body.id).ok_or_else(|| missing(&format!("{what}.id"), index))?;
+    let kind = verbatim(&body.kind, &format!("{what}.type"))?
+        .ok_or_else(|| missing(&format!("{what}.type"), index))?;
+    let id = verbatim(&body.id, &format!("{what}.id"))?
+        .ok_or_else(|| missing(&format!("{what}.id"), index))?;
 
     Ok(Entity {
         kind,
@@ -838,6 +843,27 @@ fn missing(what: &str, index: usize) -> Malformed {
              values are the defaults each evaluation inherits"
         ),
     )
+}
+
+/// A name as the caller sent it: `None` when absent, empty or only whitespace (it names nothing,
+/// and the field's own "required" answer says so), and refused when whitespace surrounds it (DEC-0004 option B, BUG-0058, BUG-0059, BUG-0179). A request is decided on the
+/// bytes sent: `"admin "` is not `admin`, and reading it as `admin` would decide something the
+/// caller did not ask, while reading it as written would quietly name what no policy names. So it
+/// is refused, and the PEP author learns of the bug in their own code. Whitespace inside a name,
+/// and its case, stay significant.
+pub fn verbatim(value: &Option<String>, path: &str) -> Result<Option<String>, Malformed> {
+    match value.as_deref() {
+        None => Ok(None),
+        Some(text) if text.trim().is_empty() => Ok(None),
+        Some(text) if text.trim() != text => Err(malformed(
+            permguard_core::codes::common::INVALID_ARGUMENT,
+            format!(
+                "`{path}` is {text:?}, with whitespace around it: a request is decided on the \
+                 bytes sent, so state the name without it"
+            ),
+        )),
+        Some(text) => Ok(Some(text.to_owned())),
+    }
 }
 
 /// A field that is present and not just whitespace.
@@ -906,6 +932,56 @@ mod tests {
         "action": {"name": "read"},
         "context": {"time": "2026-08-24T10:00:00Z"}
     }"#;
+
+    /// BUG-0058, BUG-0059, BUG-0179: a name with whitespace around it is refused before anything
+    /// is decided, wherever it is stated; whitespace inside a name and its case stay significant.
+    #[test]
+    fn a_padded_name_is_refused_and_an_inner_space_is_significant() {
+        let base: serde_json::Value = serde_json::from_str(ONE).expect("JSON");
+        let with = |pointer: &str, value: &str| {
+            let mut body = base.clone();
+            let (parent, field) = pointer.rsplit_once('/').expect("a pointer");
+            let target = if parent.is_empty() {
+                &mut body
+            } else {
+                body.pointer_mut(parent).expect("the parent exists")
+            };
+            target[field] = serde_json::json!(value);
+            serde_json::from_value::<CheckRequest>(body).expect("parses")
+        };
+        for pointer in [
+            "/zone",
+            "/ledger",
+            "/profile",
+            "/subject/type",
+            "/subject/id",
+            "/resource/type",
+            "/resource/id",
+            "/action/name",
+        ] {
+            for padded in [
+                "admin ",
+                " admin",
+                "admin\t",
+                "admin\n",
+                "admin\r",
+                "admin\u{b}",
+                "admin\u{a0}",
+            ] {
+                let refused = with(pointer, padded)
+                    .resolve(256)
+                    .expect_err(&format!("{pointer} = {padded:?}"));
+                assert_eq!(refused.code, "invalid_argument", "{pointer} = {padded:?}");
+            }
+        }
+        // Inner whitespace and case are the caller's, and decided as written.
+        let resolved = with("/subject/id", "ad min").resolve(256).expect("decided");
+        assert_eq!(resolved.queries[0].0.subject.id, "ad min");
+        let resolved = with("/action/name", "READ").resolve(256).expect("decided");
+        assert_eq!(resolved.queries[0].0.action.name, "READ");
+        // The offline engine reads the same request the same way.
+        assert!(with("/profile", "gateway ").asked(256).is_err());
+    }
 
     #[test]
     fn a_plain_request_resolves_to_one_query() {
