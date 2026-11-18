@@ -1074,6 +1074,43 @@ impl Engine {
         self.page(class, resource, query, false)
     }
 
+    /// Whether the trail of `(class, resource)` holds a record of one of the `(action, target)`
+    /// pairs: `None` when retention deleted a part of it, which may have held it. A trail never
+    /// written holds none.
+    pub fn holds(
+        &self,
+        class: Class,
+        resource: &str,
+        wanted: &[(&str, &str)],
+    ) -> Result<Option<bool>, QueryError> {
+        let mut cursor = None;
+        loop {
+            let page = self.read(
+                class,
+                resource,
+                &Query {
+                    limit: Some(query::MAX_LIMIT),
+                    cursor,
+                    ..Query::default()
+                },
+            )?;
+            if page.records.iter().any(|record| {
+                wanted.iter().any(|(action, target)| {
+                    record.action == *action && record.target.as_deref() == Some(*target)
+                })
+            }) {
+                return Ok(Some(true));
+            }
+            if page.anchor.is_some() {
+                return Ok(None);
+            }
+            match page.next {
+                Some(next) => cursor = Some(next),
+                None => return Ok(Some(false)),
+            }
+        }
+    }
+
     /// One page of the export of `(class, resource)` up to the frontier its first page fixed:
     /// every record, from the first kept, whatever its time.
     pub fn export(&self, class: Class, resource: &str, query: &Query) -> Result<Page, QueryError> {
@@ -1210,6 +1247,33 @@ impl Engine {
             let _ = writer.join();
         }
         self.inner.mark_drops();
+    }
+}
+
+impl Engine {
+    /// Checkpoints every trail up to its last record as the process stops, when it seals: a
+    /// stopped volume's last day is then covered rather than left open to a rewrite, and a day
+    /// that ended while the Host was stopped is still proved by the checkpoint taken at the stop
+    /// (BUG-0082). A trail that fails is logged; the stop goes on.
+    pub fn seal_on_stop(&self) {
+        if !self.seals() {
+            return;
+        }
+        match self.checkpoint_all() {
+            Ok(written) if !written.is_empty() => tracing::info!(
+                event.name = "audit.sealed_on_stop",
+                component = "host",
+                checkpoints = written.len(),
+                "audit trails checkpointed as the process stops"
+            ),
+            Ok(_) => {}
+            Err(error) => tracing::error!(
+                event.name = "audit.seal_on_stop_failed",
+                component = "host",
+                error = %error,
+                "the audit trails could not all be checkpointed as the process stops"
+            ),
+        }
     }
 }
 
@@ -1799,6 +1863,7 @@ impl Closing {
             .name("audit-close".to_owned())
             .spawn(move || {
                 closing.close();
+                closing.seal_on_stop();
                 let mut held = shared.lock().unwrap_or_else(PoisonError::into_inner);
                 held.0 = true;
                 if let Some(waker) = held.1.take() {
@@ -1808,6 +1873,7 @@ impl Closing {
         if spawned.is_err() {
             // No thread to run it on: closed here, which is no worse than before.
             engine.close();
+            engine.seal_on_stop();
             state.lock().unwrap_or_else(PoisonError::into_inner).0 = true;
         }
         Self { state }

@@ -506,7 +506,23 @@ impl<'a> Layout<'a> {
         point("migrate.intent_written");
 
         let new = walk(&root, &intent.to.directory, true)?;
-        let built = migration.build(&old, &new)?;
+        let built = match migration.build(&old, &new) {
+            Ok(built) => built,
+            // A refusal the build decided, a stray file beside the old generation for one, is not
+            // a crash: what it built goes now, with the intent, so moving the cause out and
+            // migrating again works as the refusal says (BUG-0083). Should that fail, the
+            // migration is left building, and the message says how to clear it.
+            Err(refused @ StorageError::Refused(_)) => {
+                return match self.abandon(&intent.to.directory) {
+                    Ok(()) => Err(refused),
+                    Err(error) => Err(StorageError::Refused(format!(
+                        "{refused}; the build it began could not be removed ({error}): run \
+                         `migrate recover` before migrating again"
+                    ))),
+                };
+            }
+            Err(error) => return Err(error),
+        };
         point("migrate.built");
 
         let new_digests = self.verify(&intent, &built, &old, &new)?;
@@ -1669,6 +1685,61 @@ mod tests {
             layout.status().expect("status").expect("laid out").phase,
             Phase::Idle
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// BUG-0083: a build that refuses, after writing part of the new generation, leaves no
+    /// migration building: the cause moved out, the same migration runs again.
+    #[test]
+    fn a_build_that_refuses_leaves_nothing_building_and_migrating_again_works() {
+        let (root, volume) = laid_out("build-refused");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        struct Stray;
+        impl Migration for Stray {
+            fn subsystem(&self) -> &str {
+                SUBSYSTEM
+            }
+            fn source_version(&self) -> u16 {
+                1
+            }
+            fn target_version(&self) -> u16 {
+                2
+            }
+            fn build(&self, old: &Dir, new: &Dir) -> Result<Built> {
+                if old.exists(".DS_Store")? {
+                    write_note(new, "half", b"built before the refusal");
+                    return Err(StorageError::Refused(
+                        "a stray file: move it out, then migrate again".to_owned(),
+                    ));
+                }
+                NotesV2 {
+                    tamper: false,
+                    write_old: false,
+                    omit: false,
+                }
+                .build(old, new)
+            }
+        }
+        let old = layout
+            .active(&Reads::only(1))
+            .expect("the active generation");
+        write_note(&old, ".DS_Store", b"noise");
+        let refused = layout
+            .migrate(&Stray, preflight())
+            .expect_err("a stray file");
+        assert!(refused.to_string().contains("migrate again"), "{refused}");
+        assert_eq!(
+            layout.status().expect("status").expect("laid out").phase,
+            Phase::Idle,
+            "nothing is left building"
+        );
+        assert!(
+            !root.join("data/notes/g2").exists(),
+            "what the build wrote is gone"
+        );
+        old.unlink(".DS_Store").expect("moved out");
+        let commit = layout.migrate(&Stray, preflight()).expect("migrates again");
+        assert_eq!(commit.to.version, 2);
         let _ = std::fs::remove_dir_all(root);
     }
 

@@ -1762,7 +1762,40 @@ impl Composition {
         mutations
             .recover(&permguard_host::identity::Identities(&host_identity))
             .context("recovering the identity mutations a crash left open")?;
-        if provisioned {
+        // The provisioning is recorded by the start that provisions, or, when that start was
+        // refused before it could record it, by the next one: a Host identity never goes without
+        // its record (BUG-0084). An identity a reset provisioned is recorded by the reset, under
+        // `host:<host_id>`; a trail whose older part retention deleted is not second-guessed.
+        let host_id = host_identity.host_id_text();
+        let reset_target = format!("host:{host_id}");
+        let unrecorded = !provisioned
+            && audit_engine
+                .holds(
+                    permguard_host::audit::Class::Security,
+                    permguard_host::audit::HOST,
+                    &[
+                        (
+                            permguard_host::identity::AUDIT_PROVISIONED,
+                            host_id.as_str(),
+                        ),
+                        (
+                            permguard_host::identity::reset::AUDIT_RESET,
+                            reset_target.as_str(),
+                        ),
+                    ],
+                )
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("reading the record of the identity's provisioning")?
+                == Some(false);
+        if unrecorded {
+            tracing::warn!(
+                event.name = "host.identity_provisioning_recorded_late",
+                component = "host",
+                "the Host identity had no provisioning record: a start refused after it provisioned \
+                 the identity; recorded now"
+            );
+        }
+        if provisioned || unrecorded {
             audit_engine
                 .append(
                     &permguard_core::AuditEvent::new(

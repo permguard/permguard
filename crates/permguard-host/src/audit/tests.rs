@@ -1979,3 +1979,54 @@ fn the_volume_keys_include_the_rings_an_identity_reset_retired() {
     assert!(rendered.contains("(this Host's ring)"), "{rendered}");
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// BUG-0082: the last day file of a quiet trail was reported unsealed whatever its date, so its
+/// seal could go and its records be rewritten. Once the day ended, its seal or a checkpoint up to
+/// its last record must cover it.
+#[test]
+fn an_ended_last_day_without_its_seal_fails_verification() {
+    let root = scratch("ended-last-day");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let (engine, _ring) = sealing(&volume, Arc::clone(&time));
+    zone(&engine, "a");
+    let dir =
+        trail::directory(&trails_of(&volume), Class::Security, CONTROL, false).expect("trail");
+    let keys = keys_of(&volume);
+    let digest = trail::resource_digest(CONTROL);
+    let on = |today: &str| verify::verify_trail_on(&dir, Class::Security, &digest, &keys, today);
+
+    // Today the day is open: unsealed, not failed.
+    let open = on(&period(0));
+    assert!(open.problems.is_empty(), "{:?}", open.problems);
+    assert_eq!(open.unsealed, vec![period(0)]);
+
+    // Ended, with nothing covering it: failed.
+    let ended = on(&period(DAY));
+    assert!(
+        ended
+            .problems
+            .iter()
+            .any(|problem| problem.contains("ended and nothing seals it")),
+        "{:?}",
+        ended.problems
+    );
+
+    // The checkpoint a stopping Host takes covers it up to its last record.
+    engine.seal_on_stop();
+    let stopped = on(&period(DAY));
+    assert!(stopped.problems.is_empty(), "{:?}", stopped.problems);
+
+    // That checkpoint deleted, the ended day fails again.
+    for name in checkpoint_names(&dir) {
+        std::fs::remove_file(
+            dir.subdir(trail::CHECKPOINTS, false)
+                .expect("checkpoints")
+                .child_path(&name),
+        )
+        .expect("removed");
+    }
+    assert!(!on(&period(DAY)).problems.is_empty());
+    drop(engine);
+    let _ = std::fs::remove_dir_all(root);
+}

@@ -17,16 +17,18 @@
 //! | whole       | a trail the volume's index names and the volume lacks, one a Host found deleted    |
 //! |             | whole, a `security:host` trail missing beside a Host identity (BUG-0156)          |
 //!
-//! The keys are the `host.operations` public keys kept apart from the volume (`--keys`, the
-//! output of `keys export`); without them the keys the volume holds are used, its own ring and
-//! every ring an identity reset retired, and the report says it is not independent and which ring
-//! signed each trail's checkpoints (BUG-0107). Keys kept apart from before a reset must include
-//! the retired ring's: `keys export --directory host/keys/retired/<host_id>/host.operations`. A checkpoint signed by a key revoked since stands, as a warning,
-//! when a later checkpoint by a key that is not revoked chains over it (owner decision of
-//! 2026-10-11, after the review). Every day before a trail's last day file has ended, and the
-//! Host seals it before it writes the next one, so one left unsealed fails; only the last day is
-//! reported as unsealed. Nothing here writes to the volume; a witness's co-signature is reported
-//! present or absent, never verified, since no witness key is kept here.
+//! The keys are the `host.operations` public keys kept apart from the volume (`--keys`, the output
+//! of `keys export`); without them the keys the volume holds are used, its own ring and every ring
+//! an identity reset retired, and the report says it is not independent and which ring signed each
+//! trail's checkpoints (BUG-0107). Keys kept apart from before a reset must include the retired
+//! ring's: `keys export --directory host/keys/retired/<host_id>/host.operations`. A checkpoint
+//! signed by a key revoked since stands, as a warning, when a later checkpoint by a key that is not
+//! revoked chains over it (owner decision of 2026-10-11, after the review). Every day before a
+//! trail's last day file has ended, and the Host seals it before it writes the next one, so one
+//! left unsealed fails; only the last day is reported as unsealed, and only while it is today or a
+//! checkpoint up to its last record (one a stopping Host takes) covers it. Nothing here writes to
+//! the volume; a witness's co-signature is reported present or absent, never verified, since no
+//! witness key is kept here.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -538,8 +540,27 @@ fn host_above(directory: &Path) -> Option<PathBuf> {
     })
 }
 
-/// Verifies every trail below `trails`.
+/// The current UTC day as a trail's periods name it, by this machine's clock.
+fn today() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    trail::period_of(&trail::day_name(now))
+}
+
+/// Verifies every trail below `trails`, today being this machine's current UTC day.
 pub fn verify_trails(trails: &Dir, keys: &Keys) -> Result<Vec<TrailReport>, StorageError> {
+    verify_trails_on(trails, keys, &today())
+}
+
+/// Verifies every trail below `trails` as of the UTC day `today` (`YYYY-MM-DD`): a day before it
+/// has ended.
+pub fn verify_trails_on(
+    trails: &Dir,
+    keys: &Keys,
+    today: &str,
+) -> Result<Vec<TrailReport>, StorageError> {
     let mut reports = Vec::new();
     let mut classes = trails.subdirs()?;
     classes.sort();
@@ -557,7 +578,7 @@ pub fn verify_trails(trails: &Dir, keys: &Keys) -> Result<Vec<TrailReport>, Stor
         digests.sort();
         for digest in digests {
             let dir = class_dir.subdir(&digest, false)?;
-            reports.push(verify_trail(&dir, class, &digest, keys));
+            reports.push(verify_trail_on(&dir, class, &digest, keys, today));
         }
     }
     Ok(reports)
@@ -565,11 +586,22 @@ pub fn verify_trails(trails: &Dir, keys: &Keys) -> Result<Vec<TrailReport>, Stor
 
 /// Verifies the trail in `dir`, of `class`, kept under the resource digest `digest`.
 pub fn verify_trail(dir: &Dir, class: Class, digest: &str, keys: &Keys) -> TrailReport {
+    verify_trail_on(dir, class, digest, keys, &today())
+}
+
+/// Verifies the trail in `dir` as of the UTC day `today` (`YYYY-MM-DD`).
+pub fn verify_trail_on(
+    dir: &Dir,
+    class: Class,
+    digest: &str,
+    keys: &Keys,
+    today: &str,
+) -> TrailReport {
     let mut report = TrailReport {
         class: class.as_str().to_owned(),
         ..TrailReport::default()
     };
-    if let Err(problem) = check(dir, class, digest, keys, &mut report) {
+    if let Err(problem) = check(dir, class, digest, keys, today, &mut report) {
         report.problem(problem);
     }
     report
@@ -589,6 +621,7 @@ fn check(
     class: Class,
     digest: &str,
     keys: &Keys,
+    today: &str,
     report: &mut TrailReport,
 ) -> Result<(), String> {
     let storage = |error: StorageError| error.to_string();
@@ -874,7 +907,9 @@ fn check(
     }
 
     // Coverage: every day before the last one ended, and the Host sealed it before it wrote the
-    // next one.
+    // next one. The last day is open only while it is today (or later, by a clock ahead of this
+    // one); once it ended, its seal or a checkpoint up to its last record, the one a stopping
+    // Host takes, covers it (BUG-0082).
     let sealed_days: BTreeSet<&str> = verified
         .iter()
         .filter(|entry| parse_name(&entry.file).is_some_and(|(_, seq)| seq.is_none()))
@@ -886,7 +921,19 @@ fn check(
             continue;
         }
         if Some(period) == last_day.as_ref() {
-            report.unsealed.push(period.clone());
+            let covered = period.as_str() >= today
+                || verified.iter().any(|entry| {
+                    entry.checkpoint.period == *period
+                        && report.last_seq == Some(entry.checkpoint.last_seq)
+                });
+            if covered {
+                report.unsealed.push(period.clone());
+            } else {
+                report.problem(format!(
+                    "the day {period} ended and nothing seals it: its seal or the checkpoint up \
+                     to its last record is gone, or the Host stopped without taking one"
+                ));
+            }
         } else {
             report.problem(format!(
                 "the day {period} ended and is not sealed: its seal is gone or was never written"

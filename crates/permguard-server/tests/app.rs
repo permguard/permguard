@@ -1321,6 +1321,47 @@ fn host_security_records(volume: &Path) -> Vec<permguard_host::audit::record::Au
         .collect()
 }
 
+/// BUG-0084: a first start refused after it provisioned the identity, and before its audit engine
+/// opened, left an identity with no provisioning record, and no later start wrote it.
+#[tokio::test]
+async fn test_an_identity_without_its_provisioning_record_has_it_written_at_the_next_start() {
+    use permguard_host::identity::record::Init;
+
+    let path = config_file("identity-unrecorded", SERVABLE);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    let serve = || async {
+        app()
+            .dispatch_to(&serve_action(&path), &mut Vec::new())
+            .await
+            .expect("the server serves")
+    };
+    serve().await;
+    let host_id = Init::decode(&fs::read(volume.join("host/identity/INIT")).expect("INIT"))
+        .expect("reads")
+        .host_id;
+    // What the refused start leaves: the identity, and no audit at all.
+    fs::remove_dir_all(volume.join("host/audit")).expect("removed");
+    serve().await;
+    let provisioned = |volume: &Path| {
+        host_security_records(volume)
+            .into_iter()
+            .filter(|record| record.action == permguard_host::identity::AUDIT_PROVISIONED)
+            .collect::<Vec<_>>()
+    };
+    let recorded = provisioned(&volume);
+    assert_eq!(
+        recorded.len(),
+        1,
+        "recorded at the next start: {recorded:?}"
+    );
+    assert_eq!(recorded[0].host_id, host_id);
+    // And only once.
+    serve().await;
+    assert_eq!(provisioned(&volume).len(), 1);
+    let _ = fs::remove_dir_all(&volume);
+}
+
 #[tokio::test]
 async fn test_a_development_volume_provisions_its_identity_at_the_first_start_and_keeps_it() {
     use permguard_host::identity::record::Init;

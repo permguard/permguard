@@ -36,6 +36,13 @@ is cut.
   Keys kept apart for `--keys` must include the retired ring's: `keys export --directory host/keys/retired/<host_id>/host.operations`.
 - **Every `audit` log line carries the record's phase and outcome.**
   `audit.phase` (`intent`, `applied`, `failed`, `reconciled`, absent for a simple observation) and `audit.outcome` (`ok`, `refused`, `failed`, `indeterminate`) are the trail's own, so a log consumer tells a refused or racing approval from a granted one.
+- **An ended day that nothing seals fails `audit verify`, also when it is a trail's last day.**
+  The last day file of a trail is reported unsealed only while it is today (UTC) or a checkpoint up to its last record covers it; before, a quiet trail's ended day could lose its seal and have its records rewritten undetected.
+  A Host stopping gracefully now checkpoints every trail up to its last record (`audit.sealed_on_stop`), so a volume stopped overnight still verifies.
+- **A Host identity always has its provisioning record.**
+  A first start refused after it provisioned the identity, and before its audit opened, left the identity with no `host.identity.provisioned` record for good; the next start now writes it, with the warning `host.identity_provisioning_recorded_late`.
+- **A legacy audit migration refused for a stray file leaves nothing building.**
+  What the refused build wrote is removed with its intent, so moving the file out and migrating again works, at start or with `migrate audit`, without `migrate recover`.
 - **A trail whose `META.cbor` is missing is said to be missing.**
   The sweep logged `not canonical CBOR: truncated input` for it; it now logs `its META.cbor is missing`.
 
