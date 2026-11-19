@@ -96,6 +96,10 @@ is cut.
 
 ### Security
 
+- **A reload whose revocation list names a client certificate ends the connections it authenticated.**
+  Until now the list was checked at the handshake only, so a client already connected kept everything its certificate authenticated, REST, gRPC and peer sessions alike, for as long as it kept the connection busy; with `limits.connection_lifetime` unset, that was forever.
+  Every listener with `client_ca` now verifies its open connections again at each reload, on SIGHUP or when its watcher sees the files change, and ends at once those whose certificate the list in force revokes.
+  `transport.tls_reloaded` carries `connections.revoked`, and a reload that ended any logs `transport.connections_revoked` at WARN.
 - **A trail deleted whole no longer passes `audit verify`.**
   The volume keeps an index of its trails in `host/audit/index`, written before each trail's directory exists; a volume written by an earlier build has its trails adopted at the next start.
   `audit verify` fails on a trail the index names and the volume lacks, and on a volume with a Host identity and no `security:host` trail; a volume that keeps no index is said to have none.
@@ -139,6 +143,11 @@ is cut.
 
 ### Fixed
 
+- **A coordinator with connected members drains in moments.**
+  On a stop, every listener now ends its long-lived peer channels, a member's `policy.mirror` watch among them, with `UNAVAILABLE`, which the member reads as "open it again later"; the drain no longer waits for them until `shutdown.drain_timeout`, so the process exits `0` and releases the volume lock at once instead of exiting `75` after the whole budget.
+  When the drain budget is spent before the shipping pass runs, the streams behind are still marked `unshipped` for the next start, and the reason says the pass never ran, rather than "before any stream was shipped".
+- **A connection that withholds its request body no longer holds the request budget, and the probes always answer.**
+  A body that stops arriving is cut after `limits.header_timeout` without a new part, not after the whole `request_timeout`; and `/health`, `/healthz`, `/readyz`, `/livez` and the gRPC health check answer outside `limits.concurrent_requests`, so a surface whose budget is held is still seen alive and asked whether it is ready.
 - **A catalog change that changes nothing moves no revision.**
   A rename of a zone or a ledger to the name it has, a restore of an active ledger and an archive of an archived one, at the revision expected, are answered with the record as it is: the revision and `updated_at` stay, the trail records nothing applied, and a client holding that revision can still change it.
 - **A catalog change's `request_id` is at most 128 bytes.**

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use rustls::server::WebPkiClientVerifier;
+use rustls::server::danger::ClientCertVerifier;
 use rustls::{RootCertStore, ServerConfig};
 
 use permguard_core::{TlsSettings, TlsVersion};
@@ -24,14 +25,24 @@ pub use permguard_tls::{load_certificates, load_key, load_revocations};
 
 /// Builds the TLS configuration a listener serves with.
 pub fn server_config(settings: &TlsSettings) -> Result<Arc<ServerConfig>> {
-    Ok(build(settings)?.0)
+    Ok(build(settings)?.config)
+}
+
+/// A listener's configuration, the certificate it serves, and the verifier its clients meet.
+pub(crate) struct Built {
+    pub(crate) config: Arc<ServerConfig>,
+    /// The fingerprint of the certificate served.
+    pub(crate) fingerprint: String,
+    /// What a client certificate is verified with, revocation list included; `None` without
+    /// `client_ca`. A reload re-verifies the connections already open with it (BUG-0101).
+    pub(crate) verifier: Option<Arc<dyn ClientCertVerifier>>,
 }
 
 /// Builds the configuration and says which certificate it ended up with.
 ///
 /// The fingerprint is what makes a reload verifiable: a log record saying material was re-read, with
 /// no way to tell whether it is the same material, is a record that answers nothing.
-pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String)> {
+pub(crate) fn build(settings: &TlsSettings) -> Result<Built> {
     // rustls asks for a process-wide provider; installing it more than once is not an error worth
     // reporting, because the second caller wanted exactly what the first one installed.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -53,6 +64,7 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
         .with_protocol_versions(versions)
         .context("the pinned algorithm policy refuses these TLS versions")?;
 
+    let mut client_verifier = None;
     let mut config = match settings.client_ca() {
         Some(client_ca) => {
             let mut roots = RootCertStore::empty();
@@ -94,6 +106,7 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
             let verifier = verifier.build().with_context(|| {
                 format!("building the client verifier from {}", client_ca.display())
             })?;
+            client_verifier = Some(Arc::clone(&verifier));
 
             builder
                 .with_client_cert_verifier(verifier)
@@ -114,5 +127,9 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
     // Without this a client speaking HTTP/2 — which every gRPC client does — cannot negotiate it.
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    Ok((Arc::new(config), leaf))
+    Ok(Built {
+        config: Arc::new(config),
+        fingerprint: leaf,
+        verifier: client_verifier,
+    })
 }

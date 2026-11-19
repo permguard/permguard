@@ -494,3 +494,89 @@ async fn test_without_a_list_every_authenticated_peer_is_served() {
         .await
         .expect("the listener stops");
 }
+
+/// Sends one keep-alive request on `stream` and reads its answer, or the error that ended it.
+async fn ask_on<S>(stream: &mut S) -> Result<String, String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    stream
+        .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut said = vec![0u8; 1024];
+    let read = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut said))
+        .await
+        .map_err(|_| "no answer".to_owned())?
+        .map_err(|error| error.to_string())?;
+    if read == 0 {
+        return Err("the connection was closed".to_owned());
+    }
+
+    Ok(String::from_utf8_lossy(&said[..read]).into_owned())
+}
+
+/// BUG-0101: a connection open when its client certificate is revoked is ended by the reload that
+/// reads the list, with no connection lifetime set; a connection whose certificate stays valid
+/// keeps being served, and the reload counts what it ended.
+#[tokio::test]
+async fn test_a_reload_that_revokes_a_certificate_ends_the_connections_it_authenticated() {
+    let authority = Authority::new("ends-held");
+    let authority_pem = authority.authority_pem();
+    let (server_cert, server_key) = authority.issue("server", "localhost", 1);
+    let (alice_cert, alice_key) = authority.issue("alice", "alice", 52);
+    let (bob_cert, bob_key) = authority.issue("bob", "bob", 53);
+    let crl = authority.revoke("ca.crl", &[]);
+
+    let settings = TlsSettings::new(&server_cert, &server_key)
+        .with_client_ca(&authority_pem)
+        .with_crl(&crl);
+    let surface = Surface::listener("test", "127.0.0.1:0", router())
+        .tls(Some(&settings))
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+    let hold = |certificate: PathBuf, key: PathBuf| {
+        let authority_pem = authority_pem.clone();
+        async move {
+            let connector =
+                TlsConnector::from(Arc::new(client(&authority_pem, &certificate, &key)));
+            let stream = TcpStream::connect(address).await.expect("connects");
+            connector
+                .connect(ServerName::try_from("localhost").expect("a name"), stream)
+                .await
+                .expect("the handshake completes")
+        }
+    };
+    let mut alice = hold(alice_cert.clone(), alice_key.clone()).await;
+    let mut bob = hold(bob_cert, bob_key).await;
+    for stream in [&mut alice, &mut bob] {
+        let said = ask_on(stream).await.expect("served before the revocation");
+        assert!(said.contains("served"), "{said}");
+    }
+
+    authority.revoke("ca.crl", &[52]);
+    let reloaded = permguard_transport::reload_all();
+    assert!(
+        reloaded.revoked >= 1,
+        "the reload counts the connection it ended: {reloaded:?}"
+    );
+
+    let after = ask_on(&mut alice).await;
+    assert!(
+        after.is_err(),
+        "nothing is served on alice's connection after the revocation: {after:?}"
+    );
+    let said = ask_on(&mut bob)
+        .await
+        .expect("bob's connection is still served");
+    assert!(said.contains("served"), "{said}");
+    let refused = speak_tls(address, client(&authority_pem, &alice_cert, &alice_key)).await;
+    assert!(refused.is_err(), "a new connection as alice is refused");
+
+    surface
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("the listener stops");
+}

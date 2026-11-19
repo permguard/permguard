@@ -46,12 +46,15 @@ pub struct PeerAddress(pub std::net::IpAddr);
 #[derive(Clone)]
 pub struct PeerAcceptor {
     inner: RustlsAcceptor,
+    /// The surface's record of the connections a client certificate authenticated, which a
+    /// reload verifies again (BUG-0101).
+    held: Arc<crate::held::Held>,
 }
 
 impl PeerAcceptor {
     /// Wraps the acceptor that does the handshake.
-    pub fn new(inner: RustlsAcceptor) -> Self {
-        Self { inner }
+    pub(crate) fn new(inner: RustlsAcceptor, held: Arc<crate::held::Held>) -> Self {
+        Self { inner, held }
     }
 }
 
@@ -66,7 +69,7 @@ where
     I: AsyncRead + AsyncWrite + crate::guard::PeerIp + Unpin + Send + 'static,
     S: Send + 'static,
 {
-    type Stream = TlsStream<I>;
+    type Stream = crate::held::Revocable<TlsStream<I>>;
     // The handshake's own acceptor wraps the service to hand every request what the TLS layer
     // knows of the connection (`axum-server` 0.9): the peer's identity is added around that.
     type Service = WithPeer<axum_server::tls::TlsService<S>>;
@@ -75,9 +78,20 @@ where
     fn accept(&self, stream: I, service: S) -> Self::Future {
         let address = stream.peer_ip().map(|ip| Arc::new(PeerAddress(ip)));
         let handshake = self.inner.accept(stream, service);
+        let held = Arc::clone(&self.held);
 
         Box::pin(async move {
             let (stream, service) = handshake.await?;
+            // A connection a client certificate authenticated is held, so a revocation the next
+            // reload reads ends it (BUG-0101).
+            let holding = stream.get_ref().1.peer_certificates().map(|chain| {
+                held.hold(
+                    chain
+                        .iter()
+                        .map(|certificate| certificate.clone().into_owned())
+                        .collect(),
+                )
+            });
 
             // `peer_certificates` is populated only when the verifier demanded one, so a surface
             // without mutual TLS produces no identity and pays for no parsing.
@@ -93,7 +107,7 @@ where
             let binding = channel_binding(stream.get_ref().1).map(Arc::new);
 
             Ok((
-                stream,
+                crate::held::Revocable::new(stream, holding),
                 WithPeer {
                     inner: service,
                     address,

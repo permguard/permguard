@@ -366,9 +366,9 @@ host:
 #   concurrent_requests: "256"      # requests in flight at once; beyond it, 503 rather than a queue
 #   request_timeout: "30s"          # how long one request may take
 #   handshake_timeout: "10s"        # how long a client has to finish a TLS handshake
-#   header_timeout: "10s"           # how long a client has to send a complete request head
+#   header_timeout: "10s"           # how long a client has to send a complete request head, and each part of its body
 #   body_bytes: "1M"                # bytes one request body may carry
-#   connection_lifetime: "0s"       # how long one connection may exist; "0s" leaves it unbounded
+#   connection_lifetime: "0s"       # how long one connection may exist; "0s" leaves it unbounded (a reload whose crl revokes a client ends its connections either way)
 #   write_stall_timeout: "30s"      # a response making no progress: the client stopped reading
 
 operations:

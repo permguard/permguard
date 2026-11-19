@@ -23,10 +23,11 @@ use tower::load_shed::LoadShedLayer;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::limit::RequestBodyLimitLayer;
-use tower_http::timeout::TimeoutLayer;
+use tower_http::timeout::{RequestBodyTimeoutLayer, TimeoutLayer};
 
 use permguard_core::{Limits, Metrics, TlsSettings};
 
+use crate::drain;
 use crate::gate::PeerGateLayer;
 use crate::guard::LimitedAcceptor;
 use crate::identity::PeerAcceptor;
@@ -44,6 +45,9 @@ pub struct Surface {
     /// reference, so dropping this is what takes the surface out of it.
     material: Option<Arc<reload::Reloadable>>,
     watcher: Option<JoinHandle<()>>,
+    /// Raised when the drain starts: the long-lived answers of the streaming paths end on it
+    /// (BUG-0222), so a peer's open watch does not hold the drain for its whole budget.
+    draining: tokio::sync::watch::Sender<bool>,
 }
 
 impl std::fmt::Debug for Surface {
@@ -188,7 +192,11 @@ impl<'a> Listener<'a> {
 
         let handle = Handle::new();
         let serving = handle.clone();
+        let (draining, drained) = tokio::sync::watch::channel(false);
         let accepting = secured.as_ref().map(|(_, config)| config.clone());
+        // The connections a client certificate authenticated, which a reload verifies again.
+        let held = Arc::new(crate::held::Held::default());
+        let holding = Arc::clone(&held);
 
         let measuring = metrics.clone();
         let task = tokio::spawn(async move {
@@ -235,16 +243,36 @@ impl<'a> Listener<'a> {
                 router.layer(PeerGateLayer::new(allow))
             };
 
+            // The probes answer whatever the requests in flight hold: a pod whose budget slow or
+            // abusive callers spend is still seen alive and asked whether it is ready, rather than
+            // restarted for it (BUG-0060, DEC-0015).
+            let overload = StreamingExempt::new(
+                overload,
+                PROBE_PATHS.iter().map(|path| (*path).to_owned()).collect(),
+            );
+            let body_streaming = streaming.clone();
+            let ending = drain::EndOnDrainLayer::new(streaming.clone(), drained);
             let service = router
                 // Innermost of all, so it is between the handlers and everything else: a panic there
                 // becomes an answer rather than a connection that closes with nothing on it. Without
                 // it the client sees a transport error, which sends whoever reports it to the
                 // network — and the surface loses the one request that would have explained itself.
                 .layer(CatchPanicLayer::custom(panicked))
+                // A streaming answer is a conversation with no end of its own: it ends when the
+                // drain starts, so the drain waits for requests, not for peers (BUG-0222).
+                .layer(ending)
                 .layer(DefaultBodyLimit::max(limits.body_bytes()))
                 .layer(StreamingExempt::new(
                     RequestBodyLimitLayer::new(limits.body_bytes()),
                     streaming,
+                ))
+                // A body that stops arriving is bounded by the header's own deadline, between two
+                // of its frames, not by the request's: a connection that sends its head and
+                // withholds its body cannot hold a slot of the budget for the whole request
+                // timeout (BUG-0060). A streaming route's body is its conversation, and exempt.
+                .layer(StreamingExempt::new(
+                    RequestBodyTimeoutLayer::new(limits.header_timeout()),
+                    body_streaming,
                 ))
                 .layer(TimeoutLayer::with_status_code(
                     StatusCode::REQUEST_TIMEOUT,
@@ -266,6 +294,7 @@ impl<'a> Listener<'a> {
                                     PeerAcceptor::new(
                                         RustlsAcceptor::new(config)
                                             .handshake_timeout(limits.handshake_timeout()),
+                                        holding,
                                     ),
                                     limits.clone(),
                                 )
@@ -312,7 +341,8 @@ impl<'a> Listener<'a> {
 
                 let material = Arc::new(
                     reload::Reloadable::new(bound, settings.clone(), config)
-                        .measured(surface, metrics.clone()),
+                        .measured(surface, metrics.clone())
+                        .holding(held),
                 );
                 reload::register(&material);
 
@@ -333,6 +363,7 @@ impl<'a> Listener<'a> {
             task,
             material,
             watcher,
+            draining,
         })
     }
 }
@@ -367,6 +398,7 @@ impl Surface {
     /// Stops accepting connections, at once, and lets the ones open finish what they carry:
     /// the first step of a drain (WP-2.7). Nothing waits here; [`Surface::finish`] waits.
     pub fn stop_intake(&self) {
+        self.draining.send_replace(true);
         self.handle.graceful_shutdown(None);
     }
 
@@ -383,6 +415,7 @@ impl Surface {
         }
         drop(self.material);
 
+        self.draining.send_replace(true);
         self.handle.graceful_shutdown(None);
         let mut task = self.task;
         let complete = match tokio::time::timeout_at(deadline, &mut task).await {
@@ -418,6 +451,7 @@ impl Surface {
         // Dropping the last strong reference is what removes this surface from the set SIGHUP walks.
         drop(self.material);
 
+        self.draining.send_replace(true);
         self.handle.graceful_shutdown(Some(grace));
         self.task
             .await
@@ -509,6 +543,16 @@ where
         }
     }
 }
+
+/// The health probes every surface answers outside the request budget (BUG-0060): REST's, and the
+/// standard gRPC health service.
+const PROBE_PATHS: &[&str] = &[
+    "/health",
+    "/healthz",
+    "/readyz",
+    "/livez",
+    "/grpc.health.v1.Health/Check",
+];
 
 /// How often an idle HTTP/2 connection is pinged to check the peer is still on the other end.
 ///

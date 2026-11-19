@@ -3147,6 +3147,7 @@ dependencies = [
  "axum",
  "axum-server",
  "http",
+ "http-body",
  "http-body-util",
  "hyper-util",
  "permguard-core",

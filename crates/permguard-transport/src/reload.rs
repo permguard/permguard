@@ -1,7 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Re-reading transport material without dropping a connection.
+//! Re-reading transport material without dropping a connection, except one whose client
+//! certificate the new revocation list names (BUG-0101).
 //!
 //! A certificate is renewed on a schedule nobody controls from inside this process. The alternatives
 //! to noticing are a restart every ninety days, or — far more often, because nobody wants the
@@ -62,6 +63,8 @@ pub struct Reloadable {
     seen: Mutex<Vec<Option<String>>>,
     surface: &'static str,
     metrics: Metrics,
+    /// The connections a client certificate authenticated: a reload ends the revoked ones.
+    held: Arc<crate::held::Held>,
 }
 
 impl Reloadable {
@@ -76,7 +79,15 @@ impl Reloadable {
             seen: Mutex::new(seen),
             surface: "surface",
             metrics: Metrics::none(),
+            held: Arc::default(),
         }
+    }
+
+    /// Verifies the connections in `held` again at every reload (BUG-0101).
+    pub(crate) fn holding(mut self, held: Arc<crate::held::Held>) -> Self {
+        self.held = held;
+
+        self
     }
 
     /// Records what the reloaded material says about itself, under the name `surface`.
@@ -99,6 +110,8 @@ pub struct Reloaded {
     pub reloaded: usize,
     /// Surfaces whose material could not be read, and which kept what they had.
     pub failed: usize,
+    /// Connections ended because the revocation list now read revokes their client certificate.
+    pub revoked: usize,
 }
 
 /// The surfaces this process is serving, weakly.
@@ -137,14 +150,16 @@ pub fn reload_all() -> Reloaded {
         remember(surface);
 
         match reload(surface) {
-            Ok(fingerprint) => {
+            Ok((fingerprint, revoked)) => {
                 outcome.reloaded += 1;
+                outcome.revoked += revoked;
                 info!(
                     event.name = "transport.tls_reloaded",
                     component = COMPONENT,
                     address = %surface.address,
                     reason = "signal",
                     tls.certificate.fingerprint = %fingerprint,
+                    connections.revoked = revoked,
                     "re-read the transport material"
                 );
             }
@@ -198,12 +213,13 @@ pub async fn watch(surface: Weak<Reloadable>, interval: Duration) {
         remember(&surface);
 
         match reload(&surface) {
-            Ok(fingerprint) => info!(
+            Ok((fingerprint, revoked)) => info!(
                 event.name = "transport.tls_reloaded",
                 component = COMPONENT,
                 address = %surface.address,
                 reason = "changed",
                 tls.certificate.fingerprint = %fingerprint,
+                connections.revoked = revoked,
                 "re-read the transport material"
             ),
             Err(error) => warn!(
@@ -218,14 +234,29 @@ pub async fn watch(surface: Weak<Reloadable>, interval: Duration) {
     }
 }
 
-/// Builds the material afresh and installs it, leaving the live configuration alone if it cannot.
-fn reload(surface: &Reloadable) -> anyhow::Result<String> {
-    let (config, fingerprint) = crate::material::build(&surface.settings)?;
+/// Builds the material afresh and installs it, leaving the live configuration alone if it cannot;
+/// then ends the open connections whose client certificate the new list revokes (BUG-0101).
+/// Returns the fingerprint now served and how many connections were ended.
+fn reload(surface: &Reloadable) -> anyhow::Result<(String, usize)> {
+    let built = crate::material::build(&surface.settings)?;
 
-    surface.config.reload_from_config(config);
+    surface.config.reload_from_config(built.config);
     crate::measure::record_certificate_expiry(surface.surface, &surface.metrics, &surface.settings);
+    let revoked = built
+        .verifier
+        .as_deref()
+        .map_or(0, |verifier| surface.held.end_revoked(verifier));
+    if revoked > 0 {
+        warn!(
+            event.name = "transport.connections_revoked",
+            component = COMPONENT,
+            address = %surface.address,
+            connections.revoked = revoked,
+            "ended the open connections whose client certificate the revocation list now names"
+        );
+    }
 
-    Ok(fingerprint)
+    Ok((built.fingerprint, revoked))
 }
 
 /// Reports whether any file this surface is made of has been touched since it was last looked at.

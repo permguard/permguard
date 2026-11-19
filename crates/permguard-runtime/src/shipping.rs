@@ -68,15 +68,20 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
             Err(_) => break,
         }
     }
-    if !passed {
-        return Ok(Drained::Incomplete(
-            "the drain deadline passed before any stream was shipped".to_owned(),
-        ));
-    }
+    // A deadline the listeners' drain already spent still marks what is behind, so the next
+    // process recovers it (BUG-0222): only the shipping pass is skipped, never the marks.
     let marked = api
         .mark_unshipped()
         .map_err(|error| anyhow!("marking the unshipped streams: {error}"))?;
     if marked.is_empty() {
+        if !passed {
+            // Nothing was behind, but no pass confirmed it: the reason says what happened.
+            return Ok(Drained::Incomplete(
+                "the drain deadline passed before the shipping pass ran; no stream was behind \
+                 its required subscriptions"
+                    .to_owned(),
+            ));
+        }
         // Shipped as the deadline came.
         return Ok(Drained::Complete);
     }
@@ -91,9 +96,14 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
             "a stream is left behind its required subscriptions: the volume holds evidence"
         );
     }
+    let before = if passed {
+        ""
+    } else {
+        "the drain deadline passed before the shipping pass ran: "
+    };
     Ok(Drained::Incomplete(format!(
-        "{} stream(s) left unshipped behind their required subscriptions; the volume keeps them \
-         for a fenced recovery",
+        "{before}{} stream(s) left unshipped behind their required subscriptions; the volume \
+         keeps them for a fenced recovery",
         marked.len()
     )))
 }

@@ -769,3 +769,136 @@ async fn test_a_request_past_the_bound_is_refused_typed_in_its_own_protocol() {
         .await
         .expect("the listener stops");
 }
+
+/// BUG-0060: a connection that sends its head and withholds its body holds a slot of the budget
+/// only until the body's own deadline, and the probes answer while every slot is held.
+#[tokio::test]
+async fn test_a_withheld_body_is_cut_and_the_probes_answer_while_the_budget_is_held() {
+    let router = router().route("/health", get(|| async { "alive\n" }));
+    let surface = Surface::listener("test", "127.0.0.1:0", router)
+        .limits(
+            Limits::default()
+                .with_concurrent_requests(1)
+                .with_header_timeout(Duration::from_secs(1)),
+        )
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+
+    // The one slot, held by a body that never comes.
+    let started = std::time::Instant::now();
+    let held = tokio::spawn(exchange(
+        address,
+        b"POST /echo HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 100\r\n\r\nx",
+    ));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let probe = exchange(
+        address,
+        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(status(&probe).contains("200"), "the probe answers: {probe}");
+    let other = exchange(
+        address,
+        b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(
+        status(&other).contains("503"),
+        "the budget is held: {other}"
+    );
+
+    let answered = held.await.expect("the held exchange ends");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the withheld body is cut by its deadline, not by the request's: {answered}"
+    );
+    let freed = exchange(
+        address,
+        b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(
+        status(&freed).contains("200"),
+        "the slot is free again: {freed}"
+    );
+}
+
+/// A body with one frame and no end of its own: a peer's watch, as far as the surface can tell.
+struct Endless {
+    first: Option<axum::body::Bytes>,
+}
+
+impl http_body::Body for Endless {
+    type Data = axum::body::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        match self.first.take() {
+            Some(first) => std::task::Poll::Ready(Some(Ok(http_body::Frame::data(first)))),
+            None => std::task::Poll::Pending,
+        }
+    }
+}
+
+/// BUG-0222: a streaming answer that never ends on its own ends when the drain starts, after what
+/// it had already sent, so the drain completes in moments rather than at its deadline.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_drain_ends_the_streaming_answers_and_completes_at_once() {
+    let router = Router::new().route(
+        "/stream",
+        get(|| async {
+            axum::body::Body::new(Endless {
+                first: Some(axum::body::Bytes::from_static(b"first\n")),
+            })
+        }),
+    );
+    let surface = Surface::listener("test", "127.0.0.1:0", router)
+        .streaming(["/stream".to_owned()])
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+
+    let mut stream = TcpStream::connect(address).await.expect("connects");
+    stream
+        .write_all(b"GET /stream HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .expect("sends");
+    let mut head = vec![0u8; 512];
+    let read = stream.read(&mut head).await.expect("reads the first frame");
+    assert!(
+        String::from_utf8_lossy(&head[..read]).contains("first"),
+        "the stream is open and has sent its first frame"
+    );
+
+    let started = std::time::Instant::now();
+    let (_, complete) = surface
+        .finish(tokio::time::Instant::now() + Duration::from_secs(10))
+        .await
+        .expect("the listener finishes");
+    assert!(
+        complete,
+        "the drain completed rather than cutting the stream"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the drain did not wait for the stream: {:?}",
+        started.elapsed()
+    );
+    let mut rest = Vec::new();
+    tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut rest))
+        .await
+        .expect("the stream ends")
+        .expect("reads the end");
+    assert!(
+        String::from_utf8_lossy(&rest).ends_with("0\r\n\r\n"),
+        "the answer ended as a body ends, not as a reset: {:?}",
+        String::from_utf8_lossy(&rest)
+    );
+}

@@ -44,8 +44,15 @@ pub(crate) fn respond(
     tokio::spawn(async move {
         let deadline = tokio::time::Instant::now() + HANDSHAKE;
         loop {
+            // An answer that is gone, the listener's drain ended it (BUG-0222), ends the session
+            // at once: the inbound stream is released and the connection can finish.
+            let closed = sender.clone();
             let next = if responder.session().is_some() {
-                match tokio::time::timeout(IDLE, inbound.message()).await {
+                let read = tokio::select! {
+                    () = closed.closed() => return,
+                    read = tokio::time::timeout(IDLE, inbound.message()) => read,
+                };
+                match read {
                     Ok(next) => next,
                     Err(_) => {
                         tracing::info!(
@@ -57,7 +64,11 @@ pub(crate) fn respond(
                     }
                 }
             } else {
-                match tokio::time::timeout_at(deadline, inbound.message()).await {
+                let read = tokio::select! {
+                    () = closed.closed() => return,
+                    read = tokio::time::timeout_at(deadline, inbound.message()) => read,
+                };
+                match read {
                     Ok(next) => next,
                     Err(_) => {
                         let refusal = responder.abort("the handshake took too long");
@@ -127,6 +138,8 @@ async fn serve_watch(
                             return;
                         }
                     },
+                    // The answer is gone: the listener's drain ended it (BUG-0222).
+                    () = sender.closed() => return,
                     // The session belongs to its watch: anything the member sends ends it, as
                     // the in-process session answers.
                     next = inbound.message() => {

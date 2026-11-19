@@ -2367,6 +2367,26 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
     }
     pki.issue_serial("member", "127.0.0.1", 9003, false);
     drop(open().await.expect("valid again, a lease"));
+    wait_closed().await;
+
+    // BUG-0101: a session already open when its certificate is revoked ends at the reload that
+    // reads the list, over the gRPC peer channel and with no connection lifetime set.
+    let mut held = open().await.expect("a session held across the revocation");
+    assert!(
+        !coordinator.tasks.live.of(&membership_id).is_empty(),
+        "the coordinator holds the session"
+    );
+    pki.revoke("coordinator.crl", &[REVOKED, 9003]);
+    let reloaded = permguard_transport::reload_all();
+    assert!(
+        reloaded.revoked >= 1,
+        "the reload ended the revoked connection: {reloaded:?}"
+    );
+    wait_closed().await;
+    assert!(
+        held.send("after", b"after".to_vec()).await.is_err(),
+        "nothing is served on the revoked connection"
+    );
     let _ = (&coordinator.listener, &member.listener);
 }
 
@@ -2461,12 +2481,22 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
     assert!(member.api.shipping_behind().expect("read"));
 
     // A deadline already passed ships nothing and is never complete: no pass judged anything.
-    assert!(matches!(
-        permguard_server::shipping::drain(&member.api, std::time::Instant::now())
-            .await
-            .expect("drained"),
-        Drained::Incomplete(_)
-    ));
+    // The stream behind is still marked, and the reason says the pass never ran (BUG-0222).
+    let spent = permguard_server::shipping::drain(&member.api, std::time::Instant::now())
+        .await
+        .expect("drained");
+    let Drained::Incomplete(reason) = spent else {
+        panic!("a spent deadline is never a complete drain: {spent:?}");
+    };
+    assert_eq!(
+        reason,
+        "the drain deadline passed before the shipping pass ran: 1 stream(s) left unshipped \
+         behind their required subscriptions; the volume keeps them for a fenced recovery"
+    );
+    assert!(
+        evidence_degraded(&member),
+        "the marked stream degrades the Host"
+    );
 
     // The coordinator answers: every record is shipped, and the drain is complete.
     assert_eq!(
@@ -3442,11 +3472,36 @@ async fn a_member_lists_its_mirror_tasks_and_reads_over_a_session_it_opens() {
         reported.reported_at
     );
     // And a watch over the task (WP-7.2c): the coordinator takes it on a session of its own.
-    member
+    let mut watch = member
         .api
         .watch_mirror(task, vec![("zone/ledger/main".to_owned(), 0)])
         .await
         .expect("the watch opens");
+
+    // BUG-0222: the coordinator's drain ends the open watch rather than waiting for it, and
+    // completes in moments; the member is told, and opens it again later.
+    let started = std::time::Instant::now();
+    let (_, complete) = coordinator
+        .listener
+        .finish(tokio::time::Instant::now() + std::time::Duration::from_secs(20))
+        .await
+        .expect("the listener drains");
+    assert!(complete, "the drain completed: nothing was cut");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the drain did not wait for the watch: {:?}",
+        started.elapsed()
+    );
+    let ended = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Err(refusal) = watch.next().await {
+                return refusal;
+            }
+        }
+    })
+    .await
+    .expect("the watch ends with the drain");
+    assert_eq!(ended.code, "unavailable", "{}", ended.reason);
 }
 
 /// `1-architecture/3`, A member with no listener: a Host embedded in an application binds

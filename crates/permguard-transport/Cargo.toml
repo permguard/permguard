@@ -20,6 +20,8 @@ anyhow.workspace = true
 axum.workspace = true
 axum-server.workspace = true
 http.workspace = true
+# Ending a streaming answer when the surface drains: its own body, which names a frame.
+http-body.workspace = true
 http-body-util.workspace = true
 hyper-util.workspace = true
 permguard-core.workspace = true
