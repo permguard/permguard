@@ -161,6 +161,15 @@ is cut.
 
 ### Fixed
 
+- **The command line's configuration file refuses a key no setting reads.**
+  A misspelled key such as `controlPlane.endpont` or `tls.caFIle` was ignored and the command went to the default endpoint; now every unknown key is named and the command exits `64`, before anything is asked of a plane, `config show` included.
+- **`PERMGUARD_TLS_SKIP_VERIFY` is read by the commands that use TLS, and names itself.**
+  `version`, `completion`, `config` and every command over plain HTTP run whatever it says; a TLS command refuses a value other than `true`, `false`, `1` or `0`, or an empty one, naming the variable, where every command exited `64` naming `--tls-skip-verify`. `1` and `0` are now accepted.
+- **A TLS server name no certificate can carry is refused where it is given.**
+  `config set tls.server_name` refuses it and leaves the file unchanged; `--tls-server-name`, `PERMGUARD_TLS_SERVER_NAME` and the file's `tls.serverName` are refused naming their source with `64`, where every TLS command exited `69`.
+- **A `host` command with no Host endpoint says so.**
+  It names `--host-endpoint`, `PERMGUARD_HOST_ENDPOINT` and `permguard config set host.endpoint`, where it reported an empty endpoint that did not parse; the same holds for any endpoint nothing configures, and the help no longer says no command takes `--host-endpoint`.
+- **`discover --timeout 0` and `inspect --timeout 0` are refused** naming `--timeout`, where they silently waited one second.
 - **An event read's `since` and `until_time` are instants.**
   Any RFC 3339 instant is accepted and compared in UTC, so `2026-10-20T17:27:13+02:00` and `2026-10-20T15:27:13Z` select the same records, over REST and gRPC; anything else, `yesterday` or a bare date, is refused `400 invalid_argument` naming the parameter, where it answered `200` with an empty or a full page. `permguard events list --since/--until` refuse it before sending, as `decisions list --since` does.
 - **The event discovery document publishes the filter names the read takes.**

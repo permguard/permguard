@@ -288,7 +288,7 @@ pub fn environment(name: &str) -> Option<String> {
 /// changes in a later release reaches a file written by an earlier one. A file full of pinned
 /// defaults is a file that silently stops tracking the product.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfigFile {
     #[serde(skip_serializing_if = "Section::is_empty")]
     control_plane: Section,
@@ -306,7 +306,7 @@ pub struct ConfigFile {
 
 /// How the workspaces this CLI builds are kept: a team's own rules over what the format allows.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct WorkspaceSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     one_policy_per_file: Option<String>,
@@ -320,7 +320,7 @@ impl WorkspaceSection {
 
 /// The operator's TLS material, by path or, for the key, by reference (TC-1).
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct TlsSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     ca_file: Option<String>,
@@ -346,7 +346,7 @@ impl TlsSection {
 
 /// How the operator authenticates beyond TLS (TC-1): a token, by file, never inline.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct AuthSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     token_file: Option<String>,
@@ -363,7 +363,7 @@ impl AuthSection {
 /// The service account the command line acts as: its access key, and its secret key's file, never
 /// the secret inline.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct ClientSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     access_key: Option<String>,
@@ -388,7 +388,7 @@ impl ClientSection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct Section {
     #[serde(skip_serializing_if = "Option::is_none")]
     endpoint: Option<String>,
@@ -444,6 +444,25 @@ impl Store {
             }
             Err(source) => return Err(Error::Read { path, source }),
         };
+        // Every key the file names that no setting reads, all of them, before the typed read
+        // stops at the first (BUG-0235, DEC-0006): a misspelled key is never read as a default.
+        if let Ok(tree) = serde_norway::from_str::<serde_norway::Value>(&text) {
+            let unknown = unknown_keys(&tree);
+            if !unknown.is_empty() {
+                return Err(Error::Parse {
+                    path: path.clone(),
+                    detail: format!(
+                        "no setting is named {}: the settings are {}",
+                        unknown
+                            .iter()
+                            .map(|key| format!("`{key}`"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        file_keys().into_iter().collect::<Vec<_>>().join(", ")
+                    ),
+                });
+            }
+        }
         let file = serde_norway::from_str(&text).map_err(|error| Error::Parse {
             path: path.clone(),
             detail: error.to_string(),
@@ -564,6 +583,79 @@ pub(crate) fn home_directory() -> Result<PathBuf, Error> {
 }
 
 /// Every way the configuration file can fail us.
+/// The dotted path of every key the file may hold, as the file spells it (`controlPlane.endpoint`,
+/// `tls.caFile`): read off the settings themselves, each written into an empty file, so a new
+/// setting is known here the moment it exists.
+fn file_keys() -> std::collections::BTreeSet<String> {
+    let mut keys = std::collections::BTreeSet::new();
+    for setting in SETTINGS {
+        let mut file = ConfigFile::default();
+        file.set(setting, Some("x".to_owned()));
+        if let Ok(tree) = serde_norway::to_value(&file) {
+            leaves(&tree, "", &mut keys);
+        }
+    }
+    keys
+}
+
+fn leaves(tree: &serde_norway::Value, prefix: &str, keys: &mut std::collections::BTreeSet<String>) {
+    match tree.as_mapping() {
+        Some(mapping) => {
+            for (key, value) in mapping {
+                let name = key.as_str().unwrap_or_default();
+                let path = if prefix.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{prefix}.{name}")
+                };
+                leaves(value, &path, keys);
+            }
+        }
+        None => {
+            keys.insert(prefix.to_owned());
+        }
+    }
+}
+
+/// Every key of `tree` no setting reads, by its dotted path.
+fn unknown_keys(tree: &serde_norway::Value) -> Vec<String> {
+    let known = file_keys();
+    let mut unknown = Vec::new();
+    walk(tree, "", &known, &mut unknown);
+    return unknown;
+
+    fn walk(
+        tree: &serde_norway::Value,
+        prefix: &str,
+        known: &std::collections::BTreeSet<String>,
+        unknown: &mut Vec<String>,
+    ) {
+        let Some(mapping) = tree.as_mapping() else {
+            return;
+        };
+        for (key, value) in mapping {
+            let name = match key.as_str() {
+                Some(name) => name.to_owned(),
+                None => format!("{key:?}"),
+            };
+            let path = if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}.{name}")
+            };
+            let section = format!("{path}.");
+            if known.contains(&path) {
+                continue;
+            }
+            if known.iter().any(|held| held.starts_with(&section)) {
+                walk(value, &path, known, unknown);
+            } else {
+                unknown.push(path);
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     NoHome,

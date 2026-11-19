@@ -168,6 +168,56 @@ pub fn tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions
     Ok(options)
 }
 
+/// Whether TLS verification is off: `--tls-skip-verify`, or `PERMGUARD_TLS_SKIP_VERIFY` set to
+/// `true` or `1` (`false` or `0` leave it on). Read here, where TLS is, so a malformed value fails
+/// only the commands that use TLS and names the variable (BUG-0240); a variable present and empty
+/// is refused too, never read as either (DEC-0019).
+pub fn skip_verify(globals: &Globals) -> Result<bool, Failure> {
+    if globals.tls_skip_verify {
+        return Ok(true);
+    }
+    let Some(value) = std::env::var_os(SKIP_VERIFY_ENV) else {
+        return Ok(false);
+    };
+    match value.to_string_lossy().trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(Failure::usage(format!(
+            "{SKIP_VERIFY_ENV} is `{}`: write true or false (or 1 or 0), or unset it",
+            value.to_string_lossy()
+        ))),
+    }
+}
+
+/// The variable `--tls-skip-verify` is also read from.
+const SKIP_VERIFY_ENV: &str = "PERMGUARD_TLS_SKIP_VERIFY";
+
+/// The name an endpoint's certificate is checked against, when one is given, checked to be one a
+/// certificate can carry, and refused naming where it was given: the flag, the variable or the
+/// configuration file (BUG-0293). A refusal here is the operator's to fix, never a retry.
+fn server_name(globals: &Globals, store: &Store) -> Result<Option<String>, Failure> {
+    let (value, said) = match &globals.tls_server_name {
+        Some(value) => (value.clone(), "--tls-server-name".to_owned()),
+        None => match setting_value("tls.server_name", store) {
+            Some((value, crate::settings::Origin::Environment)) => {
+                (value, "PERMGUARD_TLS_SERVER_NAME".to_owned())
+            }
+            Some((value, _)) => (
+                value,
+                format!("`tls.server_name` in {}", store.path().display()),
+            ),
+            None => return Ok(None),
+        },
+    };
+    permguard_client::tls::server_name(&value).map_err(|_| {
+        Failure::usage(format!(
+            "{said} is `{value}`, which is not a name a certificate can be checked against: \
+             write a host name, such as localhost, or an IP address"
+        ))
+    })?;
+    Ok(Some(value))
+}
+
 /// [`tls`] without the client's token: the operator's material and `--token-file` alone, what the
 /// Authority Plane's own connection starts from.
 pub fn base_tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
@@ -181,11 +231,8 @@ pub fn base_tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOp
         ca_file: path(&globals.tls_ca_file, "tls.ca_file"),
         cert_file: path(&globals.tls_cert_file, "tls.cert_file"),
         key_file: None,
-        server_name: globals
-            .tls_server_name
-            .clone()
-            .or_else(|| setting_value("tls.server_name", store).map(|(value, _)| value)),
-        skip_verify: globals.tls_skip_verify,
+        server_name: server_name(globals, store)?,
+        skip_verify: skip_verify(globals)?,
         key_pem: None,
         token: None,
     };

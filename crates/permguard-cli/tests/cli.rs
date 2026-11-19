@@ -2862,3 +2862,192 @@ fn every_surface_reads_one_endpoint_grammar() {
         );
     }
 }
+
+/// `run`, with `vars` set in the environment.
+fn run_with(workdir: &Path, vars: &[(&str, &str)], args: &[&str]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+    command
+        .arg("-w")
+        .arg(workdir)
+        .args(args)
+        .env("PERMGUARD_CONFIG", workdir.join("cli-config.yml"))
+        .env_remove("PERMGUARD_TLS_CA_FILE")
+        .env_remove("PERMGUARD_HOST_ENDPOINT")
+        .env_remove("PERMGUARD_TLS_SKIP_VERIFY")
+        .env_remove("PERMGUARD_TLS_SERVER_NAME")
+        .env("NO_COLOR", "1");
+    for (name, value) in vars {
+        command.env(name, value);
+    }
+    command.output().expect("the binary runs")
+}
+
+/// BUG-0235, DEC-0006: a configuration file key no setting reads is refused, every one of them
+/// named, before any plane is asked; a file of known keys reads as it did.
+#[test]
+fn a_configuration_key_no_setting_reads_is_refused_and_named() {
+    let dir = scratch("config-unknown");
+    std::fs::write(
+        dir.join("cli-config.yml"),
+        "controlPlane:\n  endpont: http://127.0.0.1:1\ndataplane:\n  endpoint: http://127.0.0.1:1\ntls:\n  caFIle: ca.pem\n",
+    )
+    .expect("written");
+    for args in [&["zones", "list"][..], &["config", "show"][..]] {
+        let output = run(&dir, args);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        let said = stderr(&output);
+        for key in ["controlPlane.endpont", "dataplane", "tls.caFIle"] {
+            assert!(said.contains(&format!("`{key}`")), "{args:?}: {said}");
+        }
+        assert!(!said.contains("connection refused"), "{said}");
+    }
+    std::fs::write(
+        dir.join("cli-config.yml"),
+        "controlPlane:\n  endpoint: http://127.0.0.1:1\ntls:\n  caFile: ca.pem\n  serverName: localhost\n",
+    )
+    .expect("written");
+    let output = run(&dir, &["config", "show"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
+/// BUG-0240, DEC-0019: `PERMGUARD_TLS_SKIP_VERIFY` is read where TLS is: a command that uses no
+/// TLS runs whatever it says, `1` and `0` read as on and off, and a malformed or empty value fails a
+/// TLS command naming the variable, never a flag nobody typed.
+#[test]
+fn a_malformed_skip_verify_variable_fails_only_tls_commands_and_names_itself() {
+    let dir = scratch("skip-verify-env");
+    for value in ["", "yes", "1"] {
+        for args in [
+            &["version"][..],
+            &["completion", "bash"][..],
+            &["config", "show"][..],
+        ] {
+            let output = run_with(&dir, &[("PERMGUARD_TLS_SKIP_VERIFY", value)], args);
+            assert!(
+                output.status.success(),
+                "{value:?} {args:?}: {}",
+                stderr(&output)
+            );
+        }
+    }
+    for value in ["", "yes", "TRUE-ish"] {
+        let output = run_with(
+            &dir,
+            &[("PERMGUARD_TLS_SKIP_VERIFY", value)],
+            &["zones", "list", "--control-endpoint", "https://127.0.0.1:1"],
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{value:?}: {}",
+            stderr(&output)
+        );
+        let said = stderr(&output);
+        assert!(said.contains("PERMGUARD_TLS_SKIP_VERIFY"), "{said}");
+        assert!(!said.contains("--tls-skip-verify"), "{said}");
+    }
+    // `0` leaves verification on: the command reaches the network (nothing listens).
+    let output = run_with(
+        &dir,
+        &[("PERMGUARD_TLS_SKIP_VERIFY", "0")],
+        &["zones", "list", "--control-endpoint", "https://127.0.0.1:1"],
+    );
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
+}
+
+/// BUG-0241: a `host` command with no Host endpoint configured says so, with the three ways to
+/// give one, as usage.
+#[test]
+fn a_host_command_with_no_host_endpoint_names_how_to_give_one() {
+    let dir = scratch("host-endpoint-unset");
+    let output = run_with(&dir, &[], &["-o", "json", "host", "status"]);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    let failure: serde_json::Value = serde_json::from_str(&stderr(&output)).expect("JSON");
+    let message = failure["message"].as_str().unwrap_or_default();
+    assert!(message.contains("--host-endpoint"), "{message}");
+    assert!(message.contains("PERMGUARD_HOST_ENDPOINT"), "{message}");
+    assert!(message.contains("host.endpoint"), "{message}");
+    assert!(!message.contains("`` is not"), "{message}");
+    assert_eq!(failure["code"], "usage");
+    let help = run(&dir, &["--help"]);
+    assert!(
+        !stdout(&help).contains("no command takes it"),
+        "{}",
+        stdout(&help)
+    );
+}
+
+/// BUG-0293, DEC-0006: a TLS server name no certificate can carry is refused where it is given —
+/// by `config set`, leaving the file as it was, and by a command, naming the flag or the variable —
+/// as usage, never a retry; a valid one is still taken.
+#[test]
+fn an_invalid_tls_server_name_is_refused_where_it_is_given() {
+    let dir = scratch("server-name");
+    for value in ["bad name!", ""] {
+        let output = run(&dir, &["config", "set", "tls.server_name", value]);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{value:?}: {}",
+            stderr(&output)
+        );
+        assert!(
+            !dir.join("cli-config.yml").exists()
+                || !std::fs::read_to_string(dir.join("cli-config.yml"))
+                    .expect("read")
+                    .contains("serverName"),
+            "the file is unchanged"
+        );
+    }
+    let host = ["host", "status", "--host-endpoint", "https://127.0.0.1:1"];
+    let mut flagged = vec!["--tls-server-name", "bad name!"];
+    flagged.extend(host);
+    let output = run_with(&dir, &[], &flagged);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("--tls-server-name"),
+        "{}",
+        stderr(&output)
+    );
+    let output = run_with(&dir, &[("PERMGUARD_TLS_SERVER_NAME", "bad name!")], &host);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("PERMGUARD_TLS_SERVER_NAME"),
+        "{}",
+        stderr(&output)
+    );
+    for value in ["localhost", "127.0.0.1"] {
+        let output = run(&dir, &["config", "set", "tls.server_name", value]);
+        assert!(output.status.success(), "{value}: {}", stderr(&output));
+    }
+}
+
+/// BUG-0252, DEC-0006: `--timeout 0` is refused, naming the option, rather than waiting a second
+/// nobody asked for.
+#[test]
+fn a_zero_timeout_is_refused() {
+    let dir = scratch("timeout-zero");
+    for args in [
+        &["discover", "--timeout", "0", "http://127.0.0.1:1"][..],
+        &["inspect", "--timeout", "0"][..],
+    ] {
+        let output = run(&dir, args);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        assert!(stderr(&output).contains("--timeout"), "{}", stderr(&output));
+        assert!(
+            !stderr(&output).contains("within 1s"),
+            "{}",
+            stderr(&output)
+        );
+    }
+}

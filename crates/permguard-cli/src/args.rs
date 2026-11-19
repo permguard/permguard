@@ -256,7 +256,7 @@ pub struct Globals {
     #[arg(long, global = true, value_name = "URL")]
     pub data_endpoint: Option<String>,
 
-    /// Where the Host listener is reached; no command takes it yet [env: PERMGUARD_HOST_ENDPOINT]
+    /// Where the Host listener is reached, for the `host` commands [env: PERMGUARD_HOST_ENDPOINT]
     #[arg(long, global = true, value_name = "URL")]
     pub host_endpoint: Option<String>,
 
@@ -315,17 +315,17 @@ pub struct Globals {
     )]
     pub tls_key_file: Option<PathBuf>,
 
-    /// Name to check the endpoint's certificate against, when it is not the endpoint's host.
-    #[arg(
-        long,
-        global = true,
-        env = "PERMGUARD_TLS_SERVER_NAME",
-        value_name = "NAME"
-    )]
+    // Neither of the two below is read by clap from the environment: a variable is read where TLS
+    // is, so a malformed one fails the commands that use it, naming the variable, rather than every
+    // command naming a flag nobody typed (BUG-0240, BUG-0293).
+    /// Name to check the endpoint's certificate against, when it is not the endpoint's host
+    /// [env: PERMGUARD_TLS_SERVER_NAME]
+    #[arg(long, global = true, value_name = "NAME")]
     pub tls_server_name: Option<String>,
 
-    /// Accept any server certificate. Insecure, and for development only.
-    #[arg(long, global = true, env = "PERMGUARD_TLS_SKIP_VERIFY")]
+    /// Accept any server certificate. Insecure, and for development only
+    /// [env: PERMGUARD_TLS_SKIP_VERIFY]
+    #[arg(long, global = true)]
     pub tls_skip_verify: bool,
 }
 
@@ -610,8 +610,8 @@ pub enum Command {
     Discover {
         /// The address to start from: `scheme://host:port`, HTTP or HTTPS.
         url: String,
-        /// How long to wait for one request, in seconds.
-        #[arg(long, default_value = "5", value_name = "SECONDS")]
+        /// How long to wait for one request, in seconds, at least 1.
+        #[arg(long, default_value = "5", value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
         timeout: u64,
     },
     /// Report what each Permguard plane is, and whether it is willing to be sent work.
@@ -624,8 +624,8 @@ pub enum Command {
         after_help = "Examples:\n  permguard inspect\n  permguard inspect --timeout 2 -o json"
     )]
     Inspect {
-        /// How long to wait for one request, in seconds.
-        #[arg(long, default_value = "5", value_name = "SECONDS")]
+        /// How long to wait for one request, in seconds, at least 1.
+        #[arg(long, default_value = "5", value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
         timeout: u64,
     },
 }

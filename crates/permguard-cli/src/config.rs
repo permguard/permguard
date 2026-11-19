@@ -202,6 +202,18 @@ fn validate(setting: &Setting, value: &str) -> Result<(), Error> {
         });
     }
 
+    // A name a certificate can be checked against, or nothing would ever verify (BUG-0293): an
+    // empty or malformed name is refused when it is written, not by every TLS command after.
+    if setting.key == "tls.server_name" {
+        permguard_client::tls::server_name(value).map_err(|_| Error::InvalidValue {
+            key: setting.key.to_owned(),
+            detail: format!(
+                "`{value}` is not a name a certificate can be checked against: write a host \
+                 name, such as localhost, or an IP address"
+            ),
+        })?;
+    }
+
     // A switch is `true` or `false`: anything else would read as off and hide the mistake.
     if setting.key == "workspace.one_policy_per_file" && !matches!(value, "true" | "false") {
         return Err(Error::InvalidValue {

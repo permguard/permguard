@@ -1010,8 +1010,9 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 &store,
                 trace,
             )?;
-            require_verified_tls_endpoint(&member_url, globals.tls_skip_verify)?;
-            require_verified_tls_endpoint(&coordinator_url, globals.tls_skip_verify)?;
+            let skipping = crate::target::skip_verify(globals)?;
+            require_verified_tls_endpoint(&member_url, skipping)?;
+            require_verified_tls_endpoint(&coordinator_url, skipping)?;
             let token_file = globals.token_file.as_deref().ok_or_else(|| {
                 Failure::usage("host members join reads its invitation handoff from --token-file")
             })?;

@@ -29,6 +29,7 @@ pub fn resolve_endpoint_url(
     })?;
     let resolved = settings::resolve(setting, store.file(), flag, &settings::environment);
     trace.say(format!("{key} = {} [{}]", resolved.value, resolved.origin));
+    unset(setting, &resolved.value)?;
     // Read through the one endpoint grammar, whatever layer named it, and handed on in its
     // canonical form: a flag, the environment and `config set` accept the same endpoints and
     // mean the same thing by them (DEC-0017, BUG-0110).
@@ -40,6 +41,25 @@ pub fn resolve_endpoint_url(
                 origin => format!("{error} (from the {origin})"),
             })
         })
+}
+
+/// An endpoint nothing configured, one with no default such as the Host's, said as what it is
+/// and with the three ways to give it (BUG-0241), never as an empty endpoint that does not parse.
+fn unset(setting: &settings::Setting, value: &str) -> Result<(), Failure> {
+    if !value.is_empty() {
+        return Ok(());
+    }
+    let flag = match setting.key {
+        "control-plane.endpoint" => "--control-endpoint",
+        "data-plane.endpoint" => "--data-endpoint",
+        "host.endpoint" => "--host-endpoint",
+        "authority.endpoint" => "--authority-endpoint",
+        other => other,
+    };
+    Err(Failure::usage(format!(
+        "no {} is configured: pass {flag}, set {}, or run `permguard config set {} <URL>`",
+        setting.key, setting.env, setting.key
+    )))
 }
 
 /// A path a flag named, resolved the way `-w` says every relative path is.
@@ -83,6 +103,7 @@ pub fn resolve_endpoint(
     let resolved = settings::resolve(setting, store.file(), flag, &settings::environment);
 
     trace.say(format!("{key} = {} [{}]", resolved.value, resolved.origin));
+    unset(setting, &resolved.value)?;
 
     Endpoint::parse(&resolved.value).map_err(|error| {
         Failure::usage(match resolved.origin {
