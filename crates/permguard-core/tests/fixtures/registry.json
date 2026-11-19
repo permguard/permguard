@@ -209,6 +209,7 @@
     "client.DECISION_EXPORT_TRUNCATED": "decision_export_truncated",
     "client.DECISION_EXPORT_TYPE_UNSUPPORTED": "decision_export_type_unsupported",
     "client.DECISION_EXPORT_UNREADABLE": "decision_export_unreadable",
+    "client.PLAINTEXT_EXPECTED": "plaintext_expected",
     "client.WORKSPACE_LOCKED": "workspace_locked",
     "client.EVENT_EXPORT_MALFORMED": "event_export_malformed",
     "client.EVENT_EXPORT_TRUNCATED": "event_export_truncated",

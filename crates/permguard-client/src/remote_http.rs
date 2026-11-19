@@ -94,14 +94,10 @@ impl HttpRemote {
         said
     }
 
-    /// A transport that could not reach the server: the world's, not the caller's.
+    /// A transport that could not reach the server: the world's, unless what was refused is the
+    /// operator's to fix, a certificate or a scheme (DEC-0008 option A).
     fn unreachable(&self, error: &crate::http::Error) -> String {
-        self.failed(crate::failure::Failure {
-            class: "unavailable".to_owned(),
-            reason: error.reason().to_owned(),
-            detail: error.to_string(),
-            usage: false,
-        })
+        self.failed(error.failure())
     }
 
     /// One exchange, told to whoever is listening.

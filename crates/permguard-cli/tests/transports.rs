@@ -60,7 +60,12 @@ struct Pki {
     /// An operator's client certificate the same authority signed, and its key's PEM.
     client_certificate: PathBuf,
     client_key_pem: String,
+    /// A revocation list naming the operator's certificate.
+    revoking_client: PathBuf,
 }
+
+/// The serial of the operator's certificate, which `revoking_client` names.
+const CLIENT_SERIAL: u64 = 4242;
 
 fn pki(dir: &Path) -> Pki {
     let mut params = rcgen::CertificateParams::new(Vec::new()).expect("parameters");
@@ -76,15 +81,34 @@ fn pki(dir: &Path) -> Pki {
         std::fs::write(&path, text).expect("written");
         path
     };
-    let client = rcgen::CertificateParams::new(vec!["operator".to_owned()]).expect("parameters");
+    let mut client =
+        rcgen::CertificateParams::new(vec!["operator".to_owned()]).expect("parameters");
+    client.serial_number = Some(rcgen::SerialNumber::from(CLIENT_SERIAL));
     let client_key = rcgen::KeyPair::generate().expect("a key");
     let client_signed = client.signed_by(&client_key, &issuer).expect("signed");
+    // The authority's list, revoking the operator's certificate (BUG-0050).
+    let revoked = rcgen::CertificateRevocationListParams {
+        this_update: rcgen::date_time_ymd(2020, 1, 1),
+        next_update: rcgen::date_time_ymd(2099, 1, 1),
+        crl_number: rcgen::SerialNumber::from(1_u64),
+        issuing_distribution_point: None,
+        revoked_certs: vec![rcgen::RevokedCertParams {
+            serial_number: rcgen::SerialNumber::from(CLIENT_SERIAL),
+            revocation_time: rcgen::date_time_ymd(2020, 6, 1),
+            reason_code: Some(rcgen::RevocationReason::KeyCompromise),
+            invalidity_date: None,
+        }],
+        key_identifier_method: rcgen::KeyIdMethod::Sha256,
+    }
+    .signed_by(&issuer)
+    .expect("the authority signs the list");
     Pki {
         authority: write("ca.pem", &authority.pem()),
         certificate: write("server.pem", &signed.pem()),
         key: write("server.key", &server_key.serialize_pem()),
         client_certificate: write("client.pem", &client_signed.pem()),
         client_key_pem: client_key.serialize_pem(),
+        revoking_client: write("revoked.crl", &revoked.pem().expect("the list as PEM")),
     }
 }
 
@@ -104,10 +128,11 @@ fn serve(router: Router, pki: &Pki, seen: Seen) -> SocketAddr {
 /// Serves `router` under `settings`, `authenticator` deciding who each bearer is.
 fn serve_with(
     router: Router,
-    settings: TlsSettings,
+    settings: impl Into<Option<TlsSettings>>,
     seen: Seen,
     authenticator: Arc<dyn permguard_core::authz::Authenticator>,
 ) -> SocketAddr {
+    let settings = settings.into();
     let (bound, address) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -133,7 +158,7 @@ fn serve_with(
             ));
             let surface =
                 permguard_transport::Surface::listener("fake-plane", "127.0.0.1:0", recorded)
-                    .tls(Some(&settings))
+                    .tls(settings.as_ref())
                     .authenticator(Some(authenticator))
                     .start()
                     .await
@@ -1808,4 +1833,187 @@ fn a_ledger_get_lists_its_serving_members_on_both_transports() {
         answers[0], answers[1],
         "the same members over REST and gRPC"
     );
+}
+
+/// DEC-0008 option A (BUG-0050, BUG-0180, BUG-0253): what the operator has to fix at the
+/// transport, a certificate refused at the handshake or a scheme that does not match the
+/// listener, exits `64` with the code that names it, over REST and gRPC alike and from every
+/// command; a listener that does not answer still exits `69`.
+#[test]
+fn a_refused_certificate_or_a_wrong_scheme_is_the_operators_to_fix_on_every_transport() {
+    let dir = scratch("handshake");
+    let pki = pki(&dir);
+    let key = dir.join("client.key");
+    std::fs::write(&key, &pki.client_key_pem).unwrap();
+    std::fs::write(
+        dir.join("check.json"),
+        r#"{"subject":{"type":"User","id":"alice"},"action":{"name":"read"},"resource":{"type":"Document","id":"budget"}}"#,
+    )
+    .unwrap();
+    let mutual = serve_with(
+        rest().merge(grpc()),
+        TlsSettings::new(&pki.certificate, &pki.key).with_client_ca(&pki.authority),
+        Seen::default(),
+        Arc::new(Bearers),
+    );
+    let revoking = serve_with(
+        rest().merge(grpc()),
+        TlsSettings::new(&pki.certificate, &pki.key)
+            .with_client_ca(&pki.authority)
+            .with_crl(&pki.revoking_client),
+        Seen::default(),
+        Arc::new(Bearers),
+    );
+    let plain = serve_with(
+        rest().merge(grpc()),
+        None,
+        Seen::default(),
+        Arc::new(Bearers),
+    );
+    let closed = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let ca = pki.authority.to_str().unwrap();
+    let cert = pki.client_certificate.to_str().unwrap();
+    let key = key.to_str().unwrap();
+    let identity = [
+        "--tls-ca-file",
+        ca,
+        "--tls-cert-file",
+        cert,
+        "--tls-key-file",
+        key,
+    ];
+    let workspace = dir.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let init = cli(&dir, &["-w", workspace.to_str().unwrap(), "init"]);
+    assert!(init.status.success(), "{init:?}");
+
+    // (endpoint, flags, the code, the status)
+    let cases: Vec<(String, &[&str], &str, i32)> = vec![
+        (
+            format!("https://localhost:{}", mutual.port()),
+            &identity[..2],
+            "tls_client_certificate_required",
+            64,
+        ),
+        (
+            format!("grpcs://localhost:{}", mutual.port()),
+            &identity[..2],
+            "tls_client_certificate_required",
+            64,
+        ),
+        (
+            format!("https://localhost:{}", revoking.port()),
+            &identity,
+            "tls_handshake_failed",
+            64,
+        ),
+        (
+            format!("grpcs://localhost:{}", revoking.port()),
+            &identity,
+            "tls_handshake_failed",
+            64,
+        ),
+        (
+            format!("http://localhost:{}", mutual.port()),
+            &[],
+            "tls_expected",
+            64,
+        ),
+        (
+            format!("grpc://localhost:{}", mutual.port()),
+            &[],
+            "tls_expected",
+            64,
+        ),
+        (
+            format!("https://localhost:{}", plain.port()),
+            &identity[..2],
+            "plaintext_expected",
+            64,
+        ),
+        (
+            format!("grpcs://localhost:{}", plain.port()),
+            &identity[..2],
+            "plaintext_expected",
+            64,
+        ),
+        (
+            format!("https://localhost:{closed}"),
+            &identity[..2],
+            "connection_refused",
+            69,
+        ),
+    ];
+    for (endpoint, flags, code, status) in cases {
+        let grpc = endpoint.starts_with("grpc");
+        let mut commands: Vec<Vec<String>> = vec![
+            vec![
+                "zones".into(),
+                "list".into(),
+                "--control-endpoint".into(),
+                endpoint.clone(),
+            ],
+            vec![
+                "check".into(),
+                "--file".into(),
+                "check.json".into(),
+                "--zone".into(),
+                "acme".into(),
+                "--ledger".into(),
+                "main-ledger".into(),
+                "--data-endpoint".into(),
+                endpoint.clone(),
+            ],
+            vec![
+                "-w".into(),
+                workspace.to_str().unwrap().into(),
+                "remote".into(),
+                "add".into(),
+                "origin".into(),
+                endpoint.clone(),
+            ],
+            vec![
+                "clone".into(),
+                format!("{endpoint}/acme/main-ledger"),
+                dir.join(format!("clone-{code}-{grpc}"))
+                    .to_str()
+                    .unwrap()
+                    .into(),
+            ],
+        ];
+        if !grpc {
+            commands.push(vec!["discover".into(), endpoint.clone()]);
+        }
+        for command in commands {
+            let mut args = vec!["-o", "json"];
+            args.extend(flags.iter().copied());
+            args.extend(command.iter().map(String::as_str));
+            let output = cli(&dir, &args);
+            let failure: Value = serde_json::from_slice(&output.stderr)
+                .unwrap_or_else(|_| panic!("{command:?}: {output:?}"));
+            assert_eq!(
+                (output.status.code(), failure["code"].as_str()),
+                (Some(status), Some(code)),
+                "{command:?}: {failure}"
+            );
+            if code == "tls_expected" || code == "plaintext_expected" {
+                let other = match endpoint.split_once("://").map(|(scheme, _)| scheme) {
+                    Some("http") => "https://",
+                    Some("https") => "http://",
+                    Some("grpc") => "grpcs://",
+                    _ => "grpc://",
+                };
+                let message = failure["message"].as_str().unwrap_or_default();
+                assert!(
+                    message.contains(&format!("reach it as {other} instead")),
+                    "{command:?}: {message}"
+                );
+                assert!(!message.contains("InvalidContentType"), "{message}");
+            }
+        }
+    }
 }

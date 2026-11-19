@@ -30,12 +30,7 @@ pub(crate) fn call<T: for<'de> Deserialize<'de>>(
 ) -> Result<T, Failure> {
     let response = client
         .request(endpoint, method, path, body)
-        .map_err(|error| Failure {
-            class: "unavailable".to_owned(),
-            reason: error.reason().to_owned(),
-            detail: error.to_string(),
-            usage: false,
-        })?;
+        .map_err(|error| error.failure())?;
 
     if (200..300).contains(&response.status) {
         return serde_json::from_str(&response.body).map_err(|error| Failure {

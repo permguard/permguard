@@ -19,6 +19,12 @@ is cut.
 
 ### Changed
 
+- **A certificate refused at the TLS handshake, or a scheme that does not match the listener, exits `64` on every transport.**
+  A missing client certificate (`tls_client_certificate_required`), one the listener refuses or revokes, or a server certificate the client does not trust (`tls_handshake_failed`), and every other `tls_*` code, are the operator's to fix: they exit `64` with the class `validation`, over HTTPS and gRPCS alike, where they exited `69`, or `70` with `operation was canceled` and `transport error` over gRPCS.
+  `grpc://` at a TLS listener answers `tls_expected` and names `grpcs://`, as `http://` does with `https://`, where it exited `70` with `h2 protocol error`; `remote add` reads it too.
+  `https://` or `grpcs://` at a plain listener answers the new `plaintext_expected`, "answered in plain HTTP, not TLS: reach it as http:// instead" (or `grpc://`), where it printed `received corrupt message of type InvalidContentType`.
+  `discover` reports its start address's transport failure with its code.
+  A listener that does not answer still exits `69`: a script that retried on `69` after a refused certificate now stops at once.
 - **Public grants are bounded by the assurance profile.**
   `host.authz.public` refuses every administrative operation, whatever the profile: `keys.admin`, `identity.admin`, `membership.admin`, `backup.manage` and `gc.manage` join `accounts.*` and `tokens.*`, so an anonymous caller can no longer be given the Host's key rotation, identity rotation, memberships, backups or collection.
   From `production` upward a public grant naming `catalog.write`, `policy.push` or `event.submit` refuses to start, and under `regulated` any public grant does; the message names the entry.

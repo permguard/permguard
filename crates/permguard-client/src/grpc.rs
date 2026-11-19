@@ -68,6 +68,10 @@ pub struct PlaneHealth {
     pub host_reason: Option<String>,
 }
 
+/// How long the probe that diagnoses a failed connection waits.
+#[cfg(feature = "http")]
+const DIAGNOSIS: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
 /// not be reached, or a transport failure after it was.
 pub fn reason_of(status: &tonic::Status) -> &'static str {
@@ -134,6 +138,10 @@ pub struct GrpcChannel {
     runtime: tokio::runtime::Runtime,
     channel: AuthChannel,
     narrator: Box<dyn Narrator>,
+    /// The endpoint as written, and the TLS material without its token: what a transport failure
+    /// is diagnosed with (BUG-0050, BUG-0180, BUG-0253).
+    endpoint: crate::Endpoint,
+    tls: TlsOptions,
 }
 
 impl GrpcChannel {
@@ -243,6 +251,11 @@ impl GrpcChannel {
             runtime,
             channel,
             narrator,
+            endpoint: parsed,
+            tls: TlsOptions {
+                token: None,
+                ..tls.clone()
+            },
         })
     }
 
@@ -291,9 +304,71 @@ impl GrpcChannel {
             }
             Err(status) => {
                 self.narrate(rpc, &format!("{:?}", status.code()));
-                Err(status)
+                Err(self.diagnosed(status))
             }
         }
+    }
+
+    /// A failure of the connection itself, rather than an answer, said as what the operator has
+    /// to fix when it is that (DEC-0008 option A): a certificate either side refused, or a scheme
+    /// that does not match the listener. Over HTTP/2 the TLS alert that says so is lost inside the
+    /// connection, which reports only "connection closed" or a protocol error, so one plain probe
+    /// of the same address, over HTTP and with no token, reads it; anything else keeps its status.
+    #[cfg(feature = "http")]
+    fn diagnosed(&self, status: tonic::Status) -> tonic::Status {
+        use std::error::Error as _;
+
+        let transport = status
+            .source()
+            .is_some_and(|source| source.is::<tonic::transport::Error>());
+        // A deadline is the network's: probing it again would only wait twice.
+        if !transport || status.code() == tonic::Code::DeadlineExceeded {
+            return status;
+        }
+        let secure = self.endpoint.is_tls();
+        let Ok(probe) = crate::Endpoint::parse(&format!(
+            "{}://{}",
+            if secure { "https" } else { "http" },
+            self.endpoint.authority()
+        )) else {
+            return status;
+        };
+        let refused = crate::http::Client::new(DIAGNOSIS, self.tls.clone(), secure)
+            .and_then(|client| client.get(&probe, "/").map(drop));
+        let Err(refused) = refused else {
+            return status;
+        };
+        if !refused.usage() {
+            return status;
+        }
+        // The scheme the operator wrote, in the sentence that names the one to use.
+        let refused = match refused {
+            crate::http::Error::PlaintextToTls { .. } => crate::http::Error::PlaintextToTls {
+                endpoint: self.endpoint.to_string(),
+            },
+            crate::http::Error::TlsToPlaintext { .. } => crate::http::Error::TlsToPlaintext {
+                endpoint: self.endpoint.to_string(),
+            },
+            other => other,
+        };
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        if let (Ok(class), Ok(code)) = (
+            AsciiMetadataValue::try_from("validation"),
+            AsciiMetadataValue::try_from(refused.reason()),
+        ) {
+            metadata.insert(GRPC_ERROR_CLASS, class);
+            metadata.insert(GRPC_ERROR_CODE, code);
+        }
+        tonic::Status::with_metadata(
+            tonic::Code::FailedPrecondition,
+            refused.to_string(),
+            metadata,
+        )
+    }
+
+    #[cfg(not(feature = "http"))]
+    fn diagnosed(&self, status: tonic::Status) -> tonic::Status {
+        status
     }
 
     /// What the `plane` says it is and how it is (`GetInfo`, then `GetHealth`), each answered

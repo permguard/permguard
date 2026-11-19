@@ -53,6 +53,10 @@ pub enum DiscoverError {
     Address(String),
     /// The start address did not answer a document.
     Unreachable(String),
+    /// The start address could not be reached: the transport's failure, with its code and
+    /// class, a certificate or a scheme the operator's to fix (DEC-0008 option A, BUG-0253), and
+    /// the sentence that says so.
+    Unanswered(permguard_client::failure::Failure, String),
 }
 
 /// What the walk found from one address.
@@ -213,6 +217,8 @@ struct Walk<'a> {
     home: String,
     visited: HashSet<String>,
     trace: &'a Trace,
+    /// The first transport failure, kept to report the start address with.
+    failed: Option<permguard_client::failure::Failure>,
 }
 
 impl Walk<'_> {
@@ -225,9 +231,15 @@ impl Walk<'_> {
             self.clients.away
         };
         self.trace.say(format!("GET {url}"));
-        let response = client
-            .get(&endpoint, &path)
-            .map_err(|error| format!("`{url}` did not answer: {error}"))?;
+        let response = match client.get(&endpoint, &path) {
+            Ok(response) => response,
+            Err(error) => {
+                if self.failed.is_none() {
+                    self.failed = Some(error.failure());
+                }
+                return Err(format!("`{url}` did not answer: {error}"));
+            }
+        };
         Ok((response.status, response.body))
     }
 
@@ -417,12 +429,16 @@ pub fn discover(
         home: authority(&base).unwrap_or_default().to_owned(),
         visited: HashSet::new(),
         trace,
+        failed: None,
     };
     let root_url = format!("{base}{WELL_KNOWN}");
     walk.visited.insert(root_url.clone());
     let root = walk
         .document(&root_url)
-        .map_err(DiscoverError::Unreachable)?;
+        .map_err(|why| match walk.failed.take() {
+            Some(failed) => DiscoverError::Unanswered(failed, why),
+            None => DiscoverError::Unreachable(why),
+        })?;
     let mut report = DiscoverReport {
         url: url.to_owned(),
         process: None,

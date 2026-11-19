@@ -23,7 +23,7 @@
 //! | `0` | the command succeeded, and every plane it asked about is ready |
 //! | `1` | no plane answered — there was nothing to inspect |
 //! | `2` | the command ran and its subject did not pass: planes answered and not all are ready, or cases failed |
-//! | `64` | the command line, or something it named, was wrong (`EX_USAGE`) |
+//! | `64` | the command line, or something it named, was wrong: a certificate either side refused at the TLS handshake, or a scheme that does not match the listener, included (`EX_USAGE`) |
 //! | `69` | the plane could not answer right now — unreachable, or a ledger with no history yet — and retrying is reasonable (`EX_UNAVAILABLE`) |
 //! | `70` | the command failed for an internal reason (`EX_SOFTWARE`) |
 //!

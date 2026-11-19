@@ -126,6 +126,12 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.PLAINTEXT_EXPECTED": {
+      "code": "plaintext_expected",
+      "contract": "6-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
     "client.WORKSPACE_LOCKED": {
       "code": "workspace_locked",
       "contract": "6-command-line/1-command-line.md",
@@ -238,55 +244,55 @@
       "code": "tls_client_certificate_required",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_CLIENT_IDENTITY_INCOMPLETE": {
       "code": "tls_client_identity_incomplete",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_CLIENT_IDENTITY_REJECTED": {
       "code": "tls_client_identity_rejected",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_EXPECTED": {
       "code": "tls_expected",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_HANDSHAKE_FAILED": {
       "code": "tls_handshake_failed",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_MATERIAL_UNREADABLE": {
       "code": "tls_material_unreadable",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_NO_TRUST_ANCHORS": {
       "code": "tls_no_trust_anchors",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_SERVER_NAME_INVALID": {
       "code": "tls_server_name_invalid",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TLS_UNSUPPORTED": {
       "code": "tls_unsupported",
       "contract": "6-command-line/1-command-line.md",
       "kind": "local",
-      "class": "unavailable"
+      "class": "validation"
     },
     "client.TRANSPORT_FAILED": {
       "code": "transport_failed",

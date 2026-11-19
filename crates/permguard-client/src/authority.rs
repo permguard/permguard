@@ -414,12 +414,7 @@ impl Authority for RestAuthority {
                 "application/x-www-form-urlencoded",
                 Some(body.as_bytes()),
             )
-            .map_err(|error| Failure {
-                class: "unavailable".to_owned(),
-                reason: error.reason().to_owned(),
-                detail: error.to_string(),
-                usage: false,
-            })?;
+            .map_err(|error| error.failure())?;
         if answered.status != 200 {
             return Err(token_failure(
                 answered.status,

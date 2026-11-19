@@ -310,6 +310,8 @@ pub mod client {
     pub const EVENT_STORE_UNREACHABLE: &str = "event_store_unreachable";
     pub const TLS_UNSUPPORTED: &str = "tls_unsupported";
     pub const TLS_EXPECTED: &str = "tls_expected";
+    /// A TLS endpoint reached a listener that answers in plain HTTP (BUG-0253).
+    pub const PLAINTEXT_EXPECTED: &str = "plaintext_expected";
     pub const TLS_SERVER_NAME_INVALID: &str = "tls_server_name_invalid";
     pub const TLS_NO_TRUST_ANCHORS: &str = "tls_no_trust_anchors";
     pub const TLS_MATERIAL_UNREADABLE: &str = "tls_material_unreadable";
@@ -770,6 +772,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::EVENT_STORE_UNREACHABLE,
         client::TLS_UNSUPPORTED,
         client::TLS_EXPECTED,
+        client::PLAINTEXT_EXPECTED,
         client::TLS_SERVER_NAME_INVALID,
         client::TLS_NO_TRUST_ANCHORS,
         client::TLS_MATERIAL_UNREADABLE,

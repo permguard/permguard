@@ -113,12 +113,7 @@ impl HttpPdp {
         let response = self
             .client
             .request(&self.endpoint, method, path, body)
-            .map_err(|error| Failure {
-                class: "unavailable".to_owned(),
-                reason: error.reason().to_owned(),
-                detail: error.to_string(),
-                usage: false,
-            })?;
+            .map_err(|error| error.failure())?;
         let parsed: Value = serde_json::from_str(&response.body).map_err(|error| Failure {
             class: "internal".to_owned(),
             reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),

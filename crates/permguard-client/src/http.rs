@@ -79,6 +79,8 @@ pub enum Error {
     },
     /// Something answered with TLS where plain HTTP was asked for.
     PlaintextToTls { endpoint: String },
+    /// Something answered in plain HTTP where TLS was asked for (BUG-0253).
+    TlsToPlaintext { endpoint: String },
     /// Something answered, but not with HTTP.
     Malformed { endpoint: String, detail: String },
 }
@@ -100,7 +102,39 @@ impl Error {
                 permguard_core::codes::client::TRANSPORT_FAILED
             }
             Self::PlaintextToTls { .. } => permguard_core::codes::client::TLS_EXPECTED,
+            Self::TlsToPlaintext { .. } => permguard_core::codes::client::PLAINTEXT_EXPECTED,
             Self::Malformed { .. } => permguard_core::codes::client::MALFORMED_RESPONSE,
+        }
+    }
+
+    /// Whether the operator has to fix this (DEC-0008 option A, BUG-0050): the client's TLS
+    /// material, a certificate either side refused at the handshake, or a scheme that does not
+    /// match the listener. Retrying changes none of them, so none is reported as the world's: the
+    /// rest, a listener that did not answer, is.
+    pub fn usage(&self) -> bool {
+        matches!(
+            self,
+            Self::Tls { .. }
+                | Self::Handshake { .. }
+                | Self::ClientCertificateRequired { .. }
+                | Self::PlaintextToTls { .. }
+                | Self::TlsToPlaintext { .. }
+        )
+    }
+
+    /// This failure as every client reports a transport failure: `validation` when the operator
+    /// has to fix it, `unavailable` otherwise.
+    pub fn failure(&self) -> crate::failure::Failure {
+        crate::failure::Failure {
+            class: if self.usage() {
+                "validation"
+            } else {
+                "unavailable"
+            }
+            .to_owned(),
+            reason: self.reason().to_owned(),
+            detail: self.to_string(),
+            usage: self.usage(),
         }
     }
 
@@ -154,7 +188,21 @@ impl fmt::Display for Error {
             ),
             Self::PlaintextToTls { endpoint } => write!(
                 f,
-                "`{endpoint}` answered with TLS, not plain HTTP: reach it as https:// instead"
+                "`{endpoint}` answered with TLS, not plain HTTP: reach it as {}:// instead",
+                if endpoint.starts_with("grpc://") {
+                    "grpcs"
+                } else {
+                    "https"
+                }
+            ),
+            Self::TlsToPlaintext { endpoint } => write!(
+                f,
+                "`{endpoint}` answered in plain HTTP, not TLS: reach it as {}:// instead",
+                if endpoint.starts_with("grpcs://") {
+                    "grpc"
+                } else {
+                    "http"
+                }
             ),
             Self::Malformed { endpoint, detail } => {
                 write!(f, "`{endpoint}` did not answer with HTTP: {detail}")
@@ -456,7 +504,7 @@ impl Client {
         // certificate is reported as a refused certificate.
         connection
             .complete_io(&mut tcp)
-            .map_err(|error| handshake_error(address, self.timeout, error))?;
+            .map_err(|error| handshake_error(endpoint, address, self.timeout, error))?;
 
         Ok(Box::new(StreamOwned::new(connection, tcp)))
     }
@@ -525,8 +573,14 @@ fn connect(address: &str, timeout: Duration) -> Result<TcpStream, Error> {
     })
 }
 
-/// A handshake that failed. A deadline that expired during it is still a timeout.
-fn handshake_error(address: &str, timeout: Duration, error: io::Error) -> Error {
+/// A handshake that failed. A deadline that expired during it is still a timeout, a listener that
+/// answered in plain HTTP is said so (BUG-0253), and a failure TLS did not name is the transport's.
+fn handshake_error(
+    endpoint: &Endpoint,
+    address: &str,
+    timeout: Duration,
+    error: io::Error,
+) -> Error {
     if is_timeout(&error) {
         return Error::Timeout {
             address: address.to_owned(),
@@ -541,13 +595,22 @@ fn handshake_error(address: &str, timeout: Duration, error: io::Error) -> Error 
         };
     }
 
-    Error::Handshake {
-        address: address.to_owned(),
-        // The interesting part of a rustls failure is the alert, which is in the source chain.
-        detail: match error.get_ref() {
-            Some(source) => source.to_string(),
-            None => error.to_string(),
+    // The interesting part of a rustls failure is the alert, which is in the source chain.
+    match error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<rustls::Error>())
+    {
+        // A record that is no TLS content type: the listener speaks plain HTTP.
+        Some(rustls::Error::InvalidMessage(rustls::InvalidMessage::InvalidContentType)) => {
+            Error::TlsToPlaintext {
+                endpoint: endpoint.to_string(),
+            }
+        }
+        Some(refused) => Error::Handshake {
+            address: address.to_owned(),
+            detail: refused.to_string(),
         },
+        None => Error::Transport { source: error },
     }
 }
 
@@ -662,6 +725,18 @@ fn is_timeout(error: &io::Error) -> bool {
 /// body, both ASCII, and a response that is not text at all has a better explanation than a decoding
 /// error — see the TLS check below.
 /// Parses a response without ever treating the body as text.
+/// A TLS record: a content type in 20..=24, then the protocol version. An endpoint serving TLS
+/// that was asked for plain HTTP answers a handshake or an alert, and "malformed response" sends
+/// the operator looking for a broken server instead of a missing `s`: both parsers say so.
+fn tls_answered(endpoint: &Endpoint, response: &[u8]) -> Result<(), Error> {
+    if matches!(response.first(), Some(0x14..=0x18)) && response.get(1) == Some(&0x03) {
+        return Err(Error::PlaintextToTls {
+            endpoint: endpoint.to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn parse_raw(endpoint: &Endpoint, response: &[u8]) -> Result<RawResponse, Error> {
     let malformed = |detail: &str| Error::Malformed {
         endpoint: endpoint.to_string(),
@@ -670,6 +745,7 @@ fn parse_raw(endpoint: &Endpoint, response: &[u8]) -> Result<RawResponse, Error>
     if response.is_empty() {
         return Err(malformed("it closed the connection without answering"));
     }
+    tls_answered(endpoint, response)?;
     let split = response
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
@@ -739,14 +815,7 @@ fn parse(endpoint: &Endpoint, response: &[u8]) -> Result<Response, Error> {
         return Err(malformed("it closed the connection without answering"));
     }
 
-    // A TLS record: a content type in 20..=24, then the protocol version. An endpoint serving TLS
-    // that was asked for plain HTTP answers a handshake or an alert, and "malformed response" sends
-    // the operator looking for a broken server instead of a missing `s`.
-    if matches!(response.first(), Some(0x14..=0x18)) && response.get(1) == Some(&0x03) {
-        return Err(Error::PlaintextToTls {
-            endpoint: endpoint.to_string(),
-        });
-    }
+    tls_answered(endpoint, response)?;
 
     let split = response
         .windows(4)

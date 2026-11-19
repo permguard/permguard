@@ -53,6 +53,12 @@ pub fn discover_command(
     .map_err(|error| match error {
         DiscoverError::Address(why) => Failure::usage(why),
         DiscoverError::Unreachable(why) => Failure::unavailable(why),
+        DiscoverError::Unanswered(failed, why) => {
+            Failure::from_client(&permguard_client::failure::Failure {
+                detail: why,
+                ..failed
+            })
+        }
     })?;
     render(&report, globals.output, trace)?;
     Ok(ExitCode::from(if report.complete {
