@@ -350,6 +350,31 @@ pub struct HistoryLine {
     pub message: String,
 }
 
+/// Text a commit's author wrote, made safe to print in a record: every control character, a line
+/// break or a carriage return included, is shown escaped, so the text can never start a line of
+/// its own (BUG-0014).
+pub(crate) fn printable(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() {
+                character.escape_default().to_string()
+            } else {
+                character.to_string()
+            }
+        })
+        .collect()
+}
+
+/// A commit message as a record body: every line indented by four spaces, and its control
+/// characters escaped, so no line of it reads as a record header (`commit …`, `Author:`, `Date:`).
+pub(crate) fn message_body(message: &str) -> String {
+    message
+        .split('\n')
+        .map(|line| format!("    {}", printable(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 impl Report for HistoryReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         if self.commits.is_empty() {
@@ -360,9 +385,9 @@ impl Report for HistoryReport {
                 writeln!(out)?;
             }
             writeln!(out, "{}", style::modify(&format!("commit {}", line.commit)))?;
-            writeln!(out, "{} {}", style::dim("Author:"), line.author)?;
+            writeln!(out, "{} {}", style::dim("Author:"), printable(&line.author))?;
             writeln!(out, "{} {}", style::dim("Date:  "), line.author_at)?;
-            writeln!(out, "\n    {}", line.message)?;
+            writeln!(out, "\n{}", message_body(&line.message))?;
         }
         Ok(())
     }
@@ -529,6 +554,14 @@ pub struct VerifyReport {
     pub statement_verified: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_closure_objects: Option<usize>,
+    /// The head the local closure was walked from: the workspace's own, never the remote's it may
+    /// not hold (BUG-0135).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_head: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_counter: Option<u64>,
+    /// Whether the workspace is behind the verified remote head.
+    pub behind: bool,
 }
 
 impl Report for VerifyReport {
@@ -545,16 +578,29 @@ impl Report for VerifyReport {
             style::ok("✓"),
             self.counter
         )?;
-        match self.local_closure_objects {
-            Some(objects) => writeln!(
+        match (self.local_closure_objects, &self.local_head) {
+            (Some(objects), Some(local_head)) => writeln!(
                 out,
                 "{} local closure whole: {} objects hash-verified from {}",
                 style::ok("✓"),
                 objects,
-                style::id(&self.head)
-            ),
-            None => writeln!(out, "{} no local checkpoint yet", style::dim("-")),
+                style::id(local_head)
+            )?,
+            _ => writeln!(out, "{} no local checkpoint yet", style::dim("-"))?,
         }
+        if self.behind {
+            writeln!(
+                out,
+                "{} this workspace is behind: it holds counter {} ({}), the remote is at {} \
+                 ({}) — `permguard pull` catches up",
+                style::delete("!"),
+                self.local_counter.unwrap_or_default(),
+                style::id(self.local_head.as_deref().unwrap_or("none")),
+                self.counter,
+                style::id(&self.head)
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -1030,6 +1076,35 @@ mod tests {
         plain
     }
 
+    /// BUG-0014: a commit message that spans lines, or carries text shaped like a record header
+    /// or a carriage return, stays inside its record: one `commit` line per commit, every body
+    /// line indented, and the author on one line.
+    #[test]
+    fn a_multi_line_message_cannot_forge_a_record() {
+        let forged = "fix\ncommit sha256:0000\nAuthor: mallory\nDate:   2026-01-01\n\r    hidden";
+        let report = HistoryReport {
+            commits: vec![HistoryLine {
+                commit: "sha256:1111".to_owned(),
+                author: "alice\nAuthor: mallory".to_owned(),
+                author_at: "2026-11-19T00:00:00Z".to_owned(),
+                message: forged.to_owned(),
+            }],
+        };
+        let text = terminal(&report);
+        let headers = text
+            .lines()
+            .filter(|line| line.starts_with("commit ") || line.starts_with("Author:"))
+            .count();
+        assert_eq!(headers, 2, "one commit line and one author line: {text}");
+        assert!(!text.contains('\r'), "{text}");
+        let body: Vec<&str> = text.lines().skip(4).collect();
+        assert!(
+            body.iter().all(|line| line.starts_with("    ")),
+            "every body line is indented: {body:?}"
+        );
+        assert_eq!(body.len(), 5, "{body:?}");
+    }
+
     fn line(op: &'static str) -> PlanLine {
         PlanLine {
             op,
@@ -1313,9 +1388,38 @@ mod tests {
             counter: 4,
             statement_verified: true,
             local_closure_objects: Some(13),
+            local_head: Some("sha256:aa".into()),
+            local_counter: Some(4),
+            behind: false,
         });
         assert!(text.contains("no rollback"), "{text}");
         assert!(text.contains("13 objects"), "{text}");
+        assert!(!text.contains("behind"), "{text}");
+
+        // BUG-0135: one commit behind, the closure line names the head it walked, never the
+        // remote's, and the report says the workspace is behind.
+        let behind = terminal(&VerifyReport {
+            r#ref: "main".into(),
+            head: "sha256:bb".into(),
+            counter: 5,
+            statement_verified: true,
+            local_closure_objects: Some(13),
+            local_head: Some("sha256:aa".into()),
+            local_counter: Some(4),
+            behind: true,
+        });
+        let closure = behind
+            .lines()
+            .find(|line| line.contains("local closure"))
+            .expect("the closure line");
+        assert!(
+            closure.contains("sha256:aa") && !closure.contains("sha256:bb"),
+            "{behind}"
+        );
+        assert!(
+            behind.contains("is behind") && behind.contains("counter 4"),
+            "{behind}"
+        );
 
         let fresh = terminal(&VerifyReport {
             r#ref: "main".into(),
@@ -1323,6 +1427,9 @@ mod tests {
             counter: 4,
             statement_verified: true,
             local_closure_objects: None,
+            local_head: None,
+            local_counter: None,
+            behind: true,
         });
         assert!(fresh.contains("no local checkpoint"), "{fresh}");
 

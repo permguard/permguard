@@ -25,6 +25,13 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A retried `apply` is the same request, however much later it comes.**
+  The commit an apply sends is kept in `.permguard/pending/<ref>` until it is answered, and sent again while the tree, the parent, the author and the message are unchanged: a retry after a lost answer is answered with the head the first one committed, where it was answered "someone applied before you".
+- **`verify` names the head it walked.**
+  The local-closure line names the workspace's own head, never the remote's it may not hold, and a workspace behind the remote is told so, with both heads and counters, in the terminal and in JSON (`local_head`, `local_counter`, `behind`).
+- **A commit message cannot forge a `history` record.**
+  Every line of a message is indented, in `history` and in `objects cat`, and control characters in the message and the author are shown escaped.
+
 - **One endpoint grammar, everywhere an endpoint is read.**
   The flag, the environment, `config set`, `remote add` and `clone` read endpoints through one parser: schemes `http`, `https`, `grpc` and `grpcs` in any case; a written port from 1 to 65535 (`:99999` and `:0` are refused, where `:99999` used to dial the scheme's default port); userinfo, a query and a fragment refused; a trailing `/` read as no path, on gRPC endpoints too.
   A value `config set` accepts is one every command uses, and a remote URL ending in `/` behaves as the one without it.

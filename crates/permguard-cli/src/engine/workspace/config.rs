@@ -107,6 +107,12 @@ pub fn write_head(store: &dyn Store, r#ref: &str) -> Result<(), String> {
 /// the workspace only decides where it lives.
 pub use permguard_client::checkpoint::Checkpoint;
 
+/// Where the commit an apply of `ref` sent, and has not seen answered yet, is kept: what a retry
+/// sends again, so it is the same request whenever it comes (BUG-0136).
+pub fn pending_path(r#ref: &str) -> String {
+    format!(".permguard/pending/{ref}", ref = r#ref)
+}
+
 /// Where one ref's checkpoint lives inside `.permguard`.
 pub fn checkpoint_path(r#ref: &str) -> String {
     ref_path(r#ref)

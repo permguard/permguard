@@ -37,7 +37,7 @@ onBeforeUnmount(() => observer?.disconnect())
     <h1>Authorization leaves the code.</h1>
     <p>Identity left your applications years ago. Authorization stayed inside them, different in every one. Permguard takes it out, gives it an owner and keeps every decision on record.</p>
     <div class="pgx-hero-visual">
-      <div class="pgx-hero-visual__art" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP through the Permguard SDKs, for Go, Java, .NET, Node.js, Python and Rust, their Policy Enforcement Point; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
+      <div class="pgx-hero-visual__art" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP through the Permguard SDKs, for Go, Java, .NET, Node.js, Python and Rust, their Policy Enforcement Point; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your own SIEM and cyber threat intelligence.">
         <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 420" aria-hidden="true" focusable="false">
           <defs>
             <linearGradient id="pgx-hv-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="186"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
@@ -111,7 +111,7 @@ onBeforeUnmount(() => observer?.disconnect())
           <g class="pgx-hv__node pgx-hv__node--siem">
             <rect x="870" y="328" width="150" height="64" rx="14"/>
             <text class="pgx-hv__k" x="945" y="354" text-anchor="middle">EXPORT</text>
-            <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM</text>
+            <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM · CTI</text>
           </g>
         </svg>
         <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 676" aria-hidden="true" focusable="false">
@@ -175,7 +175,7 @@ onBeforeUnmount(() => observer?.disconnect())
           <g class="pgx-hv__node pgx-hv__node--siem">
             <rect x="90" y="606" width="180" height="56" rx="14"/>
             <text class="pgx-hv__k" x="180" y="628" text-anchor="middle">EXPORT</text>
-            <text class="pgx-hv__s" x="180" y="650" text-anchor="middle">Your SIEM</text>
+            <text class="pgx-hv__s" x="180" y="650" text-anchor="middle">Your SIEM · CTI</text>
           </g>
         </svg>
       </div>
@@ -185,7 +185,7 @@ onBeforeUnmount(() => observer?.disconnect())
         <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>Policy Enforcement Point: the line in your code that asks, and obeys.</dd></div>
         <div data-term="idp"><dt><a :href="withBase('/how-it-works/glossary#identity-provider')">Your IdP</a></dt><dd>Says who the user is. Permguard decides what they may do.</dd></div>
         <div data-term="evidence"><dt><a :href="withBase('/how-it-works/glossary#evidence')">Evidence</a></dt><dd>A signed record of every decision, chained to the one before.</dd></div>
-        <div data-term="siem"><dt><a :href="withBase('/how-it-works/glossary#siem')">Your SIEM</a></dt><dd>Where you analyse those records, beside your other security logs.</dd></div>
+        <div data-term="siem"><dt><a :href="withBase('/how-it-works/glossary#siem')">Your SIEM · CTI</a></dt><dd>Your own security tools: analyse the records beside your other logs and cross them with your cyber threat intelligence.</dd></div>
       </dl>
     </div>
   </section>
@@ -365,18 +365,18 @@ permit (
         <article><small>DISCOVERY</small><strong>One URL</strong><span>server → plane → interface</span></article>
       </div>
     </div>
-    <p class="pgx-system-map__truth">Policies are written once, in the Control Plane: versioned, signed and distributed. The Data Plane decides beside the workload, as a sidecar or a remote service, or inside the process through the engine libraries. The <a :href="withBase('/trust-plane')">Trust Plane</a>, for authority continuity, is in development.</p>
+    <p class="pgx-system-map__truth">Policies are written once, in the Control Plane: versioned, signed and distributed. The Data Plane decides beside the workload, as a sidecar or a remote service, or inside the process through the engine libraries. The <a :href="withBase('/trust-plane')">Trust Plane</a>, for authority continuity with PIC-X, is next on the roadmap.</p>
   </section>
 
   <section class="pgx-section">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Beyond authorization</div><h2>Authorization is the first question.</h2></div><p>Permguard governs the rules an execution follows: written once, answered where the execution runs, proven afterwards. Every dimension of execution is in its scope; each joins these pages when it ships.</p></div>
-    <div class="pgx-dimensions" role="table" aria-label="One Control Plane governs every question. Application policies are answered by the PDP in the Data Plane, available today. Trust Anchors, a different family that is not a PDP, will answer protocol questions in the Data Plane, next. Authority continuity is the Trust Plane's, in development.">
+    <div class="pgx-dimensions" role="table" aria-label="One Control Plane governs every question. Application policies are answered by the PDP in the Data Plane, available today. Trust Anchors, a policy engine for PIC-like protocols with interfaces of its own, will answer in the Data Plane, next. Authority continuity, with PIC-X, is the Trust Plane's, next.">
       <div class="pgx-dimensions__govern" role="rowheader"><small>GOVERNED BY</small><strong>Control Plane</strong><span>one ledger model, signed versions, for every question</span></div>
       <div class="pgx-dimensions__rows">
         <div class="pgx-dimensions__head" role="row"><span role="columnheader">The question</span><span role="columnheader">Answered by</span><span role="columnheader">Proven by</span><span role="columnheader">Status</span></div>
         <div class="pgx-dimensions__row pgx-dimensions__row--live" role="row"><div role="cell"><strong>May alice read the budget?</strong><span>application policies</span></div><div role="cell"><strong>PDP</strong><span>Data Plane</span></div><div role="cell"><span>a signed decision record</span></div><div role="cell"><em class="pgx-status pgx-status--live">Available</em></div></div>
-        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>May this hand-off cross the boundary?</strong><span>Trust Anchor policies · a protocol question, so not a PDP</span></div><div role="cell"><strong>Trust Anchor</strong><span>Data Plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
-        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>Does authority hold along the chain?</strong><span>authority continuity, with the <a href="https://www.pic-protocol.org/">PIC protocol</a></span></div><div role="cell"><strong><a :href="withBase('/trust-plane')">Trust Plane</a></strong><span>its own plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--dev">In development</em></div></div>
+        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>May this hand-off cross the boundary?</strong><span>a policy engine for PIC-like protocols; its interfaces differ from the PDP's, so it has its own name</span></div><div role="cell"><strong>Trust Anchor</strong><span>Data Plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
+        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>Does authority hold along the chain?</strong><span>authority continuity, with <a href="https://pic-protocol.org/pic-x">PIC-X</a>, the trust-plane component of PIC</span></div><div role="cell"><strong><a :href="withBase('/trust-plane')">Trust Plane</a></strong><span>its own plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
       </div>
     </div>
     <p class="pgx-dimensions__note">Each question arrives as its own interface, on the plane that answers it, and a server advertises only the interfaces it actually runs.</p>
@@ -433,10 +433,10 @@ permit (
       <details><summary>What happens if the Control Plane is down?</summary><p>The Data Plane keeps deciding with the policy it already mirrored and verified. Only new versions wait until the Control Plane is back.</p></details>
       <details><summary>What happens if the PDP does not answer?</summary><p>The SDK returns an error, not a deny: a deny is a normal answer with <code>decision</code> false. Treat an error as a no, as the code above does: fail closed.</p></details>
       <details><summary>Does Permguard replace my Identity Provider?</summary><p>No. Your IdP says who the user is; your code passes that subject to Permguard, which decides what it may do. The Authority Plane only issues the tokens that callers of Permguard itself present.</p></details>
-      <details><summary>Which language are policies written in?</summary><p>Cedar or Rego, side by side in the same ledger. Dogwood, for decisions that depend on history, is experimental. See <a :href="withBase('/how-it-works/policy-languages')">Policy Languages</a>.</p></details>
+      <details><summary>Which language are policies written in?</summary><p>Cedar or Rego, side by side in the same ledger. Dogwood, for decisions that depend on history, is experimental. See <a :href="withBase('/how-it-works/policy-languages')">Policy as Code</a>.</p></details>
       <details><summary>Can I test a policy without a server?</summary><p>Yes: <code>permguard test</code> runs the same engine and decision algebra as the Data Plane, offline. See <a :href="withBase('/how-it-works/getting-started')">Getting Started</a>.</p></details>
-      <details><summary>Can anyone call my PDP?</summary><p>Only in development, where the configuration grants it publicly. In production every caller presents an access token of the Authority Plane, and each plane checks it itself. See <a :href="withBase('/how-it-works/access-tokens')">Access Tokens</a>.</p></details>
-      <details><summary>When do I not need it?</summary><p>A single application with a few fixed roles can live with its own checks for a while. Permguard pays off when several applications or agents must follow the same rules, when rules change without a redeploy, or when you must show who was allowed what, and why.</p></details>
+      <details><summary>Can anyone call my PDP?</summary><p>Only in development, where the configuration grants it publicly. In production every caller presents an access token of the Authority Plane, and each plane checks it itself. See <a :href="withBase('/authority-plane/access-tokens')">Access Tokens</a>.</p></details>
+      <details><summary>Is it worth it for a small application?</summary><p>Yes: any application that decides who may do what gains from rules out of the code, tested offline and kept on record. The value grows with the stakes: enterprise and complex applications, AI agents acting on someone's behalf, rules that change without a redeploy, and the need to show who was allowed what, and why.</p></details>
     </div>
   </section>
 
@@ -452,18 +452,19 @@ permit (
   <section class="pgx-section pgx-section--tint">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Concepts</div><h2>Go one layer deeper.</h2></div></div>
     <div class="pgx-link-grid">
-      <a :href="withBase('/how-it-works/architecture')"><strong>Server, Host &amp; Planes</strong><span>compose the architecture</span></a>
-      <a :href="withBase('/how-it-works/authority-plane')"><strong>Authority Plane</strong><span>service accounts → access tokens</span></a>
-      <a :href="withBase('/how-it-works/access-tokens')"><strong>Access Tokens &amp; Clusters</strong><span>verify · revoke · every plane</span></a>
-      <a :href="withBase('/how-it-works/policy-storage')"><strong>Git-like Policy Storage</strong><span>files → objects → immutable history</span></a>
+      <a :href="withBase('/how-it-works/architecture')"><strong>Server, Host &amp; Planes</strong><span>one Host · the planes you deploy</span></a>
+      <a :href="withBase('/how-it-works/policy-languages')"><strong>Policy as Code</strong><span>Cedar · Rego · Dogwood</span></a>
+      <a :href="withBase('/how-it-works/zones-and-ledgers')"><strong>Zones &amp; Ledgers</strong><span>the security boundary · its ledgers</span></a>
+      <a :href="withBase('/how-it-works/policy-storage')"><strong>Git-like Versioning</strong><span>commits · history · signed heads</span></a>
+      <a :href="withBase('/how-it-works/notp')"><strong>NOTP Protocol</strong><span>how policy moves between planes</span></a>
+      <a :href="withBase('/how-it-works/policy-lifecycle')"><strong>Policy Delivery</strong><span>commit → signed version → running PDP</span></a>
+      <a :href="withBase('/how-it-works/decision-lifecycle')"><strong>Decision Path</strong><span>request → evaluation → answer</span></a>
+      <a :href="withBase('/how-it-works/evidence')"><strong>Verifiable Evidence</strong><span>record → chain → proof</span></a>
       <a :href="withBase('/how-it-works/bring-your-own-data-plane')"><strong>Bring Your Own Data Plane</strong><span>Permguard policy → your runtime</span></a>
-      <a :href="withBase('/how-it-works/policy-lifecycle')"><strong>Policy Lifecycle</strong><span>source → signed version → mirror</span></a>
-      <a :href="withBase('/how-it-works/decision-lifecycle')"><strong>Decision Lifecycle</strong><span>request → evaluation → answer</span></a>
-      <a :href="withBase('/how-it-works/evidence')"><strong>Evidence &amp; Verification</strong><span>record → chain → proof</span></a>
       <a :href="withBase('/how-it-works/temporal-authorization')"><strong>Temporal Authorization</strong><span>history becomes policy input</span></a>
-      <a :href="withBase('/how-it-works/policy-languages')"><strong>Policy Languages</strong><span>Cedar · Rego · Dogwood</span></a>
-      <a :href="withBase('/trust-plane')"><strong>Trust Plane</strong><span>authority continuity · in development</span></a>
-      <a :href="withBase('/how-it-works/glossary')"><strong>Glossary</strong><span>every term, in one line</span></a>    </div>
+      <a :href="withBase('/authority-plane')"><strong>Authority Plane</strong><span>who may call Permguard itself</span></a>
+      <a :href="withBase('/how-it-works/glossary')"><strong>Glossary</strong><span>every term, in one line</span></a>
+    </div>
     <nav class="pgx-pager pgx-pager--next-only" aria-label="Documentation pages">
       <a class="pgx-pager__next" :href="withBase('/how-it-works/install')"><span>Next</span><strong>Install <b aria-hidden="true">→</b></strong></a>
     </nav>

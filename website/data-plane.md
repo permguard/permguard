@@ -35,3 +35,8 @@ The supported Permguard Data Plane is the secure default for sidecar and remote 
 The current general evaluation profile is <code>permguard.api.pdp.native.v1</code>. Profiles are explicit, versioned questions: future interfaces can add different request shapes without silently changing this contract.
 
 See [Bring Your Own Data Plane](./how-it-works/bring-your-own-data-plane) for the boundary and [Decision Lifecycle](./how-it-works/decision-lifecycle) for one request end to end.
+
+<nav class="pgx-pager" aria-label="Documentation pages">
+  <a class="pgx-pager__previous" href="./control-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Control Plane</strong></a>
+  <a class="pgx-pager__next" href="./trust-plane"><span>Next</span><strong>Trust Plane <b aria-hidden="true">→</b></strong></a>
+</nav>

@@ -39,9 +39,14 @@ pub struct ApplyOutcome {
 #[derive(Debug, Clone)]
 pub struct VerifyOutcome {
     pub r#ref: String,
+    /// The remote's verified head and counter.
     pub head: String,
     pub counter: u64,
     pub local_closure_objects: Option<usize>,
+    /// The head the local closure was walked from, and its counter: the workspace's checkpoint,
+    /// which is behind the remote's when the counters differ (BUG-0135).
+    pub local_head: Option<String>,
+    pub local_counter: Option<u64>,
 }
 
 /// What a pull reports.
@@ -123,16 +128,39 @@ impl Workspace<'_> {
             ),
             None => None,
         };
-        let commit = object::Commit {
-            tree: snapshot.root.clone(),
-            manifest: snapshot.manifest.clone(),
-            predecessors: expected_old.iter().cloned().collect(),
-            author: author.to_owned(),
-            author_at: now(),
-            message: message.to_owned(),
+        // A retry of an apply whose answer was lost is the same request whenever it comes: the
+        // commit it sent is kept until it is answered, and sent again while the tree, the parent,
+        // the author and the message are what it carries — a commit stamped anew each second
+        // would be another request, and its answer "someone applied before you" (BUG-0136).
+        let pending = self.pending_commit(&r#ref)?.filter(|(_, held)| {
+            held.tree == snapshot.root
+                && held.manifest == snapshot.manifest
+                && held.predecessors == expected_old.iter().cloned().collect::<Vec<_>>()
+                && held.author == author
+                && held.message == message
+        });
+        let new_head = match pending {
+            Some((digest, _)) => digest,
+            None => {
+                let commit = object::Commit {
+                    tree: snapshot.root.clone(),
+                    manifest: snapshot.manifest.clone(),
+                    predecessors: expected_old.iter().cloned().collect(),
+                    author: author.to_owned(),
+                    author_at: now(),
+                    message: message.to_owned(),
+                };
+                let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
+                let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
+                self.store
+                    .write(
+                        &config::pending_path(&r#ref),
+                        format!("{new_head}\n").as_bytes(),
+                    )
+                    .map_err(err)?;
+                new_head
+            }
         };
-        let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
-        let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
         let expected_ref = self.expected_ref(remote, ledger, &r#ref, checkpoint.as_ref())?;
         let request_id = push_request_id(ledger, &r#ref, &new_head);
 
@@ -247,12 +275,30 @@ impl Workspace<'_> {
         };
         config::write_checkpoint(self.store, &r#ref, &checkpoint).map_err(err)?;
         config::write_head(self.store, &r#ref).map_err(err)?;
+        // Answered: nothing is pending any more.
+        self.store
+            .remove(&config::pending_path(&r#ref))
+            .map_err(err)?;
         Ok(ApplyOutcome {
             r#ref,
             head: checkpoint.head,
             counter: checkpoint.counter,
             uploaded,
         })
+    }
+
+    /// The commit an earlier apply of `ref` sent and saw no answer to, when one is kept and its
+    /// object is still in the store.
+    fn pending_commit(&self, r#ref: &str) -> Result<Option<(Digest, object::Commit)>> {
+        let Some(bytes) = self.store.read(&config::pending_path(r#ref)).map_err(err)? else {
+            return Ok(None);
+        };
+        let Ok(digest) = Digest::parse(String::from_utf8_lossy(&bytes).trim()) else {
+            return Ok(None);
+        };
+        Ok(load_commit(self.store, &digest)
+            .ok()
+            .map(|commit| (digest, commit)))
     }
 
     /// The ref state an apply expects to replace: the checkpoint's, `None` before the first
@@ -585,6 +631,8 @@ impl Workspace<'_> {
             checkpoint.as_ref(),
         )
         .map_err(super::unverified)?;
+        let local_head = checkpoint.as_ref().map(|held| held.head.clone());
+        let local_counter = checkpoint.as_ref().map(|held| held.counter);
         let local_closure_objects = match checkpoint {
             Some(checkpoint) => {
                 let head =
@@ -603,6 +651,8 @@ impl Workspace<'_> {
             head: statement.digest.to_string(),
             counter: statement.counter,
             local_closure_objects,
+            local_head,
+            local_counter,
         })
     }
 

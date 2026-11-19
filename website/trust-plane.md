@@ -75,5 +75,5 @@ Permguard already has supporting foundations—Host-owned identity and keys, sig
 The protocol direction is developed alongside the [PIC Protocol](https://www.pic-protocol.org/). Until these contracts ship, treat this page as the reserved architecture and status boundary.
 
 <nav class="pgx-pager pgx-pager--previous-only" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./how-it-works/architecture"><span>Previous</span><strong><b aria-hidden="true">←</b> Server, Host &amp; Planes</strong></a>
+  <a class="pgx-pager__previous" href="./data-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Data Plane</strong></a>
 </nav>

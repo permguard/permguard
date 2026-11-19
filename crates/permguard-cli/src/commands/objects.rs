@@ -129,11 +129,15 @@ pub fn write_human(
             writeln!(
                 out,
                 "author   {} at {}",
-                commit.author,
+                crate::workspace_out::printable(&commit.author),
                 permguard_core::time::to_rfc3339(commit.author_at)
             )?;
             writeln!(out)?;
-            writeln!(out, "    {}", commit.message)?;
+            writeln!(
+                out,
+                "{}",
+                crate::workspace_out::message_body(&commit.message)
+            )?;
         }
     }
     Ok(())

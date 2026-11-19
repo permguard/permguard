@@ -32,3 +32,8 @@ description: Publish, verify and distribute immutable policy history.
 The Control Plane does not make authorization decisions. It publishes the exact policy version that a Data Plane verifies, compiles and evaluates.
 
 Read [Git-like Policy Storage](./how-it-works/policy-storage) for the object model and [Policy Lifecycle](./how-it-works/policy-lifecycle) for the complete flow.
+
+<nav class="pgx-pager" aria-label="Documentation pages">
+  <a class="pgx-pager__previous" href="./authority-plane/access-tokens"><span>Previous</span><strong><b aria-hidden="true">←</b> Access Tokens &amp; Clusters</strong></a>
+  <a class="pgx-pager__next" href="./data-plane"><span>Next</span><strong>Data Plane <b aria-hidden="true">→</b></strong></a>
+</nav>

@@ -1329,6 +1329,11 @@ pub fn workspace_command(
                     counter: verified.counter,
                     statement_verified: true,
                     local_closure_objects: verified.local_closure_objects,
+                    behind: verified
+                        .local_counter
+                        .is_none_or(|local| local < verified.counter),
+                    local_head: verified.local_head,
+                    local_counter: verified.local_counter,
                 },
                 format,
                 trace,

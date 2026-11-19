@@ -41,7 +41,7 @@ When a threat changes, the context changes and the policy stays the same.
 
 The answer: permit or deny.
 Nothing is permitted unless a policy permits it, and the answer names the policy that decided.
-See [Decision Lifecycle](./decision-lifecycle).
+See [Decision Path](./decision-lifecycle).
 
 ## The roles
 
@@ -58,8 +58,8 @@ In Permguard, the Data Plane: a sidecar beside the application, a remote service
 
 ### Trust Anchor {#trust-anchor}
 
-A different family of decision point, planned next in the Data Plane.
-It answers a protocol question, whether a hand-off may cross a boundary, so it is not a PDP.
+A policy engine for PIC-like protocols, next on the roadmap in the Data Plane.
+Its interfaces differ from the PDP's, so it has its own name: it answers whether a hand-off may cross a boundary.
 See [Trust Plane](../trust-plane).
 
 ### SDK {#sdk}
@@ -91,12 +91,12 @@ See [Data Plane](../data-plane).
 
 Issues the access tokens with which callers of Permguard itself prove who they are: service accounts, scopes and access keys.
 Port `8443`.
-See [Authority Plane](./authority-plane).
+See [Authority Plane](../authority-plane).
 
 ### Trust Plane {#trust-plane}
 
-Authority continuity along a chain of executions, with the PIC protocol.
-In development.
+Authority continuity along a chain of executions, with [PIC-X](https://pic-protocol.org/pic-x), the trust-plane component of PIC.
+Next on the roadmap.
 See [Trust Plane](../trust-plane).
 
 ## Policies
@@ -105,18 +105,29 @@ See [Trust Plane](../trust-plane).
 
 A rule in a file, as code, that an execution follows.
 Today, application policies: who may do what, on what, under which facts.
-See [Policy Lifecycle](./policy-lifecycle).
+See [Policy Delivery](./policy-lifecycle).
 
 ### Policy language {#policy-language}
 
 Cedar and Rego, side by side in the same ledger; Dogwood, for decisions that depend on history, is experimental.
-See [Policy Languages](./policy-languages).
+See [Policy as Code](./policy-languages).
 
-### Zone and ledger {#ledger}
+### Zone {#zone}
 
-A zone groups ledgers; a ledger holds the versioned history of a set of policies.
+The security boundary: everything inside a zone is governed together, and nothing crosses it unless it is allowed to.
+A zone holds one or more ledgers.
+See [Zones & Ledgers](./zones-and-ledgers).
+
+### Ledger {#ledger}
+
+The versioned history of a set of policies, inside exactly one zone.
 Every change is a commit.
-See [Git-like Policy Storage](./policy-storage).
+See [Git-like Versioning](./policy-storage).
+
+### NOTP {#notp}
+
+The protocol that moves policy objects between a client, the Control Plane and the Data Planes, verifying each one on arrival.
+See [NOTP Protocol](./notp).
 
 ### Signed head {#signed-head}
 
@@ -133,7 +144,7 @@ The identity of one decision, returned in the answer and carried by its record.
 
 The record of every decision: who, what, on which resource, under which policy, permit or deny.
 Records are signed and chained, so a change to any of them is detected.
-See [Evidence & Verification](./evidence).
+See [Verifiable Evidence](./evidence).
 
 ## Around Permguard
 
@@ -142,11 +153,11 @@ See [Evidence & Verification](./evidence).
 Your existing system for who people and services are, as an OpenID Connect provider.
 Permguard does not replace it.
 
-### SIEM {#siem}
+### SIEM and CTI {#siem}
 
-Your security information and event management system.
-Export the decision records to it as JSON Lines or CSV, beside your other security logs.
+Your own security tools: your security information and event management system, and your cyber threat intelligence.
+Export the decision records as JSON Lines or CSV, analyse them beside your other logs and cross them with the threats you track.
 
 <nav class="pgx-pager pgx-pager--previous-only" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./policy-languages"><span>Previous</span><strong><b aria-hidden="true">←</b> Policy Languages</strong></a>
+  <a class="pgx-pager__previous" href="./temporal-authorization"><span>Previous</span><strong><b aria-hidden="true">←</b> Temporal Authorization</strong></a>
 </nav>

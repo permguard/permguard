@@ -89,6 +89,6 @@ The Data Plane then advertises `permguard.api.pdp.temporal.v1alpha1` beside the 
 The example in `examples/dogwood-session-access` shows login history controlling later document access.
 
 <nav class="pgx-pager" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./evidence"><span>Previous</span><strong><b aria-hidden="true">←</b> Evidence &amp; Verification</strong></a>
-  <a class="pgx-pager__next" href="./policy-languages"><span>Next</span><strong>Policy Languages <b aria-hidden="true">→</b></strong></a>
+  <a class="pgx-pager__previous" href="./bring-your-own-data-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Bring Your Own Data Plane</strong></a>
+  <a class="pgx-pager__next" href="./glossary"><span>Next</span><strong>Glossary <b aria-hidden="true">→</b></strong></a>
 </nav>

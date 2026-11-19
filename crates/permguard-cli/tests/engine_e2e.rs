@@ -1746,3 +1746,131 @@ fn verify_tells_a_ledger_that_is_gone_from_a_missing_ref() {
     let refused = ws.verify(&unpushed).unwrap_err().to_string();
     assert!(refused.contains("has no ref `main`"), "{refused}");
 }
+
+/// BUG-0135: verifying a workspace one commit behind walks its own head, never the remote's it
+/// does not hold, and the outcome carries both heads and counters.
+#[test]
+fn verify_walks_the_local_head_of_a_workspace_one_commit_behind() {
+    let remote = EngineRemote::new("verify-behind");
+    let store_a = FsStore::new(scratch("verify-behind-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    let store_b = FsStore::new(scratch("verify-behind-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    let local_head = ws_b.status().unwrap().checkpoint.unwrap().head;
+
+    store_a
+        .write(
+            "cedar/billing.cedar",
+            CEDAR
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "list").unwrap().counter,
+        2
+    );
+
+    let verified = ws_b.verify(&remote).unwrap();
+    assert_eq!(verified.counter, 2);
+    assert_eq!(verified.local_counter, Some(1));
+    assert_eq!(verified.local_head.as_deref(), Some(local_head.as_str()));
+    assert_ne!(
+        verified.head, local_head,
+        "the remote head is not the one walked"
+    );
+}
+
+/// A remote that commits the first push it is asked to and loses the answer, as a dropped
+/// connection does after the server committed.
+struct LosesFirstAnswer<'a> {
+    inner: &'a EngineRemote,
+    lost: std::cell::Cell<bool>,
+}
+
+impl Remote for LosesFirstAnswer<'_> {
+    fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
+        self.inner.resolve(zone, ledger)
+    }
+    fn keyring(&self) -> Result<Vec<u8>, String> {
+        self.inner.keyring()
+    }
+    fn get_ref(&self, r#ref: &str) -> Result<Option<RefAnswer>, String> {
+        self.inner.get_ref(r#ref)
+    }
+    fn negotiate_push(
+        &self,
+        request: &NegotiatePushRequest,
+    ) -> Result<NegotiatePushResponse, String> {
+        self.inner.negotiate_push(request)
+    }
+    fn upload(&self, request: &UploadObjectsRequest) -> Result<UploadObjectsResponse, String> {
+        self.inner.upload(request)
+    }
+    fn commit_push(&self, request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
+        let answer = self.inner.commit_push(request);
+        if !self.lost.replace(true) {
+            answer?;
+            return Err("the connection was reset".to_owned());
+        }
+        answer
+    }
+    fn negotiate_pull(
+        &self,
+        request: &NegotiatePullRequest,
+    ) -> Result<NegotiatePullResponse, String> {
+        self.inner.negotiate_pull(request)
+    }
+    fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse, String> {
+        self.inner.fetch(request)
+    }
+}
+
+/// BUG-0136: a retry of an apply whose answer was lost is the same request, however much later it
+/// comes: it is answered with the head the first one committed, never "someone applied before you".
+#[test]
+fn a_retried_apply_after_a_lost_answer_is_the_same_request() {
+    let engine = EngineRemote::new("lost-answer");
+    let remote = LosesFirstAnswer {
+        inner: &engine,
+        lost: std::cell::Cell::new(false),
+    };
+    let store = FsStore::new(scratch("lost-answer"));
+    let ws = bind(&store);
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let _ = ws.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+
+    let lost = ws
+        .apply(&remote, "a@acme.com", "base")
+        .unwrap_err()
+        .to_string();
+    assert!(lost.contains("reset"), "{lost}");
+    assert_eq!(
+        engine.get_ref("main").unwrap().map(|held| held.counter),
+        Some(1)
+    );
+
+    // Past the second the first commit was stamped in.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let retried = ws.apply(&remote, "a@acme.com", "base").unwrap();
+    assert_eq!(retried.counter, 1, "the first commit, not a second one");
+    assert_eq!(
+        Some(retried.head.clone()),
+        engine.get_ref("main").unwrap().map(|held| held.head)
+    );
+    assert!(ws.plan().unwrap().1.is_empty());
+}

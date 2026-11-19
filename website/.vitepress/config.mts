@@ -19,6 +19,29 @@ const base = `/${(process.env.VITEPRESS_BASE ?? '').replace(/^\/+|\/+$/g, '')}/`
 
 // Other versions are other sites under the same root, so they are linked by absolute URL. Without
 // a root URL (a local build) only this site exists, and `latest` is its own home page.
+// Every plane, in the order a request meets them: who may call, what is published, what decides,
+// what continues authority. The menu and the planes' sidebar list the same four.
+const planeItem = (name: string, link: string, line: string) => ({
+  text: `${name}<small class="pg-menu-line">${line}</small>`,
+  link
+})
+
+const planesSidebar = [
+  {
+    text: 'Planes',
+    items: [
+      {
+        text: 'Authority Plane',
+        link: '/authority-plane',
+        items: [{ text: 'Access Tokens & Clusters', link: '/authority-plane/access-tokens' }]
+      },
+      { text: 'Control Plane', link: '/control-plane' },
+      { text: 'Data Plane', link: '/data-plane' },
+      { text: 'Trust Plane', link: '/trust-plane' }
+    ]
+  }
+]
+
 const versionLink = (target: string) => ({
   text: target,
   link: rootUrl ? `${rootUrl}/${target === 'latest' ? '' : `${target}/`}` : '/',
@@ -34,6 +57,19 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/x-icon', href: `${base}permguard/favicon.ico` }]
   ],
   cleanUrls: true,
+  // A page that moved keeps its old address as a stub whose frontmatter names the new one,
+  // `redirect: /authority-plane`; the refresh carries this build's base, so it lands in the same
+  // version of the documentation.
+  transformHead({ pageData }) {
+    const target = pageData.frontmatter.redirect
+    if (typeof target !== 'string') return
+    const url = `${base}${target.replace(/^\/+/, '')}`
+    return [
+      ['meta', { 'http-equiv': 'refresh', content: `0; url=${url}` }],
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { name: 'robots', content: 'noindex' }]
+    ]
+  },
   // Dark by default, like permguard.com; the toggle still offers light.
   appearance: 'dark',
   themeConfig: {
@@ -51,9 +87,16 @@ export default defineConfig({
       // A section is a link; its pages are listed by the sidebar of the section, not by a menu.
       { text: 'How it works', link: '/how-it-works', activeMatch: '^/how-it-works' },
       { text: 'Command Line', link: '/command-line' },
-      { text: 'Control Plane', link: '/control-plane' },
-      { text: 'Data Plane', link: '/data-plane' },
-      { text: 'Trust Plane', link: '/trust-plane' },
+      {
+        text: 'Planes',
+        activeMatch: '^/(authority|control|data|trust)-plane',
+        items: [
+          planeItem('Authority Plane', '/authority-plane', 'Service accounts, access keys, tokens'),
+          planeItem('Control Plane', '/control-plane', 'Zones, ledgers, signed policy'),
+          planeItem('Data Plane', '/data-plane', 'Decisions beside the workload'),
+          planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X')
+        ]
+      },
       {
         text: version,
         items: [
@@ -62,10 +105,14 @@ export default defineConfig({
         ]
       }
     ],
-    // Only How it works has more than one page, so only its pages carry a sidebar. The key has no
-    // trailing slash so that it matches the overview, `how-it-works.md`, as well as every page under
-    // `how-it-works/`: the overview is a `layout: page`, which VitePress still gives a sidebar.
+    // How it works and the planes carry a sidebar. A key has no trailing slash so that it matches the
+    // section's own page, `how-it-works.md` or `authority-plane.md`, as well as every page under it:
+    // the overview is a `layout: page`, which VitePress still gives a sidebar.
     sidebar: {
+      '/authority-plane': planesSidebar,
+      '/control-plane': planesSidebar,
+      '/data-plane': planesSidebar,
+      '/trust-plane': planesSidebar,
       '/how-it-works': [
         {
           text: 'Start',
@@ -80,15 +127,15 @@ export default defineConfig({
           text: 'Concepts',
           items: [
             { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
-            { text: 'Authority Plane', link: '/how-it-works/authority-plane' },
-            { text: 'Access Tokens & Clusters', link: '/how-it-works/access-tokens' },
-            { text: 'Git-like Policy Storage', link: '/how-it-works/policy-storage' },
+            { text: 'Policy as Code', link: '/how-it-works/policy-languages' },
+            { text: 'Zones & Ledgers', link: '/how-it-works/zones-and-ledgers' },
+            { text: 'Git-like Versioning', link: '/how-it-works/policy-storage' },
+            { text: 'NOTP Protocol', link: '/how-it-works/notp' },
+            { text: 'Policy Delivery', link: '/how-it-works/policy-lifecycle' },
+            { text: 'Decision Path', link: '/how-it-works/decision-lifecycle' },
+            { text: 'Verifiable Evidence', link: '/how-it-works/evidence' },
             { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
-            { text: 'Policy Lifecycle', link: '/how-it-works/policy-lifecycle' },
-            { text: 'Decision Lifecycle', link: '/how-it-works/decision-lifecycle' },
-            { text: 'Evidence & Verification', link: '/how-it-works/evidence' },
-            { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
-            { text: 'Policy Languages', link: '/how-it-works/policy-languages' }
+            { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' }
           ]
         },
         {

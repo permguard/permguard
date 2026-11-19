@@ -34,4 +34,4 @@ The CLI keeps editable files local and transfers content-addressed objects over 
 
 Start with [Install](./how-it-works/install), then run the complete [Getting Started](./how-it-works/getting-started) flow.
 
-The CLI acts as a service account, by its access key, and its token's scopes decide what it may do: see [Authority Plane](./how-it-works/authority-plane).
+The CLI acts as a service account, by its access key, and its token's scopes decide what it may do: see [Authority Plane](./authority-plane).
