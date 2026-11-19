@@ -1325,8 +1325,7 @@
     "pdp_temporal.EVENT_OUT_OF_ORDER": {
       "code": "event_out_of_order",
       "contract": "7-contracts/2-contract-pdp-temporal-v1alpha1.md",
-      "kind": "refusal",
-      "class": "conflict"
+      "kind": "unused"
     },
     "pdp_temporal.EVENT_PIN_CONTRADICTED": {
       "code": "event_pin_contradicted",

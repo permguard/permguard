@@ -2395,7 +2395,7 @@ sections:
     tests:
       - crates/permguard-data-plane/src/temporal/imports.rs::records_are_observed_in_event_time_with_a_deterministic_tie_break
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_tie_on_event_time_is_still_an_order
-      - crates/permguard-data-plane-server/tests/temporal_events.rs::an_occurrence_behind_what_the_history_holds_is_refused
+      - crates/permguard-data-plane-server/tests/temporal_events.rs::an_occurrence_behind_what_the_history_holds_is_applied_in_its_place
       - crates/permguard-data-plane-server/tests/temporal_events.rs::occurrences_in_order_are_still_accepted
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vouches_for_them
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_occurrence_outside_the_clock_bounds_is_refused_by_its_own_code
@@ -2977,7 +2977,7 @@ sections:
     tests:
       - crates/permguard-data-plane-server/tests/temporal_events.rs::concurrent_submissions_are_applied_in_the_order_the_journal_assigned
       - crates/permguard-data-plane-server/tests/temporal_events.rs::a_submission_without_event_submit_is_refused_before_anything_is_recorded
-      - crates/permguard-data-plane-server/tests/temporal_events.rs::an_occurrence_behind_what_the_history_holds_is_refused
+      - crates/permguard-data-plane-server/tests/temporal_events.rs::an_occurrence_behind_what_the_history_holds_is_applied_in_its_place
       - crates/permguard-data-plane-server/tests/temporal_events.rs::an_undeclared_input_is_version_1_and_a_refusal_records_nothing
       - crates/permguard-language-dogwood/src/compiled.rs::a_rebuild_replays_the_ordered_history_and_replaces_what_was_there
       - crates/permguard-events/src/journal.rs::a_retention_shorter_than_the_loaded_policies_need_is_refused

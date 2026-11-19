@@ -19,6 +19,10 @@ is cut.
 
 ### Changed
 
+- **An event behind its history is applied in its place, never answered `409 event_out_of_order`.**
+  A late event inside `allowed_lateness` was recorded and used, yet answered `409` as if refused, and anyone who could post an event dated ahead within `clock_skew` kept every on-time read of its history undecided.
+  Now the occurrence's history is rebuilt from the journal up to its own place in the order, the occurrence is decided, or accepted, on exactly what precedes it, and the history is rebuilt whole before the next one; `event_out_of_order` is no longer answered.
+  An identical retry of a recorded event is answered as it was the first time, also once `allowed_lateness` has passed, instead of `400 event_too_late`.
 - **An event's record is at most 256K, said by the configuration and answered `413 event_too_large`.**
   `dataPlane.events.max_record_bytes` defaulted to `1M` while the Host's event stream carries records of up to 256K, so an event between the two was accepted, then failed forever with `503 journal_unavailable`, which clients retry.
   The default is now `256K`, and a larger value is refused when the configuration is read: a configuration setting `1M`, as the shipped ones did, must lower it.

@@ -1169,6 +1169,160 @@ async fn an_occurrence_outside_the_clock_bounds_is_refused_by_its_own_code() {
     );
 }
 
+/// BUG-0158: an occurrence dated ahead of this plane's clock within `clock_skew` does not make
+/// the on-time reads of its history undecidable: each is decided on the history up to its own
+/// instant, the one dated ahead left out of it, and the history is whole again for the next.
+#[tokio::test]
+async fn an_occurrence_dated_ahead_within_the_skew_does_not_block_on_time_reads() {
+    let shipped = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "ahead-within-skew",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        shipped,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let skew = i64::try_from(shipped.clock_skew.as_secs()).expect("seconds");
+    assert!(skew > 2, "the shipped skew admits an occurrence ahead");
+
+    // A login dated ahead, inside the skew: accepted.
+    let (status, ahead) = post(
+        &router,
+        submission(
+            now + skew - 1,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{ahead}");
+
+    // On-time reads of the same history: decided, never `409 event_out_of_order`. The login
+    // dated ahead has not happened by their instant, so it does not permit them.
+    for (offset, document) in [(0, "doc1"), (1, "doc2")] {
+        let (status, body) = post(
+            &router,
+            submission(
+                now + offset,
+                "Drupe::Action::Read",
+                "request",
+                "alice",
+                json!({"user": "alice", "document": document}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["outcome"], "decided", "{body}");
+        assert_eq!(body["decision"], false, "{body}");
+    }
+
+    // A read dated after the login, inside the skew too: it sees the login, in order.
+    let (status, body) = post(
+        &router,
+        submission(
+            now + skew,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": "doc3"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["decision"], true, "{body}");
+}
+
+/// BUG-0159: a late history-only occurrence inside `allowed_lateness` is answered accepted, and
+/// an identical retry is answered as it was the first time, within the lateness and after it,
+/// without recording it again.
+#[tokio::test]
+async fn a_late_occurrence_is_accepted_and_its_retry_answered_after_the_lateness() {
+    let bounds = Bounds {
+        retention_minimum: std::time::Duration::MAX,
+        allowed_lateness: std::time::Duration::from_secs(3),
+        ..Bounds::default()
+    };
+    let plane = plane_built_bounded(
+        "late-retry",
+        permguard_core::assurance::AssuranceProfile::Development,
+        blocking(),
+        Metrics::none(),
+        false,
+        |mirrors| {
+            provision(mirrors, &manifest());
+        },
+        bounds,
+    );
+    let router = surface(&plane);
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs(),
+    )
+    .expect("an instant");
+    let read = submission(
+        now,
+        "Drupe::Action::Read",
+        "request",
+        "alice",
+        json!({"user": "alice", "document": "doc1"}),
+    );
+    let (status, body) = post(&router, read).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let login = submission(
+        now - 1,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    );
+    let (status, first) = post(&router, login.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["outcome"], "accepted", "{first}");
+    let (status, again) = post(&router, login.clone()).await;
+    assert_eq!(
+        (status, &again),
+        (StatusCode::OK, &first),
+        "a retry inside the lateness"
+    );
+
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    let (status, later) = post(&router, login).await;
+    assert_eq!(
+        (status, &later),
+        (StatusCode::OK, &first),
+        "a retry after the lateness is answered from what was recorded"
+    );
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+            .expect("the stream reads back")
+            .len(),
+        2,
+        "the read and the login, each recorded once"
+    );
+}
+
 /// A temporal contract whose window can outlive the history this plane keeps is refused before it
 /// decides anything (`history_retention_insufficient`): a retention shorter than the policies'
 /// window, plus the lateness and the skew, would let eviction change what they answer.
@@ -2305,7 +2459,7 @@ async fn a_submission_spends_a_permit_of_the_shared_pool_and_the_ceiling_refuses
 /// reachable if the refused login was actually fed to the engine, in its right place, by the
 /// rebuild — a plane that merely refused and forgot would keep answering deny.
 #[tokio::test]
-async fn an_occurrence_behind_what_the_history_holds_is_refused() {
+async fn an_occurrence_behind_what_the_history_holds_is_applied_in_its_place() {
     let plane = plane("temporal-out-of-order");
     let router = surface(&plane);
 
@@ -2338,19 +2492,15 @@ async fn an_occurrence_behind_what_the_history_holds_is_refused() {
         ),
     )
     .await;
+    // BUG-0159: recorded and used, so answered as accepted, never as a refusal.
     assert_eq!(
         status,
-        StatusCode::CONFLICT,
-        "an occurrence behind the history is a conflict with what is already there: {refused}"
+        StatusCode::OK,
+        "an occurrence behind the history is applied in its place: {refused}"
     );
-    assert_eq!(
-        refused["code"], "event_out_of_order",
-        "and it is refused for its order, not for its content: {refused}"
-    );
+    assert_eq!(refused["outcome"], "accepted", "{refused}");
 
-    // The record is kept. An occurrence that happened is an input to every future decision in its
-    // history, so discarding it because this one could not be answered would change what those
-    // later decisions mean. Only the answer is withheld.
+    // The record is kept, once.
     assert_eq!(
         plane
             .streams
@@ -2358,7 +2508,7 @@ async fn an_occurrence_behind_what_the_history_holds_is_refused() {
             .expect("the journal reads")
             .len(),
         2,
-        "the occurrence is evidence and stays; what was refused is the verdict, not the record"
+        "the occurrence is evidence and is recorded once"
     );
 
     // The same question the first read asked, a hundred seconds later. The only login this ledger
@@ -2427,22 +2577,15 @@ async fn occurrences_in_order_are_still_accepted() {
     );
 }
 
-/// Concurrent submissions with rising instants are ordered or refused — never applied out of order.
+/// Concurrent submissions with rising instants are all answered, and none applied out of order.
 ///
 /// # The property this pins
 ///
 /// The journal assigns sequences in arrival order, and arrival order is the scheduler's. So a set
 /// of occurrences whose instants rise cannot be guaranteed to arrive in that order, and one of them
-/// will find the history already past it. The guarantee is not that every submission is decided —
-/// it cannot be — but that none is decided *out of order*, and that none is lost.
-///
-/// Checked under the ledger turn, where every lower sequence is durable, the answer is the same on
-/// every run: whichever occurrence the journal placed behind a later instant is refused, and it is
-/// refused for that reason rather than for anything about its content.
-///
-/// Every record survives either way. An occurrence that happened is an input to future decisions in
-/// its history, so the refusal withholds the verdict and keeps the evidence — and because the
-/// history is marked for replay, the rebuilt run sorts the refused arrival into its right place.
+/// will find the history already past it. That one is applied on the history rebuilt up to its own
+/// place in the order, and the history is rebuilt whole before the next (BUG-0158, BUG-0159): every
+/// submission is answered, none is applied out of order, and none is lost.
 #[tokio::test]
 async fn concurrent_rising_instants_are_never_applied_out_of_order() {
     const SUBMISSIONS: usize = 16;
@@ -2466,20 +2609,11 @@ async fn concurrent_rising_instants_are_never_applied_out_of_order() {
     let mut decided = 0;
     for handle in inflight {
         let (status, body) = handle.await.expect("the submission finishes");
-        match status {
-            StatusCode::OK => decided += 1,
-            StatusCode::CONFLICT => assert_eq!(
-                body["code"], "event_out_of_order",
-                "the only conflict this races into is the ordering one: {body}"
-            ),
-            other => panic!("neither decided nor refused for order: {other} {body}"),
-        }
+        assert_eq!(status, StatusCode::OK, "every one is answered: {body}");
+        decided += 1;
     }
 
-    assert!(
-        decided > 0,
-        "an ordering guard that refuses everything is not a guard, it is an outage"
-    );
+    assert_eq!(decided, SUBMISSIONS);
     assert_eq!(
         plane
             .streams
@@ -2487,7 +2621,7 @@ async fn concurrent_rising_instants_are_never_applied_out_of_order() {
             .expect("the journal reads")
             .len(),
         SUBMISSIONS,
-        "every occurrence is durable, decided or not: the verdict is withheld, the evidence is not"
+        "every occurrence is durable, once"
     );
 }
 
@@ -2565,13 +2699,11 @@ async fn a_tie_on_event_time_is_still_an_order() {
         json!({"user": "alice", "server": "s2"}),
     );
     tied["event"]["data"]["event_id"] = json!("tie-submitted-today");
-    let (status, refused) = post(&router, tied).await;
-    assert_eq!(
-        status,
-        StatusCode::CONFLICT,
-        "equal event time is not equal order — the tuple decides: {refused}"
-    );
-    assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+    let (status, answered) = post(&router, tied).await;
+    // Equal event time is not equal order — the tuple decides — and an occurrence behind is
+    // applied in its place, not refused (BUG-0159).
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["outcome"], "accepted", "{answered}");
 }
 
 /// A stale partition is rebuilt even after a sibling profile's rebuild came first.
@@ -2611,8 +2743,9 @@ async fn a_stale_partition_is_rebuilt_even_after_a_sibling_profile_was() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["decision"], false, "{body}");
 
-    // The login that would have permitted it arrives late, behind the read: refused for order,
-    // kept as evidence, and every partition of this history is marked for replay.
+    // The login that would have permitted it arrives late, behind the read: accepted, applied on
+    // the history up to its own place, and every partition of this history is marked for replay
+    // (BUG-0159).
     let (status, refused) = post(
         &router,
         submission(
@@ -2624,8 +2757,8 @@ async fn a_stale_partition_is_rebuilt_even_after_a_sibling_profile_was() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
-    assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+    assert_eq!(status, StatusCode::OK, "{refused}");
+    assert_eq!(refused["outcome"], "accepted", "{refused}");
 
     // The sibling profile submits first. Its partition is rebuilt and marked clean — and with a
     // per-history note this is the step that used to mark the *temporal* partition clean too,
@@ -4967,9 +5100,9 @@ mod event_v2 {
     }
 
     /// After the review: a version 2 retry is answered as one, and an occurrence behind its
-    /// history is refused across a history the version 2 scan reads.
+    /// history is applied in its place across a history the version 2 scan reads (BUG-0159).
     #[tokio::test]
-    async fn a_version_2_retry_is_one_and_one_behind_its_history_is_refused() {
+    async fn a_version_2_retry_is_one_and_one_behind_its_history_is_applied() {
         let plane = plane_v2("v2-retry", true);
         let router = surface(&plane);
         let (at, action, kind, user) = TRACE[2];
@@ -4980,9 +5113,8 @@ mod event_v2 {
         assert_eq!(first, again, "one occurrence, one answer");
 
         let (at, action, kind, user) = TRACE[0];
-        let (status, refused) = post(&router, trace_v2(at, action, kind, user)).await;
-        assert_eq!(status, StatusCode::CONFLICT, "{refused}");
-        assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+        let (status, behind) = post(&router, trace_v2(at, action, kind, user)).await;
+        assert_eq!(status, StatusCode::OK, "applied in its place: {behind}");
     }
 
     /// A version 2 partition that does not declare its one-sided fields is refused at load.

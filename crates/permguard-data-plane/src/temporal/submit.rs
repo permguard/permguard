@@ -123,6 +123,9 @@ pub struct Submitter {
 /// The prewarm exclusion of each ledger, by zone and ledger.
 type Exclusions = std::collections::HashMap<(String, String), Arc<std::sync::RwLock<()>>>;
 
+/// A record's place in the order every history is fed in: [`super::imports::order_of`].
+type Order = (String, String, String, String, String, u64);
+
 /// What `ensure_history` left behind: the partitions whose replay was abandoned, and the imported
 /// history it captured — what the replay read and what the decision cites (WP-6.4a).
 struct Ensured {
@@ -346,7 +349,7 @@ impl Submitter {
         }
 
         matches!(
-            self.ensure_history(&checks, &history, &occurrence, zone, ledger, through + 1),
+            self.ensure_history(&checks, &history, &occurrence, zone, ledger, through + 1, None),
             Ok(ensured) if ensured.abandoned.is_empty()
         )
     }
@@ -881,7 +884,19 @@ impl Submitter {
         }
 
         let observed_at = self.now()?;
-        self.check_clock(&occurrence, &observed_at)?;
+        if let Err(refused) = self.check_clock(&occurrence, &observed_at) {
+            // An identical retry of an occurrence already recorded is answered as it was the first
+            // time, whatever the clock says of its instant now: it is not recorded again, and its
+            // history is not touched (BUG-0159).
+            if let Some(response) = self.recorded_answer(&zone, &ledger, &source, &event)? {
+                self.metrics.count(
+                    &measure::SUBMISSIONS,
+                    &[(permguard_core::metrics::labels::OUTCOME, "replayed")],
+                );
+                return Ok(Staged::Answered(Box::new(response)));
+            }
+            return Err(refused);
+        }
 
         // A loaded policy may ask for a wider history than this journal can retain. Check the
         // contract actually loaded for this ledger, not only the runtime's default at process
@@ -1250,15 +1265,22 @@ impl Submitter {
         // this is the first point at which "has this history already moved past that instant" has a
         // stable answer — asked before the append it is a race, and two concurrent submissions can
         // both pass it and then be journalled either way round.
-        if let Err(error) = self.admit_order(&zone, &ledger, &partition_key, &record, sequence) {
-            // The record stays: it is evidence, and losing it would change what future decisions
-            // mean. What is marked is the history, so the next occurrence in it is evaluated
-            // against a run rebuilt from the journal — and `observable` sorts that run, so the late
-            // arrival takes its right place there rather than being appended to what came after it.
-            self.invalidate_history(&zone, &ledger, &partition_key);
-
-            return Err(error);
-        }
+        // An occurrence behind one its history already holds, a late one inside the lateness or
+        // an on-time one behind another dated ahead within the skew, is not refused: its
+        // history is rebuilt up to its own place in the order and it is applied there, so it is
+        // decided, or accepted, on exactly what precedes it; the history is rebuilt whole again
+        // before the next occurrence (BUG-0158, BUG-0159).
+        let behind = match self.admit_order(&zone, &ledger, &partition_key, &record, sequence) {
+            Ok(None) => None,
+            Ok(Some(order)) => {
+                self.invalidate_history(&zone, &ledger, &partition_key);
+                Some(order)
+            }
+            Err(error) => {
+                self.invalidate_history(&zone, &ledger, &partition_key);
+                return Err(error);
+            }
+        };
 
         // Replay while holding this sequence's turn. This used to happen before the append, which
         // allowed a later concurrent submission to pass the freshness check while an earlier,
@@ -1283,6 +1305,7 @@ impl Submitter {
             &zone,
             &ledger,
             sequence,
+            behind.as_ref(),
         ) {
             Ok(ensured) => ensured,
             Err(error) => {
@@ -1324,8 +1347,9 @@ impl Submitter {
             &ledger,
             &abandoned,
         );
-        if !abandoned.is_empty() {
-            // Behind its journal: replayed before the next occurrence of this history.
+        if !abandoned.is_empty() || behind.is_some() {
+            // Behind its journal, or fed only the history up to this occurrence: replayed whole
+            // before the next occurrence of this history.
             self.invalidate_history(&zone, &ledger, &partition_key);
         }
         if !complete {
@@ -1613,7 +1637,50 @@ impl Submitter {
     }
 
     /// Refuses a loaded temporal contract whose longest window can outlive the journal.
-    /// Refuses to *decide* an occurrence that sorts behind one this history already holds.
+    /// The answer given to the occurrence `event` when this ledger already holds it with the same
+    /// content under `source` and its id, and kept that answer; nothing otherwise.
+    fn recorded_answer(
+        &self,
+        zone: &str,
+        ledger: &str,
+        source: &str,
+        event: &serde_json::Value,
+    ) -> Result<Option<SubmitResponse>, ApiError> {
+        let Some(event_id) = event.get("event_id").and_then(serde_json::Value::as_str) else {
+            return Ok(None);
+        };
+        let Ok(digest) = occurrence_digest_of(event) else {
+            return Ok(None);
+        };
+        let known = self
+            .streams
+            .known(zone, ledger, source, event_id)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
+                    format!("the durable answer index for `{event_id}` cannot be read: {error}"),
+                )
+            })?;
+        let Some(known) = known.filter(|known| known.occurrence_digest == digest) else {
+            return Ok(None);
+        };
+        if known.response.is_null() {
+            return Ok(None);
+        }
+        serde_json::from_value::<SubmitResponse>(known.response)
+            .map(Some)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
+                    format!("the durable answer for `{event_id}` cannot be decoded: {error}"),
+                )
+            })
+    }
+
+    /// Whether an occurrence sorts behind one this history already holds, and its place in the
+    /// order when it does: what its history is rebuilt up to before it is applied.
     ///
     /// # Why an out-of-order arrival cannot simply be applied
     ///
@@ -1622,10 +1689,15 @@ impl Submitter {
     /// [`Temporal::rebuild`](permguard_languages::temporal::Temporal::rebuild) states the contract:
     /// a late arrival is not inserted, the affected history is rebuilt.
     ///
-    /// The local path did not honour it. `allowed_lateness` admits an event whose instant is behind
-    /// the clock, and nothing then compared that instant with what the engine had already seen — so
-    /// an occurrence at `t1` submitted after one at `t2` was observed *after* it. `previous`,
-    /// `since` and every window operator then answer from a sequence that never happened.
+    /// # Why it is not refused either
+    ///
+    /// It used to be: `409 event_out_of_order`, the record kept and the answer withheld. A late
+    /// history-only event inside `allowed_lateness` was then reported refused while it was
+    /// recorded and used (BUG-0159), and anyone who could post an event dated ahead within
+    /// `clock_skew` kept every on-time read of its history undecided (BUG-0158). Instead the
+    /// history is rebuilt from the journal up to this occurrence's own place in the order — what
+    /// sorts after it left out — the occurrence is applied there and decided, or accepted, on
+    /// exactly what precedes it, and the history is rebuilt whole again before the next one.
     ///
     /// # The order is the whole tuple, not the event time
     ///
@@ -1633,28 +1705,14 @@ impl Submitter {
     /// producer, then sequence — because that is *the* order: the one every rebuilt run is sorted
     /// by. Comparing event time alone would leave the ties undecided, and ties happen: two
     /// submissions in one second journalled opposite to the instants they were stamped with, a
-    /// clock stepped backwards between them, two producers logging the same event time. An
-    /// occurrence equal on event time but behind on the tie break is exactly as out of order as
-    /// one behind by an hour — the rebuilt run will sort it earlier than something the engine was
-    /// already told about.
+    /// clock stepped backwards between them, two producers logging the same event time.
     ///
     /// # Why here, and not before the append
     ///
     /// Because before the append the answer is not stable. Two submissions racing for one ledger
-    /// can both find nothing ahead of them and then be journalled in either order, so a check there
-    /// refuses whichever loses a scheduling race and lets the same pair through on the next run.
-    /// Under the turn every lower sequence is durable and settled, and `before_local_sequence`
-    /// excludes this record and everything the journal placed after it. The question has one answer.
-    ///
-    /// # Why the record survives the refusal
-    ///
-    /// It is evidence, and evidence is not the plane's to discard: an occurrence that happened is
-    /// an input to every *future* decision in its history, and dropping it because this one could
-    /// not be answered would change what those later decisions mean. So the same bargain the
-    /// freshness check makes is made here — the record is kept, the history is marked for replay,
-    /// and only the answer is withheld. [`Self::observable`] sorts the run it rebuilds, so the late
-    /// arrival is fed in its right place rather than appended to what came after it, and the
-    /// history heals on the next occurrence instead of at the next restart.
+    /// can both find nothing ahead of them and then be journalled in either order. Under the turn
+    /// every lower sequence is durable and settled, and `before_local_sequence` excludes this
+    /// record and everything the journal placed after it. The question has one answer.
     fn admit_order(
         &self,
         zone: &str,
@@ -1662,7 +1720,7 @@ impl Submitter {
         history: &str,
         record: &Record,
         before_local_sequence: u64,
-    ) -> Result<(), ApiError> {
+    ) -> Result<Option<Order>, ApiError> {
         let this = record.to_value().map_err(|error| {
             ApiError::new(
                 ErrorClass::Internal,
@@ -1739,34 +1797,23 @@ impl Submitter {
             newer.retain(behind);
         }
 
-        let Some(ahead) = newer.first() else {
-            return Ok(());
-        };
-        let at = ahead
-            .get("occurred_at")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("a later instant");
+        if newer.is_empty() {
+            return Ok(None);
+        }
+        info!(
+            event.name = "temporal.reordered",
+            component = COMPONENT,
+            zone,
+            ledger,
+            "an occurrence arrived behind one its history already holds: applied on the history \
+             up to its own place in the order, the whole history rebuilt before the next one"
+        );
         self.metrics.count(
-            &measure::REFUSALS,
-            &[(
-                permguard_core::metrics::labels::REASON,
-                permguard_core::codes::pdp_temporal::EVENT_OUT_OF_ORDER,
-            )],
+            &measure::SUBMISSIONS,
+            &[(permguard_core::metrics::labels::OUTCOME, "reordered")],
         );
 
-        Err(ApiError::new(
-            ErrorClass::Conflict,
-            permguard_core::codes::pdp_temporal::EVENT_OUT_OF_ORDER,
-            format!(
-                "`{}` occurred at {} and this history already holds an occurrence at {at} that \
-                 sorts after it. A temporal engine is fed in its documented order — event time, \
-                 then observed time, producer and sequence — so deciding this one now would place \
-                 it after an event it sorts before, and every window operator would answer from an \
-                 order that never happened. The occurrence is recorded and remains evidence; the \
-                 history is rebuilt in order before the next decision is served from it",
-                record.event_id, record.occurred_at
-            ),
-        ))
+        Ok(Some(order))
     }
 
     fn admit_history_window(
@@ -2322,6 +2369,7 @@ impl Submitter {
     /// The cost is bounded by retention, which is bounded by the longest window any loaded policy
     /// looks back over, and it is paid once per fresh engine and once per import that moves the
     /// watermark — never once per submission.
+    #[allow(clippy::too_many_arguments)]
     fn ensure_history(
         &self,
         checks: &[Verified<'_>],
@@ -2330,6 +2378,7 @@ impl Submitter {
         zone: &str,
         ledger: &str,
         before_local_sequence: u64,
+        ordered_before: Option<&Order>,
     ) -> Result<Ensured, ApiError> {
         let imported = match (&self.imports, self.consistency.is_shared()) {
             (Some(imports), true) => Some(imports.state(zone, ledger).map_err(|error| {
@@ -2467,6 +2516,7 @@ impl Submitter {
             checks,
             before_local_sequence,
             bound.as_deref(),
+            ordered_before,
         )?
         else {
             return Ok(Ensured::of(
@@ -2648,6 +2698,7 @@ impl Submitter {
         checks: &[Verified<'_>],
         before_local_sequence: u64,
         bound: Option<&[permguard_core::frontier::FrontierRun]>,
+        ordered_before: Option<&Order>,
     ) -> Result<Option<Vec<StoredOccurrence>>, ApiError> {
         let unreadable = |what: &str, detail: String| {
             ApiError::new(
@@ -2700,6 +2751,12 @@ impl Submitter {
                 both(&query, |query| imported.window(zone, ledger, query, bound))
                     .map_err(|error| unreadable("the imported history", error.to_string()))?,
             );
+        }
+        // An occurrence that arrived behind one its history already holds is decided on the
+        // history up to its own place in the order, never on what sorts after it (BUG-0158,
+        // BUG-0159).
+        if let Some(limit) = ordered_before {
+            records.retain(|record| super::imports::order_of(record) < *limit);
         }
         // The replay plan's record bound, before anything is parsed (DOGWOOD-03).
         if records.len() as u64 > self.replay.max_records {
