@@ -2034,7 +2034,8 @@
   .pgx-equation { align-items: stretch; flex-direction: column; text-align: center; }
   .pgx-note, .pgx-outcome { align-items: start; flex-direction: column; }
   .pgx-note strong { white-space: normal; }
-  .pgx-languages article { grid-template-columns: 1fr; }
+  /* Stacked, a card's graphic sits centred above its text, never stranded on the left. */
+  .pgx-languages article { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .pgx-pager { grid-template-columns: 1fr; }
   .pgx-pager a { min-height: 72px; }
   .pgx-byo-targets { grid-template-columns: 1fr; }

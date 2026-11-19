@@ -1735,3 +1735,17 @@ html:not(.dark) .pg-current-plane::before { background-color: #2a2433; }
 .VPNavBarMenu:has(.pg-current-plane) .VPNavBarMenuGroup:has(a[href$="/authority-plane"]) > .button > .text > span:first-child::after {
   opacity: 0 !important;
 }
+
+/* Below 60rem VitePress lets the bar scroll away with the page, and with it the menu and the way
+   back. Here the bar stays at the top on every page and width, and the "On this page" / Menu bar
+   sits right under it. */
+@media (max-width: 59.999rem) {
+  .VPNav {
+    position: sticky !important;
+    top: 0;
+  }
+
+  .VPLocalNav {
+    top: var(--vp-nav-height) !important;
+  }
+}
