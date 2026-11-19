@@ -45,9 +45,13 @@ const CLASSES: [&str; 5] = [
 /// shrinks: a new code with two classes fails here.
 const TWO_CLASSES: [&str; 2] = ["client.HTTP_STATUS", "pdp_temporal.EVENT_NOT_CANONICAL"];
 
-/// Codes answered with a status their class does not map to, each an open finding in the status
-/// file. The list only shrinks.
-const STATUS_OVERRIDES: [(&str, u64); 1] = [("stream.OFFSET_EXPIRED", 410)];
+/// Codes answered with a status their class does not map to: an open finding in the status file,
+/// or a status HTTP itself names for the refusal. The list only shrinks but for the second kind.
+const STATUS_OVERRIDES: [(&str, u64); 2] = [
+    ("stream.OFFSET_EXPIRED", 410),
+    // RFC 6585: a head of too many fields is `431`, whatever the class (BUG-0329).
+    ("common.HEADER_FIELDS_EXCEEDED", 431),
+];
 
 fn report() -> BTreeMap<String, Value> {
     let path = permguard_conformance::contracts::root().join("codes.json");
@@ -152,4 +156,64 @@ fn test_every_entry_names_a_contract_a_kind_and_the_class_it_is_answered_with() 
             );
         }
     }
+}
+
+/// Every Rust source of the workspace's crates, test sources and the registry itself left out.
+fn sources(dir: &std::path::Path, into: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if path.is_dir() {
+            if !matches!(name.as_str(), "tests" | "target" | "benches" | "fuzz") {
+                sources(&path, into);
+            }
+        } else if name.ends_with(".rs")
+            && name != "tests.rs"
+            && !path.ends_with("permguard-core/src/codes.rs")
+        {
+            into.push(path);
+        }
+    }
+}
+
+/// BUG-0176: a code registered `unused` is produced by no path: the moment one is, its entry must
+/// say how it travels, or this fails. Read from the code, so the report cannot fall behind it.
+#[test]
+fn test_a_code_registered_unused_is_referenced_by_no_source() {
+    let crates = permguard_conformance::contracts::root()
+        .parent()
+        .expect("the repository")
+        .join("crates");
+    let mut files = Vec::new();
+    sources(&crates, &mut files);
+    let texts: Vec<(std::path::PathBuf, String)> = files
+        .into_iter()
+        .filter_map(|path| std::fs::read_to_string(&path).ok().map(|text| (path, text)))
+        .collect();
+    let mut produced = Vec::new();
+    for (name, entry) in report() {
+        if entry["kind"] != "unused" || name.starts_with("legacy.") {
+            continue;
+        }
+        let Some((module, constant)) = name.split_once('.') else {
+            continue;
+        };
+        let path = format!("{module}::{constant}");
+        let users: Vec<_> = texts
+            .iter()
+            .filter(|(_, text)| text.contains(&path))
+            .map(|(file, _)| file.display().to_string())
+            .collect();
+        if !users.is_empty() {
+            produced.push(format!("{name}: {users:?}"));
+        }
+    }
+    assert!(
+        produced.is_empty(),
+        "registered `unused` and produced by these sources:\n{}",
+        produced.join("\n")
+    );
 }

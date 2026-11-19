@@ -74,6 +74,26 @@
               }
             }
           },
+          "401": {
+            "description": "No usable credential where the listener authenticates callers, or a request for a signed response (`request_nonce`) from nobody authenticated where the plane signs (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An authenticated caller whose access token's scopes do not grant `decision.evaluate` on the ledger (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
           "404": {
             "description": "The zone, ledger or profile is not served here.",
             "content": {
@@ -178,6 +198,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential where the listener authenticates callers, or a request for a signed response (`request_nonce`) from nobody authenticated where the plane signs (`unauthenticated`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An authenticated caller whose access token's scopes do not grant `decision.evaluate` on the ledger (`forbidden`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
                 }
               }
             }

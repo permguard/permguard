@@ -997,6 +997,24 @@ impl Decider {
                          there to address it to",
                     ));
                 };
+                // A payload the request digest cannot be taken over is the caller's to fix: refused
+                // `400`, naming why, before anything is decided or recorded (BUG-0175).
+                if let Some(refused) = &asker.digest_refused {
+                    let code = if refused.unrepresentable() {
+                        permguard_core::codes::notp::VALUE_UNREPRESENTABLE
+                    } else {
+                        permguard_core::codes::notp::PAYLOAD_MALFORMED
+                    };
+                    return Err(ApiError::new(
+                        ErrorClass::Validation,
+                        code,
+                        format!(
+                            "a signed response binds the request's canonical form, which this \
+                             request has none of: {refused}; numbers travel only inside ±2^53, so \
+                             send anything larger as the string it is"
+                        ),
+                    ));
+                }
                 // Taken by the transport from what the caller sent, before anything was filled in:
                 // never recomputed here, where the body may no longer be the caller's.
                 let Some(request_digest) = asker.request_digest else {
@@ -1657,6 +1675,9 @@ pub struct Asker {
     pub audience: Option<String>,
     /// The request digest, taken before a header filled anything in.
     pub request_digest: Option<String>,
+    /// Why the request digest could not be taken from what the caller sent (BUG-0175): a payload a
+    /// signed response cannot bind, refused as the caller's, never as the plane's.
+    pub digest_refused: Option<permguard_languages::attestation::DigestError>,
     /// The principal the transport authorized the request as, the reserved anonymous one
     /// included: what the decision record names as its actor (IFACE-04), whether or not a
     /// signature is asked for. `None` where no transport authenticated the request.
@@ -1671,9 +1692,15 @@ impl Asker {
     /// transport fills anything into the body. A digest that cannot be taken is absent, and a
     /// request for a signature is then refused.
     pub fn of(audience: Option<String>, request: &CheckRequest) -> Self {
+        let (request_digest, digest_refused) =
+            match permguard_languages::attestation::request_digest(request) {
+                Ok(digest) => (Some(digest), None),
+                Err(error) => (None, Some(error)),
+            };
         Self {
             audience,
-            request_digest: permguard_languages::attestation::request_digest(request).ok(),
+            request_digest,
+            digest_refused,
             actor: None,
             token_status: None,
         }

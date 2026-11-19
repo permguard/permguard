@@ -311,6 +311,10 @@ pub struct TokenAuthenticator {
 }
 
 impl permguard_core::authz::Authenticator for TokenAuthenticator {
+    fn verifies_bearer_tokens(&self) -> bool {
+        true
+    }
+
     fn authenticate(
         &self,
         peer: Option<&permguard_core::PeerIdentity>,

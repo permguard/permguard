@@ -189,6 +189,8 @@ impl<'a> Listener<'a> {
         // A bearer token travels only over TLS (WP-8.1): on a cleartext listener that is neither
         // on a loopback address nor behind a declared TLS terminator, one is refused unread.
         let clear_bearer_refused = tls.is_none() && !parsed.ip().is_loopback() && !upstream_tls;
+        // A client certificate the listener verifies authenticates its caller.
+        let listener_authenticates = tls.is_some_and(permguard_core::TlsSettings::is_mutual);
 
         let handle = Handle::new();
         let serving = handle.clone();
@@ -228,6 +230,14 @@ impl<'a> Listener<'a> {
             // refused before any token of its is read.
             let authenticator = authenticator
                 .unwrap_or_else(|| std::sync::Arc::new(permguard_core::authz::NoRules));
+            // Whether a caller can be authenticated here at all (BUG-0183): read by discovery
+            // before it offers what only an authenticated caller is given.
+            let router = router.layer(axum::Extension(
+                permguard_core::authz::ListenerAuthenticates(
+                    listener_authenticates
+                        || (!clear_bearer_refused && authenticator.verifies_bearer_tokens()),
+                ),
+            ));
             let router = router.layer(
                 crate::actor::ActorLayer::new(authenticator)
                     .refusing_clear_bearer(clear_bearer_refused)

@@ -161,7 +161,16 @@ fn read(
 ///
 /// Answered as a value: the response type serializes it, so there is no path where a failure to
 /// render becomes a `200` carrying an empty object.
-async fn pdp_configuration(State(surface): State<Surface>) -> Response {
+async fn pdp_configuration(
+    State(surface): State<Surface>,
+    listener: Option<axum::Extension<permguard_core::authz::ListenerAuthenticates>>,
+) -> Response {
+    // Signing is offered only where a caller can be authenticated to address it to (BUG-0183):
+    // on a listener that authenticates nobody, every signed request would be refused `401`.
+    let signing = surface
+        .decider
+        .response_signing()
+        .filter(|_| listener.is_none_or(|axum::Extension(held)| held.0));
     match surface
         .describer
         .header(permguard_core::domains::interface::PDP_NATIVE_V1)
@@ -170,7 +179,7 @@ async fn pdp_configuration(State(surface): State<Surface>) -> Response {
             &surface.base_url,
             header,
             surface.decider.max_evaluations(),
-            surface.decider.response_signing(),
+            signing,
         ))
         .into_response(),
         Err(refused) => error(&refused, surface.disclosure),

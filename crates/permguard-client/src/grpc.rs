@@ -1734,7 +1734,8 @@ fn to_proto(
             .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
         evaluations_semantic: semantic_of(request),
         request_id: text(&request.request_id),
-        request_nonce: text(&request.request_nonce),
+        // Present when the request names one, empty included: refused as over REST (BUG-0209).
+        request_nonce: request.request_nonce.clone(),
     })
 }
 

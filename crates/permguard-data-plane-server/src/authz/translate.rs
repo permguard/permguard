@@ -64,7 +64,8 @@ pub fn request_from_proto(request: EvaluateRequest) -> Result<CheckRequest, Malf
             evaluations_semantic: semantic,
         }),
         request_id: some(request.request_id),
-        request_nonce: some(request.request_nonce),
+        // Kept as sent, an empty one too: refused as over REST, never taken for none (BUG-0209).
+        request_nonce: request.request_nonce,
     })
 }
 
@@ -372,6 +373,29 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// BUG-0209, DEC-0019: a nonce present and empty is refused over gRPC as over REST,
+    /// `invalid_argument`, never taken for none; an absent one asks for nothing.
+    #[test]
+    fn an_empty_nonce_is_refused_over_grpc_as_over_rest() {
+        let ask = |nonce: Option<&str>| {
+            request_from_proto(EvaluateRequest {
+                zone: "acme".to_owned(),
+                ledger: "main-ledger".to_owned(),
+                request_nonce: nonce.map(str::to_owned),
+                ..EvaluateRequest::default()
+            })
+            .expect("translated")
+        };
+        let empty = ask(Some(""));
+        assert_eq!(empty.request_nonce.as_deref(), Some(""), "kept as sent");
+        let refused = empty.resolve(256).expect_err("an empty nonce");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::common::INVALID_ARGUMENT
+        );
+        assert_eq!(ask(None).request_nonce, None, "absent asks for nothing");
+    }
+
     #[test]
     fn a_proto_request_means_the_same_as_the_json_one() {
         let proto = EvaluateRequest {
@@ -429,7 +453,7 @@ mod tests {
             }],
             evaluations_semantic: EvaluationsSemantic::DenyOnFirstDeny as i32,
             request_id: "abc".to_owned(),
-            request_nonce: "AAECAwQFBgcICQoLDA0ODw".to_owned(),
+            request_nonce: Some("AAECAwQFBgcICQoLDA0ODw".to_owned()),
         };
 
         let payload = request_from_proto(proto).expect("the semantic is one this build defines");

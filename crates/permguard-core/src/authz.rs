@@ -901,7 +901,20 @@ pub trait Authenticator: Send + Sync {
         peer: Option<&crate::PeerIdentity>,
         bearer: Option<&str>,
     ) -> Result<Actor, AccessDenial>;
+
+    /// Whether a bearer token presented to this authenticator can authenticate a caller: what a
+    /// listener that accepts tokens can address a signed response to (BUG-0183). No by default.
+    fn verifies_bearer_tokens(&self) -> bool {
+        false
+    }
 }
+
+/// Whether the listener a request arrived on can authenticate a caller at all, by a client
+/// certificate it verifies or a bearer token it accepts and verifies (BUG-0183): what discovery
+/// reads before it offers what only an authenticated caller can be given, a signed response. The
+/// transport attaches it to every request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListenerAuthenticates(pub bool);
 
 /// The first stage of every route's authorization, asked by the transport before a request's body
 /// or the names in its path are read (`2-security/8` Authorization): whether the actor holds

@@ -5012,6 +5012,7 @@ mod signed_response {
                 permguard_data_plane::authz::decide::Asker {
                     audience: Some(AUDIENCE.to_owned()),
                     request_digest: None,
+                    digest_refused: None,
                     actor: None,
                     token_status: None,
                 },
@@ -5019,6 +5020,33 @@ mod signed_response {
             .await
             .expect_err("no digest");
         assert_eq!(refused.code(), "response_signing_unavailable");
+
+        // BUG-0175: a payload the request digest cannot be taken over is the caller's: refused
+        // `400` `value_unrepresentable`, naming why, never the plane's `503`; nothing recorded.
+        let unrepresentable = signed_ask(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "context": {"n": 9_007_199_254_740_993_u64},
+        }));
+        let before = host_log::records(&producer, &resource).len();
+        let refused = decider
+            .decide_signed(&unrepresentable, None, None, asker(&unrepresentable))
+            .await
+            .expect_err("a request no digest binds");
+        assert_eq!(
+            (refused.class(), refused.code()),
+            (
+                permguard_core::ErrorClass::Validation,
+                "value_unrepresentable"
+            )
+        );
+        assert_eq!(
+            host_log::records(&producer, &resource).len(),
+            before,
+            "nothing recorded"
+        );
 
         // A mirror pulled before it kept its head's authority signs nothing, refused unrecorded.
         let store = permguard_mirror::store::FsStore::new(
@@ -5128,6 +5156,63 @@ mod signed_response {
             });
         });
         format!("grpc://{address}")
+    }
+
+    /// BUG-0183: discovery offers a signed response exactly where a caller can be authenticated to
+    /// address it to: on a listener that authenticates nobody, every signed request is refused
+    /// `401`, so neither the capability nor an `optional` signing state is published there.
+    #[tokio::test]
+    async fn discovery_offers_signing_only_where_a_caller_can_be_authenticated() {
+        let root = scratch("signed-discovery").join("mirrors");
+        let host = host_log::HostStream::new("signed-discovery-volume");
+        let producer = host.producer();
+        let decider = decider_signing_on(&root, &host, &producer, false);
+        let ask = |authenticates: Option<bool>| {
+            let decider = Arc::clone(&decider);
+            async move {
+                let router = permguard_data_plane_server::authz::http::routes(http::Surface {
+                    authorization: permissive(),
+                    decider,
+                    disclosure: Disclosure::Full,
+                    base_url: "http://127.0.0.1:7443".to_owned(),
+                    describer: permguard_core::stages::Describer::detached("data-plane"),
+                });
+                let mut request = Request::builder()
+                    .method("GET")
+                    .uri("/.well-known/permguard-pdp-v1-configuration");
+                if let Some(authenticates) = authenticates {
+                    request = request
+                        .extension(permguard_core::authz::ListenerAuthenticates(authenticates));
+                }
+                let response = router
+                    .oneshot(request.body(Body::empty()).expect("the request builds"))
+                    .await
+                    .expect("answers");
+                let bytes = response
+                    .into_body()
+                    .collect()
+                    .await
+                    .expect("the body")
+                    .to_bytes();
+                serde_json::from_slice::<Value>(&bytes).expect("JSON")
+            }
+        };
+        let offered = |document: &Value| {
+            document["capabilities"]
+                .as_array()
+                .expect("capabilities")
+                .iter()
+                .any(|held| held == permguard_core::domains::capability::PDP_V1_SIGNED_RESPONSE)
+        };
+        let nobody = ask(Some(false)).await;
+        assert!(!offered(&nobody), "{nobody}");
+        assert_eq!(nobody["response_signing"]["state"], "disabled", "{nobody}");
+        let somebody = ask(Some(true)).await;
+        assert!(offered(&somebody), "{somebody}");
+        assert_eq!(
+            somebody["response_signing"]["state"], "optional",
+            "{somebody}"
+        );
     }
 
     async fn rest(

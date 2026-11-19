@@ -76,8 +76,13 @@ impl PolicyDecisionPoint for PdpApi {
     /// cannot learn a different interface depending on how it asked.
     async fn get_configuration(
         &self,
-        _request: Request<GetConfigurationRequest>,
+        request: Request<GetConfigurationRequest>,
     ) -> Result<Response<GetConfigurationResponse>, Status> {
+        // Signing is offered only where a caller can be authenticated (BUG-0183), as over HTTP.
+        let authenticates = request
+            .extensions()
+            .get::<permguard_core::authz::ListenerAuthenticates>()
+            .is_none_or(|held| held.0);
         let header = self
             .describer
             .header(permguard_core::domains::interface::PDP_NATIVE_V1)
@@ -86,7 +91,7 @@ impl PolicyDecisionPoint for PdpApi {
             &self.base_url,
             header,
             self.decider.max_evaluations(),
-            self.decider.response_signing(),
+            self.decider.response_signing().filter(|_| authenticates),
         );
 
         Ok(Response::new(GetConfigurationResponse {

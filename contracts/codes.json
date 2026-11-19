@@ -315,7 +315,8 @@
     "common.CONFLICT": {
       "code": "conflict",
       "contract": "7-contracts/7-contract-catalog-discovery.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "conflict"
     },
     "common.EXHAUSTED": {
       "code": "exhausted",
@@ -337,12 +338,14 @@
       "code": "header_fields_exceeded",
       "contract": "7-contracts/7-contract-catalog-discovery.md",
       "kind": "refusal",
-      "class": "validation"
+      "class": "validation",
+      "http": 431
     },
     "common.INTERFACE_RETIRED": {
       "code": "interface_retired",
       "contract": "7-contracts/0-interfaces-model.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "validation"
     },
     "common.INTERNAL": {
       "code": "internal",
@@ -1139,7 +1142,8 @@
     "pdp_native.RESPONSE_SIGNING_UNAVAILABLE": {
       "code": "response_signing_unavailable",
       "contract": "7-contracts/1-contract-pdp-native-v1.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "unavailable"
     },
     "pdp_native.TOO_MANY_EVALUATIONS": {
       "code": "too_many_evaluations",
@@ -1755,7 +1759,7 @@
     "stream.CLOSED": {
       "code": "closed",
       "contract": "7-contracts/3-contract-evidence-decisions.md",
-      "kind": "unused"
+      "kind": "ack"
     },
     "stream.CURSOR_MALFORMED": {
       "code": "cursor_malformed",
@@ -1789,12 +1793,12 @@
     "stream.FORK": {
       "code": "fork",
       "contract": "7-contracts/5-contract-stream-common.md",
-      "kind": "unused"
+      "kind": "ack"
     },
     "stream.GONE": {
       "code": "gone",
       "contract": "7-contracts/5-contract-stream-common.md",
-      "kind": "unused"
+      "kind": "ack"
     },
     "stream.KEYS_UNAVAILABLE": {
       "code": "keys_unavailable",
@@ -1955,7 +1959,7 @@
     "stream.UNVERIFIABLE": {
       "code": "unverifiable",
       "contract": "7-contracts/5-contract-stream-common.md",
-      "kind": "unused"
+      "kind": "ack"
     },
     "stream.WORKER_STOPPED": {
       "code": "worker_stopped",

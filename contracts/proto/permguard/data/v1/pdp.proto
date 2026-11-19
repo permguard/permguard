@@ -142,9 +142,10 @@ message EvaluateRequest {
   // flattening it into one shape that is wrong in one of the two places.
   map<string, PartitionInput> partition_inputs = 13;
   // Asks for a signed response: base64url without padding, 16 to 64 bytes.
-  // Empty asks for none. A plane that cannot sign refuses rather than answer
+  // Absent asks for none; present and empty is refused, as over REST
+  // (DEC-0019, BUG-0209). A plane that cannot sign refuses rather than answer
   // unsigned.
-  string request_nonce = 14;
+  optional string request_nonce = 14;
 }
 
 // The two audiences of one reason.

@@ -983,3 +983,60 @@ async fn test_a_head_of_too_many_fields_is_refused_on_both_protocols() {
         .await
         .expect("the surface stops");
 }
+
+/// BUG-0183: every request carries whether its listener can authenticate a caller at all: a
+/// loopback listener without client certificates cannot with an authenticator that verifies no
+/// token, and can with one that does.
+#[tokio::test]
+async fn test_a_request_says_whether_its_listener_can_authenticate_a_caller() {
+    use permguard_core::AccessDenial;
+    use permguard_core::authz::{Actor, Authenticator, ListenerAuthenticates};
+
+    struct Tokens;
+    impl Authenticator for Tokens {
+        fn authenticate(
+            &self,
+            _peer: Option<&permguard_core::PeerIdentity>,
+            _bearer: Option<&str>,
+        ) -> Result<Actor, AccessDenial> {
+            Ok(Actor::Anonymous)
+        }
+        fn verifies_bearer_tokens(&self) -> bool {
+            true
+        }
+    }
+
+    let reading = || {
+        Router::new().route(
+            "/",
+            get(
+                |axum::Extension(held): axum::Extension<ListenerAuthenticates>| async move {
+                    if held.0 { "yes" } else { "no" }
+                },
+            ),
+        )
+    };
+    for (authenticator, expected) in [
+        (None, "no"),
+        (
+            Some(std::sync::Arc::new(Tokens) as std::sync::Arc<dyn Authenticator>),
+            "yes",
+        ),
+    ] {
+        let surface = Surface::listener("test", "127.0.0.1:0", reading())
+            .authenticator(authenticator)
+            .start()
+            .await
+            .expect("the surface starts");
+        let answer = exchange(
+            surface.address(),
+            b"GET / HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n",
+        )
+        .await;
+        assert!(answer.ends_with(expected), "{answer}");
+        surface
+            .stop(Duration::from_secs(1))
+            .await
+            .expect("the surface stops");
+    }
+}

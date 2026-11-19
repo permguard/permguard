@@ -337,6 +337,15 @@ impl std::fmt::Display for DigestError {
 
 impl std::error::Error for DigestError {}
 
+impl DigestError {
+    /// Whether the request held a number the canonical form refuses because it does not read back
+    /// as written, an integer past ±2^53 (BUG-0175): the caller's payload, not the plane, at fault.
+    /// The reason is the canonical error's own form, which names its variant first.
+    pub fn unrepresentable(&self) -> bool {
+        self.0.starts_with("OutOfRange")
+    }
+}
+
 fn digest(domain: &str, value: &Value) -> Result<String, DigestError> {
     let canonical = permguard_canonical::jcs::canonicalize(value)
         .map_err(|error| DigestError(format!("{error:?}")))?;

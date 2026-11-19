@@ -144,6 +144,10 @@ impl BootstrapWatch {
 }
 
 impl Authenticator for BootstrapWatch {
+    fn verifies_bearer_tokens(&self) -> bool {
+        self.inner.verifies_bearer_tokens()
+    }
+
     fn authenticate(
         &self,
         peer: Option<&permguard_core::PeerIdentity>,
