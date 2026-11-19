@@ -56,6 +56,12 @@ When no answer comes, it treats that as a no: fail closed.
 What answers the question.
 In Permguard, the Data Plane: a sidecar beside the application, a remote service, or a library inside the process.
 
+### Trust Anchor {#trust-anchor}
+
+A different family of decision point, planned next in the Data Plane.
+It answers a protocol question, whether a hand-off may cross a boundary, so it is not a PDP.
+See [Trust Plane](../trust-plane).
+
 ### SDK {#sdk}
 
 The client library your PEP calls, for Go, Java, .NET, Node.js, Python and Rust.
@@ -89,7 +95,7 @@ See [Authority Plane](./authority-plane).
 
 ### Trust Plane {#trust-plane}
 
-Authority continuity across executions.
+Authority continuity along a chain of executions, with the PIC protocol.
 In development.
 See [Trust Plane](../trust-plane).
 
@@ -97,7 +103,8 @@ See [Trust Plane](../trust-plane).
 
 ### Policy {#policy}
 
-A rule in a file, as code: who may do what, on what, under which facts.
+A rule in a file, as code, that an execution follows.
+Today, application policies: who may do what, on what, under which facts.
 See [Policy Lifecycle](./policy-lifecycle).
 
 ### Policy language {#policy-language}

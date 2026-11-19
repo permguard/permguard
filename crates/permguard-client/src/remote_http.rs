@@ -119,16 +119,7 @@ impl HttpRemote {
     /// plane — before the remote is remembered.
     pub fn verify_discovery(&self) -> Result<(), String> {
         let body = self.get_json(&format!("{}/.well-known/server-configuration", self.prefix))?;
-        let value: serde_json::Value = serde_json::from_slice(&body)
-            .map_err(|error| format!("the discovery document does not parse: {error}"))?;
-        if value
-            .get("plane")
-            .and_then(|plane| plane.as_str())
-            .is_none()
-        {
-            return Err("this URL answers, but not with a Permguard plane".to_owned());
-        }
-        Ok(())
+        crate::transport::control_plane_document(&body)
     }
 
     fn ledger_base(&self) -> Result<String, String> {
@@ -215,22 +206,38 @@ fn refusal(body: &[u8], status: u16) -> crate::failure::Failure {
 }
 
 /// Splits `scheme://host[:port][/prefix]` into the endpoint and the prefix.
-fn split_prefix(url: &str) -> Result<(String, String), String> {
+pub(crate) fn split_prefix(url: &str) -> Result<(String, String), String> {
     let (scheme, rest) = url
         .split_once("://")
         .ok_or_else(|| "a server is a URL: https://host[:port][/prefix]".to_owned())?;
-    if !matches!(scheme, "http" | "https") {
+    let scheme = scheme.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https") {
         return Err(format!(
             "the scheme `{scheme}` is not supported here: use http or https"
         ));
     }
-    match rest.split_once('/') {
-        Some((authority, prefix)) => Ok((
-            format!("{scheme}://{authority}"),
-            format!("/{}", prefix.trim_end_matches('/')),
-        )),
-        None => Ok((url.to_owned(), String::new())),
+    let (authority, prefix) = rest.split_once('/').unwrap_or((rest, ""));
+    // The base is read through the one endpoint grammar (DEC-0017): its port, userinfo, query and
+    // fragment, and its canonical form.
+    let base = crate::Endpoint::parse(&format!("{scheme}://{authority}"))
+        .map_err(|error| error.to_string())?
+        .to_string();
+    if prefix.contains(['?', '#']) {
+        return Err(format!(
+            "`{url}` carries a query or a fragment, and a server URL is https://host[:port][/prefix]"
+        ));
     }
+    // A path of `/` (or `//`) is no prefix, and a real one loses its trailing `/` (BUG-0021).
+    let segments: Vec<&str> = prefix
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let prefix = if segments.is_empty() {
+        String::new()
+    } else {
+        format!("/{}", segments.join("/"))
+    };
+    Ok((base, prefix))
 }
 
 impl Remote for HttpRemote {
@@ -357,5 +364,51 @@ impl Remote for HttpRemote {
                 .map_err(|error| format!("a fetched object does not decompress: {error}"))?;
         }
         Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_prefix;
+    use crate::transport::control_plane_document;
+
+    /// BUG-0022: a remote is the control plane; another plane is refused by name.
+    #[test]
+    fn only_the_control_plane_is_a_remote() {
+        assert!(control_plane_document(br#"{"plane":"control-plane"}"#).is_ok());
+        let refused = control_plane_document(br#"{"plane":"data-plane"}"#).unwrap_err();
+        assert!(refused.contains("`data-plane`"), "{refused}");
+        assert!(control_plane_document(br#"{"other":1}"#).is_err());
+    }
+
+    /// BUG-0021, DEC-0017: `/` and `//` are no prefix, a real prefix loses its trailing `/`, and
+    /// the base is the canonical endpoint.
+    #[test]
+    fn a_trailing_slash_is_no_prefix_and_a_prefix_is_normalised() {
+        for (url, base, prefix) in [
+            ("http://127.0.0.1:6443", "http://127.0.0.1:6443", ""),
+            ("http://127.0.0.1:6443/", "http://127.0.0.1:6443", ""),
+            ("http://127.0.0.1:6443//", "http://127.0.0.1:6443", ""),
+            (
+                "HTTPS://host:6443/permguard/",
+                "https://host:6443",
+                "/permguard",
+            ),
+            ("https://host/a//b/", "https://host", "/a/b"),
+        ] {
+            assert_eq!(
+                split_prefix(url),
+                Ok((base.to_owned(), prefix.to_owned())),
+                "{url}"
+            );
+        }
+        for url in [
+            "http://host:99999/",
+            "http://user@host/",
+            "http://host/x?y=1",
+            "grpc://host",
+        ] {
+            assert!(split_prefix(url).is_err(), "{url}");
+        }
     }
 }

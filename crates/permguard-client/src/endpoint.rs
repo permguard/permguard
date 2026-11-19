@@ -34,13 +34,26 @@ pub struct Endpoint {
     host: String,
     /// The port, defaulted from the scheme when the endpoint left it out.
     port: u16,
-    /// The endpoint as it was written, which is what a report should quote back.
+    /// The endpoint in its one canonical form (DEC-0017): the scheme in lower case, the host and
+    /// port as written, no path. What a report quotes back and what a connection is made to, so
+    /// `HTTPS://host:6443/` and `https://host:6443` are one endpoint everywhere.
     written: String,
 }
 
 impl Endpoint {
-    /// Reads an endpoint, or says what is wrong with it.
+    /// Reads an endpoint, or says what is wrong with it: the one grammar every surface that reads
+    /// an endpoint goes through (DEC-0017). Schemes `http`, `https`, `grpc`, `grpcs`, in any case;
+    /// a port, when written, is `1..=65535`; userinfo, a query and a fragment are refused; a path
+    /// of `/` is no path, and any longer one is refused.
     pub fn parse(written: &str) -> Result<Self, Invalid> {
+        // A fragment never reaches a server, and a query would be silently dropped: refused, so
+        // what the endpoint says is what is used (BUG-0110).
+        if written.contains('#') {
+            return Err(Invalid::new(
+                written,
+                "it carries a fragment, and an endpoint is a scheme, a host and a port only",
+            ));
+        }
         let uri = written.parse::<Uri>().map_err(|error| {
             // `tls:host:port` and `host:port` are the two shapes people write when they expect a
             // scheme to be a mode rather than a URL scheme, and both fail here as a bare parse
@@ -61,8 +74,8 @@ impl Endpoint {
 
             Invalid::new(written, &error.to_string())
         })?;
-        let scheme = uri.scheme_str().unwrap_or_default();
-        let (tls, grpc) = match scheme {
+        let scheme = uri.scheme_str().unwrap_or_default().to_ascii_lowercase();
+        let (tls, grpc) = match scheme.as_str() {
             "http" => (false, false),
             "https" => (true, false),
             "grpc" => (false, true),
@@ -88,22 +101,57 @@ impl Endpoint {
             .host()
             .ok_or_else(|| Invalid::new(written, "it names no host"))?
             .to_owned();
-
-        if uri.path() != "" && uri.path() != "/" {
+        let authority = uri
+            .authority()
+            .map(|held| held.as_str())
+            .unwrap_or_default();
+        if authority.contains('@') {
+            return Err(Invalid::new(
+                written,
+                "it carries user information, and credentials never travel in an endpoint",
+            ));
+        }
+        if uri.query().is_some() {
+            return Err(Invalid::new(
+                written,
+                "it carries a query, and an endpoint is a scheme, a host and a port only",
+            ));
+        }
+        if !uri.path().chars().all(|character| character == '/') {
             return Err(Invalid::new(
                 written,
                 "it carries a path, and an endpoint is a host and a port only",
             ));
         }
+        // A port that is written is one a socket can have: `:99999` was read as no port, and the
+        // scheme's default port was dialled instead (BUG-0020).
+        let default = if tls { HTTPS_PORT } else { HTTP_PORT };
+        // `[::1]` holds colons of its own: a port follows the bracket, never inside it.
+        let written_port = if authority.ends_with(']') {
+            None
+        } else {
+            authority.rsplit_once(':').map(|(_, digits)| digits)
+        };
+        let port = match written_port {
+            None | Some("") => default,
+            Some(digits) => digits
+                .parse::<u16>()
+                .ok()
+                .filter(|port| *port != 0)
+                .ok_or_else(|| {
+                    Invalid::new(
+                        written,
+                        &format!("the port `{digits}` is not one from 1 to 65535"),
+                    )
+                })?,
+        };
 
         Ok(Self {
             tls,
             grpc,
-            port: uri
-                .port_u16()
-                .unwrap_or(if tls { HTTPS_PORT } else { HTTP_PORT }),
+            port,
             host,
-            written: written.to_owned(),
+            written: format!("{scheme}://{authority}"),
         })
     }
 
@@ -234,10 +282,45 @@ mod tests {
             ("mtls://127.0.0.1:6443", "not a scheme this CLI speaks"),
             ("http://127.0.0.1:6443/version", "carries a path"),
             ("http://", "names no host"),
+            // BUG-0020, BUG-0110, DEC-0017.
+            ("http://host:99999", "is not one from 1 to 65535"),
+            ("https://host:65536", "is not one from 1 to 65535"),
+            ("http://host:0", "is not one from 1 to 65535"),
+            ("http://user:secret@host:6443", "user information"),
+            ("http://host:6443?x=1", "query"),
+            ("http://host:6443#top", "fragment"),
+            ("grpc://host:6443/path", "carries a path"),
         ] {
             let error = Endpoint::parse(written).expect_err(written).to_string();
 
             assert!(error.contains(expected), "for {written}: {error}");
+        }
+
+        // The canonical form: lower-case scheme, no trailing `/`, the default port left implicit.
+        for (written, canonical, authority) in [
+            (
+                "HTTPS://Host.example:6443/",
+                "https://Host.example:6443",
+                "Host.example:6443",
+            ),
+            (
+                "GRPC://127.0.0.1:6443/",
+                "grpc://127.0.0.1:6443",
+                "127.0.0.1:6443",
+            ),
+            (
+                "grpcs://127.0.0.1:6443//",
+                "grpcs://127.0.0.1:6443",
+                "127.0.0.1:6443",
+            ),
+            ("http://host", "http://host", "host:80"),
+            ("https://host", "https://host", "host:443"),
+            ("http://[::1]:6443", "http://[::1]:6443", "[::1]:6443"),
+            ("http://[::1]", "http://[::1]", "[::1]:80"),
+        ] {
+            let endpoint = Endpoint::parse(written).expect(written);
+            assert_eq!(endpoint.to_string(), canonical, "{written}");
+            assert_eq!(endpoint.authority(), authority, "{written}");
         }
 
         let missing_scheme = Endpoint::parse("127.0.0.1:6443")

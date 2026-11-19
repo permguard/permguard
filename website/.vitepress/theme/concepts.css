@@ -468,20 +468,103 @@
 .pgx-follow[data-step="1"] .pgx-follow__art :is(.f-user, .f-click, .f-app, .f-pep),
 .pgx-follow[data-step="2"] .pgx-follow__art :is(.f-app, .f-pep, .f-ask, .f-pdp),
 .pgx-follow[data-step="3"] .pgx-follow__art :is(.f-pdp, .f-cp, .f-mirror),
-.pgx-follow[data-step="4"] .pgx-follow__art :is(.f-pdp, .f-answer, .f-app, .f-pep),
-.pgx-follow[data-step="5"] .pgx-follow__art :is(.f-user, .f-click, .f-app, .f-pep),
-.pgx-follow[data-step="6"] .pgx-follow__art :is(.f-pdp, .f-record, .f-ev, .f-export, .f-siem) {
+.pgx-follow[data-step="4"] .pgx-follow__art :is(.f-pdp, .f-record, .f-ev, .f-export, .f-siem),
+.pgx-follow[data-step="5"] .pgx-follow__art :is(.f-pdp, .f-answer, .f-app, .f-pep),
+.pgx-follow[data-step="6"] .pgx-follow__art :is(.f-user, .f-click, .f-app, .f-pep) {
   opacity: 1;
 }
 
 .pgx-follow[data-step="1"] .pgx-follow__art .f-user rect,
 .pgx-follow[data-step="2"] .pgx-follow__art .f-pdp rect,
 .pgx-follow[data-step="3"] .pgx-follow__art :is(.f-pdp, .f-cp) rect,
-.pgx-follow[data-step="4"] .pgx-follow__art .f-pep rect,
-.pgx-follow[data-step="5"] .pgx-follow__art .f-app rect,
-.pgx-follow[data-step="6"] .pgx-follow__art :is(.f-ev, .f-siem) rect {
+.pgx-follow[data-step="4"] .pgx-follow__art :is(.f-ev, .f-siem) rect,
+.pgx-follow[data-step="5"] .pgx-follow__art .f-pep rect,
+.pgx-follow[data-step="6"] .pgx-follow__art .f-app rect {
   stroke: var(--pgx-brand);
   filter: drop-shadow(0 0 10px rgb(217 70 239 / 0.5));
+}
+
+/* Beyond authorization: one Control Plane governs every question. The live question is a solid,
+   lit row; the ones still to ship keep their place with a dashed outline, a slot ready in a rack. */
+.pgx-dimensions {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.pgx-dimensions__govern {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 22px;
+  border: 1px solid var(--pgx-brand);
+  border-radius: 18px;
+  background: rgb(204 52 223 / 0.08);
+  box-shadow: 0 0 28px var(--pgx-glow);
+}
+
+.pgx-dimensions__govern small { color: var(--pgx-brand); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.pgx-dimensions__govern strong { color: var(--pgx-ink); font-size: 20px; }
+.pgx-dimensions__govern span { color: var(--pgx-muted); font-size: 13px; line-height: 1.5; }
+
+.pgx-dimensions__rows { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.pgx-dimensions__head,
+.pgx-dimensions__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 130px;
+  gap: 16px;
+  align-items: center;
+}
+
+.pgx-dimensions__head { padding: 0 18px; }
+.pgx-dimensions__head span { color: var(--pgx-muted); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.pgx-dimensions__row {
+  padding: 16px 18px;
+  border: 1px dashed var(--pgx-line);
+  border-radius: 14px;
+  background: var(--pgx-bg);
+}
+
+.pgx-dimensions__row--live { border-style: solid; border-color: rgb(204 52 223 / 0.55); background: var(--pgx-surface); }
+.pgx-dimensions__row > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.pgx-dimensions__row strong { color: var(--pgx-ink); font-size: 15px; }
+.pgx-dimensions__row span { color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
+.pgx-dimensions__row:not(.pgx-dimensions__row--live) strong { color: var(--pgx-muted); }
+.pgx-dimensions a { color: var(--pgx-brand); text-decoration: none; }
+.pgx-dimensions a:hover { text-decoration: underline; }
+
+.pgx-status {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 999px;
+  color: var(--pgx-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pgx-status--live { border-color: var(--pgx-brand); background: var(--pgx-brand); color: #ffffff; }
+.pgx-status--next { border-color: var(--pgx-brand); color: var(--pgx-brand); }
+.pgx-status--dev { border-style: dashed; }
+.pgx-section .pgx-dimensions__note { margin-top: 14px; color: var(--pgx-muted); font-size: 14px; }
+
+@media (max-width: 960px) {
+  .pgx-dimensions { grid-template-columns: 1fr; }
+  .pgx-dimensions__head { display: none; }
+  .pgx-dimensions__row { grid-template-columns: 1fr 1fr; }
+  .pgx-dimensions__row > div:first-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 520px) {
+  .pgx-dimensions__row { grid-template-columns: 1fr; }
 }
 
 /* Questions: one line each, opened on demand. */

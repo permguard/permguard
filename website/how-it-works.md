@@ -314,9 +314,9 @@ permit (
   </section>
 
   <section class="pgx-section pgx-section--tint">
-    <div class="pgx-section-head"><div><div class="pgx-kicker">Step by step</div><h2>Follow one request.</h2></div><p>Scroll: the picture follows alice's request from her click to the record.</p></div>
+    <div class="pgx-section-head"><div><div class="pgx-kicker">Step by step</div><h2>Follow one request.</h2></div><p>Scroll: the picture follows alice's request from her click to the open document.</p></div>
     <div class="pgx-follow">
-      <div class="pgx-follow__stage" role="img" aria-label="alice uses an application; its Policy Enforcement Point asks the Data Plane, the PDP, which decides with a policy mirrored from the Control Plane, answers, and records the decision as evidence exported to the SIEM.">
+      <div class="pgx-follow__stage" role="img" aria-label="alice uses an application; its Policy Enforcement Point asks the Data Plane, the PDP, which decides with a policy mirrored from the Control Plane, records the decision as evidence exported to the SIEM, and then answers.">
         <svg class="pgx-hv pgx-follow__art" viewBox="0 0 560 300" aria-hidden="true" focusable="false">
           <g class="pgx-hv__flows">
             <path class="f f-click pgx-hv__flow pgx-hv__flow--identity" d="M120 150 H150"/>
@@ -339,9 +339,9 @@ permit (
         <li data-step="1"><b>01</b><h3>alice opens the budget.</h3><p>A handler in your application is about to serve the document. Before it does, the Permguard SDK, your Policy Enforcement Point, stops and asks.</p></li>
         <li data-step="2"><b>02</b><h3>The PEP asks its PDP.</h3><p>Subject <code>alice</code>, action <code>read</code>, resource <code>budget</code>. The PDP is the Data Plane: a sidecar beside the application, a remote service, or a library inside the process.</p></li>
         <li data-step="3"><b>03</b><h3>The PDP decides with the policy it already holds.</h3><p>The Control Plane published the policy as a signed version, and the Data Plane mirrored and verified it before this request. Deciding needs no call to the Control Plane.</p></li>
-        <li data-step="4"><b>04</b><h3>The answer comes back.</h3><p>Permit, naming the policy that decided and the id of this decision. No policy that permits means deny; no answer at all, the PEP treats as a no.</p></li>
-        <li data-step="5"><b>05</b><h3>The PEP enforces.</h3><p>The handler serves the budget to alice. For bob, the same line returns 403.</p></li>
-        <li data-step="6"><b>06</b><h3>The decision is on record.</h3><p>The Data Plane records it, signed and chained to the ones before, so nobody can alter it unnoticed. Export the records to your SIEM.</p></li>
+        <li data-step="4"><b>04</b><h3>The decision is on record.</h3><p>By default the answer leaves only once its record is durable: signed and chained to the ones before, so nobody can alter it unnoticed. Export the records to your SIEM.</p></li>
+        <li data-step="5"><b>05</b><h3>The answer comes back.</h3><p>Permit, naming the policy that decided and the id of this decision. No policy that permits means deny; no answer at all, the PEP treats as a no.</p></li>
+        <li data-step="6"><b>06</b><h3>The PEP enforces.</h3><p>The handler serves the budget to alice. For bob, the same line returns 403.</p></li>
       </ol>
     </div>
   </section>
@@ -366,6 +366,20 @@ permit (
       </div>
     </div>
     <p class="pgx-system-map__truth">Policies are written once, in the Control Plane: versioned, signed and distributed. The Data Plane decides beside the workload, as a sidecar or a remote service, or inside the process through the engine libraries. The <a :href="withBase('/trust-plane')">Trust Plane</a>, for authority continuity, is in development.</p>
+  </section>
+
+  <section class="pgx-section">
+    <div class="pgx-section-head"><div><div class="pgx-kicker">Beyond authorization</div><h2>Authorization is the first question.</h2></div><p>Permguard governs the rules an execution follows: written once, answered where the execution runs, proven afterwards. Every dimension of execution is in its scope; each joins these pages when it ships.</p></div>
+    <div class="pgx-dimensions" role="table" aria-label="One Control Plane governs every question. Application policies are answered by the PDP in the Data Plane, available today. Trust Anchors, a different family that is not a PDP, will answer protocol questions in the Data Plane, next. Authority continuity is the Trust Plane's, in development.">
+      <div class="pgx-dimensions__govern" role="rowheader"><small>GOVERNED BY</small><strong>Control Plane</strong><span>one ledger model, signed versions, for every question</span></div>
+      <div class="pgx-dimensions__rows">
+        <div class="pgx-dimensions__head" role="row"><span role="columnheader">The question</span><span role="columnheader">Answered by</span><span role="columnheader">Proven by</span><span role="columnheader">Status</span></div>
+        <div class="pgx-dimensions__row pgx-dimensions__row--live" role="row"><div role="cell"><strong>May alice read the budget?</strong><span>application policies</span></div><div role="cell"><strong>PDP</strong><span>Data Plane</span></div><div role="cell"><span>a signed decision record</span></div><div role="cell"><em class="pgx-status pgx-status--live">Available</em></div></div>
+        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>May this hand-off cross the boundary?</strong><span>Trust Anchor policies · a protocol question, so not a PDP</span></div><div role="cell"><strong>Trust Anchor</strong><span>Data Plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
+        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>Does authority hold along the chain?</strong><span>authority continuity, with the <a href="https://www.pic-protocol.org/">PIC protocol</a></span></div><div role="cell"><strong><a :href="withBase('/trust-plane')">Trust Plane</a></strong><span>its own plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--dev">In development</em></div></div>
+      </div>
+    </div>
+    <p class="pgx-dimensions__note">Each question arrives as its own interface, on the plane that answers it, and a server advertises only the interfaces it actually runs.</p>
   </section>
 
   <section class="pgx-section">

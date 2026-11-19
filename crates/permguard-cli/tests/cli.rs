@@ -2685,3 +2685,116 @@ fn init_reports_the_manifest_in_force_and_refuses_what_contradicts_it() {
     );
     assert_eq!(report["adopted_manifest"], false, "{report}");
 }
+
+/// BUG-0080, DEC-0006: a command that talks to the workspace's remote, or to a URL it is given,
+/// refuses a control-plane endpoint named for the run instead of accepting it and talking to the
+/// other one; nothing is published.
+#[test]
+fn a_control_endpoint_named_for_the_run_is_refused_by_the_sync_commands() {
+    let dir = scratch("named-control-endpoint");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    // A workspace tracking a remote that nothing answers at: a refusal has to come first.
+    std::fs::write(
+        dir.join(".permguard/config"),
+        "version = 2\n\n[remotes.origin]\nurl = \"http://127.0.0.1:9\"\n\n[ledger]\nremote = \
+         \"origin\"\nzone = \"z\"\nledger = \"l\"\nzone-id = \"zone-guid\"\nledger-id = \
+         \"ledger-guid\"\n",
+    )
+    .expect("the binding is written");
+    for args in [
+        vec![
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "apply",
+            "-m",
+            "x",
+        ],
+        vec!["--control-endpoint", "http://127.0.0.1:1", "pull"],
+        vec!["--control-endpoint", "http://127.0.0.1:1", "verify"],
+        vec![
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "checkout",
+            "origin/z/l",
+        ],
+        vec![
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "remote",
+            "add",
+            "other",
+            "http://127.0.0.1:2",
+        ],
+    ] {
+        let refused = run(&dir, &args);
+        assert_eq!(
+            refused.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&refused)
+        );
+        assert!(
+            stderr(&refused).contains("--control-endpoint"),
+            "{}",
+            stderr(&refused)
+        );
+    }
+}
+
+/// BUG-0110, BUG-0020, DEC-0017: one endpoint grammar on every surface. The same table is read by
+/// the flag, the environment, `config set` and `remote add`, and each accepts what the others
+/// accept: a refused endpoint is a usage error (64) everywhere, and an accepted one goes on to
+/// the network (where nothing listens, so it fails otherwise).
+#[test]
+fn every_surface_reads_one_endpoint_grammar() {
+    let dir = scratch("endpoint-grammar");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    for (endpoint, accepted) in [
+        ("http://127.0.0.1:1", true),
+        ("http://127.0.0.1:1/", true),
+        ("HTTP://127.0.0.1:1", true),
+        ("grpc://127.0.0.1:1/", true),
+        ("GRPC://127.0.0.1:1", true),
+        ("http://127.0.0.1:99999", false),
+        ("http://127.0.0.1:0", false),
+        ("http://user@127.0.0.1:1", false),
+        ("http://127.0.0.1:1?x=1", false),
+        ("http://127.0.0.1:1#top", false),
+        ("grpc://127.0.0.1:1/path", false),
+    ] {
+        let usage = |output: &Output| output.status.code() == Some(64);
+        let flag = run(&dir, &["--control-endpoint", endpoint, "zones", "list"]);
+        let environment = Command::new(env!("CARGO_BIN_EXE_permguard"))
+            .arg("-w")
+            .arg(&dir)
+            .args(["zones", "list"])
+            .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+            .env("PERMGUARD_CONTROL_PLANE_ENDPOINT", endpoint)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("the binary runs");
+        let set = run(&dir, &["config", "set", "control-plane.endpoint", endpoint]);
+        let _ = run(&dir, &["config", "unset", "control-plane.endpoint"]);
+        let added = run(&dir, &["remote", "add", "probe", endpoint]);
+        for (surface, output) in [
+            ("flag", &flag),
+            ("environment", &environment),
+            ("remote add", &added),
+        ] {
+            assert_eq!(
+                !usage(output),
+                accepted,
+                "{endpoint} by the {surface}: {}",
+                stderr(output)
+            );
+        }
+        assert_eq!(
+            set.status.success(),
+            accepted,
+            "{endpoint} by config set: {}",
+            stderr(&set)
+        );
+    }
+}

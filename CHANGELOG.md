@@ -25,6 +25,14 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **One endpoint grammar, everywhere an endpoint is read.**
+  The flag, the environment, `config set`, `remote add` and `clone` read endpoints through one parser: schemes `http`, `https`, `grpc` and `grpcs` in any case; a written port from 1 to 65535 (`:99999` and `:0` are refused, where `:99999` used to dial the scheme's default port); userinfo, a query and a fragment refused; a trailing `/` read as no path, on gRPC endpoints too.
+  A value `config set` accepts is one every command uses, and a remote URL ending in `/` behaves as the one without it.
+- **`remote add` accepts only a control plane**, over HTTP and gRPC, and names the plane it found otherwise; a gRPC discovery failure is never an empty message.
+- **`apply`, `pull`, `verify`, `checkout`, `clone` and `remote add` refuse a control-plane endpoint named for the run.**
+  They talk to the workspace's remote or to the URL they are given; `--control-endpoint` or `PERMGUARD_CONTROL_PLANE_ENDPOINT` naming another endpoint is refused, exit 64, instead of being accepted and ignored.
+  The configured `control-plane.endpoint` stays the catalog commands' default, and the fallback of a workspace whose remote names no URL.
+
 - **A workspace `check` asks its ledger by identity.**
   Inside a checkout, `check` sends the tracked zone and ledger ids, so a renamed ledger keeps answering and a new ledger under the old name never does.
 - **`init` over an existing manifest reports the manifest in force**, its own name and languages, and refuses a name or `--language` that contradicts it, exit 64; it no longer announces arguments it did not apply.

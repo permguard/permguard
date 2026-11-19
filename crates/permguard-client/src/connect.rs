@@ -241,7 +241,7 @@ mod tests {
         for (url, expected) in [
             ("127.0.0.1:6443", "a URL"),
             ("ftp://host", "not supported here"),
-            ("grpc://host/with/path", "no path"),
+            ("grpc://host/with/path", "carries a path"),
         ] {
             let error = match connect(url) {
                 Err(error) => error,

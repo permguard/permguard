@@ -597,6 +597,31 @@ pub fn workspace_command(
         )?;
         Ok(endpoint.to_string())
     };
+    // A control-plane endpoint named for this run — `--control-endpoint`, or
+    // `PERMGUARD_CONTROL_PLANE_ENDPOINT` — is refused by a command that talks to an endpoint named
+    // elsewhere (the workspace's remote, or a URL argument): accepted and not applied, it would
+    // let `apply` publish to a server the operator did not name (BUG-0080, DEC-0006). The
+    // configured default (`control-plane.endpoint`) stays the catalog commands', and the fallback
+    // of a workspace whose remote names no URL.
+    let refuse_named_control_endpoint = |used: &str, by: &str| -> Result<(), Failure> {
+        let named = globals
+            .control_endpoint
+            .clone()
+            .map(|value| ("--control-endpoint", value))
+            .or_else(|| {
+                std::env::var("PERMGUARD_CONTROL_PLANE_ENDPOINT")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+                    .map(|value| ("PERMGUARD_CONTROL_PLANE_ENDPOINT", value))
+            });
+        match named {
+            Some((setting, value)) => Err(Failure::usage(format!(
+                "{setting} names `{value}`, and this command talks to {by} (`{used}`): leave \
+                 {setting} out for it, or change the remote with `permguard remote`"
+            ))),
+            None => Ok(()),
+        }
+    };
     // The operator's material is resolved only by a command that connects (TC-1): a local one
     // never reads a token file or a key reference.
     let connect = |url: &str| -> Result<AnyRemote, Failure> {
@@ -610,7 +635,10 @@ pub fn workspace_command(
     let tracked_remote = |trace: &Trace| -> Result<AnyRemote, Failure> {
         let tracked = ws.tracked().map_err(usage)?;
         let url = match &tracked.url {
-            Some(url) => url.clone(),
+            Some(url) => {
+                refuse_named_control_endpoint(url, "the workspace's tracked remote")?;
+                url.clone()
+            }
             None => fallback_url(trace)?,
         };
         let remote = connect(&url)?;
@@ -758,6 +786,7 @@ pub fn workspace_command(
                         held.url
                     )));
                 }
+                refuse_named_control_endpoint(&url, "the URL it adds")?;
                 // Verified before it is remembered: the discovery document
                 // is the proof the URL is a Permguard plane.
                 let remote = connect(&url)?;
@@ -828,6 +857,7 @@ pub fn workspace_command(
             let (base, zone, ledger) = reference::parse_clone_url(&url).map_err(usage)?;
             let target = directory.unwrap_or_else(|| PathBuf::from(&ledger));
             let target = globals.workdir.join(target);
+            refuse_named_control_endpoint(&base, "the URL it clones")?;
             let remote = connect(&base)?;
             let pulled =
                 crate::engine::workspace::clone::clone(&target, &base, &zone, &ledger, &remote)
@@ -857,7 +887,13 @@ pub fn workspace_command(
             let config = ws.config().map_err(usage)?;
             // The fallback chain: CLI configuration, then the localhost default.
             let (url, remembered) = match config.remotes.get(&remote_name) {
-                Some(remote) => (remote.url.clone(), true),
+                Some(remote) => {
+                    refuse_named_control_endpoint(
+                        &remote.url,
+                        &format!("the remote `{remote_name}`"),
+                    )?;
+                    (remote.url.clone(), true)
+                }
                 None => (fallback_url(trace)?, false),
             };
             let remote = connect(&url)?;

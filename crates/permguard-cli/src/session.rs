@@ -29,7 +29,17 @@ pub fn resolve_endpoint_url(
     })?;
     let resolved = settings::resolve(setting, store.file(), flag, &settings::environment);
     trace.say(format!("{key} = {} [{}]", resolved.value, resolved.origin));
-    Ok(resolved.value)
+    // Read through the one endpoint grammar, whatever layer named it, and handed on in its
+    // canonical form: a flag, the environment and `config set` accept the same endpoints and
+    // mean the same thing by them (DEC-0017, BUG-0110).
+    Endpoint::parse(&resolved.value)
+        .map(|endpoint| endpoint.to_string())
+        .map_err(|error| {
+            Failure::usage(match resolved.origin {
+                Origin::Default => format!("{error}"),
+                origin => format!("{error} (from the {origin})"),
+            })
+        })
 }
 
 /// A path a flag named, resolved the way `-w` says every relative path is.

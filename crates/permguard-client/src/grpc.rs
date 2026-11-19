@@ -153,17 +153,20 @@ impl GrpcChannel {
         narrator: Box<dyn Narrator>,
         limits: Limits,
     ) -> Result<Self, String> {
-        let (scheme, rest) = url
-            .split_once("://")
-            .ok_or_else(|| "a gRPC endpoint is grpc://host:port or grpcs://host:port".to_owned())?;
-        let secure = match scheme {
-            "grpc" => false,
-            "grpcs" => true,
-            other => return Err(format!("`{other}` is not a gRPC scheme: use grpc or grpcs")),
-        };
-        if rest.contains('/') {
-            return Err("a gRPC endpoint is a host and a port only — no path".to_owned());
+        // The one endpoint grammar (DEC-0017): a trailing `/` and an upper-case scheme read as
+        // they read everywhere else, and a port, userinfo, query or path that would not is refused.
+        let parsed = crate::Endpoint::parse(url).map_err(|error| error.to_string())?;
+        if !parsed.is_grpc() {
+            return Err(format!(
+                "`{url}` is not a gRPC endpoint: write grpc://host:port or grpcs://host:port"
+            ));
         }
+        let secure = parsed.is_tls();
+        let canonical = parsed.to_string();
+        let rest = canonical
+            .split_once("://")
+            .map(|(_, rest)| rest.to_owned())
+            .unwrap_or_default();
         tls.token_allowed(secure)?;
         // Only over grpcs: a plain `grpc://` endpoint has no certificate to verify, and the flag
         // means nothing there, as over `http://` (BUG-0331).
@@ -392,16 +395,7 @@ impl GrpcChannel {
 
 /// Whether `document` is a Permguard plane's discovery document.
 fn plane_document(document: &str) -> Result<(), String> {
-    let value: serde_json::Value = serde_json::from_str(document)
-        .map_err(|error| format!("the discovery document does not parse: {error}"))?;
-    if value
-        .get("plane")
-        .and_then(|plane| plane.as_str())
-        .is_none()
-    {
-        return Err("this endpoint answers, but not with a Permguard plane".to_owned());
-    }
-    Ok(())
+    crate::transport::control_plane_document(document.as_bytes())
 }
 
 /// A tonic status, in the same sentence shape HTTP refusals take, so scripts
@@ -1106,10 +1100,22 @@ impl GrpcRemote {
 
     /// The discovery check `remote add` runs before remembering the remote.
     pub fn verify_discovery(&self) -> Result<(), String> {
-        let document = self
-            .channel
-            .discovery()
-            .map_err(|status| self.refused(status))?;
+        let document = self.channel.discovery().map_err(|status| {
+            // Another plane serves no control-plane discovery at all: said as what it means, never
+            // as the empty message the status carries (BUG-0022).
+            if status.code() == tonic::Code::Unimplemented {
+                let _ = self.refused(status);
+                return "this endpoint serves no control plane: a remote is the control plane, \
+                        which clones and applies ledgers — name its endpoint"
+                    .to_owned();
+            }
+            let said = self.refused(status);
+            if said.is_empty() {
+                "the endpoint refused the discovery and said nothing".to_owned()
+            } else {
+                said
+            }
+        })?;
         plane_document(&document)
     }
 
