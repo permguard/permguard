@@ -540,15 +540,24 @@ pub fn workspace_command(
             | WorkspaceOp::Status
     );
     let one_policy_per_file = builds && {
-        let settings = crate::session::open_store(globals, trace)?;
         let setting = crate::settings::setting("workspace.one_policy_per_file")
             .ok_or_else(|| Failure::internal("`workspace.one_policy_per_file` is not a setting"))?;
-        let resolved = crate::settings::resolve(
-            setting,
-            settings.file(),
-            None,
-            &crate::settings::environment,
-        );
+        // An offline command needs no configuration file (BUG-0244): the variable, when set, is
+        // the answer and the file is not read; with no home and no --config there is no file, and
+        // the default stands. A file that is there and does not read is still refused: its other
+        // settings would be ignored in silence (BUG-0235).
+        let from_environment =
+            crate::settings::environment(setting.env).filter(|value| !value.is_empty());
+        let no_file = from_environment.is_none()
+            && globals.config.is_none()
+            && crate::settings::config_path(None).is_err();
+        let file = if from_environment.is_some() || no_file {
+            crate::settings::ConfigFile::default()
+        } else {
+            crate::session::open_store(globals, trace)?.file().clone()
+        };
+        let resolved =
+            crate::settings::resolve(setting, &file, None, &crate::settings::environment);
         trace.say(format!(
             "workspace.one_policy_per_file = {} [{}]",
             resolved.value, resolved.origin

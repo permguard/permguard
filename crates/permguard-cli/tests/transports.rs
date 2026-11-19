@@ -2053,3 +2053,61 @@ fn a_refused_certificate_or_a_wrong_scheme_is_the_operators_to_fix_on_every_tran
         }
     }
 }
+
+/// BUG-0312, DEC-0008: a `200` whose body is not a decision, `{}` or a `decision` that is not a
+/// boolean, is refused as a malformed answer, exit `70` with `decode_failed`, never printed as a
+/// deny; a real decision is printed as before.
+#[test]
+fn an_answer_that_is_not_a_decision_is_refused() {
+    let dir = scratch("not-a-decision");
+    for (body, status) in [
+        ("{}", Some(70)),
+        (r#"{"decision":"yes"}"#, Some(70)),
+        (r#"{"decision":false}"#, Some(0)),
+        (r#"{"decision":true}"#, Some(0)),
+    ] {
+        let answered = body.to_owned();
+        let router = Router::new().route(
+            "/access/v1/evaluation",
+            post(move || {
+                let answered = answered.clone();
+                async move { ([("content-type", "application/json")], answered) }
+            }),
+        );
+        let address = serve_with(router, None, Seen::default(), Arc::new(Bearers));
+        let endpoint = format!("http://localhost:{}", address.port());
+        for format in ["terminal", "json"] {
+            let output = cli(
+                &dir,
+                &[
+                    "-o",
+                    format,
+                    "check",
+                    "--zone",
+                    "acme",
+                    "--ledger",
+                    "main",
+                    "--subject",
+                    "user:alice",
+                    "--action",
+                    "read",
+                    "--resource",
+                    "doc:x",
+                    "--data-endpoint",
+                    &endpoint,
+                ],
+            );
+            assert_eq!(output.status.code(), status, "{body} {format}: {output:?}");
+            if status == Some(70) {
+                let said = String::from_utf8_lossy(&output.stderr);
+                assert!(said.contains("decode_failed"), "{body}: {said}");
+                assert!(said.contains("decision"), "{body}: {said}");
+                assert!(
+                    output.stdout.is_empty()
+                        || !String::from_utf8_lossy(&output.stdout).contains("DENY"),
+                    "{body}"
+                );
+            }
+        }
+    }
+}

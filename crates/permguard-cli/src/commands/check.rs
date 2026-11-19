@@ -106,6 +106,16 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
     let answer = client
         .evaluate(&payload)
         .map_err(|failure| Failure::from_client(&failure))?;
+    // An answer is a decision, as the type the data plane serializes says: a `200` with no boolean
+    // `decision` is not one, and reading it as a deny would print a verdict nobody gave
+    // (BUG-0312, DEC-0008). Refused as the plane's malformed answer, exit 70, with nothing printed.
+    if let Err(error) = serde_json::from_value::<permguard_languages::CheckResponse>(answer.clone())
+    {
+        return Err(Failure::internal(format!(
+            "the data plane's answer is not a decision: {error}"
+        ))
+        .named("internal", permguard_core::codes::client::DECODE_FAILED));
+    }
 
     // Inside a checkout the policies a plane cites can be named the way `test` names them: by
     // the alias their author wrote, read from the head this workspace tracks. Anywhere else the
@@ -219,13 +229,13 @@ fn apply_store(payload: &mut Value, target: &target::Target) -> Result<(), Failu
         )
     });
     let overridden = check::prepare(payload, store, None).map_err(Failure::usage)?;
-    if let (Some((stated_zone, stated_ledger)), Some((zone, ledger))) = (overridden, store) {
+    if let (Some(stated), Some((zone, ledger))) = (overridden, store) {
         // The precedence stands — the flags, then the workspace, then the document — and it is
         // documented. What is not acceptable is applying it in silence: a document that names
         // another store and gets an answer about this one has been answered about the wrong
         // ledger without anybody saying so.
         crate::trace::warn(format!(
-            "the document names `{stated_zone}/{stated_ledger}`; this check asks about \
+            "the document names {stated}; this check asks about \
              `{zone}/{ledger}` [{}]. Pass --ignore-workspace to send the document as written",
             target.origin
         ));

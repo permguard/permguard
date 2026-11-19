@@ -425,8 +425,10 @@ pub enum Command {
         #[command(subcommand)]
         action: ReclaimAction,
     },
-    /// Print shell completions. Add to your shell's config to complete commands and flags.
-    /// The official binary's: a program that embeds the library has no shell to complete in.
+    /// Print shell completions.
+    #[command(
+        after_help = "Add them to your shell's config to complete commands and flags. The official binary's: a program that embeds the library has no shell to complete in."
+    )]
     #[cfg(feature = "cli-bin")]
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -994,20 +996,21 @@ pub enum ObjectsAction {
         #[arg(long)]
         staged: bool,
     },
-    /// Remove objects nothing reaches: an interrupted pull, a snapshot nobody applied,
-    /// a policy version the head has moved past.
+    /// Remove objects nothing reaches.
     #[command(
-        after_help = "Examples:\n  permguard objects prune --dry-run\n  permguard objects prune\n  permguard objects prune --dry-run -o json | jq '.bytes'"
+        after_help = "An interrupted pull, a snapshot nobody applied, a policy version the head has moved past.
+
+Examples:\n  permguard objects prune --dry-run\n  permguard objects prune\n  permguard objects prune --dry-run -o json | jq '.bytes'"
     )]
     Prune {
         /// Report what would go, and remove nothing.
         #[arg(long)]
         dry_run: bool,
     },
-    /// Print one object. Default view: a blob's content; otherwise `--human`.
-    #[command(
-        after_help = "Examples:\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --human\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --raw > object.cbor"
-    )]
+    /// Print one object.
+    #[command(after_help = "Default view: a blob's content; otherwise `--human`.
+
+Examples:\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --human\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --raw > object.cbor")]
     Cat {
         /// The object, by the digest `objects list` reports.
         digest: String,
@@ -1063,9 +1066,11 @@ pub enum ConfigAction {
 
 #[derive(Debug, Subcommand)]
 pub enum ZonesAction {
-    /// Create a zone. Names are lowercase a-z, 0-9, `-` and `_`, unique across the deployment.
+    /// Create a zone.
     #[command(
-        after_help = "Examples:\n  permguard zones create delivery\n  permguard zones create delivery -o json"
+        after_help = "Names are lowercase a-z, 0-9, `-` and `_`, unique across the deployment.
+
+Examples:\n  permguard zones create delivery\n  permguard zones create delivery -o json"
     )]
     Create {
         /// The zone's name.
@@ -1091,10 +1096,10 @@ pub enum ZonesAction {
         /// The zone, by name or id.
         zone: String,
     },
-    /// Update a zone — today its name, with `--name`. The id never changes.
-    #[command(
-        after_help = "Examples:\n  permguard zones update delivery --name delivery-eu\n  permguard zones update 01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6 --name delivery-eu -o json"
-    )]
+    /// Update a zone's name, with `--name`.
+    #[command(after_help = "The id never changes.
+
+Examples:\n  permguard zones update delivery --name delivery-eu\n  permguard zones update 01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6 --name delivery-eu -o json")]
     Update {
         /// The zone, by name or id.
         zone: String,
@@ -1106,10 +1111,10 @@ pub enum ZonesAction {
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
     },
-    /// Delete a zone. Refused while it still holds ledgers.
-    #[command(
-        after_help = "Examples:\n  permguard zones delete delivery\n  permguard zones delete delivery -o json"
-    )]
+    /// Delete a zone.
+    #[command(after_help = "Refused while it still holds ledgers.
+
+Examples:\n  permguard zones delete delivery\n  permguard zones delete delivery -o json")]
     Delete {
         /// The zone, by name or id.
         zone: String,
@@ -1118,10 +1123,11 @@ pub enum ZonesAction {
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
         expected_revision: Option<u64>,
     },
-    /// Import an archive another Host exported into an existing zone: every ledger of it, under
-    /// its name at the source.
+    /// Import an archive another Host exported into an existing zone.
     #[command(
-        after_help = "Examples:\n  permguard zones import delivery.export --as delivery --mode re-home --bundle source.bundle --pin sha256:…\n  permguard zones import delivery.export --as evidence --mode archive --bundle source.bundle --pin sha256:…"
+        after_help = "Every ledger of it is imported, under its name at the source.
+
+Examples:\n  permguard zones import delivery.export --as delivery --mode re-home --bundle source.bundle --pin sha256:…\n  permguard zones import delivery.export --as evidence --mode archive --bundle source.bundle --pin sha256:…"
     )]
     Import {
         /// The archive file an export wrote.
@@ -1157,10 +1163,10 @@ pub enum ZonesAction {
 
 #[derive(Debug, Subcommand)]
 pub enum LedgersAction {
-    /// Create a ledger inside a zone. Names are unique within their zone.
-    #[command(
-        after_help = "Examples:\n  permguard ledgers create --zone delivery release-pipeline\n  permguard ledgers create --zone delivery release-pipeline -o json"
-    )]
+    /// Create a ledger inside a zone.
+    #[command(after_help = "Names are unique within their zone.
+
+Examples:\n  permguard ledgers create --zone delivery release-pipeline\n  permguard ledgers create --zone delivery release-pipeline -o json")]
     Create {
         /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
@@ -1194,10 +1200,10 @@ pub enum LedgersAction {
         /// The ledger, by name or id.
         ledger: String,
     },
-    /// Update a ledger — today its name, with `--name`. The id never changes.
-    #[command(
-        after_help = "Examples:\n  permguard ledgers update --zone delivery release-pipeline --name release-pipeline-v2\n  permguard ledgers update --zone delivery release-pipeline --name release-pipeline-v2 -o json"
-    )]
+    /// Update a ledger's name, with `--name`.
+    #[command(after_help = "The id never changes.
+
+Examples:\n  permguard ledgers update --zone delivery release-pipeline --name release-pipeline-v2\n  permguard ledgers update --zone delivery release-pipeline --name release-pipeline-v2 -o json")]
     Update {
         /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
@@ -1351,6 +1357,30 @@ pub struct CheckArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BUG-0292: every command's description, as its parent's `Commands:` list prints it, is one
+    /// sentence of bounded length; what more there is to say belongs to its own `--help`.
+    #[test]
+    fn every_command_description_is_one_sentence() {
+        fn walk(command: &clap::Command, path: &str, offenders: &mut Vec<String>) {
+            for sub in command.get_subcommands() {
+                let name = format!("{path} {}", sub.get_name());
+                let about = sub.get_about().map(ToString::to_string).unwrap_or_default();
+                let body = about.trim().trim_end_matches('.');
+                let breaks = body.contains(". ") || body.contains(".\n") || body.contains("; ");
+                if about.is_empty() || breaks || about.chars().count() > MAX_ABOUT {
+                    offenders.push(format!("{name}: {about:?}"));
+                }
+                walk(sub, &name, offenders);
+            }
+        }
+        let mut offenders = Vec::new();
+        walk(&command(), "permguard", &mut offenders);
+        assert!(offenders.is_empty(), "{}", offenders.join("\n"));
+    }
+
+    /// How long one description may be, in characters: a line of a `Commands:` list.
+    const MAX_ABOUT: usize = 110;
 
     /// Windows starts the program as `permguard.exe`; the help clap renders still names it
     /// `permguard`, as the `help` command does (tests/cli.rs compares every spelling).
@@ -1748,7 +1778,12 @@ mod tests {
                 .get_subcommands()
                 .all(|subcommand| subcommand.get_name() == "help")
                 || command.is_args_conflicts_with_subcommands_set();
-            let examples = command.get_after_help().map(ToString::to_string);
+            // What follows the help is the command's detail, when it has more to say than its one
+            // sentence (BUG-0292), then its examples: only the examples are checked here.
+            let examples = command.get_after_help().and_then(|text| {
+                let text = text.to_string();
+                text.find("Examples:\n").map(|at| text[at..].to_owned())
+            });
 
             match (does_something, examples) {
                 (true, Some(text)) => {
@@ -1786,8 +1821,13 @@ mod tests {
             let Some(after) = command.get_after_help() else {
                 return;
             };
+            // The detail before the examples is prose, not command lines (BUG-0292).
+            let after = after.to_string();
+            let Some(at) = after.find("Examples:\n") else {
+                return;
+            };
 
-            for line in after.to_string().lines().skip(1) {
+            for line in after[at..].lines().skip(1) {
                 let Some(argv) = invocation(line) else {
                     panic!(
                         "{}: `{}` runs no permguard",
@@ -1858,13 +1898,16 @@ pub enum HostAction {
         #[command(subcommand)]
         action: HostGrantsAction,
     },
-    /// The Host identity; provisioning and emergency reset remain offline.
+    /// Read and manage the Host identity.
+    #[command(after_help = "Provisioning and emergency reset remain offline.")]
     Identity {
         #[command(subcommand)]
         action: IdentityAction,
     },
-    /// Legal and incident holds that keep a ledger, or a zone's ledgers, from the garbage
-    /// collection; offline, on a stopped server's volume.
+    /// Legal and incident holds that keep ledgers from the garbage collection.
+    #[command(
+        after_help = "A hold keeps a ledger, or a zone's ledgers; holds are kept offline, on a stopped server's volume."
+    )]
     Holds {
         #[command(subcommand)]
         action: HoldsAction,
@@ -1879,8 +1922,10 @@ pub enum HostAction {
         #[command(subcommand)]
         action: StreamsAction,
     },
-    /// The Host's key rings: their keys, epochs and bindings, rotation, revocation and the
-    /// verification bundle, through the Host listener.
+    /// The Host's key rings, through the Host listener.
+    #[command(
+        after_help = "Their keys, epochs and bindings, rotation, revocation and the verification bundle."
+    )]
     Keys {
         #[command(subcommand)]
         action: KeysAction,
@@ -1895,10 +1940,11 @@ pub enum HostAction {
         #[command(subcommand)]
         action: HostConfigAction,
     },
-    /// The phase of the Host, every Plane and every service, with reasons, and the assurance
-    /// profile with its added controls and relaxations.
+    /// The phase of the Host, every Plane and every service, with reasons.
     #[command(
-        after_help = "Examples:\n  permguard host status\n  permguard --host-endpoint grpcs://host.example:9443 host status -o json"
+        after_help = "It also prints the assurance profile, with its added controls and relaxations.
+
+Examples:\n  permguard host status\n  permguard --host-endpoint grpcs://host.example:9443 host status -o json"
     )]
     Status,
     /// The plan receipts of two-step changes, and the countersignature dual control requires.
@@ -1993,10 +2039,11 @@ pub enum KeyRevokeAction {
 /// `permguard host keys bundle …`.
 #[derive(Debug, Subcommand)]
 pub enum BundleAction {
-    /// Write a resource's verification bundle, every page at one frontier, to a new owner-only
-    /// file: the signed manifest and its items, base64url, as `ledgers import --bundle` reads it.
+    /// Write a resource's verification bundle to a new owner-only file.
     #[command(
-        after_help = "Examples:\n  permguard host keys bundle export --resource plane/control/zone/z1 --out bundle.json\n  permguard --host-endpoint grpcs://host.example:9443 host keys bundle export --resource host --out bundle.json -o json"
+        after_help = "Every page at one frontier: the signed manifest and its items, base64url, as `ledgers import --bundle` reads it.
+
+Examples:\n  permguard host keys bundle export --resource plane/control/zone/z1 --out bundle.json\n  permguard --host-endpoint grpcs://host.example:9443 host keys bundle export --resource host --out bundle.json -o json"
     )]
     Export {
         /// The resource, in the Host API's grammar.
@@ -2051,10 +2098,11 @@ pub enum AuditAction {
         #[arg(long)]
         period: Option<String>,
     },
-    /// Checkpoint a trail now, up to its last record, and print the checkpoint: keep it apart,
-    /// and `audit verify --checkpoint` proves the trail from it.
+    /// Checkpoint a trail now, up to its last record, and print the checkpoint.
     #[command(
-        after_help = "Examples:\n  permguard host audit checkpoint --class security --resource host\n  permguard host audit checkpoint --class security --resource host --out held.cose"
+        after_help = "Keep it apart: `audit verify --checkpoint` proves the trail from it.
+
+Examples:\n  permguard host audit checkpoint --class security --resource host\n  permguard host audit checkpoint --class security --resource host --out held.cose"
     )]
     Checkpoint {
         /// The trail's class.
@@ -2116,11 +2164,10 @@ pub enum PlansAction {
         #[arg(long)]
         status: Option<String>,
     },
-    /// Approve another principal's plan: the countersignature dual control requires. A
-    /// principal never approves its own plan.
-    #[command(
-        after_help = "Examples:\n  permguard host plans approve 0123456789abcdef0123456789abcdef\n  permguard host plans approve 0123456789abcdef0123456789abcdef -o json"
-    )]
+    /// Approve another principal's plan: the countersignature dual control requires.
+    #[command(after_help = "A principal never approves its own plan.
+
+Examples:\n  permguard host plans approve 0123456789abcdef0123456789abcdef\n  permguard host plans approve 0123456789abcdef0123456789abcdef -o json")]
     Approve {
         /// The plan's id, as `host plans list` prints it.
         plan_id: String,
@@ -2130,11 +2177,12 @@ pub enum PlansAction {
 /// `permguard host holds …` (WP-7.3c): offline, on the `--volume` of a stopped server.
 #[derive(Debug, Subcommand)]
 pub enum HoldsAction {
-    /// Hold a ledger, or every ledger of a zone, from the garbage collection, until the hold
-    /// expires or is released; a review date keeps it and only marks it due.
+    /// Hold a ledger, or every ledger of a zone, from the garbage collection.
     #[command(
         group(clap::ArgGroup::new("deadline").required(true).args(["expires_at", "review_at"])),
-        after_help = "Examples:\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0…/ledger/01a1… --owner legal@acme --reason \"litigation 2026-17\" --review-at 2027-01-01T00:00:00Z\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0… --owner security@acme --reason \"incident 42\" --expires-at 2026-12-31T00:00:00Z -o json"
+        after_help = "The hold lasts until it expires or is released; a review date keeps it and only marks it due.
+
+Examples:\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0…/ledger/01a1… --owner legal@acme --reason \"litigation 2026-17\" --review-at 2027-01-01T00:00:00Z\n  permguard host holds add --volume ./volume --resource plane/control/zone/01a0… --owner security@acme --reason \"incident 42\" --expires-at 2026-12-31T00:00:00Z -o json"
     )]
     Add {
         /// The ledger or the zone, by ids: `plane/control/zone/<id>/ledger/<id>` or
@@ -2200,10 +2248,11 @@ pub enum StreamsAction {
         after_help = "Examples:\n  permguard host streams signers data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams signers data events --resource plane/data/zone/z1/ledger/l1 -o json"
     )]
     Signers(StreamArgs),
-    /// Print the run history of one stream: each run, open or ended, how far it was sealed and
-    /// acknowledged, and what it still holds.
+    /// Print the run history of one stream.
     #[command(
-        after_help = "Examples:\n  permguard host streams runs data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams runs data events --resource plane/data/zone/z1/ledger/l1 -o json"
+        after_help = "Each run, open or ended, how far it was sealed and acknowledged, and what it still holds.
+
+Examples:\n  permguard host streams runs data decisions --resource plane/data/zone/z1/ledger/l1\n  permguard --host-endpoint grpcs://host.example:9443 host streams runs data events --resource plane/data/zone/z1/ledger/l1 -o json"
     )]
     Runs(StreamArgs),
     /// Print who one stream is shipped to and how far each subscription acknowledged.
@@ -2226,11 +2275,11 @@ pub enum StreamsAction {
 /// `permguard host identity …`: the Host identity locally and through the Host listener.
 #[derive(Debug, Subcommand)]
 pub enum IdentityAction {
-    /// Provision the Host identity: required before the first start from the `production`
-    /// profile up. Prints the witness to keep outside the volume and give the server as
-    /// `host.identity.witness`. Written once; a volume already provisioned is refused.
+    /// Provision the Host identity, required before the first start from the `production` profile up.
     #[command(
-        after_help = "Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json\n  permguard host identity provision --volume /var/lib/permguard/volume --if-missing --server-config /etc/permguard/config.yml"
+        after_help = "Prints the witness to keep outside the volume and give the server as `host.identity.witness`. Written once; a volume already provisioned is refused.
+
+Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json\n  permguard host identity provision --volume /var/lib/permguard/volume --if-missing --server-config /etc/permguard/config.yml"
     )]
     Provision {
         /// The identity key's suite.
@@ -2241,10 +2290,11 @@ pub enum IdentityAction {
         #[arg(long)]
         if_missing: bool,
     },
-    /// Print the Host identity: its id, subject, epoch and fingerprints. The witness is printed
-    /// at provisioning only, never read back from the volume it is meant to check.
+    /// Print the Host identity: its id, subject, epoch and fingerprints.
     #[command(
-        after_help = "Examples:\n  permguard host identity show\n  permguard --host-endpoint grpcs://host.example:9443 host identity show -o json"
+        after_help = "The witness is printed at provisioning only, never read back from the volume it is meant to check.
+
+Examples:\n  permguard host identity show\n  permguard --host-endpoint grpcs://host.example:9443 host identity show -o json"
     )]
     Show,
     /// Prove a peer Host identity and compare its first fingerprint.
@@ -2583,11 +2633,14 @@ pub enum ResetAction {
 #[cfg(feature = "volume-restore")]
 #[derive(Debug, Subcommand)]
 pub enum RestoreAction {
-    /// Plan the restore: prove the fence, scan the volume, open its keys, and write the plan to
-    /// `--out` for the run to confirm.
-    #[command(after_help = "Examples:
+    /// Plan the restore and write the plan to `--out` for the run to confirm.
+    #[command(
+        after_help = "It proves the fence, scans the volume and opens its keys.
+
+Examples:
   permguard restore plan --volume /var/lib/permguard --mode dr --reason \"region lost\" --out restore.plan
-  permguard restore plan --volume ./volume --mode forensic --reason audit --out restore.plan -o json")]
+  permguard restore plan --volume ./volume --mode forensic --reason audit --out restore.plan -o json"
+    )]
     Plan {
         /// `dr` keeps the Host and starts a new incarnation; `forensic` is never served; `clone`
         /// makes a new Host of the snapshot's data.
@@ -2618,10 +2671,11 @@ pub enum RestoreAction {
 /// `permguard backup …` (TC-3), offline.
 #[derive(Debug, Subcommand)]
 pub enum BackupVerifyAction {
-    /// Check the snapshot at `--volume` against its manifest: `consistent` when every file is the
-    /// one the manifest binds, `crash_consistent` (exit 2) when any differs.
+    /// Check the snapshot at `--volume` against its manifest.
     #[command(
-        after_help = "Examples:\n  permguard backup verify --volume /mnt/snapshot --manifest manifest.cose --bundle bundle.json --pin sha256:ab12…\n  permguard backup verify --volume ./snapshot --manifest manifest.txt --bundle bundle.json --pin sha256:ab12… -o json"
+        after_help = "`consistent` when every file is the one the manifest binds, `crash_consistent` (exit 2) when any differs.
+
+Examples:\n  permguard backup verify --volume /mnt/snapshot --manifest manifest.cose --bundle bundle.json --pin sha256:ab12…\n  permguard backup verify --volume ./snapshot --manifest manifest.txt --bundle bundle.json --pin sha256:ab12… -o json"
     )]
     Verify {
         /// The snapshot's manifest: its COSE_Sign1 bytes, or their base64url text as `host backup
@@ -2641,11 +2695,10 @@ pub enum BackupVerifyAction {
 /// `permguard migrate …` (TC-3), offline on a stopped server's `--volume`.
 #[derive(Debug, Subcommand)]
 pub enum MigrateAction {
-    /// Plan one subsystem's migration with the external backup taken before it, and write the
-    /// plan to `--out` for the run to confirm.
-    #[command(
-        after_help = "Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audit --backup snap-2026-10-25 --out migrate.plan\n  permguard migrate plan --volume ./volume --subsystem keys --backup snap-1 --out migrate.plan -o json"
-    )]
+    /// Plan one subsystem's migration and write the plan to `--out` for the run to confirm.
+    #[command(after_help = "The plan names the external backup taken before it.
+
+Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audit --backup snap-2026-10-25 --out migrate.plan\n  permguard migrate plan --volume ./volume --subsystem keys --backup snap-1 --out migrate.plan -o json")]
     Plan {
         /// `keys`, `audit`, `decisions` or `events`.
         #[arg(long, value_parser = ["keys", "audit", "decisions", "events"])]
@@ -2692,11 +2745,11 @@ pub enum MigrateAction {
 /// `permguard evidence …` (TC-5), under `streams.read` on the ledger.
 #[derive(Debug, Subcommand)]
 pub enum EvidenceAction {
-    /// Print the retained prefix anchors of a ledger's decision and event streams and the ranges
-    /// they cover; a stream type the Host does not serve, and a ledger its streams do not list,
-    /// are said so.
+    /// Print the retained prefix anchors of a ledger's decision and event streams.
     #[command(
-        after_help = "Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003\n  permguard --host-endpoint grpcs://host.example:9443 evidence anchors z1 l1 -o json"
+        after_help = "Each anchor with the range it covers; a stream type the Host does not serve, and a ledger its streams do not list, are said so.
+
+Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003\n  permguard --host-endpoint grpcs://host.example:9443 evidence anchors z1 l1 -o json"
     )]
     Anchors {
         /// The zone, by id.
@@ -2757,10 +2810,11 @@ pub enum GcAction {
 /// `permguard gc objects …`, under `gc.manage` on the Control Plane, a zone or a ledger of it.
 #[derive(Debug, Subcommand)]
 pub enum GcObjectsAction {
-    /// Plan the sweep: nothing changes; prints the candidates, their bytes and what is kept and
-    /// why, and writes the plan to a new owner-only file.
+    /// Plan the sweep, changing nothing, and write the plan to a new owner-only file.
     #[command(
-        after_help = "Examples:\n  permguard gc objects plan --out gc.plan\n  permguard gc objects plan --zone 0198f3bb-0000-7000-8000-000000000002 --out gc.plan -o json"
+        after_help = "It prints the candidates, their bytes, and what is kept and why.
+
+Examples:\n  permguard gc objects plan --out gc.plan\n  permguard gc objects plan --zone 0198f3bb-0000-7000-8000-000000000002 --out gc.plan -o json"
     )]
     Plan {
         /// Only this zone, by id, as `zones list` prints it.
@@ -2773,10 +2827,11 @@ pub enum GcObjectsAction {
         #[arg(long, value_name = "FILE")]
         out: PathBuf,
     },
-    /// Run the planned sweep: bounded, serialized with the background pass, and audited even
-    /// when it removes nothing; prints what was removed, kept and why, and the receipt.
+    /// Run the planned sweep and print what was removed, kept and why, and the receipt.
     #[command(
-        after_help = "Examples:\n  permguard gc objects run --confirm-file gc.plan\n  permguard gc objects run --confirm-file gc.plan -o json"
+        after_help = "The sweep is bounded, serialized with the background pass, and audited even when it removes nothing.
+
+Examples:\n  permguard gc objects run --confirm-file gc.plan\n  permguard gc objects run --confirm-file gc.plan -o json"
     )]
     Run {
         /// The plan file `plan` wrote.
@@ -2788,10 +2843,11 @@ pub enum GcObjectsAction {
 /// `permguard host backup …` (TC-3), through the Host listener.
 #[derive(Debug, Subcommand)]
 pub enum HostBackupAction {
-    /// Prepare an application-consistent backup: mutations stop, the volume is flushed, and the
-    /// signed manifest is printed; the snapshot token is written to a new owner-only file.
+    /// Prepare an application-consistent backup and print its signed manifest.
     #[command(
-        after_help = "Examples:\n  permguard host backup prepare --token-out backup.token\n  permguard --host-endpoint grpcs://host.example:9443 host backup prepare --token-out backup.token -o json"
+        after_help = "Mutations stop and the volume is flushed; the snapshot token is written to a new owner-only file.
+
+Examples:\n  permguard host backup prepare --token-out backup.token\n  permguard --host-endpoint grpcs://host.example:9443 host backup prepare --token-out backup.token -o json"
     )]
     Prepare {
         /// Where the token is written: a new file, readable by its owner only.
@@ -2851,12 +2907,13 @@ pub enum AuthorityAction {
         after_help = "Examples:\n  permguard authority whoami\n  permguard authority whoami -o json"
     )]
     Whoami,
-    /// A token for the configured client, written to a new file only its owner reads; or the
-    /// client's kept token, forgotten or revoked.
+    /// Obtain, forget or revoke the configured client's token.
     #[command(
         args_conflicts_with_subcommands = true,
         subcommand_negates_reqs = true,
-        after_help = "Examples:\n  permguard authority token --out ~/.permguard/token\n  permguard authority token --scope decision.evaluate --lifetime 600 --out token.jwt\n  permguard authority token forget\n  permguard authority token revoke"
+        after_help = "A new token is written to a new file only its owner reads.
+
+Examples:\n  permguard authority token --out ~/.permguard/token\n  permguard authority token --scope decision.evaluate --lifetime 600 --out token.jwt\n  permguard authority token forget\n  permguard authority token revoke"
     )]
     Token {
         #[command(subcommand)]
@@ -2945,10 +3002,10 @@ pub enum ServiceAccountsAction {
         /// The account's name.
         name: String,
     },
-    /// Delete an account, its keys and every token of it; `admin` is never deleted.
-    #[command(
-        after_help = "Examples:\n  permguard authority service-accounts delete billing\n  permguard authority service-accounts delete billing -o json"
-    )]
+    /// Delete an account, its keys and every token of it.
+    #[command(after_help = "`admin` is never deleted.
+
+Examples:\n  permguard authority service-accounts delete billing\n  permguard authority service-accounts delete billing -o json")]
     Delete {
         /// The account's name.
         name: String,
@@ -2994,7 +3051,7 @@ pub enum KeysOfAccountAction {
         /// The account's name.
         name: String,
     },
-    /// A new access key; its secret written once to a new file only its owner reads.
+    /// Create an access key, its secret written once to a new owner-only file.
     #[command(
         after_help = "Examples:\n  permguard authority keys create billing --secret-out billing.key\n  permguard authority keys create billing --secret-out billing.key --expires 2027-01-01T00:00:00Z"
     )]
@@ -3030,10 +3087,11 @@ pub enum TokenAction {
         after_help = "Examples:\n  permguard authority token forget\n  permguard authority token forget -o json"
     )]
     Forget,
-    /// Revoke the token in use, `--token-file`'s or the client's kept one, on every Plane, and
-    /// drop it: the next command obtains another. A bearer may always revoke its own token.
+    /// Revoke the token in use on every Plane, and drop it.
     #[command(
-        after_help = "Examples:\n  permguard authority token revoke\n  permguard authority token revoke --token-file token.jwt -o json"
+        after_help = "The token is `--token-file`'s or the client's kept one, and the next command obtains another. A bearer may always revoke its own token.
+
+Examples:\n  permguard authority token revoke\n  permguard authority token revoke --token-file token.jwt -o json"
     )]
     Revoke,
 }
@@ -3066,12 +3124,11 @@ pub enum TokensAction {
 /// `permguard host grants …`: the offline recovery principal.
 #[derive(Debug, Subcommand)]
 pub enum HostGrantsAction {
-    /// Commit the Host's one recovery principal, by the SHA-256 fingerprint of its certificate:
-    /// it holds the per-Host operations on its own Host API, presented by that certificate.
-    /// Written once: a second bootstrap naming the same fingerprint is the first, one naming
-    /// another is refused.
+    /// Commit the Host's one recovery principal, by the SHA-256 fingerprint of its certificate.
     #[command(
-        after_help = "Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
+        after_help = "It holds the per-Host operations on its own Host API, presented by that certificate. Written once: a second bootstrap naming the same fingerprint is the first, one naming another is refused.
+
+Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
     )]
     Bootstrap {
         /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.

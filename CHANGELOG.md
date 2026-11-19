@@ -161,6 +161,14 @@ is cut.
 
 ### Fixed
 
+- **`check` refuses an answer that is not a decision.**
+  A `200` whose body has no `decision`, or one that is not a boolean, exits `70` with `decode_failed` and prints no decision, where it was printed as a deny with exit `0`; under `-o json` and `-o yaml` the refusal document is printed.
+- **`check` in a workspace says when the document names only another zone or only another ledger.**
+  The warning that a named store is overridden by the workspace's is given for a half-named store too, on stderr, where the half was dropped in silence.
+- **The offline building commands need no configuration file.**
+  `validate`, `refresh`, `plan`, `status`, `test` and `apply` run with no home directory, on the default or `PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE`, and do not read the configuration file when the variable is set; a file that is there and does not read is still refused, since its other settings would be ignored in silence.
+- **Every command's description in a `Commands:` list is one sentence.**
+  What more a command has to say is in its own `--help`, before its examples; a test refuses a description of more than one sentence or past 110 characters.
 - **Under `-o json` or `-o yaml`, a command line the parser refuses is a document too.**
   An invalid value, an unknown flag, a missing argument or subcommand prints the `{class, code, message}` document every other refusal prints, wherever `-o` is written, where it printed clap's text; without `-o`, and for `--help` and `--version`, nothing changes.
 - **What the parser says is coloured by the stream it is written to.**

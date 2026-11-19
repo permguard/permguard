@@ -3629,3 +3629,53 @@ fn a_ledger_url_with_a_query_or_fragment_is_refused() {
         assert!(!dir.join("orders?view=1").exists() && !dir.join("orders#top").exists());
     }
 }
+
+/// BUG-0244: an offline build needs no configuration file: with no home it runs on the default
+/// or the variable, the variable still applies, and a broken file is not read when the variable
+/// answers.
+#[test]
+fn an_offline_build_needs_no_configuration_file() {
+    let dir = scratch("offline-no-home");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    let bare = |vars: &[(&str, &str)], args: &[&str]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+        command
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .arg("-w")
+            .arg(&dir)
+            .args(args);
+        for (name, value) in vars {
+            command.env(name, value);
+        }
+        command.output().expect("runs")
+    };
+    for vars in [
+        &[][..],
+        &[("PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE", "false")][..],
+    ] {
+        let output = bare(vars, &["validate"]);
+        assert!(output.status.success(), "{vars:?}: {}", stderr(&output));
+    }
+    // The rule still applies from the variable: `app/rules.cedar` holds two policies.
+    let output = bare(
+        &[("PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE", "true")],
+        &["validate"],
+    );
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    // A broken file is not read when the variable answers.
+    let elsewhere = scratch("offline-no-home-config");
+    std::fs::write(elsewhere.join("broken.yml"), "controlPlane: [").expect("written");
+    let output = bare(
+        &[
+            (
+                "PERMGUARD_CONFIG",
+                elsewhere.join("broken.yml").to_str().expect("UTF-8"),
+            ),
+            ("PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE", "false"),
+        ],
+        &["validate"],
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+}

@@ -19,7 +19,7 @@ pub fn prepare(
     payload: &mut Value,
     store: Option<(&str, &str)>,
     profile: Option<&str>,
-) -> Result<Option<(String, String)>, String> {
+) -> Result<Option<String>, String> {
     let mut overridden = None;
     if let Some((zone, ledger)) = store {
         let stated = |field: &str| {
@@ -30,11 +30,23 @@ pub fn prepare(
                 .filter(|value| !value.is_empty())
                 .map(str::to_owned)
         };
-        if let (Some(stated_zone), Some(stated_ledger)) = (stated("zone"), stated("ledger"))
-            && (stated_zone != zone || stated_ledger != ledger)
-        {
-            overridden = Some((stated_zone, stated_ledger));
-        }
+        // What the document named and this check does not ask about, said whether it named both
+        // or only one of them (BUG-0242): a half-named store dropped in silence is a document
+        // answered about another ledger without anybody saying so.
+        overridden = match (stated("zone"), stated("ledger")) {
+            (Some(stated_zone), Some(stated_ledger))
+                if stated_zone != zone || stated_ledger != ledger =>
+            {
+                Some(format!("`{stated_zone}/{stated_ledger}`"))
+            }
+            (Some(stated_zone), None) if stated_zone != zone => {
+                Some(format!("the zone `{stated_zone}`"))
+            }
+            (None, Some(stated_ledger)) if stated_ledger != ledger => {
+                Some(format!("the ledger `{stated_ledger}`"))
+            }
+            _ => None,
+        };
         payload["zone"] = Value::String(zone.to_owned());
         payload["ledger"] = Value::String(ledger.to_owned());
     }
@@ -263,13 +275,27 @@ mod tests {
         let mut payload = serde_json::json!({"zone": "from-file", "ledger": "from-file"});
         let overridden =
             prepare(&mut payload, Some(("acme", "orders")), Some("pdp")).expect("prepared");
-        assert_eq!(
-            overridden,
-            Some(("from-file".to_owned(), "from-file".to_owned()))
-        );
+        assert_eq!(overridden.as_deref(), Some("`from-file/from-file`"));
         assert_eq!(payload["zone"], "acme");
         assert_eq!(payload["ledger"], "orders");
         assert_eq!(payload["profile"], "pdp");
+    }
+
+    /// BUG-0242: a document naming only a zone, or only a ledger, that differs is said too; one
+    /// naming the same half is not.
+    #[test]
+    fn a_half_named_store_that_differs_is_said() {
+        let mut payload = serde_json::json!({"zone": "other"});
+        let overridden = prepare(&mut payload, Some(("acme", "orders")), None).expect("prepared");
+        assert_eq!(overridden.as_deref(), Some("the zone `other`"));
+        let mut payload = serde_json::json!({"ledger": "other"});
+        let overridden = prepare(&mut payload, Some(("acme", "orders")), None).expect("prepared");
+        assert_eq!(overridden.as_deref(), Some("the ledger `other`"));
+        let mut payload = serde_json::json!({"ledger": "orders"});
+        assert_eq!(
+            prepare(&mut payload, Some(("acme", "orders")), None).expect("prepared"),
+            None
+        );
     }
 
     #[test]
