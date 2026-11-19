@@ -13,6 +13,8 @@ use permguard_decisions::{chain, merkle, record};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::key_documents::KeyDocument;
+
 /// How many pages one read walks at most: an export of a store larger than this says it stopped.
 pub const MAX_PAGES: usize = 10_000;
 
@@ -268,6 +270,13 @@ pub struct Verified {
     pub signatures_unkeyed: usize,
     /// Stated rather than implied: without a key set, signatures are not checked.
     pub signatures_checked: bool,
+    /// Each batch signed by a revoked key after its compromise, and no later batch vouching for
+    /// it: any fails the verification (BUG-0165, BUG-0166).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub compromised: Vec<String>,
+    /// What stands and is worth saying: a batch a revoked key signed before its compromise.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
     /// Each record a tenant view could not account for, and why: one proven by no batch of its
     /// own stream covering its sequence, or one that appears twice (BUG-0141, BUG-0143).
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -283,12 +292,14 @@ pub struct Verified {
 }
 
 impl Verified {
-    /// Whether everything checked held: the chain unbroken, every record in a signed batch, and
-    /// no signature refused (TC-1).
+    /// Whether everything checked held: the chain unbroken, every record in a signed batch, no
+    /// signature refused, none by a key not given and none compromised (TC-1, DEC-0011).
     pub fn holds(&self) -> bool {
         self.chain != Some(false)
             && self.not_included.unwrap_or(0) == 0
             && self.signatures_failed == 0
+            && self.signatures_unkeyed == 0
+            && self.compromised.is_empty()
     }
 }
 
@@ -310,7 +321,7 @@ pub fn report(
     scope: &ReadScope,
     page: Page,
     filter: &Filter,
-    keys: Option<&[Jwk]>,
+    keys: Option<&KeyDocument>,
 ) -> DecisionsReport {
     let Page {
         records,
@@ -325,7 +336,7 @@ pub fn report(
     // first would make every filtered read look broken.
     let verified = filter
         .verify
-        .then(|| verify(scope, &records, &proof, &inclusion, keys));
+        .then(|| verify_under(scope, &records, &proof, &inclusion, keys));
 
     let mut decisions = Vec::new();
     let mut events = Vec::new();
@@ -470,31 +481,36 @@ pub fn verify(
     inclusion: &[Value],
     keys: Option<&[Jwk]>,
 ) -> Verified {
+    let document = keys.map(|keys| KeyDocument {
+        keys: keys.to_vec(),
+        revoked: Default::default(),
+    });
+    verify_under(scope, records, proof, inclusion, document.as_ref())
+}
+
+/// [`verify`] under key documents, their revocations applied to the Host batches.
+pub fn verify_under(
+    scope: &ReadScope,
+    records: &[Value],
+    proof: &[Value],
+    inclusion: &[Value],
+    document: Option<&KeyDocument>,
+) -> Verified {
+    let keys = document.map(|document| document.keys.as_slice());
     let (mut verified, mut failed) = (0, 0);
     let mut roots: Vec<Root> = Vec::new();
     // The batches signed by a key not given: their records are named as such.
     let mut unkeyed: Vec<(crate::host_proof::HostBatch, String)> = Vec::new();
     // The batches the producing Hosts' engines sealed (WP-6.2b): their roots are attributed only
-    // when their signatures verify under the keys given.
-    let mut host_batches = Vec::new();
+    // when their signatures verify under the keys given, and their signers' revocations allow it.
+    let mut signed = Vec::new();
     for entry in proof {
         match crate::host_proof::host_batch(
             entry,
             keys,
             permguard_core::domains::protected::DECISION_BATCH,
         ) {
-            Some(Ok(batch)) => {
-                verified += usize::from(keys.is_some());
-                roots.push(Root {
-                    merkle_root: batch.merkle_root.clone(),
-                    producer: batch.producer.clone(),
-                    run: batch.run.clone(),
-                    first_seq: batch.first_seq,
-                    last_seq: batch.last_seq,
-                    resource: Some(batch.resource.clone()),
-                });
-                host_batches.push(batch);
-            }
+            Some(Ok(batch)) => signed.push(batch),
             Some(Err(())) => {
                 match keys.and_then(|keys| crate::host_proof::unkeyed_batch(entry, keys)) {
                     Some(batch) => unkeyed.push(batch),
@@ -504,6 +520,27 @@ pub fn verify(
             None => {}
         }
     }
+    let screened = match document {
+        Some(document) => crate::host_proof::screen(signed, document),
+        None => crate::host_proof::Screened {
+            kept: signed,
+            ..Default::default()
+        },
+    };
+    let mut host_batches = Vec::new();
+    for batch in screened.kept {
+        verified += usize::from(keys.is_some());
+        roots.push(Root {
+            merkle_root: batch.merkle_root.clone(),
+            producer: batch.producer.clone(),
+            run: batch.run.clone(),
+            first_seq: batch.first_seq,
+            last_seq: batch.last_seq,
+            resource: Some(batch.resource.clone()),
+        });
+        host_batches.push(batch);
+    }
+    let compromised = screened.compromised;
     let legacy: Vec<&Value> = proof
         .iter()
         .filter(|entry| {
@@ -569,13 +606,15 @@ pub fn verify(
                 signatures_failed: failed,
                 signatures_unkeyed: unkeyed.len(),
                 signatures_checked: keys.is_some(),
+                compromised: compromised.into_iter().map(|(_, why)| why).collect(),
+                notes: screened.notes,
                 refused: Vec::new(),
                 resources: std::collections::BTreeSet::new(),
                 unresourced: false,
             }
         }
         ReadScope::Tenant { .. } => {
-            let inclusion = included(records, inclusion, &roots, &unkeyed);
+            let inclusion = included(records, inclusion, &roots, &unkeyed, &compromised);
 
             Verified {
                 proof: "inclusion",
@@ -587,6 +626,8 @@ pub fn verify(
                 signatures_failed: failed,
                 signatures_unkeyed: unkeyed.len(),
                 signatures_checked: keys.is_some(),
+                compromised: compromised.into_iter().map(|(_, why)| why).collect(),
+                notes: screened.notes,
                 refused: inclusion.refused,
                 resources: inclusion.resources,
                 unresourced: inclusion.unresourced,
@@ -722,6 +763,7 @@ fn included(
     inclusion: &[Value],
     roots: &[Root],
     unkeyed: &[(crate::host_proof::HostBatch, String)],
+    compromised: &[(crate::host_proof::HostBatch, String)],
 ) -> Inclusion {
     let mut outcome = Inclusion {
         proven: 0,
@@ -790,14 +832,24 @@ fn included(
                     None => outcome.unresourced = true,
                 }
             }
-            None => match unkeyed
-                .iter()
-                .find(|(batch, _)| batch.covers(&producer, &run, seq))
-            {
-                Some((_, kid)) => refuse(&format!(
+            None => match (
+                compromised
+                    .iter()
+                    .find(|(batch, _)| batch.covers(&producer, &run, seq)),
+                unkeyed
+                    .iter()
+                    .find(|(batch, _)| batch.covers(&producer, &run, seq)),
+            ) {
+                (Some((batch, _)), _) => refuse(&format!(
+                    "its batch is signed by `{}`, revoked, after its compromise",
+                    batch.kid
+                )),
+                (None, Some((_, kid))) => refuse(&format!(
                     "its batch is signed by `{kid}`, a key not given: give that producer's keys"
                 )),
-                None => refuse("its path reaches no signed batch of its own stream covering it"),
+                (None, None) => {
+                    refuse("its path reaches no signed batch of its own stream covering it")
+                }
             },
         }
     }

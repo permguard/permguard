@@ -22,7 +22,8 @@
 
 use std::process::ExitCode;
 
-use crate::decisions::{Filter, MAX_PAGES, Page, report, verify};
+use crate::decisions::{Filter, MAX_PAGES, Page, report, verify_under};
+use crate::key_documents::KeyDocument;
 use permguard_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
@@ -68,7 +69,7 @@ fn not_taken(command: &str, query: &DecisionsQuery) -> Result<(), Failure> {
     if query.verify {
         given.push("--verify");
     }
-    if query.keys.is_some() {
+    if !query.keys.is_empty() {
         given.push("--keys");
     }
     if query.decision.is_some() {
@@ -131,7 +132,7 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
             },
         )
     });
-    let report = report(&scope, read, &filter_of(query), keys.as_deref());
+    let report = report(&scope, read, &filter_of(query), keys.as_ref());
     match evidence {
         Some((records, envelopes, inclusion, summary)) => {
             let unverified_report = unverified(&report);
@@ -239,7 +240,7 @@ fn read_scope(scope: &DecisionArchiveScope) -> ReadScope {
 /// (WP-6.3b, F-07): a record altered, a record of another scope, an envelope not signed by the
 /// keys given, or a stream archive missing part of a batch exits `2`. A tenant view is a
 /// subsequence by design: what proves each of its records is its own inclusion path.
-fn verify_file(globals: &Globals, file: &str, keys: &str) -> Result<ExitCode, Failure> {
+fn verify_file(globals: &Globals, file: &str, keys: &[String]) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let named = crate::session::rooted(globals, file);
     trace.say(format!(
@@ -263,7 +264,8 @@ fn verify_file(globals: &Globals, file: &str, keys: &str) -> Result<ExitCode, Fa
             permguard_core::codes::client::DECISION_EXPORT_MALFORMED,
         ),
     })?;
-    let (verified, report) = verify_archive(archive, &read_keys(globals, keys)?)?;
+    let keys = crate::key_documents::read(globals, keys)?.unwrap_or_default();
+    let (verified, report) = verify_archive(archive, &keys)?;
     render(&report, globals.output, &trace)?;
     if !verified {
         // A verification that ran and did not pass: exit 2 (TC-1, owner decision).
@@ -463,8 +465,9 @@ fn format_unsupported(declared: &str) -> Failure {
 /// verify: an archive stripped of its envelopes is well-formed and attributed to nobody.
 fn verify_archive(
     archive: DecisionArchive,
-    keys: &[Jwk],
+    document: &KeyDocument,
 ) -> Result<(bool, DecisionsReport), Failure> {
+    let keys = document.keys.as_slice();
     if archive.format != permguard_core::domains::interface::DECISIONS_EXPORT_V1 {
         return Err(format_unsupported(&archive.format));
     }
@@ -478,12 +481,12 @@ fn verify_archive(
         ));
     }
     let scope = read_scope(&archive.scope_binding);
-    let checked = verify(
+    let checked = verify_under(
         &scope,
         &archive.records,
         &archive.envelopes,
         &archive.inclusion,
-        Some(keys),
+        Some(document),
     );
     let attributed = archive.records.is_empty() || checked.signatures > 0;
     let scoped = bound(&archive.scope_binding, &archive.records, &checked.resources);
@@ -506,7 +509,7 @@ fn verify_archive(
         since: None,
         decision: None,
         verify: false,
-        keys: None,
+        keys: Vec::new(),
         ignore_workspace: true,
     };
     let mut report = report(
@@ -520,7 +523,7 @@ fn verify_archive(
             more: archive.summary.more,
         },
         &filter_of(&query),
-        Some(keys),
+        Some(document),
     );
     let mut checked = checked;
     if let Err(outside) = scoped {
@@ -573,7 +576,7 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
                     more,
                 },
                 &filter_of(query),
-                keys.as_deref(),
+                keys.as_ref(),
             );
             render(&report, globals.output, &trace)?;
             // A followed tail stops at the first page that does not verify: what follows a
@@ -750,25 +753,8 @@ fn connect(
 }
 
 /// The producer's published key set, when one was given.
-fn key_set(globals: &Globals, query: &DecisionsQuery) -> Result<Option<Vec<Jwk>>, Failure> {
-    let Some(path) = &query.keys else {
-        return Ok(None);
-    };
-    read_keys(globals, path).map(Some)
-}
-
-/// The key set at `path`, a JWKS.
-fn read_keys(globals: &Globals, path: &str) -> Result<Vec<Jwk>, Failure> {
-    // `-w` says where a relative path is read from, and this is one.
-    let named = crate::session::rooted(globals, path);
-    let text = std::fs::read_to_string(&named)
-        .map_err(|error| Failure::usage(format!("reading {}: {error}", named.display())))?;
-    let parsed: Value = serde_json::from_str(&text)
-        .map_err(|error| Failure::usage(format!("{path} is not a JWKS: {error}")))?;
-    let keys = parsed.get("keys").cloned().unwrap_or(parsed);
-
-    serde_json::from_value(keys)
-        .map_err(|error| Failure::usage(format!("{path} is not a JWKS: {error}")))
+fn key_set(globals: &Globals, query: &DecisionsQuery) -> Result<Option<KeyDocument>, Failure> {
+    crate::key_documents::read(globals, &query.keys)
 }
 
 fn read_failure(error: ReadError) -> Failure {
@@ -832,6 +818,7 @@ mod host_verify {
 
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
+    use crate::decisions::verify;
     use permguard_decisions::{merkle, record};
 
     fn build() -> Build {
@@ -1035,6 +1022,9 @@ mod host_verify {
             head: String::new(),
             merkle_root: String::new(),
             resource: String::new(),
+            previous_head: String::new(),
+            created_at: String::new(),
+            kid: String::new(),
         };
         assert!(batch.covers(&"01".repeat(16), &"07".repeat(16), 2));
         assert!(!batch.covers(&"02".repeat(16), &"07".repeat(16), 2));
@@ -1079,6 +1069,10 @@ mod host_verify {
         assert_eq!(verified.signatures_failed, 0, "not a failed signature");
         assert_eq!(verified.signatures_unkeyed, 1);
         assert_eq!(verified.not_included, Some(2));
+        assert!(
+            !verified.holds(),
+            "a batch no key given judges is not verified (DEC-0011)"
+        );
         assert!(
             verified
                 .refused
@@ -1150,6 +1144,14 @@ mod archive_verify {
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
     use permguard_decisions::{merkle, record};
+
+    /// A key document of `keys`, no revocation.
+    fn held(keys: &[Jwk]) -> KeyDocument {
+        KeyDocument {
+            keys: keys.to_vec(),
+            revoked: Default::default(),
+        }
+    }
 
     /// Three markers of the run `run` of the producer `pdp`, each two hex digits repeated.
     fn records_by(pdp: &str, run: &str) -> Vec<Value> {
@@ -1329,9 +1331,10 @@ mod archive_verify {
     fn an_untouched_decision_export_verifies_offline() {
         let key = Key::new("k1");
         for scope in scopes() {
-            let (verified, report) = verify_archive(archive(&key, scope.clone()), &[key.jwk()])
-                .ok()
-                .expect("checked");
+            let (verified, report) =
+                verify_archive(archive(&key, scope.clone()), &held(&[key.jwk()]))
+                    .ok()
+                    .expect("checked");
             assert!(verified, "{scope:?}: {:?}", report.verified);
             let root = written(
                 &format!(
@@ -1341,7 +1344,9 @@ mod archive_verify {
                 &archive(&key, scope),
                 &key,
             );
-            assert!(verify_file(&globals(&root), "archive.json", "keys.json").is_ok());
+            assert!(
+                verify_file(&globals(&root), "archive.json", &["keys.json".to_string()]).is_ok()
+            );
         }
     }
 
@@ -1351,7 +1356,7 @@ mod archive_verify {
         for scope in scopes() {
             let mut altered = archive(&key, scope.clone());
             altered.records[1]["commitments"]["key_version"] = serde_json::json!("v9");
-            let (verified, _) = verify_archive(altered.clone(), &[key.jwk()])
+            let (verified, _) = verify_archive(altered.clone(), &held(&[key.jwk()]))
                 .ok()
                 .expect("checked");
             assert!(!verified, "{scope:?}");
@@ -1363,7 +1368,7 @@ mod archive_verify {
                 &altered,
                 &key,
             );
-            let refused = verify_file(&globals(&root), "archive.json", "keys.json")
+            let refused = verify_file(&globals(&root), "archive.json", &["keys.json".to_string()])
                 .expect_err("an altered record");
             assert_eq!(refused.status, crate::failure::EXIT_NOT_READY);
             assert_eq!(
@@ -1375,7 +1380,7 @@ mod archive_verify {
             let mut stripped = archive(&key, scope.clone());
             stripped.envelopes.clear();
             assert!(
-                !verify_archive(stripped, &[key.jwk()])
+                !verify_archive(stripped, &held(&[key.jwk()]))
                     .ok()
                     .expect("checked")
                     .0
@@ -1383,7 +1388,7 @@ mod archive_verify {
             // Signed by a key the set does not hold.
             let other = Key::new("k1");
             assert!(
-                !verify_archive(archive(&key, scope), &[other.jwk()])
+                !verify_archive(archive(&key, scope), &held(&[other.jwk()]))
                     .ok()
                     .expect("checked")
                     .0
@@ -1395,16 +1400,16 @@ mod archive_verify {
     fn a_decision_export_that_cannot_be_read_or_parsed_is_refused() {
         let key = Key::new("k1");
         let root = written("unreadable", &archive(&key, scopes()[0].clone()), &key);
-        let refused =
-            verify_file(&globals(&root), "missing.json", "keys.json").expect_err("no such file");
+        let refused = verify_file(&globals(&root), "missing.json", &["keys.json".to_string()])
+            .expect_err("no such file");
         assert_eq!(refused.status, crate::failure::EXIT_USAGE);
         assert_eq!(
             refused.code,
             permguard_core::codes::client::DECISION_EXPORT_UNREADABLE
         );
         std::fs::write(root.join("garbage.json"), b"{ not an archive").expect("written");
-        let refused =
-            verify_file(&globals(&root), "garbage.json", "keys.json").expect_err("not an archive");
+        let refused = verify_file(&globals(&root), "garbage.json", &["keys.json".to_string()])
+            .expect_err("not an archive");
         assert_eq!(refused.status, crate::failure::EXIT_USAGE);
         assert_eq!(
             refused.code,
@@ -1417,7 +1422,7 @@ mod archive_verify {
         let key = Key::new("k1");
         let mut other = archive(&key, scopes()[0].clone());
         other.format = permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1.to_owned();
-        let refused = verify_archive(other, &[key.jwk()]).expect_err("another format");
+        let refused = verify_archive(other, &held(&[key.jwk()])).expect_err("another format");
         assert_eq!(refused.status, crate::failure::EXIT_USAGE);
         assert_eq!(
             refused.code,
@@ -1425,7 +1430,7 @@ mod archive_verify {
         );
         let mut truncated = archive(&key, scopes()[0].clone());
         truncated.summary.truncated = true;
-        let refused = verify_archive(truncated, &[key.jwk()]).expect_err("truncated");
+        let refused = verify_archive(truncated, &held(&[key.jwk()])).expect_err("truncated");
         assert_eq!(
             refused.code,
             permguard_core::codes::client::DECISION_EXPORT_TRUNCATED
@@ -1450,7 +1455,7 @@ mod archive_verify {
             parsed.command,
             Some(crate::args::Command::Decisions {
                 action: DecisionsAction::Verify { ref file, ref keys },
-            }) if file == "decisions.json" && keys == "keys.json"
+            }) if file == "decisions.json" && keys == &["keys.json".to_string()]
         ));
         for missing in [
             vec![
@@ -1478,7 +1483,7 @@ mod archive_verify {
             instance: "07".repeat(16),
         };
         assert!(
-            !verify_archive(relabelled, &[key.jwk()])
+            !verify_archive(relabelled, &held(&[key.jwk()]))
                 .ok()
                 .expect("checked")
                 .0
@@ -1560,10 +1565,20 @@ mod archive_verify {
         let stream = scopes()[0].clone();
         let mut tail = archive(&key, stream.clone());
         tail.records.pop();
-        assert!(!verify_archive(tail, &[key.jwk()]).ok().expect("checked").0);
+        assert!(
+            !verify_archive(tail, &held(&[key.jwk()]))
+                .ok()
+                .expect("checked")
+                .0
+        );
         let mut head = archive(&key, stream);
         head.records.remove(0);
-        assert!(!verify_archive(head, &[key.jwk()]).ok().expect("checked").0);
+        assert!(
+            !verify_archive(head, &held(&[key.jwk()]))
+                .ok()
+                .expect("checked")
+                .0
+        );
     }
 
     /// After the review: a tenant archive spanning two runs, each starting at 1, pairs each
@@ -1577,7 +1592,9 @@ mod archive_verify {
         both.records.extend(other.records);
         both.envelopes.extend(other.envelopes);
         both.inclusion.extend(other.inclusion);
-        let (verified, report) = verify_archive(both, &[key.jwk()]).ok().expect("checked");
+        let (verified, report) = verify_archive(both, &held(&[key.jwk()]))
+            .ok()
+            .expect("checked");
         assert!(verified, "{:?}", report.verified);
         assert_eq!(report.verified.and_then(|held| held.included), Some(6));
     }
@@ -1603,16 +1620,16 @@ mod archive_verify {
         )
         .expect("written");
         assert!(
-            verify_file(&globals(&root), "archive.json", "keys.json").is_ok(),
+            verify_file(&globals(&root), "archive.json", &["keys.json".to_string()]).is_ok(),
             "one key set verifies both producers"
         );
-        let (verified, report) = verify_archive(both.clone(), &[first.jwk(), second.jwk()])
+        let (verified, report) = verify_archive(both.clone(), &held(&[first.jwk(), second.jwk()]))
             .ok()
             .expect("checked");
         assert!(verified, "{:?}", report.verified);
         assert_eq!(report.verified.and_then(|held| held.included), Some(6));
 
-        let (verified, _) = verify_archive(both.clone(), &[first.jwk()])
+        let (verified, _) = verify_archive(both.clone(), &held(&[first.jwk()]))
             .ok()
             .expect("checked");
         assert!(
@@ -1622,13 +1639,131 @@ mod archive_verify {
         let refused = verify_file(
             &globals(&written("one-producer", &both, &first)),
             "archive.json",
-            "keys.json",
+            &["keys.json".to_string()],
         )
         .expect_err("a producer's key missing from the set");
         assert_eq!(refused.status, crate::failure::EXIT_NOT_READY);
         assert_eq!(
             refused.code,
             permguard_core::codes::client::DECISIONS_UNVERIFIED
+        );
+    }
+
+    /// BUG-0038, BUG-0165: `--keys` repeats, one file a producer, and a file may be the `keys
+    /// export` of a ring whose key that signed is now only retained: the archive verifies with
+    /// nothing merged by hand, and without one producer's file it does not, exit 2.
+    #[test]
+    fn repeated_key_files_and_a_retained_key_verify_a_tenant_archive() {
+        let (first, second) = (Key::new("k1"), Key::new("k2"));
+        let tenant = scopes()[1].clone();
+        let mut both = archive_by(&first, tenant.clone(), "01", "07");
+        let other = archive_by(&second, tenant, "02", "08");
+        both.records.extend(other.records);
+        both.envelopes.extend(other.envelopes);
+        both.inclusion.extend(other.inclusion);
+        let root = written("repeated-keys", &both, &first);
+        let ring = permguard_host::keys::ring::DATA_ATTEST;
+        std::fs::write(
+            root.join("first.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "ring": ring,
+                "keys": [],
+                "retained": [{"state": "retired", "jwk": first.jwk()}],
+                "revoked": [],
+            }))
+            .expect("JSON"),
+        )
+        .expect("written");
+        std::fs::write(
+            root.join("second.json"),
+            serde_json::to_vec(&serde_json::json!([second.jwk()])).expect("JSON"),
+        )
+        .expect("written");
+        let files = ["first.json".to_owned(), "second.json".to_owned()];
+        assert!(verify_file(&globals(&root), "archive.json", &files).is_ok());
+        let refused = verify_file(&globals(&root), "archive.json", &files[..1])
+            .expect_err("the second producer's keys not given");
+        assert_eq!(refused.status, crate::failure::EXIT_NOT_READY);
+        let document = crate::key_documents::read(&globals(&root), &files[..1])
+            .ok()
+            .flatten()
+            .expect("a document");
+        let (verified, report) = verify_archive(both, &document).ok().expect("checked");
+        assert!(!verified);
+        let checked = report.verified.expect("verified");
+        assert_eq!(checked.signatures_unkeyed, 1, "{checked:?}");
+        assert_eq!(checked.signatures_failed, 0, "not a failed signature");
+        assert!(!checked.holds());
+    }
+
+    /// BUG-0165, BUG-0166: a batch its key signed before the key's `compromised_at` verifies,
+    /// with the revocation said; one signed at or after it does not, and is named by the revoked
+    /// key, its revocation and its compromise, never as an anonymous signature failure.
+    #[test]
+    fn a_batch_signed_after_its_keys_compromise_does_not_verify() {
+        let key = Key::new("k1");
+        let archive = archive_of(&key, scopes()[1].clone(), "07");
+        let signed = permguard_core::time::from_rfc3339("2026-10-19T10:00:00Z").expect("a time");
+        let root = written("compromised", &archive, &key);
+        let revoked = |compromised_at: i64| {
+            std::fs::write(
+                root.join("keys.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "ring": permguard_host::keys::ring::DATA_ATTEST,
+                    "keys": [],
+                    "retained": [{"state": "revoked", "jwk": key.jwk()}],
+                    "revoked": [{
+                        "kid": "k1",
+                        "at": signed + 7200,
+                        "reason": "test compromise",
+                        "compromised_at": compromised_at,
+                    }],
+                }))
+                .expect("JSON"),
+            )
+            .expect("written");
+            crate::key_documents::read(&globals(&root), &["keys.json".to_owned()])
+                .ok()
+                .flatten()
+                .expect("a document")
+        };
+        let files = ["keys.json".to_owned()];
+
+        let document = revoked(signed + 60);
+        assert!(verify_file(&globals(&root), "archive.json", &files).is_ok());
+        let (verified, report) = verify_archive(archive.clone(), &document)
+            .ok()
+            .expect("checked");
+        assert!(verified);
+        let checked = report.verified.expect("verified");
+        assert!(
+            checked.notes.iter().any(|note| note.contains("`k1`")
+                && note.contains("compromised since")
+                && note.contains("it stands")),
+            "{checked:?}"
+        );
+
+        let document = revoked(signed - 60);
+        let refused = verify_file(&globals(&root), "archive.json", &files)
+            .expect_err("signed after the compromise");
+        assert_eq!(refused.status, crate::failure::EXIT_NOT_READY);
+        let (verified, report) = verify_archive(archive, &document).ok().expect("checked");
+        assert!(!verified);
+        let checked = report.verified.expect("verified");
+        assert_eq!(checked.signatures_failed, 0, "not an anonymous failure");
+        assert_eq!(checked.compromised.len(), 1, "{checked:?}");
+        assert!(
+            checked.compromised[0].contains("`k1`")
+                && checked.compromised[0].contains("revoked at")
+                && checked.compromised[0].contains("compromised since"),
+            "{checked:?}"
+        );
+        assert!(
+            checked
+                .refused
+                .iter()
+                .all(|why| why.contains("revoked, after its compromise")),
+            "{checked:?}"
         );
     }
 

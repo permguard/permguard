@@ -13,6 +13,8 @@ use permguard_events::{chain, merkle_of, record};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::key_documents::KeyDocument;
+
 /// How many pages `export`, `get` and `verify` will walk before giving up.
 ///
 /// A bound rather than a loop: a command that walks for ever on a store that keeps growing is a
@@ -151,6 +153,13 @@ pub struct Verified {
     pub signatures_failed: usize,
     /// Stated rather than implied: without a key set, signatures are not checked.
     pub signatures_checked: bool,
+    /// Each batch signed by a revoked key after its compromise, and no later batch vouching for
+    /// it: any fails the verification (BUG-0165, BUG-0166).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compromised: Vec<String>,
+    /// What stands and is worth saying: a batch a revoked key signed before its compromise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 impl Verified {
@@ -159,6 +168,7 @@ impl Verified {
         self.chain.unwrap_or(true)
             && self.not_included == 0
             && (!self.signatures_checked || self.signatures_failed == 0)
+            && self.compromised.is_empty()
     }
 }
 
@@ -246,7 +256,12 @@ impl Read {
 
 /// The page, as the report prints it.
 /// What was read, with its verdict when the shape asks for one, checked against `scope` itself.
-pub fn report(scope: &ReadScope, read: Read, shape: &Shape, keys: Option<&[Jwk]>) -> EventsReport {
+pub fn report(
+    scope: &ReadScope,
+    read: Read,
+    shape: &Shape,
+    keys: Option<&KeyDocument>,
+) -> EventsReport {
     report_checked(scope, scope, read, shape, keys)
 }
 
@@ -257,9 +272,9 @@ pub fn report_checked(
     checked: &ReadScope,
     read: Read,
     shape: &Shape,
-    keys: Option<&[Jwk]>,
+    keys: Option<&KeyDocument>,
 ) -> EventsReport {
-    let verified = shape.verify.then(|| check(checked, &read, keys));
+    let verified = shape.verify.then(|| check_under(checked, &read, keys));
 
     EventsReport {
         scope: match scope {
@@ -373,6 +388,16 @@ fn strings(value: &Value) -> Vec<String> {
 
 /// Checks what was read, as far as the scope allows.
 pub fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
+    let document = keys.map(|keys| KeyDocument {
+        keys: keys.to_vec(),
+        revoked: Default::default(),
+    });
+    check_under(scope, read, document.as_ref())
+}
+
+/// [`check`] under key documents, their revocations applied to the Host batches.
+pub fn check_under(scope: &ReadScope, read: &Read, document: Option<&KeyDocument>) -> Verified {
+    let keys = document.map(|document| document.keys.as_slice());
     // A producer stream is a contiguous history, so the chain is what proves it. A tenant view is
     // a subsequence, so it is not — and reporting a chain result for one would be reporting a
     // failure of arithmetic as a failure of integrity.
@@ -393,7 +418,7 @@ pub fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
     let mut malformed_envelopes = 0;
     // The batches the producing Hosts' engines sealed (WP-6.2b): verified the same way, under the
     // keys given, their records bound by their inclusion paths to the batch's Merkle root.
-    let mut host_batches = Vec::new();
+    let mut signed = Vec::new();
     for value in &read.proof {
         if let Some(held) = crate::host_proof::host_batch(
             value,
@@ -401,10 +426,7 @@ pub fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
             permguard_core::domains::protected::EVENT_BATCH,
         ) {
             match held {
-                Ok(batch) => {
-                    signatures += usize::from(keys.is_some());
-                    host_batches.push(batch);
-                }
+                Ok(batch) => signed.push(batch),
                 Err(()) if keys.is_some() => signatures_failed += 1,
                 Err(()) => malformed_envelopes += 1,
             }
@@ -445,6 +467,17 @@ pub fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
             malformed_envelopes += 1;
         }
     }
+
+    // Their signers' revocations applied: a compromised batch attributes nothing (BUG-0166).
+    let screened = match document {
+        Some(document) => crate::host_proof::screen(signed, document),
+        None => crate::host_proof::Screened {
+            kept: signed,
+            ..Default::default()
+        },
+    };
+    signatures += screened.kept.len() * usize::from(keys.is_some());
+    let host_batches = screened.kept;
 
     let mut included = 0;
     let mut not_included = 0;
@@ -501,6 +534,12 @@ pub fn check(scope: &ReadScope, read: &Read, keys: Option<&[Jwk]>) -> Verified {
         signatures,
         signatures_failed,
         signatures_checked: keys.is_some(),
+        compromised: screened
+            .compromised
+            .into_iter()
+            .map(|(_, why)| why)
+            .collect(),
+        notes: screened.notes,
     }
 }
 

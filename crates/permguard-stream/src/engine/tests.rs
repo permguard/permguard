@@ -6441,6 +6441,186 @@ fn the_offline_check_finds_each_alteration() {
     assert!(!report.sound(), "{}", report.render());
 }
 
+/// BUG-0117: a view file (`STATE`, `ANCHOR`, `PRUNED`) whose checksum does not match is a
+/// finding naming it, never an error that ends the check: the batches and records are still
+/// checked and reported beside it.
+#[test]
+fn a_damaged_view_file_is_a_finding_and_the_check_goes_on() {
+    struct Source;
+    impl super::retention::RetentionSource for Source {
+        fn retention_seconds(&self, _: &str, _: &[u8; 16]) -> Option<u64> {
+            Some(1)
+        }
+    }
+    let host = Host::new("verify-views");
+    let consumer = host
+        .streams()
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+        .with_retention_source(Arc::new(Source));
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    for at in 6..10 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    while let Sealing::Sealed { .. } = producer.seal(&ledger(1), 2).expect("sealed") {}
+    gc(&producer);
+    let keys = super::verify::Keys::from_document(
+        &host.attest.export_document().expect("the ring exports"),
+        DATA_ATTEST,
+    )
+    .expect("the keys");
+    let descriptors = [descriptor()];
+    let producer_dir = host.producer_dir(&ledger(1));
+    let batches = PathBuf::from("batches").join(hex(&run));
+    for view in [
+        PathBuf::from("STATE"),
+        batches.join("ANCHOR"),
+        batches.join("PRUNED"),
+    ] {
+        assert!(producer_dir.join(&view).exists(), "{}", view.display());
+    }
+    let sound =
+        super::verify::verify_directory(&producer_dir, &keys, &descriptors).expect("checked");
+    assert!(sound.sound(), "{}", sound.render());
+
+    for view in [
+        PathBuf::from("STATE"),
+        batches.join("ANCHOR"),
+        batches.join("PRUNED"),
+    ] {
+        let name = view
+            .file_name()
+            .expect("a name")
+            .to_string_lossy()
+            .into_owned();
+        let copy = scratch(&format!("views-{name}")).join("producer");
+        copy_tree(&producer_dir, &copy);
+        let file = copy.join(&view);
+        let mut bytes = std::fs::read(&file).expect("the view");
+        let middle = bytes.len() / 2;
+        bytes[middle] ^= 1;
+        std::fs::write(&file, bytes).expect("flipped");
+        let report = super::verify::verify_directory(&copy, &keys, &descriptors)
+            .expect("a damaged view is a finding, not an error");
+        assert!(!report.sound(), "{name}: {}", report.render());
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.contains(&format!("`{name}` does not read"))),
+            "{name}: {}",
+            report.render()
+        );
+        assert!(report.batches > 0, "{name}: the batches are still checked");
+        assert!(report.records > 0, "{name}: the records are still checked");
+    }
+}
+
+/// BUG-0166: a batch signed at or after its key's `compromised_at` is a finding, unless a later
+/// batch of the run, signed by a key not compromised, chains over it; one signed before stands,
+/// and is noted with the revocation's times.
+#[test]
+fn a_batch_signed_after_its_keys_compromise_fails_the_check() {
+    let host = Host::new("verify-compromised");
+    let consumer = host
+        .streams()
+        .register_consumer(descriptor(), Text)
+        .expect("registered");
+    let producer = small_sealer(&host, descriptor());
+    let run = acknowledged(&producer, &consumer, &host, 6);
+    let descriptors = [descriptor()];
+    let producer_dir = host.producer_dir(&ledger(1));
+    let batches = producer_dir.join("batches").join(hex(&run));
+    let last = batch::SealedBatch::decode(&std::fs::read(batches.join("5-6.jws")).expect("read"))
+        .expect("decoded");
+    let kid = last.kid().expect("a kid");
+    let signed = permguard_core::time::from_rfc3339(
+        &last.envelope_unverified().expect("an envelope").created_at,
+    )
+    .expect("a time");
+    let revoked = |compromised_at: i64| {
+        let mut document: serde_json::Value =
+            serde_json::from_str(&host.attest.export_document().expect("the ring exports"))
+                .expect("JSON");
+        document["revoked"] = serde_json::json!([{
+            "kid": kid,
+            "at": signed + 7200,
+            "reason": "test compromise",
+            "compromised_at": compromised_at,
+        }]);
+        super::verify::Keys::from_document(&document.to_string(), DATA_ATTEST).expect("the keys")
+    };
+    let check = |dir: &Path, keys: &super::verify::Keys| {
+        super::verify::verify_directory(dir, keys, &descriptors).expect("checked")
+    };
+
+    // Compromised after every batch was signed: they stand, and the revocation is named.
+    let report = check(&producer_dir, &revoked(signed + 3600));
+    assert!(report.sound(), "{}", report.render());
+    assert!(
+        report.notes.iter().any(|note| note.contains(&kid)
+            && note.contains("compromised since")
+            && note.contains("it stands")),
+        "{}",
+        report.render()
+    );
+
+    // Compromised before: every batch could be a forgery, and nothing later vouches for them.
+    let report = check(&producer_dir, &revoked(signed - 60));
+    assert!(!report.sound(), "{}", report.render());
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.contains(&kid) && finding.contains("could have signed it"))
+            .count(),
+        3,
+        "{}",
+        report.render()
+    );
+
+    // Without a compromise time, the revocation itself is the boundary.
+    let mut document: serde_json::Value =
+        serde_json::from_str(&host.attest.export_document().expect("the ring exports"))
+            .expect("JSON");
+    document["revoked"] = serde_json::json!([{ "kid": kid, "at": signed - 60, "reason": "" }]);
+    let keys =
+        super::verify::Keys::from_document(&document.to_string(), DATA_ATTEST).expect("the keys");
+    assert!(!check(&producer_dir, &keys).sound());
+
+    // A later batch signed before the compromise chains over the earlier ones: they stand.
+    let altered = scratch("compromised-chained").join("producer");
+    copy_tree(&producer_dir, &altered);
+    let earlier = resign(
+        &host,
+        &last,
+        |_| {},
+        |envelope| {
+            envelope.created_at = permguard_core::time::to_rfc3339(signed - 3600);
+        },
+    );
+    std::fs::write(
+        altered.join("batches").join(hex(&run)).join("5-6.jws"),
+        earlier.encode().expect("encoded"),
+    )
+    .expect("replaced");
+    let report = check(&altered, &revoked(signed - 60));
+    assert!(report.sound(), "{}", report.render());
+    assert_eq!(
+        report
+            .notes
+            .iter()
+            .filter(|note| note.contains("chains over it"))
+            .count(),
+        2,
+        "{}",
+        report.render()
+    );
+}
+
 /// WP-5.7c, after the mutants: batches signed by the ring's own key and still refused — one that
 /// breaks the chain, one of another stream; an anchor whose checkpoint is another batch; a
 /// consumer's records no batch signed.

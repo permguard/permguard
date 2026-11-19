@@ -19,6 +19,14 @@ is cut.
 
 ### Changed
 
+- **`--keys` repeats and reads a `keys export`, and a verification passes only when everything it checked holds.**
+  `decisions verify`, `events verify` and `--verify` on the reads take one `--keys` file per producer, each the `keys export` of its `data.attest` ring or a JWKS, read by the parser `streams verify` uses: a batch an archived (retained) key signed verifies, with nothing merged by hand.
+  A batch signed by a key none of the files carries is reported as such and now fails the check, exit `2`: a script that passed `dp-0.jwks` alone for three producers no longer passes.
+- **A batch signed after its key's compromise fails verification.**
+  `streams verify`, `decisions verify`, `events verify` and `--verify` judge a batch signed by a revoked key by when it was signed: before the key's `compromised_at`, or before its revocation when none is recorded, it stands and is noted; at or after it, it fails, exit `2`, named by the key, its revocation and its compromise, unless a later batch of the same run signed by a key not compromised chains over it, the rule the audit checkpoints already follow.
+- **`streams verify` reports a damaged `STATE`, `ANCHOR` or `PRUNED` as a finding, exit `2`, and goes on.**
+  A view file whose checksum does not match ended the check with exit `1` and hid every other result; it is now a finding naming the file, beside what the batches, the chain and the records show.
+  Exit `1` is kept for a directory or a key document that cannot be read.
 - **`dataPlane.events.pull.ledgers[]` names its ledgers by ids, and the settings that did nothing are refused.**
   The history a shared mode imports and the decisions that read it are keyed by the ledger's ids, so an entry naming its zone or ledger by name imported nothing, said nowhere, and `shared-bounded` refused every decision; such an entry is now refused at start, naming it, and the chart refuses it at render. Write the ids `permguard ledgers get` shows.
   `ledgers[].event_types` is refused as not applied, since the Host imports each ledger's whole history, and `events.pull.interval` (`PERMGUARD_EVENTS_PULL_INTERVAL`) is retired, since nothing polls; both were accepted and inert. The shipped configuration comments show the form that works.

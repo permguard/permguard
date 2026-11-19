@@ -218,6 +218,19 @@ impl Report for DecisionsReport {
             for refused in &verified.refused {
                 writeln!(out, "  {} {refused}", style::dim("           "))?;
             }
+            // A batch a revoked key signed: a failure after its compromise, a note before it
+            // (BUG-0165, BUG-0166).
+            for compromised in &verified.compromised {
+                writeln!(
+                    out,
+                    "  {} {}",
+                    style::dim("revoked    "),
+                    style::delete(compromised)
+                )?;
+            }
+            for note in &verified.notes {
+                writeln!(out, "  {} {note}", style::dim("note       "))?;
+            }
         }
 
         writeln!(out)?;

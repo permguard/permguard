@@ -42,6 +42,7 @@ pub mod engine;
 pub mod events;
 pub mod export_file;
 pub mod host_proof;
+pub mod key_documents;
 pub mod shell;
 
 pub use crate::failure::{

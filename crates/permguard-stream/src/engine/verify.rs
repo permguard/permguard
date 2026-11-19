@@ -16,11 +16,20 @@
 //! | the records               | a record the journal holds at a sealed sequence that is not the  |
 //! |                           | batch's                                                          |
 //!
-//! Records past the last batch are unsealed, and noted; a batch signed by a key the document
-//! revoked is noted too, since a retained key's old signatures still verify.
+//! Records past the last batch are unsealed, and noted.
+//!
+//! A batch signed by a key the document revoked stands when it was signed before the key's
+//! `compromised_at` (or, with none recorded, before its revocation), and is noted. Signed at or
+//! after it, whoever held the key could have produced it, so it is a finding, unless a later batch
+//! of the same run, signed by a key not compromised, chains over it: the rule the audit
+//! checkpoints follow (BUG-0166).
+//!
+//! A view file (`STATE`, `ANCHOR`, `PRUNED`) whose checksum does not match is a finding naming it,
+//! and every other check still runs (BUG-0117). An error is only a directory, a file or a key
+//! document that cannot be read.
 
 use permguard_core::encoding::hex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use permguard_core::keys::Jwk;
@@ -37,7 +46,92 @@ use super::{Descriptor, StreamError, decode_group};
 #[derive(Debug, Clone, Default)]
 pub struct Keys {
     pub keys: Vec<Jwk>,
-    pub revoked: BTreeSet<String>,
+    /// The keys the ring revoked, by `kid`.
+    pub revoked: BTreeMap<String, Revocation>,
+}
+
+/// A key a ring revoked: when, and since when someone else may have held it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Revocation {
+    /// When it was revoked, in Unix seconds.
+    pub at: Option<i64>,
+    /// Since when it may have been held by someone else, in Unix seconds, when the operator knew.
+    pub compromised_at: Option<i64>,
+    pub reason: Option<String>,
+}
+
+impl Revocation {
+    /// From when a signature by the key proves nothing: its compromise, or else its revocation.
+    pub fn boundary(&self) -> Option<i64> {
+        self.compromised_at.or(self.at)
+    }
+
+    fn describe(&self) -> String {
+        let mut text = match self.at {
+            Some(at) => format!("revoked at {}", permguard_core::time::to_rfc3339(at)),
+            None => "revoked".to_owned(),
+        };
+        if let Some(compromised) = self.compromised_at {
+            text.push_str(&format!(
+                ", compromised since {}",
+                permguard_core::time::to_rfc3339(compromised)
+            ));
+        }
+        if let Some(reason) = self.reason.as_deref().filter(|reason| !reason.is_empty()) {
+            text.push_str(&format!(" ({reason})"));
+        }
+        text
+    }
+}
+
+/// How a verified signature stands against the revocations a key document carries (BUG-0165,
+/// BUG-0166).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Standing {
+    /// Signed by a key no ring revoked.
+    Sound,
+    /// Signed by a revoked key before its compromise, or before its revocation when no compromise
+    /// is recorded: it stands, and is worth saying.
+    Before(String),
+    /// Signed at or after that moment, or at a time that does not read: whoever held the key could
+    /// have produced it.
+    Compromised(String),
+}
+
+impl Standing {
+    pub fn is_compromised(&self) -> bool {
+        matches!(self, Self::Compromised(_))
+    }
+}
+
+impl Keys {
+    /// How a signature by `kid`, made at `created_at` (RFC 3339, as an envelope states it),
+    /// stands.
+    pub fn standing(&self, kid: &str, created_at: &str) -> Standing {
+        let Some(revocation) = self.revoked.get(kid) else {
+            return Standing::Sound;
+        };
+        let signed = permguard_core::time::from_rfc3339(created_at);
+        match (signed, revocation.boundary()) {
+            (Some(signed), Some(boundary)) if signed < boundary => Standing::Before(format!(
+                "signed by `{kid}` at {created_at}, before it was {}",
+                revocation.describe()
+            )),
+            _ => Standing::Compromised(format!(
+                "signed by `{kid}` at {created_at}, and it was {}: whoever held the key could \
+                 have signed it",
+                revocation.describe()
+            )),
+        }
+    }
+}
+
+/// Seconds as a key export writes them, or as RFC 3339 text.
+fn seconds(value: Option<&serde_json::Value>) -> Option<i64> {
+    let value = value?;
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(permguard_core::time::from_rfc3339))
 }
 
 impl Keys {
@@ -85,8 +179,20 @@ impl Keys {
             .and_then(serde_json::Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|entry| entry.get("kid").and_then(serde_json::Value::as_str))
-            .map(str::to_owned)
+            .filter_map(|entry| {
+                let kid = entry.get("kid").and_then(serde_json::Value::as_str)?;
+                Some((
+                    kid.to_owned(),
+                    Revocation {
+                        at: seconds(entry.get("at")),
+                        compromised_at: seconds(entry.get("compromised_at")),
+                        reason: entry
+                            .get("reason")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_owned),
+                    },
+                ))
+            })
             .collect();
         Ok(Self { keys, revoked })
     }
@@ -153,6 +259,30 @@ struct Run<'a> {
 /// One run as the producer's journal holds it: its id, the stream its statement names and its
 /// records by sequence.
 type JournalRun = ([u8; 16], KeyView, BTreeMap<u64, Vec<u8>>);
+
+/// A view file as the check reads it.
+enum View {
+    Absent,
+    Held(Vec<u8>),
+    /// Its checksum does not match: the finding is already recorded.
+    Damaged,
+}
+
+/// Reads the view file `name` of `dir`. One whose checksum does not match is a finding naming it,
+/// `what` saying whose it is, and the check goes on without it (BUG-0117).
+fn view(dir: &Dir, name: &str, what: &str, report: &mut Report) -> Result<View, StreamError> {
+    match read_view(dir, name, format::VIEW) {
+        Ok(Some(bytes)) => Ok(View::Held(bytes)),
+        Ok(None) => Ok(View::Absent),
+        Err(permguard_host::storage::StorageError::Corruption(detail)) => {
+            report
+                .findings
+                .push(format!("{what}`{name}` does not read: {detail}"));
+            Ok(View::Damaged)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
 
 /// How far one run's batches reached.
 struct Checked {
@@ -236,11 +366,25 @@ pub fn verify_directory(
                 .to_owned(),
         );
     }
-    let state_bytes = read_view(&dir, "STATE", format::VIEW)?;
+    let (state_bytes, state_damaged) = match view(&dir, "STATE", "", &mut report)? {
+        View::Held(bytes) => (Some(bytes), false),
+        View::Absent => (None, false),
+        View::Damaged => (None, true),
+    };
     let producer_state = state_bytes
         .as_ref()
         .and_then(|bytes| super::state::State::decode(bytes).ok());
-    let is_producer = producer_state.is_some() || frames.iter().any(|frame| frame.kind == RUN_OPEN);
+    // Without a STATE that reads, a producer is still told by its layout: one batch directory a
+    // run, where a consumer run holds its batch files directly.
+    let runs_laid_out = state_damaged
+        && batches
+            .as_ref()
+            .map(Dir::subdirs)
+            .transpose()?
+            .is_some_and(|runs| !runs.is_empty());
+    let is_producer = producer_state.is_some()
+        || runs_laid_out
+        || frames.iter().any(|frame| frame.kind == RUN_OPEN);
     if is_producer {
         verify_producer(
             path,
@@ -249,6 +393,7 @@ pub fn verify_directory(
             &frames,
             producer_state,
             state_bytes.is_some(),
+            state_damaged,
             keys,
             descriptors,
             &mut report,
@@ -276,6 +421,7 @@ fn verify_producer(
     frames: &[permguard_host::storage::journal::Frame],
     state: Option<super::state::State>,
     state_held: bool,
+    state_damaged: bool,
     keys: &Keys,
     descriptors: &[Descriptor],
     report: &mut Report,
@@ -317,6 +463,11 @@ fn verify_producer(
             },
             RECORDS => {
                 let Some((_, _, records)) = runs.last_mut() else {
+                    // The run these records continue is named by the STATE that does not read:
+                    // its batches are still checked, without the journal beside them.
+                    if state_damaged {
+                        continue;
+                    }
                     report
                         .findings
                         .push(format!("frame {} holds records outside a run", frame.index));
@@ -409,21 +560,29 @@ fn verify_producer(
             .map(|batches| batches.subdir(&name, false))
             .transpose()?;
         let Some(run_dir) = run_dir else { continue };
-        let anchor =
-            match read_view(&run_dir, ANCHOR, format::VIEW)?.map(|bytes| Anchor::decode(&bytes)) {
-                Some(Ok(anchor)) => Some(anchor),
-                Some(Err(error)) => {
+        // A damaged anchor is named by the run's own check, which goes on from the first batch.
+        let (anchor, anchor_damaged) = match read_view(&run_dir, ANCHOR, format::VIEW) {
+            Ok(Some(bytes)) => match Anchor::decode(&bytes) {
+                Ok(anchor) => (Some(anchor), false),
+                Err(error) => {
                     report
                         .findings
                         .push(format!("run {name}: its anchor does not decode: {error}"));
                     continue;
                 }
-                None => None,
-            };
-        let covered = anchor.as_ref().is_some_and(|anchor| {
-            batch_files(&run_dir)
-                .is_ok_and(|files| files.iter().all(|(_, last, _)| *last <= anchor.through))
-        });
+            },
+            Ok(None) => (None, false),
+            Err(permguard_host::storage::StorageError::Corruption(_)) => (None, true),
+            Err(error) => return Err(error.into()),
+        };
+        // Without a STATE that reads, the journal cannot say which run it holds: every run's
+        // batches are checked on their own.
+        let covered = state_damaged
+            || anchor_damaged
+            || anchor.as_ref().is_some_and(|anchor| {
+                batch_files(&run_dir)
+                    .is_ok_and(|files| files.iter().all(|(_, last, _)| *last <= anchor.through))
+            });
         if !covered {
             report.findings.push(format!(
                 "run {name}: batches of a run the journal does not hold"
@@ -576,13 +735,6 @@ fn check_run(
                 return None;
             }
         };
-        if let Ok(kid) = batch.kid()
-            && keys.revoked.contains(&kid)
-        {
-            report.notes.push(format!(
-                "run {run_hex}: {what} is signed by `{kid}`, revoked since"
-            ));
-        }
         match batch.verify(&keys.keys, descriptor.batch_typ, descriptor.record_domain) {
             Ok((envelope, records)) => {
                 match stream {
@@ -612,7 +764,11 @@ fn check_run(
                         .push(format!("run {run_hex}: {what} names run {}", envelope.run));
                     return None;
                 }
-                Some((envelope, records))
+                let standing = batch
+                    .kid()
+                    .map(|kid| keys.standing(&kid, &envelope.created_at))
+                    .unwrap_or(Standing::Sound);
+                Some((envelope, records, standing))
             }
             Err(error) => {
                 report
@@ -624,21 +780,43 @@ fn check_run(
     };
 
     // The anchor, then where the batches start: after it, after a pre-anchor mark, or at 1.
+    // A damaged anchor leaves where the batches start unknown: they are checked from the first
+    // one held, the head below it not kept.
+    let mut start_unknown = false;
+    let whose = format!("run {run_hex}: ");
     let anchor = match run.anchor_dir {
-        Some(dir) => {
-            match read_view(dir, ANCHOR, format::VIEW)?.map(|bytes| Anchor::decode(&bytes)) {
-                Some(Ok(anchor)) => Some(anchor),
-                Some(Err(error)) => {
+        Some(dir) => match view(dir, ANCHOR, &whose, report)? {
+            View::Held(bytes) => match Anchor::decode(&bytes) {
+                Ok(anchor) => Some(anchor),
+                Err(error) => {
                     report.findings.push(format!(
                         "run {run_hex}: its anchor does not decode: {error}"
                     ));
                     return Ok(Checked { sealed: 0 });
                 }
-                None => None,
+            },
+            View::Damaged => {
+                start_unknown = true;
+                None
             }
-        }
+            View::Absent => None,
+        },
         None => None,
     };
+    // A producer run's pruned mark is read even under an anchor, so damage to it is seen.
+    let pruned = match run.batches {
+        Some(batches) if run.role == "producer" => match view(batches, "PRUNED", &whose, report)? {
+            View::Held(bytes) => Some(bytes),
+            View::Damaged => {
+                start_unknown |= anchor.is_none();
+                None
+            }
+            View::Absent => None,
+        },
+        _ => None,
+    };
+    // Every signature verified, in chain order, and how it stands against the revocations.
+    let mut signed: Vec<(String, Standing)> = Vec::new();
     let (mut expected, mut previous) = (1u64, Some(GENESIS_HEAD.to_owned()));
     let mut below = 0u64;
     if let Some(anchor) = &anchor {
@@ -656,12 +834,13 @@ fn check_run(
                 anchor.resource
             ));
         }
-        if let Some((envelope, _)) = verify(
+        if let Some((envelope, _, standing)) = verify(
             &anchor.checkpoint,
             "the anchor's checkpoint",
             report,
             &mut stream,
         ) {
+            signed.push(("the anchor's checkpoint".to_owned(), standing));
             if envelope.last_seq != anchor.through || envelope.head != anchor.terminal_head {
                 report.findings.push(format!(
                     "run {run_hex}: the anchor's checkpoint ends at {} with another head than \
@@ -678,10 +857,7 @@ fn check_run(
         expected = anchor.through + 1;
         below = anchor.through;
         previous = Some(anchor.terminal_head.clone());
-    } else if run.role == "producer"
-        && let Some(batches) = run.batches
-        && let Some(bytes) = read_view(batches, "PRUNED", format::VIEW)?
-    {
+    } else if !start_unknown && let Some(bytes) = pruned {
         // A run the WP-5.4 shipping loop truncated before anchors existed: its mark says where
         // the batches start, and the head below them is not kept.
         let mark = super::codec::Map::read(&bytes, "a pruned mark").and_then(|mut map| map.uint(1));
@@ -707,6 +883,11 @@ fn check_run(
         Some(batches) => batch_files(batches)?,
         None => Vec::new(),
     };
+    if start_unknown && let Some((first, _, _)) = files.first() {
+        expected = *first;
+        below = first.saturating_sub(1);
+        previous = None;
+    }
     let first_held = run.records.keys().next().copied();
     let count = files.iter().filter(|(_, last, _)| *last > below).count();
     let mut seen = 0usize;
@@ -728,11 +909,12 @@ fn check_run(
             }
             Err(error) => return Err(error.into()),
         };
-        let Some((envelope, records)) =
+        let Some((envelope, records, standing)) =
             verify(&bytes, &format!("batch `{name}`"), report, &mut stream)
         else {
             continue;
         };
+        signed.push((format!("batch `{name}`"), standing));
         report.batches += 1;
         if envelope.first_seq != first || envelope.last_seq != last {
             report.findings.push(format!(
@@ -784,6 +966,27 @@ fn check_run(
         previous = Some(envelope.head.clone());
         expected = envelope.last_seq + 1;
         sealed = envelope.last_seq;
+    }
+    for (index, (what, standing)) in signed.iter().enumerate() {
+        match standing {
+            Standing::Sound => {}
+            Standing::Before(detail) => report
+                .notes
+                .push(format!("run {run_hex}: {what} is {detail}; it stands")),
+            Standing::Compromised(detail) => match signed[index + 1..]
+                .iter()
+                .find(|(_, later)| !later.is_compromised())
+            {
+                Some((later, _)) => report.notes.push(format!(
+                    "run {run_hex}: {what} is {detail}; it stands, as {later}, signed by a key \
+                     not compromised, chains over it"
+                )),
+                None => report.findings.push(format!(
+                    "run {run_hex}: {what} is {detail}, and no later batch signed by a key not \
+                     compromised chains over it"
+                )),
+            },
+        }
     }
     let unsealed = run.records.keys().filter(|seq| **seq > sealed).count();
     if unsealed > 0 {

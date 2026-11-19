@@ -699,9 +699,11 @@ pub enum DecisionsAction {
         /// server.
         #[arg(long, value_name = "FILE")]
         file: String,
-        /// The producers' published key set (a JWKS file).
-        #[arg(long, value_name = "FILE")]
-        keys: String,
+        /// The producers' keys: the `keys export` of each producer's `data.attest` ring, or a
+        /// JWKS. Repeat it, one per producer, for a tenant view several Hosts decided; a
+        /// combined set does too. A batch signed by a key none of them carries fails the check.
+        #[arg(long, value_name = "FILE", required = true)]
+        keys: Vec<String>,
     },
 }
 
@@ -859,9 +861,11 @@ pub struct EventsQuery {
     #[arg(long)]
     pub verify: bool,
 
-    /// The producer's published key set (a JWKS file), for `--verify`.
+    /// The producers' keys, for `--verify`: the `keys export` of each producer's `data.attest`
+    /// ring, or a JWKS. Repeat it, one per producer, for a view several Hosts produced; a
+    /// combined set does too. A batch signed by a key none of them carries fails the check.
     #[arg(long, value_name = "FILE")]
-    pub keys: Option<String>,
+    pub keys: Vec<String>,
 
     /// Read the document exactly as asked, even inside a workspace.
     #[arg(long)]
@@ -946,9 +950,11 @@ pub struct DecisionsQuery {
     #[arg(long)]
     pub verify: bool,
 
-    /// The producer's published key set (a JWKS file), for `--verify`.
+    /// The producers' keys, for `--verify`: the `keys export` of each producer's `data.attest`
+    /// ring, or a JWKS. Repeat it, one per producer, for a view several Hosts produced; a
+    /// combined set does too. A batch signed by a key none of them carries fails the check.
     #[arg(long, value_name = "FILE")]
-    pub keys: Option<String>,
+    pub keys: Vec<String>,
 
     /// Read the document exactly as asked, even inside a workspace.
     #[arg(long)]

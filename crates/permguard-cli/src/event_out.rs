@@ -162,6 +162,19 @@ impl Report for EventsReport {
                 "not checked (no key set given: pass --keys)".to_owned()
             };
             writeln!(out, "  {} {signatures}", style::dim("signatures "))?;
+            // A batch a revoked key signed: a failure after its compromise, a note before it
+            // (BUG-0165, BUG-0166).
+            for compromised in &verified.compromised {
+                writeln!(
+                    out,
+                    "  {} {}",
+                    style::dim("revoked    "),
+                    style::delete(compromised)
+                )?;
+            }
+            for note in &verified.notes {
+                writeln!(out, "  {} {note}", style::dim("note       "))?;
+            }
         }
 
         writeln!(out)?;

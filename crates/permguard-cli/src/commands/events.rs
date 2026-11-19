@@ -28,10 +28,9 @@
 
 use std::process::ExitCode;
 
-use crate::events::{MAX_PAGES, Read, Shape, check, report, report_checked};
+use crate::events::{MAX_PAGES, Read, Shape, check_under, report, report_checked};
+use crate::key_documents::KeyDocument;
 use permguard_client::events::{self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow};
-use permguard_core::Jwk;
-use serde_json::Value;
 
 use crate::args::{EventsAction, EventsQuery, Globals};
 use crate::event_out::{ArchiveScope, EventArchive, EventReport, SignersReport};
@@ -93,7 +92,7 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
         )
     });
     let checked = checked_scope(globals, query, &scope, &trace);
-    let mut answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_deref());
+    let mut answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_ref());
     answer.truncated = truncated;
     let unverified = unverified(&answer);
     if let Some((records, envelopes, inclusion)) = evidence {
@@ -158,7 +157,7 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
         if !page.records.is_empty() {
             let mut read = Read::default();
             read.absorb(page, &mut ReadWindow::default());
-            let answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_deref());
+            let answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_ref());
             render(&answer, globals.output, &trace)?;
             // A followed tail stops at the first page that does not verify: what follows a
             // record the store cannot account for is not read as if it were.
@@ -278,7 +277,7 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
 
     // The records carry ids, so they are checked against the ids the names resolve to (BUG-0132).
     let resolved = by_ids(globals, query, &scope, &trace);
-    let checked = check(&resolved, &read, Some(&keys));
+    let checked = check_under(&resolved, &read, Some(&keys));
     let holds = checked.holds();
     let mut report = report_checked(&scope, &resolved, read, &shape_of(query), Some(&keys));
     report.truncated = truncated;
@@ -361,7 +360,7 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
         examined: archive.summary.coverage.examined,
         scan_bounded: archive.summary.coverage.scan_bounded,
     };
-    let checked = check(&scope, &read, Some(&keys));
+    let checked = check_under(&scope, &read, Some(&keys));
     let holds = checked.holds();
     let mut answer = report(&scope, read, &shape_of(query), Some(&keys));
     answer.truncated = archive.summary.truncated;
@@ -590,61 +589,13 @@ fn read_scope(scope: &ArchiveScope) -> ReadScope {
     }
 }
 
-/// The producer's published key set, when one was named.
-fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<Vec<Jwk>>, Failure> {
-    let Some(path) = &query.keys else {
-        return Ok(None);
-    };
-    // `-w` says where a relative path is read from, and this is one.
-    let named = crate::session::rooted(globals, path);
-    let text = std::fs::read_to_string(&named).map_err(|error| {
-        Failure::usage(format!("reading {}: {error}", named.display()))
-            .named("validation", permguard_core::codes::client::KEYS_UNREADABLE)
-    })?;
-    let parsed: Value = serde_json::from_str(&text).map_err(|error| {
-        Failure::usage(format!(
-            "{} is not a JWKS document: {error}",
-            named.display()
-        ))
-        .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
-    })?;
-    let values = parsed
-        .get("keys")
-        .and_then(Value::as_array)
-        .cloned()
-        .ok_or_else(|| {
-            Failure::usage(format!(
-                "{} is a JWKS document with no `keys` array",
-                named.display()
-            ))
-            .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
-        })?;
-    let keys: Vec<Jwk> = values
-        .into_iter()
-        .enumerate()
-        .map(|(index, value)| {
-            serde_json::from_value(value).map_err(|error| {
-                Failure::usage(format!(
-                    "{} has a malformed key at index {index}: {error}",
-                    named.display()
-                ))
-                .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
-            })
-        })
-        .collect::<Result<_, _>>()?;
-    if keys.is_empty() {
-        return Err(Failure::usage(format!(
-            "{} publishes no verification keys",
-            named.display()
-        ))
-        .named("validation", permguard_core::codes::client::KEYS_EMPTY));
-    }
-
-    Ok(Some(keys))
+/// The producers' keys, when `--keys` named any (BUG-0038, BUG-0165): every file together.
+fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<KeyDocument>, Failure> {
+    crate::key_documents::read(globals, &query.keys)
 }
 
 /// The trust anchor an independent verification requires.
-fn verification_keys(globals: &Globals, query: &EventsQuery) -> Result<Vec<Jwk>, Failure> {
+fn verification_keys(globals: &Globals, query: &EventsQuery) -> Result<KeyDocument, Failure> {
     key_set(globals, query)?.ok_or_else(|| {
         Failure::usage(
             "independent event verification requires the producer's JWKS: pass `--keys <FILE>`"
@@ -703,10 +654,11 @@ mod host_verify {
 
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::super::host_proof::testing::{Key, sealed};
     use super::*;
+    use crate::events::check;
     use permguard_events::record;
 
     const ZONE: &str = "acme";
