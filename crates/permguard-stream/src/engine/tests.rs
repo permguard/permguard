@@ -8043,3 +8043,45 @@ fn a_closed_producer_seals_its_tail_and_takes_no_more_records() {
         Err(StreamError::Closed)
     ));
 }
+
+/// BUG-0163: a stream an identity a reset retired left on the volume, holding records no
+/// subscription acknowledged, is found by the identity serving now, named with its resource, the
+/// retired producer and its record count, and listed `retired`; its journal is only read.
+#[test]
+fn a_stream_a_retired_identity_left_is_stated_and_listed() {
+    use super::reads::Inspect as _;
+
+    let host = Host::new("retired-left");
+    {
+        let producer = host.sealer();
+        for at in 0..3 {
+            producer
+                .append(&ledger(1), &format!("r{at}"))
+                .expect("appended");
+        }
+    }
+    // What a reset leaves: the old identity's producer directory beside the new one's.
+    let dir = host.producer_dir(&ledger(1));
+    let retired_id = [0x7a; 16];
+    let moved = dir.with_file_name(hex(&retired_id));
+    std::fs::rename(&dir, &moved).expect("moved");
+
+    let producer = host.sealer();
+    let retired = producer.retired_streams().expect("read");
+    assert_eq!(retired.len(), 1, "{retired:?}");
+    assert_eq!(retired[0].resource, ledger(1).to_string());
+    assert_eq!(retired[0].producer, retired_id);
+    assert_eq!(retired[0].records, 3);
+    assert_eq!(
+        retired[0].stream,
+        format!("{}/{}", descriptor().plane, descriptor().stream_type)
+    );
+    let view = producer.view().expect("listed");
+    assert!(
+        view.resources
+            .iter()
+            .any(|state| state.state == "retired" && state.resource == ledger(1).to_string()),
+        "{view:?}"
+    );
+    assert!(moved.join("STATE").exists(), "left as it was");
+}

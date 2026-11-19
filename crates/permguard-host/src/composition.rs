@@ -2212,6 +2212,14 @@ pub trait StreamShipping: Send + Sync {
     /// would report nothing, which is the silence this exists to end.
     fn refused(&self) -> Result<Vec<RefusedShipping>, String>;
 
+    /// The streams another identity produced on this volume, one an identity reset retired, that
+    /// hold records no subscription acknowledged (BUG-0163): they can never ship, as their
+    /// memberships ended with the identity and their batches name it; stated at every start and
+    /// listed as `retired`, never degrading the Host.
+    fn retired(&self) -> Result<Vec<Retired>, String> {
+        Ok(Vec::new())
+    }
+
     /// Closes every stream to appends, then seals every record appended, while the rings that
     /// sign them are still active: what an identity reset does before it retires them, so no
     /// record is journaled into a run its identity can no longer seal (BUG-0163). Answers how many
@@ -2235,6 +2243,20 @@ pub struct RefusedShipping {
     /// `paused at epoch <n>` until the membership's epoch moves, or `stopped: <reason>` until an
     /// operator acts.
     pub state: String,
+}
+
+/// A stream an identity a reset retired produced on this volume, holding records no subscription
+/// acknowledged (BUG-0163).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Retired {
+    /// `<plane>/<type>`, as the Plane declared the stream.
+    pub stream: String,
+    /// The resource the stream is of, as its first run statement names it.
+    pub resource: String,
+    /// The identity that produced it, which a reset retired.
+    pub producer: [u8; 16],
+    /// The records of its last run no subscription acknowledged.
+    pub records: u64,
 }
 
 /// A stream an incomplete drain left behind its required subscriptions (WP-5.8, owner decision

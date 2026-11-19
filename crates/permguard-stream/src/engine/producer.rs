@@ -423,6 +423,88 @@ impl<C: RecordCodec> Producer<C> {
             .map(|(_, fence)| fence.clone())
     }
 
+    /// The streams of this descriptor another identity produced on this volume, one a reset
+    /// retired, holding records no subscription acknowledged (BUG-0163). Read only: a retired
+    /// journal is never opened for writing, and its run statement is read for the resource it
+    /// names, not trusted, since the keys that signed it went with the identity.
+    pub(crate) fn retired_streams(
+        &self,
+    ) -> Result<Vec<permguard_host::composition::Retired>, StreamError> {
+        let current = hex(&self.context.host_id);
+        let mut found = Vec::new();
+        for component in self.context.dir.subdirs()? {
+            let resource_dir = self.context.dir.subdir(&component, false)?;
+            for producer in resource_dir.subdirs()? {
+                if producer == current {
+                    continue;
+                }
+                let Some(host) = unhex16(&producer) else {
+                    continue;
+                };
+                let dir = resource_dir.subdir(&producer, false)?;
+                if !dir.subdirs()?.iter().any(|name| name == RECORDS_DIR) {
+                    continue;
+                }
+                let state = read_view(&dir, STATE_FILE, format::VIEW)?
+                    .map(|bytes| State::decode(&bytes))
+                    .transpose()?;
+                // The newest run and its last sequence, from the segments, the authority: STATE
+                // is written at a run's open and end, not at every flush.
+                let mut opening = state
+                    .as_ref()
+                    .and_then(|state| state.base.as_ref().map(|base| base.statement.clone()));
+                let mut last = 0;
+                for frame in
+                    permguard_host::storage::journal::read_frames(&dir.subdir(RECORDS_DIR, false)?)?
+                {
+                    match frame.kind {
+                        RUN_OPEN => {
+                            opening = Some(frame.payload);
+                            last = 0;
+                        }
+                        RECORDS => {
+                            let (first, records) = decode_group(&frame.payload)?;
+                            last = first + records.len() as u64 - u64::from(!records.is_empty());
+                        }
+                        _ => {}
+                    }
+                }
+                let Some(statement) = opening
+                    .and_then(|envelope| permguard_objects::cose::Sign1::decode(&envelope).ok())
+                    .and_then(|sign1| RunStatement::decode(sign1.payload_unverified()).ok())
+                else {
+                    continue;
+                };
+                // Acknowledged: the most any subscription of the run took, or what STATE says.
+                let run = statement.run_id;
+                let acknowledged = ship::subscriptions_held(&dir)?
+                    .iter()
+                    .map(|subscription| subscription.acked(&run))
+                    .chain(state.iter().map(|state| state.acknowledged_seq))
+                    .max()
+                    .unwrap_or(0);
+                let records = last.saturating_sub(acknowledged);
+                if records == 0 {
+                    continue;
+                }
+                let key = statement.key;
+                if key.plane != self.descriptor.plane
+                    || key.stream_type != self.descriptor.stream_type
+                    || key.version != self.descriptor.version
+                {
+                    continue;
+                }
+                found.push(permguard_host::composition::Retired {
+                    stream: format!("{}/{}", self.descriptor.plane, self.descriptor.stream_type),
+                    resource: key.resource,
+                    producer: host,
+                    records,
+                });
+            }
+        }
+        Ok(found)
+    }
+
     /// Refuses an append once an identity reset closed the producer (BUG-0163).
     fn open_to_appends(&self) -> Result<(), StreamError> {
         if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1657,4 +1739,16 @@ impl<C: RecordCodec> super::retention::Prunable for Producer<C> {
         }
         Ok(Some(pruned))
     }
+}
+
+/// The 16 bytes 32 hexadecimal characters name, when they do.
+fn unhex16(text: &str) -> Option<[u8; 16]> {
+    if text.len() != 32 {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..32)
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
+        .collect();
+    bytes?.try_into().ok()
 }

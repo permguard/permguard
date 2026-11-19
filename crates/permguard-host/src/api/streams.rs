@@ -49,7 +49,9 @@ pub struct StreamView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceState {
     pub resource: String,
-    /// `open`, `forked`, `behind` (a drain left records unshipped) or `held` (a consumer).
+    /// `open`, `forked`, `behind` (a drain left records unshipped), `held` (a consumer) or
+    /// `retired` (an identity a reset retired left records no subscription acknowledged, which
+    /// can never ship).
     pub state: String,
 }
 

@@ -1047,6 +1047,10 @@ impl<C: RecordCodec> Producer<C> {
 }
 
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn retired(&self) -> Result<Vec<composition::Retired>, String> {
+        self.retired_streams().map_err(|error| error.to_string())
+    }
+
     fn close(&self) -> Result<usize, String> {
         let wrap = |error: StreamError| error.to_string();
         // Closed first: an append racing the seals is refused, never left unsealed behind them.

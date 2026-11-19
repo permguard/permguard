@@ -10091,7 +10091,7 @@
           },
           "state": {
             "type": "string",
-            "description": "`open`, `forked`, `behind` (a drain left records unshipped) or `held` (a consumer).",
+            "description": "`open`, `forked`, `behind` (a drain left records unshipped), `held` (a consumer) or `retired` (an identity a reset retired left records no subscription acknowledged, which can never ship).",
             "x-grpc-field": "state"
           }
         },

@@ -172,6 +172,13 @@ impl<C: RecordCodec> Inspect for Producer<C> {
                 state: state.to_owned(),
             });
         }
+        // What an identity a reset retired left unshipped on this volume (BUG-0163).
+        for retired in self.retired_streams()? {
+            resources.push(ResourceState {
+                resource: retired.resource,
+                state: "retired".to_owned(),
+            });
+        }
         Ok(StreamView {
             plane: self.descriptor.plane.clone(),
             stream_type: self.descriptor.stream_type.clone(),

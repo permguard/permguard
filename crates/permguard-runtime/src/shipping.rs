@@ -142,10 +142,40 @@ pub fn print_receipt(api: &HostApi) -> Result<()> {
     Ok(())
 }
 
+/// States, at every start, the streams an identity a reset retired left on this volume with
+/// records no subscription acknowledged (BUG-0163, owner decision of 2026-11-19): they can never
+/// ship, since their memberships ended with the identity and their batches name it, so they keep
+/// the Host serving rather than degraded, and are said here and listed `retired` by `host streams
+/// list`, each time the server starts, until the volume no longer holds them.
+fn state_retired(api: &HostApi) {
+    match api.streams_retired() {
+        Ok(retired) => {
+            for stream in retired {
+                tracing::warn!(
+                    event.name = "host.stream.retired_unshipped",
+                    component = COMPONENT,
+                    stream = %stream.stream,
+                    resource = %stream.resource,
+                    producer = %permguard_host::identity::record::uuid_text(&stream.producer),
+                    records = stream.records,
+                    "an identity a reset retired left records no subscription acknowledged: they stay on the volume and are never shipped"
+                );
+            }
+        }
+        Err(error) => tracing::error!(
+            event.name = "host.stream.retired_unread",
+            component = COMPONENT,
+            error = %error,
+            "the streams a retired identity left could not be read"
+        ),
+    }
+}
+
 /// Resumes shipping the streams an incomplete drain marked, while the Host is in Load: one pass
 /// within `budget`. A mark that remains keeps the Host `degraded: evidence`, and the periodic
 /// passes go on.
 pub async fn resume(api: &HostApi, budget: Duration) {
+    state_retired(api);
     let marked = match api.settle_unshipped() {
         Ok(marked) => marked,
         Err(error) => {

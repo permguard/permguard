@@ -3057,6 +3057,13 @@ impl HostApi {
         self.shipping().is_some()
     }
 
+    /// The streams an identity a reset retired left on this volume with records no subscription
+    /// acknowledged (BUG-0163): nothing when this Host ships no streams.
+    pub fn streams_retired(&self) -> Result<Vec<crate::composition::Retired>, String> {
+        self.shipping()
+            .map_or(Ok(Vec::new()), |engine| engine.retired())
+    }
+
     /// Whether this process's Host identity was reset (WP-4.9): it signs nothing more, so a drain
     /// ships nothing and only marks what is behind, which needs no identity (BUG-0163).
     pub fn identity_retired(&self) -> bool {

@@ -773,6 +773,14 @@ impl permguard_host::composition::StreamShipping for Served {
         Ok(found)
     }
 
+    fn retired(&self) -> Result<Vec<permguard_host::composition::Retired>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.retired()?);
+        }
+        Ok(found)
+    }
+
     fn close(&self) -> Result<usize, String> {
         // Every producer closed before any seals, so no stream takes a record the others would
         // refuse.
