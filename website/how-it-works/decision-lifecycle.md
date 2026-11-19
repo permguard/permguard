@@ -97,7 +97,7 @@ These are real answers of the Data Plane, abridged:
 ## Why it matters
 
 <div class="pgx-principles">
-  <article><span>Developers</span><h3>One call, then obey.</h3><p>The rule lives in a policy, not in your code: you ask, and anything but a permit is a no.</p></article>
+  <article><span>Developers</span><h3>Ask, then obey.</h3><p>The rule lives in a policy, not in your code: you ask, and anything but a permit is a no.</p></article>
   <article><span>Platform & IT</span><h3>Decided close to the workload.</h3><p>The Data Plane already holds the policy, so a decision never waits for the Control Plane.</p></article>
   <article><span>Security & CISO</span><h3>Every answer has a reason.</h3><p>Nothing is permitted unless a policy permits it, and every answer names the policy and is on record.</p></article>
 </div>

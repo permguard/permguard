@@ -147,11 +147,11 @@ import { withBase } from 'vitepress'
   </section>
 
   <section class="pgx-section pgx-section--tint">
-    <div class="pgx-section-head"><div><div class="pgx-kicker">In practice</div><h2>One line in your code asks.</h2></div><p>Any enforcement point asks the same way: an SDK in your code, or a gateway or tool calling the HTTP or gRPC API. No answer is a no.</p></div>
-    <div class="pgx-discovery pgx-discovery--decision" role="img" aria-label="Your code asks whether a subject may perform an action on a resource; the Data Plane decides with the verified policy and records the decision; your code applies the answer.">
-      <article><small>YOUR CODE · ASK</small><strong>May alice read the budget?</strong><span>through the SDK, your PEP</span></article><i>→</i>
+    <div class="pgx-section-head"><div><div class="pgx-kicker">In practice</div><h2>One SDK, every enforcement point.</h2></div><p>A well-structured SDK, the same in Python, Go, Java, .NET, Node.js and Rust: one request shape, one answer, one way to fail closed, whether the enforcement point is an application, an agent, a gateway or a tool. Components without an SDK call the same HTTP or gRPC API.</p></div>
+    <div class="pgx-discovery pgx-discovery--decision" role="img" aria-label="An enforcement point asks, through the Permguard SDK, whether a subject may perform an action on a resource; the Data Plane decides with the verified policy and records the decision; the enforcement point applies the answer.">
+      <article><small>ENFORCEMENT POINT · ASK</small><strong>May alice read the budget?</strong><span>through the Permguard SDK</span></article><i>→</i>
       <article class="pgx-discovery__accent"><small>DATA PLANE · DECIDE</small><strong>Verified policy, signed record</strong><span>permit or deny, on record</span></article><i>→</i>
-      <article><small>YOUR CODE · ENFORCE</small><strong>Apply the answer</strong><span>serve the budget, or refuse</span></article>
+      <article><small>ENFORCEMENT POINT · OBEY</small><strong>Apply the answer</strong><span>serve the budget, or refuse</span></article>
     </div>
     <div class="vp-doc pgx-sdk-ask">
 
@@ -173,7 +173,7 @@ import { withBase } from 'vitepress'
   <section class="pgx-section pgx-section--tint">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Why it matters</div><h2>Fast answers you can prove.</h2></div><p>What each role gets from a decision point beside every workload.</p></div>
     <div class="pgx-principles">
-      <article><span>Developers</span><h3>One call, every language.</h3><p>Ask with the SDK for Go, Java, .NET, Node.js, Python or Rust. No rule in your code, and the same answer everywhere.</p></article>
+      <article><span>Developers</span><h3>One SDK, every language.</h3><p>The same structure in Go, Java, .NET, Node.js, Python and Rust. No rule in your code, and the same answer everywhere.</p></article>
       <article><span>Platform &amp; IT</span><h3>Decisions that do not wait.</h3><p>The policy is already in the Data Plane: deciding never waits for the Control Plane, and keeps going if it is down.</p></article>
       <article><span>Security &amp; CISO</span><h3>Every answer, provable.</h3><p>Every decision names the exact policy and version that made it, in a signed chain you can export to your SIEM and verify later.</p></article>
     </div>

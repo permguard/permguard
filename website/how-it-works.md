@@ -182,7 +182,7 @@ onBeforeUnmount(() => observer?.disconnect())
       <dl class="pgx-legend">
         <div data-term="cp"><dt><a :href="withBase('/how-it-works/glossary#control-plane')">Control Plane</a></dt><dd>The center: policies, decision logs and events.</dd></div>
         <div data-term="pdp"><dt><a :href="withBase('/how-it-works/glossary#pdp')">PDP</a></dt><dd>Policy Decision Point: answers permit or deny, beside each workload.</dd></div>
-        <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>Policy Enforcement Point: the line in your code that asks, and obeys.</dd></div>
+        <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>Policy Enforcement Point: wherever an action is guarded, the SDK asks, and the answer is obeyed.</dd></div>
         <div data-term="idp"><dt><a :href="withBase('/how-it-works/glossary#identity-provider')">Your IdP</a></dt><dd>Says who the user is. Permguard decides what they may do.</dd></div>
         <div data-term="evidence"><dt><a :href="withBase('/how-it-works/glossary#evidence')">Evidence</a></dt><dd>A signed record of every decision, chained to the one before.</dd></div>
         <div data-term="siem"><dt><a :href="withBase('/how-it-works/glossary#siem')">Your SIEM · CTI</a></dt><dd>Your own security tools: analyse the records beside your other logs and cross them with your cyber threat intelligence.</dd></div>
