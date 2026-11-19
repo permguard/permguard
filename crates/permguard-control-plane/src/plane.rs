@@ -591,6 +591,8 @@ pub fn verified_trees() -> Vec<permguard_host::storage::verify::VerifiedTree> {
 /// sample of its objects, collecting and sweeping.
 pub fn services(composition: &Composition) -> Vec<Box<dyn permguard_core::PlaneTask>> {
     vec![
+        // First: what Load verifies before the plane reports ready (BUG-0255).
+        Box::new(crate::readiness::ReadinessService::new()),
         Box::new(crate::inventory::InventoryService::new()),
         // What startup does not read: a sample of the objects, checked in the background.
         Box::new(crate::verify::VerifyService::new()),

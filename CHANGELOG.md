@@ -226,6 +226,22 @@ is cut.
 
 ### Fixed
 
+- **`decisions export -o json|yaml` refuses `--since` and `--decision` instead of ignoring them.**
+  The archive held every decision of its scope whatever the filters said, while the terminal form applied them; an archive is the whole signed snapshot `decisions verify --file` checks, so the filters are now refused there, exit `64`, and the terminal report still applies them.
+- **The decision evidence contract says what the reads answer.**
+  `evidence-decisions.json` claimed `proof` took `1` or `yes` and that `limit_records` won over `limit`; the server refuses both, and the contract now says so. Both reads document `404`, `stream_unknown` or `scope_unknown`, and `503`, and a test checks every documented value and status against the router.
+- **`decisions signers` asked for a ledger says why and how to name a run.**
+  The signer manifest is per producer run, as `decisions list` prints them (`pdp`, `instance`); a Host run named that way is answered from the consumer.
+- **A request routed during `shutdown.deregister_delay` is served.**
+  The Planes entered Draining before the delay, so every domain route answered `503 plane_not_ready` while the listeners stayed open for nothing.
+  They now keep accepting work through the delay and enter Draining when intake stops; `/readyz` and each Plane's gRPC health answer not ready from the start of the delay.
+- **The Control Plane is ready only once its ledgers and its signing key verify.**
+  A ledger's `FORMAT` and refs were checked on its first request, so a Control Plane holding an incompatible or damaged ledger answered ready and failed that request.
+  Before the Plane reports ready, every ledger of the catalog must carry this build's `FORMAT`, or hold nothing yet, and every ref must read and name a head the store holds; where the git-like store is served, `control.attest` must have an active key.
+  What does not verify keeps the Plane in `load`, named under `ledgers` or `control.attest` (`control.ledgers_unverified` at WARN); the check runs again every minute, so a repair makes it ready without a restart, and a ledger damaged later is reported as degraded.
+- **A member with a short `evidence_shipping_lag` no longer drops out of readiness on every ship pass.**
+  A member ships once per 60s membership pass, so a record waiting for the next pass was counted as a stall, and an objective under about 75s made a healthy member `degraded: shipping` and not ready between passes.
+  A stream is now stalled, and the objective's hold applies, only past 75s, one ship pass and one watch pass, whatever the objective; an objective whose margin is below that is said at start (`host.objective_below_ship_pass`): declare at least 94s.
 - **The Dogwood session example denies a read after a logout.**
   `examples/dogwood-session-access` wrote "no logout since the login" as a second conjunct, `formerly within 1h Login… && !Logout…`, which tests only the occurrence being decided, a read, so a logout never ended the session; its policy is now `!Logout… since within 1h Login…`, with a case and a fixture for the logout, and How it works shows the same.
 - **A version 2 Dogwood event refused for a field names `fields.…`, the member the caller sent.**

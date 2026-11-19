@@ -1463,6 +1463,82 @@ mod strict {
         )
     }
 
+    /// BUG-0139: `evidence-decisions.json` says what the reads answer. Every status the router
+    /// answers to the documented parameter values, and to an unknown scope, is one the contract
+    /// lists for that route; `proof` is `true` or `false` only, `limit` and `limit_records`
+    /// together are refused, and an unknown stream or ledger is `404`, as the contract now says.
+    #[tokio::test]
+    async fn the_reads_answer_only_what_the_contract_documents() {
+        let contract: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../contracts/openapi/evidence-decisions.json"),
+            )
+            .expect("the contract reads"),
+        )
+        .expect("the contract parses");
+        let documented = |route: &str| -> Vec<String> {
+            contract["paths"][route]["get"]["responses"]
+                .as_object()
+                .map(|responses| responses.keys().cloned().collect())
+                .unwrap_or_default()
+        };
+        let router = anonymous(routes(facade("contract")));
+        let tenant = "/decisions/v1/zones/{zone}/ledgers/{ledger}/records";
+        let stream = "/decisions/v1/streams/{pdp}/{instance}/records";
+        for (route, path) in [
+            (tenant, "/decisions/v1/zones/acme/ledgers/main/records"),
+            (stream, "/decisions/v1/streams/pdp-a/run-1/records"),
+        ] {
+            let listed = documented(route);
+            assert!(
+                ["200", "400", "404", "410", "503"]
+                    .iter()
+                    .all(|status| listed.iter().any(|held| held == status)),
+                "{route}: {listed:?}"
+            );
+            for (query, expected) in [
+                ("proof=true", None),
+                ("proof=false", None),
+                ("proof=1", Some(StatusCode::BAD_REQUEST)),
+                ("proof=yes", Some(StatusCode::BAD_REQUEST)),
+                ("limit=3", None),
+                ("limit_records=5", None),
+                ("limit=3&limit_records=5", Some(StatusCode::BAD_REQUEST)),
+            ] {
+                let (status, body) = get(&router, &format!("{path}?{query}")).await;
+                if let Some(expected) = expected {
+                    assert_eq!(status, expected, "{route}?{query}: {body}");
+                }
+                assert!(
+                    listed.iter().any(|held| held == status.as_str()),
+                    "{route}?{query} answered {status}, which the contract does not list: {body}"
+                );
+            }
+        }
+        let (status, body) = get(&router, "/decisions/v1/zones/nope/ledgers/none/records").await;
+        assert!(
+            documented(tenant)
+                .iter()
+                .any(|held| held == status.as_str()),
+            "an unknown ledger answered {status}: {body}"
+        );
+        let proof = contract["paths"][tenant]["get"]["parameters"]
+            .as_array()
+            .and_then(|parameters| {
+                parameters
+                    .iter()
+                    .find(|parameter| parameter["name"] == "proof")
+            })
+            .and_then(|parameter| parameter["description"].as_str())
+            .unwrap_or_default()
+            .to_owned();
+        assert!(
+            !proof.contains("`1`") && !proof.contains("`yes`"),
+            "{proof}"
+        );
+    }
+
     /// WP-5.5: a read refuses a parameter it does not name, one given twice, a number or a flag
     /// that does not parse and an `until` it did not issue, as validation; a cursor of another
     /// API, resource or filter set is `forged`; a malformed one `offset_invalid`.

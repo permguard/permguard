@@ -3,7 +3,8 @@
 
 //! The gRPC Health Checking Protocol's `Check` on every Plane's gRPC surface: what HTTP's
 //! `/healthz` and `/readyz` answer, for a load balancer or an orchestrator that probes over gRPC.
-//! `SERVING` while the Plane accepts work, `NOT_SERVING` before and after; a service name other
+//! `SERVING` while the Plane accepts work and the Host is not stopping, `NOT_SERVING` before and
+//! after, the deregister delay included (BUG-0280); a service name other
 //! than the surface's own, empty, or its Plane's, is `NOT_FOUND`, as the protocol says.
 
 use tonic::{Request, Response, Status};
@@ -37,7 +38,7 @@ impl Health for PlaneHealthCheck {
                 self.health.plane()
             )));
         }
-        let serving = self.health.phase().accepts_work();
+        let serving = self.health.serving();
         Ok(Response::new(HealthCheckResponse {
             status: if serving {
                 ServingStatus::Serving

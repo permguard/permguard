@@ -99,6 +99,31 @@ fn not_taken(command: &str, query: &DecisionsQuery) -> Result<(), Failure> {
 /// that cannot be put in a script.
 fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
+    // An archive is the whole snapshot of its scope, records, envelopes and proofs, so that
+    // `decisions verify --file` can check it as signed: one with records left out would not
+    // verify, and one that kept them would not say what was asked. So a filter is refused there,
+    // never accepted and ignored (BUG-0144); the terminal report applies it.
+    if everything && globals.output != crate::output::OutputFormat::Terminal {
+        let filters: Vec<&str> = [
+            query.since.is_some().then_some("--since"),
+            query.decision.is_some().then_some("--decision"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if !filters.is_empty() {
+            return Err(Failure::usage(format!(
+                "`decisions export -o {}` writes the whole snapshot of its scope, which \
+                 `decisions verify --file` checks as signed, and does not take {}: filter with \
+                 `decisions list`, or read the archive and filter its records",
+                match globals.output {
+                    crate::output::OutputFormat::Yaml => "yaml",
+                    _ => "json",
+                },
+                filters.join(" or ")
+            )));
+        }
+    }
     let (reader, scope) = connect(globals, query, &trace)?;
     let keys = key_set(globals, query)?;
 
@@ -656,8 +681,13 @@ fn signers(
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
     let ReadScope::Stream { pdp_id, instance } = scope else {
+        // A ledger's decisions come from many producer runs, each signed by its own keys, and the
+        // decision log serves signers per run: there is no per-ledger listing to answer, and a
+        // merged one would not say which key signed which run (BUG-0131).
         return Err(Failure::usage(
-            "a signer manifest belongs to one producer stream: name it with --pdp and --instance",
+            "a signer manifest belongs to one producer run, not to a ledger: every decision record \
+             names the run that wrote it, which `decisions list` prints as `pdp` and `instance`; \
+             name it with --pdp and --instance, a Host's id and run as printed",
         ));
     };
 

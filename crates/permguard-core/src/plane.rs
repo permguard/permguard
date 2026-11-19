@@ -111,6 +111,19 @@ impl PlaneHealth {
         self.health.is_ready()
     }
 
+    /// Whether a probe of this Plane is told it serves: its phase accepts work and the Host is
+    /// not stopping. During `shutdown.deregister_delay` the Plane still accepts work while the
+    /// Host is Draining, and a probe reads not serving, as `/readyz` does (BUG-0280).
+    pub fn serving(&self) -> bool {
+        use crate::lifecycle::{HOST, Phase};
+
+        self.phase().accepts_work()
+            && !matches!(
+                self.health.lifecycle().phase(HOST),
+                Some(Phase::Draining | Phase::Stopped | Phase::Failed)
+            )
+    }
+
     /// The Plane's own phase; Bootstrap until the Host lists it.
     pub fn phase(&self) -> Phase {
         self.health

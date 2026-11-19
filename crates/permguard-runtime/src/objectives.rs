@@ -22,8 +22,9 @@
 //! The shipping watch runs whatever the profile (`8-architecture-storage-operations.md`, service
 //! objectives): a stream behind its required subscriptions whose acknowledgement has not moved for
 //! longer than [`SHIPPING_STALL`], or four fifths of `evidence_shipping_lag` when that is shorter,
-//! makes the Host `degraded: shipping`, named, and sets [`SHIPPING_STALLED`]; readiness is held
-//! only past four fifths of the declared objective. It clears when the acknowledgement moves. A
+//! never less than [`SHIPPING_FLOOR`], one member ship pass and one watch pass, makes the Host
+//! `degraded: shipping`, named, and sets [`SHIPPING_STALLED`]; readiness is held only past four
+//! fifths of the declared objective, never under the same floor. It clears when the acknowledgement moves. A
 //! stall is learned within minutes, never from a missing record. The watch remembers in-process:
 //! after a restart a stream still stalled is named again one bound later.
 
@@ -47,6 +48,15 @@ pub const SHIPPING: &str = "shipping";
 /// How long a stream may stay behind with no acknowledgement before it is stalled, when
 /// `evidence_shipping_lag` is not declared.
 pub const SHIPPING_STALL: Duration = Duration::from_secs(300);
+
+/// The shortest a stream may stay behind before it counts as stalled, whatever the objective:
+/// a member ships once every membership pass ([`crate::repin::PASS`]), and this watch reads once
+/// every [`PASS`], so a record waiting for the next pass is normal operation, not a stall
+/// (BUG-0250). `evidence_shipping_lag` is therefore useful from a margin of this, 75s, an
+/// objective of at least 94s; a shorter one is measured against this floor, which is said at
+/// start.
+pub const SHIPPING_FLOOR: Duration =
+    Duration::from_secs(crate::repin::PASS.as_secs() + PASS.as_secs());
 
 /// How many stalled streams a degradation names; the rest are counted.
 const STALLS_NAMED: usize = 5;
@@ -197,7 +207,7 @@ pub fn judge(objectives: &Objectives, measures: &Measures) -> Vec<(&'static str,
     }
     // Unmeasured this pass, the objective keeps its hold or its release.
     if let (Some(lag), Some(_)) = (objectives.evidence_shipping_lag, &measures.stalled) {
-        let margin = within_margin(lag);
+        let margin = shipping_margin(lag);
         judged.push((
             "evidence_shipping_lag",
             measures
@@ -208,10 +218,11 @@ pub fn judge(objectives: &Objectives, measures: &Measures) -> Vec<(&'static str,
                 .map(|(stream, idle)| {
                     format!(
                         "{stream} has not shipped for {}s, past {}s, four fifths of the {}s \
-                         objective",
+                         objective or the {}s ship pass floor",
                         idle.as_secs(),
                         margin.as_secs(),
-                        lag.as_secs()
+                        lag.as_secs(),
+                        SHIPPING_FLOOR.as_secs()
                     )
                 }),
         ));
@@ -234,6 +245,20 @@ pub fn judge(objectives: &Objectives, measures: &Measures) -> Vec<(&'static str,
         ));
     }
     judged
+}
+
+/// How long a stream may stay behind before the Host is `degraded: shipping`: four fifths of
+/// `evidence_shipping_lag`, at most [`SHIPPING_STALL`], never under [`SHIPPING_FLOOR`].
+pub fn shipping_bound(evidence_shipping_lag: Option<Duration>) -> Duration {
+    evidence_shipping_lag
+        .map_or(SHIPPING_STALL, |lag| within_margin(lag).min(SHIPPING_STALL))
+        .max(SHIPPING_FLOOR)
+}
+
+/// The margin past which `evidence_shipping_lag` holds readiness: four fifths of it, never under
+/// [`SHIPPING_FLOOR`].
+pub fn shipping_margin(evidence_shipping_lag: Duration) -> Duration {
+    within_margin(evidence_shipping_lag).max(SHIPPING_FLOOR)
 }
 
 /// The monitor, running until dropped.
@@ -268,9 +293,23 @@ pub struct Sources {
 pub fn drive(objectives: Objectives, sources: Sources) -> Monitoring {
     let sources = Arc::new(sources);
     let stalls = Arc::new(Mutex::new(Stalls::default()));
-    let bound = objectives
-        .evidence_shipping_lag
-        .map_or(SHIPPING_STALL, |lag| within_margin(lag).min(SHIPPING_STALL));
+    let bound = shipping_bound(objectives.evidence_shipping_lag);
+    if let Some(lag) = objectives.evidence_shipping_lag
+        && within_margin(lag) < SHIPPING_FLOOR
+    {
+        tracing::warn!(
+            event.name = "host.objective_below_ship_pass",
+            objective = "evidence_shipping_lag",
+            "objectives.evidence_shipping_lag ({}s) has a margin of {}s, below the {}s a member \
+             needs to ship once every {}s pass: it is measured against {}s; declare at least {}s",
+            lag.as_secs(),
+            within_margin(lag).as_secs(),
+            SHIPPING_FLOOR.as_secs(),
+            crate::repin::PASS.as_secs(),
+            SHIPPING_FLOOR.as_secs(),
+            (SHIPPING_FLOOR.as_secs() * 5).div_ceil(4)
+        );
+    }
     Monitoring(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -524,6 +563,66 @@ mod tests {
                 .unwrap_or_default();
             assert!(!reason.is_empty());
         }
+    }
+
+    /// BUG-0250: a member ships once every membership pass, so a record waiting for the next pass
+    /// is not a stall. With `evidence_shipping_lag: 30s` the watch and the hold are measured
+    /// against the 75s floor, one ship pass and one watch pass: a stream idle 60s, a pass behind,
+    /// is neither `degraded: shipping` nor holds readiness; one idle past the floor, a coordinator
+    /// down, still does both.
+    #[test]
+    fn a_record_waiting_for_the_next_ship_pass_is_not_a_stall() {
+        assert_eq!(SHIPPING_FLOOR, Duration::from_secs(75));
+        let short = Some(Duration::from_secs(30));
+        assert_eq!(shipping_bound(short), SHIPPING_FLOOR);
+        assert_eq!(shipping_margin(Duration::from_secs(30)), SHIPPING_FLOOR);
+        assert_eq!(
+            shipping_bound(None),
+            SHIPPING_STALL,
+            "the default is untouched"
+        );
+        assert_eq!(
+            shipping_bound(Some(Duration::from_secs(200))),
+            Duration::from_secs(160),
+            "an objective above the floor is measured at four fifths, as before"
+        );
+
+        let declared = Objectives {
+            evidence_shipping_lag: short,
+            ..Objectives::default()
+        };
+        let idle = |seconds| Measures {
+            stalled: Some(vec![(
+                "data/decisions plane/data/zone/z/ledger/l acknowledged through 7".to_owned(),
+                Duration::from_secs(seconds),
+            )]),
+            ..Measures::default()
+        };
+        for within in [24, 60, 75] {
+            assert!(
+                held(&judge(&declared, &idle(within))).is_empty(),
+                "{within}s"
+            );
+            assert_eq!(
+                shipping_degradation(
+                    idle(within).stalled.as_deref().unwrap_or_default(),
+                    shipping_bound(short)
+                ),
+                None,
+                "{within}s"
+            );
+        }
+        assert_eq!(
+            held(&judge(&declared, &idle(76))),
+            ["evidence_shipping_lag"]
+        );
+        assert!(
+            shipping_degradation(
+                idle(76).stalled.as_deref().unwrap_or_default(),
+                shipping_bound(short)
+            )
+            .is_some()
+        );
     }
 
     #[test]

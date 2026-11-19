@@ -17,8 +17,9 @@
 //! The order matters more than it looks:
 //!
 //! 1. readiness goes false **first**, before anything is closed, so a load balancer stops routing
-//!    while the process is still able to finish what it already has; the listeners keep serving
-//!    for `shutdown.deregister_delay`, the time an orchestrator takes to remove the endpoint;
+//!    while the process is still able to finish what it already has; the listeners and the Planes
+//!    keep serving for `shutdown.deregister_delay`, the time an orchestrator takes to remove the
+//!    endpoint, and the Planes enter Draining only after it;
 //! 2. every service stops its intake, in reverse order and without waiting, so no listener still
 //!    accepts while another drains (WP-2.7);
 //! 3. every service drains what it has in flight, in reverse order, within `shutdown.drain_timeout`;
@@ -395,10 +396,11 @@ impl ServerHost for DefaultServerHost {
             let deadline = started + context.config().shutdown_timeout();
             let drain_deadline =
                 (started + context.config().shutdown_drain_timeout()).min(deadline);
-            self.planes_enter(context, permguard_core::lifecycle::Phase::Draining);
             // The listeners keep serving while an orchestrator removes the endpoint: readiness
             // false is what it reads, and intake closed before it has would refuse what it still
-            // routes. Inside the drain's budget; a recovery drain has no endpoint to wait out.
+            // routes. So the Planes keep accepting work through the delay and enter Draining
+            // only after it, when intake stops (BUG-0280). Inside the drain's budget; a recovery
+            // drain has no endpoint to wait out.
             let deregister = context.config().shutdown_deregister_delay();
             if !deregister.is_zero() && !context.config().shutdown_recover_drain() {
                 debug!(
@@ -409,6 +411,7 @@ impl ServerHost for DefaultServerHost {
                 );
                 tokio::time::sleep_until((started + deregister).min(drain_deadline)).await;
             }
+            self.planes_enter(context, permguard_core::lifecycle::Phase::Draining);
             let mut unfinished = self.drain_services(context, drain_deadline, deadline).await;
             unfinished.extend(self.stop_services(context, deadline).await);
 

@@ -56,7 +56,7 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "description": "Legacy alias of `limit_records`; `limit_records` wins where both are given.",
+            "description": "Legacy alias of `limit_records`; giving both is refused with `400`.",
             "schema": {
               "type": "integer",
               "minimum": 1
@@ -89,7 +89,7 @@
             "name": "proof",
             "in": "query",
             "required": false,
-            "description": "Include the signed envelopes and inclusion paths (`true`, `1` or `yes`).",
+            "description": "Include the signed envelopes and inclusion paths: `true` or `false`; any other value is refused with `400`.",
             "schema": {
               "type": "boolean"
             },
@@ -144,12 +144,32 @@
               }
             }
           },
+          "404": {
+            "description": "The store never held this stream: `stream_unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store, or the Host's consumer of the decision stream, could not answer: `store_unavailable`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }
@@ -220,7 +240,7 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "description": "Legacy alias of `limit_records`; `limit_records` wins where both are given.",
+            "description": "Legacy alias of `limit_records`; giving both is refused with `400`.",
             "schema": {
               "type": "integer",
               "minimum": 1
@@ -253,7 +273,7 @@
             "name": "proof",
             "in": "query",
             "required": false,
-            "description": "Include the signed envelopes and inclusion paths (`true`, `1` or `yes`).",
+            "description": "Include the signed envelopes and inclusion paths: `true` or `false`; any other value is refused with `400`.",
             "schema": {
               "type": "boolean"
             },
@@ -308,12 +328,32 @@
               }
             }
           },
+          "404": {
+            "description": "No ledger of this store has these names or ids: `scope_unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
           "410": {
             "description": "The offset fell behind retention.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store, or the Host's consumer of the decision stream, could not answer: `store_unavailable`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
                 }
               }
             }

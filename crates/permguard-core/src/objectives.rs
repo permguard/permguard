@@ -18,6 +18,10 @@
 //! | `objectives.restore_test_interval`    | duration | 1h to 365d        | `operations.backup.retention`, at most it                             |
 //! | `objectives.key_recovery_owner`       | label    | 1 to 128 bytes    | —                                                                     |
 //!
+//! `evidence_shipping_lag` is useful from 94s: a member ships once every 60s membership pass and
+//! the watch reads once every 15s, so the shipping watch never counts a stream stalled before 75s,
+//! four fifths of 94s, and a shorter objective is measured against that floor (BUG-0250).
+//!
 //! Every value is bounded whatever the profile; from `production` every one is required, and an
 //! inconsistent one stops Bootstrap. The margin is a fifth of the objective: a subsystem bound that
 //! alarms, or a readiness monitor that holds, does so by four fifths of the objective, so readiness

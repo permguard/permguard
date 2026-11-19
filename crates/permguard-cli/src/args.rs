@@ -933,11 +933,13 @@ pub struct DecisionsQuery {
     )]
     pub limit: usize,
 
-    /// Only decisions at or after this RFC 3339 timestamp, e.g. 2026-08-01T00:00:00Z.
+    /// Only decisions at or after this RFC 3339 timestamp, e.g. 2026-08-01T00:00:00Z; an export
+    /// archive (`-o json` or `-o yaml`) is the whole snapshot and refuses it.
     #[arg(long, value_name = "TIMESTAMP", value_parser = rfc3339_instant)]
     pub since: Option<String>,
 
-    /// Only permits, or only denies.
+    /// Only permits, or only denies; an export archive (`-o json` or `-o yaml`) is the whole
+    /// snapshot and refuses it.
     #[arg(long, value_enum, value_name = "DECISION")]
     pub decision: Option<Decision>,
 

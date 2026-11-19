@@ -3809,3 +3809,88 @@ fn an_offline_build_needs_no_configuration_file() {
     );
     assert!(output.status.success(), "{}", stderr(&output));
 }
+
+/// BUG-0144: a decision export archive is the whole snapshot of its scope, which
+/// `decisions verify --file` checks as signed: `--since` and `--decision` are refused there,
+/// exit 64, naming them, before anything is read; the terminal report still takes them.
+#[test]
+fn a_decision_export_archive_refuses_the_filters_it_would_ignore() {
+    let dir = scratch("export-filters");
+    for (format, filter) in [
+        ("json", vec!["--decision", "deny"]),
+        ("yaml", vec!["--since", "2030-01-01T00:00:00Z"]),
+        (
+            "json",
+            vec!["--decision", "permit", "--since", "2030-01-01T00:00:00Z"],
+        ),
+    ] {
+        let mut args = vec![
+            "-o",
+            format,
+            "decisions",
+            "export",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+        ];
+        args.extend(filter.iter().copied());
+        let output = run(&dir, &args);
+        assert_eq!(output.status.code(), Some(64), "{format} {filter:?}");
+        let said = stderr(&output);
+        assert!(said.contains("whole snapshot"), "{said}");
+        for flag in filter.iter().filter(|arg| arg.starts_with("--")) {
+            assert!(said.contains(flag), "{flag}: {said}");
+        }
+    }
+
+    // The terminal report applies the filter: not refused for it.
+    let output = run(
+        &dir,
+        &[
+            "decisions",
+            "export",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "--decision",
+            "deny",
+        ],
+    );
+    assert!(
+        !stderr(&output).contains("whole snapshot"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+/// BUG-0131: `decisions signers` reads one producer run's signers; asked for a ledger it says
+/// why that is not offered and how to name a run, exit 64, before anything is read.
+#[test]
+fn decision_signers_for_a_ledger_say_how_to_name_a_run() {
+    let dir = scratch("decision-signers");
+    let output = run(
+        &dir,
+        &[
+            "decisions",
+            "signers",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    let said = stderr(&output);
+    assert!(
+        said.contains("one producer run, not to a ledger") && said.contains("--pdp and --instance"),
+        "{said}"
+    );
+}

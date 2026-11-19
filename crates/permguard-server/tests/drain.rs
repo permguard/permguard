@@ -190,6 +190,80 @@ async fn intake_stops_only_after_the_deregistration_delay() {
     }
 }
 
+/// A Plane registered with the lifecycle, and what it was through the deregister delay: its phase
+/// and whether a probe was told it serves, sampled once readiness went false, and its phase when
+/// intake stopped.
+struct Observed {
+    during: Arc<Mutex<Option<(permguard_core::lifecycle::Phase, bool, bool)>>>,
+    at_intake: Arc<Mutex<Option<permguard_core::lifecycle::Phase>>>,
+}
+
+impl Service for Observed {
+    fn name(&self) -> &'static str {
+        "observed"
+    }
+
+    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        use permguard_core::lifecycle::{Kind, Phase};
+
+        let health = context.health().clone();
+        health
+            .lifecycle()
+            .enter("data", Kind::Plane, false, Phase::Ready);
+        let during = Arc::clone(&self.during);
+        tokio::spawn(async move {
+            let plane = permguard_core::PlaneHealth::new(health.clone(), "data");
+            // Once the Host stops being ready, a second into the delay.
+            while health.lifecycle().phase(permguard_core::lifecycle::HOST) != Some(Phase::Draining)
+            {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            *during.lock().unwrap() = Some((plane.phase(), plane.serving(), health.is_ready()));
+        });
+        ready(Ok(()))
+    }
+
+    fn stop_intake(&self, context: &ServerContext<'_>) {
+        *self.at_intake.lock().unwrap() = context.health().lifecycle().phase("data");
+    }
+}
+
+/// BUG-0280: through `shutdown.deregister_delay` a Plane keeps accepting work, so a request a
+/// load balancer still routes is served, while `/readyz` and the Plane's gRPC health say not
+/// ready; it enters Draining, and its routes answer `plane_not_ready`, only when intake stops.
+#[tokio::test(start_paused = true)]
+async fn a_plane_serves_through_the_deregister_delay_and_drains_after_it() {
+    use permguard_core::lifecycle::Phase;
+
+    let config = Config::from_layers(
+        BuildSettings::new("9.9.9", "2026", "Test Holder"),
+        Vec::<String>::new(),
+        Layers::new().with_file(vec![
+            (SETTING_SHUTDOWN_DRAIN_TIMEOUT.to_owned(), "10s".to_owned()),
+            (SETTING_SHUTDOWN_TIMEOUT.to_owned(), "15s".to_owned()),
+            (
+                SETTING_SHUTDOWN_DEREGISTER_DELAY.to_owned(),
+                "3s".to_owned(),
+            ),
+        ]),
+    )
+    .expect("the config builds");
+    let during = Arc::new(Mutex::new(None));
+    let at_intake = Arc::new(Mutex::new(None));
+    let services: Vec<Box<dyn Service>> = vec![Box::new(Observed {
+        during: Arc::clone(&during),
+        at_intake: Arc::clone(&at_intake),
+    })];
+    run(&services, &config).await.expect("a clean run");
+
+    let (phase, serving, ready) = during.lock().unwrap().expect("sampled during the delay");
+    assert!(phase.accepts_work(), "the Plane accepts work: {phase:?}");
+    assert!(!serving, "a probe of the Plane reads not serving");
+    assert!(!ready, "/readyz reads not ready");
+    assert_eq!(*at_intake.lock().unwrap(), Some(Phase::Draining));
+}
+
 #[tokio::test]
 async fn every_intake_stops_before_any_drain_and_hooks_run_in_reverse_order() {
     let journal = Arc::new(Mutex::new(Vec::new()));

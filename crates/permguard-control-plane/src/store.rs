@@ -598,6 +598,46 @@ impl FileObjectStore {
         sweep_tree(&root, older_than)
     }
 
+    /// What Load verifies of this ledger before the plane serves it (BUG-0255), reading only and
+    /// writing nothing: its `FORMAT` pin is this build's, or the directory holds nothing yet, and
+    /// every ref parses and names a head the store holds. Answers how many refs it checked.
+    pub fn verify_at_load(&self) -> Result<usize> {
+        match fs::read_to_string(self.root.join("FORMAT")) {
+            Ok(found) if found.trim() == FORMAT => {}
+            Ok(found) => {
+                return Err(StoreError::Incompatible {
+                    found: found.trim().to_owned(),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if self.root.join("objects").exists() || self.root.join("refs").exists() {
+                    return Err(StoreError::Incompatible {
+                        found: "unversioned".to_owned(),
+                    });
+                }
+                return Ok(0);
+            }
+            Err(error) => return Err(backend("reading FORMAT", error)),
+        }
+        // Every ref file, read strictly: a listing skips one it cannot parse, and Load must not.
+        let mut names = Vec::new();
+        ref_names(&self.root.join("refs"), &self.root.join("refs"), &mut names)?;
+        for name in &names {
+            let state = self.read_ref(name)?.ok_or_else(|| StoreError::Backend {
+                detail: format!("the ref {name} vanished while it was read"),
+            })?;
+            if !self.has_object(&state.head) {
+                return Err(StoreError::Backend {
+                    detail: format!(
+                        "the ref {name} names the head {} the store does not hold",
+                        state.head
+                    ),
+                });
+            }
+        }
+        Ok(names.len())
+    }
+
     /// List every ref, by walking `refs/`.
     pub fn list_refs(&self) -> Result<Vec<(String, RefState)>> {
         let mut out = Vec::new();
@@ -854,6 +894,28 @@ fn parse_ref(text: &str) -> Option<RefState> {
         counter,
         previous_ref_digest,
     })
+}
+
+/// The name of every ref file under `directory`, temporaries left out: a ref name has no `.`.
+fn ref_names(base: &Path, directory: &Path, out: &mut Vec<String>) -> Result<()> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(backend("listing refs", error)),
+    };
+    for entry in entries {
+        let path = entry.map_err(|e| backend("listing refs", e))?.path();
+        if path.is_dir() {
+            ref_names(base, &path, out)?;
+        } else if let Ok(relative) = path.strip_prefix(base) {
+            let name = relative.to_string_lossy().replace('\\', "/");
+            if !name.contains('.') {
+                out.push(name);
+            }
+        }
+    }
+    out.sort();
+    Ok(())
 }
 
 fn collect_refs(base: &Path, directory: &Path, out: &mut Vec<(String, RefState)>) -> Result<()> {
