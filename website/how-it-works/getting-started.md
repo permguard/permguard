@@ -144,5 +144,5 @@ This quickstart uses the remote HTTP PDP to make the wire contract visible. Prod
 
 <nav class="pgx-pager" aria-label="Documentation pages">
   <a class="pgx-pager__previous" href="./container-images"><span>Previous</span><strong><b aria-hidden="true">←</b> Containers</strong></a>
-  <a class="pgx-pager__next" href="./architecture"><span>Next</span><strong>Server, Host &amp; Planes <b aria-hidden="true">→</b></strong></a>
+  <a class="pgx-pager__next" href="./policy-languages"><span>Next</span><strong>Policy as Code <b aria-hidden="true">→</b></strong></a>
 </nav>

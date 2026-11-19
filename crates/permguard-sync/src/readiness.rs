@@ -55,6 +55,51 @@ pub fn report(
     }
 }
 
+/// The key and capability a plane that can answer no request holds readiness under.
+pub const UNSERVABLE: &str = "mirrors";
+const UNSERVABLE_CAPABILITY: &str = "mirrors.servable";
+
+/// Holds the process's readiness while this plane holds no mirror it can answer from, and
+/// releases it once it does (BUG-0046, DEC-0009 option B, rule 3): none yet because no coordinator
+/// has answered, or every one never verified or past `mirrors.expire_after`. A plane whose
+/// coordinator answered with nothing to mirror is ready — an empty ledger set is answered
+/// correctly — and `mirrors.ready_without_mirrors` lets an operator keep it ready regardless.
+pub fn hold_unservable(
+    health: &PlaneHealth,
+    root: &Path,
+    expire_after: Option<Duration>,
+    answered_once: bool,
+    ready_without_mirrors: bool,
+) {
+    let held = store::mirrors(root);
+    let servable = held
+        .iter()
+        .filter(|mirror| {
+            store::synced_age(&mirror.path)
+                .is_some_and(|age| expire_after.is_none_or(|bound| age < bound))
+        })
+        .count();
+    let reason = if ready_without_mirrors || servable > 0 || (held.is_empty() && answered_once) {
+        None
+    } else if held.is_empty() {
+        Some(
+            "no coordinator has answered yet and the volume holds no mirror: this plane can \
+             answer no request (`mirrors.ready_without_mirrors` keeps it ready anyway)"
+                .to_owned(),
+        )
+    } else {
+        Some(format!(
+            "every mirror this plane holds ({}) is unverified or past `mirrors.expire_after`: it \
+             can answer no request until a synchronization succeeds",
+            held.len()
+        ))
+    };
+    match reason {
+        Some(reason) => health.hold(UNSERVABLE, UNSERVABLE_CAPABILITY, reason),
+        None => health.release(UNSERVABLE, UNSERVABLE_CAPABILITY),
+    }
+}
+
 /// Whether the coordinator `key` is satisfied, or why not, in the terms an operator would fix it
 /// in.
 fn satisfied(
@@ -429,5 +474,64 @@ mod tests {
             "load",
             "another coordinator's mirror is not this one's"
         );
+    }
+
+    /// BUG-0046, BUG-0195: readiness is held while no mirror can be answered from — none yet with
+    /// no coordinator answered, or every one past `expire_after` — and released once one can; the
+    /// Host's line on `/health` names what holds it.
+    #[test]
+    fn readiness_is_held_while_no_mirror_can_be_answered_from() {
+        let (health, plane) = plane_in_load();
+        health
+            .lifecycle()
+            .advance(permguard_core::lifecycle::HOST, Phase::Serving);
+        let root = scratch("unservable");
+        let held = |health: &Health| health.lifecycle().holds().contains_key(UNSERVABLE);
+        let bound = Some(Duration::from_secs(60));
+
+        // Nothing held and nobody answered: held, and said on the Host's line.
+        hold_unservable(&plane, &root, bound, false, false);
+        assert!(held(&health));
+        let host = plane
+            .report()
+            .components
+            .into_iter()
+            .find(|component| component.component == permguard_core::lifecycle::HOST)
+            .expect("the Host");
+        assert!(
+            host.reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("readiness held by mirrors")),
+            "{:?}",
+            host.reason
+        );
+        // An operator who allows it keeps the plane ready.
+        hold_unservable(&plane, &root, bound, false, true);
+        assert!(!held(&health));
+        // A coordinator that answered with nothing to mirror: an empty set is answered correctly.
+        hold_unservable(&plane, &root, bound, true, false);
+        assert!(!held(&health));
+
+        // Every mirror past the bound: held; fresh again: released.
+        mirror(
+            &root,
+            CP,
+            "acme",
+            Some(SystemTime::now() - Duration::from_secs(600)),
+        );
+        hold_unservable(&plane, &root, bound, true, false);
+        assert!(held(&health));
+        mirror(&root, CP, "acme", Some(SystemTime::now()));
+        hold_unservable(&plane, &root, bound, true, false);
+        assert!(!held(&health));
+        // One servable among expired ones keeps it ready.
+        mirror(
+            &root,
+            OTHER,
+            "beta",
+            Some(SystemTime::now() - Duration::from_secs(600)),
+        );
+        hold_unservable(&plane, &root, bound, true, false);
+        assert!(!held(&health));
     }
 }

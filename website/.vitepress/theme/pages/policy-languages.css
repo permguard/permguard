@@ -1,18 +1,16 @@
 /* Copyright (c) 2022 Nitro Agility S.r.l. */
 /* SPDX-License-Identifier: Apache-2.0 */
 
-/* Policy as Code: one ledger's manifest, its partitions (each owned by one language) and the
-   profiles that select them. Partitions on the left, profiles on the right; stacked on a phone. */
+/* Policy as Code: one ledger, its partitions (each holding one language) and the profiles that
+   pick them. Partitions on the left, profiles on the right; stacked on a phone. */
 .pg-page-concepts .pgx-binding {
-  margin: 30px 0 46px;
+  margin: 30px 0 34px;
   padding: 22px;
   border: 1px solid var(--pgx-line);
-  background-color: var(--pgx-surface);
-  background-image:
-    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
-  background-size: 32px 32px;
-  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    var(--pgx-surface);
 }
 
 .pg-page-concepts .pgx-binding__label {
@@ -26,7 +24,6 @@
 }
 
 .pg-page-concepts .pgx-binding__label strong { color: var(--pgx-ink); }
-.pg-page-concepts .pgx-binding__label code { font-size: 12px; }
 
 .pg-page-concepts .pgx-binding__grid {
   display: grid;
@@ -51,18 +48,19 @@
   gap: 4px;
   padding: 16px 18px;
   border: 1px solid var(--pgx-line);
+  border-radius: 14px;
   background: var(--pgx-bg);
 }
 
 .pg-page-concepts .pgx-binding article > strong { color: var(--pgx-ink); font-size: 16px; }
 .pg-page-concepts .pgx-binding article > span { color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
-.pg-page-concepts .pgx-binding article > code { align-self: flex-start; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; }
 
 .pg-page-concepts .pgx-binding__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 
 .pg-page-concepts .pgx-binding__chips i {
-  padding: 3px 9px;
+  padding: 3px 10px;
   border: 1px solid var(--pgx-brand);
+  border-radius: 999px;
   color: var(--pgx-ink);
   font-size: 12px;
   font-style: normal;
@@ -70,8 +68,8 @@
 }
 
 .pg-page-concepts .pgx-binding__chips i.is-rego { border-color: var(--pgx-warm); }
-.pg-page-concepts .pgx-binding__part--cedar { box-shadow: inset 3px 0 var(--pgx-brand); }
-.pg-page-concepts .pgx-binding__part--rego { box-shadow: inset 3px 0 var(--pgx-warm); }
+.pg-page-concepts .pgx-binding__part--cedar { border-color: color-mix(in srgb, var(--pgx-brand) 60%, var(--pgx-line)) !important; }
+.pg-page-concepts .pgx-binding__part--rego { border-color: color-mix(in srgb, var(--pgx-warm) 60%, var(--pgx-line)) !important; }
 
 .pg-page-concepts .pgx-binding__link {
   position: relative;
@@ -95,9 +93,13 @@
 .pg-page-concepts .pgx-binding__link b {
   position: relative;
   padding: 0 4px;
+  border-radius: 999px;
   background: var(--pgx-surface);
   line-height: 1;
 }
+
+/* The Dogwood card links to its own page. */
+.pg-page-concepts .pgx-languages strong a { font-weight: 650; }
 
 @media (max-width: 640px) {
   .pg-page-concepts .pgx-binding { padding: 14px 12px; }

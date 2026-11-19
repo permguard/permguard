@@ -645,3 +645,87 @@ async fn test_a_drain_reports_draining_with_readiness_off_while_the_services_sto
         "{seen:?}"
     );
 }
+
+/// A Plane's background duty: reports itself running once started, and remembers being stopped.
+struct Duty {
+    plane: &'static str,
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Service for Duty {
+    fn name(&self) -> &'static str {
+        "duty-sync"
+    }
+
+    fn plane(&self) -> Option<&'static str> {
+        Some(self.plane)
+    }
+
+    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            context.health().lifecycle().service(
+                self.name(),
+                permguard_core::lifecycle::ServiceState::Running,
+                None,
+                None,
+                None,
+            );
+            Ok(())
+        })
+    }
+
+    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        self.stopped
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// BUG-0063: an optional Plane that fails to start takes the duties it already started down with
+/// it: they are stopped, and listed `failed`, never `running` beside a `failed` Plane.
+#[tokio::test]
+async fn test_a_failed_plane_stops_the_duties_it_already_started() {
+    use permguard_core::lifecycle::{Phase, ServiceState, State};
+
+    let (trigger, wait) = tokio::sync::oneshot::channel::<()>();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut failing = PlaneStub::new("data", "data-listener", &seen);
+    failing.fails = true;
+    let services: Vec<Box<dyn Service>> = vec![
+        Box::new(Duty {
+            plane: "data",
+            stopped: Arc::clone(&stopped),
+        }),
+        Box::new(failing),
+    ];
+    let config = Config::default();
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let context = with_planes(
+        ServerContext::new(identity(), &config, &storage, &audit).with_services(&services),
+        &[("data", false)],
+    );
+    let health = context.health().clone();
+    let shutdown: BoxFuture<'static, ()> = Box::pin(async move {
+        let _ = wait.await;
+    });
+    let host = DefaultServerHost::new();
+    let run = host.run(&context, shutdown);
+    tokio::pin!(run);
+    tokio::select! {
+        _ = &mut run => panic!("the host returned before it was asked to stop"),
+        () = tokio::time::sleep(Duration::from_millis(50)) => {}
+    }
+
+    assert_eq!(health.lifecycle().phase("data"), Some(Phase::Failed));
+    assert!(
+        stopped.load(std::sync::atomic::Ordering::SeqCst),
+        "the duty was stopped"
+    );
+    let duty = health.lifecycle().component("duty-sync").expect("listed");
+    assert_eq!(duty.state, State::Service(ServiceState::Failed));
+
+    let _ = trigger.send(());
+    run.await.expect("the host stops when asked");
+}

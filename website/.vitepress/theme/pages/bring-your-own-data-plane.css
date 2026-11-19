@@ -1,130 +1,17 @@
 /* Copyright (c) 2022 Nitro Agility S.r.l. */
 /* SPDX-License-Identifier: Apache-2.0 */
 
-/* Bring Your Own Data Plane (how-it-works/bring-your-own-data-plane): the decision table, a need
-   on the left and what to run on the right. Narrow screens stack each row. */
+/* Bring Your Own Data Plane (how-it-works/bring-your-own-data-plane): the overview's system map
+   with two runtimes under the Control Plane instead of three planes under the Host. Narrow
+   screens keep the shared stacked layout of concepts.css. */
 
-.pg-page-concepts .pgx-choose {
-  margin: 26px 0 30px;
-  border: 1px solid var(--pgx-line);
-  background: var(--pgx-line);
-  display: grid;
-  gap: 1px;
-}
-
-.pg-page-concepts .pgx-choose__head,
-.pg-page-concepts .pgx-choose__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 20px;
-  padding: 16px 20px;
-  background: var(--pgx-bg);
-}
-
-.pg-page-concepts .pgx-choose__head {
-  padding-top: 12px;
-  padding-bottom: 12px;
-  background: var(--pgx-surface);
-}
-
-.pg-page-concepts .pgx-choose__head span {
-  color: var(--pgx-brand);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.pg-page-concepts .pgx-choose__row > span {
-  color: var(--pgx-ink);
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.pg-page-concepts .pgx-choose__row > strong {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: 14px;
-  border-left: 2px solid var(--pgx-line);
-  color: var(--pgx-ink);
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.pg-page-concepts .pgx-choose__row > strong small {
-  color: var(--pgx-muted);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.pg-page-concepts .pgx-choose__row--default > strong { border-left-color: var(--pgx-brand); }
-.pg-page-concepts .pgx-choose__row--default > strong small { color: var(--pgx-brand); }
-.pg-page-concepts .pgx-choose__row--custom > strong { border-left-style: dashed; border-left-color: var(--pgx-warm); }
-.pg-page-concepts .pgx-choose__row--custom > strong small { color: var(--pgx-warm); }
-
-.pg-page-concepts .pgx-choose__row--default {
-  background: color-mix(in srgb, var(--pgx-brand) 4%, var(--pgx-bg));
-}
-
-@media (max-width: 640px) {
-  .pg-page-concepts .pgx-choose__head { display: none; }
-  .pg-page-concepts .pgx-choose__row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-    padding: 14px 16px;
+@media (min-width: 801px) {
+  .pg-page-concepts .pgx-system-map--choice .pgx-system-map__planes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-/* The shared policy-flow picture needs about 760px laid out in a row. In a narrower content
-   column (a tablet with the sidebar open) it stacks, as concepts.css stacks it on small screens. */
-.pg-page-concepts .pgx-byo-flow { container-type: inline-size; }
-
-@container (max-width: 780px) {
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow {
-    grid-template-columns: 1fr;
-    gap: 0;
-    max-width: 470px;
-    margin-right: auto;
-    margin-left: auto;
+  .pg-page-concepts .pgx-system-map--choice .pgx-system-map__planes::before {
+    right: 25%;
+    left: 25%;
   }
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__link,
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__fanout {
-    width: 1px;
-    height: 70px;
-    margin: 0 auto;
-  }
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__link i,
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__fanout i {
-    top: 0;
-    left: -4px;
-    animation: pgx-byo-travel-down 3.6s ease-in-out infinite;
-  }
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__fanout i { animation-delay: 1.8s; }
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__link span,
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__fanout span {
-    top: 25px;
-    bottom: auto;
-    left: 16px;
-    width: 120px;
-    text-align: left;
-  }
-}
-
-@container (max-width: 440px) {
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__targets--modes { grid-template-columns: 1fr; }
-}
-
-@keyframes pgx-byo-travel-down {
-  0%, 12% { top: 0; }
-  88%, 100% { top: calc(100% - 9px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__link i,
-  .pg-page-concepts .pgx-byo-flow .pgx-store-flow__fanout i { animation: none !important; }
 }

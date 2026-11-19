@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Temporal Authorization
-description: Make authorization decisions from verified event history.
+description: Decisions that depend on what already happened, written in Dogwood. Experimental.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -10,70 +10,50 @@ description: Make authorization decisions from verified event history.
 <div class="pgx-doc-hero">
   <div class="pgx-kicker">Temporal authorization · experimental</div>
   <h1>Decide from what happened.</h1>
-  <p>Dogwood turns verified events into policy input, so a later action can depend on earlier facts.</p>
+  <p>Some answers depend on the past: Permguard records what happened, in order, and the policy reads it.</p>
 </div>
 
-<div class="pgx-timeline" role="img" aria-label="A login request and successful login occurrence create history that allows a later document read inside its policy window.">
-  <div class="pgx-timeline__line"><i></i></div>
-  <article><b>1</b><strong>login.requested</strong><span>local sequence 41</span></article>
-  <article><b>2</b><strong>login.succeeded</strong><span>local sequence 42</span></article>
-  <article class="pgx-timeline__decision"><b>✓</b><strong>document.read</strong><span>history satisfies policy</span></article>
-</div>
+## The idea
 
-## Events become authorization input
+Temporal authorization means decisions that depend on what already happened.
+An ordinary [policy](./glossary#policy) sees only the request: who asks, to do what, on what.
+A temporal policy also sees the history before it, so it can say: alice may read the report only within an hour after logging in, and not after she logs out.
 
-An event is a canonical occurrence: what happened, who produced it and where it sits in that producer's durable sequence. Permguard appends it before using it to change authorization history.
+<ol class="pgx-tline" aria-label="One user's day, in order. A read before any login is denied. Then alice logs in, and the login is recorded. A read inside the hour after the login is permitted. Then alice logs out, and the logout is recorded. A read after the logout is denied.">
+  <li class="is-deny"><small>FIRST</small><strong>Read</strong><span>no login yet</span><em>Deny</em></li>
+  <li class="is-event"><small>THEN</small><strong>Login</strong><span>recorded in the history</span><em>Event</em></li>
+  <li class="is-permit"><small>WITHIN 1 HOUR</small><strong>Read</strong><span>a login before it, no logout</span><em>Permit</em></li>
+  <li class="is-event"><small>LATER</small><strong>Logout</strong><span>recorded in the history</span><em>Event</em></li>
+  <li class="is-deny"><small>AFTER</small><strong>Read</strong><span>logged out</span><em>Deny</em></li>
+</ol>
 
-<div class="pgx-event-stream" role="img" aria-label="Producers append occurrences to a durable event stream. Dogwood applies the verified history and evaluates a later request against it.">
-  <article><small>PRODUCERS</small><strong>Occurrences</strong><span>login · approval · risk</span></article>
-  <div class="pgx-event-stream__rail"><i></i><b>append</b></div>
-  <article class="pgx-event-stream__journal"><small>DURABLE STREAM</small><strong>41 · 42 · 43 · 44</strong><span>canonical local order</span></article>
-  <div class="pgx-event-stream__rail"><i></i><b>apply</b></div>
-  <article class="pgx-event-stream__decision"><small>DOGWOOD</small><strong>Evaluate now</strong><span>request + verified history</span></article>
-</div>
+The same read gets a different answer, and nothing in the request changed: only the history did.
+Once the hour has passed, the read is denied too.
 
-This answers questions a stateless rule cannot: “Did login succeed before this read?”, “Was this deployment approved?” or “Was risk raised after the credential was issued?”
+## In practice
 
-## The temporal contract
+Each event, a login or a logout, is recorded in order before Permguard uses it.
+The policy reads that history.
+The language is Dogwood, and this is the real policy of the example in `examples/dogwood-session-access`:
 
-<div class="pgx-cards pgx-cards--3">
-  <article class="pgx-card"><span>Occurrence</span><h3>Something happened</h3><p>Canonical event data with an origin and local order.</p></article>
-  <article class="pgx-card"><span>Frontier</span><h3>What is known</h3><p>A vector names the exact verified history used by the decision.</p></article>
-  <article class="pgx-card pgx-card--accent"><span>Outcome</span><h3>What follows</h3><p>The answer states its history frontier and any gap or degraded state.</p></article>
-</div>
-
-## No fictional total order
-
-Each producer owns its local sequence. Imported history advances a vector frontier. A gap stays a gap; Permguard never hides it behind wall-clock ordering.
-
-<div class="pgx-frontier"><span>agent-a · 42</span><span>agent-b · 17</span><span>gateway · 103</span><strong>exact frontier</strong></div>
-
-`occurred_at` is a source claim. `accepted_at` is the Host clock. The stream position is the durable order. A decision records the exact per-origin frontier it used rather than inventing one global timeline.
-
-## Read history as a stream
-
-Consumers page through immutable records with an opaque cursor:
-
-```sh
-curl -s \
-  'http://127.0.0.1:6443/events/v1alpha1/zones/acme/ledgers/sessions/records?limit_records=100' \
-  | jq
+```dogwood
+// Permit a Read only if the same user logged in within the last hour
+// and has not since logged out.
+@id("read_after_login")
+permit (
+    principal,
+    action == Drupe::Action::"Read",
+    resource
+)
+when temporal {
+    formerly within 1h Drupe::Action::"Login"::response{ input.user: context.input.user }
+    && !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+};
 ```
 
-<div class="pgx-stream-reader" aria-label="A reader requests a page from a cursor, receives records and continues from the returned next cursor until more is false or its fixed boundary is reached.">
-  <article><small>REQUEST</small><strong>from</strong><span>opaque cursor</span></article>
-  <i>→</i>
-  <article class="pgx-stream-reader__page"><small>BLOCK</small><strong>records[]</strong><span>proof · coverage</span></article>
-  <i>→</i>
-  <article><small>CONTINUE</small><strong>next</strong><span>while more = true</span></article>
-</div>
+Its tests run offline: a read inside the window is permitted, and a read with no login before it, outside the window, or after another user's login is denied.
 
-Pin `until` when a reader needs a fixed snapshot. `high_watermark` says how far the stream has advanced. If retention removed the requested offset, the API returns an explicit `offset_expired` gap; it never silently restarts from newer history.
-
-## Run the experimental path
-
-Dogwood and the event stores are off in an ordinary server.
-Start the all-in-one image as in [Getting Started](./getting-started), with both turned on:
+<div class="pgx-note"><strong>Experimental.</strong><span>Dogwood and the event stores are off in an ordinary server. Turn both on when you start the all-in-one image of <a href="./getting-started">Getting Started</a>.</span></div>
 
 ```sh
 docker run -d --name permguard \
@@ -84,11 +64,24 @@ docker run -d --name permguard \
   ghcr.io/permguard/permguard/all-in-one:${VERSION}
 ```
 
-The Data Plane then advertises `permguard.api.pdp.temporal.v1alpha1` beside the native interface.
+## Why it matters
 
-The example in `examples/dogwood-session-access` shows login history controlling later document access.
+<div class="pgx-principles">
+  <article><span>Developers</span><h3>No session state in your code.</h3><p>The application records what happened; the rule about it lives in one policy.</p></article>
+  <article><span>Platform &amp; IT</span><h3>Off until you turn it on.</h3><p>It is experimental, and an ordinary server runs without it.</p></article>
+  <article><span>Security &amp; CISO</span><h3>Rules that follow the sequence.</h3><p>Answer questions a single request cannot: did login succeed before this read, was this deployment approved.</p></article>
+</div>
+
+## Go deeper
+
+<div class="pgx-link-grid">
+  <a href="./policy-languages"><strong>Policy as Code</strong><span>Cedar · Rego · Dogwood</span></a>
+  <a href="../data-plane"><strong>Data Plane</strong><span>where decisions are made</span></a>
+  <a href="./getting-started"><strong>Getting Started</strong><span>start the server</span></a>
+  <a href="./glossary"><strong>Glossary</strong><span>every term, in one line</span></a>
+</div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./bring-your-own-data-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Bring Your Own Data Plane</strong></a>
-  <a class="pgx-pager__next" href="./glossary"><span>Next</span><strong>Glossary <b aria-hidden="true">→</b></strong></a>
+  <a class="pgx-pager__previous" href="./policy-languages"><span>Previous</span><strong><b aria-hidden="true">←</b> Policy as Code</strong></a>
+  <a class="pgx-pager__next" href="./zones-and-ledgers"><span>Next</span><strong>Zones &amp; Ledgers <b aria-hidden="true">→</b></strong></a>
 </nav>

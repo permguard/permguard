@@ -25,6 +25,12 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A data plane that can answer no request is not ready.**
+  While it holds no mirror it can answer from — no coordinator has answered yet and the volume holds none, or every mirror is unverified or past `mirrors.expire_after` — the plane holds the process's readiness, and releases it once a synchronization makes one servable; a coordinator answering with nothing to mirror never holds it.
+  `mirrors.ready_without_mirrors: "true"` keeps such a plane ready.
+- **What holds readiness is said on `/health` and by `permguard inspect`**: the Host's line carries `readiness held by <what>: <why>` (an objective's margin, mirrors), and `inspect` reports it instead of "starting up, or draining".
+- **A plane that fails to start stops the duties it already started**: they are listed `failed`, never `running` beside a `failed` plane, and do no further mirroring or shipping.
+
 - **A server starts in an environment its clients share.**
   The `PERMGUARD_*` variables of the CLI, the SDKs (`PERMGUARD_PDP_URL`) and the bench are passed over by name; a misspelt or retired name of a server setting still stops the start by name.
 - **A value refused from the configuration file names the file and its YAML key**, `log.level` in the configuration file … (`PERMGUARD_LOG_LEVEL`), not only an environment variable the operator never set; a value from the environment is still named by its variable.

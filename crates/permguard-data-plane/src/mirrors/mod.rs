@@ -194,13 +194,22 @@ impl PlaneTask for MirrorService {
             // a plane that has already tried: nobody has to wait an interval
             // to learn the configuration is wrong. What it found decides
             // whether the plane leaves Load (P2, F-13).
+            let ready_without_mirrors = config.mirrors_ready_without_mirrors();
             let outcome = round::run(Arc::clone(&context_for_round)).await;
+            let mut answered_once = outcome.sources.iter().any(round::SourceOutcome::succeeded);
             readiness::report(
                 &health,
                 &context_for_round.root,
                 expire_after,
                 &outcome,
                 std::time::SystemTime::now(),
+            );
+            readiness::hold_unservable(
+                &health,
+                &context_for_round.root,
+                expire_after,
+                answered_once,
+                ready_without_mirrors,
             );
             health.service(
                 name,
@@ -261,6 +270,14 @@ impl PlaneTask for MirrorService {
                         expire_after,
                         &outcome,
                         std::time::SystemTime::now(),
+                    );
+                    answered_once |= outcome.sources.iter().any(round::SourceOutcome::succeeded);
+                    readiness::hold_unservable(
+                        &health,
+                        &context_for_round.root,
+                        expire_after,
+                        answered_once,
+                        ready_without_mirrors,
                     );
                     health.service(
                         name,

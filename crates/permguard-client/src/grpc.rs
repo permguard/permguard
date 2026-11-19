@@ -63,6 +63,9 @@ pub struct PlaneHealth {
     pub ready: bool,
     /// Its lifecycle phase (WP-7.4b).
     pub state: String,
+    /// What the Host's line says, which names what holds readiness when something does
+    /// (BUG-0195).
+    pub host_reason: Option<String>,
 }
 
 /// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
@@ -316,6 +319,11 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        host_reason: health
+                            .components
+                            .iter()
+                            .find(|component| component.component == "host")
+                            .and_then(|host| host.reason.clone()),
                         state: health.state,
                     });
                 Ok((
@@ -341,6 +349,11 @@ impl GrpcChannel {
                     .map(|health| PlaneHealth {
                         live: health.live,
                         ready: health.ready,
+                        host_reason: health
+                            .components
+                            .iter()
+                            .find(|component| component.component == "host")
+                            .and_then(|host| host.reason.clone()),
                         state: health.state,
                     });
                 Ok((

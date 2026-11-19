@@ -796,6 +796,17 @@
   }
 }
 
+/* The same rule for every fixed column, so no page can hide its own navigation under the footer:
+   the outline on the right ("On this page") ends where the footer begins, scrolls within what is
+   left, and its bottom fade follows. One variable, measured once in index.ts, drives them all. */
+:root .VPDoc .aside-container {
+  height: calc(100vh - var(--pg-footer-overlap, 0px));
+}
+
+:root .VPDoc .aside-curtain {
+  bottom: var(--pg-footer-overlap, 0px);
+}
+
 .pg-footer > .pg-section-inner {
   width: 100%;
   max-width: none;

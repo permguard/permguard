@@ -469,6 +469,12 @@ pub const SETTING_MIRRORS_STALE_AFTER: &str = "PERMGUARD_MIRRORS_STALE_AFTER";
 /// "indefinitely" wrong, and a flaky link makes "minutes" wrong. Unset (or `0s`) means no bound.
 pub const SETTING_MIRRORS_EXPIRE_AFTER: &str = "PERMGUARD_MIRRORS_EXPIRE_AFTER";
 
+/// Whether a plane that mirrors is ready while it holds no mirror it can answer from: none yet
+/// because no coordinator has answered, or every one past `mirrors.expire_after` (BUG-0046,
+/// DEC-0009). Off by default: a plane that cannot answer any request is not ready. A plane whose
+/// coordinator answered with nothing to mirror is ready either way.
+pub const SETTING_MIRRORS_READY_WITHOUT_MIRRORS: &str = "PERMGUARD_MIRRORS_READY_WITHOUT_MIRRORS";
+
 /// How long a membership mirror its task's complete listing no longer names is kept before it is
 /// reaped (WP-7.2d): the absence must be seen again, by a later complete listing at least this
 /// long after the first. `0s` still needs the two listings.
@@ -1535,6 +1541,7 @@ pub struct Config {
     event_producer_keys: Vec<crate::decisions::EventProducerSource>,
     notp_compression: bool,
     mirrors_enabled: bool,
+    mirrors_ready_without_mirrors: bool,
     mirrors_interval: Duration,
     mirrors_timeout: Duration,
     mirrors_parallelism: usize,
@@ -1693,6 +1700,7 @@ impl Default for Config {
             notp_max_batch_bytes: DEFAULT_NOTP_MAX_BATCH_BYTES,
             notp_compression: DEFAULT_NOTP_COMPRESSION,
             mirrors_enabled: false,
+            mirrors_ready_without_mirrors: false,
             gc_enabled: DEFAULT_GC_ENABLED,
             gc_interval: DEFAULT_GC_INTERVAL,
             gc_grace: DEFAULT_GC_GRACE,
@@ -3780,6 +3788,11 @@ produce: use `EdDSA` or `ES256`"
         self.mirrors_enabled
     }
 
+    /// Whether the plane is ready while it holds no mirror it can answer from (BUG-0046).
+    pub fn mirrors_ready_without_mirrors(&self) -> bool {
+        self.mirrors_ready_without_mirrors
+    }
+
     /// Whether the store sweeps objects nothing references.
     pub fn gc_enabled(&self) -> bool {
         self.gc_enabled
@@ -4867,6 +4880,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_NOTP_TRANSFER_TTL => d(self.notp_transfer_ttl),
             SETTING_NOTP_COMPRESSION => b(self.notp_compression),
             SETTING_MIRRORS_ENABLED => b(self.mirrors_enabled),
+            SETTING_MIRRORS_READY_WITHOUT_MIRRORS => b(self.mirrors_ready_without_mirrors),
             SETTING_MIRRORS_INTERVAL => d(self.mirrors_interval),
             SETTING_MIRRORS_TIMEOUT => d(self.mirrors_timeout),
             SETTING_MIRRORS_PARALLELISM => n(self.mirrors_parallelism),
@@ -6124,6 +6138,10 @@ produce: use `EdDSA` or `ES256`"
             self.mirrors_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_MIRRORS_ENABLED}"))?;
         }
+        if let Some(value) = settings.get(SETTING_MIRRORS_READY_WITHOUT_MIRRORS) {
+            self.mirrors_ready_without_mirrors = parse_bool(value)
+                .with_context(|| format!("reading {SETTING_MIRRORS_READY_WITHOUT_MIRRORS}"))?;
+        }
 
         if let Some(value) = settings.get(SETTING_MIRRORS_INTERVAL) {
             self.mirrors_interval = parse_duration(value)
@@ -6931,6 +6949,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING,
     SETTING_MIRRORS_ENABLED,
     SETTING_MIRRORS_EXPIRE_AFTER,
+    SETTING_MIRRORS_READY_WITHOUT_MIRRORS,
     SETTING_MIRRORS_INTERVAL,
     SETTING_MIRRORS_JITTER,
     SETTING_MIRRORS_PARALLELISM,

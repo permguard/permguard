@@ -1,0 +1,146 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Git-like Versioning: files → objects → commits → signed head, one layer per row, so the
+   picture reads top to bottom at every width and only the chips inside a layer reflow. */
+
+.pg-page-concepts .pgx-ledger-stack {
+  margin: 34px 0 40px;
+  padding: 22px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 18px;
+  background: var(--pgx-surface);
+}
+
+.pg-page-concepts .pgx-ledger-stack__layer {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 13px;
+  background: var(--pgx-bg);
+}
+
+.pg-page-concepts .pgx-ledger-stack__layer--published {
+  border-color: var(--pgx-brand);
+  box-shadow: 0 0 24px var(--pgx-glow);
+}
+
+.pg-page-concepts .pgx-ledger-stack__layer > header {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pg-page-concepts .pgx-ledger-stack__layer > header small {
+  color: var(--pgx-brand);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+}
+
+.pg-page-concepts .pgx-ledger-stack__layer > header strong {
+  color: var(--pgx-ink);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.pg-page-concepts .pgx-ledger-stack__items {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 11px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 9px;
+  background: var(--pgx-surface);
+  line-height: 1.35;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item em {
+  color: var(--pgx-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item code {
+  padding: 0;
+  background: none;
+  color: var(--pgx-ink);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item > span {
+  color: var(--pgx-muted);
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item--current {
+  border-color: var(--pgx-brand);
+  background: color-mix(in srgb, var(--pgx-brand) 8%, var(--pgx-bg));
+  animation: pgx-ledger-pulse 4s ease-in-out infinite;
+}
+
+.pg-page-concepts .pgx-ledger-stack__item--current em { color: var(--pgx-brand); }
+
+.pg-page-concepts .pgx-ledger-stack__chain > i {
+  color: var(--pgx-brand);
+  font-size: 18px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.pg-page-concepts .pgx-ledger-stack__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0 9px 166px;
+  color: var(--pgx-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pg-page-concepts .pgx-ledger-stack__step b {
+  color: var(--pgx-brand);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pg-page-concepts .pgx-ledger-stack__step code { font-size: 12.5px; }
+
+@keyframes pgx-ledger-pulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 18px var(--pgx-glow); }
+}
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-ledger-stack { padding: 12px; border-radius: 14px; }
+  .pg-page-concepts .pgx-ledger-stack__layer { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .pg-page-concepts .pgx-ledger-stack__step { padding: 8px 4px; }
+  /* The chain stacks: C1 on top, each later commit below, its arrow pointing up at its parent. */
+  .pg-page-concepts .pgx-ledger-stack__chain { flex-direction: column; align-items: stretch; }
+  .pg-page-concepts .pgx-ledger-stack__chain > i { align-self: center; transform: rotate(90deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-page-concepts .pgx-ledger-stack__item--current { animation: none; }
+}

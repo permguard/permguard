@@ -1,0 +1,78 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Temporal Authorization: one user's day, in order. Five rounded cards on a rail: two events that
+   build the history and three reads whose answer changes with it. A row on a wide screen, a column
+   on a narrow one. */
+.pg-page-concepts .vp-doc .pgx-tline {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 30px 0 26px;
+  padding: 22px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    var(--pgx-surface);
+  list-style: none;
+}
+
+/* The rail the day runs along, behind the cards. */
+.pg-page-concepts .vp-doc .pgx-tline::before {
+  position: absolute;
+  top: 50%;
+  right: 40px;
+  left: 40px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--pgx-warm), var(--pgx-brand));
+  content: "";
+}
+
+.pg-page-concepts .vp-doc .pgx-tline li {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 16px 10px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 14px;
+  background: var(--pgx-bg);
+  text-align: center;
+}
+
+.pg-page-concepts .vp-doc .pgx-tline small { color: var(--pgx-brand); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
+.pg-page-concepts .vp-doc .pgx-tline strong { color: var(--pgx-ink); font-size: 16px; }
+.pg-page-concepts .vp-doc .pgx-tline span { color: var(--pgx-muted); font-size: 12.5px; line-height: 1.4; }
+
+.pg-page-concepts .vp-doc .pgx-tline em {
+  margin-top: 6px;
+  padding: 3px 11px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 999px;
+  color: var(--pgx-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.pg-page-concepts .vp-doc .pgx-tline .is-event { border-style: dashed; }
+.pg-page-concepts .vp-doc .pgx-tline .is-permit { border-color: var(--pgx-brand); box-shadow: 0 0 24px var(--pgx-glow); }
+.pg-page-concepts .vp-doc .pgx-tline .is-permit em { border-color: var(--pgx-brand); background: var(--pgx-brand); color: #ffffff; }
+.pg-page-concepts .vp-doc .pgx-tline .is-deny em { border-color: var(--pgx-warm); color: var(--pgx-warm); }
+
+@media (max-width: 800px) {
+  .pg-page-concepts .vp-doc .pgx-tline {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 420px;
+    margin-right: auto;
+    margin-left: auto;
+    padding: 16px 14px;
+  }
+
+  .pg-page-concepts .vp-doc .pgx-tline::before { top: 24px; right: auto; bottom: 24px; left: 50%; width: 1px; height: auto; background: linear-gradient(180deg, var(--pgx-warm), var(--pgx-brand)); }
+}

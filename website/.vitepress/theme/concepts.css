@@ -1312,7 +1312,7 @@
 .pgx-config-map__arrow { display: flex; min-height: 68px; flex-direction: column; align-items: center; justify-content: center; color: var(--pgx-brand); }
 .pgx-config-map__arrow span { color: var(--pgx-muted); font-size: 10px; font-weight: 750; }
 .pgx-config-map__arrow b { margin-top: 3px; font-size: 22px; }
-.pgx-config-map__planes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.pgx-config-map__planes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .pgx-config-map__planned { border-style: dashed !important; }
 .pgx-config-map__interface { display: flex; min-width: 0; flex-direction: column; margin-top: 18px; padding: 14px; border: 1px dashed var(--pgx-brand); border-radius: 10px; background: color-mix(in srgb, var(--pgx-brand) 5%, var(--pgx-bg)); }
 .pgx-config-map__interface b { color: var(--pgx-brand); font-size: 9px; letter-spacing: .1em; }
@@ -1335,6 +1335,8 @@
 .pgx-distro-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pgx-image-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .pgx-image-grid--commands { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Five images on four columns: the fifth, the CLI, takes the rest of its row instead of leaving an empty cell. */
+.pgx-image-grid:not(.pgx-image-grid--commands) > article:nth-child(4n + 1):last-child { grid-column: 1 / -1; }
 
 .pgx-install-paths article,
 .pgx-distro-grid article,
@@ -1769,12 +1771,14 @@
 .pgx-algebra b { font-size: 28px; color: var(--pgx-muted); }
 .pgx-algebra strong { margin-top: 10px; color: var(--pgx-ink); }
 .pgx-algebra span { max-width: 130px; margin-top: 5px; color: var(--pgx-muted); font-size: 12px; }
-.pgx-algebra--permit { border-color: #22c55e !important; }
-.pgx-algebra--permit b { color: #22c55e; }
-.pgx-algebra--deny { border-color: #f05c80 !important; }
-.pgx-algebra--deny b { color: #f05c80; }
-.pgx-algebra--error { border-color: #f59e0b !important; }
-.pgx-algebra--error b { color: #f59e0b; }
+/* Outcomes in the site's own palette: permit in the brand violet, deny in the warm accent, an error
+   dashed in that same accent, because it is no decision at all. */
+.pgx-algebra--permit { border-color: var(--pgx-brand) !important; box-shadow: 0 0 22px var(--pgx-glow); }
+.pgx-algebra--permit b { color: var(--pgx-brand); }
+.pgx-algebra--deny { border-color: var(--pgx-warm) !important; }
+.pgx-algebra--deny b { color: var(--pgx-warm); }
+.pgx-algebra--error { border-color: var(--pgx-warm) !important; border-style: dashed !important; }
+.pgx-algebra--error b { color: var(--pgx-warm); }
 
 .pgx-resolution {
   display: flex;
@@ -1887,7 +1891,9 @@
   border-radius: 22px;
 }
 
-.pg-page-concepts :is(
+/* Diagrams on documentation pages: a clean rounded panel with the soft glow, no grid. The grid
+   belongs to page titles only; the overview keeps its own drawings as they are. */
+.pg-page-concepts .vp-doc :is(
   .pgx-system-map,
   .pgx-server,
   .pgx-config-map,
@@ -1899,8 +1905,6 @@
 ) {
   background:
     radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
-    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
     var(--pgx-surface);
 }
 

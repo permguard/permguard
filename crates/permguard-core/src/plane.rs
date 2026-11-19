@@ -143,6 +143,17 @@ impl PlaneHealth {
             .wait(self.plane, requirement, reason, now);
     }
 
+    /// Holds the process's readiness under `key`, reported as the Host's degraded `capability`
+    /// with `reason`, until [`PlaneHealth::release`] (BUG-0046, DEC-0009).
+    pub fn hold(&self, key: &str, capability: &str, reason: impl Into<String>) {
+        self.health.lifecycle().hold_as(key, capability, reason);
+    }
+
+    /// Releases a [`PlaneHealth::hold`].
+    pub fn release(&self, key: &str, capability: &str) {
+        self.health.lifecycle().release_as(key, capability);
+    }
+
     /// `requirement` is satisfied.
     pub fn satisfy(&self, requirement: &str) {
         self.health.lifecycle().satisfy(self.plane, requirement);

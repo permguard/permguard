@@ -112,6 +112,9 @@ impl DefaultServerHost {
         }
         lifecycle.advance(HOST, Phase::Ready);
 
+        // The Plane services started so far, so a Plane that fails takes its running duties down
+        // with it: a `failed` Plane never keeps mirroring or shipping (BUG-0063, DEC-0009).
+        let mut started: Vec<&dyn Service> = Vec::new();
         for service in context
             .services()
             .iter()
@@ -130,6 +133,44 @@ impl DefaultServerHost {
             }
             if let Err(error) = self.start_one(context, service.as_ref()).await {
                 lifecycle.fail(plane, format!("{error:#}"));
+                for done in started
+                    .iter()
+                    .rev()
+                    .filter(|done| done.plane() == Some(plane))
+                {
+                    let stopped = timeout_at(
+                        Instant::now() + std::time::Duration::from_secs(10),
+                        done.stop(context),
+                    )
+                    .await;
+                    let failure = match stopped {
+                        Ok(Ok(())) => None,
+                        Ok(Err(stop_error)) => Some(format!("{stop_error:#}")),
+                        Err(_) => Some("its stop did not finish within 10s".to_owned()),
+                    };
+                    if let Some(failure) = failure {
+                        warn!(
+                            event.name = "plane.service_stop_failed",
+                            component = done.name(),
+                            plane,
+                            error = %failure,
+                            "a service of a failed plane did not stop cleanly"
+                        );
+                    }
+                    // A duty of a failed Plane is never `running`; a Plane's own listener is
+                    // not a service and is not listed here.
+                    if lifecycle.component(done.name()).is_some_and(|component| {
+                        component.kind == permguard_core::lifecycle::Kind::Service
+                    }) {
+                        lifecycle.service(
+                            done.name(),
+                            ServiceState::Failed,
+                            None,
+                            None,
+                            Some(format!("stopped: the {plane} plane failed to start")),
+                        );
+                    }
+                }
                 let required = lifecycle
                     .component(plane)
                     .is_some_and(|component| component.required);
@@ -153,6 +194,8 @@ impl DefaultServerHost {
                     None,
                     Some(format!("{error:#}")),
                 );
+            } else {
+                started.push(service.as_ref());
             }
         }
 

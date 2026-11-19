@@ -358,6 +358,10 @@ dataPlane:
   #   expire_after: "0s"     # how old it may grow before this plane refuses to answer from the
   #                          # mirror (503). A revocation that matters makes "indefinitely" wrong;
   #                          # a flaky link makes "minutes" wrong — this is the deployment's number.
+  #   ready_without_mirrors: "false"  # with no mirror it can answer from — no coordinator answered
+  #                          # yet, or every mirror past expire_after — this plane is not ready;
+  #                          # "true" keeps it ready. A coordinator answering with nothing to
+  #                          # mirror never holds it.
   #   reap_grace: "1h"       # a membership mirror its task no longer lists is a reap candidate,
   #                          # still served; it goes only when a later complete listing, at least
   #                          # this long after the first, still leaves it out ("0s": the next one)

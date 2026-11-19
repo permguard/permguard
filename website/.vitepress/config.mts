@@ -60,6 +60,8 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/x-icon', href: `${base}permguard/favicon.ico` }]
   ],
   cleanUrls: true,
+  // Shared blocks that pages include (`<!--@include: ../snippets/x.md-->`): written once, never pages.
+  srcExclude: ['snippets/**'],
   // The policy languages are not in Shiki's bundle; their grammars live in `.vitepress/languages`,
   // with their sources and licences in the README beside them.
   markdown: {
@@ -140,16 +142,15 @@ export default defineConfig({
         {
           text: 'Concepts',
           items: [
-            { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
             { text: 'Policy as Code', link: '/how-it-works/policy-languages' },
+            { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
             { text: 'Zones & Ledgers', link: '/how-it-works/zones-and-ledgers' },
             { text: 'Git-like Versioning', link: '/how-it-works/policy-storage' },
-            { text: 'NOTP Protocol', link: '/how-it-works/notp' },
             { text: 'Policy Delivery', link: '/how-it-works/policy-lifecycle' },
             { text: 'Decision Path', link: '/how-it-works/decision-lifecycle' },
             { text: 'Verifiable Evidence', link: '/how-it-works/evidence' },
-            { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
-            { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' }
+            { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
+            { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' }
           ]
         },
         {

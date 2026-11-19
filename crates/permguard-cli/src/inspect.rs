@@ -240,7 +240,9 @@ fn classify(health: &HealthAnswer) -> (Status, Option<&'static str>, Option<Stri
             Some(reason),
             Some(format!("its identity is known, but {detail}")),
         ),
-        HealthAnswer::Known { live, ready, .. } => match (live, ready) {
+        HealthAnswer::Known {
+            live, ready, held, ..
+        } => match (live, ready) {
             (false, _) => (
                 Status::Unhealthy,
                 Some(permguard_core::codes::client::NOT_LIVE),
@@ -249,10 +251,11 @@ fn classify(health: &HealthAnswer) -> (Status, Option<&'static str>, Option<Stri
             (true, false) => (
                 Status::Degraded,
                 Some(permguard_core::codes::client::NOT_READY),
-                Some(
-                    "it is live but not willing to be sent work: starting up, or draining"
+                Some(match held {
+                    Some(held) => format!("it is live and its readiness is held by {held}"),
+                    None => "it is live but not willing to be sent work: starting up, or draining"
                         .to_owned(),
-                ),
+                }),
             ),
             (true, true) => (Status::Ready, None, None),
         },
@@ -278,6 +281,8 @@ enum HealthAnswer {
         ready: bool,
         /// The phase, when the plane says one.
         state: Option<String>,
+        /// What holds readiness, when something does.
+        held: Option<String>,
     },
     Unknown {
         reason: &'static str,
@@ -327,6 +332,7 @@ fn read_plane(
         Ok(body) => HealthAnswer::Known {
             live: body.live,
             ready: body.ready,
+            held: body.held(),
             state: body.state,
         },
         Err(failure) => HealthAnswer::Unknown {
@@ -387,6 +393,11 @@ fn read_plane_grpc(
         Ok(body) => HealthAnswer::Known {
             live: body.live,
             ready: body.ready,
+            held: body
+                .host_reason
+                .as_deref()
+                .and_then(|reason| reason.split_once("readiness held by "))
+                .map(|(_, held)| held.to_owned()),
             state: Some(body.state).filter(|state| !state.is_empty()),
         },
         Err(status) => HealthAnswer::Unknown {
@@ -476,6 +487,28 @@ struct HealthBody {
     ready: bool,
     #[serde(default)]
     state: Option<String>,
+    #[serde(default)]
+    components: Vec<ComponentBody>,
+}
+
+/// One component of a `/health` body, as far as `inspect` reads it.
+#[derive(Debug, Deserialize)]
+struct ComponentBody {
+    component: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl HealthBody {
+    /// What holds the process's readiness, as the Host's line says it (BUG-0195).
+    fn held(&self) -> Option<String> {
+        self.components
+            .iter()
+            .find(|component| component.component == permguard_core::lifecycle::HOST)
+            .and_then(|host| host.reason.as_deref())
+            .and_then(|reason| reason.split_once("readiness held by "))
+            .map(|(_, held)| held.to_owned())
+    }
 }
 
 /// What a plane document lists of its interfaces (WP-7.4b).
@@ -578,5 +611,36 @@ impl Report for InspectReport {
             "{} of {} planes ready, {} reachable",
             self.ready, self.total, self.reachable
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// BUG-0195: what holds readiness is read off the Host's line and reported, never blamed on
+    /// a start or a drain.
+    #[test]
+    fn a_held_readiness_is_reported_by_what_holds_it() {
+        let body: HealthBody = serde_json::from_str(
+            r#"{"live": true, "ready": false, "state": "serving", "components": [
+                {"component": "host", "kind": "host", "state": "serving", "required": true,
+                 "reason": "readiness held by mirror_staleness: now 260s"},
+                {"component": "data", "kind": "plane", "state": "serving", "required": true}
+            ]}"#,
+        )
+        .unwrap_or_else(|error| panic!("a health body: {error}"));
+        let held = body.held();
+        assert_eq!(held.as_deref(), Some("mirror_staleness: now 260s"));
+        let (status, _, detail) = classify(&HealthAnswer::Known {
+            live: true,
+            ready: false,
+            state: Some("serving".to_owned()),
+            held,
+        });
+        assert!(matches!(status, Status::Degraded));
+        let detail = detail.unwrap_or_default();
+        assert!(detail.contains("mirror_staleness"), "{detail}");
+        assert!(!detail.contains("starting up"), "{detail}");
     }
 }

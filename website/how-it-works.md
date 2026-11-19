@@ -200,37 +200,12 @@ onBeforeUnmount(() => observer?.disconnect())
     <div class="vp-doc pgx-compare">
       <div class="pgx-compare__col"><p class="pgx-compare__label"><b>Today</b>The rule is an <code>if</code>, copied into every handler that needs it.</p>
 
-```go
-func readBudget(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	if user.Role != "finance" && user.ID != "alice" {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	serveBudget(w)
-}
-```
+<!--@include: ./snippets/today-check.md-->
 
 </div>
       <div class="pgx-compare__col pgx-compare__col--after"><p class="pgx-compare__label"><b>With Permguard</b>The code asks. The rule lives in a policy, out of the code.</p>
 
-```go
-func readBudget(w http.ResponseWriter, r *http.Request) {
-	user := currentUser(r)
-	answer, err := pdp.Evaluate(r.Context(), &permguard.EvaluateRequest{
-		Zone:     "quickstart",
-		Ledger:   "policies",
-		Subject:  &permguard.Entity{Type: "User", ID: user.ID},
-		Action:   &permguard.Action{Name: "read"},
-		Resource: &permguard.Entity{Type: "Document", ID: "budget"},
-	})
-	if err != nil || !answer.Decision { // no answer is a no: fail closed
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	serveBudget(w)
-}
-```
+<!--@include: ./snippets/sdk-check.md-->
 
 </div>
     </div>
@@ -452,16 +427,16 @@ permit (
   <section class="pgx-section pgx-section--tint">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Concepts</div><h2>Go one layer deeper.</h2></div></div>
     <div class="pgx-link-grid">
-      <a :href="withBase('/how-it-works/architecture')"><strong>Server, Host &amp; Planes</strong><span>one Host · the planes you deploy</span></a>
       <a :href="withBase('/how-it-works/policy-languages')"><strong>Policy as Code</strong><span>Cedar · Rego · Dogwood</span></a>
+      <a :href="withBase('/how-it-works/temporal-authorization')"><strong>Temporal Authorization</strong><span>history becomes policy input</span></a>
       <a :href="withBase('/how-it-works/zones-and-ledgers')"><strong>Zones &amp; Ledgers</strong><span>the security boundary · its ledgers</span></a>
       <a :href="withBase('/how-it-works/policy-storage')"><strong>Git-like Versioning</strong><span>commits · history · signed heads</span></a>
-      <a :href="withBase('/how-it-works/notp')"><strong>NOTP Protocol</strong><span>how policy moves between planes</span></a>
       <a :href="withBase('/how-it-works/policy-lifecycle')"><strong>Policy Delivery</strong><span>commit → signed version → running PDP</span></a>
       <a :href="withBase('/how-it-works/decision-lifecycle')"><strong>Decision Path</strong><span>request → evaluation → answer</span></a>
       <a :href="withBase('/how-it-works/evidence')"><strong>Verifiable Evidence</strong><span>record → chain → proof</span></a>
+      <a :href="withBase('/how-it-works/architecture')"><strong>Server, Host &amp; Planes</strong><span>one Host · the planes you deploy</span></a>
       <a :href="withBase('/how-it-works/bring-your-own-data-plane')"><strong>Bring Your Own Data Plane</strong><span>Permguard policy → your runtime</span></a>
-      <a :href="withBase('/how-it-works/temporal-authorization')"><strong>Temporal Authorization</strong><span>history becomes policy input</span></a>
+      <a :href="withBase('/data-plane')"><strong>Data Plane</strong><span>decisions beside the workload</span></a>
       <a :href="withBase('/authority-plane')"><strong>Authority Plane</strong><span>who may call Permguard itself</span></a>
       <a :href="withBase('/how-it-works/glossary')"><strong>Glossary</strong><span>every term, in one line</span></a>
     </div>

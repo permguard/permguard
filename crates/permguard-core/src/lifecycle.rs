@@ -563,10 +563,34 @@ impl Lifecycle {
             .unwrap_or((Phase::Bootstrap.as_str(), Vec::new()));
         let mut components: Vec<&Component> = registry.components.values().collect();
         components.sort_by(|left, right| (left.kind, &left.name).cmp(&(right.kind, &right.name)));
+        // What holds readiness is said where `/health` and `inspect` read it, on the Host's own
+        // line, never left to the log (BUG-0195).
+        let held = (!registry.holds.is_empty()).then(|| {
+            registry
+                .holds
+                .iter()
+                .map(|(key, reason)| format!("{key}: {reason}"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        });
         Report {
             state,
             degraded,
-            components: components.into_iter().map(ComponentReport::of).collect(),
+            components: components
+                .into_iter()
+                .map(|component| {
+                    let mut report = ComponentReport::of(component);
+                    if component.name == HOST
+                        && let Some(held) = &held
+                    {
+                        report.reason = Some(match report.reason.take() {
+                            Some(own) => format!("{own}; readiness held by {held}"),
+                            None => format!("readiness held by {held}"),
+                        });
+                    }
+                    report
+                })
+                .collect(),
         }
     }
 
@@ -588,24 +612,37 @@ impl Lifecycle {
     /// readiness probe answers not ready until [`Lifecycle::release`]. The Host reports it
     /// degraded on `objective.<objective>`, with the reason.
     pub fn hold(&self, objective: &str, reason: impl Into<String>) {
-        let reason = reason.into();
-        let mut registry = self.lock();
-        registry.holds.insert(objective.to_owned(), reason.clone());
-        if let Some(host) = registry.components.get_mut(HOST) {
-            let capability = format!("objective.{objective}");
-            host.degraded
-                .retain(|degraded| degraded.capability != capability);
-            host.degraded.push(Degraded { capability, reason });
-        }
+        self.hold_as(objective, &format!("objective.{objective}"), reason);
     }
 
     /// Releases a [`Lifecycle::hold`]; nothing when `objective` held nothing.
     pub fn release(&self, objective: &str) {
+        self.release_as(objective, &format!("objective.{objective}"));
+    }
+
+    /// Holds readiness under `key`, reported as the Host's degraded `capability` with `reason`:
+    /// what [`Lifecycle::hold`] does for an objective, for any rule that makes the process unable
+    /// to serve (BUG-0046, DEC-0009). Holding again under the same key replaces the reason.
+    pub fn hold_as(&self, key: &str, capability: &str, reason: impl Into<String>) {
+        let reason = reason.into();
         let mut registry = self.lock();
-        if registry.holds.remove(objective).is_some()
+        registry.holds.insert(key.to_owned(), reason.clone());
+        if let Some(host) = registry.components.get_mut(HOST) {
+            host.degraded
+                .retain(|degraded| degraded.capability != capability);
+            host.degraded.push(Degraded {
+                capability: capability.to_owned(),
+                reason,
+            });
+        }
+    }
+
+    /// Releases a [`Lifecycle::hold_as`]; nothing when `key` held nothing.
+    pub fn release_as(&self, key: &str, capability: &str) {
+        let mut registry = self.lock();
+        if registry.holds.remove(key).is_some()
             && let Some(host) = registry.components.get_mut(HOST)
         {
-            let capability = format!("objective.{objective}");
             host.degraded
                 .retain(|degraded| degraded.capability != capability);
         }

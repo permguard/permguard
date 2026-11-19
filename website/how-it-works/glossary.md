@@ -126,8 +126,7 @@ See [Git-like Versioning](./policy-storage).
 
 ### NOTP {#notp}
 
-The protocol that moves policy objects between a client, the Control Plane and the Data Planes, verifying each one on arrival.
-See [NOTP Protocol](./notp).
+The protocol that moves policy versions between the CLI, the Control Plane and the Data Planes: only what is missing travels, and everything is checked on arrival.
 
 ### Signed head {#signed-head}
 
@@ -159,5 +158,5 @@ Your own security tools: your security information and event management system, 
 Export the decision records as JSON Lines or CSV, analyse them beside your other logs and cross them with the threats you track.
 
 <nav class="pgx-pager pgx-pager--previous-only" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./temporal-authorization"><span>Previous</span><strong><b aria-hidden="true">←</b> Temporal Authorization</strong></a>
+  <a class="pgx-pager__previous" href="./bring-your-own-data-plane"><span>Previous</span><strong><b aria-hidden="true">←</b> Bring Your Own Data Plane</strong></a>
 </nav>

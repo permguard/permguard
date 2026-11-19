@@ -30,8 +30,9 @@ use serde::Deserialize;
 
 use crate::config::{
     SETTING_MIRRORS_ENABLED, SETTING_MIRRORS_EXPIRE_AFTER, SETTING_MIRRORS_INTERVAL,
-    SETTING_MIRRORS_JITTER, SETTING_MIRRORS_PARALLELISM, SETTING_MIRRORS_REAP_GRACE,
-    SETTING_MIRRORS_REVOCATION_OBJECTIVE, SETTING_MIRRORS_STALE_AFTER, SETTING_MIRRORS_TIMEOUT,
+    SETTING_MIRRORS_JITTER, SETTING_MIRRORS_PARALLELISM, SETTING_MIRRORS_READY_WITHOUT_MIRRORS,
+    SETTING_MIRRORS_REAP_GRACE, SETTING_MIRRORS_REVOCATION_OBJECTIVE, SETTING_MIRRORS_STALE_AFTER,
+    SETTING_MIRRORS_TIMEOUT,
 };
 
 /// A mirroring plane's synchronization loop, as the `dataPlane.sync` block of
@@ -61,6 +62,9 @@ pub struct MirrorsSection {
     /// mirror (`503`). Absent or `0s`: no bound.
     #[serde(default)]
     expire_after: Option<String>,
+    /// Whether this plane is ready while it holds no mirror it can answer from (BUG-0046).
+    #[serde(default)]
+    ready_without_mirrors: Option<String>,
     /// How long a membership mirror no longer listed is kept before it is reaped (WP-7.2d).
     #[serde(default)]
     reap_grace: Option<String>,
@@ -192,6 +196,10 @@ impl MirrorsSection {
             (SETTING_MIRRORS_JITTER, self.jitter.as_ref()),
             (SETTING_MIRRORS_STALE_AFTER, self.stale_after.as_ref()),
             (SETTING_MIRRORS_EXPIRE_AFTER, self.expire_after.as_ref()),
+            (
+                SETTING_MIRRORS_READY_WITHOUT_MIRRORS,
+                self.ready_without_mirrors.as_ref(),
+            ),
             (SETTING_MIRRORS_REAP_GRACE, self.reap_grace.as_ref()),
             (
                 SETTING_MIRRORS_REVOCATION_OBJECTIVE,
