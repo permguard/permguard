@@ -2064,6 +2064,23 @@ pub trait StreamAppender: Send + Sync {
         max_age_secs: u64,
     ) -> Result<Option<&'static str>, String>;
 
+    /// [`StreamAppender::pressure`] with what it measured, so a caller that appends between two
+    /// measures can tell when it would cross a bound without measuring again (BUG-0119). The
+    /// default measures nothing beside the verdict.
+    fn measure_pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<PressureMeasure, String> {
+        self.pressure(resource, max_bytes, max_age_secs)
+            .map(|verdict| PressureMeasure {
+                verdict,
+                unacknowledged_bytes: None,
+                oldest_unacknowledged_at: None,
+            })
+    }
+
     /// The runs of `resource`'s stream, in the order the producer opened them; none for a stream
     /// it never opened (WP-6.2a).
     fn runs(&self, resource: &Resource) -> Result<Vec<ProducedRun>, String> {
@@ -2268,6 +2285,20 @@ pub struct Retired {
     pub producer: [u8; 16],
     /// The records of its last run no subscription acknowledged.
     pub records: u64,
+}
+
+/// What a pressure measure found of a stream (BUG-0119): the verdict, and, when the producer
+/// counts them, the bytes no required subscription acknowledged and when the oldest batch among
+/// them was sealed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PressureMeasure {
+    /// The code naming the bound crossed, or `None`.
+    pub verdict: Option<&'static str>,
+    /// The bytes no required subscription acknowledged; `None` when not counted, or when no
+    /// subscription is required and nothing is bounded.
+    pub unacknowledged_bytes: Option<u64>,
+    /// When the oldest sealed batch past an acknowledgement was made, in seconds.
+    pub oldest_unacknowledged_at: Option<u64>,
 }
 
 /// A stream an incomplete drain left behind its required subscriptions (WP-5.8, owner decision
@@ -2589,6 +2620,17 @@ impl StreamProducer {
         build: BuildRecords<'_>,
     ) -> Result<StreamReceipt, String> {
         self.appender.append_with(resource, build)
+    }
+
+    /// [`StreamAppender::measure_pressure`] of the stream of `resource` (BUG-0119).
+    pub fn measure_pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<PressureMeasure, String> {
+        self.appender
+            .measure_pressure(resource, max_bytes, max_age_secs)
     }
 
     /// Whether the stream of `resource` holds more unacknowledged than the bounds allow (WP-6.1).

@@ -1270,6 +1270,8 @@ message Setting {
   string origin = 4;
   // `startup` (varies per instance) or `static` (one file for every instance).
   string class = 5;
+  // What the setting does not do, where its name says more than it bounds; absent for most.
+  optional string note = 6;
 }
 // `POST /host/v1/backup/prepare` (WP-7.8): nothing but the call.
 message PrepareBackupRequest {}

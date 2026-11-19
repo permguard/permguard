@@ -30,6 +30,26 @@ pub struct Setting {
     pub origin: String,
     /// `startup` (varies per instance) or `static` (one file for every instance).
     pub class: String,
+    /// What the setting does not do, where its name says more than it bounds (BUG-0215); absent
+    /// for most.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// The note a setting carries in the effective configuration: what it does not do, where its
+/// name says more than it bounds.
+pub fn note_of(key: &str) -> Option<&'static str> {
+    match key {
+        permguard_core::config::SETTING_EVENTS_MAX_BYTES => Some(
+            "bounds the event records no required subscription has acknowledged; with no \
+             membership nothing is owed, and the Host event stream keeps its history whatever \
+             this says",
+        ),
+        permguard_core::config::SETTING_EVENTS_SEGMENT_BYTES => Some(
+            "sizes the legacy event journals only: the Host event stream keeps its own segments",
+        ),
+        _ => None,
+    }
 }
 
 /// One `host.authz.public` grant in force: what anybody may do without a credential (BUG-0202).
@@ -85,6 +105,7 @@ impl Effective {
                             .map_or("default", SettingOrigin::as_str)
                             .to_owned(),
                         class: setting.class.as_str().to_owned(),
+                        note: note_of(&setting.key).map(str::to_owned),
                         key: setting.key,
                     }
                 })
@@ -198,5 +219,29 @@ mod tests {
             api.effective_config(&actor("sa:other")),
             Err(Refusal::Denied(_))
         ));
+    }
+
+    /// BUG-0215: the events bounds say what they do not do, in the effective configuration.
+    #[test]
+    fn the_events_bounds_carry_what_they_do_not_bound() {
+        let max = note_of(permguard_core::config::SETTING_EVENTS_MAX_BYTES).expect("a note");
+        assert!(max.contains("no required subscription") && max.contains("no membership"));
+        let segment =
+            note_of(permguard_core::config::SETTING_EVENTS_SEGMENT_BYTES).expect("a note");
+        assert!(segment.contains("legacy"));
+        assert_eq!(note_of("PERMGUARD_LOG_LEVEL"), None);
+        let json = serde_json::to_value(Setting {
+            key: "PERMGUARD_LOG_LEVEL".to_owned(),
+            value: None,
+            masked: false,
+            origin: "default".to_owned(),
+            class: "static".to_owned(),
+            note: None,
+        })
+        .expect("JSON");
+        assert!(
+            json.get("note").is_none(),
+            "absent where there is none: {json}"
+        );
     }
 }

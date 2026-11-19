@@ -235,6 +235,11 @@ is cut.
 
 ### Fixed
 
+- **A member's `spool.bytes` and `spool.age` are held to one record, however fast decisions come.**
+  The decision path read a measure of the stream up to ten seconds old, so with the coordinator down a member went on recording until about five to eight times `spool.bytes` was owed.
+  The producer's measure now reports the unacknowledged bytes and the oldest unacknowledged batch; the log adds what it appended since and measures again as soon as either bound may be crossed, so at most one record lies past it.
+- **`host config show --effective` says what the event stream's `max_bytes` and `segment_bytes` do not do.**
+  On the Host event stream `max_bytes` bounds the records no required subscription has acknowledged, so with no membership the history is kept whatever it says, and `segment_bytes` sizes only the legacy journals; each setting now carries a `note` saying so (REST and gRPC), the start logs `config.setting_limited` when either is set, and the shipped templates say it beside them.
 - **A restarted Authority Plane signs every status list past what it signed before.**
   Each change signed moves a list's `iat` one second past the last, so a burst of revocations ran it ahead of the clock by as many seconds, and the fixed lead a restarted process used dated its first list before one members already held, which they refused as a rollback.
   The highest `iat` signed of each list is now kept on the volume (`lists-signed.json`) before the list leaves the process, and a restart signs past it; a list whose mark cannot be kept is not signed.

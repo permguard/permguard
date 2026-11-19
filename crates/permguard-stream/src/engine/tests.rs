@@ -4260,6 +4260,16 @@ fn pressure_counts_only_the_unacknowledged() {
         producer.pressure(&ledger(1), loose).expect("pressure"),
         None
     );
+    // BUG-0119: the measure says what it counted, so a writer can add what it appends since.
+    let measured = producer
+        .measure_pressure(&ledger(1), loose)
+        .expect("measured");
+    assert_eq!(measured.verdict, None);
+    assert!(
+        measured.unacknowledged_bytes.is_some_and(|bytes| bytes > 0),
+        "{measured:?}"
+    );
+    assert!(measured.oldest_unacknowledged_at.is_some(), "{measured:?}");
     wall.jump(3601);
     mono.advance(Duration::from_secs(3601));
     assert_eq!(

@@ -646,6 +646,7 @@ impl Operations for GrpcHost {
                     masked: setting.masked,
                     origin: setting.origin,
                     class: setting.class,
+                    note: setting.note,
                 })
                 .collect(),
             public_grants: answer

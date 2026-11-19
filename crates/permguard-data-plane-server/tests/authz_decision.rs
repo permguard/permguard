@@ -3795,6 +3795,141 @@ mod host_log {
         assert_eq!(after.next_seq, before.next_seq, "nothing written");
     }
 
+    /// A stream whose coordinator is down: nothing is ever acknowledged, so every byte appended
+    /// is owed, and the measure counts them (BUG-0119).
+    #[derive(Default)]
+    struct Unacknowledged {
+        appended: std::sync::Mutex<(u64, u64)>,
+    }
+
+    impl permguard_host::composition::StreamAppender for Unacknowledged {
+        fn append(
+            &self,
+            _: &Resource,
+            _: &[u8],
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            Err("not in this test".to_owned())
+        }
+
+        fn append_with(
+            &self,
+            _: &Resource,
+            build: permguard_host::composition::BuildRecords<'_>,
+        ) -> Result<permguard_host::composition::StreamReceipt, String> {
+            let mut held = self.appended.lock().expect("held");
+            let records = build(permguard_host::composition::StreamPosition {
+                run_id: [9; 16],
+                seq: held.1 + 1,
+                prev: [0; 32],
+            })?;
+            held.0 += records
+                .iter()
+                .map(|record| record.len() as u64)
+                .sum::<u64>();
+            held.1 += records.len() as u64;
+            Ok(permguard_host::composition::StreamReceipt {
+                run_id: [9; 16],
+                seq: held.1,
+            })
+        }
+
+        fn pressure(
+            &self,
+            resource: &Resource,
+            max_bytes: u64,
+            max_age_secs: u64,
+        ) -> Result<Option<&'static str>, String> {
+            self.measure_pressure(resource, max_bytes, max_age_secs)
+                .map(|measured| measured.verdict)
+        }
+
+        fn measure_pressure(
+            &self,
+            _: &Resource,
+            max_bytes: u64,
+            _: u64,
+        ) -> Result<permguard_host::composition::PressureMeasure, String> {
+            let bytes = self.appended.lock().expect("held").0;
+            Ok(permguard_host::composition::PressureMeasure {
+                verdict: (bytes >= max_bytes).then_some(permguard_core::codes::stream::SPOOL_FULL),
+                unacknowledged_bytes: Some(bytes),
+                oldest_unacknowledged_at: None,
+            })
+        }
+    }
+
+    struct Owing(Arc<Unacknowledged>);
+
+    impl permguard_host::composition::StreamEngine for Owing {
+        fn producer(
+            &self,
+            _: &str,
+        ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
+            Some(Arc::clone(&self.0) as Arc<dyn permguard_host::composition::StreamAppender>)
+        }
+    }
+
+    /// BUG-0119: with nothing acknowledged, decisions are recorded until the unacknowledged bytes
+    /// would pass `spool.bytes`, and refused from there, however fast they come: the log adds what
+    /// it appended to its last measure and measures again before crossing, so at most one record
+    /// lies past the bound, never ten seconds of traffic.
+    #[test]
+    fn a_small_spool_bound_is_held_to_one_record_however_fast_decisions_come() {
+        let stream = Arc::new(Unacknowledged::default());
+        let registration = Host::builder()
+            .streams(Arc::new(Owing(Arc::clone(&stream))))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        let bound = 8 * 1024;
+        let log = HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            permguard_data_plane::decisions::Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            Bounds {
+                max_bytes: bound,
+                max_age_secs: 3600,
+            },
+            Metrics::none(),
+        );
+        let mut largest = 0;
+        let mut recorded = 0;
+        let refused = loop {
+            let before = stream.appended.lock().expect("held").0;
+            match log
+                .record(&decided(&format!("d-{recorded}"), false))
+                .expect("answered")
+            {
+                Written::Recorded { .. } => {
+                    recorded += 1;
+                    let after = stream.appended.lock().expect("held").0;
+                    largest = largest.max(after - before);
+                    assert!(recorded < 1000, "never refused");
+                }
+                other => break other,
+            }
+        };
+        assert_eq!(
+            refused,
+            Written::Refused(permguard_core::codes::stream::SPOOL_FULL.to_owned())
+        );
+        let owed = stream.appended.lock().expect("held").0;
+        assert!(recorded > 1, "decisions were recorded before the bound");
+        assert!(
+            owed <= bound + largest,
+            "{owed} bytes owed against a {bound}-byte bound, one record being {largest}"
+        );
+    }
+
     /// An engine whose stream cannot say its pressure, or cannot append: what a damaged volume
     /// answers.
     struct Failing {

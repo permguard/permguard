@@ -6570,6 +6570,11 @@
             ],
             "description": "`startup`: varies per instance (binds, volume paths, TLS bootstrap, secret references, instance ids); `static`: one file for every instance (WP-2.9).",
             "x-grpc-field": "class"
+          },
+          "note": {
+            "type": "string",
+            "description": "What the setting does not do, where its name says more than it bounds; absent for most.",
+            "x-grpc-field": "note"
           }
         },
         "required": [

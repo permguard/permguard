@@ -793,6 +793,18 @@ impl<C: RecordCodec> Producer<C> {
         resource: &Resource,
         bounds: PressureBounds,
     ) -> Result<Option<&'static str>, StreamError> {
+        self.measure_pressure(resource, bounds)
+            .map(|measured| measured.verdict)
+    }
+
+    /// [`Self::pressure`], with the unacknowledged bytes and the oldest unacknowledged batch's
+    /// time it measured (BUG-0119).
+    pub fn measure_pressure(
+        &self,
+        resource: &Resource,
+        bounds: PressureBounds,
+    ) -> Result<permguard_host::composition::PressureMeasure, StreamError> {
+        use permguard_host::composition::PressureMeasure;
         let signer = self.signer_ring()?;
         let physical = self.physical(resource)?;
         let runs = physical.runs(signer, &self.descriptor)?;
@@ -809,7 +821,7 @@ impl<C: RecordCodec> Producer<C> {
                 })
                 .collect();
             if floors.is_empty() {
-                return Ok(None);
+                return Ok(PressureMeasure::default());
             }
             // Below the journal's first frame the run may have opened earlier (WP-5.6).
             let current = writer
@@ -847,8 +859,14 @@ impl<C: RecordCodec> Producer<C> {
             _ => physical.writer().journal.frames()?,
         };
         let bytes = unacknowledged_bytes(&frames, current, &floors)?;
+        let mut measured = PressureMeasure {
+            verdict: None,
+            unacknowledged_bytes: Some(bytes),
+            oldest_unacknowledged_at: None,
+        };
         if bytes >= bounds.max_bytes {
-            return Ok(Some(codes::stream::SPOOL_FULL));
+            measured.verdict = Some(codes::stream::SPOOL_FULL);
+            return Ok(measured);
         }
         // The age of the oldest sealed batch past its run's floor.
         let now = self.context.time.now_secs();
@@ -868,11 +886,17 @@ impl<C: RecordCodec> Producer<C> {
             let created = permguard_core::time::from_rfc3339(&created)
                 .and_then(|seconds| u64::try_from(seconds).ok())
                 .ok_or_else(|| StreamError::Corruption(format!("`{name}` names no time")))?;
+            measured.oldest_unacknowledged_at = Some(
+                measured
+                    .oldest_unacknowledged_at
+                    .map_or(created, |oldest| oldest.min(created)),
+            );
             if now.saturating_sub(created) >= bounds.max_age_secs {
-                return Ok(Some(codes::stream::AGE_EXPIRY));
+                measured.verdict = Some(codes::stream::AGE_EXPIRY);
+                return Ok(measured);
             }
         }
-        Ok(None)
+        Ok(measured)
     }
 
     /// Moves STATE's `acknowledged_seq` to the current run's `truncate_safe`. Deleting what every

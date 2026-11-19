@@ -125,6 +125,16 @@ pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
                 return None;
             };
             let directory: PathBuf = config.events_directory();
+            // What these two do not do, said where an operator sets them (BUG-0215).
+            for (key, _, _) in config.supplied_settings() {
+                if let Some(note) = permguard_host::api::config::note_of(key) {
+                    tracing::warn!(
+                        event.name = "config.setting_limited",
+                        setting = key,
+                        "{note}"
+                    );
+                }
+            }
             let bounds = Bounds {
                 max_bytes: config.events_max_bytes(),
                 segment_bytes: config.events_segment_bytes(),

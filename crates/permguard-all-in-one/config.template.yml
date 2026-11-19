@@ -483,6 +483,9 @@ dataPlane:
   #   directory: data/events         # under the working directory
   #
   #   stream:
+  #     # On the Host event stream `max_bytes` bounds the records no required subscription has
+  #     # acknowledged: with no membership nothing is owed and the history is kept; and
+  #     # `segment_bytes` sizes the legacy journals only (`host config show` notes both).
   #     max_bytes: "10G"             # EVENT RECORDS ONLY; the reserve is kept outside this bound
   #     segment_bytes: "32M"         # when a segment is closed and a new one started
   #     max_record_bytes: "256K"     # the largest single record this journal accepts

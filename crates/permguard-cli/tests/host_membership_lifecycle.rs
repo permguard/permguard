@@ -329,6 +329,7 @@ fn launch_host(
                             masked: false,
                             origin: "environment".to_owned(),
                             class: "startup".to_owned(),
+                            note: None,
                         }],
                         public_grants: vec![permguard_host::api::config::PublicGrant {
                             operations: vec!["lifecycle.read".to_owned()],

@@ -61,6 +61,25 @@ struct Measured {
     written: bool,
     /// When it was measured.
     at: std::time::Instant,
+    /// The bytes unacknowledged at the measure, when the producer counts them (BUG-0119).
+    unacknowledged: Option<u64>,
+    /// When the oldest unacknowledged batch was made, at the measure.
+    oldest_at: Option<u64>,
+    /// The record bytes this log appended since the measure.
+    appended: u64,
+}
+
+impl Measured {
+    /// Whether what was measured, with what was appended since, may have crossed a bound: the
+    /// bytes reach `max_bytes`, or the oldest batch has grown past `max_age_secs`. Then the stream
+    /// is measured again before a decision is recorded, never answered on a stale figure.
+    fn may_cross(&self, bounds: &Bounds, now: u64) -> bool {
+        self.unacknowledged
+            .is_some_and(|bytes| bytes.saturating_add(self.appended) >= bounds.max_bytes)
+            || self
+                .oldest_at
+                .is_some_and(|oldest| now.saturating_sub(oldest) >= bounds.max_age_secs)
+    }
 }
 
 /// The writing half of the decision log on the Host's producer.
@@ -136,6 +155,8 @@ impl HostLog {
         let marker_body = marker_body(&self.epoch, &self.commitment, None);
         let decision_body = decision_body(&self.epoch, &self.commitment, decided);
         let mut marked_now = false;
+        // The bytes appended, which the next pressure check adds to its measure (BUG-0119).
+        let records_len = std::sync::atomic::AtomicU64::new(0);
         let receipt = self.producer.append_with(&resource, &mut |position| {
             let mut marked = lock(&self.marked);
             let marker = marked.get(&key) != Some(&position.run_id);
@@ -174,10 +195,16 @@ impl HostLog {
             // gives them their sequences, or stops the stream.
             marked.insert(key.clone(), position.run_id);
             marked_now = marker;
+            records_len.store(
+                records.iter().map(|record| record.len() as u64).sum(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
             Ok(records)
         })?;
+        let appended: u64 = records_len.load(std::sync::atomic::Ordering::Relaxed);
         if let Some(held) = lock(&self.pressure).get_mut(&key) {
             held.written = true;
+            held.appended = held.appended.saturating_add(appended);
         }
         if marked_now {
             self.metrics
@@ -218,7 +245,10 @@ impl HostLog {
         for (key, resource) in streams {
             let measured = self.measured(&resource);
             if let Some(held) = lock(&self.pressure).get_mut(&key) {
-                held.pressure = measured;
+                held.pressure = measured.verdict;
+                held.unacknowledged = measured.unacknowledged_bytes;
+                held.oldest_at = measured.oldest_unacknowledged_at;
+                held.appended = 0;
                 held.at = std::time::Instant::now();
             }
         }
@@ -230,6 +260,8 @@ impl HostLog {
     fn pressure_of(&self, resource: &Resource, key: &str) -> Option<&'static str> {
         if let Some(held) = lock(&self.pressure).get(key)
             && held.at.elapsed() < MEASURE_STALE_AFTER
+            && (held.pressure.is_some()
+                || !held.may_cross(&self.bounds, permguard_core::time::unix_now()))
         {
             return held.pressure;
         }
@@ -237,21 +269,28 @@ impl HostLog {
         let mut pressure = lock(&self.pressure);
         let held = pressure.entry(key.to_owned()).or_insert_with(|| Measured {
             resource: resource.clone(),
-            pressure: measured,
+            pressure: measured.verdict,
             written: false,
             at: std::time::Instant::now(),
+            unacknowledged: None,
+            oldest_at: None,
+            appended: 0,
         });
-        held.pressure = measured;
+        held.pressure = measured.verdict;
+        held.unacknowledged = measured.unacknowledged_bytes;
+        held.oldest_at = measured.oldest_unacknowledged_at;
+        held.appended = 0;
         held.at = std::time::Instant::now();
         held.pressure
     }
 
-    fn measured(&self, resource: &Resource) -> Option<&'static str> {
-        match self
-            .producer
-            .pressure(resource, self.bounds.max_bytes, self.bounds.max_age_secs)
-        {
-            Ok(pressure) => pressure,
+    fn measured(&self, resource: &Resource) -> permguard_host::composition::PressureMeasure {
+        match self.producer.measure_pressure(
+            resource,
+            self.bounds.max_bytes,
+            self.bounds.max_age_secs,
+        ) {
+            Ok(measured) => measured,
             Err(error) => {
                 warn!(
                     event.name = "decisions.pressure_unknown",
@@ -260,7 +299,10 @@ impl HostLog {
                     "the decision stream's pressure cannot be measured: its decisions are refused \
                      until it can"
                 );
-                Some(permguard_core::codes::stream::STORE_UNAVAILABLE)
+                permguard_host::composition::PressureMeasure {
+                    verdict: Some(permguard_core::codes::stream::STORE_UNAVAILABLE),
+                    ..Default::default()
+                }
             }
         }
     }

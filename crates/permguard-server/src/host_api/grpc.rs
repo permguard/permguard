@@ -620,6 +620,7 @@ impl OperationsService for Served {
                     masked: setting.masked,
                     origin: setting.origin,
                     class: setting.class,
+                    note: setting.note,
                 })
                 .collect(),
             public_grants: effective

@@ -1627,6 +1627,23 @@ impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C>
         .map_err(|error| error.to_string())
     }
 
+    fn measure_pressure(
+        &self,
+        resource: &Resource,
+        max_bytes: u64,
+        max_age_secs: u64,
+    ) -> Result<permguard_host::composition::PressureMeasure, String> {
+        Producer::measure_pressure(
+            self,
+            resource,
+            PressureBounds {
+                max_bytes,
+                max_age_secs,
+            },
+        )
+        .map_err(|error| error.to_string())
+    }
+
     fn runs(
         &self,
         resource: &Resource,
