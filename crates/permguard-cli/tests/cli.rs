@@ -3238,3 +3238,225 @@ fn init_writes_only_a_workspace_validate_accepts() {
         assert!(!dir.join(".permguard").exists(), "nothing is written");
     }
 }
+
+/// BUG-0239: a case decided by a policy without an alias passes, the policy named by its id; an
+/// identity the workspace does not hold is still drift.
+#[test]
+fn a_case_decided_by_a_policy_without_an_alias_passes() {
+    let dir = scratch("test-no-alias");
+    write_sources(&dir);
+    std::fs::write(
+        dir.join("app/rules.cedar"),
+        "permit(principal, action == Action::\"read\", resource);\n",
+    )
+    .expect("written");
+    assert!(run(&dir, &["init"]).status.success());
+    write_one_case(&dir);
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit }\n",
+    )
+    .expect("written");
+    let output = run(&dir, &["test", "-o", "json"]);
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    let decided = report["cases"][0]["policies"].clone();
+    assert!(
+        !stdout(&output).contains("no policy of this workspace"),
+        "{report}"
+    );
+    // The policy is named by its id, and a case may say so.
+    let id = decided[0].as_str().expect("an id").to_owned();
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        format!("- name: alice reads\n  request: ../requests/read.json\n  expect: {{ decision: permit, policies: [{id}] }}\n"),
+    )
+    .expect("written");
+    let output = run(&dir, &["test"]);
+    assert!(
+        output.status.success(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+}
+
+/// BUG-0249: a case file or folder named by an absolute path inside the workspace runs, with or
+/// without `-w`; one outside is refused naming the workspace, never as a "store path".
+#[test]
+fn a_case_path_may_be_absolute_inside_the_workspace() {
+    let dir = scratch("test-absolute");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    write_one_case(&dir);
+    for path in [
+        dir.join("tests/cases.yml"),
+        dir.join("tests"),
+        std::path::PathBuf::from("tests/cases.yml"),
+    ] {
+        let output = run(&dir, &["test", path.to_str().expect("UTF-8")]);
+        assert!(output.status.success(), "{path:?}: {}", stderr(&output));
+        assert!(stdout(&output).contains("1 passed"), "{}", stdout(&output));
+    }
+    let outside = scratch("test-absolute-outside");
+    std::fs::write(outside.join("cases.yml"), "[]\n").expect("written");
+    for path in [
+        outside
+            .join("cases.yml")
+            .to_str()
+            .expect("UTF-8")
+            .to_owned(),
+        "../test-absolute-outside/cases.yml".to_owned(),
+    ] {
+        let output = run(&dir, &["test", &path]);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{path}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("is outside the workspace"),
+            "{}",
+            stderr(&output)
+        );
+        assert!(
+            !stderr(&output).contains("store path"),
+            "{}",
+            stderr(&output)
+        );
+    }
+}
+
+/// The Dogwood example, as a workspace of its own.
+fn dogwood_example(tag: &str) -> PathBuf {
+    let dir = scratch(tag);
+    let example =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/dogwood-session-access");
+    for entry in walk(&example) {
+        let relative = entry.strip_prefix(&example).expect("inside");
+        if relative.starts_with(".permguard") {
+            continue;
+        }
+        let target = dir.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target).expect("created");
+        } else {
+            std::fs::create_dir_all(target.parent().expect("a parent")).expect("created");
+            std::fs::copy(&entry, &target).expect("copied");
+        }
+    }
+    assert!(run(&dir, &["init"]).status.success());
+    dir
+}
+
+fn walk(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root).expect("listed") {
+        let path = entry.expect("an entry").path();
+        found.push(path.clone());
+        if path.is_dir() {
+            found.extend(walk(&path));
+        }
+    }
+    found
+}
+
+/// BUG-0231, DEC-0032 option B: `test --remote` refuses the temporal cases by name, before any
+/// request, and a plane nobody reaches stops the run as unreachable rather than failing cases.
+#[test]
+fn test_remote_refuses_temporal_cases_and_stops_on_an_unreachable_plane() {
+    let dir = dogwood_example("test-remote-temporal");
+    let output = run(
+        &dir,
+        &[
+            "--data-endpoint",
+            "http://127.0.0.1:1",
+            "test",
+            "--remote",
+            "--zone",
+            "acme",
+            "--ledger",
+            "agent-governance",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("temporal profile"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(
+        !stderr(&output).contains("unknown field"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(!stdout(&output).contains("asked"), "{}", stdout(&output));
+
+    let dir = scratch("test-remote-down");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    write_one_case(&dir);
+    let output = run(
+        &dir,
+        &[
+            "--data-endpoint",
+            "http://127.0.0.1:1",
+            "test",
+            "--remote",
+            "--zone",
+            "acme",
+            "--ledger",
+            "main",
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(69),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stderr(&output).contains("did not answer"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(
+        !stdout(&output).contains("asked http"),
+        "{}",
+        stdout(&output)
+    );
+}
+
+/// BUG-0232, DEC-0032 option A: a history event of another store is never used to decide the
+/// request, as the plane never does; it is refused naming its file and what differs.
+#[test]
+fn a_history_event_of_another_store_is_refused_by_its_file() {
+    let dir = dogwood_example("test-store-mismatch");
+    let events = dir.join("events");
+    let login = std::fs::read_to_string(events.join("1-login-request.json")).expect("read");
+    std::fs::write(
+        events.join("1-login-request.json"),
+        login.replace(
+            "\"ledger\": \"agent-governance\"",
+            "\"ledger\": \"other-ledger\"",
+        ),
+    )
+    .expect("written");
+    let output = run(&dir, &["test", "-o", "json"]);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("JSON");
+    let said = report.to_string();
+    assert!(said.contains("events/1-login-request.json"), "{said}");
+    assert!(said.contains("ledger_not_served"), "{said}");
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "a case built on that event does not pass"
+    );
+}

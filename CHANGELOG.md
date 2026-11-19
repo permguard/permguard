@@ -161,6 +161,12 @@ is cut.
 
 ### Fixed
 
+- **`permguard test` answers as the plane would.**
+  A case decided by a policy without an alias passes, the policy named by its id, where it was reported as drift; an identity the workspace does not hold still is. A history event whose `store` names another zone, ledger or profile than the request's is refused as the plane refuses or ignores it, `ledger_not_served` or `profile_unknown`, naming the event's file, where it was used to permit; and every refusal of a history event names its file.
+- **`permguard test --remote` refuses what it cannot ask, and stops on a plane nobody reaches.**
+  A case that decides against a temporal profile is refused by name with `64` before anything is sent, where every Dogwood case failed with `payload_malformed: unknown field store`; run it offline. A data plane that does not answer stops the run with `69` naming it, where every case failed and the summary claimed it was asked.
+- **`permguard test` takes a case path that is absolute.**
+  A file or folder inside the workspace, named absolutely or relative to `-w`, runs; one outside is refused naming the workspace, where an absolute path was refused as "a store path".
 - **A Cedar comment stays with the policy it was written for.**
   A comment on the line of a policy's `;` is that policy's, where it became the next policy's first line; the comments after a file's last policy are the last policy's, where they were dropped; and a file `clone` writes ends with a newline. A single-policy file round-trips through `apply` and `clone` as written, and `plan` reports an edit of a note as an update of the policy it is on. A policy with such a comment is one update after the upgrade, its id unchanged; every other policy keeps its bytes and digest.
 - **`pull` lands a remote edit in a CRLF workspace.**

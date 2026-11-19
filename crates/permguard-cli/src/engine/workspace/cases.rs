@@ -539,18 +539,20 @@ pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String
     Ok((payload, profile))
 }
 
-/// The identities of this workspace's policies, and the aliases their authors wrote.
+/// Every policy of this workspace by its identity, named by the alias its author wrote or, for
+/// a policy without one, by its id (BUG-0239): an alias is optional, so a policy without one is
+/// still this workspace's, never drift.
 ///
-/// What names a decision: a plane cites identities, and a case is written in aliases.
+/// What names a decision: a plane cites identities, and a case is written in aliases or ids.
 pub fn aliases(snapshot: &Snapshot) -> BTreeMap<String, String> {
     snapshot
         .policies
         .iter()
-        .filter_map(|policy| {
-            policy
-                .alias
-                .as_ref()
-                .map(|alias| (policy.id.clone(), alias.clone()))
+        .map(|policy| {
+            (
+                policy.id.clone(),
+                policy.alias.clone().unwrap_or_else(|| policy.id.clone()),
+            )
         })
         .collect()
 }
@@ -772,9 +774,10 @@ impl Answered {
 /// The aliases of the policies a decision cited, collecting any identity this workspace
 /// does not contain.
 ///
-/// A decision cites identities; a case is written in the aliases their authors wrote. An
-/// identity with no alias here is not a naming problem — it is a policy these sources do
-/// not have, which means what answered is not what they would apply.
+/// A decision cites identities; a case is written in the aliases their authors wrote, or the
+/// ids of the policies without one. An identity this workspace does not hold is not a naming
+/// problem — it is a policy these sources do not have, which means what answered is not what
+/// they would apply.
 fn name(
     policies: &[String],
     aliases: &BTreeMap<String, String>,
@@ -1057,6 +1060,61 @@ fn run_temporal(
     }
     documents.push((located.request.clone(), payload.clone()));
 
+    // A history event is an occurrence of the store the request is decided in: the plane keeps
+    // an event of another zone, ledger or profile in that store's history, or refuses it, and
+    // never decides this request with it. So does this (BUG-0232, DEC-0032 option A): such an
+    // event is refused, naming its file and what differs, never used to permit.
+    let store_of = |document: &Value| document.get("store").cloned().unwrap_or(Value::Null);
+    let asked_store = store_of(payload);
+    for (path, document) in &documents[..documents.len() - 1] {
+        let held = store_of(document);
+        if held == asked_store {
+            continue;
+        }
+        let field = |value: &Value, name: &str| {
+            value
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let (code, what) = if field(&held, "zone") != field(&asked_store, "zone")
+            || field(&held, "ledger") != field(&asked_store, "ledger")
+        {
+            (
+                permguard_core::codes::pdp_native::LEDGER_NOT_SERVED,
+                format!(
+                    "the ledger `{}/{}`, and the request is decided in `{}/{}`",
+                    field(&held, "zone"),
+                    field(&held, "ledger"),
+                    field(&asked_store, "zone"),
+                    field(&asked_store, "ledger")
+                ),
+            )
+        } else {
+            (
+                permguard_core::codes::pdp_native::PROFILE_UNKNOWN,
+                format!(
+                    "the profile `{}`, and the request is decided in `{}`",
+                    field(&held, "profile"),
+                    field(&asked_store, "profile")
+                ),
+            )
+        };
+        return refused(format!(
+            "{code}: the history event `{path}` names {what}: the plane never decides this \
+             request with it"
+        ));
+    }
+    // Whatever refuses an event names it: the request's own refusals are the request's.
+    let named = |path: &str, detail: String| {
+        if path == located.request {
+            detail
+        } else {
+            format!("the history event `{path}`: {detail}")
+        }
+    };
+
     // Read and check everything before anything is observed, so the histories this case touches
     // are known before it starts. Checking is pure — it validates against the loaded schemas and
     // derives a key — so doing it first costs nothing and buys the reset below.
@@ -1075,7 +1133,10 @@ fn run_temporal(
         let occurrence = match body.read() {
             Ok(occurrence) => occurrence,
             Err(malformed) => {
-                return refused(format!("{}: {}", malformed.code, malformed.message));
+                return refused(named(
+                    path,
+                    format!("{}: {}", malformed.code, malformed.message),
+                ));
             }
         };
 
@@ -1094,16 +1155,19 @@ fn run_temporal(
             match checked_here {
                 Ok(held) => checked.push(held),
                 Err(refusal) => {
-                    return refused(format!(
-                        "{}: the partition `{name}`: {}",
-                        refusal.code, refusal.message
+                    return refused(named(
+                        path,
+                        format!(
+                            "{}: the partition `{name}`: {}",
+                            refusal.code, refusal.message
+                        ),
                     ));
                 }
             }
         }
         let history = match history_key(checked.first()) {
             Ok(history) => history,
-            Err(detail) => return refused(detail),
+            Err(detail) => return refused(named(path, detail)),
         };
         prepared.push((occurrence, checked, history));
     }

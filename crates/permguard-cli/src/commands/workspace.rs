@@ -36,6 +36,9 @@ struct Plane {
     ledger: String,
     origin: &'static str,
     aliases: std::collections::BTreeMap<String, String>,
+    /// Why the plane did not answer, when it did not: the run stops on it, as `69`, rather than
+    /// reporting every case as failed against a plane nobody reached (BUG-0231).
+    unreachable: std::cell::RefCell<Option<String>>,
 }
 
 impl Decider {
@@ -144,7 +147,20 @@ impl Plane {
                     &self.aliases,
                 ));
             }
-            // A plane that is down, or broken, is not an answer about the policies at all.
+            // A plane nobody reached: the run stops, saying so, and no case is reported as
+            // decided by it (BUG-0231).
+            Err(failure) if failure.class == "unavailable" => {
+                *self.unreachable.borrow_mut() = Some(format!(
+                    "the data plane at {} did not answer: {} ({})",
+                    self.endpoint, failure.detail, failure.reason
+                ));
+                return Ok(cases::failed(
+                    located,
+                    &profile,
+                    "the plane did not answer".to_owned(),
+                ));
+            }
+            // A plane that answered and is broken is not an answer about the policies at all.
             Err(failure) => {
                 return Ok(cases::failed(
                     located,
@@ -373,6 +389,7 @@ fn remote_plane(
         ledger,
         origin: target.origin,
         aliases: cases::aliases(snapshot),
+        unreachable: std::cell::RefCell::new(None),
     })
 }
 
@@ -1216,6 +1233,11 @@ pub fn workspace_command(
             zone,
             ledger,
         } => {
+            // A case path, relative or absolute, is read inside the workspace (BUG-0249).
+            let paths = paths
+                .iter()
+                .map(|path| inside_workspace(&globals.workdir, path))
+                .collect::<Result<Vec<_>, _>>()?;
             let cases::Collected {
                 mut cases,
                 unreadable,
@@ -1298,12 +1320,40 @@ pub fn workspace_command(
                     cases::compile(&snapshot, &manifest).map_err(usage)?,
                 ))
             };
+            // `--remote` asks the stateless interface: a case that decides against a temporal
+            // profile's history is refused before anything is sent, by name, rather than sent as
+            // a request the interface refuses (BUG-0231, DEC-0032 option B while Dogwood is
+            // experimental). Run offline, it is decided against its events as it always was.
+            if remote {
+                let mut temporal = Vec::new();
+                for located in &cases {
+                    let (_, profile) = cases::request_of(&store, located).map_err(usage)?;
+                    if manifest.profiles.get(&profile).is_some_and(|declared| {
+                        declared.r#type == permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1
+                    }) {
+                        temporal.push(format!("`{}`", located.case.name));
+                    }
+                }
+                if !temporal.is_empty() {
+                    return Err(usage(format!(
+                        "`test --remote` asks the plane's stateless interface, and {} decide(s) \
+                         against a temporal profile's history: run them with `permguard test`, \
+                         without --remote",
+                        temporal.join(", ")
+                    )));
+                }
+            }
             let asked = decider.describe();
 
             let mut lines = Vec::new();
             let (mut passed, mut failed) = (0, 0);
             for located in &cases {
                 let outcome = decider.decide(&store, located).map_err(usage)?;
+                if let Decider::Remote(plane) = &decider
+                    && let Some(why) = plane.unreachable.borrow_mut().take()
+                {
+                    return Err(Failure::unavailable(why));
+                }
                 trace.say(format!(
                     "{}: {}",
                     outcome.name,
@@ -1377,4 +1427,37 @@ pub fn workspace_command(
         }
     }
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// `path`, a case file or folder named relative to `-w` or absolutely, as the path inside the
+/// workspace the cases are read by (BUG-0249): an absolute path inside the workspace is taken,
+/// and one outside it is refused naming the workspace, never as a "store path".
+fn inside_workspace(root: &std::path::Path, path: &str) -> Result<String, Failure> {
+    let given = std::path::Path::new(path);
+    let joined = if given.is_absolute() {
+        given.to_path_buf()
+    } else {
+        root.join(given)
+    };
+    // Compared resolved, so `..`, a symlinked temporary folder and `-w .` all read alike.
+    let root_resolved = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let resolved = std::fs::canonicalize(&joined).unwrap_or(joined);
+    let outside = || {
+        Failure::usage(format!(
+            "`{path}` is outside the workspace {}: name a case file or folder inside it",
+            root_resolved.display()
+        ))
+    };
+    let inside = resolved
+        .strip_prefix(&root_resolved)
+        .or_else(|_| resolved.strip_prefix(root))
+        .map_err(|_| outside())?;
+    let relative: Vec<String> = inside
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    if relative.iter().any(|part| part == "..") {
+        return Err(outside());
+    }
+    Ok(relative.join("/"))
 }
