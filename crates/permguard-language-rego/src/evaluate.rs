@@ -135,6 +135,7 @@ impl Evaluating for Rego {
         // what makes "one package, one citable policy" checkable rather than assumed.
         let mut claimed: std::collections::BTreeMap<String, String> =
             std::collections::BTreeMap::new();
+        let mut parsed_modules: Vec<(String, super::parsed::Parsed)> = Vec::new();
         for stored in policies {
             let text = std::str::from_utf8(&stored.source)
                 .map_err(|_| format!("rego: module {} is not valid UTF-8", stored.id))?;
@@ -144,6 +145,8 @@ impl Evaluating for Rego {
             let module = super::parsed::parse(text)
                 .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
             super::parsed::check_builtins(&module)
+                .map_err(|error| format!("rego: module {}: {error}", stored.id))?;
+            super::parsed::check_decision_rules(&module)
                 .map_err(|error| format!("rego: module {}: {error}", stored.id))?;
             // `parse` has bounded the module's nesting and parse work; the parse itself still
             // runs on a stack segment sized for them.
@@ -155,6 +158,7 @@ impl Evaluating for Rego {
                 return Err(crate::shared_package(&package, first, &stored.id));
             }
             claimed.insert(package.clone(), stored.id.clone());
+            parsed_modules.push((stored.id.clone(), module.clone()));
             modules.push(Module {
                 id: stored.id.clone(),
                 allow: module
@@ -168,6 +172,14 @@ impl Evaluating for Rego {
             });
             policy_bytes += stored.source.len();
         }
+
+        // Refused at load as at push: a ledger pushed before the check never reaches the evaluator
+        // with a chain it cannot take (BUG-0018, BUG-0236).
+        let held: Vec<(&str, &super::parsed::Parsed)> = parsed_modules
+            .iter()
+            .map(|(id, module)| (id.as_str(), module))
+            .collect();
+        super::parsed::check_set(&held)?;
 
         Ok(Box::new(RegoEvaluator {
             engine,
@@ -484,6 +496,160 @@ deny if input.subject.id == "bob"
         permguard_language_core::input::PartitionData::RegoData(std::sync::Arc::new(
             value.as_object().cloned().unwrap_or_default(),
         ))
+    }
+
+    /// A module whose `allow` reads a chain of `links` rules, each reading the next.
+    fn chain(links: usize) -> String {
+        let mut source =
+            String::from("package chain\n\nimport rego.v1\n\ndefault allow := false\n\n");
+        source.push_str("allow if r0\n\n");
+        for at in 0..links {
+            if at + 1 == links {
+                source.push_str(&format!("r{at} if input.subject.id == \"alice\"\n"));
+            } else {
+                source.push_str(&format!("r{at} if r{}\n", at + 1));
+            }
+        }
+        source
+    }
+
+    /// BUG-0236: a chain of rules longer than the bound is refused at validation, at the set check
+    /// and at compile, naming the bound, never evaluated; one within it is evaluated, on a thread
+    /// with a small stack too, and the process keeps running.
+    #[test]
+    fn a_rule_chain_past_the_bound_is_refused_and_one_within_it_is_decided() {
+        use permguard_language_core::role::Language as _;
+
+        let deep = chain(1000);
+        let refused = Rego
+            .validate_policy(deep.as_bytes())
+            .expect_err("past the bound");
+        assert!(refused.contains("more than the 64"), "{refused}");
+        assert!(
+            Rego.validate_set(&[("deep", deep.as_bytes())], None)
+                .is_err()
+        );
+        let refused = Rego
+            .compile(
+                &[stored("01a0-deep", &deep)],
+                &permguard_language_core::artifact::Artifacts::default(),
+            )
+            .err()
+            .expect("refused at load too");
+        assert!(refused.contains("chain"), "{refused}");
+
+        let within = chain(super::super::parsed::MAX_RULE_DEPTH - 2);
+        Rego.validate_policy(within.as_bytes())
+            .expect("within the bound");
+        let verdict = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let compiled = Rego
+                    .compile(
+                        &[stored("01a0-within", &within)],
+                        &permguard_language_core::artifact::Artifacts::default(),
+                    )
+                    .expect("compiles");
+                compiled
+                    .evaluate(&query("alice", "read", "open"))
+                    .permitted()
+            })
+            .expect("a thread")
+            .join()
+            .expect("no overflow");
+        assert!(verdict, "decided through the whole chain");
+    }
+
+    /// BUG-0016: a set-valued or function `deny` or `allow` is refused at validation and at load,
+    /// naming the rule; a boolean one is accepted and decides as before.
+    #[test]
+    fn a_set_valued_decision_rule_is_refused_at_validation_and_load() {
+        use permguard_language_core::role::Language as _;
+
+        for module in [
+            "package guard\n\nimport rego.v1\n\ndeny contains msg if {\n    input.resource.properties.status == \"secret\"\n    msg := \"secret\"\n}\n",
+            "package guard\n\nimport rego.v1\n\nallow contains \"x\" if true\n",
+            "package guard\n\nimport rego.v1\n\ndeny(x) if x\n",
+        ] {
+            let refused = Rego.validate_policy(module.as_bytes()).expect_err(module);
+            assert!(
+                refused.contains("data.guard.") && refused.contains("boolean rules"),
+                "{module}: {refused}"
+            );
+            assert!(
+                Rego.compile(
+                    &[stored("01a0-guard", module)],
+                    &permguard_language_core::artifact::Artifacts::default(),
+                )
+                .is_err(),
+                "{module}: refused at load too"
+            );
+        }
+        let boolean = "package guard\n\nimport rego.v1\n\ndefault deny := false\n\ndeny if input.resource.properties.status == \"secret\"\n";
+        Rego.validate_policy(boolean.as_bytes())
+            .expect("a boolean deny");
+        let compiled = Rego
+            .compile(
+                &[
+                    stored("01a0-readers", READERS),
+                    stored("01a0-guard", boolean),
+                ],
+                &permguard_language_core::artifact::Artifacts::default(),
+            )
+            .expect("compiles");
+        assert!(
+            compiled
+                .evaluate(&query("alice", "read", "open"))
+                .error()
+                .is_none()
+        );
+    }
+
+    /// BUG-0018: a module that writes rules into another module's package, by a nested ref head or
+    /// a package below one of its rules, is refused naming both; modules of sibling packages are
+    /// not.
+    #[test]
+    fn a_module_writing_into_another_package_is_refused() {
+        use permguard_language_core::role::Language as _;
+
+        let guard = "package app.guard\n\nimport rego.v1\n\ndefault allow := false\n";
+        for writer in [
+            "package app\n\nimport rego.v1\n\nguard.allow if true\n",
+            "package app\n\nimport rego.v1\n\nguard.deny if true\n",
+            "package app\n\nimport rego.v1\n\nguard[\"allow\"] := true\n",
+        ] {
+            let refused = Rego
+                .validate_set(
+                    &[
+                        ("01a0-guard", guard.as_bytes()),
+                        ("01a0-app", writer.as_bytes()),
+                    ],
+                    None,
+                )
+                .expect_err(writer);
+            assert!(
+                refused.contains("01a0-app") && refused.contains("01a0-guard"),
+                "{writer}: {refused}"
+            );
+            assert!(
+                Rego.compile(
+                    &[stored("01a0-guard", guard), stored("01a0-app", writer)],
+                    &permguard_language_core::artifact::Artifacts::default(),
+                )
+                .is_err(),
+                "{writer}: refused at load too"
+            );
+        }
+        let sibling_a = "package app.a\n\nimport rego.v1\n\ndefault allow := false\n";
+        let sibling_b = "package app.b\n\nimport rego.v1\n\ndefault allow := false\n";
+        Rego.validate_set(
+            &[
+                ("01a0-a", sibling_a.as_bytes()),
+                ("01a0-b", sibling_b.as_bytes()),
+            ],
+            None,
+        )
+        .expect("siblings write nothing of each other");
     }
 
     #[test]

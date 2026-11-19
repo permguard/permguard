@@ -192,6 +192,13 @@ pub struct Parsed {
     /// Every name a `with … as` substitutes, by its dotted path: what a replaced function or
     /// built-in would dispatch to.
     pub replacements: BTreeSet<String>,
+    /// What each rule refers to, by its head path relative to the package: every variable and
+    /// dotted reference its head and bodies name, which [`check_set`] resolves to the rules they
+    /// read (BUG-0236).
+    pub references: std::collections::BTreeMap<String, BTreeSet<String>>,
+    /// The rules defined as a set (`deny contains msg`, `deny[msg]`) or a function, by the base of
+    /// their head path: what `allow` and `deny` may not be (BUG-0016).
+    pub not_boolean: BTreeSet<String>,
 }
 
 /// Refuses a module that nests deeper than [`MAX_NESTING`] or costs more than [`MAX_PARSE_WORK`]
@@ -271,6 +278,9 @@ pub fn parse(source: &str) -> Result<Parsed, String> {
 
     let mut rules = BTreeSet::new();
     let mut functions = BTreeSet::new();
+    let mut references: std::collections::BTreeMap<String, BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    let mut not_boolean = BTreeSet::new();
     for rule in ast["rules"].as_array().into_iter().flatten() {
         if let Some(default) = rule.get("Default") {
             if let Some(name) = path(&default["refr"]) {
@@ -278,12 +288,23 @@ pub fn parse(source: &str) -> Result<Parsed, String> {
             }
         } else if let Some(spec) = rule.get("Spec") {
             for (kind, head) in spec["head"].as_object().into_iter().flatten() {
+                // A set or a function is not a decision rule, whatever it is called; a head
+                // indexed by a variable, `deny[msg]`, is named by its base.
+                if (kind == "Set" || kind == "Func" || path(&head["refr"]).is_none())
+                    && let Some(base) = base_of(&head["refr"])
+                {
+                    not_boolean.insert(base);
+                }
                 let Some(name) = path(&head["refr"]) else {
                     continue;
                 };
                 if kind == "Func" {
                     functions.insert(name.clone());
                 }
+                let named = references.entry(name.clone()).or_default();
+                referenced(&spec["bodies"], named);
+                referenced(head, named);
+                named.remove(&name);
                 rules.insert(name);
             }
         }
@@ -299,7 +320,169 @@ pub fn parse(source: &str) -> Result<Parsed, String> {
         functions,
         calls,
         replacements,
+        references,
+        not_boolean,
     })
+}
+
+/// The first name of a head path: `deny` of `deny`, `deny[msg]` and `deny.x`.
+fn base_of(reference: &Value) -> Option<String> {
+    if let Some(var) = reference.get("Var") {
+        return var["value"].as_str().map(ToOwned::to_owned);
+    }
+    let inner = reference
+        .get("RefBrack")
+        .or_else(|| reference.get("RefDot"))?;
+    base_of(&inner["refr"])
+}
+
+/// Refuses a module whose `allow` or `deny` is a set or a function rather than a boolean rule
+/// (BUG-0016): the evaluator asks each for a boolean, so a set-valued `deny contains msg`, the
+/// convention of other Rego tools, would make every decision of the partition fail.
+pub fn check_decision_rules(parsed: &Parsed) -> Result<(), String> {
+    for rule in ["allow", "deny"] {
+        if parsed.not_boolean.contains(rule) {
+            return Err(format!(
+                "rego: `{}.{rule}` is defined as a set or a function: `allow` and `deny` are \
+                 boolean rules here (`{rule} if …`, `default {rule} := false`), so a set such as \
+                 `{rule} contains msg` is refused rather than read as a decision",
+                parsed.package
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Every variable and dotted reference below `node`, each by the path [`path`] reads.
+fn referenced(node: &Value, into: &mut BTreeSet<String>) {
+    match node {
+        Value::Object(map) => {
+            if (map.contains_key("Var")
+                || map.contains_key("RefDot")
+                || map.contains_key("RefBrack"))
+                && let Some(named) = path(node)
+            {
+                into.insert(named);
+            }
+            for value in map.values() {
+                referenced(value, into);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                referenced(item, into);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// How long a chain of rules depending on each other may be: Regorus evaluates a rule that reads
+/// another by recursing into it, with no depth limit of its own, so a chain long enough overflows
+/// the stack segment the engine is given, an abort no guard catches (BUG-0236). Real policies
+/// chain a handful of rules.
+pub const MAX_RULE_DEPTH: usize = 64;
+
+/// Refuses a set of modules where one writes rules into another's package (BUG-0018), or whose
+/// rules depend on each other in a chain longer than [`MAX_RULE_DEPTH`] (BUG-0236). `modules` are
+/// `(policy, parsed)`.
+pub fn check_set(modules: &[(&str, &Parsed)]) -> Result<(), String> {
+    // A rule lands where its package and its head path say: a head reaching into another module's
+    // package, or a package below a rule another module defines, writes into that module.
+    for (name, module) in modules {
+        for rule in &module.rules {
+            let landing = format!("{}.{rule}", module.package);
+            for (other, held) in modules {
+                if other == name || held.package == module.package {
+                    continue;
+                }
+                let into = landing == held.package
+                    || landing.starts_with(&format!("{}.", held.package))
+                    || held.package.starts_with(&format!("{landing}."));
+                if into && held.package.len() > module.package.len() {
+                    return Err(format!(
+                        "rego: the policy {name} defines `{landing}`, inside the package `{}` of \
+                         the policy {other}: a policy writes only its own package, so a decision \
+                         always cites the policy whose rules produced it",
+                        held.package
+                    ));
+                }
+            }
+        }
+    }
+
+    // Every rule by its full path, and the rules each one reads.
+    let mut edges: std::collections::BTreeMap<String, BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    let all: Vec<String> = modules
+        .iter()
+        .flat_map(|(_, module)| {
+            module
+                .rules
+                .iter()
+                .map(move |rule| format!("{}.{rule}", module.package))
+        })
+        .collect();
+    for (_, module) in modules {
+        for (rule, named) in &module.references {
+            let from = format!("{}.{rule}", module.package);
+            let mut to = BTreeSet::new();
+            for reference in named {
+                let full = if reference.starts_with("data.") {
+                    reference.clone()
+                } else {
+                    format!("{}.{reference}", module.package)
+                };
+                for target in &all {
+                    if *target != from
+                        && (full == *target || full.starts_with(&format!("{target}.")))
+                    {
+                        to.insert(target.clone());
+                    }
+                }
+            }
+            edges.entry(from).or_default().extend(to);
+        }
+    }
+    let mut memo: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for start in &all {
+        let deepest = depth_of(start, &edges, &mut memo, &mut BTreeSet::new());
+        if deepest > MAX_RULE_DEPTH {
+            return Err(format!(
+                "rego: the rule `{start}` reads a chain of {deepest} rules depending on each other, \
+                 more than the {MAX_RULE_DEPTH} a partition may: the evaluator recurses once per \
+                 link"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The longest chain of rules from `rule`, itself included; a rule already on the path ends it,
+/// so a cycle, which the engine refuses itself, is counted once.
+fn depth_of(
+    rule: &str,
+    edges: &std::collections::BTreeMap<String, BTreeSet<String>>,
+    memo: &mut std::collections::BTreeMap<String, usize>,
+    path: &mut BTreeSet<String>,
+) -> usize {
+    if let Some(known) = memo.get(rule) {
+        return *known;
+    }
+    if !path.insert(rule.to_owned()) {
+        return 0;
+    }
+    let deepest = edges
+        .get(rule)
+        .into_iter()
+        .flatten()
+        .map(|next| depth_of(next, edges, memo, path))
+        .max()
+        .unwrap_or(0)
+        + 1;
+    path.remove(rule);
+    memo.insert(rule.to_owned(), deepest);
+    deepest
 }
 
 /// Refuses a module that calls a built-in outside [`ALLOWED_BUILTINS`].

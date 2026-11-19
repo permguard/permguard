@@ -49,11 +49,22 @@ pub(crate) struct Analyzed {
     pub(crate) projections: Option<super::projection::Projections>,
 }
 
-/// Parses, lowers and validates a partition's policies against the artifacts it carries.
+/// Parses, lowers and validates a partition's policies against the artifacts it carries: every
+/// policy held to the nesting bound before any parser runs, then the whole on a stack segment
+/// sized for that bound, whatever thread enters (BUG-0237).
 pub(crate) fn analyze(
     policies: &[StoredPolicy],
     artifacts: &Artifacts,
 ) -> Result<Analyzed, String> {
+    for stored in policies {
+        let text = super::source_of(&stored.source, "a Dogwood policy")?;
+        super::check_nesting(text)
+            .map_err(|error| format!("dogwood: policy {}: {error}", stored.id))?;
+    }
+    permguard_language_core::headroom::ample(|| analyze_bounded(policies, artifacts))
+}
+
+fn analyze_bounded(policies: &[StoredPolicy], artifacts: &Artifacts) -> Result<Analyzed, String> {
     let action_source = artifacts
         .bytes(registry::ACTION_SCHEMA)
         .ok_or_else(|| "dogwood: the partition carries no action schema".to_owned())?;

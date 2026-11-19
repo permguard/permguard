@@ -191,6 +191,8 @@ impl Language for Rego {
             .map_err(|_| "a Rego module must be valid UTF-8".to_owned())?;
         let module = parsed::parse(text)?;
         parsed::check_builtins(&module)?;
+        parsed::check_decision_rules(&module)?;
+        parsed::check_set(&[("this policy", &module)])?;
         parsed::alias(text, &module).map(|_| ())
     }
     /// Rego's marker is `# METADATA` with `custom.alias`, above the package.
@@ -208,21 +210,29 @@ impl Language for Rego {
         let _ = schema;
         let mut claimed: std::collections::BTreeMap<String, &str> =
             std::collections::BTreeMap::new();
+        let mut modules = Vec::new();
         for (name, source) in policies {
             // The package the parser reports, the value the compile and the load gate use too
             // (REGO-07): never a second, lexical reading of it.
             let text = std::str::from_utf8(source)
                 .map_err(|_| format!("rego: policy {name} is not valid UTF-8"))?;
-            let package = parsed::parse(text)
-                .map_err(|error| format!("rego: policy {name}: {error}"))?
-                .package;
-            if let Some(first) = claimed.get(&package) {
-                return Err(shared_package(&package, first, name));
+            let module =
+                parsed::parse(text).map_err(|error| format!("rego: policy {name}: {error}"))?;
+            parsed::check_decision_rules(&module)
+                .map_err(|error| format!("rego: policy {name}: {error}"))?;
+            if let Some(first) = claimed.get(&module.package) {
+                return Err(shared_package(&module.package, first, name));
             }
-            claimed.insert(package, name);
+            claimed.insert(module.package.clone(), name);
+            modules.push((*name, module));
         }
-
-        Ok(())
+        // No policy writes into another's package, and no chain of rules outgrows the evaluator
+        // (BUG-0018, BUG-0236).
+        let held: Vec<(&str, &parsed::Parsed)> = modules
+            .iter()
+            .map(|(name, module)| (*name, module))
+            .collect();
+        parsed::check_set(&held)
     }
 
     /// `custom.alias` of the `# METADATA` block heading the package the parser located.

@@ -26,6 +26,7 @@ pub mod headroom;
 pub mod input;
 pub mod members;
 pub mod names;
+pub mod nesting;
 pub mod occurrence;
 pub mod partition;
 pub mod registry;

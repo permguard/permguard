@@ -19,6 +19,12 @@ is cut.
 
 ### Changed
 
+- **A policy deep enough to overflow an engine's stack is refused where it is pushed.**
+  A Dogwood policy nests at most 32 levels, Cedar's bound counted the same way, checked before the parser runs, and its parse and lowering run on a stack segment sized for it: a policy with a thousand nested parentheses aborted the server that accepted the push.
+  A Rego partition's rules depend on each other in a chain of at most 64 rules: a longer chain, accepted before, aborted the first decision that walked it.
+- **Rego: a module writes only its own package, and `allow`/`deny` are boolean rules.**
+  A rule whose head lands inside another module's package (`guard.allow` beside `package app.guard`) is refused naming both policies, so a decision always cites the policy whose rules produced it.
+  An `allow` or `deny` defined as a set (`deny contains msg`) or a function is refused at `validate` and push, instead of making every decision of the ledger fail.
 - **A mirror whose end the Host knows is no longer served at once, whatever `mirrors.reap_grace`.**
   A coordinator's listing without a ledger still makes it a candidate reaped only after the grace, since an absence may be transient.
   What the Host knows of its own ends a mirror in the round that learns it: the membership it was followed under was revoked, rejected, expired or orphaned (a suspended one keeps serving), `mirrors.tasks` or `mirrors.local` no longer follows its task or ledger, a mistyped entry included, or its coordinator lists a ledger of the same zone and name under another id, a deleted ledger recreated, which is then served with no contest.

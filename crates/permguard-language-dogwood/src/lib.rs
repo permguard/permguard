@@ -199,9 +199,13 @@ impl Language for Dogwood {
         // `validate_set` is where the set is asked.
         let service = dogwood_language::ServiceSchema::defaults();
 
-        dogwood_language::ParsedPolicySet::parse(source, &service)
-            .map(|_| ())
-            .map_err(|error| format!("dogwood: {error}"))
+        // The bound first, then the parser on a segment sized for it (BUG-0237).
+        check_nesting(source).map_err(|error| format!("dogwood: {error}"))?;
+        permguard_language_core::headroom::ample(|| {
+            dogwood_language::ParsedPolicySet::parse(source, &service)
+                .map(|_| ())
+                .map_err(|error| format!("dogwood: {error}"))
+        })
     }
 
     /// The alias a Dogwood policy file declares — Cedar's own `@id("…")` annotation, which Dogwood
@@ -308,6 +312,27 @@ impl Authoring for Dogwood {
     }
 }
 
+/// How deep a Dogwood policy may nest: Cedar's bound, since Dogwood is Cedar's grammar with
+/// temporal operators and its parser and lowering recurse on nesting the same way (BUG-0237). A
+/// text nested deeper would overflow the stack of the process that reads it — the Control Plane
+/// accepting a push, the Data Plane loading it — so it is refused before any parser runs. Real
+/// policies nest a handful of levels.
+pub const MAX_NESTING: usize = 32;
+
+/// Refuses a Dogwood text that nests deeper than [`MAX_NESTING`].
+pub(crate) fn check_nesting(text: &str) -> Result<(), String> {
+    let deepest = permguard_language_core::nesting::depth(
+        text,
+        permguard_language_core::nesting::Grammar::Policy,
+    );
+    if deepest > MAX_NESTING {
+        return Err(format!(
+            "nests {deepest} levels deep, beyond the {MAX_NESTING} a Dogwood policy may"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +382,37 @@ when temporal {
                 .is_err(),
             "two aliases refuse the file at authoring too"
         );
+    }
+
+    /// BUG-0237: a policy nested past the bound is refused at once, naming the bound, never
+    /// parsed; one nested within it, deep but real, still validates, on a thread with a small
+    /// stack too.
+    #[test]
+    fn a_policy_nested_past_the_bound_is_refused_at_once_and_one_within_it_validates() {
+        let nested = |levels: usize| {
+            format!(
+                "permit (principal, action, resource) when {{ {}true{} }};\n",
+                "(".repeat(levels),
+                ")".repeat(levels)
+            )
+        };
+        let started = std::time::Instant::now();
+        let refused = Dogwood
+            .validate_policy(nested(1000).as_bytes())
+            .expect_err("past the bound");
+        assert!(
+            refused.contains("beyond the 32 a Dogwood policy may"),
+            "{refused}"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        let within = nested(super::MAX_NESTING - 2);
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || Dogwood.validate_policy(within.as_bytes()))
+            .expect("a thread")
+            .join()
+            .expect("no overflow")
+            .expect("within the bound");
     }
 
     #[test]
