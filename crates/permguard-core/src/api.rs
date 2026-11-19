@@ -357,6 +357,10 @@ pub const MUTUAL_TLS_CHALLENGE: &str = "Mutual-TLS realm=\"permguard\"";
 /// RFC 6750 `Bearer` scheme with `error="invalid_token"`, so a client knows to fetch a new one.
 pub const BEARER_CHALLENGE: &str = "Bearer realm=\"permguard\", error=\"invalid_token\"";
 
+/// The `Bearer` challenge of a request that presented no credential where one is required: no
+/// error code, since nothing was presented to be wrong (RFC 6750 §3.1).
+pub const BEARER_REQUIRED_CHALLENGE: &str = "Bearer realm=\"permguard\"";
+
 /// The challenge a `403` adds when the caller acted by an access token: RFC 6750's
 /// `error="insufficient_scope"`, so a client knows a token of wider scope or target is needed
 /// rather than a fresh one (`2-security/8` On a member, step 9).

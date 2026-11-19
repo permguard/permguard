@@ -495,10 +495,18 @@ async fn test_an_optional_client_certificate_is_verified_when_presented_and_not_
     let anonymous = rustls::ClientConfig::builder()
         .with_root_certificates(roots_of(&authority))
         .with_no_client_auth();
+    // Admitted at the handshake, and refused at the boundary: a connection without a
+    // certificate is there for a bearer token to authenticate it, and nobody is served as
+    // anonymous (BUG-0263).
     let said = speak_tls(address, anonymous)
         .await
-        .expect("a client without a certificate is served");
-    assert!(said.contains("peer=none"), "{said}");
+        .expect("a client without a certificate is admitted at the handshake");
+    assert!(said.starts_with("HTTP/1.1 401"), "{said}");
+    assert!(
+        said.contains("www-authenticate: Mutual-TLS")
+            && said.contains("www-authenticate: Bearer realm=\"permguard\"\r\n"),
+        "{said}"
+    );
 
     let identified = rustls::ClientConfig::builder()
         .with_root_certificates(roots_of(&authority))

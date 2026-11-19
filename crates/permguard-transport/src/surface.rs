@@ -191,6 +191,11 @@ impl<'a> Listener<'a> {
         let clear_bearer_refused = tls.is_none() && !parsed.ip().is_loopback() && !upstream_tls;
         // A client certificate the listener verifies authenticates its caller.
         let listener_authenticates = tls.is_some_and(permguard_core::TlsSettings::is_mutual);
+        // A listener that verifies certificates and admits a connection without one does so for
+        // a bearer token to authenticate it: nobody is served there as anonymous (BUG-0263).
+        let anonymous_refused = tls.is_some_and(|settings| {
+            settings.is_mutual() && settings.client_auth() == permguard_core::ClientAuth::Optional
+        });
 
         let handle = Handle::new();
         let serving = handle.clone();
@@ -238,11 +243,21 @@ impl<'a> Listener<'a> {
                         || (!clear_bearer_refused && authenticator.verifies_bearer_tokens()),
                 ),
             ));
-            let router = router.layer(
-                crate::actor::ActorLayer::new(authenticator)
-                    .refusing_clear_bearer(clear_bearer_refused)
-                    .client_authentication(client_authentication),
-            );
+            let layer = crate::actor::ActorLayer::new(authenticator)
+                .refusing_clear_bearer(clear_bearer_refused)
+                .client_authentication(client_authentication);
+            // The probes and the discovery documents answer nobody in particular.
+            let layer = if anonymous_refused {
+                layer.refusing_anonymous(
+                    PROBE_PATHS
+                        .iter()
+                        .map(|path| (*path).to_owned())
+                        .chain(std::iter::once("/.well-known/".to_owned())),
+                )
+            } else {
+                layer
+            };
+            let router = router.layer(layer);
             // Between the handlers and everything else: nothing below this line runs for a peer the
             // list does not name. Applied conditionally because an empty list means the handshake is
             // the whole decision — configurations where that is dangerous are refused by validation,

@@ -168,6 +168,11 @@ is cut.
 
 ### Security
 
+- **A `client_auth: optional` listener serves nobody as anonymous.**
+  It admitted a connection with neither a certificate nor a bearer token as `anonymous`, so `host.authz.public` applied to it: with the development grants `GET /v1/zones` answered `200` with no credential, while a valid but unmapped certificate was refused `401`.
+  Such a request is now `401` with the `Mutual-TLS` and `Bearer` challenges, as the listener promised; the probes, the `/.well-known/` discovery documents and a token endpoint's client-authenticating path stay open, and a listener with `client_auth: required`, or without a client CA, is unchanged.
+- **A decision answered to nobody authenticated records no `actor`.**
+  Every native and temporal decision answered to a caller with no credential recorded the pseudonym of the reserved `anonymous` principal as its actor, indistinguishable from an authenticated caller's; the record now has no `actor` there, as its contract says, and an authenticated caller is still recorded as its pseudonymised principal.
 - **A hold removed or edited on the volume, outside a release, is no longer lost silently.**
   The holds keep an index, `host/holds/INDEX.json`, with the SHA-256 of every hold's file, written by the operation that adds or releases it.
   A hold the index records whose file is gone or changed makes the holds unreadable: `host holds list` refuses naming it, exit `65`, and the garbage collection sweeps nothing (`holds_unreadable`); a file the index lacks still keeps what it names.

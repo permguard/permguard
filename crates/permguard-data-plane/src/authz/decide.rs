@@ -2017,8 +2017,12 @@ impl Decider {
         let latency_us = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         let mut evidence = Vec::with_capacity(evaluated.len());
         let actor = match actor {
-            Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
-            None => None,
+            // The reserved anonymous principal is nobody: a request no transport authenticated
+            // records no actor, as the record's contract says (BUG-0174).
+            Some(principal) if principal != permguard_core::authz::ANONYMOUS => {
+                Some(("Actor".to_owned(), token("actor", principal)?))
+            }
+            _ => None,
         };
         let descriptors = descriptors_of(head, &resolved.profile);
 
@@ -2184,8 +2188,12 @@ impl Decider {
             event: Some(at.event.clone()),
             interface: permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1.to_owned(),
             actor: match at.actor {
-                Some(principal) => Some(("Actor".to_owned(), token("actor", principal)?)),
-                None => None,
+                // The reserved anonymous principal is nobody: a request no transport authenticated
+                // records no actor, as the record's contract says (BUG-0174).
+                Some(principal) if principal != permguard_core::authz::ANONYMOUS => {
+                    Some(("Actor".to_owned(), token("actor", principal)?))
+                }
+                _ => None,
             },
             question: serde_json::json!({
                 "interface": permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1,

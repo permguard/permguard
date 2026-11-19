@@ -30,6 +30,7 @@ pub struct ActorLayer {
     authenticator: Arc<dyn Authenticator>,
     clear_bearer_refused: bool,
     client_authentication: Arc<[String]>,
+    anonymous_refused: Option<Arc<[String]>>,
 }
 
 impl ActorLayer {
@@ -39,7 +40,19 @@ impl ActorLayer {
             authenticator,
             clear_bearer_refused: false,
             client_authentication: Arc::from(Vec::new()),
+            anonymous_refused: None,
         }
+    }
+
+    /// Refuses a request that presents neither a certificate nor a bearer token, `401` with the
+    /// `Mutual-TLS` and `Bearer` challenges, on every path but `open`: what a listener with
+    /// `client_auth: optional` promises, a connection admitted without a certificate whose
+    /// requests a token authenticates or are refused, never served under the public grants
+    /// (BUG-0263). `open` names what answers nobody in particular: the probes and the discovery
+    /// documents.
+    pub fn refusing_anonymous(mut self, open: impl IntoIterator<Item = String>) -> Self {
+        self.anonymous_refused = Some(open.into_iter().collect::<Vec<_>>().into());
+        self
     }
 
     /// Paths where `Authorization: Basic` is a client's credential the route reads itself, an
@@ -69,6 +82,7 @@ impl<S> tower_layer::Layer<S> for ActorLayer {
             authenticator: Arc::clone(&self.authenticator),
             clear_bearer_refused: self.clear_bearer_refused,
             client_authentication: Arc::clone(&self.client_authentication),
+            anonymous_refused: self.anonymous_refused.clone(),
         }
     }
 }
@@ -80,6 +94,7 @@ pub struct Actored<S> {
     authenticator: Arc<dyn Authenticator>,
     clear_bearer_refused: bool,
     client_authentication: Arc<[String]>,
+    anonymous_refused: Option<Arc<[String]>>,
 }
 
 impl<S> Service<Request<Body>> for Actored<S>
@@ -128,6 +143,35 @@ where
             .authenticator
             .authenticate(peer.as_deref(), bearer.as_deref())
         {
+            Ok(Actor::Anonymous)
+                if !client_authenticates
+                    && self.anonymous_refused.as_ref().is_some_and(|open| {
+                        let path = request.uri().path();
+                        !open.iter().any(|exempt| {
+                            path == exempt
+                                || (exempt.ends_with('/') && path.starts_with(exempt.as_str()))
+                        })
+                    }) =>
+            {
+                let body = request.into_body();
+                Box::pin(async move {
+                    let denial = permguard_core::AccessDenial::unauthenticated(
+                        "this listener admits a connection without a certificate only for a \
+                         bearer token to authenticate its requests: present a certificate or a \
+                         token",
+                    );
+                    let mut refusal = crate::gate::refused(denial, grpc);
+                    if !grpc {
+                        refusal.headers_mut().append(
+                            http::header::WWW_AUTHENTICATE,
+                            http::HeaderValue::from_static(
+                                permguard_core::api::BEARER_REQUIRED_CHALLENGE,
+                            ),
+                        );
+                    }
+                    Ok(crate::gate::drained(body, refusal).await)
+                })
+            }
             Ok(actor) => {
                 let by_token =
                     matches!(&actor, Actor::Authenticated(context) if context.token().is_some());
@@ -375,6 +419,90 @@ mod tests {
         let (status, body) = ask(None, Some("bad")).await;
         assert_eq!(status, http::StatusCode::UNAUTHORIZED);
         assert!(body.contains("unauthenticated"), "{body}");
+    }
+
+    /// BUG-0263: on a listener that admits a connection without a certificate for a token to
+    /// authenticate it, nobody is served as anonymous: a request with neither a certificate nor a
+    /// token is `401` with the `Mutual-TLS` and `Bearer` challenges, on every path but the open
+    /// ones (the probes, the discovery documents) and a client-authenticating one; a token or a
+    /// certificate is served as before.
+    #[tokio::test]
+    async fn an_optional_listener_serves_nobody_as_anonymous() {
+        let router = Router::new()
+            .route(
+                "/v1/zones",
+                get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+            )
+            .route("/readyz", get(|| async { "ready" }))
+            .route("/.well-known/configuration", get(|| async { "{}" }))
+            .route(
+                "/token",
+                get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+            )
+            .layer(
+                ActorLayer::new(Arc::new(Rules))
+                    .client_authentication(["/token".to_owned()])
+                    .refusing_anonymous(["/readyz".to_owned(), "/.well-known/".to_owned()]),
+            );
+        let get = |path: &str, bearer: Option<&str>, peer: Option<&str>| {
+            let mut request = Request::get(path);
+            if let Some(bearer) = bearer {
+                request = request.header(http::header::AUTHORIZATION, format!("Bearer {bearer}"));
+            }
+            let mut request = request.body(Body::empty()).expect("a request");
+            if let Some(fingerprint) = peer {
+                request.extensions_mut().insert(Arc::new(PeerIdentity::new(
+                    "CN=x",
+                    None,
+                    fingerprint,
+                    "01",
+                )));
+            }
+            request
+        };
+
+        let refused = router
+            .clone()
+            .oneshot(get("/v1/zones", None, None))
+            .await
+            .expect("answered");
+        assert_eq!(refused.status(), http::StatusCode::UNAUTHORIZED);
+        let challenges: Vec<&str> = refused
+            .headers()
+            .get_all(http::header::WWW_AUTHENTICATE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .collect();
+        assert!(
+            challenges
+                .iter()
+                .any(|value| value.starts_with("Mutual-TLS"))
+                && challenges.iter().any(|value| value.starts_with("Bearer")),
+            "{challenges:?}"
+        );
+        for (path, bearer, peer) in [
+            ("/v1/zones", Some("good"), None),
+            ("/v1/zones", None, Some("aa")),
+            ("/readyz", None, None),
+            ("/.well-known/configuration", None, None),
+            ("/token", None, None),
+        ] {
+            let answered = router
+                .clone()
+                .oneshot(get(path, bearer, peer))
+                .await
+                .expect("answered");
+            assert_eq!(
+                answered.status(),
+                http::StatusCode::OK,
+                "{path} {bearer:?} {peer:?}"
+            );
+        }
+        // Without the refusal, the same listener serves nobody as anonymous, as a plain one does.
+        assert_eq!(
+            ask(None, None).await,
+            (http::StatusCode::OK, "anonymous".to_owned())
+        );
     }
 
     /// An OAuth token endpoint reads `client_secret_basic` itself (`2-security/8` Token endpoint): on the

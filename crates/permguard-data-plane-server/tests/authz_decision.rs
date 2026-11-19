@@ -4134,6 +4134,11 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
         (asserting("mallory"), acting("spiffe://acme/other-pep")),
         (asserting("trent"), acting("spiffe://acme/pep")),
         (asserting("mallory"), Asker::default()),
+        // BUG-0174: the transport's reserved anonymous principal, a request with no credential.
+        (
+            asserting("mallory"),
+            acting(permguard_core::authz::Principal::anonymous().as_str()),
+        ),
         (about("carol", "mallory"), acting("spiffe://acme/pep")),
         (
             {
@@ -4173,12 +4178,13 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
         other_pep,
         other_assertion,
         unauthenticated,
+        anonymous,
         other_subject,
         narrow,
         tokened,
     ] = records.as_slice()
     else {
-        panic!("seven decisions, seven records: {records:?}");
+        panic!("eight decisions, eight records: {records:?}");
     };
     let digest = |language: &str| {
         permguard_languages::descriptor::descriptor_digest(language).expect("carried")
@@ -4231,6 +4237,10 @@ async fn a_record_binds_its_interface_its_actor_apart_from_the_asserted_principa
     assert!(
         unauthenticated.get("actor").is_none(),
         "no transport authenticated it, and the assertion is not made the actor: {unauthenticated}"
+    );
+    assert!(
+        anonymous.get("actor").is_none(),
+        "the reserved anonymous principal is nobody: no actor (BUG-0174): {anonymous}"
     );
     assert_eq!(unauthenticated["principal"], pep["principal"]);
     assert_eq!(
