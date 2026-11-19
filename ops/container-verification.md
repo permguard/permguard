@@ -8,7 +8,7 @@ The release workflow records their digests in a cryptographically signed GitHub 
 Attestation. Verification proves that the selected registry object is the object produced by the
 Permguard release workflow for the expected Git tag.
 
-The signing workflow is `release-build.yml`, the reusable workflow that builds and attests every release after `0.1.6`.
+The signing workflow is `release-build.yml`, the reusable workflow that builds every release after `0.1.6` and attests the images of every release from `0.1.10` on: the images of `0.1.7` and `0.1.8` were published without attestation.
 Releases up to and including `0.1.6` were attested by `release-pipeline.yml`: verify those with `--signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml`.
 
 ## Published images
@@ -135,8 +135,8 @@ kubectl create secret generic permguard-image-verification --from-file=token=gh-
 ```
 
 Release `0.1.5` was attested by `release-pipeline.yml`: deploy it with `imageVerification.signerWorkflow: permguard/permguard/.github/workflows/release-pipeline.yml` and `imageVerification.sourceRef: refs/tags/v0.1.5`.
-The images of `0.1.6` carry no attestation the check finds (the attestation API answers `404` for their digests), so `0.1.6` cannot run with verification on.
-No release has been built by `release-build.yml` yet, so the chart's defaults verify no published image today.
+The images of `0.1.6`, `0.1.7` and `0.1.8` carry no attestation the check finds (the attestation API answers `404` for their digests), so those releases cannot run with verification on; `0.1.7` and `0.1.8` also carry none of the exit gate's evidence.
+Images are attested by `release-build.yml` from `0.1.10` on, and the chart's defaults verify those.
 
 The check runs at every Pod start — a restart after a node reboot, a scale-up, a drain Job — and needs api.github.com, Sigstore's trust root and the image registry, read anonymously, reachable from the Pods.
 Behind a default-deny egress policy, or during a GitHub outage, new Pods do not start: the check fails closed.

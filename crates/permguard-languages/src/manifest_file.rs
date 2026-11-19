@@ -25,10 +25,10 @@
 //! authorization system: the failure mode of ignoring a key is a control that quietly is not what
 //! its author wrote.
 //!
-//! This is the opposite of the rule the *request* contract follows, where an unknown field is
-//! ignored because forward compatibility is the reader's duty. A request comes from a caller who
-//! may be newer than this build; a manifest comes from the repository this build is serving, and
-//! the version skew there is answered by the runtime constraints instead.
+//! The *request* contract follows the same rule: an unknown field in a request is refused, never
+//! dropped, as a misspelt key there is a silent authorization bug too (BUG-0019, DEC-0019). The
+//! version skew between a manifest and the build serving it is answered by the runtime
+//! constraints.
 
 use std::collections::BTreeMap;
 

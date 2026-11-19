@@ -161,6 +161,10 @@ is cut.
 
 ### Fixed
 
+- **`scripts/cli-tour.sh` starts on Linux, and every tour starts from a new volume.**
+  Its working directory's `mktemp` template had no `X`, which GNU `mktemp` refuses; and a container or volume an interrupted run left behind, with its administrator, is now removed before the tour starts, where the tour reused it and failed at its second step.
+- **`ops/administrative-surface.md` names today's paths and authorization.**
+  The catalog is `/catalog/v1/zones`; every route decides by the caller's Authority Plane token and its scopes, administered with `permguard authority`; the only offline commands are the ways back in, `host grants bootstrap` and `authority admin-key`.
 - **A Host starts again after an identity reset, with its configuration unchanged.**
   The audit pseudonym key and the zone keys derive from the `host_id`, which a reset changes, so the next start refused them as a key changed under the same `key_version` / `zone_key_version`; a key witness is now the Host's (`<version>@<host_id>` in `operations/state/audit-pseudonym-versions` and beside the decision spool), the new Host records its own under the configured versions, and a witness written by an earlier release is adopted when it matches, or attributed to the retired identity when the volume holds one. Without a reset, a key changed under its version is still refused.
 - **`host identity reset plan` and `reset run` work without `--server-config`, as their help says.**
@@ -996,6 +1000,7 @@ is cut.
 - **The container images of a release are attested.**
   GoReleaser 2.19 leaves `digests.txt` empty for `dockers_v2`, so `v0.1.7` published its images without their build provenance.
   The release now reads every pushed tag's digest back from its registry, attests it and verifies it, as it does for the files.
+  Correction (BUG-0221): this fix did not take effect in `v0.1.8` itself. The images of `v0.1.7` and `v0.1.8` were published without attestation, and neither release carries the exit gate's evidence (`provenance-images.txt`, `provenance-files.txt`, `evidence-manifest.json`), so neither can run with image verification on; images are attested from `v0.1.10` on, the release that made the fix work (`df43395a`).
 
 - **`pulldown-cmark` 0.13.5 (RUSTSEC-2026-0414).**
   The Markdown parser `prost-build` uses at build time, never shipped in a binary, is moved past the advisory.
@@ -1009,6 +1014,7 @@ is cut.
   It attaches the serving gate's `permguard-gate.json` and the `traceability.json` report, which traces every section and finding of the blueprint to the code and tests that implement it and lists every recorded gap.
   A last job writes `evidence-manifest.json` over the release as published, pinning every file by its SHA-256 to the tagged commit and naming what the gate still lacks, then attests and verifies it.
   `scripts/verify-evidence.sh` repeats that verification from a downloaded release and fails closed.
+  Correction (BUG-0221): `v0.1.7` was published without this evidence and with unattested images; the first release carrying both is `v0.1.10` (see `0.1.8`).
   CI uploads the traceability report on every run, and `task check:traceability` runs the check locally.
 
 - **A subscription the coordinator refused is named on health (F-08).**

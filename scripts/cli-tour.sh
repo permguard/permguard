@@ -21,7 +21,9 @@ IMAGE="${IMAGE:-ghcr.io/permguard/permguard/all-in-one:0.1.26}"
 PG="${PG:-permguard}"
 EXAMPLE="${EXAMPLE:-$(cd "$(dirname "$0")/.." && pwd)/examples/basics}"
 NAME="${NAME:-permguard-tour}"
-WORK="${WORK:-$(mktemp -d -t permguard-tour)}"
+# A template with X's: GNU mktemp needs at least three, BSD mktemp takes them too (BUG-0332).
+TMP="${TMPDIR:-/tmp}"
+WORK="${WORK:-$(mktemp -d "${TMP%/}/permguard-tour.XXXXXX")}"
 HOST=https://127.0.0.1:15443       # Server Host, over TLS: discovery
 HOST_API=https://127.0.0.1:15444   # Host API, over TLS: keys, memberships, lifecycle
 CONTROL=http://127.0.0.1:16443     # control plane: zones, ledgers, policies, decision log
@@ -85,6 +87,10 @@ operations:
     retention: 7d
     pseudonym: { enabled: true, key_ref: audit-pseudonym, key_version: "v1" }
 YAML
+# Every tour starts from a new volume: what an interrupted run left, its container or its volume
+# with its administrator, is removed first, as the run's own cleanup would have (BUG-0332).
+docker rm -f "${NAME}" >/dev/null 2>&1 || true
+docker volume rm "${NAME}" >/dev/null 2>&1 || true
 docker volume create "${NAME}" >/dev/null
 docker create --name "${NAME}" -v "${NAME}:/var/lib/permguard" \
     -p 127.0.0.1:15443:5443 -p 127.0.0.1:15444:5444 -p 127.0.0.1:16443:6443 -p 127.0.0.1:17443:7443 \
