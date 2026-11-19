@@ -109,7 +109,7 @@ pub struct ScopeUsage {
     pub measured: bool,
 }
 
-/// What `storage quota show` reports.
+/// What the quota reports: a running server publishes it as the `permguard_storage_*` gauges.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Usage {
     pub scopes: Vec<ScopeUsage>,
@@ -198,11 +198,23 @@ impl Quota {
     /// by the background pass, off the startup path. A measurement races the writers it counts, so
     /// for these accounts, which enforce nothing, the figure is a report, not a bound.
     pub fn measure_pending(&self) -> Result<usize> {
+        self.measure_where(|account| !account.measured)
+    }
+
+    /// Measures again every account with a limit, and every one not measured yet; answers how
+    /// many. A writer the quota does not charge — every writer of a running server today
+    /// (BUG-0062) — is seen here, by the next measurement. A measurement races the writers it
+    /// counts: a reservation landing during it may be counted twice until the next one.
+    pub fn remeasure(&self) -> Result<usize> {
+        self.measure_where(|account| !account.measured || limited(&account.limit))
+    }
+
+    fn measure_where(&self, select: impl Fn(&Account) -> bool) -> Result<usize> {
         let pending: Vec<(Vec<String>, std::path::PathBuf)> = self
             .state()
             .accounts
             .iter()
-            .filter(|(_, account)| !account.measured)
+            .filter(|(_, account)| select(account))
             .map(|(path, account)| (path.clone(), account.dir.clone()))
             .collect();
         for (path, dir) in &pending {
@@ -231,7 +243,7 @@ impl Quota {
         Ok(())
     }
 
-    /// Every account, the floors and the free space, for `storage quota show`.
+    /// Every account, the floors and the free space.
     pub fn usage(&self) -> Result<Usage> {
         let state = self.state();
         let (free_bytes, free_inodes) = match self.free(&state)? {

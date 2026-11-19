@@ -235,6 +235,12 @@ is cut.
 
 ### Fixed
 
+- **The emergency floor holds readiness in a running server, and the volume's usage is published.**
+  `storage.floors` was checked only by the start probe: once serving, a Host kept answering ready while its volume filled past the floor.
+  The Host now opens its quota at start and judges the floor every 5 seconds; below the floor plus one journal write readiness is held, the Host reports `degraded: storage_floor` with the code `storage_free_bytes`, and it is released once space returns.
+  The gauges `permguard_storage_free_bytes`, `permguard_storage_floor_bytes`, `permguard_storage_floor_ready`, `permguard_storage_used_bytes` and `permguard_storage_quota_bytes` publish the state, the volume measured again once a minute when the Host has a quota; a volume at or past `storage.quotas.host` is logged once per crossing, coded `storage_quota_exceeded`.
+  A write past the Host quota is not refused yet: no writer is charged to it.
+  The start now refuses `storage.quotas.<scope>.inodes: "0"` and a quota for a Plane that does not exist, such as `storage.quotas.planes.ghostplane`.
 - **A member's `spool.bytes` and `spool.age` are held to one record, however fast decisions come.**
   The decision path read a measure of the stream up to ten seconds old, so with the coordinator down a member went on recording until about five to eight times `spool.bytes` was owed.
   The producer's measure now reports the unacknowledged bytes and the oldest unacknowledged batch; the log adds what it appended since and measures again as soon as either bound may be crossed, so at most one record lies past it.

@@ -199,6 +199,12 @@ impl Default for Options {
 /// The failure record's name in a journal's directory.
 pub const FAILED: &str = "FAILED";
 
+/// The most a journal with `options` writes at once: its largest frame, and a segment's head when
+/// it rolls. Readiness keeps that much above the floor.
+pub fn largest_write(options: &Options) -> u64 {
+    u64::from(options.max_frame) + (FRAME_HEAD + CHECKSUM_LEN + SEGMENT_HEAD) as u64
+}
+
 /// The name of the view naming the first frame a journal still holds, once a prefix was deleted.
 pub const BASE: &str = "BASE";
 
@@ -807,9 +813,9 @@ impl Journal {
     /// when it rolls, before it writes, and the quota's readiness keeps the largest of them above
     /// the floor. A refused reservation writes nothing and leaves the handle as it was.
     pub fn charge(&mut self, scope: crate::storage::quota::Scope) -> Result<()> {
-        let largest =
-            u64::from(self.options.max_frame) + (FRAME_HEAD + CHECKSUM_LEN + SEGMENT_HEAD) as u64;
-        scope.quota().note_largest_write(largest)?;
+        scope
+            .quota()
+            .note_largest_write(largest_write(&self.options))?;
         self.scope = Some(scope);
 
         Ok(())

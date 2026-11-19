@@ -469,6 +469,7 @@
     "storage.PROBE_RESERVATION": "storage_probe_reservation",
     "storage.FREE_BYTES": "storage_free_bytes",
     "storage.FREE_INODES": "storage_free_inodes",
+    "storage.QUOTA_EXCEEDED": "storage_quota_exceeded",
     "storage.UNQUALIFIED": "storage_unqualified",
     "storage.QUALIFICATION_INCOMPLETE": "storage_qualification_incomplete",
     "storage.QUALIFICATION_STALE": "storage_qualification_stale",

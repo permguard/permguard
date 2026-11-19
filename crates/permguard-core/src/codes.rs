@@ -409,6 +409,8 @@ pub mod storage {
     pub const FREE_BYTES: &str = "storage_free_bytes";
     /// Fewer free inodes than the configured floor.
     pub const FREE_INODES: &str = "storage_free_inodes";
+    /// The volume holds as much as `storage.quotas.host` allows, or more (BUG-0062).
+    pub const QUOTA_EXCEEDED: &str = "storage_quota_exceeded";
     /// The volume's tuple is not qualified for the profile in force.
     pub const UNQUALIFIED: &str = "storage_unqualified";
     /// The qualified entry names no encryption mechanism, revision or expiry (TS-5).
@@ -845,6 +847,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         storage::PROBE_RESERVATION,
         storage::FREE_BYTES,
         storage::FREE_INODES,
+        storage::QUOTA_EXCEEDED,
         storage::UNQUALIFIED,
         storage::QUALIFICATION_INCOMPLETE,
         storage::QUALIFICATION_STALE,

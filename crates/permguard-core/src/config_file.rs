@@ -1916,12 +1916,14 @@ impl ConfigFile {
             let inodes = section
                 .inodes
                 .as_deref()
-                .map(|value| {
-                    value.trim().parse::<u64>().map_err(|_| {
-                        anyhow::anyhow!(
-                            "reading storage.quotas.{key}.inodes: `{value}` is not a count of inodes"
-                        )
-                    })
+                .map(|value| match value.trim().parse::<u64>() {
+                    Ok(0) => Err(anyhow::anyhow!(
+                        "reading storage.quotas.{key}.inodes: a count of zero accepts no file at all"
+                    )),
+                    Ok(count) => Ok(count),
+                    Err(_) => Err(anyhow::anyhow!(
+                        "reading storage.quotas.{key}.inodes: `{value}` is not a count of inodes"
+                    )),
                 })
                 .transpose()?;
             Ok(Limit { bytes, inodes })
@@ -1931,6 +1933,12 @@ impl ConfigFile {
             ..Quotas::default()
         };
         for (plane, section) in &section.quotas.planes {
+            if crate::planes::discovery::PlaneId::parse(plane).is_none() {
+                bail!(
+                    "storage.quotas.planes.{plane}: there is no Plane `{plane}`; the Planes are \
+                     `authority`, `control` and `data`"
+                );
+            }
             quotas
                 .planes
                 .insert(plane.clone(), limit(section, &format!("planes.{plane}"))?);
@@ -2756,6 +2764,14 @@ mod tests {
             (
                 "storage:\n  quotas:\n    planes:\n      control:\n        inodes: many\n".to_owned(),
                 "a quota that is not a count",
+            ),
+            (
+                "storage:\n  quotas:\n    host:\n      inodes: \"0\"\n".to_owned(),
+                "a quota of zero inodes",
+            ),
+            (
+                "storage:\n  quotas:\n    planes:\n      ghostplane:\n        bytes: 512M\n".to_owned(),
+                "a quota for a Plane that does not exist",
             ),
             ("storage:\n  volume:\n    driver: \" \"\n".to_owned(), "an empty driver"),
         ] {

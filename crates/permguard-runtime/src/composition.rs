@@ -1579,6 +1579,16 @@ impl Composition {
                 evidence: standing.evidence().map(str::to_owned),
             });
 
+        // The Host's quota and emergency floor (BUG-0062): the volume measured now when the Host has
+        // a quota, and judged by a pass once the Host serves.
+        let host_quota =
+            crate::storage_quota::for_volume(&volume, &storage).with_context(|| {
+                format!(
+                    "opening the storage quota of the volume at {}",
+                    config.working_dir().display()
+                )
+            })?;
+
         // No subsystem is served while a migration is between two sides, and no layout this build
         // does not read is served at all (WP-1.9): an interrupted migration is landed by its
         // command, a downgrade is possible only where every active layout is understood.
@@ -2509,6 +2519,12 @@ impl Composition {
                     .filter(|api| api.ships_streams())
                     .map(Arc::clone),
             },
+        );
+        // Readiness held while free space is at the emergency floor; the quota measured and reported.
+        let _storage = crate::storage_quota::watch(
+            host_quota,
+            context.health().clone(),
+            context.metrics().clone(),
         );
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =

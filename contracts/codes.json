@@ -1661,6 +1661,11 @@
       "contract": "1-architecture/8-architecture-storage-operations.md",
       "kind": "log"
     },
+    "storage.QUOTA_EXCEEDED": {
+      "code": "storage_quota_exceeded",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "storage.UNQUALIFIED": {
       "code": "storage_unqualified",
       "contract": "1-architecture/8-architecture-storage-operations.md",
