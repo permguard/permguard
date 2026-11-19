@@ -38,7 +38,7 @@ The language is Dogwood, and this is the real policy of the example in `examples
 
 ```dogwood
 // Permit a Read only if the same user logged in within the last hour
-// and has not since logged out.
+// and has not logged out since.
 @id("read_after_login")
 permit (
     principal,
@@ -46,12 +46,14 @@ permit (
     resource
 )
 when temporal {
-    formerly within 1h Drupe::Action::"Login"::response{ input.user: context.input.user }
-    && !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+    !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+    since within 1h
+    Drupe::Action::"Login"::response{ input.user: context.input.user }
 };
 ```
 
-Its tests run offline: a read inside the window is permitted, and a read with no login before it, outside the window, or after another user's login is denied.
+`since` reads in time order: a login within the last hour, and no logout at any step after it.
+Its tests run offline: a read inside the window is permitted, and a read with no login before it, after a logout, outside the window, or after another user's login is denied.
 
 <div class="pgx-note"><strong>Experimental.</strong><span>Dogwood and the event stores are off in an ordinary server. Turn both on when you start the all-in-one image of <a href="./getting-started">Getting Started</a>.</span></div>
 

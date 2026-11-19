@@ -356,6 +356,34 @@ pub fn compile(
     // And what it may not carry there: Dogwood's providers from `production` upward (DOGWOOD-01).
     registry::check_artifact_floor(&language_name, profile, &collected.artifacts)
         .map_err(Refusal::BelowFloor)?;
+    // The engine's warnings: errors under `regulated`, which refuses the partition naming each by
+    // its code; below it, said once per compile and served (the Cedar compile gate).
+    let named: Vec<(&str, &[u8])> = collected
+        .policies
+        .iter()
+        .map(|policy| (policy.id.as_str(), policy.source.as_slice()))
+        .collect();
+    let schema = registry::schema_type(&language_name)
+        .and_then(|type_name| collected.artifacts.bytes(type_name));
+    let refused = profile.at_least(permguard_core::assurance::AssuranceProfile::Regulated);
+    let warnings = registry::check_warnings(&language_name, refused, &named, schema)
+        .map_err(Refusal::BelowFloor)?;
+    // By code and policy id only: an engine's sentence can quote policy text, which a log does
+    // not carry; `permguard validate` and the push refusal give the author the whole of it.
+    if !warnings.is_empty() {
+        let said: Vec<String> = warnings
+            .iter()
+            .map(|warning| match &warning.policy {
+                Some(policy) => format!("{} ({policy})", warning.code),
+                None => format!("{} (schema)", warning.code),
+            })
+            .collect();
+        tracing::warn!(
+            event.name = "authz.partition_warnings",
+            warnings = %said.join(", "),
+            "the partition is served with engine warnings, which `regulated` refuses"
+        );
+    }
 
     let policies = collected.policies.len();
     // A runtime with no hard bound in-process runs in its supervised worker where the profile

@@ -1905,10 +1905,12 @@ fn the_shipped_dogwood_example_passes_its_own_test_plan() {
         "tests/session-access.yml",
         "events/1-login-request.json",
         "events/2-login-response.json",
+        "events/3-logout-response.json",
         "requests/1-read-before-login.json",
         "requests/2-read-inside-window.json",
         "requests/3-read-outside-window.json",
         "requests/4-read-other-user.json",
+        "requests/5-read-after-logout.json",
         "refusals/unknown-action.json",
         "refusals/undeclared-field.json",
         "refusals/pin-disagrees.json",
@@ -2582,6 +2584,55 @@ fn host_identity_pins_are_canonical_private_idempotent_and_conflict_safe() {
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout(&removed)).expect("the answer is JSON");
     assert_eq!(parsed["pins"].as_array().expect("pins").len(), 0);
+}
+
+/// BUG-0257: `validate` reports the engine's warnings with their stable codes, and the workspace
+/// still validates: a warning is the deployment's to refuse, under `regulated`, not the author's
+/// tool. The same check runs at push and at load.
+#[test]
+fn validate_reports_engine_warnings_by_code_and_still_validates() {
+    let dir = scratch("engine-warnings");
+    write_sources(&dir);
+    let manifest = std::fs::read_to_string(dir.join("manifest.yml")).expect("read");
+    std::fs::write(
+        dir.join("manifest.yml"),
+        manifest.replace(
+            "app: { runtime: cedar, schema: false }",
+            "app: { runtime: cedar, schema: true }",
+        ),
+    )
+    .expect("written");
+    std::fs::write(
+        dir.join("app/model.cedarschema"),
+        "entity User;\nentity Document;\n\
+         action read, write appliesTo { principal: [User], resource: [Document] };\n",
+    )
+    .expect("written");
+    std::fs::write(
+        dir.join("app/never.cedar"),
+        "@alias(\"never\")\npermit(principal, action == Action::\"read\", resource) when { false };\n",
+    )
+    .expect("written");
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+
+    let output = run(&dir, &["validate"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let said = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        said.contains("partition `app`: [cedar.impossible_policy] policy app/never.cedar"),
+        "{said}"
+    );
+
+    let json = run(&dir, &["-o", "json", "validate"]);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout(&json)).expect("JSON");
+    assert!(
+        parsed["warnings"]
+            .as_array()
+            .is_some_and(|warnings| warnings.iter().any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("cedar.impossible_policy")))),
+        "{parsed}"
+    );
 }
 
 /// BUG-0181: a fraction whose nearest double is whole is refused on its literal, by `check -f`

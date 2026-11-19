@@ -90,6 +90,8 @@ struct Fixture {
     mutations: permguard_host::composition::MutationHandle,
     /// The volume the mutation transaction keeps its journal and trails on.
     volume: PathBuf,
+    /// Whether the deployment refuses engine warnings, as a `regulated` one does.
+    warnings_refused: bool,
 }
 
 impl Fixture {
@@ -102,7 +104,14 @@ impl Fixture {
             mutations: permguard_control_plane::store::testing::offline_ref_mutations(&volume)
                 .unwrap(),
             volume,
+            warnings_refused: false,
         }
+    }
+
+    /// The same fixture, as a `regulated` deployment's ingest: engine warnings are errors.
+    fn regulated(mut self) -> Self {
+        self.warnings_refused = true;
+        self
     }
 
     fn engine(&self) -> Engine<'_> {
@@ -123,7 +132,11 @@ impl Fixture {
             },
             limits: limits(),
             // A test has no deployment to consult: what the build carries is what it sees.
-            enabled: permguard_languages::registry::Enabled::everything(),
+            enabled: if self.warnings_refused {
+                permguard_languages::registry::Enabled::everything().refusing_warnings()
+            } else {
+                permguard_languages::registry::Enabled::everything()
+            },
             clock: &permguard_core::time::SystemClock,
         }
     }
@@ -1289,6 +1302,37 @@ fn a_policy_that_does_not_satisfy_its_schema_is_refused_at_the_push() {
             ..
         })
     ));
+}
+
+/// BUG-0257: a set the strict validator only warns about is valid: accepted below `regulated`,
+/// and refused under it with `partition_rejected`, naming the warning by its stable code.
+#[test]
+fn a_partition_with_engine_warnings_is_refused_only_under_regulated() {
+    let impossible =
+        r#"permit(principal == User::"alice", action == Action::"view", resource) when { false };"#;
+
+    let fixture = Fixture::new("warnings-production");
+    let (objects, head) = build_schema_commit(impossible, Some(SCHEMA_COVERING));
+    assert!(try_push(&fixture, &objects, &head).is_ok());
+
+    let fixture = Fixture::new("warnings-regulated").regulated();
+    let (objects, head) = build_schema_commit(impossible, Some(SCHEMA_COVERING));
+    match try_push(&fixture, &objects, &head) {
+        Err(EngineError::Validation { code, message, .. }) => {
+            assert_eq!(code, "partition_rejected");
+            assert!(message.contains("cedar.impossible_policy"), "{message}");
+            assert!(message.contains("regulated"), "{message}");
+        }
+        other => panic!("refused under regulated: {other:?}"),
+    }
+
+    // A clean set is accepted under `regulated` too: only a warning is refused.
+    let fixture = Fixture::new("warnings-clean").regulated();
+    let (objects, head) = build_schema_commit(
+        r#"permit(principal == User::"alice", action == Action::"view", resource);"#,
+        Some(SCHEMA_COVERING),
+    );
+    assert!(try_push(&fixture, &objects, &head).is_ok());
 }
 
 #[test]

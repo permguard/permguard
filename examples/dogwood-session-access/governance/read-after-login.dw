@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Permit a Read only if the same user logged in within the last hour and has not
-// since logged out.
+// logged out since.
 //
-// The idiom is Dogwood's accepted "A but not B": a guarded negation restricts
-// nothing, so it is legal only when a *preceding* conjunct in the same `&&`
-// chain already range-restricts its free variables. Here the restrictor comes
-// first, and the negation after it. Reversing the two is the rejected form, and
-// Dogwood refuses to lower it.
+// `since` says both halves at once: the right operand, a successful Login, is the
+// anchor that must have happened within the hour, and the left operand must have
+// held at every step from that login to the read being decided. The left is a
+// negation, so a Logout at any step after the login ends the permit; a new Login
+// after it starts a new one. Writing the negation as a second conjunct instead,
+// `formerly … && !Logout…`, would test only the occurrence being decided, which
+// is a Read, so a logout would never reach it.
 //
 // The event schema beside this file pins `callerPrincipal`, so every temporal
 // predicate is automatically correlated to the principal of the request being
@@ -21,6 +23,7 @@ permit (
     resource
 )
 when temporal {
-    formerly within 1h Drupe::Action::"Login"::response{ input.user: context.input.user }
-    && !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+    !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+    since within 1h
+    Drupe::Action::"Login"::response{ input.user: context.input.user }
 };

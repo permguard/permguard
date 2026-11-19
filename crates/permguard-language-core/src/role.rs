@@ -24,6 +24,31 @@ pub struct ExtractedPolicy {
     pub alias: Option<String>,
 }
 
+/// One warning a partition drew from its engine: valid, and said (the Cedar compile gate).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Warning {
+    /// Stable across releases, `<language>.<what>`: `cedar.impossible_policy`. An engine's own
+    /// warning this build does not know by name is `<language>.warning`, never dropped.
+    pub code: &'static str,
+    /// The policy it is about, by the name the caller handed it; `None` for the schema.
+    pub policy: Option<String>,
+    /// The engine's own sentence.
+    pub message: String,
+}
+
+impl std::fmt::Display for Warning {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.policy {
+            Some(policy) => write!(
+                formatter,
+                "[{}] policy {policy}: {}",
+                self.code, self.message
+            ),
+            None => write!(formatter, "[{}] schema: {}", self.code, self.message),
+        }
+    }
+}
+
 /// A policy language, as **both** sides see it: what it is called, what it
 /// owns on the wire, and whether a given blob is legal.
 ///
@@ -102,6 +127,20 @@ pub trait Language: Send + Sync {
     ) -> Result<(), String> {
         let _ = (policies, schema);
         Ok(())
+    }
+
+    /// The warnings a whole partition draws from its engine's checks: a policy that can never
+    /// apply, a confusable identifier, a schema declaration that shadows another.
+    ///
+    /// Separate from the errors, which [`Language::validate_set`] refuses: a partition with only
+    /// warnings is valid, and is served below `regulated`, which refuses it (the Cedar compile gate). Each
+    /// carries a stable code, so an operator can tell them apart and an author can look one up.
+    /// Asked of the same policies and schema `validate_set` is, by the same three callers; a set
+    /// that does not parse has no warnings here, since `validate_set` already refuses it. The
+    /// default has none.
+    fn set_warnings(&self, policies: &[(&str, &[u8])], schema: Option<&[u8]>) -> Vec<Warning> {
+        let _ = (policies, schema);
+        Vec::new()
     }
 
     /// Validates a whole partition against **every artifact it carries**.

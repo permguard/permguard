@@ -1515,6 +1515,36 @@ impl Engine<'_> {
                         .map_err(|error| {
                             invalid(permguard_core::codes::notp::SCHEMA_UNSATISFIED, error)
                         })?;
+                    // The engine's warnings, after its errors: refused under `regulated`, each by
+                    // its code, where the push can still be fixed; logged below it by code and
+                    // policy, never by the engine's sentence, which can quote policy text.
+                    let schema = permguard_languages::registry::schema_of(plugin, &bundle);
+                    let warnings = permguard_languages::registry::check_warnings_of(
+                        plugin,
+                        self.enabled.refuses_warnings(),
+                        &named,
+                        schema,
+                    )
+                    .map_err(|error| {
+                        invalid(
+                            permguard_core::codes::notp::PARTITION_REJECTED,
+                            format!("the partition `{}`: {error}", entry.name),
+                        )
+                    })?;
+                    if !warnings.is_empty() {
+                        let said: Vec<String> = warnings
+                            .iter()
+                            .map(|warning| match &warning.policy {
+                                Some(policy) => format!("{} ({policy})", warning.code),
+                                None => format!("{} (schema)", warning.code),
+                            })
+                            .collect();
+                        tracing::warn!(
+                            event.name = "catalog.partition_warnings",
+                            warnings = %said.join(", "),
+                            "a pushed partition draws engine warnings, which `regulated` refuses"
+                        );
+                    }
                 }
                 Kind::Commit => unreachable!("entries never reference commits: enforced at decode"),
             }

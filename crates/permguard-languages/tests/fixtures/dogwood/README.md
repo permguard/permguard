@@ -22,3 +22,6 @@ Upstream's `expected.out`, for the trace in `read_login_not_logout_trace`:
 @4000 (time point 2): DENY
 @4100 (time point 3): DENY
 ```
+
+The policy's `formerly … && !Logout…` tests the negation against the occurrence being decided only, so a logout between the login and the read does not deny it: upstream's trace has no such logout, and the verdicts above hold.
+The shipped example `examples/dogwood-session-access` writes the rule with `since` instead (BUG-0203); these files stay verbatim, since what they prove is parity with upstream.

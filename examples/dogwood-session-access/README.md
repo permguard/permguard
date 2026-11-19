@@ -28,9 +28,9 @@ two views of one record: the same read appears once in each, denied in the first
 pass and permitted in the second, while the login response appears only in the
 event store because nothing judged it.
 
-The policy is adapted from Dogwood's `read_login_not_logout` example. Permguard
-adds the packaging, durable journal, signed replication, CLI and control-plane
-read path around it.
+The policy is adapted from Dogwood's `read_login_not_logout` example, with the logout written as `!Logout since within 1h Login`.
+A negation written as a second conjunct tests only the occurrence being decided, so a logout would never end the session.
+Permguard adds the packaging, durable journal, signed replication, CLI and control-plane read path around it.
 
 ## What is in the example
 
@@ -38,10 +38,10 @@ read path around it.
 governance/read-after-login.dw   temporal policy
 governance/schema.cedarschema    principals, resources, actions and request context
 governance/events.dwschema       event kinds, logged fields, pins and time window
-events/                          what happens: the login that builds the history
+events/                          what happens: the login that builds the history, the logout that ends it
 requests/                        what is asked: the reads whose verdict is the point
 refusals/                        malformed or conflicting submissions
-tests/session-access.yml         eight deterministic offline cases
+tests/session-access.yml         nine deterministic offline cases
 manifest.yml                     Dogwood runtime, partition and temporal profile
 ```
 
@@ -143,7 +143,7 @@ task cli -- -w examples/dogwood-session-access test
 Expected result:
 
 ```text
-8 case(s), 8 passed, 0 failed.
+9 case(s), 9 passed, 0 failed.
 ```
 
 These are deterministic offline cases. They include a read more than one hour

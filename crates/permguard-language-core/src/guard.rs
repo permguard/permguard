@@ -69,6 +69,9 @@ impl<L: Language + 'static> Guarded<L> {
     }
 }
 
+/// The warning a warning check that came apart reports.
+pub const WARNINGS_CAME_APART: &str = "language.warnings_unavailable";
+
 /// The schema a floor that came apart demands: a name no artifact has, so nothing satisfies it.
 const FLOOR_CAME_APART: &str = "a schema floor that came apart";
 
@@ -141,6 +144,22 @@ impl<L: Language + 'static> Language for Guarded<L> {
     ) -> Result<(), String> {
         contained(|| self.0.validate_set(policies, schema))
             .unwrap_or_else(|_| Err(self.came_apart("validating a partition")))
+    }
+
+    /// A warning check that came apart is itself a warning, never silence: under `regulated` it
+    /// refuses the partition, as an unread warning would have to.
+    fn set_warnings(
+        &self,
+        policies: &[(&str, &[u8])],
+        schema: Option<&[u8]>,
+    ) -> Vec<crate::role::Warning> {
+        contained(|| self.0.set_warnings(policies, schema)).unwrap_or_else(|_| {
+            vec![crate::role::Warning {
+                code: WARNINGS_CAME_APART,
+                policy: None,
+                message: self.came_apart("collecting a partition's warnings"),
+            }]
+        })
     }
 
     fn validate_bundle(

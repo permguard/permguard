@@ -60,3 +60,46 @@ pub fn check_artifact_floor_of(
         profile.as_str()
     ))
 }
+
+/// The schema `language` validates a set against, found among a partition's artifacts by role,
+/// as [`Language::validate_bundle`] finds it.
+pub fn schema_of<'a>(
+    language: &dyn Language,
+    artifacts: &'a std::collections::BTreeMap<String, Vec<u8>>,
+) -> Option<&'a [u8]> {
+    language
+        .artifacts()
+        .iter()
+        .find(|held| held.role() == crate::artifact::ArtifactRole::Schema)
+        .and_then(|held| artifacts.get(held.name()))
+        .map(Vec::as_slice)
+}
+
+/// The warnings a partition of `language` draws, or its refusal where `refused` says warnings
+/// are errors: under the `regulated` profile (the Cedar compile gate).
+///
+/// `Ok` carries the warnings for the caller to report; `Err` names every one, by code, so the
+/// refusal says what to fix.
+pub fn check_warnings_of(
+    language: &dyn Language,
+    refused: bool,
+    policies: &[(&str, &[u8])],
+    schema: Option<&[u8]>,
+) -> Result<Vec<crate::role::Warning>, String> {
+    let warnings = language.set_warnings(policies, schema);
+    if !refused || warnings.is_empty() {
+        return Ok(warnings);
+    }
+
+    Err(format!(
+        "a `{}` partition draws {} warning(s), which the `regulated` assurance profile refuses as \
+         errors: {}",
+        language.name(),
+        warnings.len(),
+        warnings
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ")
+    ))
+}

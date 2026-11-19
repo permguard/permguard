@@ -34,6 +34,9 @@ pub struct Snapshot {
     pub objects: BTreeMap<Digest, Vec<u8>>,
     /// Every policy, for plans and reports.
     pub policies: Vec<PolicyRecord>,
+    /// The engine warnings each partition draws, `partition `p`: [code] policy …: …`: valid, and
+    /// refused by a `regulated` deployment (the Cedar compile gate).
+    pub warnings: Vec<String>,
 }
 
 /// `bytes` without a leading UTF-8 byte order mark (`EF BB BF`): every file a workspace holds is
@@ -119,6 +122,7 @@ pub(crate) fn build_snapshot(
     let mut snapshot_objects: BTreeMap<Digest, Vec<u8>> = BTreeMap::new();
     let mut policies: Vec<PolicyRecord> = Vec::new();
     let mut problems: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     // What a workspace is: the manifest, the partitions it declares, `.permguardignore` and
     // `.permguard/`. Anything else at the root is refused, not walked past: a policy in a folder
     // nobody compiles is a policy nobody enforces, and the author who put it there believes
@@ -230,6 +234,14 @@ pub(crate) fn build_snapshot(
         let artifacts = std::mem::take(&mut context.artifacts);
         if let Err(error) = plugin.validate_bundle(partition_name, &named, &artifacts, partition) {
             problems.push(error);
+        } else {
+            // The check push acceptance and every plane's load run, reported here where the
+            // author can act on it: the same code, never refused at this end, since the profile
+            // that refuses warnings is the deployment's.
+            let schema = permguard_languages::registry::schema_of(plugin, &artifacts);
+            for warning in plugin.set_warnings(&named, schema) {
+                warnings.push(format!("partition `{partition_name}`: {warning}"));
+            }
         }
         root_entries.push(TreeEntry {
             kind: Kind::Tree,
@@ -291,6 +303,7 @@ pub(crate) fn build_snapshot(
         manifest: manifest_digest,
         objects: snapshot_objects,
         policies,
+        warnings,
     })
 }
 

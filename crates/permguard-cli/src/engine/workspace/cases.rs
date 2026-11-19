@@ -351,7 +351,8 @@ fn build(
 /// seen from the sources alone, said here so the choice is made out loud or corrected.
 pub fn warnings(snapshot: &Snapshot, manifest: &Manifest) -> Result<Vec<String>> {
     let root = tree_at(snapshot, &snapshot.root.to_string())?;
-    let mut warnings = Vec::new();
+    // The engines' own warnings first, by code: what a `regulated` deployment refuses.
+    let mut warnings = snapshot.warnings.clone();
     for entry in &root.entries {
         let Some(declared) = manifest.partitions.get(&entry.name) else {
             continue;

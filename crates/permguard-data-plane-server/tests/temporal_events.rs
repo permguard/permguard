@@ -1950,6 +1950,36 @@ mod shipped_example {
             assert!(answered["history"].get("frontier").is_none(), "{answered}");
         }
     }
+    /// BUG-0203: a logout ends what the login permitted. The read inside the window is permitted,
+    /// and a read inside the same window after alice's `Logout` response is denied: the policy's
+    /// `since` holds the negation at every step after the login, not only at the read decided.
+    #[tokio::test]
+    async fn the_shipped_example_denies_a_read_after_logout() {
+        let plane = example_plane();
+        let router = surface(&plane);
+
+        let expected: [(&str, &str, Option<bool>); 5] = [
+            ("events/1-login-request.json", "decided", Some(false)),
+            ("events/2-login-response.json", "accepted", None),
+            ("requests/2-read-inside-window.json", "decided", Some(true)),
+            ("events/3-logout-response.json", "accepted", None),
+            ("requests/5-read-after-logout.json", "decided", Some(false)),
+        ];
+        for (fixture, outcome, decision) in expected {
+            let body: Value = serde_json::from_str(&example(fixture))
+                .unwrap_or_else(|error| panic!("{fixture}: {error}"));
+            let (status, answered) = post(&router, body).await;
+
+            assert_eq!(status, StatusCode::OK, "{fixture}: {answered}");
+            assert_eq!(answered["outcome"], outcome, "{fixture}: {answered}");
+            assert_eq!(
+                answered["decision"].as_bool(),
+                decision,
+                "{fixture}: {answered}"
+            );
+        }
+    }
+
     /// The example's refusals, which are as much of the contract as its permits.
     ///
     /// # What this is actually about

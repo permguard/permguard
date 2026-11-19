@@ -33,6 +33,17 @@
   # own: one id cannot name two occurrences, so asking twice needs two ids.
   expect: { decision: deny, policies: [] }
 
+- name: a read after logout is denied
+  events:
+    - ../events/1-login-request.json
+    - ../events/2-login-response.json
+    - ../events/3-logout-response.json
+  request: ../requests/5-read-after-logout.json
+  # 10:02:30, inside the same window as the permitted read, but after alice signed
+  # out at 10:02:00. The login no longer holds: a logout at any step since it ends
+  # the permit, which is what `since` says and a second conjunct could not.
+  expect: { decision: deny, policies: [] }
+
 - name: a read outside the window is denied
   events:
     - ../events/1-login-request.json

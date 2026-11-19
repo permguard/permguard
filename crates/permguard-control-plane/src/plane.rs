@@ -534,7 +534,19 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         // The ingest gate reads the deployment's opt-ins, not the build's: a plane that has not
         // enabled a provisional runtime refuses the push rather than storing a ledger it would
         // then refuse to serve.
-        permguard_languages::registry::Enabled::from_names(config.experimental_enabled_names()),
+        // And its profile: a `regulated` deployment refuses a partition its engine warns about,
+        // here as at every plane's load (the Cedar compile gate).
+        {
+            let enabled = permguard_languages::registry::Enabled::from_names(
+                config.experimental_enabled_names(),
+            );
+            let regulated = permguard_core::assurance::AssuranceProfile::Regulated;
+            if config.assurance().profile().at_least(regulated) {
+                enabled.refusing_warnings()
+            } else {
+                enabled
+            }
+        },
         config.notp_compression(),
         crate::handles::audit(context),
         config.error_detail(),

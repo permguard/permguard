@@ -922,6 +922,65 @@ async fn a_schema_less_cedar_partition_serves_only_below_production() {
     );
 }
 
+/// BUG-0257, the Cedar compile gate: a partition the strict validator only warns about is valid.
+/// It serves under `production` and is refused under `regulated` as `ledger_incompatible`, the
+/// refusal naming the warning by its stable code; no block is left behind, so the
+/// profile decides it at every load.
+#[tokio::test]
+async fn a_cedar_partition_with_validator_warnings_serves_only_below_regulated() {
+    use permguard_core::assurance::AssuranceProfile;
+
+    const NEVER: Policy = Policy {
+        id: "01a0-cedar-never",
+        media_type: registry::MEDIA_TYPE_POLICY_CEDAR,
+        source: r#"permit (principal, action == Action::"read", resource) when { false };"#,
+    };
+    let root = scratch("warnings").join("mirrors");
+    let schema = "entity user;\nentity document;\naction read appliesTo { principal: [user], resource: [document] };\n";
+    let mut typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
+    for partition in typed.partitions.values_mut() {
+        partition.interfaces = vec![permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned()];
+    }
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &typed,
+        &[("app", vec![&CEDAR_READ, &NEVER], Some(schema))],
+    );
+    let under = |profile| {
+        Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_profile(profile)
+    };
+
+    let refused = under(AssuranceProfile::Regulated)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("a warning is an error under regulated");
+    assert_eq!(refused.code(), "ledger_incompatible");
+    assert!(
+        refused.to_string().contains("cedar.impossible_policy"),
+        "the refusal names the warning by its code: {refused:?}"
+    );
+    assert!(
+        block::read(&mirror.path).is_none(),
+        "a floor refusal is never written down"
+    );
+    assert!(
+        under(AssuranceProfile::Production)
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect("production serves it, warning said")
+            .decision
+    );
+}
+
 /// REGO-03: from `production` a Rego partition runs only in its supervised worker. With no
 /// worker able to start, the partition is refused — never compiled in-process instead — and the
 /// refusal is not written down against the ledger; under `development` it is served in-process.

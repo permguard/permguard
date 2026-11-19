@@ -173,6 +173,17 @@ impl Language for Cedar {
         Ok(())
     }
 
+    /// The schema's warnings and the strict validator's, each with its stable code: the half of
+    /// the compile gate `validate_set` does not refuse. A set that does not parse, or a schema
+    /// that does not, has none here, since `validate_set` already refuses it.
+    fn set_warnings(
+        &self,
+        policies: &[(&str, &[u8])],
+        schema: Option<&[u8]>,
+    ) -> Vec<permguard_language_core::role::Warning> {
+        warnings_of(policies, schema).unwrap_or_default()
+    }
+
     /// From `production` upward a Cedar partition carries a schema (CEDAR-05): untyped Cedar
     /// evaluates whatever the request says an entity is, and a policy reads differently than it
     /// runs. Schema-less Cedar remains a development compatibility mode.
@@ -204,6 +215,78 @@ pub(crate) fn parse_schema(bytes: &[u8]) -> Result<cedar_policy::Schema, String>
     })?;
 
     Ok(schema)
+}
+
+/// The warnings of a policy set and its schema, or `None` when either does not parse.
+fn warnings_of(
+    policies: &[(&str, &[u8])],
+    schema: Option<&[u8]>,
+) -> Option<Vec<permguard_language_core::role::Warning>> {
+    use cedar_policy::{ValidationMode, Validator};
+    use permguard_language_core::role::Warning;
+
+    let mut set = cedar_policy::PolicySet::new();
+    for (name, bytes) in policies {
+        let policy = parse_policy(std::str::from_utf8(bytes).ok()?).ok()?;
+        let id = cedar_policy::PolicyId::from_str(name).ok()?;
+        set.add(policy.new_id(id)).ok()?;
+    }
+    let Some(bytes) = schema else {
+        // No schema, no validator: only a schema's declarations and the typechecker warn.
+        return Some(Vec::new());
+    };
+    let text = std::str::from_utf8(bytes).ok()?;
+    check_nesting(text, Grammar::Schema).ok()?;
+    let (schema, schema_warnings) = permguard_language_core::headroom::ample(|| {
+        cedar_policy::Schema::from_cedarschema_str(text)
+            .ok()
+            .map(|(schema, warnings)| (schema, warnings.collect::<Vec<_>>()))
+    })?;
+    let mut warnings: Vec<Warning> = schema_warnings
+        .iter()
+        .map(|warning| Warning {
+            code: schema_warning_code(warning),
+            policy: None,
+            message: warning.to_string(),
+        })
+        .collect();
+    let result = permguard_language_core::headroom::ample(|| {
+        Validator::new(schema.clone()).validate(&set, ValidationMode::Strict)
+    });
+    warnings.extend(result.validation_warnings().map(|warning| Warning {
+        code: validation_warning_code(warning),
+        policy: Some(warning.policy_id().to_string()),
+        message: warning.to_string(),
+    }));
+
+    Some(warnings)
+}
+
+/// The stable code of a validator warning. Cedar marks the enum non-exhaustive: one this build
+/// does not know by name is `cedar.warning`, reported all the same.
+fn validation_warning_code(warning: &cedar_policy::ValidationWarning) -> &'static str {
+    use cedar_policy::ValidationWarning as W;
+
+    match warning {
+        W::MixedScriptString(_) => "cedar.mixed_script_string",
+        W::BidiCharsInString(_) => "cedar.bidi_chars_in_string",
+        W::BidiCharsInIdentifier(_) => "cedar.bidi_chars_in_identifier",
+        W::MixedScriptIdentifier(_) => "cedar.mixed_script_identifier",
+        W::ConfusableIdentifier(_) => "cedar.confusable_identifier",
+        W::ImpossiblePolicy(_) => "cedar.impossible_policy",
+        _ => "cedar.warning",
+    }
+}
+
+/// The stable code of a schema warning, `cedar.schema_warning` for one this build does not know.
+fn schema_warning_code(warning: &cedar_policy::SchemaWarning) -> &'static str {
+    use cedar_policy::SchemaWarning as W;
+
+    match warning {
+        W::ShadowsBuiltin(_) => "cedar.schema_shadows_builtin",
+        W::ShadowsEntity(_) => "cedar.schema_shadows_entity",
+        _ => "cedar.schema_warning",
+    }
 }
 
 /// Validates a policy set against its schema, strict mode.
@@ -568,6 +651,75 @@ permit (principal, action == Action::"list", resource);
     fn broken_cedar_is_refused() {
         assert!(Cedar.extract(b"permit (principal").is_err());
         assert!(Cedar.validate_policy(b"not cedar at all;").is_err());
+    }
+
+    /// BUG-0257: the validator's and the schema's warnings are reported with stable codes, each
+    /// naming its policy; a set that only warns still validates; the profile check refuses it
+    /// only when told warnings are errors.
+    #[test]
+    fn warnings_are_reported_with_stable_codes_and_refused_only_where_asked() {
+        let schema = "entity User;\nentity Document;\naction read appliesTo { principal: [User], resource: [Document] };\n";
+        let never: &[u8] =
+            br#"permit (principal, action == Action::"read", resource) when { false };"#;
+        let read: &[u8] = br#"permit (principal, action == Action::"read", resource);"#;
+        let policies = [("p-read", read), ("p-never", never)];
+
+        assert!(
+            Cedar
+                .validate_set(&policies, Some(schema.as_bytes()))
+                .is_ok()
+        );
+        let warnings = Cedar.set_warnings(&policies, Some(schema.as_bytes()));
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].code, "cedar.impossible_policy");
+        assert_eq!(warnings[0].policy.as_deref(), Some("p-never"));
+        assert!(
+            warnings[0]
+                .to_string()
+                .starts_with("[cedar.impossible_policy] policy p-never: "),
+            "{}",
+            warnings[0]
+        );
+
+        // An entity named after an extension type shadows a builtin: a schema warning.
+        let shadowing = "entity decimal;\nentity User;\nentity Document;\naction read appliesTo { principal: [User], resource: [Document] };\n";
+        let warnings = Cedar.set_warnings(&[("p-read", read)], Some(shadowing.as_bytes()));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.code == "cedar.schema_shadows_builtin"
+                    && warning.policy.is_none()),
+            "{warnings:?}"
+        );
+
+        // Clean, unparseable or schema-less sets draw none here.
+        assert!(
+            Cedar
+                .set_warnings(&[("p-read", read)], Some(schema.as_bytes()))
+                .is_empty()
+        );
+        assert!(
+            Cedar
+                .set_warnings(&[("p-bad", b"permit (")], Some(schema.as_bytes()))
+                .is_empty()
+        );
+        assert!(Cedar.set_warnings(&policies, None).is_empty());
+
+        let check = |refused| {
+            permguard_language_core::registry::check_warnings_of(
+                &Cedar,
+                refused,
+                &policies,
+                Some(schema.as_bytes()),
+            )
+        };
+        assert_eq!(check(false).expect("reported, not refused").len(), 1);
+        let why = check(true).expect_err("refused where warnings are errors");
+        assert!(
+            why.contains("[cedar.impossible_policy] policy p-never"),
+            "{why}"
+        );
+        assert!(why.contains("`regulated`"), "{why}");
     }
 
     #[test]

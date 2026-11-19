@@ -19,6 +19,11 @@ is cut.
 
 ### Changed
 
+- **Cedar's validator and schema warnings are reported with stable codes, and `regulated` refuses them.**
+  A partition whose schema or strict validation drew only warnings, such as a policy that can never apply (`cedar.impossible_policy`), a confusable identifier, or a schema declaration shadowing a builtin, was accepted everywhere and the warnings discarded.
+  `permguard validate` now lists each by partition, code and policy, such as `[cedar.impossible_policy] policy app/never.cedar`, and still validates; a Control Plane logs them at push (`catalog.partition_warnings`) and a Data Plane at load (`authz.partition_warnings`), by code and policy only.
+  Under the `regulated` assurance profile a warning is an error: the push is refused `partition_rejected` and the load `ledger_incompatible`, naming every warning by its code.
+  The codes are `cedar.mixed_script_string`, `cedar.bidi_chars_in_string`, `cedar.bidi_chars_in_identifier`, `cedar.mixed_script_identifier`, `cedar.confusable_identifier`, `cedar.impossible_policy`, `cedar.schema_shadows_builtin` and `cedar.schema_shadows_entity`; a warning a newer Cedar adds is `cedar.warning` or `cedar.schema_warning`, never dropped.
 - **A policy deep enough to overflow an engine's stack is refused where it is pushed.**
   A Dogwood policy nests at most 32 levels, Cedar's bound counted the same way, checked before the parser runs, and its parse and lowering run on a stack segment sized for it: a policy with a thousand nested parentheses aborted the server that accepted the push.
   A Rego partition's rules depend on each other in a chain of at most 64 rules: a longer chain, accepted before, aborted the first decision that walked it.
@@ -214,6 +219,8 @@ is cut.
 
 ### Fixed
 
+- **The Dogwood session example denies a read after a logout.**
+  `examples/dogwood-session-access` wrote "no logout since the login" as a second conjunct, `formerly within 1h Login… && !Logout…`, which tests only the occurrence being decided, a read, so a logout never ended the session; its policy is now `!Logout… since within 1h Login…`, with a case and a fixture for the logout, and How it works shows the same.
 - **A version 2 Dogwood event refused for a field names `fields.…`, the member the caller sent.**
   A mistyped field, a top-level field the build cannot carry and a contradicted pin were named `logged.…` or `request_context.…`, bags a version 2 occurrence does not have and may not send.
 - **A member can end a membership whose coordinator no longer acknowledges it.**

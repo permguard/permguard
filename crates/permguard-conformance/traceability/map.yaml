@@ -2710,8 +2710,10 @@ sections:
       - crates/permguard-control-plane/tests/engine_flow.rs::a_policy_that_does_not_satisfy_its_schema_is_refused_at_the_push
       - crates/permguard-language-cedar/src/evaluate.rs::deep_expressions_large_sets_and_large_graphs_stay_inside_limits
       - crates/permguard-language-cedar/src/lib.rs::broken_cedar_is_refused
-    gaps:
-      - "open (code): Cedar validator warnings are dropped; no stable warning codes, and `regulated` does not turn them into errors"
+      - crates/permguard-language-cedar/src/lib.rs::warnings_are_reported_with_stable_codes_and_refused_only_where_asked
+      - crates/permguard-control-plane/tests/engine_flow.rs::a_partition_with_engine_warnings_is_refused_only_under_regulated
+      - crates/permguard-data-plane-server/tests/authz_decision.rs::a_cedar_partition_with_validator_warnings_serves_only_below_regulated
+      - crates/permguard-cli/tests/cli.rs::validate_reports_engine_warnings_by_code_and_still_validates
   "5-languages/1-language-cedar.md#request-mapping":
     paths:
       - crates/permguard-language-cedar/src/evaluate.rs

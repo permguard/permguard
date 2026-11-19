@@ -113,6 +113,9 @@ pub struct Enabled {
     /// Whether a runtime must pass its conformance gate to be served (TL-6): what a `production`
     /// or `regulated` Host asks.
     conformance: bool,
+    /// Whether a partition's engine warnings are errors: what a `regulated` Host asks (the Cedar
+    /// compile gate).
+    warnings_refused: bool,
 }
 
 impl Enabled {
@@ -141,7 +144,19 @@ impl Enabled {
         Self {
             names: names.into_iter().map(Into::into).collect(),
             conformance: false,
+            warnings_refused: false,
         }
+    }
+
+    /// The same opt-ins, refusing a partition whose engine warns: what a `regulated` Host asks.
+    pub fn refusing_warnings(mut self) -> Self {
+        self.warnings_refused = true;
+        self
+    }
+
+    /// Whether a partition that draws engine warnings is refused here.
+    pub fn refuses_warnings(&self) -> bool {
+        self.warnings_refused
     }
 
     /// The same opt-ins, serving only runtimes whose conformance gate passes (TL-6): a
@@ -749,7 +764,7 @@ pub fn language_of(media_type: &str) -> Option<&'static dyn Language> {
 }
 
 pub use permguard_language_core::registry::{
-    EVERY_ARTIFACT, check_artifact_floor_of, check_schema_floor_of,
+    EVERY_ARTIFACT, check_artifact_floor_of, check_schema_floor_of, check_warnings_of, schema_of,
 };
 
 /// Refuses a partition that carries no schema where its language requires one at `profile`.
@@ -782,6 +797,32 @@ pub fn check_artifact_floor(
     };
 
     check_artifact_floor_of(language, profile, artifacts)
+}
+
+/// The type name of the schema a partition of `language_name` validates against, when its
+/// language has one: where a caller holding the partition's artifacts finds it.
+pub fn schema_type(language_name: &str) -> Option<&'static str> {
+    crate::lookup::language(language_name)?
+        .artifacts()
+        .iter()
+        .find(|held| held.role() == crate::artifact::ArtifactRole::Schema)
+        .map(|held| held.name())
+}
+
+/// The warnings a partition of `language_name` draws, or its refusal where `refused` makes them
+/// errors: the `regulated` profile (the Cedar compile gate). One check for `validate`, push
+/// acceptance and load, so the three cannot disagree about what a partition warns of.
+pub fn check_warnings(
+    language_name: &str,
+    refused: bool,
+    policies: &[(&str, &[u8])],
+    schema: Option<&[u8]>,
+) -> Result<Vec<crate::role::Warning>, String> {
+    let Some(language) = crate::lookup::language(language_name) else {
+        return Ok(Vec::new());
+    };
+
+    check_warnings_of(language, refused, policies, schema)
 }
 
 /// Whether a partition of `language_name` must run in a supervised worker under `profile`.
