@@ -772,8 +772,21 @@ fn a_revoked_key_leaves_the_set_at_once_and_an_active_one_is_replaced() {
             1,
         )
         .expect("revoked");
-    assert_eq!(revoked.epoch, 2);
     let statement = ring.statement().expect("statement");
+    // The receipt names the epoch the ring is left at, the replacement's (BUG-0091), and so does
+    // what the journal shows of the operation, which a retry and a recovery answer from.
+    assert_eq!(revoked.epoch, 3);
+    assert_eq!(revoked.epoch, statement.epoch);
+    assert_eq!(
+        ring.observe(&OperationId::from_bytes([4; 16]))
+            .map(|observed| (observed.revision, observed.target)),
+        Some((3, Some(first.clone())))
+    );
+    assert_eq!(
+        ring.operation_kid(&OperationId::from_bytes([4; 16]))
+            .as_deref(),
+        Some(first.as_str())
+    );
     assert!(
         statement.keys.iter().all(|key| key.kid != first),
         "out at once"
@@ -798,8 +811,16 @@ fn a_revoked_key_leaves_the_set_at_once_and_an_active_one_is_replaced() {
             .map(|key| key.state),
         Some(State::Revoked)
     );
+    // The receipt's revision is the one a following mutation names: accepted, and refused only
+    // because the key is revoked already.
     assert!(matches!(
-        ring.revoke(&Applying::for_tests(5), &first, "again", None, 3),
+        ring.revoke(
+            &Applying::for_tests(5),
+            &first,
+            "again",
+            None,
+            revoked.epoch
+        ),
         Err(RingError::Revoked(_))
     ));
     let slots = FileKeyProvider::new(fixture.dir().subdir(PRIVATE, false).expect("private"))

@@ -206,6 +206,14 @@ async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
         .expect_err("a ring this process does not compose");
     assert_eq!(code(&elsewhere), codes::host::RING_UNKNOWN);
 
+    let moved = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counting = Arc::clone(&moved);
+    api.on_rings_moved(Arc::new(move || {
+        counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }))
+    .expect("the hook");
+    let woken = || moved.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(woken(), 0, "nothing moved yet");
     let revoked = api
         .run_key_revoke(
             &admin(),
@@ -218,11 +226,23 @@ async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
         .await
         .expect("revoked");
     assert_eq!(revoked.kid, kid);
-    assert_eq!(revoked.receipt.revision, 2);
     let view = api.ring(DATA_ATTEST).expect("public");
     assert!(view.keys.iter().all(|key| key.kid != kid), "out at once");
     assert_eq!(view.keys.len(), 1, "an active replacement");
     assert_eq!(view.epoch, Some(3));
+    // The receipt names the epoch the ring is left at, the one a following mutation names
+    // (BUG-0091), and the re-pin pass is woken (BUG-0223).
+    assert_eq!(revoked.receipt.revision, 3);
+    assert_eq!(woken(), 1, "the re-pin pass is woken by the revocation");
+    let rotated = api
+        .rotate_ring(
+            &admin(),
+            DATA_ATTEST,
+            rotate("x4", revoked.receipt.revision),
+        )
+        .await
+        .expect("the receipt's revision is the one a following mutation names");
+    assert_eq!(rotated.receipt.revision, 4);
 
     let terminal = api
         .plan_key_revoke(&admin(), DATA_ATTEST, plan("p3", &kid, "again"))

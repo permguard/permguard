@@ -30,7 +30,7 @@ permguard-offline.workspace = true
 # The key rings' clock, answered from the Host's one time service.
 permguard-std = { workspace = true, features = ["keys"] }
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [dev-dependencies]

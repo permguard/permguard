@@ -235,6 +235,10 @@ is cut.
 
 ### Fixed
 
+- **Revoking a ring's active key answers the ring's epoch after the run, and a coordinator re-pins its memberships at once.**
+  A revocation with no waiting successor commits the revocation and the replacement's activation; its receipt named the first of the two epochs, so a client chaining on the receipt's revision was refused `409 revision_mismatch`.
+  The receipt, a retry and a recovery now answer the epoch the ring is left at (BUG-0091).
+  A revocation also wakes the re-pin pass: the memberships the Host coordinates are revised as soon as it commits, not at the next minute, so a `policy.mirror` member pins the replacement `control.attest` key at its next session instead of refusing every new head for up to a minute (BUG-0223).
 - **The emergency floor holds readiness in a running server, and the volume's usage is published.**
   `storage.floors` was checked only by the start probe: once serving, a Host kept answering ready while its volume filled past the floor.
   The Host now opens its quota at start and judges the floor every 5 seconds; below the floor plus one journal write readiness is held, the Host reports `degraded: storage_floor` with the code `storage_free_bytes`, and it is released once space returns.

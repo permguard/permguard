@@ -7,6 +7,11 @@
 //!
 //! The same pass ships what this Host's ship tasks have due (WP-5.4, owner decision): a batch
 //! waits at most one pass, and a deferred one its subscription's backoff.
+//!
+//! A revocation does not wait for the pass (BUG-0223): it replaces an active key at once, without
+//! the publish-ahead window, so the memberships are revised as soon as it commits, and a member
+//! pins the replacement when it opens its next session rather than refusing every new head for up
+//! to a minute.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,41 +40,64 @@ pub struct Egress {
     pub max_lag: Duration,
 }
 
-/// Runs the pass now and every [`PASS`] until the handle is dropped.
+/// Revises the memberships this Host coordinates for its moved rings, and retires what is due.
+async fn revise(coordinating: &Arc<Coordinating>) {
+    let revising = Arc::clone(coordinating);
+    match tokio::task::spawn_blocking(move || {
+        revising
+            .revise_coordinated()
+            .and_then(|revised| Ok(revised + revising.retire_due()?))
+    })
+    .await
+    {
+        Ok(Ok(0)) => {}
+        Ok(Ok(revised)) => tracing::info!(
+            event.name = "host.membership.coordinated_repinned",
+            component = "host",
+            memberships = revised,
+            "the memberships this Host coordinates now pin its moved rings"
+        ),
+        Ok(Err(error)) => tracing::warn!(
+            event.name = "host.membership.coordinated_repin_failed",
+            component = "host",
+            error = %error,
+            "a membership could not be revised for this Host's rings; the next pass tries again"
+        ),
+        Err(error) => tracing::error!(
+            event.name = "host.membership.coordinated_repin_failed",
+            component = "host",
+            error = %error,
+            "the coordinator's re-pin pass stopped; the next pass tries again"
+        ),
+    }
+}
+
+/// Runs the pass now and every [`PASS`] until the handle is dropped; the memberships also as soon
+/// as a revocation commits.
 pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress) -> Repinning {
+    let moved = Arc::new(tokio::sync::Notify::new());
+    let waking = Arc::clone(&moved);
+    if let Err(error) = api.on_rings_moved(Arc::new(move || waking.notify_one())) {
+        tracing::warn!(
+            event.name = "host.membership.repin_unhooked",
+            component = "host",
+            error = %error,
+            "a revocation is re-pinned at the next pass, not at once"
+        );
+    }
     Repinning(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
-            interval.tick().await;
-            let revising = Arc::clone(&coordinating);
-            match tokio::task::spawn_blocking(move || {
-                revising
-                    .revise_coordinated()
-                    .and_then(|revised| Ok(revised + revising.retire_due()?))
-            })
-            .await
-            {
-                Ok(Ok(0)) => {}
-                Ok(Ok(revised)) => tracing::info!(
-                    event.name = "host.membership.coordinated_repinned",
-                    component = "host",
-                    memberships = revised,
-                    "the memberships this Host coordinates now pin its moved rings"
-                ),
-                Ok(Err(error)) => tracing::warn!(
-                    event.name = "host.membership.coordinated_repin_failed",
-                    component = "host",
-                    error = %error,
-                    "a membership could not be revised for this Host's rings; the next pass tries again"
-                ),
-                Err(error) => tracing::error!(
-                    event.name = "host.membership.coordinated_repin_failed",
-                    component = "host",
-                    error = %error,
-                    "the coordinator's re-pin pass stopped; the next pass tries again"
-                ),
+            tokio::select! {
+                _ = interval.tick() => {}
+                () = moved.notified() => {
+                    // A revocation committed: the memberships now, the rest at the pass.
+                    revise(&coordinating).await;
+                    continue;
+                }
             }
+            revise(&coordinating).await;
             // What the coordinators decided since the last pass, adopted before anything is
             // shipped under a membership they may have suspended or revoked (BUG-0152).
             let _ = api.sync_due().await;

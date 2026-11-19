@@ -608,11 +608,19 @@ impl Materialized {
         self.epoch = epoch;
         self.seq = entry.seq;
         if let Some(id) = entry.operation_id {
-            let target = match entry.kind {
-                Kind::Prepublished => format!("{ring}:epoch:{epoch}"),
-                _ => entry.kid.clone(),
-            };
-            self.operations.push((id, epoch, target, entry.kid.clone()));
+            match self.operations.last_mut() {
+                // The entries one operation commits together, a revoked active key and its
+                // replacement (BUG-0091): the operation left the ring at the last one's epoch, and
+                // its target and key stay the first one's.
+                Some(last) if last.0 == id => last.1 = epoch,
+                _ => {
+                    let target = match entry.kind {
+                        Kind::Prepublished => format!("{ring}:epoch:{epoch}"),
+                        _ => entry.kid.clone(),
+                    };
+                    self.operations.push((id, epoch, target, entry.kid.clone()));
+                }
+            }
         }
         Ok(())
     }
@@ -1606,6 +1614,8 @@ impl Ring {
         };
         // An active key is replaced in the same commit, by the waiting successor or a key
         // generated now: no signing sees the ring without an active key.
+        // The replacement carries the revocation's operation id: the operation's revision is the
+        // epoch the ring is left at, the one a following mutation names (BUG-0091).
         let mut entries = vec![revoked.clone()];
         if was == Some(State::Active) {
             let successor = match waiting {
@@ -1613,7 +1623,7 @@ impl Ring {
                 None => {
                     let prepublished = self.prepare(
                         Self::following(&revoked, Kind::Prepublished, "", 1, now),
-                        None,
+                        revoked.operation_id,
                     )?;
                     let kid = prepublished.kid.clone();
                     entries.push(prepublished);
@@ -1621,9 +1631,15 @@ impl Ring {
                 }
             };
             let last = entries.last().cloned().unwrap_or_else(|| revoked.clone());
-            entries.push(Self::following(&last, Kind::Activated, &successor, 0, now));
+            entries.push(Entry {
+                operation_id: revoked.operation_id,
+                ..Self::following(&last, Kind::Activated, &successor, 0, now)
+            });
         }
-        self.commit_all(entries)?;
+        let epoch = self
+            .commit_all(entries)?
+            .last()
+            .map_or(revoked.epoch, |entry| entry.epoch);
         // From here the revocation is in the journal: a later failure leaves the ring changed,
         // and maintenance finishes it.
         let unfinished = |error: RingError| {
@@ -1638,7 +1654,7 @@ impl Ring {
         self.write_view().map_err(unfinished)?;
         self.bind_after_mutation(now);
         Ok(Transition {
-            epoch: revoked.epoch,
+            epoch,
             kid: kid.to_owned(),
         })
     }

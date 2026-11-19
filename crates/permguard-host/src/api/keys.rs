@@ -626,7 +626,7 @@ impl HostApi {
             Ok((plan, revocation))
         };
         let kid = presented().ok().map(|(_, revocation)| revocation.kid);
-        self.transact(
+        let revoked = self.transact(
             DOMAIN,
             &admitted.principal,
             REVOKE_RUN,
@@ -677,7 +677,13 @@ impl HostApi {
                     kid,
                 })
             },
-        )
+        );
+        if revoked.is_ok()
+            && let Some(hook) = self.rings_moved.get()
+        {
+            hook();
+        }
+        revoked
     }
 
     /// The statement of `name`, or `ring_unknown`, or `ring_unreadable`: never an empty set

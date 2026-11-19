@@ -275,6 +275,8 @@ pub struct HostApi {
     volume: Option<([u8; 16], u64)>,
     /// The local ship tasks of a Host that runs both Planes, given once the server composed them.
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
+    /// Called when an operator's revocation committed (BUG-0223).
+    rings_moved: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -316,7 +318,18 @@ impl HostApi {
             gc_spending: std::sync::Mutex::new(()),
             volume: None,
             local_shipping: None,
+            rings_moved: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Calls `hook` whenever an operator's revocation committed (BUG-0223): a revoked active key
+    /// is replaced at once, without the publish-ahead window, so the re-pin pass revises the
+    /// memberships this Host coordinates then, not at its next minute, and a member opening its
+    /// next session pins the replacement. Set once; a second hook is refused.
+    pub fn on_rings_moved(&self, hook: Arc<dyn Fn() + Send + Sync>) -> Result<(), String> {
+        self.rings_moved
+            .set(hook)
+            .map_err(|_| "the rings' hook is set already".to_owned())
     }
 
     /// This facade shipping its Data Plane's streams to its own Control Plane through `local`
