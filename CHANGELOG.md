@@ -19,6 +19,9 @@ is cut.
 
 ### Changed
 
+- **`dataPlane.events.pull.ledgers[]` names its ledgers by ids, and the settings that did nothing are refused.**
+  The history a shared mode imports and the decisions that read it are keyed by the ledger's ids, so an entry naming its zone or ledger by name imported nothing, said nowhere, and `shared-bounded` refused every decision; such an entry is now refused at start, naming it, and the chart refuses it at render. Write the ids `permguard ledgers get` shows.
+  `ledgers[].event_types` is refused as not applied, since the Host imports each ledger's whole history, and `events.pull.interval` (`PERMGUARD_EVENTS_PULL_INTERVAL`) is retired, since nothing polls; both were accepted and inert. The shipped configuration comments show the form that works.
 - **`inspect` reports a plane that refuses the operator as `refused`, and exits `64`; with no plane answering it exits `69`, not `1`.**
   A gate denial (`401`/`403`, `unauthenticated`/`forbidden` over gRPC) or a certificate or scheme refused at the handshake makes the plane `refused`, reachable, with the refusal's code as its reason, over REST and gRPC alike; the summary says how many refused, and the report carries `refused`.
   No plane answering exits `69`, as every other command whose target does not answer: a script that read `1` as "down" reads `69`.

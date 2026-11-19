@@ -1146,8 +1146,6 @@ pub const DEFAULT_EVENTS_REPLAY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 pub const DEFAULT_EVENTS_REPLAY_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many cold replays run at once.
 pub const DEFAULT_EVENTS_REPLAY_CONCURRENCY: usize = 4;
-/// How often the pull worker asks for more, when a deployment turns pull on.
-pub const DEFAULT_EVENTS_PULL_INTERVAL: Duration = Duration::from_secs(2);
 /// How stale imported history may be before `shared-bounded` fails decisions closed.
 pub const DEFAULT_EVENTS_PULL_MAX_STALENESS: Duration = Duration::from_secs(10);
 
@@ -1507,7 +1505,6 @@ pub struct Config {
     events_replay_concurrency: usize,
     events_replay_prewarm: usize,
     events_pull_mode: Consistency,
-    events_pull_interval: Duration,
     events_pull_max_staleness: Duration,
     /// What this deployment has opted into, by runtime name.
     ///
@@ -1736,7 +1733,6 @@ impl Default for Config {
             events_replay_concurrency: DEFAULT_EVENTS_REPLAY_CONCURRENCY,
             events_replay_prewarm: 0,
             events_pull_mode: Consistency::Local,
-            events_pull_interval: DEFAULT_EVENTS_PULL_INTERVAL,
             events_pull_max_staleness: DEFAULT_EVENTS_PULL_MAX_STALENESS,
             experimental: BTreeMap::new(),
             events_pull_ledgers: Vec::new(),
@@ -3949,11 +3945,6 @@ produce: use `EdDSA` or `ES256`"
         self.events_pull_mode
     }
 
-    /// How often the pull worker asks the control plane for more.
-    pub fn events_pull_interval(&self) -> Duration {
-        self.events_pull_interval
-    }
-
     /// How stale imported history may be before `shared-bounded` fails decisions closed.
     pub fn events_pull_max_staleness(&self) -> Duration {
         self.events_pull_max_staleness
@@ -4929,7 +4920,6 @@ produce: use `EdDSA` or `ES256`"
             SETTING_EVENTS_REPLAY_CONCURRENCY => n(self.events_replay_concurrency),
             SETTING_EVENTS_REPLAY_PREWARM => n(self.events_replay_prewarm),
             SETTING_EVENTS_PULL_MODE => Some(self.events_pull_mode.as_str().to_owned()),
-            SETTING_EVENTS_PULL_INTERVAL => d(self.events_pull_interval),
             SETTING_EVENTS_PULL_MAX_STALENESS => d(self.events_pull_max_staleness),
             SETTING_EXPERIMENTAL_DOGWOOD => b(self.experimental_dogwood()),
             SETTING_DECISION_STORE_ENABLED => b(self.decision_store_enabled),
@@ -5856,15 +5846,15 @@ produce: use `EdDSA` or `ES256`"
                 )
             })?;
         }
-        if let Some(value) = settings.get(SETTING_EVENTS_PULL_INTERVAL) {
-            self.events_pull_interval = parse_duration(value)
-                .with_context(|| format!("reading {SETTING_EVENTS_PULL_INTERVAL}"))?;
-            if self.events_pull_interval.is_zero() {
-                anyhow::bail!(
-                    "reading {SETTING_EVENTS_PULL_INTERVAL}: a worker that never waits is a worker \
-                     that spends a control plane's capacity on asking"
-                );
-            }
+        // Retired (WP-6.2c2b2, BUG-0133, DEC-0006): the Host imports a ledger's whole history on
+        // its membership pass, and no worker polls. Refused, so no deployment believes it tunes
+        // anything.
+        if settings.contains_key(SETTING_EVENTS_PULL_INTERVAL) {
+            anyhow::bail!(
+                "{SETTING_EVENTS_PULL_INTERVAL} (`dataPlane.events.pull.interval`) is retired: the \
+                 Host imports each subscribed ledger's history over `events.import` on its \
+                 membership pass, and nothing polls. Remove it"
+            );
         }
         if let Some(value) = settings.get(SETTING_EVENTS_PULL_MAX_STALENESS) {
             self.events_pull_max_staleness = parse_duration(value)
@@ -6875,7 +6865,6 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EVENTS_GROUP_COMMIT_DELAY,
     SETTING_EVENTS_MAX_BYTES,
     SETTING_EVENTS_MAX_RECORD_BYTES,
-    SETTING_EVENTS_PULL_INTERVAL,
     SETTING_EVENTS_PULL_MAX_STALENESS,
     SETTING_EVENTS_PULL_MODE,
     SETTING_EVENTS_REPLAY_CONCURRENCY,

@@ -462,9 +462,9 @@ fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
         (SETTING_EVENTS_PULL_MODE, "shared-bounded"),
     ])
     .with_pull_ledgers(vec![permguard_core::config::PullSubscription {
-        zone: "zone-1".to_owned(),
-        ledger: "ledger-1".to_owned(),
-        event_types: vec![permguard_core::domains::event::DOGWOOD_V1.to_owned()],
+        zone: ZONE_ID.to_owned(),
+        ledger: LEDGER_ID.to_owned(),
+        event_types: Vec::new(),
     }]);
     module
         .startup_check(&shared)
@@ -487,15 +487,53 @@ fn a_shared_mode_needs_no_pull_keys_and_naming_them_is_refused() {
     assert!(said.contains("retired"), "{said}");
     // One ledger, one import.
     let ledger = permguard_core::config::PullSubscription {
-        zone: "zone-1".to_owned(),
-        ledger: "ledger-1".to_owned(),
+        zone: ZONE_ID.to_owned(),
+        ledger: LEDGER_ID.to_owned(),
         event_types: Vec::new(),
     };
     let twice = module
-        .startup_check(&shared.with_pull_ledgers(vec![ledger.clone(), ledger]))
+        .startup_check(
+            &shared
+                .clone()
+                .with_pull_ledgers(vec![ledger.clone(), ledger.clone()]),
+        )
         .expect_err("a ledger named twice");
     assert!(twice.to_string().contains("more than once"), "{twice}");
+    // BUG-0129: a ledger named by its names imports nothing, so it is refused, naming the entry.
+    for (zone, ledger_name, field) in [
+        ("acme", LEDGER_ID, "ledgers[0].zone"),
+        (ZONE_ID, "agent-governance", "ledgers[0].ledger"),
+    ] {
+        let named = module
+            .startup_check(&shared.clone().with_pull_ledgers(vec![
+                permguard_core::config::PullSubscription {
+                    zone: zone.to_owned(),
+                    ledger: ledger_name.to_owned(),
+                    event_types: Vec::new(),
+                },
+            ]))
+            .expect_err("a name is not an id");
+        let said = named.to_string();
+        assert!(said.contains(field), "{said}");
+        assert!(said.contains("not an id"), "{said}");
+    }
+    // BUG-0133: a type filter the import never applies is refused.
+    let filtered = module
+        .startup_check(
+            &shared.with_pull_ledgers(vec![permguard_core::config::PullSubscription {
+                event_types: vec![permguard_core::domains::event::DOGWOOD_V1.to_owned()],
+                ..ledger
+            }]),
+        )
+        .expect_err("an inert filter");
+    let said = filtered.to_string();
+    assert!(said.contains("ledgers[0].event_types"), "{said}");
+    assert!(said.contains("not applied"), "{said}");
 }
+
+/// A zone id and a ledger id, as the catalog mints them.
+const ZONE_ID: &str = "0f8e2a10-2c4b-4d7e-9a61-3b5c7d9e1f20";
+const LEDGER_ID: &str = "7a1c3e5f-9b2d-4f6a-8c0e-1d3f5a7b9c2e";
 
 /// WP-7.2d (F-17): the aliases the configuration assigns are the ones the plane's lookups resolve
 /// through — the gate, the decision path and the round all ask `store` — from the moment its

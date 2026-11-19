@@ -286,12 +286,10 @@ dataPlane:
   #   #                    `max_staleness` — the mode for "decide only on history I can vouch for"
   #   pull:
   #     mode: local
-  #     interval: "2s"
   #     max_staleness: "10s"         # required in practice by shared-bounded
   #     ledgers:
-  #       - zone: acme
-  #         ledger: agent-governance
-  #         event_types: [permguard.dogwood.event.v1]
+  #       - zone: <zone id>              # the ledger's ids, as `permguard ledgers get` shows them:
+  #         ledger: <ledger id>          # a name imports nothing, and is refused
 
 operations:
   keys:

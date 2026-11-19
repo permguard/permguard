@@ -168,6 +168,20 @@ recorded anything. Both are configuration mistakes that look like a working depl
 {{- if dig "producer_keys" list ($pull | default dict) }}
 {{- fail (printf "%s sets events.pull.producer_keys, which is retired: a shared mode decides on the history the Host imports over events.import, verified under the membership's pinned rings. Remove it." $component) }}
 {{- end }}
+{{- if hasKey ($pull | default dict) "interval" }}
+{{- fail (printf "%s sets events.pull.interval, which is retired: the Host imports each subscribed ledger's history over events.import on its membership pass, and nothing polls. Remove it." $component) }}
+{{- end }}
+{{- range $at, $ledger := (dig "ledgers" list ($pull | default dict)) }}
+{{- range $field := list "zone" "ledger" }}
+{{- $value := toString (get $ledger $field) }}
+{{- if not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" $value) }}
+{{- fail (printf "%s sets events.pull.ledgers[%d].%s to %q, which is not an id: the history a shared mode imports, and the decisions that read it, are keyed by the ledger's ids, so a name would import nothing. Write the zone id and the ledger id (permguard ledgers get shows them)." $component $at $field $value) }}
+{{- end }}
+{{- end }}
+{{- if get $ledger "event_types" }}
+{{- fail (printf "%s sets events.pull.ledgers[%d].event_types, which is not applied: the Host imports each subscribed ledger's whole history, and nothing filters it by type. Remove it." $component $at) }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -320,6 +320,32 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              `events.ship` to the coordinator of its membership. Remove it"
         );
     }
+    // Every subscription names its ledger by ids (BUG-0129, DEC-0005): the history the Host
+    // imports and the decisions that read it are both keyed by the ledger's ids, so a name imports
+    // nothing, said nowhere, and a shared decision then reads no history. And it imports the
+    // whole ledger (BUG-0133, DEC-0006): `event_types` would read as a filter it never applies.
+    for (at, subscription) in config.events_pull_ledgers().iter().enumerate() {
+        for (field, value) in [
+            ("zone", &subscription.zone),
+            ("ledger", &subscription.ledger),
+        ] {
+            if !permguard_core::catalog::is_guid_shaped(value) {
+                anyhow::bail!(
+                    "`dataPlane.events.pull.ledgers[{at}].{field}` is `{value}`, which is not an \
+                     id: the history a shared mode imports, and the decisions that read it, are \
+                     keyed by the ledger's ids, so a name would import nothing. Write the zone id \
+                     and the ledger id (`permguard ledgers get --zone <zone> <ledger>` shows them)"
+                );
+            }
+        }
+        if !subscription.event_types.is_empty() {
+            anyhow::bail!(
+                "`dataPlane.events.pull.ledgers[{at}].event_types` is not applied: the Host \
+                 imports each subscribed ledger's whole history over `events.import`, and \
+                 nothing filters it by type. Remove it"
+            );
+        }
+    }
     if !config.events_enabled() {
         return Ok(());
     }

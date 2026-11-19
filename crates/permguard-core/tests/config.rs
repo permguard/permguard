@@ -2394,6 +2394,8 @@ fn the_decision_log_mode_is_required_or_disabled_and_the_plane_names_no_stream()
         (vec![(SETTING_LOG_ON_FULL, "sometimes")], "closed"),
         (vec![(SETTING_LOG_PDP_ID, "pdp-1")], "host_id"),
         (vec![(SETTING_EVENTS_PRODUCER_ID, "plane-1")], "host_id"),
+        // BUG-0133: nothing polls since the Host imports the history.
+        (vec![(SETTING_EVENTS_PULL_INTERVAL, "2s")], "events.import"),
         // Iteration 02, WP-10.4: the Host's engine seals and ships the stream.
         (vec![(SETTING_LOG_BATCH_BYTES, "256k")], "decisions.ship"),
         (vec![(SETTING_LOG_BATCH_INTERVAL, "1s")], "decisions.ship"),

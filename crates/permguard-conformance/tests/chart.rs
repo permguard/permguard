@@ -1038,7 +1038,7 @@ dataPlane:
     );
     let rendered = render(&temporal(
         3,
-        ", pull: { mode: shared-eventual, ledgers: [{ zone: acme, ledger: main }] }",
+        ", pull: { mode: shared-eventual, ledgers: [{ zone: 0f8e2a10-2c4b-4d7e-9a61-3b5c7d9e1f20, ledger: 7a1c3e5f-9b2d-4f6a-8c0e-1d3f5a7b9c2e }] }",
     ));
     let workload = rendered.get("StatefulSet", "permguard-data-plane-history");
     assert_eq!(
