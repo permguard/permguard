@@ -168,6 +168,13 @@ is cut.
 
 ### Security
 
+- **A hold removed or edited on the volume, outside a release, is no longer lost silently.**
+  The holds keep an index, `host/holds/INDEX.json`, with the SHA-256 of every hold's file, written by the operation that adds or releases it.
+  A hold the index records whose file is gone or changed makes the holds unreadable: `host holds list` refuses naming it, exit `65`, and the garbage collection sweeps nothing (`holds_unreadable`); a file the index lacks still keeps what it names.
+  The new `permguard host holds verify` checks the files against the index and exits `2` on any disagreement (`holds_unverified`).
+  A volume written before the index is indexed by the server's first start, which logs `host.holds_indexed` when it holds any hold.
+- **`host holds add` refuses a zone or ledger the catalog does not hold.**
+  A hold on a mistyped id, or on a real ledger under another zone's id, was added and listed `active` while the garbage collection held nothing; it is now refused, exit `64`, naming the id, before anything is written.
 - **A number written with more digits than a double holds no longer crosses a threshold by rounding.**
   `4.9999999999999999` rounds to the double `5.0`, so it reached a policy as the integer `5` and passed `context.amount >= 5`, over REST and gRPC alike.
   Whole is now read from the literal's digits: `5.0`, `5e0` and `50e-1` are still `5`, and a literal that is not whole but whose nearest double is, such as `4.9999999999999999` or `1e-400`, is refused `400 value_unrepresentable` on REST, by `permguard check -f` (exit `64`) before either transport carries it, and by `permguard test`.

@@ -63,6 +63,7 @@ The **State** cell is one of:
 | `host holds add`     | offline         | present |                                                                                                      |
 | `host holds list`    | offline         | present |                                                                                                      |
 | `host holds release` | offline         | present |                                                                                                      |
+| `host holds verify`  | offline         | present |                                                                                                      |
 
 ## Evidence
 

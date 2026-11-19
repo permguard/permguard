@@ -405,3 +405,114 @@ fn recovery_reads_an_add_from_its_file_and_a_release_from_its_absence() {
     .expect("released");
     assert!(domain.observe(&id, Some(&released)).is_some());
 }
+
+/// BUG-0172: a hold removed or edited on the volume, outside an operation, is never lost
+/// silently. The index the operations keep names it: the listing refuses, so the garbage
+/// collection sweeps nothing, and the verification reports it. A released hold leaves no finding;
+/// a file the index lacks still keeps and is reported until an operation records it.
+#[test]
+fn a_hold_removed_or_edited_outside_an_operation_is_detected() {
+    let (volume, store, mutations, _) = open("tampered");
+    let holds = volume.host().path().join(DIRECTORY);
+    let added = |resource: String| {
+        add(
+            &mutations,
+            &store,
+            Initiator::System("cli".to_owned()),
+            new_hold(resource, Deadline::Expires(NOW + 86_400)),
+            NOW,
+        )
+        .expect("added")
+    };
+    let removed = added(ledger());
+    let edited = added(format!("plane/control/zone/{ZONE}"));
+    let released = added(format!("plane/control/zone/{OTHER}"));
+    release(
+        &mutations,
+        &store,
+        Initiator::System("cli".to_owned()),
+        &released.id,
+    )
+    .expect("released");
+    assert_eq!(store.list().expect("sound").len(), 2);
+    assert!(store.verify().expect("verified").is_empty());
+
+    // Removed without a release: the listing refuses naming it, the sweep keeps everything.
+    let file = holds.join(format!("{}.json", removed.id));
+    let kept = std::fs::read(&file).expect("read");
+    std::fs::remove_file(&file).expect("removed");
+    let refused = store.list().expect_err("a recorded hold is gone");
+    assert!(
+        refused.to_string().contains(&removed.id) && refused.to_string().contains("gone"),
+        "{refused}"
+    );
+    assert!(store.keeps(ZONE, LEDGER, NOW).is_err());
+    let findings = store.verify().expect("verified");
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.contains(&removed.id) && finding.contains("gone")),
+        "{findings:?}"
+    );
+    std::fs::write(&file, &kept).expect("restored");
+    assert!(store.verify().expect("verified").is_empty());
+
+    // Edited in place, a valid hold still: refused as changed outside an operation.
+    let file = holds.join(format!("{}.json", edited.id));
+    let mut hold: Hold =
+        serde_json::from_slice(&std::fs::read(&file).expect("read")).expect("a hold");
+    hold.expires_at = Some(NOW + 1);
+    std::fs::write(&file, serde_json::to_vec_pretty(&hold).expect("json")).expect("edited");
+    let refused = store.list().expect_err("a recorded hold changed");
+    assert!(
+        refused.to_string().contains(&edited.id) && refused.to_string().contains("changed"),
+        "{refused}"
+    );
+    // An operation does not launder it: the change stays named after the next add.
+    added(ledger());
+    assert!(store.list().is_err(), "an add never repairs a changed hold");
+}
+
+/// BUG-0172: a hold file the index lacks keeps what it names and is reported until an
+/// operation records it; an index removed beside hold files makes them unreadable until a
+/// writable open indexes them again, which it says.
+#[test]
+fn a_file_the_index_lacks_keeps_and_a_missing_index_is_refused() {
+    let (volume, store, mutations, _) = open("unindexed");
+    let holds = volume.host().path().join(DIRECTORY);
+    let planted = serde_json::json!({
+        "id": OTHER, "resource": ledger(), "owner": "o", "reason": "r",
+        "created_at": NOW, "review_at": NOW + 1,
+    });
+    std::fs::write(holds.join(format!("{OTHER}.json")), planted.to_string()).expect("written");
+    assert!(store.keeps(ZONE, LEDGER, NOW).expect("listed"), "it keeps");
+    let findings = store.verify().expect("verified");
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.contains(OTHER) && finding.contains("does not record")),
+        "{findings:?}"
+    );
+    add(
+        &mutations,
+        &store,
+        Initiator::System("cli".to_owned()),
+        new_hold(
+            format!("plane/control/zone/{ZONE}"),
+            Deadline::Expires(NOW + 86_400),
+        ),
+        NOW,
+    )
+    .expect("added");
+    assert!(
+        store.verify().expect("verified").is_empty(),
+        "the add recorded it"
+    );
+
+    std::fs::remove_file(holds.join(INDEX)).expect("removed");
+    assert!(matches!(store.list(), Err(HoldError::Record(_))));
+    assert!(!store.verify().expect("verified").is_empty());
+    let reopened = HoldStore::open(&volume).expect("a writable open indexes them");
+    assert_eq!(reopened.list().expect("indexed").len(), 2);
+    assert!(reopened.verify().expect("verified").is_empty());
+}

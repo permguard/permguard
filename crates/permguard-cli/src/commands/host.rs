@@ -200,6 +200,24 @@ fn holds(
                 trace,
             )?;
         }
+        HoldsAction::Verify => {
+            let held = hold(&volume, trace)?;
+            let findings = match HoldStore::open_to_read(&held)
+                .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
+            {
+                Some(store) => store.verify().map_err(hold_refused)?,
+                None => Vec::new(),
+            };
+            std::mem::forget(held);
+            let passed = findings.is_empty();
+            render(&HoldVerifyReport { findings }, globals.output, trace)?;
+            if !passed {
+                return Err(Failure::not_passed(
+                    "the holds do not agree with their index: see the report above",
+                    permguard_core::codes::client::HOLDS_UNVERIFIED,
+                ));
+            }
+        }
         HoldsAction::Add {
             resource,
             owner,
@@ -207,6 +225,9 @@ fn holds(
             expires_at,
             review_at,
         } => {
+            // The zone, and the ledger of that zone, a hold names exist in the catalog, before
+            // anything is written: a hold on ids that name nothing keeps nothing (BUG-0171).
+            held_in_catalog(&volume, &resource)?;
             let (held, store) = writable()?;
             let mutations = offline_holds(&held, &store, server_config, trace)?;
             std::mem::forget(held);
@@ -266,6 +287,49 @@ fn holds(
     Ok(ExitCode::from(EXIT_READY))
 }
 
+/// Refuses a hold whose zone, or whose ledger in that zone, the volume's catalog does not hold.
+/// A resource that is not a zone or a ledger by ids is left to the hold's own validation, which
+/// says what one is.
+fn held_in_catalog(volume: &Path, resource: &str) -> Result<(), Failure> {
+    use permguard_core::authz::Resource;
+    use permguard_core::catalog::{CatalogError, Selector};
+
+    let (zone_id, ledger_id) = match Resource::parse(resource) {
+        Ok(Resource::Zone { zone_id, .. }) => (zone_id, None),
+        Ok(Resource::Ledger {
+            zone_id, ledger_id, ..
+        }) => (zone_id, Some(ledger_id)),
+        _ => return Ok(()),
+    };
+    let catalog = permguard_offline::factories::catalog_on(volume);
+    let unavailable =
+        |error: CatalogError| Failure::unavailable(format!("reading the catalog: {error}"));
+    match catalog.get_zone(&Selector::Id(zone_id.clone())) {
+        Ok(_) => {}
+        Err(CatalogError::NotFound { .. }) => {
+            return Err(Failure::usage(format!(
+                "no zone of this volume's catalog has the id `{zone_id}`: a hold names a zone and \
+                 a ledger by the ids `zones list` and `ledgers list` print"
+            )));
+        }
+        Err(error) => return Err(unavailable(error)),
+    }
+    let Some(ledger_id) = ledger_id else {
+        return Ok(());
+    };
+    match catalog.get_ledger(
+        &Selector::Id(zone_id.clone()),
+        &Selector::Id(ledger_id.clone()),
+    ) {
+        Ok(_) => Ok(()),
+        Err(CatalogError::NotFound { .. }) => Err(Failure::usage(format!(
+            "the zone `{zone_id}` has no ledger with the id `{ledger_id}`: a hold names a ledger \
+             under the zone it belongs to"
+        ))),
+        Err(error) => Err(unavailable(error)),
+    }
+}
+
 /// The offline transaction, the hold operations a crash left open resolved first.
 fn offline_holds(
     held: &Volume,
@@ -292,7 +356,9 @@ fn hold_refused(error: permguard_host::holds::HoldError) -> Failure {
     match error {
         HoldError::Invalid(_) | HoldError::NotFound(_) => Failure::usage(error.to_string()),
         HoldError::Storage(_) => Failure::unavailable(error.to_string()),
-        HoldError::Record(_) => Failure::internal(error.to_string()),
+        // A hold file, or the index beside the files, that is not what the operations wrote:
+        // damaged at rest, exit 65, named (BUG-0172).
+        HoldError::Record(_) => Failure::corrupt(error.to_string()),
     }
 }
 
@@ -369,6 +435,24 @@ impl Report for HoldReport {
     fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
         writeln!(out, "hold {}", self.action)?;
         self.hold.render(out)
+    }
+}
+
+/// What `holds verify` found: nothing when the files and their index agree.
+#[derive(Debug, Serialize)]
+struct HoldVerifyReport {
+    findings: Vec<String>,
+}
+
+impl Report for HoldVerifyReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        if self.findings.is_empty() {
+            return writeln!(out, "the holds agree with their index");
+        }
+        for finding in &self.findings {
+            writeln!(out, "  {finding}")?;
+        }
+        writeln!(out, "{} finding(s).", self.findings.len())
     }
 }
 

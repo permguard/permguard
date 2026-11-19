@@ -96,6 +96,12 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.HOLDS_UNVERIFIED": {
+      "code": "holds_unverified",
+      "contract": "6-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
     "client.BACKUP_UNVERIFIED": {
       "code": "backup_unverified",
       "contract": "6-command-line/1-command-line.md",

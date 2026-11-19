@@ -51,6 +51,12 @@ pub fn catalog_for(config: &Config) -> anyhow::Result<Option<Arc<dyn permguard_c
     Ok(Some(Arc::new(FileCatalog::new(config.zones_directory()))))
 }
 
+/// The catalog of the stopped server whose volume is `volume`, for an offline command to read:
+/// the same `data/zones` [`catalog_for`] names, the volume being the server's working directory.
+pub fn catalog_on(volume: &std::path::Path) -> Arc<dyn permguard_core::Catalog> {
+    Arc::new(FileCatalog::new(volume.join("data").join("zones")))
+}
+
 /// The lifecycle every Host ring follows: one discipline for every ring this deployment
 /// rotates. A retired key stays in the published set for `retain`, which covers the audit
 /// retention outside development (WP-3.1).

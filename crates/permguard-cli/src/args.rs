@@ -2251,6 +2251,11 @@ Examples:\n  permguard host holds add --volume ./volume --resource plane/control
         after_help = "Examples:\n  permguard host holds list --volume ./volume\n  permguard host holds list --volume ./volume -o json"
     )]
     List,
+    /// Check the hold files against the index their operations keep, exiting 2 on any disagreement.
+    #[command(
+        after_help = "Examples:\n  permguard host holds verify --volume ./volume\n  permguard host holds verify --volume ./volume -o json"
+    )]
+    Verify,
     /// Release a hold: what it kept follows the garbage collection's rules again.
     #[command(
         after_help = "Examples:\n  permguard host holds release --volume ./volume 01a2…\n  permguard host holds release --volume ./volume 01a2… -o json"

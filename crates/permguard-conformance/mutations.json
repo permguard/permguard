@@ -118,6 +118,26 @@
         {
           "item": "read",
           "reason": "reads one hold's file and writes nothing"
+        },
+        {
+          "item": "read_bytes",
+          "reason": "reads one hold's file and the digest of its bytes, and writes nothing"
+        },
+        {
+          "item": "names",
+          "reason": "lists the hold files' names and writes nothing"
+        },
+        {
+          "item": "read_index",
+          "reason": "reads the index of the holds and writes nothing"
+        },
+        {
+          "item": "index_unindexed",
+          "reason": "indexes, once at the writable open, the holds of a volume written before the index existed or whose index was removed, from their files as they are, and says so at WARN (BUG-0172); no hold is added, changed or released"
+        },
+        {
+          "item": "rewrite_for_tests",
+          "reason": "test-support only, behind `cfg(any(test, feature = \"test-support\"))`, never in a release build"
         }
       ],
       "state": "the legal and incident holds"

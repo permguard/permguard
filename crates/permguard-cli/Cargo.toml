@@ -90,8 +90,9 @@ permguard-contracts = { workspace = true, features = ["control-server", "data-se
 permguard-host = { workspace = true, features = ["test-support"] }
 # The Authority Plane's module, composed by the Authority Plane test as a binary composes it.
 permguard-authority-plane-server = { workspace = true, features = ["bin"] }
-# The storage and audit sink of the Server context the Authority Plane test composes.
-permguard-std = { workspace = true, features = ["audit", "storage"] }
+# The storage and audit sink of the Server context the Authority Plane test composes, and the
+# catalog a holds test puts its zone and ledger in.
+permguard-std = { workspace = true, features = ["audit", "storage", "catalog"] }
 # The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).
 axum.workspace = true
 tokio.workspace = true

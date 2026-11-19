@@ -1673,6 +1673,11 @@
       "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; a hold that does not read is refused, never skipped"
     },
     {
+      "source": "crates/permguard-host/src/holds.rs",
+      "item": "HoldStore::verify",
+      "reason": "the same hold files and their index, read under the volume's lock and bounded as `list` reads them (`MAX_HOLD_BYTES`, `MAX_INDEX_BYTES`); a file that does not read is a finding, never trusted"
+    },
+    {
       "source": "crates/permguard-host/src/operations/backup.rs",
       "item": "Backups::open",
       "reason": "the backups' own state views, written by this Host through the storage library under its volume lock"

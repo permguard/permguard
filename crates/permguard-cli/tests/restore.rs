@@ -526,12 +526,22 @@ fn tree(root: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
 #[test]
 fn the_holds_of_a_forensic_volume_are_listed_and_never_written() {
     let snapshot = Snapshot::new("forensic-holds", "");
+    // A hold names a zone the volume's catalog holds (BUG-0171).
+    let zone = {
+        use permguard_core::Catalog as _;
+
+        permguard_std::catalog::FileCatalog::new(snapshot.volume.join("data").join("zones"))
+            .create_zone("incident")
+            .expect("a zone")
+            .id
+    };
+    let resource = format!("plane/control/zone/{zone}");
     let added = json(&snapshot.run(&[
         "host",
         "holds",
         "add",
         "--resource",
-        "plane/control/zone/01a15ea0-0000-7000-8000-000000000000",
+        &resource,
         "--owner",
         "legal",
         "--reason",
@@ -559,7 +569,7 @@ fn the_holds_of_a_forensic_volume_are_listed_and_never_written() {
             "holds",
             "add",
             "--resource",
-            "plane/control/zone/01a15ea0-0000-7000-8000-000000000000",
+            &resource,
             "--owner",
             "legal",
             "--reason",

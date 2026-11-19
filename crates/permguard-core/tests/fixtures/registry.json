@@ -204,6 +204,7 @@
     "client.ENCODE_FAILED": "encode_failed",
     "client.EVENTS_UNVERIFIED": "events_unverified",
     "client.HEAD_UNVERIFIED": "head_unverified",
+    "client.HOLDS_UNVERIFIED": "holds_unverified",
     "client.BACKUP_UNVERIFIED": "backup_unverified",
     "client.DECISION_EXPORT_MALFORMED": "decision_export_malformed",
     "client.DECISION_EXPORT_TRUNCATED": "decision_export_truncated",

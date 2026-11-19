@@ -343,6 +343,9 @@ pub mod client {
     pub const EVENT_EXPORT_UNREADABLE: &str = "event_export_unreadable";
     pub const EVENT_KEYS_REQUIRED: &str = "event_keys_required";
     pub const EVENTS_UNVERIFIED: &str = "events_unverified";
+    /// `host holds verify` found a hold file and the index of the holds disagreeing (BUG-0172):
+    /// the check ran and its subject did not pass, exit 2.
+    pub const HOLDS_UNVERIFIED: &str = "holds_unverified";
     /// A decision read with `--verify` whose chain or signatures did not hold (TC-1): the read
     /// completed and its subject did not pass, exit 2.
     pub const DECISIONS_UNVERIFIED: &str = "decisions_unverified";
@@ -807,6 +810,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::EVENT_EXPORT_UNREADABLE,
         client::EVENT_KEYS_REQUIRED,
         client::EVENTS_UNVERIFIED,
+        client::HOLDS_UNVERIFIED,
         client::BACKUP_UNVERIFIED,
         client::DECISIONS_UNVERIFIED,
         client::HEAD_UNVERIFIED,

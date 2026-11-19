@@ -1234,6 +1234,38 @@ mod tests {
         assert_eq!(present(&fixture), vec![true, true]);
     }
 
+    /// BUG-0172: a hold whose file is removed without a release is not lost: the holds read as
+    /// unreadable and the pass sweeps nothing, the held ledger's objects and its neighbour's alike.
+    #[test]
+    fn a_hold_removed_without_a_release_sweeps_nothing() {
+        let fixture = fixture("removed");
+        let id = hold(
+            &fixture,
+            format!(
+                "plane/control/zone/{}/ledger/{}",
+                fixture.zone, fixture.ledgers[0].0
+            ),
+        );
+        let volume = fixture
+            .sweep
+            .root
+            .parent()
+            .expect("the root")
+            .join("volume");
+        std::fs::remove_file(
+            volume
+                .join("host")
+                .join(permguard_host::holds::DIRECTORY)
+                .join(format!("{id}.json")),
+        )
+        .expect("removed outside a release");
+
+        let outcome = fixture.sweep.run();
+        assert!(outcome.holds_unreadable);
+        assert_eq!((outcome.removed, outcome.ledgers), (0, 0));
+        assert_eq!(present(&fixture), vec![true, true]);
+    }
+
     /// WP-7.3c, owner decision of 2026-10-21: holds that cannot be read sweep nothing that pass.
     #[test]
     fn unreadable_holds_sweep_nothing() {
@@ -1289,24 +1321,12 @@ mod tests {
                 fixture.zone, fixture.ledgers[0].0
             ),
         );
-        // Its deadline moved into the past, as the clock would move it.
-        let path = fixture
-            .sweep
-            .root
-            .parent()
-            .expect("the root")
-            .join("volume")
-            .join("host")
-            .join(permguard_host::holds::DIRECTORY)
-            .join(format!("{id}.json"));
-        let mut written: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&path).expect("the hold")).expect("JSON");
-        written
-            .as_object_mut()
-            .expect("an object")
-            .remove("review_at");
-        written["expires_at"] = serde_json::json!(1);
-        std::fs::write(&path, written.to_string()).expect("rewritten");
+        // Its deadline moved into the past, as the clock would move it: file and index together,
+        // since a file changed alone is refused (BUG-0172).
+        let mut held = fixture.holds.get(&id).expect("read").expect("held");
+        held.review_at = None;
+        held.expires_at = Some(1);
+        fixture.holds.rewrite_for_tests(&held).expect("rewritten");
 
         let outcome = fixture.sweep.run();
         assert_eq!((outcome.held, outcome.removed), (0, 2));
