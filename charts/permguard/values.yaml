@@ -445,9 +445,9 @@ dataPlane:
   #           bytes: "512M"             # decision records only; the terminal record is reserved apart
   #           age: "24h"
   #         sample: { permits: "1.0" }
-  #         commitment:
-  #           key_ref: decision-commitment   # required: a commitment keyed by anything public is
-  #           key_version: "v1"              # a bare digest of a low-entropy caller attribute
+  #         # The input commitments are keyed per ledger by the zone keys derived from
+  #         # `operations.secrets.coordinator_root_ref`, required when the log is on: a commitment
+  #         # keyed by anything public is a dictionary away from the attribute it hides.
   #         include:
   #           subject_properties: []    # an allow-list, never "all"
   #           resource_properties: []

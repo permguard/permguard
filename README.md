@@ -686,13 +686,16 @@ Server commands accept a config file and optional overrides:
 ```sh
 cargo run -p permguard-control-plane-server --bin permguard-control-plane -- \
   crates/permguard-control-plane/config.local.yml \
-  --public-http-addr 127.0.0.1:6443 \
-  --public-grpc-addr 127.0.0.1:6443 \
   --telemetry-addr 127.0.0.1:5443 \
   --admin-addr 127.0.0.1:5444 \
   --log-level debug \
   --log-format terminal
 ```
+
+A server reads its settings from the configuration file, then from `PERMGUARD_*` environment variables, then from these flags.
+Each plane listens at the address of its own section (`controlPlane.public`, `dataPlane.public`, `authorityPlane.public`); `--public-http-addr` and `--public-grpc-addr` set the process's own public listener, which only a composition serving a plane there uses, and the first-party servers refuse them by name rather than accept an address nothing listens on.
+An environment variable named like a setting the server does not have stops the start by name, so a misspelt or retired setting is never ignored.
+The variables Permguard's own clients read are passed over: the CLI's (its endpoints, TLS files, token, `PERMGUARD_CONFIG`, `PERMGUARD_AUTHOR`), the SDKs' `PERMGUARD_PDP_URL` and the bench's, so one shell or CI environment can serve a server and the clients that talk to it.
 
 Each server crate (`permguard-all-in-one`, `permguard-control-plane`, `permguard-data-plane`) ships the same set of configurations beside its `Cargo.toml`.
 `permguard-authority-plane` ships `config.local.yml`, `config.local-tls.yml` and `config.docker-tls.yml`: its listener refuses a credential sent in clear off the loopback, and its callers hold keys and tokens rather than certificates, so it has no plain container, mutual TLS, lab or experimental variant.

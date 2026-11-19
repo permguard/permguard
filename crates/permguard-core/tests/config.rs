@@ -1733,14 +1733,32 @@ fn the_warm_budgets_and_the_replay_plan_are_read_and_bounded() {
         let message = refused(&[(key, "0")]);
         assert!(message.contains(key), "{key}: {message}");
     }
-    for key in [
-        SETTING_EVENTS_WARM_ZONE_BYTES,
-        SETTING_EVENTS_WARM_PARTITION_BYTES,
+    for (key, above) in [
+        (SETTING_EVENTS_WARM_ZONE_BYTES, "larger than the Host's"),
+        (
+            SETTING_EVENTS_WARM_PARTITION_BYTES,
+            "larger than its zone's",
+        ),
     ] {
         let message = refused(&[(SETTING_EVENTS_WARM_BYTES, "64M"), (key, "128M")]);
+        assert!(message.contains(above), "{key}: {message}");
         assert!(
-            message.contains("larger than the Host's"),
-            "{key}: {message}"
+            message.contains(key),
+            "the refusal names the key set: {message}"
+        );
+    }
+
+    // BUG-0177: the Host's bound lowered alone, to any size, starts; the zone and partition
+    // defaults follow it rather than outgrow it.
+    for host in ["1", "1M", "32M", "63M"] {
+        let lowered = config(&[(SETTING_EVENTS_WARM_BYTES, host)], &[], &[]);
+        assert!(
+            lowered.events_warm_zone_bytes() <= lowered.events_warm_bytes(),
+            "{host}"
+        );
+        assert!(
+            lowered.events_warm_partition_bytes() <= lowered.events_warm_zone_bytes(),
+            "{host}"
         );
     }
 }

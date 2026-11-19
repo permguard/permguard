@@ -1,0 +1,136 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Zones & Ledgers: two zones, their ledgers, a ledger refused in two zones at once and a request
+   naming one zone and one ledger. A wide drawing and a tall one; the tall one takes over on a
+   narrow screen, so no label is ever shown smaller than it can be read. */
+.pg-page-concepts .pgx-zl {
+  margin: 34px 0 48px;
+  padding: 22px;
+  border: 1px solid var(--pgx-line);
+  background-color: var(--pgx-surface);
+  background-image:
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+}
+
+.pg-page-concepts .pgx-zl svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pg-page-concepts .pgx-zl__compact { display: none !important; max-width: 400px; margin: 0 auto; }
+
+.pg-page-concepts .pgx-zl text { font-family: inherit; }
+.pg-page-concepts .pgx-zl__k { fill: var(--pgx-brand); font-size: 11px; font-weight: 750; letter-spacing: 0.14em; }
+.pg-page-concepts .pgx-zl__s { fill: var(--pgx-ink); font-size: 15px; font-weight: 650; }
+.pg-page-concepts .pgx-zl__m { fill: var(--pgx-muted); font-size: 12px; }
+.pg-page-concepts .pgx-zl__c { fill: var(--pgx-ink); font-family: var(--vp-font-family-mono) !important; font-size: 13px; }
+.pg-page-concepts .pgx-zl__c tspan { fill: var(--pgx-muted); }
+
+.pg-page-concepts .pgx-zl__zone { fill: color-mix(in srgb, var(--pgx-brand) 5%, var(--pgx-bg)); stroke: var(--pgx-brand); stroke-width: 1.5; }
+.pg-page-concepts .pgx-zl__zone--other { fill: var(--pgx-bg); stroke: var(--pgx-line); }
+.pg-page-concepts .pgx-zl__ledger { fill: var(--pgx-bg); stroke: var(--pgx-line); }
+.pg-page-concepts .pgx-zl__ledger--target { stroke: var(--pgx-brand); stroke-width: 1.5; animation: pgx-zl-glow 3.2s ease-in-out infinite; }
+.pg-page-concepts .pgx-zl__request { fill: var(--pgx-surface-strong); stroke: var(--pgx-line); }
+.pg-page-concepts .pgx-zl__ghost { fill: var(--pgx-bg); stroke: var(--pgx-warm); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.pg-page-concepts .pgx-zl__ghost-s { fill: var(--pgx-warm); font-size: 14px; font-weight: 700; }
+.pg-page-concepts .pgx-zl__x circle { fill: var(--pgx-warm); }
+.pg-page-concepts .pgx-zl__x path { fill: none; stroke: #ffffff; stroke-width: 2.2; stroke-linecap: round; }
+
+.pg-page-concepts .pgx-zl__flow {
+  fill: none;
+  stroke: var(--pgx-brand);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 2 10;
+  animation: pgx-zl-flow 1.2s linear infinite;
+}
+
+.pg-page-concepts .pgx-zl__head { fill: var(--pgx-brand); }
+
+/* The tall drawing is shown small: its labels start larger so a phone still reads them. */
+.pg-page-concepts .pgx-zl__compact .pgx-zl__k { font-size: 12px; }
+.pg-page-concepts .pgx-zl__compact .pgx-zl__s { font-size: 16px; }
+.pg-page-concepts .pgx-zl__compact .pgx-zl__m { font-size: 13.5px; }
+.pg-page-concepts .pgx-zl__compact .pgx-zl__c { font-size: 14px; }
+
+@keyframes pgx-zl-flow { to { stroke-dashoffset: -24; } }
+
+@keyframes pgx-zl-glow {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 7px rgb(217 70 239 / 0.5)); }
+}
+
+@media (max-width: 720px) {
+  .pg-page-concepts .pgx-zl__wide { display: none !important; }
+  .pg-page-concepts .pgx-zl__compact { display: block !important; }
+}
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-zl { margin: 26px 0 36px; padding: 12px 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-page-concepts .pgx-zl * { animation: none !important; }
+}
+
+/* Zone, ledger, partition: three rounded panels nested like the boundaries they are. */
+.pg-page-concepts .pgx-nest { margin: 28px 0; }
+
+.pg-page-concepts .pgx-nest__zone,
+.pg-page-concepts .pgx-nest__ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 20px;
+}
+
+.pg-page-concepts .pgx-nest__zone {
+  border-color: var(--pgx-brand);
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    var(--pgx-surface);
+}
+
+.pg-page-concepts .pgx-nest__ledger { border-radius: 16px; background: var(--pgx-bg); }
+
+.pg-page-concepts .pgx-nest__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.pg-page-concepts .pgx-nest small { color: var(--pgx-brand); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.pg-page-concepts .pgx-nest span { color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
+
+.pg-page-concepts .pgx-nest__manifest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--pgx-line);
+  border-radius: 12px;
+}
+
+.pg-page-concepts .pgx-nest__parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.pg-page-concepts .pgx-nest__part {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgb(204 52 223 / 0.45);
+  border-radius: 12px;
+  background: var(--pgx-surface);
+}
+
+.pg-page-concepts .pgx-nest__part code { overflow-wrap: anywhere; }
+
+.pg-page-concepts .pgx-nest__profiles { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.pg-page-concepts .pgx-nest__profiles b { color: var(--pgx-ink); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-nest__zone,
+  .pg-page-concepts .pgx-nest__ledger { padding: 14px; }
+  .pg-page-concepts .pgx-nest__parts { grid-template-columns: 1fr; }
+}

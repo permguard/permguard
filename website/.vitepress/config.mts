@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { defineConfig } from 'vitepress'
+import cedarGrammar from './languages/cedar.tmLanguage.json'
+import regoGrammar from './languages/rego.tmLanguage.json'
+import dogwoodGrammar from './languages/dogwood.tmLanguage.json'
 
 // Versioned documentation. `scripts/build-versions.sh` builds every version on every deploy and
 // passes these in; a plain `npm run docs:dev` or `docs:build` is the `latest` site on its own.
@@ -57,6 +60,15 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/x-icon', href: `${base}permguard/favicon.ico` }]
   ],
   cleanUrls: true,
+  // The policy languages are not in Shiki's bundle; their grammars live in `.vitepress/languages`,
+  // with their sources and licences in the README beside them.
+  markdown: {
+    languages: [
+      { ...cedarGrammar, name: 'cedar' },
+      { ...regoGrammar, name: 'rego' },
+      { ...dogwoodGrammar, name: 'dogwood', aliases: ['dw'] }
+    ]
+  },
   // A page that moved keeps its old address as a stub whose frontmatter names the new one,
   // `redirect: /authority-plane`; the refresh carries this build's base, so it lands in the same
   // version of the documentation.
@@ -97,6 +109,8 @@ export default defineConfig({
           planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X')
         ]
       },
+      // Inside a plane, the bar names it after the menu; elsewhere this renders nothing.
+      { component: 'PgCurrentPlane' },
       {
         text: version,
         items: [

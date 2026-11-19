@@ -1,0 +1,312 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Cedar",
+	"comment": "Grammar reference: https://docs.cedarpolicy.com/policies/syntax-grammar.html",
+	"patterns": [
+		{
+			"include": "#comment"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#annotations"
+		},
+		{
+			"include": "#isTypes"
+		},
+		{
+			"include": "#sections"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#integers"
+		},
+		{
+			"include": "#booleans"
+		},
+		{
+			"include": "#variables"
+		},
+		{
+			"include": "#methods"
+		},
+		{
+			"include": "#functions"
+		},
+		{
+			"include": "#ipmethods"
+		},
+		{
+			"include": "#decimalmethods"
+		},
+		{
+			"include": "#datetimemethods"
+		},
+		{
+			"include": "#durationmethods"
+		},
+		{
+			"include": "#entities"
+		},
+		{
+			"include": "#namespacedTypes"
+		},
+		{
+			"include": "#punctuation"
+		}
+	],
+	"repository": {
+		"comment": {
+			"name": "comment.line.double-slash.cedar",
+			"match": "//.*(?=$)"
+		},
+		"annotations": {
+			"comment": "Annotation ::= '@' ANYIDENT ( '('STR')' )? -- the value is optional, and ANYIDENT permits reserved words such as @is",
+			"patterns": [{
+				"name": "meta.decorator.cedar",
+				"match": "([@][_a-zA-Z][_a-zA-Z0-9]*)",
+				"captures": {
+					"1" : {
+						"name": "entity.name.function.decorator.cedar"
+					}
+				}
+			}]
+		},
+		"sections": {
+			"patterns": [{
+				"name": "keyword.control.cedar",
+				"match": "\\b(?<!\\.)(permit|forbid|when|unless)\\b"
+			}]
+		},
+		"keywords": {
+			"comment": "if/then/else are Expr-level control flow; in/has/like/is are Relation-level operators",
+			"patterns": [{
+				"name": "keyword.control.conditional.cedar",
+				"match": "\\b(if|then|else)\\b"
+			},
+			{
+				"name": "keyword.operator.word.cedar",
+				"match": "\\b(in|has|like|is)\\b",
+				"comment": "don't worry about excluding . before reserved identifiers"
+			}]
+		},
+		"operators": {
+			"comment": "RELOP plus the Add/Mult operators and the unary '!'. '!=' precedes '!' so the two-character operator wins.",
+			"patterns": [{
+				"name": "keyword.operator.cedar",
+				"match": "&&|\\|\\||==|!=|>=|<=|>|<|\\+|-|\\*|!"
+			}]
+		},
+		"isTypes": {
+			"comment": "Relation ::= ... | Add 'is' Path ('in' Add)? -- Path may be a single unqualified IDENT",
+			"patterns": [{
+				"match": "\\b(is)\\s+(([_a-zA-Z][_a-zA-Z0-9]*::)*[_a-zA-Z][_a-zA-Z0-9]*)",
+				"captures": {
+					"1" : {
+						"name": "keyword.operator.word.cedar"
+					},
+					"2" : {
+						"name": "entity.name.type.cedar"
+					}
+				}
+			}]
+		},
+		"variables": {
+			"comment": "policy template slots, legal only in the policy scope",
+			"patterns": [{
+				"name": "variable.parameter.cedar",
+				"match": "\\?(principal|resource)\\b"
+			}]
+		},
+		"methods": {
+			"patterns": [{
+				"match": "(\\.)(contains|containsAll|containsAny|isEmpty|getTag|hasTag)(\\()",
+				"captures": {
+					"1" : {
+						"name": "punctuation.accessor.cedar"
+					},
+					"2" : {
+						"name": "entity.name.function.member.cedar"
+					},
+					"3" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"functions": {
+			"patterns": [{
+				"match": "\\b(ip|decimal|datetime|duration)(\\()",
+				"captures": {
+					"1" : {
+						"name": "support.function.cedar"
+					},
+					"2" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"ipmethods": {
+			"patterns": [{
+				"match": "(\\.)(isIpv4|isIpv6|isLoopback|isMulticast|isInRange)(\\()",
+				"captures": {
+					"1" : {
+						"name": "punctuation.accessor.cedar"
+					},
+					"2" : {
+						"name": "entity.name.function.member.cedar"
+					},
+					"3" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"decimalmethods": {
+			"patterns": [{
+				"match": "(\\.)(lessThan|lessThanOrEqual|greaterThan|greaterThanOrEqual)(\\()",
+				"captures": {
+					"1" : {
+						"name": "punctuation.accessor.cedar"
+					},
+					"2" : {
+						"name": "entity.name.function.member.cedar"
+					},
+					"3" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"datetimemethods": {
+			"patterns": [{
+				"match": "(\\.)(offset|durationSince|toDate|toTime)(\\()",
+				"captures": {
+					"1" : {
+						"name": "punctuation.accessor.cedar"
+					},
+					"2" : {
+						"name": "entity.name.function.member.cedar"
+					},
+					"3" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"durationmethods": {
+			"patterns": [{
+				"match": "(\\.)(toMilliseconds|toSeconds|toMinutes|toHours|toDays)(\\()",
+				"captures": {
+					"1" : {
+						"name": "punctuation.accessor.cedar"
+					},
+					"2" : {
+						"name": "entity.name.function.member.cedar"
+					},
+					"3" : {
+						"name": "punctuation.section.brackets.cedar"
+					}
+				}
+			}]
+		},
+		"booleans": {
+			"patterns": [{
+				"name": "constant.language.boolean.cedar",
+				"match": "\\b(true|false)\\b",
+				"comment": "don't worry about excluding . before reserved identifiers"
+			}]
+		},
+		"integers": {
+			"comment": "INT ::= '-'? ['0'-'9']+ -- leading zeros are a single INT, and the sign is an operator",
+			"patterns": [{
+				"name": "constant.numeric.cedar",
+				"match": "\\b[0-9]+\\b"
+			}]
+		},
+		"constants": {
+			"comment": "VAR ::= 'principal' | 'action' | 'resource' | 'context'",
+			"patterns": [{
+				"name": "variable.language.cedar",
+				"match": "\\b(?<!\\.)(principal|action|resource|context)\\b"
+			}]
+		},
+		"entities": {
+			"comment": "Entity ::= Path '::' STR -- the separator is captured so it still gets a punctuation scope",
+			"patterns": [{
+				"match": "\\b(([_a-zA-Z][_a-zA-Z0-9]*::)*[_a-zA-Z][_a-zA-Z0-9]*)(::)(?=\")",
+				"captures": {
+					"1" : {
+						"name": "entity.name.type.cedar"
+					},
+					"3" : {
+						"name": "punctuation.separator.namespace.cedar"
+					}
+				}
+			}]
+		},
+		"namespacedTypes": {
+			"patterns": [{
+				"match": "\\b(([_a-zA-Z][_a-zA-Z0-9]*::)+[_a-zA-Z][_a-zA-Z0-9]*)\\b",
+				"captures": {
+					"1" : {
+						"name": "entity.name.type.cedar"
+					}
+				}
+			}]
+		},
+		"punctuation": {
+			"patterns": [{
+				"name": "punctuation.separator.namespace.cedar",
+				"match": "::"
+			},
+			{
+				"name": "punctuation.accessor.cedar",
+				"match": "\\."
+			},
+			{
+				"name": "punctuation.separator.comma.cedar",
+				"match": ","
+			},
+			{
+				"name": "punctuation.terminator.cedar",
+				"match": ";"
+			},
+			{
+				"name": "punctuation.separator.key-value.cedar",
+				"match": ":"
+			},
+			{
+				"name": "punctuation.section.brackets.cedar",
+				"match": "[\\[\\]{}()]"
+			}]
+		},
+		"strings": {
+			"comment": "STR ::= Fully-escaped Unicode surrounded by '\"'s. A Cedar string cannot span a line, so the rule also ends at end of line. The escape set is the Rust one; '*' is included because PAT (the right operand of 'like') allows \\*.",
+			"name": "string.quoted.double.cedar",
+			"begin": "\"",
+			"end": "\"|$",
+			"patterns": [
+				{
+					"name": "constant.character.escape.cedar",
+					"match": "\\\\([\"\\\\nrt0*]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]{1,6}\\})"
+				},
+				{
+					"name": "invalid.illegal.unknown-escape.cedar",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.cedar"
+}

@@ -598,6 +598,24 @@ mod tests {
 
     use super::*;
 
+    /// BUG-0069: every variable this CLI reads is one the server passes over, so one environment
+    /// can serve a server and the CLI that talks to it.
+    #[test]
+    fn every_client_variable_is_known_to_the_server() {
+        let mut read: Vec<&str> = SETTINGS.iter().map(|setting| setting.env).collect();
+        read.extend([
+            "PERMGUARD_AUTHOR",
+            "PERMGUARD_CONFIG",
+            "PERMGUARD_TLS_SKIP_VERIFY",
+        ]);
+        for name in read {
+            assert!(
+                permguard_core::config::CLIENT_VARIABLES.contains(&name),
+                "`{name}` is read by the CLI and unknown to the server's CLIENT_VARIABLES"
+            );
+        }
+    }
+
     fn control() -> &'static Setting {
         setting("control-plane.endpoint").expect("the control plane endpoint is a setting")
     }

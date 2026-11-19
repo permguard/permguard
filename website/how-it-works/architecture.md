@@ -13,17 +13,17 @@ description: One Host owns the trust boundary; planes own business domains.
   <p>The Host owns trust and operations. A plane owns one business domain.</p>
 </div>
 
-<div class="pgx-server" role="img" aria-label="One Permguard Server contains one Host and zero or more planes: Control on port 6443, Data on port 7443, and the Trust Plane in development on reserved port 8443.">
-  <div class="pgx-server__label"><strong>Permguard Server</strong><span>one Host · zero or more planes</span></div>
-  <div class="pgx-server__host">
-    <div><span>HOST</span><strong>Identity · Authorization · Keys · Audit · Membership · Streams</strong></div>
-    <small>starts first · stops last</small>
-  </div>
-  <div class="pgx-server__bus" aria-hidden="true"></div>
-  <div class="pgx-server__planes pgx-server__planes--architecture">
-    <article><span>:6443</span><strong>Control Plane</strong><small>publish policy</small></article>
-    <article><span>:7443</span><strong>Data Plane</strong><small>make decisions</small></article>
-    <article class="pgx-server__optional"><span>:8443</span><strong>Trust Plane</strong><small>in development</small></article>
+<div class="pgx-system-map" role="img" aria-label="One Permguard Server contains one Host and the planes it composes: the Authority Plane on port 8443, the Control Plane on 6443 and the Data Plane on 7443. The Trust Plane is next on the roadmap and not served today.">
+  <div class="pgx-system-map__frame">
+    <div class="pgx-system-map__label"><strong>Permguard Server</strong><span>one Host · the planes you deploy</span></div>
+    <div class="pgx-system-map__host"><small>HOST · :5443</small><strong>Identity · Authorization · Keys · Audit · Membership · Streams</strong></div>
+    <div class="pgx-system-map__bus" aria-hidden="true"></div>
+    <div class="pgx-system-map__planes">
+      <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>service accounts · access tokens</span></article>
+      <article><small>CONTROL PLANE · :6443</small><strong>Publish</strong><span>zones · ledgers · signed heads</span></article>
+      <article><small>DATA PLANE · :7443</small><strong>Decide</strong><span>mirror · compile · decide · record</span></article>
+    </div>
+    <div class="pgx-system-map__next"><small>TRUST PLANE · NEXT</small><span>authority continuity with PIC-X · not served today</span></div>
   </div>
 </div>
 
@@ -58,7 +58,7 @@ curl -s http://127.0.0.1:5443/.well-known/server-configuration | jq
 }
 ```
 
-<div class="pgx-config-map" role="img" aria-label="The Host server configuration advertises each deployed plane configuration. Control describes policy publication and NOTP. Data describes evaluation interfaces. Trust has reserved port 8443 but is in development and is not advertised today.">
+<div class="pgx-config-map" role="img" aria-label="The Host server configuration advertises each deployed plane configuration. Control describes policy publication and NOTP. Data describes evaluation interfaces. Authority describes service accounts and tokens. Trust is next on the roadmap and is not advertised today.">
   <article class="pgx-config-map__host">
     <small>HOST CONFIGURATION · :5443</small>
     <strong>Which planes are present?</strong>
@@ -80,8 +80,14 @@ curl -s http://127.0.0.1:5443/.well-known/server-configuration | jq
       <span>Plane functions: mirror · compile · activate · decide</span>
       <div class="pgx-config-map__interface"><b>INTERFACE CONFIGURATION</b><code>/.well-known/permguard-pdp-v1-configuration</code><em>exact routes · capabilities · request scope</em></div>
     </article>
+    <article>
+      <small>AUTHORITY PLANE CONFIGURATION · :8443</small>
+      <strong>Who may call?</strong>
+      <code>/.well-known/server-configuration</code>
+      <span>Plane functions: service accounts · access keys · tokens · status lists</span>
+    </article>
     <article class="pgx-config-map__planned">
-      <small>TRUST PLANE · :8443 · IN DEVELOPMENT</small>
+      <small>TRUST PLANE · NEXT</small>
       <strong>How may authority continue?</strong>
       <code>/.well-known/server-configuration</code>
       <span>Reserved domain: Trust Anchors · authority hand-off · execution continuity</span>
@@ -190,20 +196,28 @@ A PDP is not one universal authorization API. It may expose one or more evaluati
 
 Clients select only an interface the Data Plane advertises. One interface is never silently converted into another.
 
+### Authority Plane
+
+The Authority Plane keeps the service accounts, their scopes and access keys, and issues the short-lived access tokens every plane and Host verifies itself.
+It serves port `8443`.
+See [Authority Plane](../authority-plane).
+
 ### Trust Plane
 
-The Trust Plane is a separate domain for authority continuity: whether authority may cross into the next execution, under which Trust Anchor, and without expanding. Port `8443` is already assigned so deployments and clients do not need a later port migration.
+The Trust Plane is a separate domain for authority continuity: whether authority may cross into the next execution, under which Trust Anchor, and without expanding.
+It is next on the roadmap, with [PIC-X](https://pic-protocol.org/pic-x).
 
 The runtime does not serve or advertise this plane today. Its plane configuration, Trust Anchor evaluation interface and authority hand-off contract remain [in development](../trust-plane).
 
 ## Standard ports
 
-| Role | Port | Purpose |
-| --- | ---: | --- |
-| Server Host | `5443` | discovery, health, readiness, version, metrics |
-| Control Plane | `6443` | zones, ledgers, policy distribution |
-| Data Plane | `7443` | policy evaluation |
-| Trust Plane | `8443` | authority continuity; reserved, in development |
+| Role            | Port   | Purpose                                         |
+| --------------- | -----: | ----------------------------------------------- |
+| Server Host     | `5443` | discovery, health, readiness, version, metrics  |
+| Control Plane   | `6443` | zones, ledgers, policy distribution             |
+| Data Plane      | `7443` | policy evaluation                               |
+| Authority Plane | `8443` | service accounts, access keys, tokens           |
+| Trust Plane     |      — | authority continuity; next on the roadmap       |
 
 The role owns the port. HTTP and gRPC share it; TLS changes the scheme, not the number.
 
@@ -212,8 +226,8 @@ The role owns the port. HTTP and gRPC share it; TLS changes the scheme, not the 
 Permguard Server is always the composition boundary. Deployment changes only how enabled planes are grouped behind Hosts.
 
 <div class="pgx-deploy">
-  <article><div class="pgx-kicker">All-in-one</div><h3>All enabled planes, one process</h3><p>One Permguard Server process composes one Host with every enabled plane. Today that means `5443`, `6443` and `7443`; `8443` joins the same model when Trust Plane ships.</p></article>
-  <article><div class="pgx-kicker">Split by plane</div><h3>One plane per Host</h3><p>Each Permguard Server process composes its own Host with one plane. Control serves `5443` + `6443`; Data serves `5443` + `7443`; Trust will serve `5443` + `8443`. Each Host owns its volume.</p></article>
+  <article><div class="pgx-kicker">All-in-one</div><h3>All enabled planes, one process</h3><p>One Permguard Server process composes one Host with every enabled plane. Today that means `5443`, `6443`, `7443` and `8443`.</p></article>
+  <article><div class="pgx-kicker">Split by plane</div><h3>One plane per Host</h3><p>Each Permguard Server process composes its own Host with one plane. Control serves `5443` + `6443`; Data serves `5443` + `7443`; Authority serves `5443` + `8443`. Each Host owns its volume.</p></article>
 </div>
 
 The Server model is unchanged in both deployments: Host functions remain on the Host and domain functions remain in the plane. Split Servers use different IP addresses or network namespaces; standard role ports are not reassigned.

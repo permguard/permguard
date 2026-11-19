@@ -25,6 +25,14 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A server starts in an environment its clients share.**
+  The `PERMGUARD_*` variables of the CLI, the SDKs (`PERMGUARD_PDP_URL`) and the bench are passed over by name; a misspelt or retired name of a server setting still stops the start by name.
+- **A value refused from the configuration file names the file and its YAML key**, `log.level` in the configuration file … (`PERMGUARD_LOG_LEVEL`), not only an environment variable the operator never set; a value from the environment is still named by its variable.
+- **`warm.bytes` lowered alone starts, at any size.**
+  The partition's warm-state default now follows the zone's bound, as the zone's follows the Host's; a bound that is set and exceeds the one above it is refused naming both keys.
+- **`--public-http-addr`, `--public-grpc-addr` and `PERMGUARD_PUBLIC_*_ADDR` are refused where no plane listens on the process's public address**, which is every first-party server: each plane listens at its own section's address. They were accepted and reported in force while nothing listened there.
+- The chart's `values.yaml` no longer shows the retired `decisions.log.commitment`; a test builds the configuration of every shipped `config.*.yml`, so a setting retired later cannot leave one behind.
+
 - **A retried `apply` is the same request, however much later it comes.**
   The commit an apply sends is kept in `.permguard/pending/<ref>` until it is answered, and sent again while the tree, the parent, the author and the message are unchanged: a retry after a lost answer is answered with the head the first one committed, where it was answered "someone applied before you".
 - **`verify` names the head it walked.**

@@ -297,3 +297,32 @@ fn an_endpoint_takes_the_process_declaration_only_where_it_takes_the_process_tls
         ]
     );
 }
+
+/// BUG-0182: on a server whose planes listen at their own addresses, the process's public address
+/// is refused by name rather than accepted and reported in force while nothing listens there; a
+/// plane registered on the public listener keeps using it.
+#[test]
+fn a_public_address_no_plane_listens_on_is_refused_by_name() {
+    use permguard_core::config::{SETTING_PUBLIC_GRPC_ADDR, SETTING_PUBLIC_HTTP_ADDR};
+    let own = ["control", "data"]
+        .into_iter()
+        .map(|id| (id, addresses_for_plane(id).expect("a known plane")))
+        .collect::<Vec<_>>();
+    for setting in [SETTING_PUBLIC_HTTP_ADDR, SETTING_PUBLIC_GRPC_ADDR] {
+        let config = config_with(&[
+            (SETTING_RUNTIME_PLANES, "control,data"),
+            (setting, "127.0.0.1:18443"),
+        ]);
+        let why = format!(
+            "{:#}",
+            check(&config, &own).expect_err("nothing listens there")
+        );
+        assert!(why.contains(setting) && why.contains("no plane"), "{why}");
+    }
+    let public = config_with(&[
+        (SETTING_RUNTIME_PLANES, "edge"),
+        (SETTING_PUBLIC_HTTP_ADDR, "127.0.0.1:18443"),
+    ]);
+    check(&public, &[("edge", PlaneAddresses::config_public())])
+        .expect("a plane on the public listener uses it");
+}

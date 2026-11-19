@@ -2052,6 +2052,97 @@ fn push_endpoint_settings(
     }
 }
 
+/// The YAML key of `text` (a configuration file's contents) that sets the setting `env` to `value`,
+/// when one leaf answers both: its value is `value`, and its path names the setting's words
+/// (`dataPlane.decisions.log.spool.bytes` for `PERMGUARD_DECISIONS_LOG_SPOOL_BYTES`). What lets a
+/// value refused from the file be reported by the key the operator wrote, not by an environment
+/// variable they never set (BUG-0121). `None` when no leaf, or more than one, answers.
+pub fn yaml_key_of(text: &str, env: &str, value: &str) -> Option<String> {
+    fn words(name: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        for character in name.chars() {
+            if character == '_' || character == '-' || character == '.' {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+                continue;
+            }
+            if character.is_ascii_uppercase() && !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            current.push(character.to_ascii_lowercase());
+        }
+        if !current.is_empty() {
+            words.push(current);
+        }
+        words
+    }
+    fn scalar(value: &serde_norway::Value) -> Option<String> {
+        match value {
+            serde_norway::Value::String(text) => Some(text.clone()),
+            serde_norway::Value::Number(number) => Some(number.to_string()),
+            serde_norway::Value::Bool(flag) => Some(flag.to_string()),
+            _ => None,
+        }
+    }
+    fn walk(
+        value: &serde_norway::Value,
+        path: &mut Vec<String>,
+        leaves: &mut Vec<(Vec<String>, String)>,
+    ) {
+        match value {
+            serde_norway::Value::Mapping(mapping) => {
+                for (key, held) in mapping {
+                    let Some(key) = key.as_str() else {
+                        continue;
+                    };
+                    path.push(key.to_owned());
+                    walk(held, path, leaves);
+                    path.pop();
+                }
+            }
+            other => {
+                if let Some(text) = scalar(other) {
+                    leaves.push((path.clone(), text));
+                }
+            }
+        }
+    }
+    let document: serde_norway::Value = serde_norway::from_str(text).ok()?;
+    let wanted = words(
+        &env.strip_prefix("PERMGUARD_")
+            .unwrap_or(env)
+            .to_ascii_lowercase(),
+    );
+    let mut leaves = Vec::new();
+    walk(&document, &mut Vec::new(), &mut leaves);
+    let mut best: Vec<(usize, String)> = leaves
+        .into_iter()
+        .filter(|(_, held)| held == value)
+        .filter_map(|(path, _)| {
+            let last = path.last()?;
+            if !words(last).iter().all(|word| wanted.contains(word)) {
+                return None;
+            }
+            let score = path
+                .iter()
+                .flat_map(|segment| words(segment))
+                .filter(|word| wanted.contains(word))
+                .count();
+            Some((score, path.join(".")))
+        })
+        .collect();
+    best.sort();
+    match best.as_slice() {
+        [] => None,
+        [.., (top, key)] if best.iter().filter(|(score, _)| score == top).count() == 1 => {
+            Some(key.clone())
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]

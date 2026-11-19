@@ -196,6 +196,24 @@ fn an_unknown_permguard_variable_fails_startup_by_name_and_build_variables_pass(
     );
 }
 
+/// BUG-0069: the variables Permguard's own clients read — the CLI, the SDKs, the bench — do not
+/// stop the server, while a name that only resembles one of the server's settings still does.
+#[test]
+fn the_clients_variables_pass_and_a_misspelt_setting_still_fails() {
+    let config = config(&[], &[]);
+    config
+        .check_environment(permguard_core::config::CLIENT_VARIABLES.iter().copied())
+        .expect("every client variable passes");
+    for typo in [
+        "PERMGUARD_TELEMETRY_ADRR",
+        "PERMGUARD_PDP_URLS",
+        "PERMGUARD_DATA_PLANE_ENDPOIN",
+    ] {
+        let refused = config.check_environment([typo]).expect_err(typo);
+        assert!(format!("{refused}").contains(typo), "{refused}");
+    }
+}
+
 /// The `environment` secret provider resolves `<prefix>_<NAME>`: the server's prefix and every
 /// realm's pass the check, a name that only resembles one does not.
 #[test]

@@ -1,0 +1,108 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Policy as Code: one ledger's manifest, its partitions (each owned by one language) and the
+   profiles that select them. Partitions on the left, profiles on the right; stacked on a phone. */
+.pg-page-concepts .pgx-binding {
+  margin: 30px 0 46px;
+  padding: 22px;
+  border: 1px solid var(--pgx-line);
+  background-color: var(--pgx-surface);
+  background-image:
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+}
+
+.pg-page-concepts .pgx-binding__label {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 20px;
+  margin-bottom: 18px;
+  color: var(--pgx-muted);
+  font-size: 12px;
+}
+
+.pg-page-concepts .pgx-binding__label strong { color: var(--pgx-ink); }
+.pg-page-concepts .pgx-binding__label code { font-size: 12px; }
+
+.pg-page-concepts .pgx-binding__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.pg-page-concepts .pgx-binding__col { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+
+.pg-page-concepts .pgx-binding small {
+  color: var(--pgx-brand);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.pg-page-concepts .pgx-binding article {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--pgx-line);
+  background: var(--pgx-bg);
+}
+
+.pg-page-concepts .pgx-binding article > strong { color: var(--pgx-ink); font-size: 16px; }
+.pg-page-concepts .pgx-binding article > span { color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
+.pg-page-concepts .pgx-binding article > code { align-self: flex-start; max-width: 100%; overflow-wrap: anywhere; font-size: 12px; }
+
+.pg-page-concepts .pgx-binding__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+.pg-page-concepts .pgx-binding__chips i {
+  padding: 3px 9px;
+  border: 1px solid var(--pgx-brand);
+  color: var(--pgx-ink);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.pg-page-concepts .pgx-binding__chips i.is-rego { border-color: var(--pgx-warm); }
+.pg-page-concepts .pgx-binding__part--cedar { box-shadow: inset 3px 0 var(--pgx-brand); }
+.pg-page-concepts .pgx-binding__part--rego { box-shadow: inset 3px 0 var(--pgx-warm); }
+
+.pg-page-concepts .pgx-binding__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pgx-brand);
+  font-size: 22px;
+}
+
+.pg-page-concepts .pgx-binding__link::before {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  left: 8px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--pgx-warm), var(--pgx-brand));
+  content: "";
+}
+
+.pg-page-concepts .pgx-binding__link b {
+  position: relative;
+  padding: 0 4px;
+  background: var(--pgx-surface);
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-binding { padding: 14px 12px; }
+  .pg-page-concepts .pgx-binding__grid { grid-template-columns: minmax(0, 1fr); }
+  .pg-page-concepts .pgx-binding__link { height: 48px; }
+  .pg-page-concepts .pgx-binding__link::before { top: 6px; right: auto; bottom: 6px; left: 50%; width: 1px; height: auto; background: linear-gradient(180deg, var(--pgx-warm), var(--pgx-brand)); }
+  .pg-page-concepts .pgx-binding__link b { transform: rotate(90deg); }
+}

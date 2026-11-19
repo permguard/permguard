@@ -1,0 +1,91 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Decision Path (how-it-works/decision-lifecycle): permit, deny and refusal side by side.
+   A refusal is drawn dashed on purpose: it is not a decision. */
+
+.pg-page-concepts .pgx-answers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0;
+}
+
+.pg-page-concepts .vp-doc .pgx-answers article {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--pgx-line);
+  border-top: 3px solid var(--pgx-line);
+  background: var(--pgx-surface);
+}
+
+.pg-page-concepts .vp-doc .pgx-answers .pgx-answers__permit {
+  border-top-color: var(--pgx-brand);
+  background: color-mix(in srgb, var(--pgx-brand) 6%, var(--pgx-surface));
+}
+
+.pg-page-concepts .vp-doc .pgx-answers .pgx-answers__deny {
+  border-top-color: var(--pgx-warm);
+  background: color-mix(in srgb, var(--pgx-warm) 6%, var(--pgx-surface));
+}
+
+.pg-page-concepts .vp-doc .pgx-answers .pgx-answers__refusal {
+  border-style: dashed;
+  border-top-style: solid;
+  border-top-color: var(--pgx-muted);
+  background: var(--pgx-bg);
+}
+
+.pg-page-concepts .pgx-answers header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.pg-page-concepts .pgx-answers header b {
+  color: var(--pgx-ink);
+  font-size: 17px;
+}
+
+.pg-page-concepts .pgx-answers header small {
+  color: var(--pgx-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.pg-page-concepts .vp-doc .pgx-answers article > code {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.pg-page-concepts .vp-doc .pgx-answers p {
+  margin: 0;
+  color: var(--pgx-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pg-page-concepts .pgx-answers footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--pgx-line);
+  color: var(--pgx-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pg-page-concepts .pgx-answers__permit footer { color: var(--pgx-brand); }
+.pg-page-concepts .pgx-answers__deny footer { color: var(--pgx-warm); }
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-answers { grid-template-columns: minmax(0, 1fr); }
+  .pg-page-concepts .vp-doc .pgx-answers article { padding: 14px; }
+}

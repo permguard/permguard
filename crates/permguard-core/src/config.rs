@@ -1494,7 +1494,7 @@ pub struct Config {
     events_group_commit_delay: Duration,
     events_warm_bytes: u64,
     events_warm_zone_bytes: Option<u64>,
-    events_warm_partition_bytes: u64,
+    events_warm_partition_bytes: Option<u64>,
     events_replay_max_records: u64,
     events_replay_max_bytes: u64,
     events_replay_timeout: Duration,
@@ -1721,7 +1721,7 @@ impl Default for Config {
             events_group_commit_delay: DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
             events_warm_bytes: DEFAULT_EVENTS_WARM_BYTES,
             events_warm_zone_bytes: None,
-            events_warm_partition_bytes: DEFAULT_EVENTS_WARM_PARTITION_BYTES,
+            events_warm_partition_bytes: None,
             events_replay_max_records: DEFAULT_EVENTS_REPLAY_MAX_RECORDS,
             events_replay_max_bytes: DEFAULT_EVENTS_REPLAY_MAX_BYTES,
             events_replay_timeout: DEFAULT_EVENTS_REPLAY_TIMEOUT,
@@ -1888,14 +1888,27 @@ impl Config {
     /// The zone's cache bounds against the whole cache's, once every layer has applied: a file may
     /// set a small cache that the command line then raises, and only the result is the bound.
     fn check_cache_bounds(&self) -> anyhow::Result<()> {
-        if self.events_warm_zone_bytes() > self.events_warm_bytes
-            || self.events_warm_partition_bytes > self.events_warm_bytes
+        // Only a bound someone set can be wrong: a default follows the bound above it (BUG-0177).
+        if self.events_warm_zone_bytes.is_some()
+            && self.events_warm_zone_bytes() > self.events_warm_bytes
         {
             anyhow::bail!(
-                "a zone's or a partition's warm-state bound ({SETTING_EVENTS_WARM_ZONE_BYTES}, \
-                 {SETTING_EVENTS_WARM_PARTITION_BYTES}) is larger than the Host's \
-                 ({SETTING_EVENTS_WARM_BYTES}): it could never be reached, and the setting would \
-                 bound nothing"
+                "a zone's warm-state bound ({SETTING_EVENTS_WARM_ZONE_BYTES}, {}) is larger than the \
+                 Host's ({SETTING_EVENTS_WARM_BYTES}, {}): it could never be reached, and the \
+                 setting would bound nothing",
+                self.events_warm_zone_bytes(),
+                self.events_warm_bytes
+            );
+        }
+        if self.events_warm_partition_bytes.is_some()
+            && self.events_warm_partition_bytes() > self.events_warm_zone_bytes()
+        {
+            anyhow::bail!(
+                "a partition's warm-state bound ({SETTING_EVENTS_WARM_PARTITION_BYTES}, {}) is \
+                 larger than its zone's ({SETTING_EVENTS_WARM_ZONE_BYTES}, {}): it could never be \
+                 reached, and the setting would bound nothing",
+                self.events_warm_partition_bytes(),
+                self.events_warm_zone_bytes()
             );
         }
         if self.authz_cache_zone_partitions() > self.authz_cache_partitions
@@ -3884,9 +3897,13 @@ produce: use `EdDSA` or `ES256`"
             .max(1)
     }
 
-    /// The bytes the warm histories of one compiled partition may hold.
+    /// The bytes the warm histories of one compiled partition may hold: as configured, or 64 MiB
+    /// bounded by the zone's, so lowering the Host's bound alone never leaves a default above it
+    /// (BUG-0177).
     pub fn events_warm_partition_bytes(&self) -> u64 {
-        self.events_warm_partition_bytes
+        self.events_warm_partition_bytes.unwrap_or_else(|| {
+            DEFAULT_EVENTS_WARM_PARTITION_BYTES.min(self.events_warm_zone_bytes())
+        })
     }
 
     /// The most records one cold history's replay reads.
@@ -4891,7 +4908,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_EVENTS_GROUP_COMMIT_DELAY => d(self.events_group_commit_delay),
             SETTING_EVENTS_WARM_BYTES => n(self.events_warm_bytes),
             SETTING_EVENTS_WARM_ZONE_BYTES => n(self.events_warm_zone_bytes()),
-            SETTING_EVENTS_WARM_PARTITION_BYTES => n(self.events_warm_partition_bytes),
+            SETTING_EVENTS_WARM_PARTITION_BYTES => n(self.events_warm_partition_bytes()),
             SETTING_EVENTS_REPLAY_MAX_RECORDS => n(self.events_replay_max_records),
             SETTING_EVENTS_REPLAY_MAX_BYTES => n(self.events_replay_max_bytes),
             SETTING_EVENTS_REPLAY_TIMEOUT => d(self.events_replay_timeout),
@@ -4964,8 +4981,9 @@ produce: use `EdDSA` or `ES256`"
     /// Refuses an environment variable that looks like a setting and is not one (WP-2.9, owner
     /// decision of 2026-10-07): a typo or a retired name fails startup by name instead of being
     /// ignored. The image's build variables are not settings and pass, and so do the variables the
-    /// `environment` secret provider resolves, under the server's prefix or a realm's: call it once
-    /// the realms are attached.
+    /// `environment` secret provider resolves, under the server's prefix or a realm's, and the
+    /// variables Permguard's own clients read ([`CLIENT_VARIABLES`]): call it once the realms are
+    /// attached.
     pub fn check_environment<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Result<()> {
         let secret_prefixes: Vec<String> = std::iter::once(self.secrets_env_prefix())
             .chain(self.realms.iter().map(RealmConfig::secrets_env_prefix))
@@ -4981,6 +4999,7 @@ produce: use `EdDSA` or `ES256`"
                     .any(|prefix| name.starts_with(prefix.as_str()))
                 || experimental_setting_name(name).is_some()
                 || is_known_setting(name, &self.declared)
+                || CLIENT_VARIABLES.contains(&name)
             {
                 continue;
             }
@@ -5789,7 +5808,7 @@ produce: use `EdDSA` or `ES256`"
             self.events_warm_zone_bytes = Some(bytes);
         }
         if let Some(bytes) = positive_bytes(SETTING_EVENTS_WARM_PARTITION_BYTES)? {
-            self.events_warm_partition_bytes = bytes;
+            self.events_warm_partition_bytes = Some(bytes);
         }
         if let Some(count) = positive_count(SETTING_EVENTS_REPLAY_MAX_RECORDS)? {
             self.events_replay_max_records = count;
@@ -7062,6 +7081,45 @@ pub fn setting_class(key: &str) -> SettingClass {
 
 /// The variables of the image's build that share the `PERMGUARD_` prefix and are not settings.
 const BUILD_VARIABLES: &[&str] = &["PERMGUARD_BUILD_", "PERMGUARD_COPYRIGHT_"];
+
+/// The `PERMGUARD_*` variables Permguard's own clients read — the CLI, the SDKs and the bench —
+/// named exactly, which the server passes over (BUG-0069). One environment shared by a server and
+/// its clients is the usual developer shell, CI job and compose file; a misspelt or retired name of
+/// a server setting is none of these, and still fails startup by name. The CLI's test
+/// `every_client_variable_is_known_to_the_server` keeps this list whole.
+pub const CLIENT_VARIABLES: &[&str] = &[
+    // The CLI.
+    "PERMGUARD_ACCESS_KEY",
+    "PERMGUARD_AUTHOR",
+    "PERMGUARD_AUTHORITY_ENDPOINT",
+    "PERMGUARD_AUTHORITY_TLS_CA_FILE",
+    "PERMGUARD_CLIENT_SCOPE",
+    "PERMGUARD_CONFIG",
+    "PERMGUARD_CONTROL_PLANE_ENDPOINT",
+    "PERMGUARD_DATA_PLANE_ENDPOINT",
+    "PERMGUARD_HOST_ENDPOINT",
+    "PERMGUARD_SECRET_KEY_FILE",
+    "PERMGUARD_TLS_CA_FILE",
+    "PERMGUARD_TLS_CERT_FILE",
+    "PERMGUARD_TLS_KEY_FILE",
+    "PERMGUARD_TLS_KEY_REF",
+    "PERMGUARD_TLS_SERVER_NAME",
+    "PERMGUARD_TLS_SKIP_VERIFY",
+    "PERMGUARD_TOKEN_FILE",
+    "PERMGUARD_WORKSPACE_ONE_POLICY_PER_FILE",
+    // The SDKs.
+    "PERMGUARD_PDP_URL",
+    // The bench.
+    "PERMGUARD_GRPC_ADDR",
+    "PERMGUARD_LEDGER",
+    "PERMGUARD_PROFILE",
+    "PERMGUARD_TEMPORAL_LEDGER",
+    "PERMGUARD_TEMPORAL_PROFILE",
+    "PERMGUARD_TEMPORAL_RUN_ID",
+    "PERMGUARD_TEMPORAL_ZONE",
+    "PERMGUARD_URL",
+    "PERMGUARD_ZONE",
+];
 
 /// One setting in force, as `config/effective` reports it: its value (or the image default
 /// rendered, when no layer supplied it), the layer it came from and its class.

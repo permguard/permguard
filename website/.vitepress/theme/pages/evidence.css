@@ -1,0 +1,87 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Verifiable Evidence (how-it-works/evidence): the record chain, its signed head and the formula
+   that links them. A wide container draws the chain left to right; a narrow one top to bottom. */
+
+.pg-page-concepts .pgx-chain {
+  container-type: inline-size;
+  margin: 8px 0 34px;
+  padding: 24px;
+  border: 1px solid var(--pgx-line);
+  background-color: var(--pgx-surface);
+  background-image:
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+}
+
+.pg-page-concepts .pgx-chain__compact {
+  display: none;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+@container (max-width: 600px) {
+  .pg-page-concepts .pgx-chain__wide { display: none; }
+  .pg-page-concepts .pgx-chain__compact { display: block; }
+}
+
+/* The vertical drawing is shown small: its labels start larger so a phone still reads them. */
+.pg-page-concepts .pgx-chain__compact .pgx-hv__k { font-size: 13px; }
+.pg-page-concepts .pgx-chain__compact .pgx-hv__s { font-size: 17px; }
+.pg-page-concepts .pgx-chain__compact .pgx-hv__m { font-size: 14px; }
+
+.pg-page-concepts .pgx-chain__focus rect {
+  fill: color-mix(in srgb, var(--pgx-brand) 8%, var(--pgx-bg));
+  stroke: var(--pgx-brand);
+}
+
+.pg-page-concepts .pgx-chain__arrow { fill: var(--pgx-brand); }
+
+.pg-page-concepts .pgx-chain__bracket {
+  fill: none;
+  stroke: var(--pgx-brand);
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.pg-page-concepts .pgx-chain__warn {
+  fill: var(--pgx-warm);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pg-page-concepts .pgx-chain__compact .pgx-chain__warn { font-size: 14px; }
+
+.pg-page-concepts .pgx-chain__formula {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--pgx-line);
+}
+
+.pg-page-concepts .pgx-chain__formula code {
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 8px;
+  background: var(--pgx-bg);
+  color: var(--pgx-ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-chain { padding: 14px; }
+  .pg-page-concepts .pgx-chain__formula { justify-content: stretch; }
+  .pg-page-concepts .pgx-chain__formula code { flex: 1 1 100%; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-page-concepts .pgx-chain * { animation: none !important; }
+}

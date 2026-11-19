@@ -788,6 +788,12 @@
   .pg-footer {
     z-index: calc(var(--vp-z-index-sidebar) + 1);
   }
+
+  /* The sidebar ends where the footer begins, and scrolls within what is left (see index.ts). */
+  /* VitePress pins `bottom: 0` with a scoped rule; this outranks it. */
+  :root .VPSidebar.VPSidebar {
+    bottom: var(--pg-footer-overlap, 0px);
+  }
 }
 
 .pg-footer > .pg-section-inner {
@@ -1668,3 +1674,53 @@ html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
 .pg-page-concepts .VPSidebarItem.level-2 .text { color: var(--pgx-muted); }
 .pg-page-concepts .VPSidebarItem.level-2.is-active > .item .link > .text { color: var(--pgx-brand); }
 .pg-page-concepts .VPSidebarItem.level-2.is-active > .item > .indicator { background-color: var(--pgx-brand); }
+
+/* The plane in view, after the Planes menu: the same tile as every link of the bar, with the icon
+   of the plane, and the active dot of the page in view. It is not a VitePress link component, so it
+   repeats the measures VitePress scopes to its own links (VPNavMenuLink.vue). */
+.pg-current-plane {
+  --pg-nav-icon: none;
+  align-items: center;
+  color: var(--pg-nav-active, var(--vp-c-brand-1));
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 500;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.VPNavBarMenuLink.pg-current-plane {
+  min-height: var(--vp-nav-height);
+  padding: 0 0.75rem;
+  line-height: 1.5;
+}
+
+.VPNavScreenMenuLink.pg-current-plane {
+  border-bottom: 1px solid var(--vp-c-divider);
+  padding: 0.75rem 0 0.6875rem;
+  line-height: 1.7142857;
+}
+
+.pg-current-plane::before {
+  background: rgb(217 70 239 / 0.1) var(--pg-nav-icon) center / 22px 22px no-repeat;
+  border: 1px solid rgb(217 70 239 / 0.55);
+  border-radius: 4px;
+  content: "";
+  flex: 0 0 auto;
+  height: 26px;
+  width: 26px;
+}
+
+.pg-current-plane[data-plane="authority-plane"] { --pg-nav-icon: url("/permguard/icons/authority_plane.svg"); }
+.pg-current-plane[data-plane="control-plane"] { --pg-nav-icon: url("/permguard/icons/control_plane.svg"); }
+.pg-current-plane[data-plane="data-plane"] { --pg-nav-icon: url("/permguard/icons/data_plane.svg"); }
+.pg-current-plane[data-plane="trust-plane"] { --pg-nav-icon: url("/permguard/icons/trust_plane.svg"); }
+
+html:not(.dark) .pg-current-plane::before { background-color: #2a2433; }
+
+
+/* With the plane named beside it, the Planes menu stays coloured as the section and leaves the dot
+   to the plane: one dot, under the page in view. */
+.VPNavBarMenu:has(.pg-current-plane) .VPNavBarMenuGroup:has(a[href$="/authority-plane"]) > .button > .text > span:first-child::after {
+  opacity: 0 !important;
+}

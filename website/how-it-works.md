@@ -90,12 +90,12 @@ onBeforeUnmount(() => observer?.disconnect())
           <g class="pgx-hv__node pgx-hv__node--sdk">
             <rect x="860" y="150" width="160" height="120" rx="14"/>
             <text class="pgx-hv__k" x="940" y="170" text-anchor="middle">PEP · SDKS</text>
-            <g class="pgx-hv__lang"><title>Go</title><rect x="887" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="893" y="184" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Java</title><rect x="927" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="933" y="184" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>.NET</title><rect x="967" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="973" y="184" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Node.js</title><rect x="887" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="893" y="220" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Python</title><rect x="927" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="933" y="220" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Rust</title><rect x="967" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="973" y="220" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><rect x="873" y="180" width="64" height="20" rx="10"/><text x="905" y="194" text-anchor="middle">Go</text></g>
+          <g class="pgx-hv__lang"><rect x="943" y="180" width="64" height="20" rx="10"/><text x="975" y="194" text-anchor="middle">Java</text></g>
+          <g class="pgx-hv__lang"><rect x="873" y="204" width="64" height="20" rx="10"/><text x="905" y="218" text-anchor="middle">.NET</text></g>
+          <g class="pgx-hv__lang"><rect x="943" y="204" width="64" height="20" rx="10"/><text x="975" y="218" text-anchor="middle">Node.js</text></g>
+          <g class="pgx-hv__lang"><rect x="873" y="228" width="64" height="20" rx="10"/><text x="905" y="242" text-anchor="middle">Python</text></g>
+          <g class="pgx-hv__lang"><rect x="943" y="228" width="64" height="20" rx="10"/><text x="975" y="242" text-anchor="middle">Rust</text></g>
             <text class="pgx-hv__m" x="940" y="261" text-anchor="middle">in every workload</text>
           </g>
           <text class="pgx-hv__k" x="200" y="326">EVIDENCE · SIGNED · CHAINED</text>
@@ -158,12 +158,12 @@ onBeforeUnmount(() => observer?.disconnect())
           <g class="pgx-hv__node pgx-hv__node--sdk">
             <rect x="16" y="440" width="328" height="76" rx="14"/>
             <text class="pgx-hv__k" x="180" y="460" text-anchor="middle">PEP · SDKS IN EVERY WORKLOAD</text>
-            <g class="pgx-hv__lang"><title>Go</title><rect x="44" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="50" y="476" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Java</title><rect x="92" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="98" y="476" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>.NET</title><rect x="140" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="146" y="476" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Node.js</title><rect x="188" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="194" y="476" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Python</title><rect x="236" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="242" y="476" width="20" height="20"/></g>
-            <g class="pgx-hv__lang"><title>Rust</title><rect x="284" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="290" y="476" width="20" height="20"/></g>
+          <g class="pgx-hv__lang"><rect x="32" y="469" width="92" height="19" rx="9"/><text x="78" y="483" text-anchor="middle">Go</text></g>
+          <g class="pgx-hv__lang"><rect x="134" y="469" width="92" height="19" rx="9"/><text x="180" y="483" text-anchor="middle">Java</text></g>
+          <g class="pgx-hv__lang"><rect x="236" y="469" width="92" height="19" rx="9"/><text x="282" y="483" text-anchor="middle">.NET</text></g>
+          <g class="pgx-hv__lang"><rect x="32" y="492" width="92" height="19" rx="9"/><text x="78" y="506" text-anchor="middle">Node.js</text></g>
+          <g class="pgx-hv__lang"><rect x="134" y="492" width="92" height="19" rx="9"/><text x="180" y="506" text-anchor="middle">Python</text></g>
+          <g class="pgx-hv__lang"><rect x="236" y="492" width="92" height="19" rx="9"/><text x="282" y="506" text-anchor="middle">Rust</text></g>
           </g>
           <g class="pgx-hv__chain">
             <path class="pgx-hv__link" d="M95 554 H109 M173 554 H187 M251 554 H265"/>
@@ -267,7 +267,7 @@ func readBudget(w http.ResponseWriter, r *http.Request) {
 </div>
       <div class="pgx-anatomy__row"><div class="pgx-anatomy__label"><b>2 · The rule</b><span>A Cedar policy in that ledger. It permits exactly this; whatever no policy permits is denied.</span></div>
 
-```txt
+```cedar
 @alias("alice-can-read")
 permit (
     principal == User::"alice",
@@ -339,7 +339,7 @@ permit (
         <li data-step="1"><b>01</b><h3>alice opens the budget.</h3><p>A handler in your application is about to serve the document. Before it does, the Permguard SDK, your Policy Enforcement Point, stops and asks.</p></li>
         <li data-step="2"><b>02</b><h3>The PEP asks its PDP.</h3><p>Subject <code>alice</code>, action <code>read</code>, resource <code>budget</code>. The PDP is the Data Plane: a sidecar beside the application, a remote service, or a library inside the process.</p></li>
         <li data-step="3"><b>03</b><h3>The PDP decides with the policy it already holds.</h3><p>The Control Plane published the policy as a signed version, and the Data Plane mirrored and verified it before this request. Deciding needs no call to the Control Plane.</p></li>
-        <li data-step="4"><b>04</b><h3>The decision is on record.</h3><p>By default the answer leaves only once its record is durable: signed and chained to the ones before, so nobody can alter it unnoticed. Export the records to your SIEM.</p></li>
+        <li data-step="4"><b>04</b><h3>The decision is on record.</h3><p>In the shipped configurations the answer leaves only once its record is durable: signed and chained to the ones before, so nobody can alter it unnoticed. Export the records to your SIEM.</p></li>
         <li data-step="5"><b>05</b><h3>The answer comes back.</h3><p>Permit, naming the policy that decided and the id of this decision. No policy that permits means deny; no answer at all, the PEP treats as a no.</p></li>
         <li data-step="6"><b>06</b><h3>The PEP enforces.</h3><p>The handler serves the budget to alice. For bob, the same line returns 403.</p></li>
       </ol>
@@ -430,7 +430,7 @@ permit (
     <div class="pgx-section-head"><div><div class="pgx-kicker">Questions</div><h2>What people ask first.</h2></div><p>Straight answers before you start.</p></div>
     <div class="pgx-faq">
       <details><summary>Does every check go over the network?</summary><p>Only as far as the PDP you choose. As a sidecar it is a local call beside your application; embedded, it is a function call in the process. The PDP never calls the Control Plane to decide: the policy is already there.</p></details>
-      <details><summary>What happens if the Control Plane is down?</summary><p>The Data Plane keeps deciding with the policy it already mirrored and verified. Only new versions wait until the Control Plane is back.</p></details>
+      <details><summary>What happens if the Control Plane is down?</summary><p>The Data Plane keeps deciding with the policy it already mirrored and verified; only new versions wait until the Control Plane is back. If you set an expiry on a ledger, a copy older than that is refused rather than served.</p></details>
       <details><summary>What happens if the PDP does not answer?</summary><p>The SDK returns an error, not a deny: a deny is a normal answer with <code>decision</code> false. Treat an error as a no, as the code above does: fail closed.</p></details>
       <details><summary>Does Permguard replace my Identity Provider?</summary><p>No. Your IdP says who the user is; your code passes that subject to Permguard, which decides what it may do. The Authority Plane only issues the tokens that callers of Permguard itself present.</p></details>
       <details><summary>Which language are policies written in?</summary><p>Cedar or Rego, side by side in the same ledger. Dogwood, for decisions that depend on history, is experimental. See <a :href="withBase('/how-it-works/policy-languages')">Policy as Code</a>.</p></details>

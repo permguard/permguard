@@ -528,3 +528,33 @@ fn no_shipped_configuration_names_the_retired_link() {
         }
     }
 }
+
+/// BUG-0072: every shipped configuration builds the configuration a server starts with — its
+/// settings and its plane sections through every layer check — so a setting retired later cannot
+/// leave a shipped file behind that no longer starts.
+#[test]
+fn every_shipped_configuration_builds_the_configuration_a_server_starts_with() {
+    for path in shipped() {
+        let file = ConfigFile::load(&path).expect("the file parses");
+        let mut pairs = file.settings();
+        for (section, keys) in [
+            ("controlPlane", PlaneSettingKeys::CONTROL),
+            ("dataPlane", PlaneSettingKeys::DATA),
+        ] {
+            if let Some(value) = file.section(section) {
+                pairs.extend(plane_settings(value, keys).expect("the plane section"));
+            }
+        }
+        let declared: Vec<String> = pairs.iter().map(|(key, _)| key.clone()).collect();
+        permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            declared,
+            permguard_core::config::Layers::new().with_file(pairs),
+        )
+        .unwrap_or_else(|error| panic!("{} does not start: {error:#}", path.display()));
+    }
+}

@@ -257,8 +257,10 @@
 .pgx-hv__node--cp rect { stroke: var(--pgx-brand); animation: pgx-hv-glow 4s ease-in-out infinite; }
 .pgx-hv__frame { fill: none; stroke: var(--pgx-line); stroke-dasharray: 4 5; }
 
-/* The languages keep their own colours, one of them black: each sits on a light tile in both themes. */
-.pgx-hv__lang rect { fill: #f4f4f5; stroke: var(--pgx-line); }
+/* The SDKs by name: the languages are named in text, as their owners' guidelines allow, not by logo. */
+.pgx-hv__lang rect { fill: var(--pgx-surface-strong); stroke: rgb(204 52 223 / 0.45); }
+.pgx-hv__lang text { fill: var(--pgx-ink); font-size: 11px; font-weight: 600; }
+.pgx-hv--compact .pgx-hv__lang text { font-size: 12px; }
 .pgx-hv__pod { fill: var(--pgx-surface-strong); stroke: var(--pgx-line); }
 .pgx-hv__pdp { fill: rgb(204 52 223 / 0.12); stroke: var(--pgx-brand); animation: pgx-hv-glow 3s ease-in-out infinite; }
 .pgx-hv__pdp--2 { animation-delay: 0.5s; }
@@ -1876,61 +1878,50 @@
 .pgx-language-flow i { color: var(--pgx-brand); font-style: normal; }
 .pgx-language-flow strong { padding: 11px 14px; border: 1px solid var(--pgx-brand); border-radius: 9px; color: var(--pgx-ink); text-align: center; }
 
-/* Public-site visual language -------------------------------------------------------------
-   Documentation diagrams use the same technical surfaces as the marketing site: square
-   frames, fine grids, connected cells and restrained colour fields instead of soft cards. */
-.pg-page-concepts .vp-doc article,
-.pg-page-concepts .vp-doc .pgx-link-grid a,
-.pg-page-concepts .vp-doc .pgx-pager a {
-  border-radius: 0;
+/* One visual language, the overview's -----------------------------------------------------
+   Every page speaks like How it works: a diagram sits in a rounded panel on a fine grid with a
+   soft brand glow, the parts inside it are rounded cards, and a grid of connected cells keeps its
+   hairlines inside a rounded outer edge. Doc pages used to square all of this off; they no longer
+   do, so a component looks the same on every page it appears on. */
+.pg-page-concepts .pgx-doc-hero {
+  border-radius: 22px;
 }
 
-.pg-page-concepts .vp-doc :is(
-  .pgx-system-map,
-  .pgx-system-map__frame,
-  .pgx-server,
-  .pgx-config-map,
-  .pgx-registry-flow,
-  .pgx-history-flow,
-  .pgx-distribution-cycle,
-  .pgx-integrity-strip,
-  .pgx-equation,
-  .pgx-resolution,
-  .pgx-frontier,
-  .pgx-language-flow,
-  .pgx-principles
-) {
-  border-radius: 0;
-}
-
-.pg-page-concepts .vp-doc :is(
-  .pgx-system-map,
-  .pgx-server,
-  .pgx-config-map,
-  .pgx-registry-flow,
-  .pgx-history-flow,
-  .pgx-distribution-cycle
-) {
-  background-color: var(--pgx-surface);
-  background-image:
-    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-.pg-page-concepts .vp-doc :is(
+.pg-page-concepts :is(
   .pgx-system-map,
   .pgx-server,
   .pgx-config-map,
   .pgx-registry-flow,
   .pgx-history-flow,
   .pgx-distribution-cycle,
+  .pgx-trust-flow,
+  .pgx-simple-flow
+) {
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    var(--pgx-surface);
+}
+
+.pg-page-concepts :is(
   .pgx-cards,
+  .pgx-link-grid,
   .pgx-install-paths,
   .pgx-distro-grid,
-  .pgx-image-grid
+  .pgx-image-grid,
+  .pgx-principles
 ) {
-  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.pg-page-concepts .vp-doc :is(.pgx-cards, .pgx-link-grid, .pgx-install-paths, .pgx-distro-grid, .pgx-image-grid) > * {
+  border-radius: 0;
+}
+
+.pg-page-concepts .pgx-pager a {
+  border-radius: 14px;
 }
 
 @media (max-width: 800px) {
@@ -2066,3 +2057,20 @@
     animation: none !important;
   }
 }
+
+/* A plane still to ship, under the planes that run: a dashed slot inside the same frame. */
+.pgx-system-map__next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  border: 1px dashed var(--pgx-line);
+  border-radius: 13px;
+  text-align: center;
+}
+
+.pgx-system-map__next small { color: var(--pgx-brand); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.pgx-system-map__next span { color: var(--pgx-muted); font-size: 13px; }

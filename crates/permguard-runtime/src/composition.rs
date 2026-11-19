@@ -1189,14 +1189,47 @@ impl Composition {
             None => Vec::new(),
         };
 
+        let environment: Vec<(String, String)> = env::vars().collect();
+        let command_line: Vec<(String, String)> = command_line.into_iter().collect();
         let mut config = Config::from_layers(
             self.build_settings,
             self.declared_settings.clone(),
             Layers::new()
-                .with_file(file_inputs)
-                .with_environment(env::vars())
-                .with_command_line(command_line),
-        )?;
+                .with_file(file_inputs.clone())
+                .with_environment(environment.clone())
+                .with_command_line(command_line.clone()),
+        )
+        .map_err(|error| {
+            // A value refused from the file is reported by the file and the key the operator
+            // wrote, never only by an environment variable they did not set (BUG-0121).
+            let Some((path, _)) = &file else {
+                return error;
+            };
+            let said = format!("{error:#}");
+            // The longest name the message carries: `PERMGUARD_LOG` is inside `PERMGUARD_LOG_LEVEL`.
+            let from_file = file_inputs
+                .iter()
+                .filter(|(key, _)| {
+                    said.contains(key.as_str())
+                        && !environment.iter().any(|(set, _)| set == key)
+                        && !command_line.iter().any(|(set, _)| set == key)
+                })
+                .max_by_key(|(key, _)| key.len());
+            let Some((key, value)) = from_file else {
+                return error;
+            };
+            let yaml = std::fs::read_to_string(path)
+                .ok()
+                .and_then(|text| permguard_core::config_file::yaml_key_of(&text, key, value));
+            let named = match yaml {
+                Some(yaml) => format!(
+                    "`{yaml}` in the configuration file {} ({key})",
+                    path.display()
+                ),
+                None => format!("{key}, set in the configuration file {}", path.display()),
+            };
+            anyhow::anyhow!("{}", said.replacen(key.as_str(), &named, 1))
+        })?;
 
         // Realms are structured, not flat settings, so they are attached here rather than merged
         // through the layered pipeline above. They come only from the file today; a database is the

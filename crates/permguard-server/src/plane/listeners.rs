@@ -97,6 +97,54 @@ pub(crate) fn check(config: &Config, planes: &[(&'static str, PlaneAddresses)]) 
             endpoint.check(config, id)?;
         }
     }
+    unused_public_addresses(config, planes)
+}
+
+/// Refuses the process's public listen address when no plane of this server listens there: on
+/// the all-in-one each plane listens at its own address, and `--public-http-addr` (or
+/// `public.http.addr`, or `PERMGUARD_PUBLIC_HTTP_ADDR`) accepted there moved nothing while the
+/// effective configuration reported it in force (BUG-0182, DEC-0006).
+fn unused_public_addresses(
+    config: &Config,
+    planes: &[(&'static str, PlaneAddresses)],
+) -> Result<()> {
+    use permguard_core::config::{SETTING_PUBLIC_GRPC_ADDR, SETTING_PUBLIC_HTTP_ADDR};
+    use permguard_core::planes::PlaneAddress;
+    let enabled: Vec<&PlaneAddresses> = planes
+        .iter()
+        .filter(|(id, _)| plane_enabled(config, id))
+        .map(|(_, addresses)| addresses)
+        .collect();
+    for (setting, used, flag) in [
+        (
+            SETTING_PUBLIC_HTTP_ADDR,
+            enabled
+                .iter()
+                .any(|addresses| addresses.http() == PlaneAddress::ConfigPublicHttp),
+            "--public-http-addr",
+        ),
+        (
+            SETTING_PUBLIC_GRPC_ADDR,
+            enabled
+                .iter()
+                .any(|addresses| addresses.grpc() == PlaneAddress::ConfigPublicGrpc),
+            "--public-grpc-addr",
+        ),
+    ] {
+        let supplied = config
+            .supplied_settings()
+            .find(|(key, _, _)| *key == setting);
+        if let Some((_, value, origin)) = supplied
+            && !used
+        {
+            bail!(
+                "{setting} ({flag}) is `{value}`, from the {}, and no plane of this server \
+                 listens on the process's public address: each plane listens at its own \
+                 (`controlPlane.public`, `dataPlane.public`). Set those, or leave this one out",
+                origin.as_str()
+            );
+        }
+    }
     Ok(())
 }
 

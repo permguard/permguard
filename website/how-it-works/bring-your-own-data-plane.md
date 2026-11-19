@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Bring Your Own Data Plane
-description: Connect Permguard policy distribution to an enforcement point inside your infrastructure.
+description: Run the Permguard Data Plane by default; build your own only when the decision must live in your process or at a specialised edge.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -9,53 +9,81 @@ description: Connect Permguard policy distribution to an enforcement point insid
 
 <div class="pgx-doc-hero">
   <div class="pgx-kicker">Bring your own Data Plane</div>
-  <h1>One ecosystem. Your boundary.</h1>
-  <p>Use the Permguard Data Plane by default. Build your own only when the decision must live inside your runtime or at a specialised edge.</p>
+  <h1>Same ledger. Your runtime.</h1>
+  <p>The Permguard Data Plane is the supported default. Build your own only when the decision must live inside your process or at a specialised edge.</p>
 </div>
 
-<div class="pgx-store-flow pgx-store-flow--modes" role="img" aria-label="The CLI publishes immutable policy to the Control Plane. The recommended Permguard Data Plane pulls and verifies it for sidecar or remote deployment. A custom Data Plane is available for embedded or specialised edge requirements.">
+<div class="pgx-byo-flow">
+<div class="pgx-store-flow pgx-store-flow--modes" role="img" aria-label="The CLI publishes immutable policy to the Control Plane over NOTP. The recommended Permguard Data Plane pulls and verifies the signed head, as a sidecar or a remote PDP. A custom Data Plane pulls and verifies the same signed ledger, embedded in a process or at a specialised edge.">
   <article class="pgx-store-flow__source"><small>AUTHOR</small><strong>CLI workspace</strong><span>build · test · push</span></article>
   <div class="pgx-store-flow__link"><i></i><span>NOTP push</span></div>
   <article class="pgx-store-flow__control"><small>CONTROL PLANE</small><strong>Signed policy head</strong><span>immutable ledger</span></article>
   <div class="pgx-store-flow__fanout"><i></i><span>pull + verify</span></div>
   <div class="pgx-store-flow__targets pgx-store-flow__targets--modes">
-    <article class="pgx-store-flow__recommended"><small>RECOMMENDED</small><strong>Permguard Data Plane</strong><span>sidecar · remote PDP</span></article>
-    <article class="pgx-store-flow__custom"><small>SPECIAL REQUIREMENTS</small><strong>Custom Data Plane</strong><span>embedded · critical edge</span></article>
+    <article class="pgx-store-flow__recommended"><small>DEFAULT</small><strong>Permguard Data Plane</strong><span>sidecar · remote PDP</span></article>
+    <article class="pgx-store-flow__custom"><small>SPECIAL REQUIREMENTS</small><strong>Custom Data Plane</strong><span>embedded · specialised edge</span></article>
   </div>
 </div>
-
-## Start with the Permguard Data Plane
-
-The Permguard Data Plane is the secure, supported default. It mirrors the ledger, verifies the signed head and complete object closure, compiles policy and activates each version atomically. Run it beside a workload as a sidecar or expose it as a remote PDP service.
-
-<div class="pgx-cards pgx-cards--3">
-  <article class="pgx-card"><span>Secure by default</span><h3>Verify every version</h3><p>Signed-head freshness, digests, closure and manifest are checked before activation.</p></article>
-  <article class="pgx-card pgx-card--accent"><span>Local placement</span><h3>Run it as a sidecar</h3><p>Keep the supported runtime beside the workload and inside the same failure boundary.</p></article>
-  <article class="pgx-card"><span>Shared placement</span><h3>Run it remotely</h3><p>Serve the versioned PDP interface centrally when a network decision path fits.</p></article>
 </div>
 
-## Build your own only when placement demands it
+## Which one?
+
+<div class="pgx-choose" role="table" aria-label="Which Data Plane to run, by need">
+  <div class="pgx-choose__head" role="row"><span role="columnheader">You need</span><span role="columnheader">Run</span></div>
+  <div class="pgx-choose__row pgx-choose__row--default" role="row"><span role="cell">A PDP beside each workload, inside its failure boundary</span><strong role="cell"><small>Permguard Data Plane</small>sidecar</strong></div>
+  <div class="pgx-choose__row pgx-choose__row--default" role="row"><span role="cell">One PDP for many callers, over HTTP or gRPC</span><strong role="cell"><small>Permguard Data Plane</small>remote PDP</strong></div>
+  <div class="pgx-choose__row pgx-choose__row--default" role="row"><span role="cell">Signed decision records you do not have to build</span><strong role="cell"><small>Permguard Data Plane</small>either placement</strong></div>
+  <div class="pgx-choose__row pgx-choose__row--custom" role="row"><span role="cell">No network hop at all, not even to localhost</span><strong role="cell"><small>Custom Data Plane</small>embedded in your process</strong></div>
+  <div class="pgx-choose__row pgx-choose__row--custom" role="row"><span role="cell">Disconnected, safety-critical or platform-specific enforcement</span><strong role="cell"><small>Custom Data Plane</small>specialised edge</strong></div>
+  <div class="pgx-choose__row" role="row"><span role="cell">A policy tested before it ships, with no server</span><strong role="cell"><small>Permguard CLI</small><code>permguard test</code></strong></div>
+</div>
+
+No custom row fits? Run the Permguard Data Plane.
+It mirrors the ledger over NOTP, verifies the signed head and the complete object closure, compiles policy, activates each version atomically and records its decisions as [verifiable evidence](./evidence).
+
+## What stays Permguard's
 
 <div class="pgx-deploy">
-  <article><div class="pgx-kicker">Embedded</div><h3>Inside your component</h3><p>Use the engine libraries and decide in process when even a local network hop is unacceptable.</p></article>
-  <article><div class="pgx-kicker">Specialised edge</div><h3>Inside your infrastructure</h3><p>Implement a custom runtime for disconnected, safety-critical or platform-specific enforcement.</p></article>
+  <article><div class="pgx-kicker">Unchanged</div><h3>The ecosystem</h3><p>Publication, the signed ledger, immutable versions, discovery, NOTP transfer and the Control Plane.</p></article>
+  <article><div class="pgx-kicker">Yours</div><h3>The runtime</h3><p>The decision runtime and where it runs. Nothing else.</p></article>
 </div>
 
-This is an extension path, not a warning against the Permguard Data Plane. A custom implementation remains part of the same ecosystem by consuming the signed ledger and preserving the verification and activation guarantees.
+A custom Data Plane consumes the same signed ledgers as the Permguard one, so a policy is written, reviewed and published once, whoever decides with it.
 
-## If you build it, preserve five guarantees
+## Six rules to stay trustworthy
 
-<ol class="pgx-vertical-flow">
-  <li><b>01</b><div><strong>Discover</strong><span>Start from the Control Plane server configuration.</span></div></li>
-  <li><b>02</b><div><strong>Mirror</strong><span>Use NOTP to negotiate and transfer only the missing policy objects.</span></div></li>
-  <li><b>03</b><div><strong>Verify</strong><span>Check authority, signed-head freshness, digests, closure and manifest.</span></div></li>
-  <li><b>04</b><div><strong>Compile</strong><span>Map declared policy partitions into your supported runtime.</span></div></li>
-  <li><b>05</b><div><strong>Activate atomically</strong><span>Serve only after the verified version and checkpoint are durable.</span></div></li>
+<ol class="pgx-vertical-flow" aria-label="Six rules a custom Data Plane follows: discover, mirror, verify, activate, decide, fail closed.">
+  <li><b>01</b><div><strong>Discover</strong><span>Start from the Control Plane's server configuration: NOTP routes are discovered, not agreed out of band.</span></div></li>
+  <li><b>02</b><div><strong>Mirror over NOTP</strong><span>Negotiate and fetch only the objects you miss. See <a href="./notp">NOTP</a>.</span></div></li>
+  <li><b>03</b><div><strong>Verify before use</strong><span>Check the signed head against keys trusted in advance, then every digest, the complete object closure and the manifest.</span></div></li>
+  <li><b>04</b><div><strong>Compile and activate atomically</strong><span>Map the declared partitions into your runtime, and serve a version only once it and its checkpoint are durable. See <a href="./policy-lifecycle">Policy Delivery</a>.</span></div></li>
+  <li><b>05</b><div><strong>Decide with the same algebra</strong><span>Same commit, same engine build, same answer as every other Data Plane. See <a href="./decision-lifecycle">Decision Path</a>.</span></div></li>
+  <li><b>06</b><div><strong>Fail closed</strong><span>Refuse a head that does not verify and an engine range you are outside. Until a new version verifies, decide with the last one that did.</span></div></li>
 </ol>
 
-<div class="pgx-note"><strong>Freedom without fragmentation</strong><span>Keep Permguard publication, immutable versions, discovery and efficient transfer. Replace only the decision runtime and placement that your requirements make different.</span></div>
+<div class="pgx-resolution"><strong>Rule 05</strong><span>any deny → deny</span><span>else any error → indeterminate</span><span>else any permit → permit</span><span>else → deny by default</span></div>
+
+## Rule 01, in practice
+
+The first thing a Data Plane reads is the pull side of NOTP, from the Control Plane's configuration:
+
+```sh
+curl -s http://127.0.0.1:6443/.well-known/server-configuration |
+  jq '.notp | {media_type, ref_endpoint, pull_negotiation_endpoint, object_fetch_endpoint}'
+```
+
+```json
+{
+  "media_type": "application/vnd.permguard.notp.v1+cbor",
+  "ref_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
+  "pull_negotiation_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/pull/negotiate",
+  "object_fetch_endpoint": "http://127.0.0.1:6443/notp/v1/zones/{zone}/ledgers/{ledger}/objects/fetch"
+}
+```
+
+<div class="pgx-note"><strong>Fail closed.</strong><span>An error never becomes a permit, an abstention never an implicit allow, and a version that does not verify is never served.</span></div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">
-  <a class="pgx-pager__previous" href="./policy-storage"><span>Previous</span><strong><b aria-hidden="true">←</b> Git-like Policy Storage</strong></a>
-  <a class="pgx-pager__next" href="./policy-lifecycle"><span>Next</span><strong>Policy Lifecycle <b aria-hidden="true">→</b></strong></a>
+  <a class="pgx-pager__previous" href="./evidence"><span>Previous</span><strong><b aria-hidden="true">←</b> Verifiable Evidence</strong></a>
+  <a class="pgx-pager__next" href="./temporal-authorization"><span>Next</span><strong>Temporal Authorization <b aria-hidden="true">→</b></strong></a>
 </nav>

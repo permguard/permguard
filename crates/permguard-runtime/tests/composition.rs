@@ -204,3 +204,50 @@ fn test_a_public_write_is_refused_from_production_and_published_under_developmen
     }
     assert_eq!(runs.load(Ordering::SeqCst), 0, "nothing ran");
 }
+
+/// BUG-0121: a value refused from the configuration file is reported by the file and its YAML
+/// key; the same value from the environment is reported by the variable, as before.
+#[test]
+fn a_value_refused_from_the_file_is_named_by_its_key() {
+    let runs = Arc::new(AtomicUsize::new(0));
+    let composition = composition(&runs);
+    let (file, volume) = fixture("refused-from-file");
+    std::fs::write(
+        &file,
+        format!(
+            "working_dir: {}\nlog:\n  level: loud\n",
+            volume.to_str().expect("a UTF-8 path")
+        ),
+    )
+    .expect("the configuration file");
+    let refused = composition
+        .config_from(Some(&file), Vec::<(String, String)>::new())
+        .expect_err("`loud` is no level");
+    let said = format!("{refused:#}");
+    assert!(
+        said.contains("`log.level` in the configuration file")
+            && said.contains("PERMGUARD_LOG_LEVEL"),
+        "{said}"
+    );
+}
+
+/// The YAML key is found by the value and the setting's words, and only when one leaf answers.
+#[test]
+fn the_yaml_key_of_a_setting_is_found_by_its_value_and_words() {
+    let text =
+        "dataPlane:\n  decisions:\n    log:\n      spool:\n        bytes: \"0\"\n        age: 0\n";
+    assert_eq!(
+        permguard_core::config_file::yaml_key_of(text, "PERMGUARD_DECISIONS_LOG_SPOOL_BYTES", "0")
+            .as_deref(),
+        Some("dataPlane.decisions.log.spool.bytes")
+    );
+    assert_eq!(
+        permguard_core::config_file::yaml_key_of(text, "PERMGUARD_DECISIONS_LOG_SPOOL_AGE", "0")
+            .as_deref(),
+        Some("dataPlane.decisions.log.spool.age")
+    );
+    assert_eq!(
+        permguard_core::config_file::yaml_key_of(text, "PERMGUARD_DECISIONS_LOG_SPOOL_BYTES", "7"),
+        None
+    );
+}

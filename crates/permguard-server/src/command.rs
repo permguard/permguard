@@ -321,11 +321,13 @@ pub struct ServeArgs {
     #[arg(value_name = "CONFIG_FILE")]
     config_file: PathBuf,
 
-    /// Override the public HTTP listen address from the configuration file.
+    /// Override the process's public HTTP listen address (`public.http`). Used by a composition
+    /// that serves a plane on it; a server whose planes listen at their own addresses refuses it.
     #[arg(long, value_name = "ADDR")]
     public_http_addr: Option<String>,
 
-    /// Override the public gRPC listen address from the configuration file.
+    /// Override the process's public gRPC listen address (`public.grpc`). Used by a composition
+    /// that serves a plane on it; a server whose planes listen at their own addresses refuses it.
     #[arg(long, value_name = "ADDR")]
     public_grpc_addr: Option<String>,
 

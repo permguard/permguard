@@ -1,0 +1,61 @@
+{
+  "name": "Dogwood",
+  "scopeName": "source.dogwood",
+  "fileTypes": ["dw"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#annotation" },
+    { "include": "#string" },
+    { "include": "#temporal" },
+    { "include": "#keyword" },
+    { "include": "#duration" },
+    { "include": "#number" },
+    { "include": "#entity" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [{ "name": "comment.line.double-slash.dogwood", "match": "//.*$" }]
+    },
+    "annotation": {
+      "patterns": [{ "name": "entity.name.function.annotation.dogwood", "match": "@[A-Za-z_][A-Za-z0-9_]*" }]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.dogwood",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.dogwood", "match": "\\\\." }]
+        }
+      ]
+    },
+    "temporal": {
+      "patterns": [
+        { "name": "keyword.control.temporal.dogwood", "match": "\\btemporal\\b" },
+        { "name": "keyword.operator.temporal.dogwood", "match": "\\b(formerly|since|within|previous|exists|count|sum|where|for)\\b" }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        { "name": "keyword.control.effect.dogwood", "match": "\\b(permit|forbid)\\b" },
+        { "name": "keyword.control.condition.dogwood", "match": "\\b(when|unless|if|then|else)\\b" },
+        { "name": "variable.language.scope.dogwood", "match": "\\b(principal|action|resource|context)\\b" },
+        { "name": "keyword.operator.word.dogwood", "match": "\\b(in|is|has|like)\\b" },
+        { "name": "constant.language.boolean.dogwood", "match": "\\b(true|false)\\b" }
+      ]
+    },
+    "duration": {
+      "patterns": [{ "name": "constant.numeric.duration.dogwood", "match": "\\b[0-9]+[smhd]\\b" }]
+    },
+    "number": {
+      "patterns": [{ "name": "constant.numeric.dogwood", "match": "\\b[0-9]+(\\.[0-9]+)?\\b" }]
+    },
+    "entity": {
+      "patterns": [{ "name": "entity.name.type.dogwood", "match": "\\b[A-Z][A-Za-z0-9_]*(?=::)" }]
+    },
+    "operator": {
+      "patterns": [{ "name": "keyword.operator.dogwood", "match": "==|!=|<=|>=|&&|\\|\\||[<>!]" }]
+    }
+  }
+}
