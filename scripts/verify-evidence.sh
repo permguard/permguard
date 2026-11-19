@@ -9,8 +9,9 @@
 # <directory> holds the release's files and its `evidence-manifest.json`, as
 # `gh release download <tag>` leaves them. The manifest's own attestation is verified first
 # (`gh attestation verify`, signed by <repository>'s `release-pipeline.yml` on a GitHub-hosted runner
-# for the ref `refs/tags/<tag>`), so the manifest is the one the release pipeline signed for that
-# release and no other; the manifest must name <tag> too. Then every file the manifest names is
+# for the ref `refs/tags/<tag>` and from the commit the manifest names), so the manifest is the one
+# the release pipeline signed for that release, built from that commit, and no other; the manifest
+# must name <tag> too, and a full commit id. Then every file the manifest names is
 # hashed again. It fails closed: a manifest of another shape, an attestation that does not verify,
 # a file missing, a digest or size that differs, a file the manifest does not name, or a gate the
 # manifest says is incomplete exits non-zero, and the report says which.
@@ -39,7 +40,7 @@ sha256() {
 jq -e --arg tag "${tag}" '
     .schema == "permguard.evidence-manifest.v1"
     and .tag == $tag
-    and (.commit | type == "string" and length > 0)
+    and (.commit | type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$"))
     and (.complete | type == "boolean")
     and (.incomplete | type == "array" and all(.[]; type == "string"))
     and (.artifacts | type == "array" and length > 0)
@@ -53,13 +54,17 @@ jq -e --arg tag "${tag}" '
     exit 1
 }
 
-# Signed by the release pipeline itself, the one workflow that writes the manifest, for this tag:
-# an attestation another workflow, or another release, made does not vouch for it.
+# Signed by the release pipeline itself, the one workflow that writes the manifest, for this tag and
+# from the commit the manifest names: an attestation another workflow, another release or another
+# commit made does not vouch for it, so the commit the report prints is the one that was attested
+# (BUG-0201).
+commit="$(jq -r .commit "${manifest}")"
 gh attestation verify "${manifest}" --repo "${repository}" \
     --signer-workflow "${repository}/.github/workflows/release-pipeline.yml" \
     --source-ref "refs/tags/${tag}" \
+    --source-digest "${commit}" \
     --deny-self-hosted-runners >/dev/null || {
-    echo "FAIL: the manifest's attestation does not verify for ${repository} at ${tag}" >&2
+    echo "FAIL: the manifest's attestation does not verify for ${repository} at ${tag} from commit ${commit}" >&2
     exit 1
 }
 

@@ -31,6 +31,13 @@ tag="${2:?usage: scripts/evidence-manifest.sh <directory> <tag> <commit> [manife
 commit="${3:?usage: scripts/evidence-manifest.sh <directory> <tag> <commit> [manifest]}"
 manifest="${4:-${directory}/evidence-manifest.json}"
 
+# The commit the release was built from, as the attestation records it: a full commit id, never an
+# abbreviation or a name, so `scripts/verify-evidence.sh` can bind the manifest to it (BUG-0201).
+[[ "${commit}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
+    echo "FAIL: <commit> must be a full commit id, 40 or 64 lowercase hex digits, not \`${commit}\`" >&2
+    exit 64
+}
+
 sha256() {
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum "$1" | cut -d' ' -f1

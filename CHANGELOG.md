@@ -19,6 +19,8 @@ is cut.
 
 ### Changed
 
+- **`scripts/verify-evidence.sh` binds the manifest to the commit it names.**
+  A manifest whose `commit` is not a full commit id is refused, and the attestation is verified with `--source-digest <commit>`, so a manifest naming a commit the release pipeline did not build from exits `1`; `scripts/evidence-manifest.sh` refuses anything but a full commit id, exit `64`.
 - **`--keys` repeats and reads a `keys export`, and a verification passes only when everything it checked holds.**
   `decisions verify`, `events verify` and `--verify` on the reads take one `--keys` file per producer, each the `keys export` of its `data.attest` ring or a JWKS, read by the parser `streams verify` uses: a batch an archived (retained) key signed verifies, with nothing merged by hand.
   A batch signed by a key none of the files carries is reported as such and now fails the check, exit `2`: a script that passed `dp-0.jwks` alone for three producers no longer passes.

@@ -393,6 +393,36 @@ fn test_published_archives_round_trip_into_a_reproducibility_verdict() {
 }
 
 /// A release directory holding every piece of evidence the exit gate requires, each passing.
+/// The commit a test release is built from: a full commit id, as `GITHUB_SHA` is.
+const COMMIT: &str = "0123abcd0123abcd0123abcd0123abcd0123abcd";
+
+/// A stand-in `gh` whose attestation was made from `commit` only: it logs its arguments and
+/// answers as `gh attestation verify` does, refusing a `--source-digest` naming any other commit.
+fn attesting_gh(root: &Path, commit: &str) -> PathBuf {
+    let bin = root.join("attesting-bin");
+    std::fs::create_dir_all(&bin).expect("the bin directory is created");
+    write_executable(
+        &bin.join("gh"),
+        &format!(
+            r#"#!/bin/sh
+printf '%s\n' "$*" >> "{log}"
+digest=""
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--source-digest" ]; then digest="$2"; fi
+    shift
+done
+if [ "$digest" != "{commit}" ]; then
+    echo "no attestations matched the source digest" >&2
+    exit 1
+fi
+echo '[]'
+"#,
+            log = root.join("gh.log").display(),
+        ),
+    );
+    bin
+}
+
 fn complete_evidence(directory: &Path) {
     std::fs::create_dir_all(directory).expect("the release directory");
     for name in ["permguard-benchmark.json", "traceability.json"] {
@@ -432,7 +462,7 @@ fn the_evidence_manifest_pins_the_release_and_its_verification_fails_closed() {
     complete_evidence(&release);
     let made = run(
         "evidence-manifest.sh",
-        &[release.to_str().expect("utf-8"), "v1.2.3", "0123abcd"],
+        &[release.to_str().expect("utf-8"), "v1.2.3", COMMIT],
         None,
     );
     assert!(made.status.success(), "{}", text(&made));
@@ -441,7 +471,7 @@ fn the_evidence_manifest_pins_the_release_and_its_verification_fails_closed() {
     )
     .expect("JSON");
     assert_eq!(manifest["schema"], "permguard.evidence-manifest.v1");
-    assert_eq!(manifest["commit"], "0123abcd");
+    assert_eq!(manifest["commit"], COMMIT);
     assert_eq!(manifest["complete"], true, "{manifest}");
     assert_eq!(
         manifest["artifacts"].as_array().expect("artifacts").len(),
@@ -472,6 +502,7 @@ fn the_evidence_manifest_pins_the_release_and_its_verification_fails_closed() {
                 "--signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml"
             )
             && called.contains("--source-ref refs/tags/v1.2.3")
+            && called.contains(&format!("--source-digest {COMMIT}"))
             && called.contains("--deny-self-hosted-runners"),
         "the manifest is the release pipeline's own: {called}"
     );
@@ -607,6 +638,98 @@ fn the_evidence_manifest_pins_the_release_and_its_verification_fails_closed() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// BUG-0201: the manifest's `commit` is bound to the release. Its writer refuses anything but a
+/// full commit id; the verifier refuses a manifest whose `commit` is not one, and one naming a
+/// commit the attestation was not made from, so the commit it prints is the one attested.
+#[test]
+fn the_evidence_manifest_is_bound_to_the_commit_it_names() {
+    let root = scratch("evidence-commit");
+    let release = root.join("release");
+    complete_evidence(&release);
+    for short in [
+        "0123abcd",
+        "not-a-commit",
+        "0123ABCD0123ABCD0123ABCD0123ABCD0123ABCD",
+        "",
+    ] {
+        let refused = run(
+            "evidence-manifest.sh",
+            &[release.to_str().expect("utf-8"), "v1.2.3", short],
+            None,
+        );
+        assert!(!refused.status.success(), "{short:?}: {}", text(&refused));
+    }
+    let made = run(
+        "evidence-manifest.sh",
+        &[release.to_str().expect("utf-8"), "v1.2.3", COMMIT],
+        None,
+    );
+    assert!(made.status.success(), "{}", text(&made));
+    let gh = attesting_gh(&root, COMMIT);
+    let verify = || {
+        run(
+            "verify-evidence.sh",
+            &[
+                release.to_str().expect("utf-8"),
+                "permguard/permguard",
+                "v1.2.3",
+            ],
+            Some(&gh),
+        )
+    };
+    let verified = verify();
+    assert!(verified.status.success(), "{}", text(&verified));
+    assert!(text(&verified).contains(COMMIT), "{}", text(&verified));
+
+    let held = std::fs::read(release.join("evidence-manifest.json")).expect("the manifest");
+    let shape: serde_json::Value = serde_json::from_slice(&held).expect("JSON");
+    // Not a full commit id: refused by its shape, before any attestation is asked.
+    for commit in [
+        "adf008fc0000000000000000000000000000000",
+        "not-a-commit",
+        "49885b5d",
+    ] {
+        let mut edited = shape.clone();
+        edited["commit"] = serde_json::json!(commit);
+        std::fs::write(
+            release.join("evidence-manifest.json"),
+            serde_json::to_vec(&edited).expect("JSON"),
+        )
+        .expect("written");
+        let refused = verify();
+        assert!(!refused.status.success(), "{commit}: {}", text(&refused));
+        assert!(
+            text(&refused).contains("is not a permguard.evidence-manifest.v1"),
+            "{commit}: {}",
+            text(&refused)
+        );
+    }
+    // A full commit id the attestation was not made from.
+    let other = "49885b5d49885b5d49885b5d49885b5d49885b5d";
+    let mut edited = shape.clone();
+    edited["commit"] = serde_json::json!(other);
+    std::fs::write(
+        release.join("evidence-manifest.json"),
+        serde_json::to_vec(&edited).expect("JSON"),
+    )
+    .expect("written");
+    let refused = verify();
+    assert!(!refused.status.success(), "{}", text(&refused));
+    assert!(
+        text(&refused).contains(&format!(
+            "does not verify for permguard/permguard at v1.2.3 from commit {other}"
+        )),
+        "{}",
+        text(&refused)
+    );
+    assert!(
+        !text(&refused).contains("ok: the evidence"),
+        "{}",
+        text(&refused)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// WP-7.13: a piece of evidence missing, replaced by its note, or not passed leaves the gate
 /// incomplete; the manifest says which, and the verifier refuses it.
 #[test]
@@ -632,7 +755,7 @@ fn an_incomplete_gate_is_named_in_the_manifest_and_refused_by_the_verifier() {
     .expect("not reproducible");
     let made = run(
         "evidence-manifest.sh",
-        &[release.to_str().expect("utf-8"), "v1.2.3", "0123abcd"],
+        &[release.to_str().expect("utf-8"), "v1.2.3", COMMIT],
         None,
     );
     assert!(
