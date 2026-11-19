@@ -25,9 +25,9 @@ A plane owns one job: the [Authority Plane](./glossary#authority-plane) admits c
     <div class="pgx-system-map__host"><small>HOST · :5443</small><strong>Identity · Keys · Audit · Membership</strong></div>
     <div class="pgx-system-map__bus" aria-hidden="true"></div>
     <div class="pgx-system-map__planes">
-      <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>identities · access tokens</span></article>
       <article><small>CONTROL PLANE · :6443</small><strong>Govern</strong><span>policies · decision logs · events</span></article>
       <article><small>DATA PLANE · :7443</small><strong>Decide</strong><span>beside the workload</span></article>
+      <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>identities · access tokens</span></article>
     </div>
     <div class="pgx-system-map__next"><small>TRUST PLANE · NEXT</small><span>authority continuity with PIC-X · not served today</span></div>
   </div>

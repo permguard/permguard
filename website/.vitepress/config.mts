@@ -22,8 +22,8 @@ const base = `/${(process.env.VITEPRESS_BASE ?? '').replace(/^\/+|\/+$/g, '')}/`
 
 // Other versions are other sites under the same root, so they are linked by absolute URL. Without
 // a root URL (a local build) only this site exists, and `latest` is its own home page.
-// Every plane, in the order a request meets them: who may call, what is published, what decides,
-// what continues authority. The menu and the planes' sidebar list the same four.
+// Every plane, the domain first: what is published, what decides, what continues authority; then
+// who may call Permguard itself. The menu lists them in this order.
 const planeItem = (name: string, link: string, line: string) => ({
   text: `${name}<small class="pg-menu-line">${line}</small>`,
   link
@@ -118,10 +118,10 @@ export default defineConfig({
         text: 'Planes',
         activeMatch: '^/(authority|control|data|trust)-plane',
         items: [
-          planeItem('Authority Plane', '/authority-plane', 'Identities, access keys, tokens'),
           planeItem('Control Plane', '/control-plane', 'Policies, decision logs, events'),
           planeItem('Data Plane', '/data-plane', 'Decisions beside the workload'),
-          planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X')
+          planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X'),
+          planeItem('Authority Plane', '/authority-plane', 'Identities, access keys, tokens')
         ]
       },
       // Inside a plane, the bar names it after the menu; elsewhere this renders nothing.

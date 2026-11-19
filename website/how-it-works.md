@@ -329,9 +329,9 @@ permit (
         <div class="pgx-system-map__host"><small>SERVER HOST</small><strong>Identity · Authorization · Keys · Audit · Membership · Streams</strong></div>
         <div class="pgx-system-map__bus" aria-hidden="true"></div>
         <div class="pgx-system-map__planes">
-          <article><small>AUTHORITY PLANE</small><strong>Admit</strong><span>identities · access tokens</span></article>
           <article><small>CONTROL PLANE</small><strong>Govern</strong><span>policies · decision logs · events</span></article>
           <article><small>DATA PLANE</small><strong>Decide</strong><span>sidecar · remote · embedded</span></article>
+          <article><small>AUTHORITY PLANE</small><strong>Admit</strong><span>identities · access tokens</span></article>
         </div>
       </div>
       <div class="pgx-system-map__protocols">
