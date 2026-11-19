@@ -1481,7 +1481,19 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                     subscription.set_acked(shipment.run, answer.acked);
                     true
                 }
+                // Said when it happens (BUG-0104): the subscription waits for the membership to
+                // move, and nothing ships under it until then.
                 Outcome::Unverifiable => {
+                    tracing::warn!(
+                        event.name = "host.stream.unverifiable",
+                        component = "host",
+                        code = codes::stream::UNVERIFIABLE,
+                        stream = %resource,
+                        run = %hex(&shipment.run),
+                        epoch = subscribed.epoch,
+                        "the coordinator cannot verify the batch under the pins of this epoch: \
+                         the subscription is paused until the membership moves"
+                    );
                     subscription.state = SubscriptionState::Paused {
                         epoch: subscribed.epoch,
                     };

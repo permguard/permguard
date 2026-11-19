@@ -658,6 +658,71 @@ async fn a_streamless_cutover_retires_the_replaced_pin_once_the_key_activated() 
     assert_eq!(acting.cutover_due(who()).await, 0, "nothing retires twice");
 }
 
+/// BUG-0104: a member that prepublishes its next key before its pass sends the cutover of the
+/// key that just activated still sends it, so the replaced pin retires and the next re-pin is
+/// accepted; before, the cutover waited for a ring with no prepublished key, which the next
+/// re-pin, refused while the grace was open, never gave it.
+#[tokio::test]
+async fn a_cutover_is_sent_when_the_next_key_is_already_prepublished() {
+    let wall = Arc::new(crate::time::ManualClock::at(
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
+    ));
+    let mono = Arc::new(crate::time::ManualMonotonic::default());
+    let time = Arc::new(crate::time::TimeGuard::new(
+        wall.clone(),
+        mono.clone(),
+        Duration::from_secs(30),
+    ));
+    // One clock for both sides: the member's leases are judged against the coordinator's.
+    let c = Side::timed(
+        Host::timed("prepublished-c", Arc::clone(&time)),
+        true,
+        Arc::clone(&time),
+    );
+    let m = Side::timed(
+        Host::timed("prepublished-m", Arc::clone(&time)),
+        false,
+        time,
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let acting = member(&m, &connector);
+    let ring = m
+        .host
+        .rings
+        .iter()
+        .find(|ring| ring.id() == DATA_ATTEST)
+        .expect("the ring")
+        .clone();
+    let mut epoch = rotate(&m.host, DATA_ATTEST, 101);
+    for round in 0..3u8 {
+        assert_eq!(acting.repin_due(who()).await, 1, "round {round}: re-pinned");
+        wall.jump(601);
+        mono.advance(Duration::from_secs(601));
+        ring.maintain_now().expect("activated");
+        // The next rotation lands before the pass sends the cutover.
+        let next = rotate(&m.host, DATA_ATTEST, 102 + round);
+        assert_eq!(
+            acting.cutover_due(who()).await,
+            1,
+            "round {round}: the cutover is sent with a successor prepublished"
+        );
+        assert_eq!(
+            member_pins(&manifest_of(&c, &id)),
+            vec![(epoch, false)],
+            "round {round}: the replaced pin retired"
+        );
+        epoch = next;
+        // The member adopts the retirement, as its pass does before it re-pins.
+        acting.sync(who(), &id).await.expect("synced");
+    }
+    assert_eq!(
+        acting.repin_due(who()).await,
+        1,
+        "the last re-pin is accepted"
+    );
+}
+
 /// `(ring, kid, streams)` an engine was told the coordinator journaled.
 type Journaled = (String, String, Vec<(String, u64)>);
 

@@ -273,7 +273,13 @@ impl<C: RecordCodec> Inspect for Producer<C> {
             .map(|subscription| {
                 let (state, reason) = match &subscription.state {
                     SubscriptionState::Active => ("active", None),
-                    SubscriptionState::Paused { .. } => ("paused", None),
+                    SubscriptionState::Paused { epoch } => (
+                        "paused",
+                        Some(format!(
+                            "{} at membership epoch {epoch}",
+                            permguard_core::codes::stream::UNVERIFIABLE
+                        )),
+                    ),
                     SubscriptionState::Stopped { reason } => ("stopped", Some(reason.clone())),
                 };
                 SubscriptionView {

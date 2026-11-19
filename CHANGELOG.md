@@ -235,6 +235,11 @@ is cut.
 
 ### Fixed
 
+- **A member's stream cutover is sent even when its next key is already prepublished, and a paused shipment says why.**
+  A member sent the cutover of a newly active key only while its ring held no key waiting to take over; a ring that prepublished its next key before the pass, as frequent rotations and the hourly default both do, never sent it, so the old pin never retired, the next re-pin was refused `membership_transition_refused`, and the decision log stopped shipping.
+  The cutover is now sent once the active key is one the current pin published (BUG-0104).
+  A shipment the coordinator cannot verify is logged at WARN as `host.stream.unverifiable` with its stream and epoch, and `host streams subscriptions` gives a paused subscription its reason, `unverifiable at membership epoch N`.
+  A legacy decision spool's discontinuity also starts the successor's signer manifest afresh, so its first batch is no longer refused as a regression, after a restart as well (BUG-0061).
 - **Revoking a ring's active key answers the ring's epoch after the run, and a coordinator re-pins its memberships at once.**
   A revocation with no waiting successor commits the revocation and the replacement's activation; its receipt named the first of the two epochs, so a client chaining on the receipt's revision was refused `409 revision_mismatch`.
   The receipt, a retry and a recovery now answer the epoch the ring is left at (BUG-0091).

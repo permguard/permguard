@@ -892,19 +892,28 @@ impl Member<'_> {
                 .iter()
                 .filter(|pin| pin.owner == Role::Member && !pin.retiring)
             {
-                let retiring = manifest.ring_pins.iter().any(|other| {
-                    other.owner == Role::Member && other.ring == pin.ring && other.retiring
-                });
+                let retiring = manifest
+                    .ring_pins
+                    .iter()
+                    .filter(|other| {
+                        other.owner == Role::Member && other.ring == pin.ring && other.retiring
+                    })
+                    .map(|other| other.epoch)
+                    .max();
                 let Some(ring) = self.rings.iter().find(|ring| ring.id() == pin.ring) else {
                     continue;
                 };
-                // Activated: the ring holds no key waiting to take over.
-                let activated = ring.view().ok().is_some_and(|view| {
-                    view.keys
-                        .iter()
-                        .all(|key| key.state != crate::keys::record::State::Prepublished)
+                // Activated: the active key is one the current pin's set published and the
+                // retiring one did not. A key a later rotation prepublished meanwhile waits for
+                // its own re-pin, which this cutover's grace holds back: it never holds the
+                // cutover back in turn (BUG-0104).
+                let activated = retiring.is_some_and(|retired| {
+                    ring.active_published_epoch()
+                        .ok()
+                        .flatten()
+                        .is_some_and(|published| published > retired && published <= pin.epoch)
                 });
-                if !retiring || !activated {
+                if !activated {
                     continue;
                 }
                 let streams = match self.due_streams(&id, ring) {

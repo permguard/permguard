@@ -258,6 +258,66 @@ fn the_reserve_is_claimed_when_the_spool_is_created_not_when_it_is_needed() {
     );
 }
 
+/// BUG-0061: a key rotation, then a discontinuity: the successor's first batch is signed from its
+/// genesis by the new key, and is recorded; the closed stream's spans do not survive the
+/// discontinuity, nor a crash between it and the manifest's reset.
+#[test]
+fn a_discontinuity_after_a_rotation_starts_the_successors_signers_afresh() {
+    let root = scratch("discontinue-signers");
+    let k1 = serde_json::json!({"kty": "OKP", "crv": "Ed25519", "kid": "k1", "x": "AA"});
+    let k2 = serde_json::json!({"kty": "OKP", "crv": "Ed25519", "kid": "k2", "x": "BB"});
+    let mut spool = Spool::open(&root, bounds()).expect("it opens");
+    let mut digests = Vec::new();
+    for _ in 0..10 {
+        let record = marker_at(&spool);
+        digests.push(spool.append(&record).expect("it appends").digest);
+    }
+    spool.note_signer(1, "k1", &k1).expect("k1 signs from 1");
+    spool.note_signer(6, "k2", &k2).expect("k2 signs from 6");
+    spool
+        .acknowledge(5, digests[4].clone())
+        .expect("it acknowledges");
+    let stale = std::fs::read(root.join("signers.json")).expect("the manifest");
+    spool
+        .discontinue("spool_full", terminal_record)
+        .expect("the stream ends");
+    assert!(
+        spool.signers().spans().is_empty(),
+        "the successor starts afresh"
+    );
+    let record = marker_at(&spool);
+    spool.append(&record).expect("the successor appends");
+    spool
+        .note_signer(1, "k2", &k2)
+        .expect("the successor's first batch is recorded, not refused as a regression");
+    assert_eq!(
+        spool
+            .signers()
+            .spans()
+            .iter()
+            .map(|span| (span.from, span.kid.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(1, "k2")]
+    );
+    drop(spool);
+    let reopened = Spool::open(&root, bounds()).expect("it reopens");
+    assert_eq!(reopened.signers().spans().len(), 1, "kept across a restart");
+    drop(reopened);
+
+    // A crash between the discontinuity and the reset leaves the closed stream's manifest: the
+    // next open drops the spans past the live stream's records.
+    std::fs::write(root.join("signers.json"), &stale).expect("the stale manifest");
+    let mut reopened = Spool::open(&root, bounds()).expect("it reopens");
+    assert!(
+        reopened.signers().spans().is_empty(),
+        "{:?}",
+        reopened.signers()
+    );
+    reopened
+        .note_signer(1, "k2", &k2)
+        .expect("recorded after the crash too");
+}
+
 #[test]
 fn a_stream_that_ends_leaves_a_terminal_at_the_acknowledged_point() {
     let root = scratch("discontinue");

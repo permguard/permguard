@@ -293,9 +293,17 @@ impl Spool {
 
         let mut written = BTreeMap::new();
         let (seq, last_digest) = recover(&directory, &state, identity, &mut written)?;
-        let signers =
+        let mut signers =
             permguard_stream::Signers::load(&directory.join(permguard_stream::SIGNERS_FILE))
                 .map_err(|error| SpoolError::io("reading the signer manifest", error))?;
+        // A span past every record of the live stream is a closed stream's: what a crash between
+        // a discontinuity and the manifest's reset leaves (BUG-0061).
+        if signers.current().is_some_and(|span| span.from > seq) {
+            signers = permguard_stream::Signers::empty();
+            signers
+                .save(&directory.join(permguard_stream::SIGNERS_FILE))
+                .map_err(|error| SpoolError::io("resetting the signer manifest", error))?;
+        }
 
         Ok(Self {
             directory,
@@ -694,6 +702,12 @@ impl Spool {
         self.state.acked = 0;
         self.state.acked_digest = GENESIS.to_owned();
         write_state(&self.directory, &self.state)?;
+        // The successor is signed from its own genesis: the closed stream's spans name sequences
+        // it does not have, and kept they refuse its first batch as a regression (BUG-0061).
+        self.signers = permguard_stream::Signers::empty();
+        self.signers
+            .save(&self.directory.join(permguard_stream::SIGNERS_FILE))
+            .map_err(|error| SpoolError::io("resetting the signer manifest", error))?;
 
         self.open = None;
         for (_, path) in self.segments()? {

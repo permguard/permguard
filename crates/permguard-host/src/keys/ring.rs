@@ -953,6 +953,22 @@ impl Ring {
         self.read().epoch
     }
 
+    /// The epoch the active key was prepublished at, from the journal: what tells a key a pin's
+    /// set published from one a later rotation added (BUG-0104). `None` without an active key.
+    pub fn active_published_epoch(&self) -> Result<Option<u64>, RingError> {
+        let Some(active) = self.read().active().map(|key| key.kid.clone()) else {
+            return Ok(None);
+        };
+        let entries = {
+            let _serial = self.serial();
+            journal_entries(&self.dir)?
+        };
+        Ok(entries
+            .into_iter()
+            .find(|entry| entry.kind == Kind::Prepublished && entry.kid == active)
+            .map(|entry| entry.epoch))
+    }
+
     fn read(&self) -> std::sync::RwLockReadGuard<'_, Materialized> {
         self.state.read().unwrap_or_else(PoisonError::into_inner)
     }
