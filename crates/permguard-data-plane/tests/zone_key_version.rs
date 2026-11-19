@@ -53,8 +53,8 @@ fn a_spool_written_under_the_commitment_key_of_before_refuses_its_version() {
     )
     .expect("an old segment");
 
-    let refused =
-        check_zone_key_version(&spool, &archive, &tags(7, 1)).expect_err("v1 named another key");
+    let refused = check_zone_key_version(&spool, &archive, &tags(7, 1), None)
+        .expect_err("v1 named another key");
     assert!(
         format!("{refused:#}").contains("zone_key_version"),
         "{refused:#}"
@@ -64,17 +64,17 @@ fn a_spool_written_under_the_commitment_key_of_before_refuses_its_version() {
         "nothing recorded on a refusal"
     );
 
-    check_zone_key_version(&spool, &archive, &tags(7, 2)).expect("a raised version starts");
-    check_zone_key_version(&spool, &archive, &tags(7, 2)).expect("and starts again");
+    check_zone_key_version(&spool, &archive, &tags(7, 2), None).expect("a raised version starts");
+    check_zone_key_version(&spool, &archive, &tags(7, 2), None).expect("and starts again");
 }
 
 #[test]
 fn a_version_witnessed_under_one_key_is_refused_under_another() {
     let (spool, archive) = spool_and_archive("witnessed");
-    check_zone_key_version(&spool, &archive, &tags(7, 1)).expect("first seen");
-    check_zone_key_version(&spool, &archive, &tags(7, 1)).expect("the same key");
-    let refused =
-        check_zone_key_version(&spool, &archive, &tags(8, 1)).expect_err("another key under v1");
+    check_zone_key_version(&spool, &archive, &tags(7, 1), None).expect("first seen");
+    check_zone_key_version(&spool, &archive, &tags(7, 1), None).expect("the same key");
+    let refused = check_zone_key_version(&spool, &archive, &tags(8, 1), None)
+        .expect_err("another key under v1");
     assert!(
         format!("{refused:#}").contains("another key"),
         "{refused:#}"
@@ -95,7 +95,7 @@ fn a_version_witnessed_under_one_key_is_refused_under_another() {
 /// The witness `ZONE_KEYS` of what `version` and `root` tag, as `check_zone_key_version` writes it.
 fn witnessed(root: u8, version: u64) -> String {
     let (spool, archive) = spool_and_archive(&format!("witness-{root}-{version}"));
-    check_zone_key_version(&spool, &archive, &tags(root, version)).expect("witnessed");
+    check_zone_key_version(&spool, &archive, &tags(root, version), None).expect("witnessed");
     std::fs::read_to_string(zone_keys_path(&spool)).expect("recorded")
 }
 
@@ -105,7 +105,7 @@ fn the_zone_key_witness_lives_beside_the_spool_seeded_once_from_its_copy() {
     // its key still holds the version.
     let (spool, archive) = spool_and_archive("seeded-spool");
     std::fs::write(spool.join(ZONE_KEYS_FILE), witnessed(7, 1)).expect("an old witness");
-    let refused = check_zone_key_version(&spool, &archive, &tags(8, 1))
+    let refused = check_zone_key_version(&spool, &archive, &tags(8, 1), None)
         .expect_err("another key under the seeded v1");
     assert!(
         format!("{refused:#}").contains("another key"),
@@ -115,14 +115,14 @@ fn the_zone_key_witness_lives_beside_the_spool_seeded_once_from_its_copy() {
         !zone_keys_path(&spool).exists(),
         "nothing recorded on a refusal"
     );
-    check_zone_key_version(&spool, &archive, &tags(7, 1)).expect("the same key");
+    check_zone_key_version(&spool, &archive, &tags(7, 1), None).expect("the same key");
     assert_eq!(
         std::fs::read_to_string(zone_keys_path(&spool)).expect("seeded"),
         witnessed(7, 1)
     );
     // Once seeded, the copy in the spool is no longer read.
     std::fs::remove_file(spool.join(ZONE_KEYS_FILE)).expect("archived away");
-    check_zone_key_version(&spool, &archive, &tags(8, 1))
+    check_zone_key_version(&spool, &archive, &tags(8, 1), None)
         .expect_err("still refused from the live witness");
 
     // The spool archived and gone: seeded from the archive's copy.
@@ -130,9 +130,9 @@ fn the_zone_key_witness_lives_beside_the_spool_seeded_once_from_its_copy() {
     std::fs::remove_dir(&spool).expect("finalized");
     std::fs::create_dir_all(&archive).expect("archived");
     std::fs::write(archive.join(ZONE_KEYS_FILE), witnessed(7, 1)).expect("the archived witness");
-    check_zone_key_version(&spool, &archive, &tags(8, 1))
+    check_zone_key_version(&spool, &archive, &tags(8, 1), None)
         .expect_err("another key under the archived v1");
-    check_zone_key_version(&spool, &archive, &tags(7, 1)).expect("the same key");
+    check_zone_key_version(&spool, &archive, &tags(7, 1), None).expect("the same key");
     assert!(zone_keys_path(&spool).exists(), "seeded beside the spool");
 }
 
@@ -146,11 +146,72 @@ fn an_archived_spool_still_refuses_a_version_its_markers_named() {
         "{\"v\":1,\"seq\":1,\"kind\":\"marker\",\"commitments\":{\"alg\":\"HMAC-SHA256\",\"key_version\":\"v1\"}}\n",
     )
     .expect("an archived segment");
-    let refused =
-        check_zone_key_version(&spool, &archive, &tags(7, 1)).expect_err("v1 named another key");
+    let refused = check_zone_key_version(&spool, &archive, &tags(7, 1), None)
+        .expect_err("v1 named another key");
     assert!(
         format!("{refused:#}").contains("zone_key_version"),
         "{refused:#}"
     );
-    check_zone_key_version(&spool, &archive, &tags(7, 2)).expect("a raised version starts");
+    check_zone_key_version(&spool, &archive, &tags(7, 2), None).expect("a raised version starts");
+}
+
+/// The zone keys of the Host `host`, as its coordinator root derives them.
+fn tags_of(root: u8, version: u64, host: [u8; 16]) -> ZoneHandle {
+    ZoneHandle::coordinated(
+        ZonePurpose::DecisionCommitment,
+        Coordinator::new(
+            Root::from_material(&[root; 32], KeyVersion::new(version).expect("a version"))
+                .expect("a root"),
+            host,
+        ),
+    )
+}
+
+/// BUG-0079: the zone keys derive from the `host_id`, so after an identity reset the same root
+/// and version are another key; the new Host witnesses its own, and the spool starts. Without a
+/// reset, another key under the version is still refused.
+#[test]
+fn after_an_identity_reset_the_new_host_witnesses_its_own_key_under_the_same_version() {
+    use permguard_host::identity::witness::HostScope;
+
+    let scope = |host: &str, reset: bool| HostScope {
+        host_id: host.to_owned(),
+        reset,
+    };
+    // Written before witnesses named a Host: the old Host's, by version alone.
+    let (spool, archive) = spool_and_archive("reset-legacy");
+    check_zone_key_version(&spool, &archive, &tags_of(7, 1, [1; 16]), None).expect("witnessed");
+    check_zone_key_version(
+        &spool,
+        &archive,
+        &tags_of(7, 1, [2; 16]),
+        Some(&scope("new-host", false)),
+    )
+    .expect_err("another key under v1, and no reset to explain it");
+    check_zone_key_version(
+        &spool,
+        &archive,
+        &tags_of(7, 1, [2; 16]),
+        Some(&scope("new-host", true)),
+    )
+    .expect("after a reset the new Host's v1 is its own key");
+    check_zone_key_version(
+        &spool,
+        &archive,
+        &tags_of(7, 1, [2; 16]),
+        Some(&scope("new-host", true)),
+    )
+    .expect("and starts again");
+    check_zone_key_version(
+        &spool,
+        &archive,
+        &tags_of(8, 1, [2; 16]),
+        Some(&scope("new-host", true)),
+    )
+    .expect_err("a reset explains nothing for the new Host's own label");
+    let text = std::fs::read_to_string(zone_keys_path(&spool)).expect("the witness");
+    assert!(
+        text.contains("v1@retired\t") && text.contains("v1@new-host\t"),
+        "{text}"
+    );
 }

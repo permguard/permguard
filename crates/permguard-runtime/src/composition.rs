@@ -1696,7 +1696,12 @@ impl Composition {
 
         // Before the first record is written, not after: the damage a silent key change does is
         // done by the records made under it.
-        crate::witness::check(config, pseudonymizer.as_deref())?;
+        // Per Host (BUG-0079): a reset's new identity derives new keys under the same labels.
+        let host_scope = permguard_host::identity::witness::HostScope::of(
+            config.working_dir(),
+            &host_identity.host_id(),
+        );
+        crate::witness::check_for(config, pseudonymizer.as_deref(), &host_scope)?;
 
         let destination = self.audit_for(config)?;
         // The audit engine (WP-3.5): every record of the process in a trail per (class,
@@ -2028,7 +2033,7 @@ impl Composition {
         // The same silent-key-change guard the server just passed, once per realm against its own
         // witness — before any realm record is written, for the same reason.
         for realm in realms.all() {
-            crate::witness::check_realm(config, realm)?;
+            crate::witness::check_realm(config, realm, None)?;
         }
 
         record_build(&self.identity, config, self.server.name());

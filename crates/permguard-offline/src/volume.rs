@@ -16,8 +16,10 @@ use permguard_core::{Config, ConfigFile, Layers};
 use permguard_host::keys::custody::Custodian;
 use permguard_host::storage::volume::Volume;
 
-/// The configuration `serve` reads from `file` and the environment, validated. The Planes'
-/// sections are not an offline command's: they are left unread.
+/// The configuration `serve` reads from `file` and the environment, validated as an offline
+/// command needs it: no listen address is required, as nothing is bound (BUG-0085). The Planes'
+/// sections are not an offline command's: they are left unread. With no `file` it is the
+/// environment over the defaults, the `development` custody's plaintext files included.
 pub fn config(version: &'static str, file: Option<&Path>) -> Result<Config> {
     let settings = match file {
         Some(path) => ConfigFile::load(path)
@@ -32,7 +34,9 @@ pub fn config(version: &'static str, file: Option<&Path>) -> Result<Config> {
             .with_file(settings)
             .with_environment(std::env::vars()),
     )?;
-    config.validate().context("checking the configuration")?;
+    config
+        .validate_offline()
+        .context("checking the configuration")?;
     Ok(config)
 }
 

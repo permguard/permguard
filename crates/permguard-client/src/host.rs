@@ -695,6 +695,7 @@ impl Host for GrpcHost {
             host_id: answer.host_id,
             epoch: answer.epoch,
             fingerprint: answer.fingerprint,
+            first_fingerprint: answer.first_fingerprint,
             document: URL_SAFE_NO_PAD.encode(answer.document),
             successions: answer
                 .successions
@@ -724,6 +725,7 @@ impl Host for GrpcHost {
             host_id: answer.host_id,
             epoch: answer.epoch,
             fingerprint: answer.fingerprint,
+            first_fingerprint: answer.first_fingerprint,
             verified: answer.verified,
         })
     }

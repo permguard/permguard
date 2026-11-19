@@ -161,6 +161,12 @@ is cut.
 
 ### Fixed
 
+- **A Host starts again after an identity reset, with its configuration unchanged.**
+  The audit pseudonym key and the zone keys derive from the `host_id`, which a reset changes, so the next start refused them as a key changed under the same `key_version` / `zone_key_version`; a key witness is now the Host's (`<version>@<host_id>` in `operations/state/audit-pseudonym-versions` and beside the decision spool), the new Host records its own under the configured versions, and a witness written by an earlier release is adopted when it matches, or attributed to the retired identity when the volume holds one. Without a reset, a key changed under its version is still refused.
+- **`host identity reset plan` and `reset run` work without `--server-config`, as their help says.**
+  An offline command checks every setting it reads but no longer requires a listen address, which it never binds; a refusal names `--server-config` only when it was given, and the configuration read from the environment otherwise.
+- **`host identity show` prints the fingerprint a join pins, after a rotation as before it.**
+  `GET /host/v1/identity` and gRPC `GetIdentity` gain `first_fingerprint`, the epoch-1 key's, which `host members join --pin-fingerprint`, `host identity verify --fingerprint` and an invitation handoff name; `fingerprint` is the current key's everywhere, the verification answer (`POST /host/v1/identity/verify`, gRPC `VerifyIdentity`) included, which gains `first_fingerprint` for the pin it proved and used to call it `fingerprint`. A join whose pin is not the handoff's names the fingerprint it expects.
 - **A member Host running both Planes ships its decisions and events to its coordinator again.**
   Since 0.1.12 the local ship task fenced every run first and a `decisions.ship` or `events.ship` membership shipped nothing; a membership's task now takes the stream's runs from the local task, and the local task reads every run, whatever fences it, so the coordinator and the Host's own Control Plane both receive every record (DEC-0034 option A). The local task also ships the run opened before its first pass, which it used to leave behind.
 - **A member that re-joins with the same ship task ships again.**

@@ -228,3 +228,44 @@ fn test_a_real_keyed_pseudonymiser_leaves_no_key_material_on_disk() {
     )
     .expect_err("a different key under the same version is caught");
 }
+
+/// BUG-0079: the audit pseudonym key derives from the `host_id`, so after an identity reset the
+/// same key and version produce another witness; the new Host's start records its own, the
+/// retired one's kept apart. Without a reset it is still a key changed under its label.
+#[test]
+fn test_after_an_identity_reset_the_new_host_starts_under_the_same_version() {
+    use permguard_host::identity::witness::HostScope;
+
+    let root = volume("reset");
+    let fresh = config(&root);
+    let old = Keyed {
+        key: "derived-for-old-host",
+        version: "v1",
+    };
+    let new = Keyed {
+        key: "derived-for-new-host",
+        version: "v1",
+    };
+    let scope = |host: &str, reset: bool| HostScope {
+        host_id: host.to_owned(),
+        reset,
+    };
+    witness::check_for(&fresh, Some(&old), &scope("old-host", false)).expect("the old Host");
+    witness::check_for(&fresh, Some(&new), &scope("new-host", false))
+        .expect("another Host's witness is not this one's");
+    witness::check_for(&fresh, Some(&new), &scope("new-host", true)).expect("and again");
+    witness::check_for(&fresh, Some(&old), &scope("new-host", true))
+        .expect_err("the new Host's own label now names another key");
+
+    // A witness written before entries named a Host: the old Host's key under `v1`.
+    let legacy = volume("reset-legacy");
+    let before = config(&legacy);
+    witness::check(&before, Some(&old)).expect("recorded by version alone");
+    witness::check_for(&before, Some(&new), &scope("new-host", false))
+        .expect_err("no reset explains another key");
+    witness::check_for(&before, Some(&new), &scope("new-host", true))
+        .expect("the reset's new Host starts with the configuration unchanged");
+    let text = fs::read_to_string(witness::witness_path(&before)).expect("the file reads");
+    assert!(text.starts_with("v1@retired\t"), "{text}");
+    assert!(text.contains("v1@new-host\t"), "{text}");
+}

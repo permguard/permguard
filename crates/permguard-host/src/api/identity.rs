@@ -26,8 +26,12 @@ use crate::operations::mutation::{Applied, Failure};
 pub struct IdentityView {
     pub host_id: String,
     pub epoch: u64,
-    /// The current identity key's fingerprint. `first_public_key` remains the chain's pin.
+    /// The current identity key's fingerprint.
     pub fingerprint: String,
+    /// The epoch-1 key's fingerprint, the chain's pin: what `host members join
+    /// --pin-fingerprint`, `host identity verify --fingerprint` and an invitation handoff name,
+    /// after a rotation as before it (BUG-0224).
+    pub first_fingerprint: String,
     /// The signed identity document of the current epoch, COSE_Sign1.
     pub document: String,
     /// Every succession record, oldest first, COSE_Sign1 each.
@@ -52,7 +56,10 @@ pub struct VerifyIdentity {
 pub struct IdentityVerified {
     pub host_id: String,
     pub epoch: u64,
+    /// The current identity key's fingerprint, as [`IdentityView`] names it (BUG-0224).
     pub fingerprint: String,
+    /// The epoch-1 key's fingerprint: the pin the request named.
+    pub first_fingerprint: String,
     pub verified: bool,
 }
 
@@ -83,6 +90,7 @@ impl HostApi {
             host_id: identity.host_id_text(),
             epoch: identity.epoch(),
             fingerprint: identity.fingerprint(),
+            first_fingerprint: identity.first_fingerprint().to_owned(),
             document: URL_SAFE_NO_PAD.encode(identity.document()),
             successions: identity
                 .successions()
@@ -128,7 +136,7 @@ impl HostApi {
             .map_err(|refusal| {
                 Refusal::new(ErrorClass::Unavailable, refusal.code, refusal.reason)
             })?;
-        if proved.host_id != host_id || proved.fingerprint != request.fingerprint {
+        if proved.host_id != host_id || proved.first_fingerprint != request.fingerprint {
             return Err(Refusal::new(
                 ErrorClass::Validation,
                 codes::host::SESSION_REFUSED,
@@ -139,6 +147,7 @@ impl HostApi {
             host_id: crate::identity::record::uuid_text(&proved.host_id),
             epoch: proved.epoch,
             fingerprint: proved.fingerprint,
+            first_fingerprint: proved.first_fingerprint,
             verified: true,
         })
     }
@@ -381,6 +390,8 @@ mod tests {
 
     #[tokio::test]
     async fn identity_verification_binds_the_live_proof_without_mutating_memberships() {
+        const CURRENT: &str =
+            "sha256:4444444444444444444444444444444444444444444444444444444444444444";
         let mut api = facade("identity-live-proof-binding");
         let requested_host = host_id("0198f2aa-0000-7000-8000-000000000002").expect("host id");
         let fingerprint = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -401,7 +412,8 @@ mod tests {
             ProvedPeer {
                 host_id: [7; 16],
                 epoch: 4,
-                fingerprint: fingerprint.to_owned(),
+                fingerprint: CURRENT.to_owned(),
+                first_fingerprint: fingerprint.to_owned(),
             },
         );
         let wrong_host = api
@@ -418,7 +430,8 @@ mod tests {
             ProvedPeer {
                 host_id: requested_host,
                 epoch: 4,
-                fingerprint:
+                fingerprint: CURRENT.to_owned(),
+                first_fingerprint:
                     "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                         .to_owned(),
             },
@@ -437,7 +450,8 @@ mod tests {
             ProvedPeer {
                 host_id: requested_host,
                 epoch: 4,
-                fingerprint: fingerprint.to_owned(),
+                fingerprint: CURRENT.to_owned(),
+                first_fingerprint: fingerprint.to_owned(),
             },
         );
         let proved = api
@@ -449,7 +463,10 @@ mod tests {
             crate::identity::record::uuid_text(&requested_host)
         );
         assert_eq!(proved.epoch, 4);
-        assert_eq!(proved.fingerprint, fingerprint);
+        // BUG-0224: `fingerprint` is the current key's, as the identity view names it; the pin
+        // is `first_fingerprint`.
+        assert_eq!(proved.fingerprint, CURRENT);
+        assert_eq!(proved.first_fingerprint, fingerprint);
         assert!(proved.verified);
         assert_eq!(
             api.members(&admin(), None).expect("members after proof"),
@@ -473,6 +490,11 @@ mod tests {
             .await
             .expect_err("a stale epoch");
         assert!(matches!(stale, Refusal::Conflict { revision: 1, .. }));
+        let before = api.identity(&admin()).expect("read");
+        assert_eq!(
+            before.fingerprint, before.first_fingerprint,
+            "one key at epoch 1"
+        );
         let rotated = api
             .rotate_identity(&admin(), rotate("r1", 1))
             .await
@@ -485,6 +507,12 @@ mod tests {
         assert_eq!(again, rotated, "the stored answer, not a second rotation");
         let view = api.identity(&admin()).expect("read");
         assert_eq!(view.successions, vec![rotated.succession.clone()]);
+        // BUG-0224: the pin a join and a verification name stays printed after a rotation.
+        assert_eq!(view.first_fingerprint, before.fingerprint);
+        assert_ne!(
+            view.fingerprint, before.fingerprint,
+            "the current key moved"
+        );
         let phases: Vec<_> = trail
             .events
             .lock()

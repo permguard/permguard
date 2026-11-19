@@ -102,11 +102,19 @@ pub fn zone_keys_path(spool: &std::path::Path) -> std::path::PathBuf {
 /// key without showing it. A Host holding only delivered keys cannot compute it and records `-`.
 /// It lives beside the spool, seeded once from the copy a release before WP-6.1c kept in the
 /// spool, or from the archive's when the spool went (owner decision of 2026-10-18).
+///
+/// The witness is the Host's (BUG-0079): the zone keys derive from the `host_id`, so the Host an
+/// identity reset provisions witnesses its own key under the configured version, and the retired
+/// one's entries stay its own (`permguard_host::identity::witness`). With no `scope` entries are
+/// by version alone.
 pub fn check_zone_key_version(
     spool: &std::path::Path,
     archive: &std::path::Path,
     keys: &permguard_host::secrets::ZoneHandle,
+    scope: Option<&permguard_host::identity::witness::HostScope>,
 ) -> anyhow::Result<()> {
+    use permguard_host::identity::witness::{self, Witnessed};
+
     let version = keys.version().to_string();
     let witness = keys
         .mac(
@@ -131,34 +139,45 @@ pub fn check_zone_key_version(
             None => (String::new(), false),
         },
     };
-    let entries: Vec<(String, String)> = held
+    let mut entries: Vec<(String, String)> = held
         .lines()
         .filter_map(|line| line.split_once('\t'))
         .map(|(version, witness)| (version.to_owned(), witness.to_owned()))
         .collect();
-    if let Some((_, recorded)) = entries.iter().find(|(held, _)| *held == version) {
-        if recorded != "-" && witness != "-" && *recorded != witness {
+    let scoped = format!("{version}@");
+    let known = entries
+        .iter()
+        .any(|(label, _)| *label == version || label.starts_with(&scoped));
+    let (outcome, changed) =
+        witness::check(&mut entries, &version, &witness, scope, |held, now| {
+            held == "-" || now == "-" || held == now
+        });
+    match outcome {
+        Witnessed::KeyChanged => anyhow::bail!(
+            "the zone key version `{version}` names another key than the one this spool \
+             recorded it with: a new key takes a new `operations.secrets.zone_key_version`"
+        ),
+        Witnessed::Recorded
+            if !known
+                && (marker_versions(spool)?.contains(&version)
+                    || marker_versions(archive)?.contains(&version)) =>
+        {
             anyhow::bail!(
-                "the zone key version `{version}` names another key than the one this spool \
-                 recorded it with: a new key takes a new `operations.secrets.zone_key_version`"
-            );
+                "this spool holds records whose markers name `{version}` under the commitment key \
+                 before zone keys (WP-3.3): raise `operations.secrets.zone_key_version` so one \
+                 version never names two keys"
+            )
         }
-        return if seeded {
-            write_witness(&path, &held)
-        } else {
-            Ok(())
-        };
+        _ => {}
     }
-    if marker_versions(spool)?.contains(&version) || marker_versions(archive)?.contains(&version) {
-        anyhow::bail!(
-            "this spool holds records whose markers name `{version}` under the commitment key \
-             before zone keys (WP-3.3): raise `operations.secrets.zone_key_version` so one version \
-             never names two keys"
-        );
+    if changed || seeded {
+        let text: String = entries
+            .iter()
+            .map(|(version, witness)| format!("{version}\t{witness}\n"))
+            .collect();
+        write_witness(&path, &text)?;
     }
-    let mut text = held;
-    text.push_str(&format!("{version}\t{witness}\n"));
-    write_witness(&path, &text)
+    Ok(())
 }
 
 /// The witness file at `path`, when there is one.
@@ -305,6 +324,10 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
                         .working_dir()
                         .join(permguard_decisions::archive::TARGET),
                     &keys,
+                    Some(&permguard_host::identity::witness::HostScope::of(
+                        config.working_dir(),
+                        &host_id,
+                    )),
                 )
             });
             if let Err(error) = checked {

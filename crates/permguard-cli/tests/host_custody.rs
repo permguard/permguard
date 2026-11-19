@@ -442,3 +442,52 @@ fn an_interrupted_reset_is_completed_by_reset_run_without_a_plan() {
     // And with nothing under way, a run without a plan is a usage error.
     assert!(!host(&["reset", "run"]).status.success());
 }
+
+/// BUG-0085: the help's example, on a volume of the `development` custody with no
+/// `--server-config`: the reset plan and its run need no listen address, as nothing is bound.
+#[test]
+fn the_offline_reset_runs_without_a_server_configuration_on_a_development_volume() {
+    let dir = scratch("reset-dev");
+    let volume = dir.join("volume");
+    let volume_arg = volume.to_str().expect("utf-8");
+    let plan = dir.join("reset.plan");
+    let plan_arg = plan.to_str().expect("utf-8");
+    let host = |args: &[&str]| {
+        let mut all = vec!["-o", "json", "host", "identity"];
+        all.extend_from_slice(args);
+        all.extend_from_slice(&["--volume", volume_arg]);
+        run(&dir, "unused", &all)
+    };
+    let provisioned = json(&host(&["provision"]));
+    assert_eq!(provisioned["custody"], "development");
+    {
+        use permguard_server::offline;
+        let config = offline::config(env!("CARGO_PKG_VERSION"), None)
+            .expect("no listen address is needed offline");
+        let held = permguard_host::storage::volume::Volume::claim(
+            &volume,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("the volume");
+        let custodian =
+            std::sync::Arc::new(permguard_host::keys::custody::Custodian::development());
+        let host_id = permguard_host::identity::host_id_of(&held)
+            .expect("read")
+            .expect("provisioned");
+        let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+            config.time_max_clock_skew(),
+        ));
+        for ring in offline::rings(&config, &held, host_id, None, &custodian, time).expect("rings")
+        {
+            ring.maintain_now().expect("maintained");
+        }
+    }
+    let planned = json(&host(&[
+        "reset", "plan", "--reason", "drill", "--out", plan_arg,
+    ]));
+    assert_eq!(planned["host_id"], provisioned["host_id"]);
+    let ran = json(&host(&["reset", "run", "--confirm-file", plan_arg]));
+    assert_eq!(ran["old_host_id"], provisioned["host_id"]);
+    assert_ne!(ran["host_id"], provisioned["host_id"]);
+    let _ = std::fs::remove_dir_all(dir);
+}

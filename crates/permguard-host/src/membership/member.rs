@@ -106,7 +106,10 @@ pub struct TaskOpened {
 pub struct ProvedPeer {
     pub host_id: [u8; 16],
     pub epoch: u64,
+    /// The current epoch's key fingerprint.
     pub fingerprint: String,
+    /// The epoch-1 key's fingerprint: what a pin names.
+    pub first_fingerprint: String,
 }
 
 /// The connection of an open task session: one message, one answer, in order; closed when

@@ -76,6 +76,7 @@ const MINTED: &[&str] = &[
     "old_host_id",
     "host_id",
     "fingerprint",
+    "first_fingerprint",
     "witness",
     // The plan receipts and approvals each facade signed with its own key (WP-3.9).
     "receipt",

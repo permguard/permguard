@@ -649,11 +649,28 @@ fn migration_of(
     Ok(Migration::Server(subsystem.to_owned(), what))
 }
 
+/// The server's configuration as an offline command reads it: `--server-config` and the
+/// environment, or the environment alone over the defaults (BUG-0085); a refusal names where the
+/// setting came from.
+pub(super) fn server_config_of(
+    server_config: Option<&Path>,
+) -> Result<permguard_core::Config, Failure> {
+    permguard_offline::volume::config(permguard_core::build::VERSION, server_config).map_err(
+        |error| {
+            Failure::usage(match server_config {
+                Some(_) => format!("--server-config: {error:#}"),
+                None => format!(
+                    "the configuration read from the environment (no --server-config): {error:#}"
+                ),
+            })
+        },
+    )
+}
+
 /// The configuration a restore or a migration reads, refused when it requires dual control: an
 /// offline plan then needs an approval, which an offline volume cannot collect.
 pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
-    let config = permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
-        .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+    let config = server_config_of(server_config)?;
     if config
         .assurance()
         .requires(permguard_core::assurance::Control::OperationsDualControl)

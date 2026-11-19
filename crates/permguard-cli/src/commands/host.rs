@@ -1036,9 +1036,12 @@ fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<Ex
                 }
             };
             if handoff.coordinator.fingerprint != fingerprint {
-                return Err(Failure::usage(
-                    "the coordinator fingerprint differs from the invitation handoff",
-                ));
+                // A pin is the coordinator's epoch-1 fingerprint, which `host identity show`
+                // prints as `first_fingerprint` after a rotation as before it (BUG-0224).
+                return Err(Failure::usage(format!(
+                    "the coordinator fingerprint differs from the invitation handoff, which pins                      {}: pass the coordinator's first fingerprint (`host identity show` prints                      it as `first_fingerprint`), not the current one",
+                    handoff.coordinator.fingerprint
+                )));
             }
             let answer = online_host_with_store(globals, trace, &member_url, &store, true)?
                 .join(&JoinMembership {
@@ -1539,9 +1542,7 @@ fn reset(
                 ));
             }
             let held = claim(&volume, trace)?;
-            let config =
-                permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
-                    .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+            let config = super::offline_ops::server_config_of(server_config)?;
             let custodian = custodian(&held, server_config)?;
             let opened = open_identity(&held, server_config)?;
             let mutations =
@@ -1646,9 +1647,7 @@ fn reset(
         }
         ResetAction::Run { confirm_file } => {
             let held = claim(&volume, trace)?;
-            let config =
-                permguard_offline::volume::config(permguard_core::build::VERSION, server_config)
-                    .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+            let config = super::offline_ops::server_config_of(server_config)?;
             let custodian = custodian(&held, server_config)?;
             let suite = identity::suite_of(&held)
                 .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?

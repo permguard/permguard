@@ -182,7 +182,10 @@ message GetIdentityResponse {
   repeated string protocol_versions = 4;
   string host_id = 5;
   uint64 epoch = 6;
+  // The current epoch's key fingerprint.
   string fingerprint = 7;
+  // The epoch-1 key's fingerprint: what a pin names (BUG-0224).
+  string first_fingerprint = 8;
 }
 message VerifyIdentityRequest {
   string address = 1;
@@ -192,8 +195,11 @@ message VerifyIdentityRequest {
 message VerifyIdentityResponse {
   string host_id = 1;
   uint64 epoch = 2;
+  // The current epoch's key fingerprint, as `GetIdentityResponse` names it.
   string fingerprint = 3;
   bool verified = 4;
+  // The epoch-1 key's fingerprint: the pin the request named (BUG-0224).
+  string first_fingerprint = 5;
 }
 // `POST /host/v1/identity/rotate` (WP-2.2), under `identity.admin`.
 message RotateIdentityRequest {

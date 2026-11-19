@@ -2231,6 +2231,17 @@ produce: use `EdDSA` or `ES256`"
     /// Validation runs after every layer has been applied, so a command-line override can satisfy a
     /// requirement the configuration file left out.
     pub fn validate(&self) -> Result<()> {
+        self.validate_for(true)
+    }
+
+    /// Checks the assembled config as an offline command reads it (BUG-0085): every check
+    /// [`Self::validate`] makes but the one that a process listens somewhere, since an offline
+    /// command on a stopped volume binds nothing.
+    pub fn validate_offline(&self) -> Result<()> {
+        self.validate_for(false)
+    }
+
+    fn validate_for(&self, listening: bool) -> Result<()> {
         // Before anything that touches the filesystem: this is a mistake in the configuration's
         // shape, and the message should name it rather than whichever file check fires first.
         if let Some(tls) = self.public_tls.as_ref()
@@ -2262,7 +2273,8 @@ produce: use `EdDSA` or `ES256`"
         // could ever reach it, so starting it can only be a mistake.
         // An embedded process is the one exception, and says so itself: its application reaches
         // it, and it binds none of the addresses a configuration may still name.
-        if !self.embedded
+        if listening
+            && !self.embedded
             && self.public_http_addr().is_none()
             && self.public_grpc_addr().is_none()
             && self.declared_extra_addresses()?.is_empty()

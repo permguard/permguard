@@ -1413,6 +1413,72 @@ async fn test_a_development_volume_provisions_its_identity_at_the_first_start_an
     );
 }
 
+/// BUG-0079: after an identity reset the server starts with its configuration unchanged and
+/// serves the new `host_id`, although the audit pseudonym key it derives per Host is another key
+/// under the same configured version; the witness of the retired identity stays apart. The volume
+/// here is what a reset leaves: the old identity under `retired/<old host_id>/`, the next one
+/// provisioned at the start, and a witness written before witnesses named their Host.
+#[tokio::test]
+async fn test_after_an_identity_reset_the_server_starts_with_the_configuration_unchanged() {
+    use permguard_host::identity::record::Init;
+
+    let path = config_file(
+        "identity-reset-start",
+        &format!(
+            "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: directory\n    \
+             directory: {}\n  audit:\n    pseudonym:\n      enabled: true\n      key_ref: \
+             audit-pseudonym\n      key_version: \"v1\"\n",
+            recovery_secrets()
+        ),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    let serve = || async {
+        app()
+            .with_secrets(Box::new(StubSecrets))
+            .dispatch_to(&serve_action(&path), &mut Vec::new())
+            .await
+    };
+    serve().await.expect("the first start");
+    let host_of = |volume: &Path| {
+        Init::decode(&fs::read(volume.join("host/identity/INIT")).expect("INIT"))
+            .expect("reads")
+            .host_id
+    };
+    let old = host_of(&volume);
+    let witness = volume.join("operations/state/audit-pseudonym-versions");
+    let written = fs::read_to_string(&witness).expect("the pseudonym key is witnessed");
+    let old_text = permguard_host::identity::record::uuid_text(&old);
+    assert!(written.contains(&format!("@{old_text}\t")), "{written}");
+    // As a release before witnesses named their Host left it.
+    fs::write(&witness, written.replace(&format!("@{old_text}"), "")).expect("legacy");
+
+    // What a reset leaves: the old identity retired, the next one provisioned at the start.
+    let identity = volume.join("host/identity");
+    let aside = volume.join("identity-aside");
+    fs::rename(&identity, &aside).expect("moved");
+    let retired = identity.join("retired").join(&old_text);
+    fs::create_dir_all(&retired).expect("created");
+    fs::copy(aside.join("INIT"), retired.join("INIT")).expect("kept");
+
+    serve()
+        .await
+        .expect("the reset's new Host starts with the configuration unchanged");
+    let new = host_of(&volume);
+    assert_ne!(new, old, "a new host_id");
+    let witnessed = fs::read_to_string(&witness).expect("the witness");
+    assert!(witnessed.contains("@retired\t"), "{witnessed}");
+    assert!(
+        witnessed.contains(&format!(
+            "@{}\t",
+            permguard_host::identity::record::uuid_text(&new)
+        )),
+        "{witnessed}"
+    );
+    serve().await.expect("and starts again");
+    let _ = fs::remove_dir_all(&volume);
+}
+
 #[tokio::test]
 async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints_nothing() {
     let storage = production_storage("50G");

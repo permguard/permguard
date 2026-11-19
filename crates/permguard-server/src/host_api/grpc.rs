@@ -216,6 +216,7 @@ impl IdentityService for Served {
             host_id: view.host_id,
             epoch: view.epoch,
             fingerprint: view.fingerprint,
+            first_fingerprint: view.first_fingerprint,
         }))
     }
 
@@ -241,6 +242,7 @@ impl IdentityService for Served {
             host_id: proved.host_id,
             epoch: proved.epoch,
             fingerprint: proved.fingerprint,
+            first_fingerprint: proved.first_fingerprint,
             verified: proved.verified,
         }))
     }

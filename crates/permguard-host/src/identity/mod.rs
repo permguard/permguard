@@ -27,6 +27,7 @@
 
 pub mod record;
 pub mod reset;
+pub mod witness;
 
 use std::sync::{Arc, PoisonError, RwLock};
 

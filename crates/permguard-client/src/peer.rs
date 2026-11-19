@@ -520,7 +520,8 @@ impl PeerConnector {
         Ok(ProvedPeer {
             host_id: peer.host_id,
             epoch: peer.epoch,
-            fingerprint: peer.first_fingerprint().to_owned(),
+            fingerprint: peer.fingerprint().to_owned(),
+            first_fingerprint: peer.first_fingerprint().to_owned(),
         })
     }
 }

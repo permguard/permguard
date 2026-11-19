@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 use permguard_core::{Config, Pseudonymizer, Realm};
+use permguard_host::identity::witness::{self, HostScope, Witnessed};
 
 /// The input every key is asked to pseudonymise, so that two keys can be told apart.
 ///
@@ -48,7 +49,18 @@ pub fn witness_path(config: &Config) -> PathBuf {
 ///
 /// Does nothing when pseudonymisation is off, and records the version the first time it sees it.
 pub fn check(config: &Config, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()> {
-    check_at(&witness_path(config), pseudonymizer)
+    check_at(&witness_path(config), pseudonymizer, None)
+}
+
+/// [`check`] for the Host `scope` names (BUG-0079): a key version is witnessed per Host, so the
+/// new Host an identity reset provisions records its own derivation under the labels configured,
+/// and the retired one's stay its own.
+pub fn check_for(
+    config: &Config,
+    pseudonymizer: Option<&dyn Pseudonymizer>,
+    scope: &HostScope,
+) -> Result<()> {
+    check_at(&witness_path(config), pseudonymizer, Some(scope))
 }
 
 /// The same guard for one realm, against the realm's own witness under `realms/<name>/state`.
@@ -57,13 +69,18 @@ pub fn check(config: &Config, pseudonymizer: Option<&dyn Pseudonymizer>) -> Resu
 /// and another in realm B is not a mismatch, and must not read as one. A realm whose key changed
 /// without its version changing refuses the start with the realm named — a mis-rotation that would
 /// silently corrupt a realm's trail is a configuration error to fix, not a fault to serve through.
-pub fn check_realm(config: &Config, realm: &Realm) -> Result<()> {
+pub fn check_realm(config: &Config, realm: &Realm, scope: Option<&HostScope>) -> Result<()> {
     let path = config.resolve(format!(
         "realms/{}/operations/state/audit-pseudonym-versions",
         realm.name()
     ));
 
-    check_at(&path, realm.pseudonymizer().map(|policy| policy.as_ref())).with_context(|| {
+    check_at(
+        &path,
+        realm.pseudonymizer().map(|policy| policy.as_ref()),
+        scope,
+    )
+    .with_context(|| {
         format!(
             "checking the pseudonymisation key of the realm `{}`",
             realm.name()
@@ -72,7 +89,11 @@ pub fn check_realm(config: &Config, realm: &Realm) -> Result<()> {
 }
 
 /// Refuses to start when a key version at `path` now means a different key than it did.
-fn check_at(path: &Path, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()> {
+fn check_at(
+    path: &Path,
+    pseudonymizer: Option<&dyn Pseudonymizer>,
+    scope: Option<&HostScope>,
+) -> Result<()> {
     let Some(pseudonymizer) = pseudonymizer else {
         return Ok(());
     };
@@ -80,13 +101,12 @@ fn check_at(path: &Path, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()
     let version = pseudonymizer.key_version().to_owned();
     let witness = pseudonymizer.pseudonymize(WITNESS_INPUT);
 
-    let recorded = read(path)?;
-
-    if let Some((_, previous)) = recorded.iter().find(|(known, _)| *known == version) {
-        if *previous == witness {
-            return Ok(());
-        }
-
+    let mut recorded = read(path)?;
+    let (outcome, changed) =
+        witness::check(&mut recorded, &version, &witness, scope, |held, now| {
+            held == now
+        });
+    if outcome == Witnessed::KeyChanged {
         bail!(
             "the audit pseudonymisation key changed but its version did not: version `{version}` \
              has already produced records under a different key, and writing more under the same \
@@ -98,8 +118,10 @@ fn check_at(path: &Path, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()
             path.display()
         );
     }
-
-    append(path, &version, &witness)
+    if changed {
+        write(path, &recorded)?;
+    }
+    Ok(())
 }
 
 /// Reads the versions this deployment has already recorded under.
@@ -119,24 +141,17 @@ fn read(path: &Path) -> Result<Vec<(String, String)>> {
         .collect())
 }
 
-/// Records that this version has been seen, so the next start can compare against it.
-fn append(path: &Path, version: &str, witness: &str) -> Result<()> {
+/// Records the versions seen, so the next start can compare against them.
+fn write(path: &Path, entries: &[(String, String)]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
         restrict(parent, 0o700)?;
     }
 
-    let mut text = match fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
-    };
-
-    if !text.is_empty() && !text.ends_with('\n') {
-        text.push('\n');
-    }
-
-    text.push_str(&format!("{version}\t{witness}\n"));
+    let text: String = entries
+        .iter()
+        .map(|(version, witness)| format!("{version}\t{witness}\n"))
+        .collect();
 
     // Through the storage library (WP-1.11): atomic and flushed, so a crash never leaves a
     // half-written witness that the next start would read as a key change.

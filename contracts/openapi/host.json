@@ -6672,6 +6672,11 @@
             "description": "The current identity key's fingerprint.",
             "x-grpc-field": "fingerprint"
           },
+          "first_fingerprint": {
+            "type": "string",
+            "description": "The epoch-1 key's fingerprint, the chain's pin: what a join, a verification and an invitation handoff name, after a rotation as before it.",
+            "x-grpc-field": "first_fingerprint"
+          },
           "document": {
             "type": "string",
             "description": "The signed identity document of the current epoch: COSE_Sign1 `permguard.host.identity.v1`, base64url without padding.",
@@ -6703,6 +6708,7 @@
           "host_id",
           "epoch",
           "fingerprint",
+          "first_fingerprint",
           "document",
           "successions",
           "first_public_key",
@@ -6756,19 +6762,26 @@
           },
           "fingerprint": {
             "type": "string",
+            "description": "The current identity key's fingerprint, as `GET /host/v1/identity` names it.",
             "x-grpc-field": "fingerprint"
           },
           "verified": {
             "type": "boolean",
             "const": true,
             "x-grpc-field": "verified"
+          },
+          "first_fingerprint": {
+            "type": "string",
+            "description": "The epoch-1 key's fingerprint: the pin the request named.",
+            "x-grpc-field": "first_fingerprint"
           }
         },
         "required": [
           "host_id",
           "epoch",
           "fingerprint",
-          "verified"
+          "verified",
+          "first_fingerprint"
         ],
         "additionalProperties": false,
         "description": "A peer identity proved on the connection that answered.",
