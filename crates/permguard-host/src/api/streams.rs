@@ -310,6 +310,16 @@ fn unknown(plane: &str, stream_type: &str) -> Refusal {
     )
 }
 
+/// A served stream that lists no such resource: a ledger this Host holds no stream of, or ids
+/// that name nothing, answered as such rather than as a resource with nothing in it (BUG-0297).
+fn not_held(plane: &str, stream_type: &str, resource: &str) -> Refusal {
+    Refusal::new(
+        ErrorClass::NotFound,
+        codes::stream::LEDGER_NOT_HELD,
+        format!("this Host's `{plane}/{stream_type}` stream holds no `{resource}`"),
+    )
+}
+
 fn hex16(name: &str, text: &str) -> Result<[u8; 16], Refusal> {
     let bytes: Option<Vec<u8>> = (text.len() == 32)
         .then(|| {
@@ -348,6 +358,39 @@ impl HostApi {
         Ok((resource.to_string(), admitted))
     }
 
+    /// What the engine answered a read of `resource`, `stream_unknown` when it serves no such
+    /// stream, and `ledger_not_held` when the stream it serves holds no such resource: a ledger
+    /// this Host keeps no stream of, or ids that name nothing, is never answered as one with
+    /// nothing in it (BUG-0297).
+    fn answered<T>(
+        &self,
+        plane: &str,
+        stream_type: &str,
+        resource: &str,
+        read: Result<Option<T>, String>,
+    ) -> Result<T, Refusal> {
+        let answer = read
+            .map_err(engine_failed)?
+            .ok_or_else(|| unknown(plane, stream_type))?;
+        let held = self
+            .stream_reads()?
+            .list()
+            .map_err(engine_failed)?
+            .iter()
+            .any(|stream| {
+                stream.plane == plane
+                    && stream.stream_type == stream_type
+                    && stream
+                        .resources
+                        .iter()
+                        .any(|held| held.resource == resource)
+            });
+        if !held {
+            return Err(not_held(plane, stream_type, resource));
+        }
+        Ok(answer)
+    }
+
     /// `GET /host/v1/streams`: under `streams.read` on `host`.
     pub fn streams_list(&self, actor: &Actor) -> Result<StreamList, Refusal> {
         let _admitted = self.admit(actor, operations::STREAMS_READ)?;
@@ -365,10 +408,8 @@ impl HostApi {
         query: &StreamQuery,
     ) -> Result<Frontier, Refusal> {
         let (resource, _admitted) = self.stream_resource(actor, query)?;
-        self.stream_reads()?
-            .frontier(plane, stream_type, &resource)
-            .map_err(engine_failed)?
-            .ok_or_else(|| unknown(plane, stream_type))
+        let read = self.stream_reads()?.frontier(plane, stream_type, &resource);
+        self.answered(plane, stream_type, &resource, read)
     }
 
     /// `GET /host/v1/streams/{plane}/{type}/records`: one page, the gap with its anchor when the
@@ -398,17 +439,15 @@ impl HostApi {
         if from == 0 {
             return Err(invalid("`from` is a sequence, 1 or later"));
         }
-        self.stream_reads()?
-            .records(
-                plane,
-                stream_type,
-                &resource,
-                run.as_ref().map(|(producer, run)| (producer, run)),
-                from,
-                limit as usize,
-            )
-            .map_err(engine_failed)?
-            .ok_or_else(|| unknown(plane, stream_type))
+        let read = self.stream_reads()?.records(
+            plane,
+            stream_type,
+            &resource,
+            run.as_ref().map(|(producer, run)| (producer, run)),
+            from,
+            limit as usize,
+        );
+        self.answered(plane, stream_type, &resource, read)
     }
 
     /// `GET /host/v1/streams/{plane}/{type}/signers`.
@@ -421,11 +460,10 @@ impl HostApi {
     ) -> Result<SignerList, Refusal> {
         let (resource, _admitted) = self.stream_resource(actor, query)?;
         Ok(SignerList {
-            runs: self
-                .stream_reads()?
-                .signers(plane, stream_type, &resource)
-                .map_err(engine_failed)?
-                .ok_or_else(|| unknown(plane, stream_type))?,
+            runs: {
+                let read = self.stream_reads()?.signers(plane, stream_type, &resource);
+                self.answered(plane, stream_type, &resource, read)?
+            },
         })
     }
 
@@ -439,11 +477,12 @@ impl HostApi {
     ) -> Result<SubscriptionList, Refusal> {
         let (resource, _admitted) = self.stream_resource(actor, query)?;
         Ok(SubscriptionList {
-            subscriptions: self
-                .stream_reads()?
-                .subscriptions(plane, stream_type, &resource)
-                .map_err(engine_failed)?
-                .ok_or_else(|| unknown(plane, stream_type))?,
+            subscriptions: {
+                let read = self
+                    .stream_reads()?
+                    .subscriptions(plane, stream_type, &resource);
+                self.answered(plane, stream_type, &resource, read)?
+            },
         })
     }
 
@@ -457,11 +496,10 @@ impl HostApi {
     ) -> Result<GapList, Refusal> {
         let (resource, _admitted) = self.stream_resource(actor, query)?;
         Ok(GapList {
-            gaps: self
-                .stream_reads()?
-                .gaps(plane, stream_type, &resource)
-                .map_err(engine_failed)?
-                .ok_or_else(|| unknown(plane, stream_type))?,
+            gaps: {
+                let read = self.stream_reads()?.gaps(plane, stream_type, &resource);
+                self.answered(plane, stream_type, &resource, read)?
+            },
         })
     }
 
@@ -475,11 +513,10 @@ impl HostApi {
     ) -> Result<AnchorList, Refusal> {
         let (resource, _admitted) = self.stream_resource(actor, query)?;
         Ok(AnchorList {
-            anchors: self
-                .stream_reads()?
-                .anchors(plane, stream_type, &resource)
-                .map_err(engine_failed)?
-                .ok_or_else(|| unknown(plane, stream_type))?,
+            anchors: {
+                let read = self.stream_reads()?.anchors(plane, stream_type, &resource);
+                self.answered(plane, stream_type, &resource, read)?
+            },
         })
     }
 }
@@ -502,7 +539,19 @@ mod tests {
 
     impl StreamReads for Asked {
         fn list(&self) -> Result<Vec<StreamView>, String> {
-            Ok(Vec::new())
+            Ok(vec![StreamView {
+                plane: "data".to_owned(),
+                stream_type: "decisions".to_owned(),
+                version: 1,
+                role: "producer".to_owned(),
+                retention: "evidence".to_owned(),
+                ring: "data.attest".to_owned(),
+                task: None,
+                resources: vec![ResourceState {
+                    resource: "plane/data/zone/z/ledger/l".to_owned(),
+                    state: "open".to_owned(),
+                }],
+            }])
         }
         fn frontier(
             &self,
@@ -609,11 +658,41 @@ mod tests {
         let api = with_reader(facade("streams-read"))
             .await
             .with_streams(Arc::new(Asked::default()));
+        assert_eq!(api.streams_list(&admin()).expect("listed").streams.len(), 1);
+        // BUG-0297: a served stream that holds no such ledger, ids swapped or naming nothing,
+        // answers `ledger_not_held`, never an empty read of a ledger that seems held.
+        for missing in [
+            "plane/data/zone/l/ledger/z",
+            "plane/data/zone/z/ledger/nothing",
+            "plane/data/zone/nosuch/ledger/zone",
+        ] {
+            let refusal = api
+                .stream_anchors(&reader(), "data", "decisions", &query(missing))
+                .expect_err("not held");
+            assert!(
+                matches!(&refusal, Refusal::Api(error) if error.class() == ErrorClass::NotFound),
+                "{missing}: {refusal:?}"
+            );
+            assert_eq!(code(refusal), codes::stream::LEDGER_NOT_HELD, "{missing}");
+            assert_eq!(
+                code(
+                    api.stream_gaps(&reader(), "data", "decisions", &query(missing))
+                        .expect_err("not held")
+                ),
+                codes::stream::LEDGER_NOT_HELD
+            );
+            assert_eq!(
+                code(
+                    api.stream_frontier(&reader(), "data", "decisions", &query(missing))
+                        .expect_err("not held")
+                ),
+                codes::stream::LEDGER_NOT_HELD
+            );
+        }
         assert!(
-            api.streams_list(&admin())
-                .expect("listed")
-                .streams
-                .is_empty()
+            api.stream_anchors(&reader(), "data", "decisions", &query(ledger))
+                .is_ok(),
+            "the held ledger is unchanged"
         );
         let malformed = StreamQuery {
             malformed: Some("`from` is a number".to_owned()),

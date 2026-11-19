@@ -912,7 +912,7 @@ fn the_cli_drives_a_two_host_membership_lifecycle_over_grpc() {
     lifecycle("grpcs");
 }
 
-/// One decision stream on `plane/data/zone/z1/ledger/l1`, its prefix through 4 deleted
+/// One decision stream on `plane/data/zone/<Z>/ledger/<L>`, its prefix through 4 deleted
 /// (WP-5.7b).
 struct FixedStreams;
 
@@ -942,7 +942,7 @@ impl permguard_host::api::streams::StreamReads for FixedStreams {
             ring: "data.attest".to_owned(),
             task: Some("decisions.ship".to_owned()),
             resources: vec![permguard_host::api::streams::ResourceState {
-                resource: "plane/data/zone/z1/ledger/l1".to_owned(),
+                resource: "plane/data/zone/0198f3bb-0000-7000-8000-000000000002/ledger/0198f3bb-0000-7000-8000-000000000003".to_owned(),
                 state: "open".to_owned(),
             }],
         }])
@@ -1058,7 +1058,7 @@ fn the_stream_commands_answer_the_same_over_both_transports() {
         authority,
         Role::Coordinator,
     );
-    let resource = "plane/data/zone/z1/ledger/l1";
+    let resource = "plane/data/zone/0198f3bb-0000-7000-8000-000000000002/ledger/0198f3bb-0000-7000-8000-000000000003";
     let mut answers: Vec<Vec<Value>> = Vec::new();
     for scheme in ["https", "grpcs"] {
         let endpoint = format!("{scheme}://127.0.0.1:{}", host.address.port());
@@ -1728,8 +1728,13 @@ fn the_object_sweep_is_planned_and_run_over_both_transports() {
         for (args, scope) in [
             (vec![], "plane/control"),
             (
-                vec!["--zone", "z1", "--ledger", "l1"],
-                "plane/control/zone/z1/ledger/l1",
+                vec![
+                    "--zone",
+                    "0198f3bb-0000-7000-8000-000000000002",
+                    "--ledger",
+                    "0198f3bb-0000-7000-8000-000000000003",
+                ],
+                "plane/control/zone/0198f3bb-0000-7000-8000-000000000002/ledger/0198f3bb-0000-7000-8000-000000000003",
             ),
         ] {
             let file = root.join(format!("{scheme}-{}-gc.plan", args.len()));
@@ -1791,12 +1796,15 @@ fn the_object_sweep_is_planned_and_run_over_both_transports() {
             "objects",
             "plan",
             "--zone",
-            "z1",
+            "0198f3bb-0000-7000-8000-000000000002",
             "--out",
             plan_file.to_str().expect("UTF-8"),
         ]);
         let before = SWEEPS_RUN.load(std::sync::atomic::Ordering::SeqCst);
-        assert_eq!(planned["resource"], "plane/control/zone/z1", "{scheme}");
+        assert_eq!(
+            planned["resource"], "plane/control/zone/0198f3bb-0000-7000-8000-000000000002",
+            "{scheme}"
+        );
         assert_eq!(planned["approvals_required"], 0, "{scheme}");
         assert!(
             planned["expires"]
@@ -1820,12 +1828,13 @@ fn the_object_sweep_is_planned_and_run_over_both_transports() {
             "{scheme}"
         );
         assert_eq!(
-            report["resumes_at"], "plane/control/zone/z1/ledger/l9",
+            report["resumes_at"],
+            "plane/control/zone/0198f3bb-0000-7000-8000-000000000002/ledger/l9",
             "{scheme}"
         );
         assert_eq!(
             report["skipped"][0],
-            "plane/control/zone/z1/ledger/l2: unreadable"
+            "plane/control/zone/0198f3bb-0000-7000-8000-000000000002/ledger/l2: unreadable"
         );
         let mut plan = planned.clone();
         for minted in ["receipt", "plan_id", "plan_digest", "expires"] {
@@ -1956,10 +1965,16 @@ fn the_evidence_anchors_answer_over_both_transports() {
             &root,
             &endpoint,
             &tls,
-            &words(&["evidence", "anchors", "z1", "l1"]),
+            &words(&[
+                "evidence",
+                "anchors",
+                "0198f3bb-0000-7000-8000-000000000002",
+                "0198f3bb-0000-7000-8000-000000000003",
+            ]),
         );
         assert_eq!(
-            anchors["resource"], "plane/data/zone/z1/ledger/l1",
+            anchors["resource"],
+            "plane/data/zone/0198f3bb-0000-7000-8000-000000000002/ledger/0198f3bb-0000-7000-8000-000000000003",
             "{scheme}"
         );
         let decisions = &anchors["streams"][0];
@@ -1982,15 +1997,40 @@ fn the_evidence_anchors_answer_over_both_transports() {
             "{scheme}"
         );
         assert!(events.get("anchors").is_none(), "{scheme}");
-        // A ledger the Host's streams do not list: served, not held.
-        let elsewhere = call(
+        // BUG-0297: a ledger no stream of the Host holds, ids that name nothing or swapped, is
+        // not found, exit 64, and no document is printed.
+        for (zone, ledger) in [
+            (
+                "0198f3bb-0000-7000-8000-000000000002",
+                "0198f3bb-0000-7000-8000-000000000404",
+            ),
+            (
+                "0198f3bb-0000-7000-8000-000000000003",
+                "0198f3bb-0000-7000-8000-000000000002",
+            ),
+        ] {
+            let elsewhere = cli(
+                &root,
+                &endpoint,
+                &tls,
+                &words(&["evidence", "anchors", zone, ledger]),
+            );
+            assert_eq!(elsewhere.status.code(), Some(64), "{scheme}");
+            let said = String::from_utf8_lossy(&elsewhere.stderr);
+            assert!(said.contains("ledger_not_held"), "{scheme}: {said}");
+            assert!(
+                elsewhere.stdout.is_empty(),
+                "{scheme}: nothing served is printed"
+            );
+        }
+        // A name is refused as one, before the Host is asked.
+        let named = cli(
             &root,
             &endpoint,
             &tls,
-            &words(&["evidence", "anchors", "z1", "l404"]),
+            &words(&["evidence", "anchors", "acme", "main-ledger"]),
         );
-        assert_eq!(elsewhere["streams"][0]["served"], true, "{scheme}");
-        assert_eq!(elsewhere["streams"][0]["held"], false, "{scheme}");
+        assert_eq!(named.status.code(), Some(64), "{scheme}");
         let refused = cli(
             &root,
             &endpoint,

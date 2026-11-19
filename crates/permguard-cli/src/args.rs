@@ -1855,6 +1855,44 @@ mod tests {
         assert!(checked > 60, "only {checked} examples were checked");
     }
 
+    /// BUG-0225: every membership `--selector` an example passes is one the Host accepts, a resource of one
+    /// plane with its zone and ledger by id, so running the example is not refused for its grammar.
+    #[test]
+    fn test_every_example_selector_is_a_resource_selector() {
+        let mut checked = 0;
+
+        walk(&command(), &mut |command| {
+            let Some(after) = command.get_after_help() else {
+                return;
+            };
+            let after = after.to_string();
+            let Some(at) = after.find("Examples:\n") else {
+                return;
+            };
+            for line in after[at..].lines().skip(1) {
+                // A membership's selector: `--selector` elsewhere is a Kubernetes label selector.
+                let Some(argv) =
+                    invocation(line).filter(|argv| argv.iter().any(|a| a == "members"))
+                else {
+                    continue;
+                };
+                for pair in argv.windows(2) {
+                    if pair[0] == "--selector" {
+                        assert!(
+                            permguard_core::authz::Selector::parse(&pair[1]).is_ok(),
+                            "{}: `{}` is not a selector the Host accepts",
+                            command.get_name(),
+                            pair[1]
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+        });
+
+        assert!(checked >= 3, "only {checked} selectors were checked");
+    }
+
     #[test]
     fn test_zone_answers_to_the_same_two_spellings_everywhere() {
         let mut checked = 0;
@@ -2531,10 +2569,12 @@ pub struct MemberChangeArgs {
 pub enum InviteAction {
     /// Create a one-time invitation and print its private versioned handoff once.
     #[command(
-        after_help = "Examples:\n  permguard host members invite create --selector zone/acme/ledger/main --tasks tasks.json\n  permguard --host-endpoint https://localhost:15444 host members invite create --selector plane/data/* --tasks tasks.json --coordinator-address https://iam.internal:5444"
+        after_help = "A membership covers one plane: its selector is `host`, `plane/<p>`, `plane/<p>/zone/<zone id>` or `plane/<p>/zone/<zone id>/ledger/<ledger id>`, optionally ending in `/*`, zones and ledgers by id (`permguard zones list`, `permguard ledgers list`).\nEvery task must fall inside it, so a member that both mirrors policies (`policy.mirror`, under `plane/control/...`) and ships decisions or events (`decisions.ship`, `events.ship`, under `plane/data/...`) holds two memberships: one invitation, join and approval each.\n\nExamples:\n  permguard host members invite create --selector \"plane/control/zone/01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6/*\" --tasks mirror.json --name dp-1\n  permguard host members invite create --selector \"plane/data/zone/01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6/*\" --tasks ship.json --name dp-1\n  permguard --host-endpoint https://localhost:15444 host members invite create --selector \"plane/data/*\" --tasks ship.json --coordinator-address https://iam.internal:5444"
     )]
     Create {
-        /// The maximum resource selector the member may receive.
+        /// The widest resource the member may receive, in one plane: `host`, `plane/<p>`,
+        /// `plane/<p>/zone/<zone id>` or `plane/<p>/zone/<zone id>/ledger/<ledger id>`,
+        /// optionally ending in `/*`; zones and ledgers by id.
         #[arg(long)]
         selector: String,
         /// A closed JSON array of membership tasks.
@@ -2753,9 +2793,9 @@ Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audi
 pub enum EvidenceAction {
     /// Print the retained prefix anchors of a ledger's decision and event streams.
     #[command(
-        after_help = "Each anchor with the range it covers; a stream type the Host does not serve, and a ledger its streams do not list, are said so.
+        after_help = "Each anchor with the range it covers; a stream type the Host does not serve, and one that does not hold the ledger, are said so. A ledger none of its streams holds, ids that name nothing or are swapped, is `not_found`, exit 64; zones and ledgers are given by id.
 
-Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003\n  permguard --host-endpoint grpcs://host.example:9443 evidence anchors z1 l1 -o json"
+Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003\n  permguard --host-endpoint grpcs://host.example:9443 evidence anchors 0198f3bb-0000-7000-8000-000000000002 0198f3bb-0000-7000-8000-000000000003 -o json"
     )]
     Anchors {
         /// The zone, by id.

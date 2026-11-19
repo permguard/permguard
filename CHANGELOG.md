@@ -19,6 +19,11 @@ is cut.
 
 ### Changed
 
+- **A Host stream read for a ledger the stream does not hold answers `404 ledger_not_held`, and `evidence anchors` exits `64`.**
+  `frontier`, `records`, `signers`, `subscriptions`, `gaps` and `anchors` of a served stream, over REST and gRPC, answered an empty read for ids that name nothing or are swapped; they now answer `not_found`/`ledger_not_held`, and `permguard host streams …` exits `64`.
+  `permguard evidence anchors` and `gc objects plan --zone/--ledger` take ids (UUIDs) and refuse a name, exit `64`, pointing at `zones list` and `ledgers list`; `evidence anchors` answers a ledger none of the Host's streams holds as `ledger_not_held`, exit `64`, never as a served ledger with no anchors.
+- **`host members invite create --help` shows selectors the command accepts, and says a membership covers one plane.**
+  A member that mirrors policies (`plane/control/...`) and ships decisions or events (`plane/data/...`) holds two memberships; the README says so too.
 - **`scripts/verify-evidence.sh` binds the manifest to the commit it names.**
   A manifest whose `commit` is not a full commit id is refused, and the attestation is verified with `--source-digest <commit>`, so a manifest naming a commit the release pipeline did not build from exits `1`; `scripts/evidence-manifest.sh` refuses anything but a full commit id, exit `64`.
 - **`--keys` repeats and reads a `keys export`, and a verification passes only when everything it checked holds.**

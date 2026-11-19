@@ -546,11 +546,17 @@ pub fn gc_command(
     match action {
         GcObjectsAction::Plan { zone, ledger, out } => {
             // An id is one component of the scope: anything else would move it (after the
-            // review).
-            if !zone.iter().chain(ledger.iter()).all(|text| component(text)) {
-                return Err(Failure::usage(
-                    "--zone and --ledger are ids: letters, digits, `-`, `_`, `.` and `:`",
-                ));
+            // review). A name is refused as one, never planned as a zone holding no ledger
+            // (BUG-0297).
+            if let Some(name) = zone
+                .iter()
+                .chain(ledger.iter())
+                .find(|text| !catalog_id(text))
+            {
+                return Err(Failure::usage(format!(
+                    "--zone and --ledger take ids, and `{name}` is not one: \
+                     `permguard zones list` and `permguard ledgers list --zone <zone>` print them"
+                )));
             }
             let resource = match (zone, ledger) {
                 (Some(zone), Some(ledger)) => {
@@ -595,10 +601,15 @@ pub fn gc_command(
     Ok(ExitCode::SUCCESS)
 }
 
-/// Whether `text` is one component of a resource, as the core grammar reads one: letters, digits,
-/// `-`, `_`, `.` and `:`, at most 128 bytes.
-pub(crate) fn component(text: &str) -> bool {
-    !text.contains('/') && permguard_core::authz::Resource::parse(&format!("plane/{text}")).is_ok()
+/// Whether `text` is a catalog id: a UUID, as `zones list` and `ledgers list` print them. A name
+/// is not one: the Host keys its streams by id, so a name would read as a ledger it does not hold
+/// (BUG-0297).
+pub(crate) fn catalog_id(text: &str) -> bool {
+    text.len() == 36
+        && text.char_indices().all(|(at, character)| match at {
+            8 | 13 | 18 | 23 => character == '-',
+            _ => character.is_ascii_hexdigit(),
+        })
 }
 
 /// One evidence stream of a ledger, as the Host answers it.
@@ -636,10 +647,12 @@ pub fn evidence_command(
     use permguard_client::host::StreamName;
 
     let EvidenceAction::Anchors { zone, ledger } = action;
-    if !component(&zone) || !component(&ledger) {
-        return Err(Failure::usage(
-            "the zone and the ledger are ids: letters, digits, `-`, `_`, `.` and `:`",
-        ));
+    // The Host keys its streams by id: a name would read as a ledger it does not hold (BUG-0297).
+    if let Some(name) = [&zone, &ledger].into_iter().find(|text| !catalog_id(text)) {
+        return Err(Failure::usage(format!(
+            "the zone and the ledger are ids, and `{name}` is not one: \
+             `permguard zones list` and `permguard ledgers list --zone <zone>` print them"
+        )));
     }
     let resource = format!("plane/{DATA_PLANE}/zone/{zone}/ledger/{ledger}");
     let host = online_host(globals, trace, false)?;
@@ -669,6 +682,14 @@ pub fn evidence_command(
                 held: held(stream_type),
                 anchors: Some(anchors),
             },
+            Err(failure) if failure.reason == permguard_core::codes::stream::LEDGER_NOT_HELD => {
+                EvidenceStream {
+                    stream_type: stream_type.to_owned(),
+                    served: true,
+                    held: false,
+                    anchors: None,
+                }
+            }
             Err(failure) if failure.reason == permguard_core::codes::stream::STREAM_UNKNOWN => {
                 EvidenceStream {
                     stream_type: stream_type.to_owned(),
@@ -679,6 +700,16 @@ pub fn evidence_command(
             }
             Err(failure) => return Err(failed(failure)),
         });
+    }
+    // Ids that name nothing, or swapped: no stream of this Host holds the ledger, answered as not
+    // found rather than as a served ledger with no anchors (BUG-0297).
+    if !streams.iter().any(|stream| stream.held) {
+        return Err(Failure::usage(format!(
+            "this Host holds no decision or event stream of ledger {ledger} in zone {zone}: \
+             check the ids (`permguard ledgers list --zone {zone}`), and that this Host is the \
+             one whose Data Plane decides for the ledger"
+        ))
+        .named("not_found", permguard_core::codes::stream::LEDGER_NOT_HELD));
     }
     render_json(
         &EvidenceAnchors {
@@ -945,22 +976,26 @@ mod tests {
         assert!(audit_export(&moved, "security", "host", None).is_err());
     }
 
-    /// TC-5, after the review: an id is one component of the core grammar.
+    /// TC-5, after the review, and BUG-0297: a zone or ledger is given by its id, a UUID; a name,
+    /// or anything that would move the resource, is refused before the Host is asked.
     #[test]
-    fn an_id_is_one_component() {
-        assert!(component("z1"));
-        assert!(component("0198f3bb-0000-7000-8000-000000000002"));
+    fn an_id_is_a_catalog_uuid() {
+        assert!(catalog_id("0198f3bb-0000-7000-8000-000000000002"));
+        assert!(catalog_id("01A1549A-F6D7-7687-9253-E7CB4633FB32"));
         for bad in [
             "",
+            "z1",
+            "acme",
+            "main-ledger",
             "z/1",
             "x/zone/y",
-            "z?1",
-            "z#1",
-            "z 1",
+            "0198f3bb-0000-7000-8000-00000000000/",
+            "0198f3bb_0000-7000-8000-000000000002",
+            "0198f3bb-0000-7000-8000-0000000000021",
             "*",
             &"a".repeat(129),
         ] {
-            assert!(!component(bad), "{bad}");
+            assert!(!catalog_id(bad), "{bad}");
         }
     }
 

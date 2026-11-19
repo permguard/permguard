@@ -66,6 +66,7 @@ Containers and pods have their own network namespaces; standalone binaries that 
 - **Keys and secrets.** Rings per purpose, published ahead of use, rotated and retained; custody in files, an HSM or a KMS.
 - **Audit.** Trails per class and resource, hash-chained, with signed checkpoints.
 - **Membership.** Host-to-Host trust is direct, never transitive: every remote action names one membership, task, scope and epoch.
+  A membership covers one plane, so a member that mirrors policies (`policy.mirror`, `plane/control/...`) and ships decisions (`decisions.ship`, `plane/data/...`) holds two, one invitation each.
 - **Streams.** Decisions and events leave as signed, ordered batches with acknowledgements, retention and recovery.
 - **Storage and lifecycle.** Files are the canonical backend, with one writer per volume, fsync ordering, application-consistent backup and offline restore.
 - **Assurance.** A deployment declares `development`, `production` or `regulated`, and publishes every relaxation it takes.

@@ -3095,7 +3095,7 @@ sections:
       - crates/permguard-cli/src/confirm.rs::a_confirm_file_is_read_whole_within_its_bound
       - crates/permguard-cli/tests/restore.rs::under_dual_control_a_restore_is_refused
       - crates/permguard-cli/tests/migrate.rs::a_planned_migration_runs_once_and_rolls_back
-      - crates/permguard-cli/src/commands/host_ops.rs::an_id_is_one_component
+      - crates/permguard-cli/src/commands/host_ops.rs::an_id_is_a_catalog_uuid
       - crates/permguard-cli/tests/cli.rs::verify_asks_for_the_producers_keys_rather_than_pretending
       - crates/permguard-cli/tests/cli.rs::a_command_names_one_target_class_and_never_falls_back
   "6-command-line/1-command-line.md#command-classes":

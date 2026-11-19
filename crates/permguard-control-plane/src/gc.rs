@@ -729,8 +729,12 @@ impl ObjectsJob {
             && outcome.skipped == 0
             && !outcome.holds_unreadable
         {
+            // An id that names no zone or ledger reads the same as one holding none: both are
+            // said, so the answer is never taken for an empty zone the operator named by name
+            // (BUG-0297).
             return Err(permguard_host::gc::GcError::NotFound(format!(
-                "the catalog holds no ledger of {}",
+                "the catalog holds no ledger of {}: no zone or ledger has that id, or it holds \
+                 none (`permguard zones list` prints the ids)",
                 scope_label(scope)
             )));
         }
