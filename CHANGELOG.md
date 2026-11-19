@@ -226,6 +226,10 @@ is cut.
 
 ### Fixed
 
+- **Every documentation URL the product ships reaches a page.**
+  The chart's alert runbooks pointed at pages the documentation site never built (`/observability`, `/decision-logs`, `/data-plane-mirrors`, `/authorization-check`); they now point at the operations commands, the evidence, Data Plane and Authority Plane pages, and a conformance test fails when a URL in the chart, the READMEs or a shipped configuration names no page the site builds.
+- **The development and Docker configurations let the README read decisions back.**
+  Evidence reads take `evidence.read`, which no shipped configuration granted, so `permguard decisions list` in the README and `examples/basics` was refused `unauthenticated`; the all-in-one's development, Docker and lab configurations now grant it on `plane/control/*` beside the catalog operations, and a test holds every shipped configuration that opens the catalog to it.
 - **A change carrying a revision read from a deleted or renamed zone or ledger is never applied to the one that took its name.**
   A record created under a name another record held started again at revision 1, so `--expected-revision` read from the old record matched the new one.
   The catalog now keeps, beside each index, the highest revision each name reached (`names.json`); a record created or renamed under a name starts above it, so the stale revision is a `revision_conflict`.

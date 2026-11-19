@@ -51,7 +51,7 @@ host:
   # ledger, or on `plane/control/*` for every ledger.
   authz:
     public:
-      - operations: [catalog.read, catalog.write, policy.push]
+      - operations: [catalog.read, catalog.write, policy.push, evidence.read]
         selector: "plane/control/*"
       - operations: [decision.evaluate]
         selector: "plane/data/*"

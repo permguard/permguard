@@ -558,3 +558,37 @@ fn every_shipped_configuration_builds_the_configuration_a_server_starts_with() {
         .unwrap_or_else(|error| panic!("{} does not start: {error:#}", path.display()));
     }
 }
+
+/// BUG-0173: a shipped configuration that lets anybody read and push the catalog, the development
+/// ones the README and `examples/basics` start, also lets anybody read the decisions and events
+/// those guides read back: `evidence.read` on every ledger of the Control Plane.
+#[test]
+fn a_configuration_that_opens_the_catalog_also_opens_the_evidence_reads() {
+    use permguard_core::authz::Selector;
+
+    let ledger = Selector::parse("plane/control/zone/acme/ledger/main-ledger").expect("a selector");
+    let mut opened = 0;
+    let mut missing = Vec::new();
+    for path in shipped() {
+        let file = ConfigFile::load(&path).expect("it parses");
+        let auth = file.host_auth().expect("the auth section reads");
+        let grants = |operation: &str| {
+            auth.public.iter().any(|grant| {
+                grant.operations.iter().any(|held| held == operation)
+                    && grant.selector.covers(&ledger)
+            })
+        };
+        if !grants("catalog.read") {
+            continue;
+        }
+        opened += 1;
+        if !grants("evidence.read") {
+            missing.push(path.display().to_string());
+        }
+    }
+    assert!(
+        opened >= 4,
+        "the development configurations open the catalog: {opened}"
+    );
+    assert!(missing.is_empty(), "no evidence.read: {missing:?}");
+}
