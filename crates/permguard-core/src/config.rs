@@ -1127,8 +1127,12 @@ pub const DEFAULT_EVENT_STORE_RETENTION: Duration = Duration::from_secs(30 * 24 
 pub const DEFAULT_EVENTS_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 /// When a journal segment is closed and a new one started.
 pub const DEFAULT_EVENTS_SEGMENT_BYTES: u64 = 32 * 1024 * 1024;
-/// The largest single event record a journal accepts.
-pub const DEFAULT_EVENTS_MAX_RECORD_BYTES: u64 = 1024 * 1024;
+/// The largest event record the Host's event stream carries, its descriptor's bound: what a
+/// Data Plane ships and a coordinator verifies, the same on both sides of every membership.
+pub const EVENTS_STREAM_MAX_RECORD_BYTES: u64 = 256 * 1024;
+/// The largest single event record a Data Plane accepts: the stream's own bound, never more, so a
+/// valid event is never accepted by the configuration and refused by the stream (BUG-0160).
+pub const DEFAULT_EVENTS_MAX_RECORD_BYTES: u64 = EVENTS_STREAM_MAX_RECORD_BYTES;
 /// The shortest history a deployment promises to keep, before the policies' own requirement.
 ///
 /// Two days, which comfortably covers Dogwood's own 24-hour default `max_window` plus the lateness
@@ -5776,6 +5780,15 @@ produce: use `EdDSA` or `ES256`"
             if self.events_max_record_bytes == 0 {
                 anyhow::bail!(
                     "reading {SETTING_EVENTS_MAX_RECORD_BYTES}: no record fits in no bytes"
+                );
+            }
+            // A setting the stream cannot honour is refused, never capped in silence: a larger
+            // event would be accepted here and refused by the Host's stream (BUG-0160).
+            if self.events_max_record_bytes > EVENTS_STREAM_MAX_RECORD_BYTES {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_MAX_RECORD_BYTES}: the Host's event stream carries \
+                     records of up to {EVENTS_STREAM_MAX_RECORD_BYTES} bytes (256K), so a larger \
+                     bound would accept events it can never record; set it to 256K or less"
                 );
             }
             if self.events_max_record_bytes > self.events_segment_bytes {

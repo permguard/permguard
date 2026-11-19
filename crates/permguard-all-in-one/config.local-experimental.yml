@@ -190,7 +190,7 @@ dataPlane:
     stream:
       max_bytes: "1G"              # EVENT RECORDS ONLY; the reserve is kept outside this bound
       segment_bytes: "32M"
-      max_record_bytes: "1M"
+      max_record_bytes: "256K"
       # A latency budget, never a durability one: a receipt is still withheld until the record
       # is on disk. What it buys is that submissions arriving together cost one flush.
       group_commit_max_delay: "5ms"

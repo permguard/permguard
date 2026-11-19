@@ -25,7 +25,7 @@ pub fn descriptor() -> Descriptor {
         codec_version: 1,
         event_types: Vec::new(),
         resource_shape: ResourceShape::Ledger,
-        max_record_bytes: 256 * 1024,
+        max_record_bytes: permguard_core::config::EVENTS_STREAM_MAX_RECORD_BYTES as u32,
         max_batch_records: 1000,
         retention: Retention::History,
         subscription_required: true,

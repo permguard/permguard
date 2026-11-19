@@ -451,6 +451,14 @@ impl Streams {
     /// an answer for them. Nobody is answered before the flush that covers their record returns —
     /// what a batch amortises is the cost of the flush, never the rule that a receipt follows it.
     pub fn append(&self, zone: &str, ledger: &str, record: Record) -> Result<Answered, Failed> {
+        // Judged alone, before it joins anybody's batch: a record the stream would refuse would
+        // otherwise fail every submission written with it (BUG-0200).
+        let limit = self.max_record_bytes();
+        let bytes = super::host::placed_bytes(&record)
+            .map_err(|error| Failed::Journal(JournalError::Io(error)))?;
+        if bytes as u64 > u64::from(limit) {
+            return Err(Failed::TooLarge { bytes, limit });
+        }
         let held = self.held(zone, ledger).map_err(Failed::Journal)?;
         let gate = self.gate(zone, ledger).map_err(Failed::Journal)?;
 
@@ -646,10 +654,7 @@ impl Streams {
         // ahead of it by the width of that race; an instant is only ever moved forward, to the
         // instant of that record, and never across a clock that moved further than a race could.
         let floor = observed_floor(&held, &mut records);
-        let max_record_bytes = u32::try_from(self.bounds.max_record_bytes)
-            .unwrap_or(u32::MAX)
-            .min(permguard_events::stream::descriptor().max_record_bytes);
-        match held.host.append(records, max_record_bytes) {
+        match held.host.append(records, self.max_record_bytes()) {
             Ok(placed) => {
                 held.last_observed = floor;
                 self.metrics.count(&super::measure::FLUSHES, &[]);
@@ -690,6 +695,14 @@ impl Streams {
         }
 
         results
+    }
+
+    /// The largest record this plane writes: its configured bound, which the configuration keeps
+    /// within the stream's (BUG-0160), and never past the stream's own.
+    fn max_record_bytes(&self) -> u32 {
+        u32::try_from(self.bounds.max_record_bytes)
+            .unwrap_or(u32::MAX)
+            .min(permguard_events::stream::descriptor().max_record_bytes)
     }
 
     /// The pressure of `held`'s stream, measured again once the last measure is old.
@@ -1226,6 +1239,12 @@ pub enum Failed {
     },
     Journal(JournalError),
     Digest(permguard_events::record::DigestError),
+    /// A record larger than the stream takes, refused alone before it joins a batch (BUG-0160,
+    /// BUG-0200): a permanent refusal of this submission, never another's.
+    TooLarge {
+        bytes: usize,
+        limit: u32,
+    },
 }
 
 impl std::fmt::Display for Failed {
@@ -1238,6 +1257,11 @@ impl std::fmt::Display for Failed {
             ),
             Self::Journal(error) => write!(formatter, "{error}"),
             Self::Digest(error) => write!(formatter, "{error}"),
+            Self::TooLarge { bytes, limit } => write!(
+                formatter,
+                "this event's record takes {bytes} bytes, and the event stream takes records of \
+                 up to {limit}"
+            ),
         }
     }
 }
@@ -1680,6 +1704,64 @@ mod tests {
             .read_from("acme", "main", 0, 100)
             .expect("the journal reads back");
         assert_eq!(records.len(), 2, "the conflict was refused, not recorded");
+    }
+
+    /// BUG-0160, BUG-0200: a record the stream cannot take is refused alone, `TooLarge`, before
+    /// it joins a batch; the submissions written beside it, in the same group commit, are
+    /// appended and answered as if it had never come. A record just under the bound is taken.
+    #[test]
+    fn an_oversized_record_is_refused_alone_and_its_batch_is_written() {
+        let streams = on_host("oversized", Duration::from_millis(50));
+        let limit = permguard_events::stream::descriptor().max_record_bytes as usize;
+        let sized = |id: u64, padding: usize| {
+            let mut record = occurrence(id);
+            record.event["note"] = json!("x".repeat(padding));
+            record.occurrence_digest =
+                permguard_events::occurrence_digest_of(&record.event).expect("a digest");
+            record
+        };
+        let answers = std::thread::scope(|scope| {
+            let large = scope.spawn(|| streams.append("acme", "main", sized(100, limit + 1)));
+            let small: Vec<_> = (1..=4)
+                .map(|id| {
+                    let streams = &streams;
+                    scope.spawn(move || streams.append("acme", "main", occurrence(id)))
+                })
+                .collect();
+            (
+                large.join().expect("joined"),
+                small
+                    .into_iter()
+                    .map(|handle| handle.join().expect("joined"))
+                    .collect::<Vec<_>>(),
+            )
+        });
+        let refused = answers.0.expect_err("over the stream's bound");
+        assert!(
+            matches!(refused, Failed::TooLarge { limit: bound, bytes } if bound as usize == limit && bytes > limit),
+            "{refused}"
+        );
+        assert!(
+            refused.to_string().contains("this event's record"),
+            "{refused}"
+        );
+        for answer in &answers.1 {
+            assert!(answer.is_ok(), "a valid submission beside it: {answer:?}");
+        }
+        let records = streams.read_from("acme", "main", 0, 100).expect("read");
+        assert_eq!(records.len(), 4, "the four valid ones, and only them");
+
+        // Exactly at the bound once its place is filled in, one ASCII byte a padding character:
+        // taken.
+        let base = super::super::host::placed_bytes(&sized(200, 0)).expect("measured");
+        let at_bound = sized(200, limit - base);
+        assert_eq!(
+            super::super::host::placed_bytes(&at_bound).expect("measured"),
+            limit
+        );
+        streams
+            .append("acme", "main", at_bound)
+            .expect("a record at the bound is taken");
     }
 
     /// Streams over `producer`, under a directory nothing else is using.

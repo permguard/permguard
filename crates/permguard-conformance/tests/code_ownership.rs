@@ -47,10 +47,14 @@ const TWO_CLASSES: [&str; 2] = ["client.HTTP_STATUS", "pdp_temporal.EVENT_NOT_CA
 
 /// Codes answered with a status their class does not map to: an open finding in the status file,
 /// or a status HTTP itself names for the refusal. The list only shrinks but for the second kind.
-const STATUS_OVERRIDES: [(&str, u64); 2] = [
+const STATUS_OVERRIDES: [(&str, u64); 4] = [
     ("stream.OFFSET_EXPIRED", 410),
     // RFC 6585: a head of too many fields is `431`, whatever the class (BUG-0329).
     ("common.HEADER_FIELDS_EXCEEDED", 431),
+    // RFC 9110: a body past the surface's bound, and an event past the stream's, are `413`, a
+    // permanent refusal of that content, never a retryable `503` (BUG-0160).
+    ("common.BODY_TOO_LARGE", 413),
+    ("pdp_temporal.EVENT_TOO_LARGE", 413),
 ];
 
 fn report() -> BTreeMap<String, Value> {

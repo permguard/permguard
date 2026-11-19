@@ -39,6 +39,9 @@ pub mod common {
     pub const ROUTE_UNKNOWN: &str = "route_unknown";
     /// A request head with more fields than `limits.header_fields` (BUG-0329): `431`.
     pub const HEADER_FIELDS_EXCEEDED: &str = "header_fields_exceeded";
+    /// A request body larger than `limits.body_bytes` (BUG-0160): `413`, as JSON like every other
+    /// refusal of the surface.
+    pub const BODY_TOO_LARGE: &str = "body_too_large";
     /// A domain route asked of a Plane that has not reached Ready, or has left it; the phase
     /// travels beside the code.
     pub const PLANE_NOT_READY: &str = "plane_not_ready";
@@ -138,6 +141,9 @@ pub mod pdp_temporal {
     pub const EVENT_TIME_NOT_CANONICAL: &str = "event_time_not_canonical";
     pub const EVENT_AHEAD_OF_CLOCK: &str = "event_ahead_of_clock";
     pub const EVENT_TOO_LATE: &str = "event_too_late";
+    /// An event whose record is larger than the Host's event stream takes (BUG-0160): `413`, a
+    /// permanent refusal of that submission alone, never a retryable `503`.
+    pub const EVENT_TOO_LARGE: &str = "event_too_large";
     pub const EVENT_ID_CONFLICT: &str = "event_id_conflict";
     pub const EVENT_ROUTING_CONFLICT: &str = "event_routing_conflict";
     pub const EVENT_HISTORY_DISAGREES: &str = "event_history_disagrees";
@@ -576,6 +582,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         common::FORGED,
         common::ROUTE_UNKNOWN,
         common::HEADER_FIELDS_EXCEEDED,
+        common::BODY_TOO_LARGE,
         common::PLANE_NOT_READY,
         catalog::NAME_TAKEN,
         catalog::ZONE_NOT_EMPTY,
@@ -644,6 +651,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_temporal::EVENT_TIME_NOT_CANONICAL,
         pdp_temporal::EVENT_AHEAD_OF_CLOCK,
         pdp_temporal::EVENT_TOO_LATE,
+        pdp_temporal::EVENT_TOO_LARGE,
         pdp_temporal::EVENT_ID_CONFLICT,
         pdp_temporal::EVENT_ROUTING_CONFLICT,
         pdp_temporal::EVENT_HISTORY_DISAGREES,

@@ -789,6 +789,27 @@ fn dir_path(dir: &permguard_host::storage::Dir) -> PathBuf {
     dir.path().to_path_buf()
 }
 
+/// The most bytes `record` can take once its place on the stream is filled in: its producer and
+/// run at their full width, a sequence at the largest a record carries and a full predecessor
+/// digest. A record within the bound here is never refused for its size inside a batch, so its
+/// size is judged alone, before it joins one (BUG-0200).
+pub fn placed_bytes(record: &Record) -> Result<usize, String> {
+    let mut widest = record.clone();
+    widest.stream = Stream {
+        producer: Producer {
+            class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            id: "f".repeat(32),
+            instance: "f".repeat(32),
+        },
+        zone: record.stream.zone.clone(),
+        ledger: record.stream.ledger.clone(),
+    };
+    widest.seq = 9_007_199_254_740_991;
+    widest.prev = format!("sha256:{}", "f".repeat(64));
+    let value = widest.to_value().map_err(|error| error.to_string())?;
+    Ok(permguard_events::stream::Codec.encode(&value)?.len())
+}
+
 /// A record's canonical bytes, checked as the producer checks them: the same codec, the same
 /// bound, so a record built under the engine's lock is never refused after its position was
 /// taken.

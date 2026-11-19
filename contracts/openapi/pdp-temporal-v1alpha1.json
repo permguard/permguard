@@ -84,6 +84,16 @@
               }
             }
           },
+          "413": {
+            "description": "The event's record is larger than the event stream takes (`event_too_large`), or the body larger than the surface's bound (`body_too_large`): a permanent refusal, not retried.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "The plane failed.",
             "content": {

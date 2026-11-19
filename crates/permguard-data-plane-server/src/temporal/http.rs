@@ -315,8 +315,13 @@ fn percent_decode(value: &str) -> String {
 
 /// Turns a refusal into the answer the contract names.
 fn error(failed: &ApiError, disclosure: Disclosure) -> Response {
-    let status =
-        StatusCode::from_u16(failed.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    // An event the stream can never take is `413` over HTTP, whatever its class: a client tells
+    // it from a malformed one and never retries it (BUG-0160). gRPC keeps the class's code.
+    let status = if failed.code() == permguard_core::codes::pdp_temporal::EVENT_TOO_LARGE {
+        StatusCode::PAYLOAD_TOO_LARGE
+    } else {
+        StatusCode::from_u16(failed.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+    };
 
     (status, Json(failed.on_the_wire(disclosure))).into_response()
 }
@@ -358,6 +363,34 @@ mod tests {
             let refused = super::signers_query(Some(query)).expect_err(query);
             assert!(refused.contains(said), "{query}: {refused}");
         }
+    }
+
+    /// BUG-0160: an event the stream can never take is `413` over HTTP with the JSON error body,
+    /// never the `503` a client retries; another refusal of its class keeps its class's status.
+    #[tokio::test]
+    async fn test_an_event_too_large_is_413_and_json() {
+        let refused = ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::pdp_temporal::EVENT_TOO_LARGE,
+            "this event's record takes 300000 bytes",
+        );
+        let answer = error(&refused, Disclosure::default());
+        assert_eq!(answer.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let body = axum::body::to_bytes(answer.into_body(), 1 << 16)
+            .await
+            .expect("the body");
+        let wire: serde_json::Value = serde_json::from_slice(&body).expect("JSON");
+        assert_eq!(wire["code"], "event_too_large");
+        assert_eq!(wire["class"], "validation");
+        let late = ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::pdp_temporal::EVENT_TOO_LATE,
+            "too late",
+        );
+        assert_eq!(
+            error(&late, Disclosure::default()).status(),
+            StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]

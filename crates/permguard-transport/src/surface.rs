@@ -263,6 +263,7 @@ impl<'a> Listener<'a> {
             let body_streaming = streaming.clone();
             let ending = drain::EndOnDrainLayer::new(streaming.clone(), drained);
             let header_fields = limits.header_fields();
+            let body_bytes = limits.body_bytes();
             let service = router
                 // Innermost of all, so it is between the handlers and everything else: a panic there
                 // becomes an answer rather than a connection that closes with nothing on it. Without
@@ -276,6 +277,28 @@ impl<'a> Listener<'a> {
                 .layer(StreamingExempt::new(
                     RequestBodyLimitLayer::new(limits.body_bytes()),
                     streaming,
+                ))
+                // The limit's own answer is a bare `413` with a line of text: refused here with the
+                // surface's error body instead, like every other refusal (BUG-0160). An answer a
+                // handler already gave as JSON, its own `413`, is left as it is.
+                .layer(axum::middleware::from_fn(
+                    move |request: http::Request<Body>, next: axum::middleware::Next| async move {
+                        let grpc = request
+                            .headers()
+                            .get(http::header::CONTENT_TYPE)
+                            .and_then(|value| value.to_str().ok())
+                            .is_some_and(|value| value.starts_with("application/grpc"));
+                        let response = next.run(request).await;
+                        let json = response
+                            .headers()
+                            .get(http::header::CONTENT_TYPE)
+                            .and_then(|value| value.to_str().ok())
+                            .is_some_and(|value| value.starts_with("application/json"));
+                        if response.status() == StatusCode::PAYLOAD_TOO_LARGE && !json {
+                            return crate::gate::body_too_large(body_bytes, grpc);
+                        }
+                        response
+                    },
                 ))
                 // A body that stops arriving is bounded by the header's own deadline, between two
                 // of its frames, not by the request's: a connection that sends its head and

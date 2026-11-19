@@ -334,6 +334,13 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "common.BODY_TOO_LARGE": {
+      "code": "body_too_large",
+      "contract": "7-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation",
+      "http": 413
+    },
     "common.HEADER_FIELDS_EXCEEDED": {
       "code": "header_fields_exceeded",
       "contract": "7-contracts/7-contract-catalog-discovery.md",
@@ -1386,6 +1393,13 @@
       "contract": "7-contracts/2-contract-pdp-temporal-v1alpha1.md",
       "kind": "refusal",
       "class": "validation"
+    },
+    "pdp_temporal.EVENT_TOO_LARGE": {
+      "code": "event_too_large",
+      "contract": "7-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation",
+      "http": 413
     },
     "pdp_temporal.EVENT_TOO_LATE": {
       "code": "event_too_late",

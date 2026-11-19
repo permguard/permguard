@@ -2680,3 +2680,40 @@ fn test_a_kms_operations_ring_is_refused_where_decisions_are_recorded() {
         "off the decision path the KMS keeps the ring: {accepted:?}"
     );
 }
+
+/// BUG-0160: the largest event record a Data Plane accepts is never more than the Host's event
+/// stream carries. The default is the stream's own bound, `256K` is read, and a larger value is
+/// refused, naming the bound, rather than capped in silence.
+#[test]
+fn test_the_event_record_bound_never_exceeds_the_stream() {
+    use permguard_core::config::{
+        DEFAULT_EVENTS_MAX_RECORD_BYTES, EVENTS_STREAM_MAX_RECORD_BYTES,
+        SETTING_EVENTS_MAX_RECORD_BYTES,
+    };
+
+    const { assert!(DEFAULT_EVENTS_MAX_RECORD_BYTES <= EVENTS_STREAM_MAX_RECORD_BYTES) };
+    assert_eq!(
+        config(&[], &[], &[]).events_max_record_bytes(),
+        EVENTS_STREAM_MAX_RECORD_BYTES
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_EVENTS_MAX_RECORD_BYTES, "256K")], &[]).events_max_record_bytes(),
+        256 * 1024
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_EVENTS_MAX_RECORD_BYTES, "64K")], &[]).events_max_record_bytes(),
+        64 * 1024
+    );
+    for larger in ["1M", "4M", "262145"] {
+        let refused = Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_environment(pairs(&[(SETTING_EVENTS_MAX_RECORD_BYTES, larger)])),
+        )
+        .expect_err("past the stream's bound");
+        assert!(
+            format!("{refused:#}").contains("256K or less"),
+            "{larger}: {refused:#}"
+        );
+    }
+}

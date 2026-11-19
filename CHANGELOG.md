@@ -19,6 +19,12 @@ is cut.
 
 ### Changed
 
+- **An event's record is at most 256K, said by the configuration and answered `413 event_too_large`.**
+  `dataPlane.events.max_record_bytes` defaulted to `1M` while the Host's event stream carries records of up to 256K, so an event between the two was accepted, then failed forever with `503 journal_unavailable`, which clients retry.
+  The default is now `256K`, and a larger value is refused when the configuration is read: a configuration setting `1M`, as the shipped ones did, must lower it.
+  An event whose record is larger is refused alone, before it joins the batch it would share with concurrent submissions, with `413 event_too_large` (`INVALID_ARGUMENT` over gRPC), and never fails the submissions written beside it.
+- **A request body past `limits.body_bytes` is answered with the JSON error body.**
+  The surface answered a bare `413` with a line of text; it now answers `413 body_too_large` with a `WireError` over HTTP, and `INVALID_ARGUMENT` with the class and code over gRPC.
 - **The Control Plane's event store is kept in `data/event-store` by default, out of the legacy event history.**
   The default `controlPlane.events.directory` was `data/events/store`, inside `dataPlane.events.directory` (`data/events`), so every restart took the store for a drained legacy history it refused to archive, and `migrate finalize --subsystem events-legacy` could remove it.
   With the directory left at its default, a store found at `data/events/store` is moved to `data/event-store` at start, and by `migrate events`, in one rename on the volume (`events.store_relocated`); a store at both places is left as it is and said (`events.store_duplicated`).

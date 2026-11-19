@@ -228,9 +228,36 @@ pub(crate) fn unavailable(message: &str, grpc: bool) -> Response<Body> {
 /// `INVALID_ARGUMENT` with the same class and code. HTTP/1.1's parser answers a bare `431` before a
 /// request exists; this is the bound for HTTP/2, which carries its head as one header list.
 pub(crate) fn header_fields_exceeded(limit: u32, grpc: bool) -> Response<Body> {
-    let code = permguard_core::codes::common::HEADER_FIELDS_EXCEEDED;
-    let message =
-        format!("the request head carries more than {limit} fields (`limits.header_fields`)");
+    refused_as(
+        StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE,
+        permguard_core::GrpcCode::InvalidArgument,
+        permguard_core::codes::common::HEADER_FIELDS_EXCEEDED,
+        format!("the request head carries more than {limit} fields (`limits.header_fields`)"),
+        grpc,
+    )
+}
+
+/// A request body past `limits.body_bytes` (BUG-0160): answered with the surface's error body,
+/// `413` over HTTP and `INVALID_ARGUMENT` over gRPC, where the limit's own answer is bare text.
+pub(crate) fn body_too_large(limit: usize, grpc: bool) -> Response<Body> {
+    refused_as(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        permguard_core::GrpcCode::InvalidArgument,
+        permguard_core::codes::common::BODY_TOO_LARGE,
+        format!("the request body is larger than {limit} bytes (`limits.body_bytes`)"),
+        grpc,
+    )
+}
+
+/// A `validation` refusal the surface answers before any handler: `status` with a `WireError`
+/// over HTTP, `grpc_code` with the class and code in the trailers over gRPC.
+fn refused_as(
+    status: StatusCode,
+    grpc_code: permguard_core::GrpcCode,
+    code: &'static str,
+    message: String,
+    grpc: bool,
+) -> Response<Body> {
     if grpc {
         let mut response = Response::new(Body::empty());
         let headers = response.headers_mut();
@@ -240,12 +267,8 @@ pub(crate) fn header_fields_exceeded(limit: u32, grpc: bool) -> Response<Body> {
         );
         headers.insert(
             "grpc-status",
-            http::HeaderValue::from_str(
-                &permguard_core::GrpcCode::InvalidArgument
-                    .number()
-                    .to_string(),
-            )
-            .unwrap_or_else(|_| http::HeaderValue::from_static("3")),
+            http::HeaderValue::from_str(&grpc_code.number().to_string())
+                .unwrap_or_else(|_| http::HeaderValue::from_static("3")),
         );
         if let Ok(message) = http::HeaderValue::from_str(&grpc_message(&message)) {
             headers.insert("grpc-message", message);
@@ -267,7 +290,7 @@ pub(crate) fn header_fields_exceeded(limit: u32, grpc: bool) -> Response<Body> {
     })
     .unwrap_or_default();
     let mut response = Response::new(Body::from(body));
-    *response.status_mut() = StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE;
+    *response.status_mut() = status;
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
         http::HeaderValue::from_static("application/json"),

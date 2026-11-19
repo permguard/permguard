@@ -110,6 +110,18 @@ async fn test_a_body_over_the_limit_is_refused_rather_than_read() {
         "a body sixty-four times the limit was not refused: {}",
         status(&answer)
     );
+    // Refused as every other refusal of the surface is: a JSON error body, not the limit's line
+    // of text (BUG-0160).
+    assert_eq!(
+        header(&answer, "content-type"),
+        Some("application/json"),
+        "{answer}"
+    );
+    assert!(
+        answer.contains("\"code\":\"body_too_large\"")
+            && answer.contains("\"class\":\"validation\""),
+        "{answer}"
+    );
 
     // And the limit is a limit, not a ban: something under it still goes through.
     let small = "x".repeat(16);

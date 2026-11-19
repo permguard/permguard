@@ -3115,6 +3115,24 @@ impl Submitter {
                     ),
                 )
             }
+            Failed::TooLarge { bytes, limit } => {
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        permguard_core::codes::pdp_temporal::EVENT_TOO_LARGE,
+                    )],
+                );
+                ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::pdp_temporal::EVENT_TOO_LARGE,
+                    format!(
+                        "this event's record takes {bytes} bytes, and this plane records events of \
+                         up to {limit} (`dataPlane.events.max_record_bytes`, at most the event \
+                         stream's 256K): send a smaller event; a retry is refused the same way"
+                    ),
+                )
+            }
             Failed::Digest(error) => ApiError::new(
                 ErrorClass::Internal,
                 permguard_core::codes::pdp_temporal::RECORD_NOT_CANONICAL,

@@ -209,7 +209,7 @@ dataPlane:
   #   stream:
   #     max_bytes: "10G"             # EVENT RECORDS ONLY; the reserve is kept outside this bound
   #     segment_bytes: "32M"         # when a segment is closed and a new one started
-  #     max_record_bytes: "1M"       # the largest single record this journal accepts
+  #     max_record_bytes: "256K"     # the largest single record this journal accepts
   #     group_commit_max_delay: "5ms"  # a latency budget, never a durability one: a receipt is
   #                                    # still withheld until the record is on disk. What this buys
   #                                    # is that ten submissions arriving together cost one flush.
