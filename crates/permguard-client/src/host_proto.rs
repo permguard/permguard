@@ -213,6 +213,7 @@ pub(crate) fn member_in(member: proto::Member) -> MemberView {
                     .zone_receipts
                     .into_iter()
                     .map(|receipt| ZoneReceiptView {
+                        behind: receipt.behind,
                         resource: receipt.resource,
                         manifest_epoch: receipt.manifest_epoch,
                         confirmed_at: receipt.confirmed_at,

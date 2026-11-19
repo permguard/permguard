@@ -2270,3 +2270,74 @@ fn only_a_transient_refusal_is_retried() {
         assert!(!super::retryable(&remote(final_code)), "{final_code}");
     }
 }
+
+/// BUG-0097: a receipt of keys older than the root the coordinator delivers at now is shown
+/// `behind`; one of the current version, or with no root held, is not.
+#[test]
+fn a_receipt_older_than_the_root_is_shown_behind() {
+    use crate::membership::zone::{Receipt, Tuple};
+    use crate::secrets::ZonePurpose;
+
+    let receipt = Receipt {
+        epoch: 1,
+        confirmed_at: 1_700_000_000,
+        transcript_digest: [0; 32],
+        tuples: vec![Tuple {
+            purpose: ZonePurpose::AuditPseudonym,
+            zone: [1; 16],
+            scope: [1; 16],
+            version: 1,
+        }],
+        resource: "plane/data/zone/z".to_owned(),
+    };
+    assert!(super::ZoneReceiptView::of(&receipt, Some(2)).behind);
+    assert!(!super::ZoneReceiptView::of(&receipt, Some(1)).behind);
+    assert!(!super::ZoneReceiptView::of(&receipt, None).behind);
+}
+
+/// BUG-0096: a Host that serves no `zone.secrets` as a coordinator, one holding no coordinator
+/// root, refuses to invite for it `task_unserved`; a `zone.secrets` task that could never deliver
+/// is refused `invalid_argument` whoever offers it.
+#[tokio::test]
+async fn a_zone_secrets_task_is_offered_only_when_it_can_be_served() {
+    let root = scratch("zone-offer");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let zone = "01a3185c-5000-7333-b333-333333333333";
+    let zone_task = |resource_types: &[&str]| TaskView {
+        task_id: "zone-keys".to_owned(),
+        task_type: "zone.secrets".to_owned(),
+        provider_role: Some("coordinator".to_owned()),
+        consumer_role: Some("member".to_owned()),
+        selector: format!("plane/data/zone/{zone}/*"),
+        resource_types: resource_types
+            .iter()
+            .map(|named| (*named).to_owned())
+            .collect(),
+        ..task_view()
+    };
+    let invite = |task: TaskView, request_id: &str| CreateInvite {
+        selector: format!("plane/data/zone/{zone}/*"),
+        tasks: vec![task],
+        ..create(request_id, None)
+    };
+    let refused = api
+        .create_invite(&admin(), invite(zone_task(&["*"]), "star"))
+        .await
+        .expect_err("`*` grants nothing");
+    assert_eq!(
+        code(&refused),
+        codes::common::INVALID_ARGUMENT,
+        "{refused:?}"
+    );
+    let refused = api
+        .create_invite(
+            &admin(),
+            invite(
+                zone_task(&[permguard_core::domains::kdf::AUDIT_PSEUDONYM]),
+                "no-root",
+            ),
+        )
+        .await
+        .expect_err("no coordinator root here");
+    assert_eq!(code(&refused), codes::host::TASK_UNSERVED, "{refused:?}");
+}

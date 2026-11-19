@@ -211,6 +211,9 @@ impl TaskView {
             version: self.version.unwrap_or(1),
         };
         task.check().map_err(|error| invalid(error.0))?;
+        // A task that could never deliver is refused when it is offered, not when a session
+        // first asks (BUG-0096).
+        crate::membership::zone::check_offer(&task).map_err(invalid)?;
         Ok(task)
     }
 }
@@ -507,6 +510,10 @@ pub struct ZoneReceiptView {
     /// `sha256:` hex of the transcript.
     pub transcript_digest: String,
     pub keys: Vec<ZoneTupleView>,
+    /// Whether the keys confirmed are of an older version than the coordinator's root delivers
+    /// at now: the member receives the new version at its next pass (BUG-0097).
+    #[serde(default)]
+    pub behind: bool,
 }
 
 /// One key a member received: its coordinates, never its bytes.
@@ -519,8 +526,10 @@ pub struct ZoneTupleView {
 }
 
 impl ZoneReceiptView {
-    fn of(receipt: &crate::membership::zone::Receipt) -> Self {
+    fn of(receipt: &crate::membership::zone::Receipt, root: Option<u64>) -> Self {
+        let held = receipt.tuples.iter().map(|tuple| tuple.version).max();
         Self {
+            behind: root.is_some_and(|root| held.is_some_and(|held| held < root)),
             resource: receipt.resource.clone(),
             manifest_epoch: receipt.epoch,
             confirmed_at: rfc3339(receipt.confirmed_at),
@@ -575,7 +584,7 @@ impl MemberReportedView {
 }
 
 impl TaskObservedView {
-    fn of(observed: &crate::membership::progress::Observed) -> Self {
+    fn of(observed: &crate::membership::progress::Observed, root: Option<u64>) -> Self {
         Self {
             task_id: observed.task_id.clone(),
             last_session_at: observed.last_session_at.map(rfc3339),
@@ -587,7 +596,7 @@ impl TaskObservedView {
             zone_receipts: observed
                 .zone_receipts
                 .iter()
-                .map(ZoneReceiptView::of)
+                .map(|receipt| ZoneReceiptView::of(receipt, root))
                 .collect(),
         }
     }
@@ -777,7 +786,13 @@ impl MemberView {
             (Some((manifest, ..)), Role::Coordinator) => viewing
                 .store
                 .observed(manifest, viewing.now)
-                .map(|observed| observed.iter().map(TaskObservedView::of).collect())
+                .map(|observed| {
+                    let root = viewing.store.root_version();
+                    observed
+                        .iter()
+                        .map(|task| TaskObservedView::of(task, root))
+                        .collect()
+                })
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
@@ -1331,6 +1346,29 @@ impl HostApi {
             return Err(invalid("`max_uses` is 1: an invitation is used once"));
         }
         let offered = tasks(&invite.tasks)?;
+        // `zone.secrets` is offered only by a Host that serves it, one holding a coordinator root:
+        // the approval refuses it `task_unserved` otherwise, and a member would join for keys it
+        // never receives (BUG-0096).
+        for task in offered
+            .iter()
+            .filter(|task| task.task_type == crate::membership::record::TaskType::ZoneSecrets)
+        {
+            if !memberships.capabilities.acts(
+                task.task_type,
+                task.version,
+                crate::membership::record::Role::Coordinator,
+            ) {
+                return Err(Refusal::new(
+                    ErrorClass::Validation,
+                    codes::host::TASK_UNSERVED,
+                    format!(
+                        "this Host serves no `{}` version {} as a coordinator: it cannot offer it",
+                        task.task_type.as_str(),
+                        task.version
+                    ),
+                ));
+            }
+        }
         let new = NewInvite {
             selector: selector(&invite.selector)?,
             tasks: offered,

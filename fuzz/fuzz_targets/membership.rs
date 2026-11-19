@@ -105,6 +105,10 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(record) = zone::Receipt::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
+    // The root version a coordinator answers `current` with (BUG-0097).
+    if let Ok(record) = zone::Current::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
     // The `events.import` contract's records (WP-6.2c1).
     if let Ok(record) = import::Request::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));

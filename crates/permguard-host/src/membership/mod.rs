@@ -308,6 +308,15 @@ impl Capabilities {
         })
     }
 
+    /// The same contracts without the side `role` takes in `task`: a side this Host cannot serve,
+    /// as `zone.secrets` without a coordinator root (BUG-0096).
+    pub fn without(mut self, task: TaskType, role: Role) -> Self {
+        self.0.retain(|held| {
+            !(held.task_type == task && held.role == record::ContractRole::of(task, role))
+        });
+        self
+    }
+
     /// Whether this Host registered the side `role` takes in `task` at `version`.
     pub fn acts(&self, task: TaskType, version: u64, role: Role) -> bool {
         self.0.contains(&record::Capability {
@@ -437,6 +446,9 @@ pub struct Store {
     keeping: Mutex<()>,
     /// The replay windows read so far, by membership and task (WP-4.4).
     windows: Mutex<BTreeMap<([u8; 16], String), replay::Window>>,
+    /// The version of the coordinator root this Host delivers zone keys at, `0` without a root:
+    /// what a member's receipt is compared with to say it is behind (BUG-0097).
+    root_version: std::sync::atomic::AtomicU64,
 }
 
 impl fmt::Debug for Store {
@@ -1151,7 +1163,19 @@ impl Store {
             fenced: std::sync::atomic::AtomicBool::new(false),
             keeping: Mutex::new(()),
             windows: Mutex::new(BTreeMap::new()),
+            root_version: std::sync::atomic::AtomicU64::new(0),
         }))
+    }
+
+    /// Records the coordinator root's version this Host delivers zone keys at (BUG-0097).
+    pub fn hold_root_version(&self, version: u64) {
+        self.root_version
+            .store(version, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// The coordinator root's version zone keys are delivered at; `None` without a root.
+    pub fn root_version(&self) -> Option<u64> {
+        Some(self.root_version.load(std::sync::atomic::Ordering::SeqCst)).filter(|held| *held > 0)
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {

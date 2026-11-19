@@ -171,6 +171,7 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
                     .zone_receipts
                     .into_iter()
                     .map(|receipt| v1::ZoneReceipt {
+                        behind: receipt.behind,
                         resource: receipt.resource,
                         manifest_epoch: receipt.manifest_epoch,
                         confirmed_at: receipt.confirmed_at,

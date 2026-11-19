@@ -161,6 +161,10 @@ is cut.
 
 ### Fixed
 
+- **A `zone.secrets` member is alive while it is reachable, and receives a new root version within one pass.**
+  Every pass, a member asks its coordinator the root version it delivers at, on a session that carries no key: a member whose only task is `zone.secrets` is no longer suspended for dormancy minutes after receiving its keys, and a root moved to a new version reaches every member at its next pass instead of waiting for a new manifest. The member view's `zone_receipts[].behind` (REST and gRPC) says when a member's keys are older than the root.
+- **A `zone.secrets` task that could never deliver is refused when it is offered.**
+  An invitation or approval of one whose selector names neither a zone nor a ledger by ids, or whose `resource_types` are not exactly the purpose its resource takes, `*` included, is refused `400 invalid_argument`; a Host holding no coordinator root neither invites for it nor approves it (`task_unserved`); and the coordinator logs why it refused a member's key request.
 - **`check` refuses an answer that is not a decision.**
   A `200` whose body has no `decision`, or one that is not a boolean, exits `70` with `decode_failed` and prints no decision, where it was printed as a deny with exit `0`; under `-o json` and `-o yaml` the refusal document is printed.
 - **`check` in a workspace says when the document names only another zone or only another ledger.**

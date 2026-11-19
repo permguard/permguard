@@ -59,6 +59,8 @@ pub const VERSION: u64 = 1;
 pub const DELIVER: &str = "deliver";
 /// The request a member confirms what it stored with.
 pub const CONFIRM: &str = "confirm";
+/// The action asking the coordinator's current root version, every pass (BUG-0097, DEC-0013).
+pub const CURRENT: &str = "current";
 /// The most tuples one delivery, confirmation or receipt carries.
 pub const MAX_TUPLES: usize = 64;
 /// The most bytes one `zone.secrets` record takes.
@@ -178,12 +180,15 @@ pub struct Confirmation {
 pub enum Request {
     Deliver,
     Confirm(Vec<Confirmation>),
+    /// The root version the coordinator delivers at now: no key travels (BUG-0097).
+    Current,
 }
 
 impl Request {
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
         match self {
             Self::Deliver => encode(vec![(Value::Int(1), Value::Text(DELIVER.to_owned()))]),
+            Self::Current => encode(vec![(Value::Int(1), Value::Text(CURRENT.to_owned()))]),
             Self::Confirm(confirmations) => {
                 let confirmations = sorted(confirmations.clone(), |c| &c.tuple);
                 encode(vec![
@@ -212,6 +217,7 @@ impl Request {
         let action = map.text(1)?;
         let request = match action.as_str() {
             DELIVER => Self::Deliver,
+            CURRENT => Self::Current,
             CONFIRM => Self::Confirm(tuples(
                 map.array(2)?,
                 "a zone confirmation",
@@ -232,6 +238,61 @@ impl Request {
         map.finish()?;
         Ok(request)
     }
+}
+
+/// The answer to [`Request::Current`]: the root version a delivery is made at now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Current {
+    pub version: u64,
+}
+
+impl Current {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![(Value::Int(1), uint(self.version)?)])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a zone version")?;
+        let mut map = Labelled::read(bytes, "a zone version")?;
+        let version = map.uint(1)?;
+        map.finish()?;
+        Ok(Self { version })
+    }
+}
+
+/// Checks a `zone.secrets` task when it is offered, invited or approved, rather than when a
+/// session first asks for its keys (BUG-0096, DEC-0013 option A): its selector names a zone or a
+/// ledger by ids, and its `resource_types` name exactly the purpose that resource takes; `*` is
+/// refused, so a grant's scope reads as what it grants. Any other task type passes.
+pub fn check_offer(task: &Task) -> Result<(), String> {
+    if task.task_type != TaskType::ZoneSecrets {
+        return Ok(());
+    }
+    let resource = task.selector.prefix();
+    let purpose = match &resource {
+        Resource::Zone { .. } => ZonePurpose::AuditPseudonym,
+        Resource::Ledger { .. } => ZonePurpose::DecisionCommitment,
+        _ => {
+            return Err(format!(
+                "a `zone.secrets` task is granted over a zone or a ledger, and `{}` is neither",
+                task.selector
+            ));
+        }
+    };
+    if task.resource_types.is_empty()
+        || task
+            .resource_types
+            .iter()
+            .any(|named| named != purpose.as_str())
+    {
+        return Err(format!(
+            "a `zone.secrets` task over `{}` grants the `{}` key, named exactly in \
+             `resource_types`; `*` and other names grant nothing here",
+            task.selector,
+            purpose.as_str()
+        ));
+    }
+    grant(task, resource, 0).map(|_| ())
 }
 
 /// The keys a coordinator delivers: never displayed, zeroized when dropped.
@@ -694,8 +755,39 @@ impl ZoneSecrets {
 
 impl TaskHandler for ZoneSecrets {
     fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal> {
+        // A refusal travels to the member as its code alone: its reason is said here, where the
+        // operator of the coordinator reads it (BUG-0096).
+        self.answer(context, body).inspect_err(|refusal| {
+            tracing::warn!(
+                event.name = "host.membership.zone_keys_refused",
+                component = "host",
+                membership_id = %uuid_text(&context.membership_id),
+                task_id = %context.task_id,
+                code = refusal.code,
+                reason = %refusal.reason,
+                "a member's zone.secrets request was refused"
+            );
+        })
+    }
+
+    /// Its delivery carries keys, which the replay window must never keep (owner decision): a
+    /// repeat is answered again, the keys derived anew and the receipt rewritten.
+    fn keeps_answers(&self) -> bool {
+        false
+    }
+}
+
+impl ZoneSecrets {
+    fn answer(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal> {
         let granted = self.granted(context)?;
         match Request::decode(body).map_err(|error| invalid(error.0))? {
+            // The version a delivery is made at now: the member compares it with its receipt and
+            // asks again when the root moved (BUG-0097).
+            Request::Current => Current {
+                version: self.coordinator.version().get(),
+            }
+            .encode()
+            .map_err(|error| unavailable(error.0)),
             Request::Deliver => {
                 let keys = granted
                     .iter()
@@ -747,12 +839,6 @@ impl TaskHandler for ZoneSecrets {
                 receipt.encode().map_err(|error| unavailable(error.0))
             }
         }
-    }
-
-    /// Its delivery carries keys, which the replay window must never keep (owner decision): a
-    /// repeat is answered again, the keys derived anew and the receipt rewritten.
-    fn keeps_answers(&self) -> bool {
-        false
     }
 }
 
@@ -856,6 +942,27 @@ impl Member<'_> {
         Ok(receipt)
     }
 
+    /// The root version the coordinator delivers `task_id` of `id` at now, asked on a session of
+    /// its own: no key travels (BUG-0097).
+    pub async fn zone_version(
+        &self,
+        initiator: Initiator,
+        id: &[u8; 16],
+        task_id: &str,
+        resource: &str,
+    ) -> Result<u64, MembershipError> {
+        let mut session = self
+            .open_task(initiator, id, task_id, resource, Vec::new())
+            .await?;
+        let answer = session
+            .send(
+                &format!("zone-current-{}", session.lease.epoch),
+                Request::Current.encode()?,
+            )
+            .await?;
+        Ok(Current::decode(&answer)?.version)
+    }
+
     /// Receives the keys of every `zone.secrets` task of this Host's active memberships as a
     /// member whose receipt is not of the manifest's epoch, over the task selector's prefix when it
     /// names a zone or a ledger: the server's periodic pass. Answers how many it received; one
@@ -887,14 +994,37 @@ impl Member<'_> {
                     );
                     continue;
                 }
-                let current = self
+                let receipt = self
                     .store
                     .zone_receipt(&id, &task.task_id, &resource.to_string())
                     .ok()
                     .flatten()
-                    .is_some_and(|receipt| receipt.epoch == manifest.epoch);
-                if current {
-                    continue;
+                    .filter(|receipt| receipt.epoch == manifest.epoch);
+                if let Some(receipt) = receipt {
+                    // Current for this manifest: the coordinator is still asked, every pass, which
+                    // root version it delivers at. The contact is what keeps a reachable member
+                    // alive (BUG-0098), and a root that moved is received now, with no new
+                    // manifest (BUG-0097, DEC-0013 option A).
+                    let held = receipt.tuples.iter().map(|tuple| tuple.version).max();
+                    match self
+                        .zone_version(initiator.clone(), &id, &task.task_id, &resource.to_string())
+                        .await
+                    {
+                        Ok(version) if Some(version) <= held => continue,
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(
+                                event.name = "host.membership.zone_version_failed",
+                                component = "host",
+                                membership_id = %uuid_text(&id),
+                                task_id = %task.task_id,
+                                error = %error,
+                                "the coordinator's root version could not be asked: the next pass \
+                                 tries again"
+                            );
+                            continue;
+                        }
+                    }
                 }
                 match self
                     .receive_zone_keys(

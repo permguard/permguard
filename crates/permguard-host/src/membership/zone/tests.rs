@@ -928,3 +928,145 @@ async fn the_keys_received_become_a_planes_handle_and_two_authorities_none() {
             .is_empty()
     );
 }
+
+/// BUG-0096, DEC-0013 option A: a `zone.secrets` task that could never deliver is refused when
+/// it is offered: a selector neither a zone nor a ledger, ids that are not UUIDs, `*`, or a
+/// purpose its resource does not take; the purpose its resource takes passes.
+#[test]
+fn a_zone_task_that_could_never_deliver_is_refused_when_offered() {
+    assert!(check_offer(&zone_task(&[PSEUDONYM])).is_ok());
+    for (task, said) in [
+        (zone_task(&["*"]), "`*`"),
+        (zone_task(&[TAGS]), PSEUDONYM),
+        (zone_task(&[PSEUDONYM, TAGS]), PSEUDONYM),
+        (zone_task(&[]), PSEUDONYM),
+        (
+            Task {
+                selector: Selector::parse("host/*").expect("a selector"),
+                ..zone_task(&[PSEUDONYM])
+            },
+            "neither",
+        ),
+        (
+            Task {
+                selector: Selector::parse("plane/data/zone/acme/*").expect("a selector"),
+                ..zone_task(&[PSEUDONYM])
+            },
+            "UUID",
+        ),
+    ] {
+        let refused = check_offer(&task).expect_err("refused");
+        assert!(
+            refused.contains(said),
+            "{:?}: {refused}",
+            task.resource_types
+        );
+    }
+}
+
+/// A coordinator root that moves from version 1 to version 2 when `moved` is set: what an operator
+/// rotating `operations.secrets` and restarting the coordinator does.
+struct Rotating {
+    first: ZoneSecrets,
+    second: ZoneSecrets,
+    moved: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl crate::membership::task::TaskHandler for Rotating {
+    fn handle(
+        &self,
+        context: &crate::membership::task::TaskContext,
+        body: &[u8],
+    ) -> Result<Vec<u8>, Refusal> {
+        if self.moved.load(std::sync::atomic::Ordering::SeqCst) {
+            self.second.handle(context, body)
+        } else {
+            self.first.handle(context, body)
+        }
+    }
+
+    fn keeps_answers(&self) -> bool {
+        false
+    }
+}
+
+fn coordinator_at(host: &Host, version: u64) -> Coordinator {
+    Coordinator::new(
+        Root::from_material(&[0x42; 32], KeyVersion::new(version).expect("a version"))
+            .expect("a root"),
+        host.identity.host_id(),
+    )
+}
+
+/// BUG-0097, BUG-0098, DEC-0013 option A: a member whose receipt is current still asks the
+/// coordinator's root version every pass: that contact keeps it alive, and a root moved to a new
+/// version reaches it within one pass, with no new manifest.
+#[tokio::test]
+async fn a_current_member_is_alive_and_receives_a_moved_root_within_one_pass() {
+    let moved = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let switch = Arc::clone(&moved);
+    let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+    let c = Side::handling(Host::new("rotating-c"), true, time, move |host, time| {
+        let secrets = |version| ZoneSecrets {
+            coordinator: coordinator_at(host, version),
+            store: Arc::clone(&host.store),
+            time: Arc::clone(time),
+        };
+        TaskHandlers::default()
+            .register(
+                TaskType::ZoneSecrets,
+                VERSION,
+                Arc::new(Rotating {
+                    first: secrets(1),
+                    second: secrets(2),
+                    moved: switch,
+                }),
+            )
+            .expect("one handler")
+    });
+    let m = Side::new("rotating-m", false);
+    let id = zoned(&c, &m, zone_task(&[PSEUDONYM])).await;
+    let keys = ZoneKeys::open(m.host.volume()).expect("the store");
+    let connector = loopback(&m, &c);
+    let acting = hosting(&m, &connector);
+    let version = |m: &Side| {
+        m.host
+            .store
+            .zone_receipt(&id, TASK, &zone_resource())
+            .expect("read")
+            .expect("kept")
+            .tuples[0]
+            .version
+    };
+
+    assert_eq!(acting.zone_due(who(), &keys).await, 1);
+    assert_eq!(version(&m), 1);
+    let first = c
+        .host
+        .store
+        .last_session(&id, TASK)
+        .expect("read")
+        .expect("a session")
+        .at;
+
+    // Current, and still in contact: the coordinator records the session, so a reachable member
+    // is never silent for dormancy.
+    std::thread::sleep(Duration::from_millis(1_100));
+    assert_eq!(acting.zone_due(who(), &keys).await, 0, "nothing to receive");
+    let second = c
+        .host
+        .store
+        .last_session(&id, TASK)
+        .expect("read")
+        .expect("a session")
+        .at;
+    assert!(
+        second > first,
+        "the pass was a contact: {first} then {second}"
+    );
+
+    // The root moves: the next pass receives it, under the same manifest.
+    moved.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(acting.zone_due(who(), &keys).await, 1);
+    assert_eq!(version(&m), 2);
+}

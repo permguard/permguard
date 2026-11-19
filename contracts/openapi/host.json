@@ -10850,6 +10850,11 @@
             },
             "description": "The keys confirmed, by their coordinates.",
             "x-grpc-field": "keys"
+          },
+          "behind": {
+            "type": "boolean",
+            "description": "Whether the keys confirmed are of an older version than the coordinator's root delivers at now: the member receives the new version at its next pass.",
+            "x-grpc-field": "behind"
           }
         },
         "required": [
@@ -10857,7 +10862,8 @@
           "manifest_epoch",
           "confirmed_at",
           "transcript_digest",
-          "keys"
+          "keys",
+          "behind"
         ],
         "additionalProperties": false,
         "description": "What a member confirmed it received of one `zone.secrets` task (WP-4.7).",

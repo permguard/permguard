@@ -1976,6 +1976,11 @@ impl Composition {
                 volume.host().path().display()
             )
         })?;
+        // The root version keys are delivered at, what the member view compares a receipt with
+        // (BUG-0097).
+        if let Some(coordinator) = &coordinator {
+            members.hold_root_version(coordinator.version().get());
+        }
         mutations
             .recover(&permguard_host::membership::Memberships(&members))
             .context("recovering the membership mutations a crash left open")?;
@@ -2174,6 +2179,15 @@ impl Composition {
                     permguard_host::membership::Capabilities::host(),
                     |capabilities, (_, _, declaration)| capabilities.with_declared(&declaration),
                 );
+            // Without a coordinator root this Host serves no zone keys: it does not offer the
+            // coordinator's side of `zone.secrets`, so an approval naming it is refused
+            // `task_unserved` instead of signing a task nothing can deliver (BUG-0096).
+            let capabilities = if coordinator.is_none() {
+                use permguard_host::membership::record::TaskType;
+                capabilities.without(TaskType::ZoneSecrets, TaskType::ZoneSecrets.provider())
+            } else {
+                capabilities
+            };
             // The appraisal policy configured; no verifier ships, so `attested` is refused until a
             // composition registers one (WP-4.2, owner decision).
             let appraisal = permguard_host::membership::appraisal::Appraisal::new(

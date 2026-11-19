@@ -436,6 +436,9 @@ message ZoneReceipt {
   repeated ZoneKeyTuple keys = 4;
   // The resource the keys were delivered over.
   string resource = 5;
+  // Whether the keys confirmed are of an older version than the coordinator's root delivers at
+  // now: the member receives the new version at its next pass.
+  bool behind = 6;
 }
 // One key a member received: its coordinates, never its bytes (WP-4.7).
 message ZoneKeyTuple {
