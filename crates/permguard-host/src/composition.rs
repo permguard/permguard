@@ -1005,6 +1005,13 @@ pub trait MirrorTasks: Send + Sync {
     /// The active `policy.mirror` tasks of every membership this Host holds as a member.
     fn mirror_tasks(&self) -> Vec<MirrorTask>;
 
+    /// The memberships this Host held as a member that have ended for good — revoked, rejected,
+    /// expired or orphaned — as UUID text: the mirrors their tasks listed are no longer served,
+    /// whatever the grace (BUG-0190). A suspended membership is not among them.
+    fn ended_memberships(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Opens a task session over `task`'s resource, its lease verified and kept.
     fn open_mirror<'a>(
         &'a self,
@@ -1023,6 +1030,10 @@ pub trait MirrorTasks: Send + Sync {
 impl MirrorTasks for crate::api::HostApi {
     fn mirror_tasks(&self) -> Vec<MirrorTask> {
         crate::api::HostApi::mirror_tasks(self)
+    }
+
+    fn ended_memberships(&self) -> Vec<String> {
+        crate::api::HostApi::ended_memberships(self)
     }
 
     fn open_mirror<'a>(

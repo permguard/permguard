@@ -120,6 +120,13 @@ impl LocalMirrors {
 }
 
 impl MirrorTasks for LocalMirrors {
+    fn ended_memberships(&self) -> Vec<String> {
+        self.members
+            .as_ref()
+            .map(|members| members.ended_memberships())
+            .unwrap_or_default()
+    }
+
     fn mirror_tasks(&self) -> Vec<MirrorTask> {
         // A membership task carrying the local task's identity is dropped, whatever the membership
         // side handed over: only this Host's own task is ever routed in-process.

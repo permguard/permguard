@@ -952,3 +952,232 @@ async fn a_held_ledger_keeps_its_mirror() {
     assert_eq!(outcome.reaped, 1, "released: {outcome:?}");
     assert!(!staging.path(&root).exists());
 }
+
+/// The held tasks of `inner`, and memberships that ended (BUG-0190).
+struct Ending {
+    inner: tasks::Held,
+    ended: Vec<String>,
+}
+
+impl permguard_host::composition::MirrorTasks for Ending {
+    fn mirror_tasks(&self) -> Vec<permguard_host::composition::MirrorTask> {
+        self.inner.mirror_tasks()
+    }
+
+    fn ended_memberships(&self) -> Vec<String> {
+        self.ended.clone()
+    }
+
+    fn open_mirror<'a>(
+        &'a self,
+        task: &'a permguard_host::composition::MirrorTask,
+    ) -> permguard_core::BoxFuture<
+        'a,
+        Result<
+            Box<dyn permguard_host::composition::MirrorSession>,
+            permguard_host::composition::MirrorRefusal,
+        >,
+    > {
+        self.inner.open_mirror(task)
+    }
+
+    fn watch_mirror<'a>(
+        &'a self,
+        task: &'a permguard_host::composition::MirrorTask,
+        positions: Vec<(String, u64)>,
+    ) -> permguard_core::BoxFuture<
+        'a,
+        Result<
+            Box<dyn permguard_host::composition::MirrorWatch>,
+            permguard_host::composition::MirrorRefusal,
+        >,
+    > {
+        self.inner.watch_mirror(task, positions)
+    }
+}
+
+/// A round over `tasks`, its grace an hour, its selections `selections`.
+fn ending_round(
+    root: &std::path::Path,
+    tasks: Arc<dyn permguard_host::composition::MirrorTasks>,
+    selections: source::TaskSelections,
+) -> Arc<round::Context> {
+    Arc::new(round::Context {
+        tasks: Some(tasks),
+        selections,
+        decider: None,
+        root: root.to_path_buf(),
+        deadline: Duration::from_secs(30),
+        stale_after: None,
+        reap_grace: Duration::from_secs(3600),
+        holds: Default::default(),
+        parallelism: 2,
+        permits: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
+        metrics: Metrics::none(),
+    })
+}
+
+/// BUG-0190: once the membership a mirror was followed under ended, its ledgers are no longer
+/// served, at once, whatever the grace: tombstoned and reaped, audited both. A membership whose
+/// tasks are merely not listed this round, a suspended one, keeps its mirrors.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_revoked_membership_stops_its_mirrors_at_once() {
+    let volume = scratch("membership-ended");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    let membership = permguard_host::identity::record::uuid_text(&[1; 16]);
+
+    round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        Default::default(),
+    ))
+    .await;
+    assert!(permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_some());
+
+    // Suspended: its task is not listed, nothing ends it.
+    let outcome = round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, Vec::new(), Vec::new(), false)),
+        Default::default(),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 0, "{outcome:?}");
+    assert!(permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_some());
+
+    // Revoked: ended for good.
+    let outcome = round::run(ending_round(
+        &root,
+        Arc::new(Ending {
+            inner: held_by(&url, Vec::new(), Vec::new(), false),
+            ended: vec![membership],
+        }),
+        Default::default(),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1, "{outcome:?}");
+    assert!(
+        outcome
+            .candidacy
+            .iter()
+            .any(|(action, _)| *action == "mirror.tombstoned")
+            && outcome
+                .candidacy
+                .iter()
+                .any(|(action, _)| *action == "mirror.reaped"),
+        "{outcome:?}"
+    );
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
+        "no longer served"
+    );
+}
+
+/// BUG-0193: a ledger the configuration no longer follows is not served from the round that
+/// excludes it, whatever the grace; a mistyped selection does not keep it served either.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ledger_the_configuration_excludes_is_not_served_at_once() {
+    let volume = scratch("narrowed-at-once");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    let selecting = |task: &str, ledgers: &[&str]| {
+        source::TaskSelections::compile(
+            &[permguard_core::mirrors::MirrorTaskSelection {
+                membership: permguard_host::identity::record::uuid_text(&[1; 16]),
+                task: task.to_owned(),
+                zones: vec!["acme".to_owned()],
+                ledgers: ledgers.iter().map(|ledger| (*ledger).to_owned()).collect(),
+            }],
+            None,
+        )
+        .expect("the patterns compile")
+    };
+
+    round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        Default::default(),
+    ))
+    .await;
+    assert_eq!(layout::on_disk(&root).expect("lists").len(), 2);
+
+    let outcome = round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        selecting("mirror", &["main-ledger"]),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1, "{outcome:?}");
+    assert!(permguard_data_plane::authz::store::find(&root, "acme", "staging").is_none());
+    assert!(permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_some());
+
+    // A mistyped task name follows nothing of this task: nothing of it stays served.
+    let outcome = round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        selecting("mirorr", &[".*"]),
+    ))
+    .await;
+    assert_eq!(outcome.reaped, 1, "{outcome:?}");
+    assert!(layout::on_disk(&root).expect("lists").is_empty());
+}
+
+/// BUG-0192: a ledger deleted and recreated under the same name replaces its predecessor at once:
+/// the old mirror is removed in the round that lists the new one, which is served with no contest.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recreated_ledger_replaces_its_deleted_namesake_at_once() {
+    let volume = scratch("recreated");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        Default::default(),
+    ))
+    .await;
+    let before = permguard_data_plane::authz::store::identity_of(
+        &layout::on_disk(&root).expect("lists")[0].path(&root),
+    )
+    .expect("an identity");
+
+    let catalog = permguard_client::catalog::client(
+        &url,
+        &permguard_client::TlsOptions::default(),
+        Box::new(permguard_client::narrate::Silent),
+    )
+    .expect("the catalog client connects");
+    let ledger = catalog
+        .list_ledgers(&before.zone_id, None, None)
+        .expect("listed")
+        .into_iter()
+        .find(|ledger| ledger.name == "main-ledger")
+        .expect("the ledger");
+    catalog
+        .delete_ledger(&before.zone_id, &ledger.id, ledger.revision)
+        .expect("deleted");
+    catalog
+        .create_ledger(&before.zone_id, "main-ledger")
+        .expect("recreated");
+
+    let outcome = round::run(ending_round(
+        &root,
+        Arc::new(held_by(&url, task(), Vec::new(), false)),
+        Default::default(),
+    ))
+    .await;
+    assert_eq!(outcome.contested, 0, "{outcome:?}");
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 1, "{held:?}");
+    let after =
+        permguard_data_plane::authz::store::identity_of(&held[0].path(&root)).expect("an identity");
+    assert_ne!(after.ledger_id, before.ledger_id, "the new one is served");
+}

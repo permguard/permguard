@@ -184,11 +184,18 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     // What the staleness alarm names as required: the required tasks this Host holds, whether
     // their coordinator answered or not (WP-7.2d).
     let mut required: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // What this Host already knows ends a task mirror, whatever a coordinator lists: the tasks it
+    // holds, which the configuration may no longer follow, and the memberships that ended
+    // (BUG-0190, BUG-0193).
+    let mut held_tasks: Vec<permguard_host::composition::MirrorTask> = Vec::new();
+    let mut ended: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
     // The coordinators of this Host's `policy.mirror` tasks (WP-7.2a): each its own source, its
     // ledgers under its authority.
     if let Some(tasks) = &context.tasks {
         let held = tasks.mirror_tasks();
+        held_tasks.clone_from(&held);
+        ended.extend(tasks.ended_memberships());
         if held.is_empty() {
             // Not a failure: a plane not yet enrolled holds no task, and refuses every ledger as
             // one it does not serve. Said every round, so it is never mistaken for a quiet plane.
@@ -304,7 +311,12 @@ pub async fn run(context: Arc<Context>) -> Outcome {
 
     // Reap, but only what a coordinator that *answered this round* no longer wants, and the
     // mirrors of a configured URL whatever answered (WP-7.7).
-    let (reaped, candidacy) = reap(&context, &wanted, &answered, &listed_whole);
+    let known = Known {
+        held: &held_tasks,
+        ended: &ended,
+        served: &served,
+    };
+    let (reaped, candidacy) = reap(&context, &wanted, &answered, &listed_whole, &known);
     outcome.reaped = reaped;
     outcome.candidacy = candidacy;
     // Two mirrors answering to one name are refused at the decision path: said here too, every
@@ -318,7 +330,8 @@ pub async fn run(context: Arc<Context>) -> Outcome {
             ledger = ledger.as_str(),
             mirrors = claimants.join(", ").as_str(),
             "more than one mirror answers to this ledger's names: neither is served until one of \
-             them is no longer followed, or an alias names the authority it means"
+             them is no longer followed (`mirrors.tasks`, `mirrors.local`), or an alias in \
+             `mirrors.aliases` names the authority it means"
         );
     }
     outcome.stale = staleness(&context, &required);
@@ -897,11 +910,51 @@ fn is_empty_ledger(error: &str) -> bool {
 
 /// Removes mirrors on disk that no answering server wants any more, and what became of each
 /// task mirror's candidacy (WP-7.2d).
+/// What this Host knows of its own that ends a task mirror, beside a coordinator's listings.
+struct Known<'a> {
+    /// The `policy.mirror` tasks this Host holds.
+    held: &'a [permguard_host::composition::MirrorTask],
+    /// The memberships that ended for good, as UUID text.
+    ended: &'a std::collections::BTreeSet<String>,
+    /// What the coordinators listed this round.
+    served: &'a [Served],
+}
+
+/// Why a task mirror is no longer served on a decision this Host already holds, rather than on a
+/// coordinator's absence, which the grace protects against: its membership ended (BUG-0190), the
+/// configuration no longer follows its task or its ledger (BUG-0193), or its coordinator lists a
+/// ledger of the same zone and name under another id, the one that replaced it (BUG-0192).
+fn ended_by(context: &Context, known: &Known<'_>, identity: &Identity) -> Option<&'static str> {
+    let task = identity.task.as_deref()?;
+    let membership = task.split('/').next().unwrap_or_default();
+    if known.ended.contains(membership) {
+        return Some("membership_ended");
+    }
+    if let Some(held) = known.held.iter().find(|held| task_label(held) == task)
+        && !context.selections.follows(
+            &held.membership_id,
+            &held.task_id,
+            &identity.zone_name,
+            &identity.ledger_name,
+        )
+    {
+        return Some("not_followed");
+    }
+    let replaced = known.served.iter().any(|served| {
+        served.identity.authority == identity.authority
+            && served.identity.zone_id == identity.zone_id
+            && served.identity.ledger_name == identity.ledger_name
+            && served.identity.ledger_id != identity.ledger_id
+    });
+    replaced.then_some("replaced")
+}
+
 fn reap(
     context: &Context,
     wanted: &[Mirror],
     answered: &[String],
     listed_whole: &[(String, u64)],
+    known: &Known<'_>,
 ) -> (usize, Vec<(&'static str, String)>) {
     let mut candidacy = Vec::new();
     let Ok(present) = layout::on_disk(&context.root) else {
@@ -944,6 +997,27 @@ fn reap(
                     "the tombstone of a listed mirror could not be removed"
                 ),
             }
+            continue;
+        }
+        // Ended by what this Host knows of its own: reaped at once, no grace, unless a hold keeps it
+        // (BUG-0190, BUG-0192, BUG-0193).
+        if let Some(identity) = permguard_mirror::held::identity_of(&path)
+            && let Some(reason) = ended_by(context, known, &identity)
+        {
+            if held_by_a_hold(context, &mirror, now) {
+                continue;
+            }
+            info!(
+                event.name = "sync.mirror_ended",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                reason,
+                "this Host knows the mirror is no longer served — its membership ended, its \
+                 configuration no longer follows it, or its ledger was replaced — so it is \
+                 removed now rather than after the grace"
+            );
+            candidacy.push(("mirror.tombstoned", mirror.label()));
+            removed += remove_reaped(context, &mirror, reason, &mut candidacy);
             continue;
         }
         // Absence is only evidence of deletion when the observation was

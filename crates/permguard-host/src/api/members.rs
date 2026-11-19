@@ -2897,6 +2897,29 @@ impl HostApi {
 
     /// The `policy.mirror` tasks of every active membership this Host holds as a member, from
     /// the manifests in force (WP-7.2a): what a Data Plane mirror round snapshots.
+    /// The memberships this Host held as a member that ended for good (BUG-0190): revoked,
+    /// rejected, expired or orphaned, as UUID text.
+    pub fn ended_memberships(&self) -> Vec<String> {
+        use crate::membership::record::{Role, Status};
+
+        let Ok(memberships) = self.memberships() else {
+            return Vec::new();
+        };
+        memberships
+            .store
+            .memberships()
+            .into_iter()
+            .filter(|(_, held)| {
+                held.role == Role::Member
+                    && matches!(
+                        held.status,
+                        Status::Revoked | Status::Rejected | Status::Expired | Status::Orphaned
+                    )
+            })
+            .map(|(membership_id, _)| crate::identity::record::uuid_text(&membership_id))
+            .collect()
+    }
+
     pub fn mirror_tasks(&self) -> Vec<crate::composition::MirrorTask> {
         let Ok(memberships) = self.memberships() else {
             return Vec::new();

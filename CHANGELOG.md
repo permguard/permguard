@@ -19,6 +19,9 @@ is cut.
 
 ### Changed
 
+- **A mirror whose end the Host knows is no longer served at once, whatever `mirrors.reap_grace`.**
+  A coordinator's listing without a ledger still makes it a candidate reaped only after the grace, since an absence may be transient.
+  What the Host knows of its own ends a mirror in the round that learns it: the membership it was followed under was revoked, rejected, expired or orphaned (a suspended one keeps serving), `mirrors.tasks` or `mirrors.local` no longer follows its task or ledger, a mistyped entry included, or its coordinator lists a ledger of the same zone and name under another id, a deleted ledger recreated, which is then served with no contest.
 - **A snapshot binds what the backup barrier holds, and the Authority Plane's state.**
   The inventory now covers `planes/`, so the Authority Plane's accounts, tokens and first administrator's key are verified: a changed accounts journal, a removed `tokens/` or a missing `admin.key` is a difference; a manifest made before keeps verifying on the roots it bound.
   The journals of the stores the barrier holds (grants, key rings, identity, holds, memberships, the catalog, the Authority Plane's accounts) must match the inventory exactly: a grant journal holding frames past it is a difference, where it was taken for a grown prefix.
