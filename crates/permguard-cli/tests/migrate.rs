@@ -388,6 +388,36 @@ fn a_legacy_location_the_migration_refuses_is_refused_at_plan() {
     }
 }
 
+/// BUG-0189: a `--legacy` location that is not a directory is refused at plan, exit 64, naming
+/// it, for `keys`, `audit` and `decisions`, and no plan is written: a mistyped location would
+/// otherwise run as "nothing to migrate" and spend the plan.
+#[test]
+fn a_legacy_location_that_does_not_exist_is_refused_at_plan() {
+    let volume = Volume::new("legacy-missing", "");
+    let plan = volume.dir.join("migrate.plan");
+    let missing = volume.dir.join("no-such-legacy");
+    let missing = missing.to_str().expect("utf-8");
+    let keyed = format!("data.attest={missing}");
+    for args in [
+        vec!["--subsystem", "keys", "--legacy", keyed.as_str()],
+        vec!["--subsystem", "audit", "--legacy", missing],
+        vec!["--subsystem", "decisions", "--legacy", missing],
+    ] {
+        let mut all = vec!["migrate", "plan", "--backup", "snap-1"];
+        all.extend(args.iter().copied());
+        all.extend(["--out", plan.to_str().expect("utf-8")]);
+        let refused = volume.run(&all);
+        assert_eq!(
+            refused.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&refused)
+        );
+        assert!(stderr(&refused).contains(missing), "{}", stderr(&refused));
+        assert!(!plan.exists(), "{args:?}");
+    }
+}
+
 /// TC-3, after the review: a volume restored for forensics is never written: no migration is
 /// planned on it, and none is rolled back.
 #[test]

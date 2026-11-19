@@ -545,3 +545,114 @@ fn a_tombstone_an_interrupted_delete_left_leaves_the_record_live() {
     );
     assert!(catalog.get_ledger(&id, &live).is_err());
 }
+
+/// BUG-0146: a record created under a name another record held starts above every revision that
+/// record reached under it, so a change carrying a revision read from a deleted or renamed record
+/// is a conflict, never applied to its successor; for zones and ledgers, on a reopened catalog
+/// too.
+#[test]
+fn a_revision_read_from_a_deleted_record_never_matches_its_successor() {
+    use permguard_core::catalog::Write;
+
+    let root = scratch("successor");
+    let catalog = FileCatalog::new(&root);
+    let stale = |revision| Write {
+        expected_revision: Some(revision),
+        operation: None,
+        provenance: None,
+    };
+    let zone = catalog.create_zone("zonea").expect("a zone");
+    let zone_id = Selector::Id(zone.id.clone());
+
+    // A ledger read at revision 1, deleted, and another created under its name.
+    let first = catalog
+        .create_ledger(&zone_id, "payments")
+        .expect("a ledger");
+    assert_eq!(first.revision, 1);
+    catalog
+        .delete_ledger_with(&zone_id, &Selector::Id(first.id.clone()), &stale(1))
+        .expect("deleted");
+    let catalog = FileCatalog::new(&root);
+    let second = catalog
+        .create_ledger(&zone_id, "payments")
+        .expect("recreated");
+    assert!(second.revision > first.revision, "{second:?}");
+    let by_name = Selector::Name("payments".to_owned());
+    for refused in [
+        catalog
+            .rename_ledger_with(&zone_id, &by_name, "other", &stale(1))
+            .err(),
+        catalog
+            .delete_ledger_with(&zone_id, &by_name, &stale(1))
+            .err(),
+    ] {
+        assert!(
+            matches!(
+                refused,
+                Some(CatalogError::RevisionConflict { kind: "ledger", .. })
+            ),
+            "{refused:?}"
+        );
+    }
+
+    // A ledger renamed away, read before the rename, and another created under the old name.
+    let moved = catalog
+        .create_ledger(&zone_id, "billing")
+        .expect("a ledger");
+    catalog
+        .rename_ledger_with(
+            &zone_id,
+            &Selector::Id(moved.id.clone()),
+            "invoices",
+            &stale(moved.revision),
+        )
+        .expect("renamed away");
+    let successor = catalog
+        .create_ledger(&zone_id, "billing")
+        .expect("the name reused");
+    assert!(successor.revision > moved.revision, "{successor:?}");
+    let refused = catalog
+        .delete_ledger_with(
+            &zone_id,
+            &Selector::Name("billing".to_owned()),
+            &stale(moved.revision),
+        )
+        .err();
+    assert!(
+        matches!(
+            refused,
+            Some(CatalogError::RevisionConflict { kind: "ledger", .. })
+        ),
+        "{refused:?}"
+    );
+
+    // A record renamed onto a name another record held lands above it too.
+    let onto = catalog
+        .rename_ledger_with(
+            &zone_id,
+            &Selector::Id(successor.id.clone()),
+            "payments-old",
+            &stale(successor.revision),
+        )
+        .expect("renamed");
+    assert!(onto.revision > successor.revision);
+
+    // The same for zones.
+    let other = catalog.create_zone("zoneb").expect("a zone");
+    assert_eq!(other.revision, 1);
+    catalog
+        .delete_zone_with(&Selector::Id(other.id.clone()), &stale(1))
+        .expect("deleted");
+    let again = catalog.create_zone("zoneb").expect("recreated");
+    assert!(again.revision > 1, "{again:?}");
+    let refused = catalog
+        .rename_zone_with(&Selector::Name("zoneb".to_owned()), "zonec", &stale(1))
+        .err();
+    assert!(
+        matches!(
+            refused,
+            Some(CatalogError::RevisionConflict { kind: "zone", .. })
+        ),
+        "{refused:?}"
+    );
+}

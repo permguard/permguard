@@ -70,6 +70,10 @@ const ZONES_FILE: &str = "zones.json";
 /// What each zone's ledger index is called, inside the zone's directory.
 const LEDGERS_FILE: &str = "ledgers.json";
 
+/// Beside an index, the highest revision each name reached while some record held it
+/// (BUG-0146): the zones' names at the catalog's root, a zone's ledgers' names in its directory.
+const NAMES_FILE: &str = "names.json";
+
 /// Where a ledger's own contents will live, under its zone.
 const LEDGERS_DIRECTORY: &str = "ledgers";
 
@@ -90,6 +94,30 @@ struct ZoneIndex {
     version: u32,
     #[serde(default)]
     zones: Vec<Zone>,
+}
+
+/// The highest revision each name reached while a record held it, kept beside an index.
+///
+/// A record created under a name starts above it, so the revision a caller read from a record
+/// that has since been deleted, or renamed away, never matches its successor under the name: a
+/// change that names the record by name with that revision is a conflict, never applied to
+/// another record (BUG-0146). Raised when a record leaves a name, by a rename or a delete; never
+/// lowered. A separate file, so a build that predates it reads the catalog as before.
+#[derive(Debug, Serialize, Deserialize)]
+struct NameMarks {
+    #[serde(default = "one")]
+    version: u32,
+    #[serde(default)]
+    names: std::collections::BTreeMap<String, u64>,
+}
+
+impl Default for NameMarks {
+    fn default() -> Self {
+        Self {
+            version: one(),
+            names: std::collections::BTreeMap::new(),
+        }
+    }
 }
 
 /// One zone's ledger index.
@@ -161,6 +189,38 @@ impl FileCatalog {
 
     fn zones_path(&self) -> PathBuf {
         self.root.join(ZONES_FILE)
+    }
+
+    /// Where the zones' name marks are kept.
+    fn zone_names_path(&self) -> PathBuf {
+        self.root.join(NAMES_FILE)
+    }
+
+    /// Where a zone's ledgers' name marks are kept.
+    fn ledger_names_path(&self, zone_id: &str) -> PathBuf {
+        self.zone_directory(zone_id).join(NAMES_FILE)
+    }
+
+    /// The revision a record created under `name` starts at: one above the highest any record
+    /// reached under it, [`FIRST_REVISION`] for a name never held.
+    fn first_revision_for(&self, marks: &Path, name: &str) -> Result<u64> {
+        let marks: NameMarks = self.read_index(marks)?;
+        Ok(marks
+            .names
+            .get(name)
+            .map_or(FIRST_REVISION, |reached| reached.saturating_add(1)))
+    }
+
+    /// Records that a record leaves `name` at `revision`, before the change that moves it is
+    /// written: a crash between the two leaves the mark higher, which is harmless.
+    fn mark_name(&self, marks: &Path, name: &str, revision: u64) -> Result<()> {
+        let mut held: NameMarks = self.read_index(marks)?;
+        let reached = held.names.entry(name.to_owned()).or_insert(0);
+        if *reached >= revision {
+            return Ok(());
+        }
+        *reached = revision;
+        self.write_index(marks, &held)
     }
 
     fn zone_directory(&self, zone_id: &str) -> PathBuf {
@@ -363,12 +423,13 @@ impl Catalog for FileCatalog {
         let id = fresh(guid, |id| {
             Ok(Self::read_tombstone(self.zone_tombstone_path(id))?.is_some())
         })?;
+        let revision = self.first_revision_for(&self.zone_names_path(), name)?;
         let zone = Zone {
             id,
             name: name.to_owned(),
             created_at: at,
             updated_at: at,
-            revision: FIRST_REVISION,
+            revision,
             operation: write.operation.map(str::to_owned),
         };
 
@@ -443,9 +504,13 @@ impl Catalog for FileCatalog {
         if found.name == name {
             return Ok(found.clone());
         }
+        self.mark_name(&self.zone_names_path(), &found.name, found.revision)?;
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
-        found.revision += 1;
+        found.revision = found.revision.max(
+            self.first_revision_for(&self.zone_names_path(), name)?
+                .saturating_sub(1),
+        ) + 1;
         found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
@@ -494,6 +559,7 @@ impl Catalog for FileCatalog {
 
         // The tombstone first, the index second: every id that is gone has one. The directory
         // stays, with whatever its deleted ledgers held (WP-7.3b).
+        self.mark_name(&self.zone_names_path(), &found.name, found.revision)?;
         let tombstone = Tombstone {
             id: found.id.clone(),
             zone_id: None,
@@ -539,6 +605,7 @@ impl Catalog for FileCatalog {
         let id = fresh(guid, |id| {
             Ok(Self::read_tombstone(self.ledger_tombstone_path(&owner.id, id))?.is_some())
         })?;
+        let revision = self.first_revision_for(&self.ledger_names_path(&owner.id), name)?;
         let ledger = Ledger {
             id,
             zone_id: owner.id.clone(),
@@ -546,7 +613,7 @@ impl Catalog for FileCatalog {
             default_ref: "main".to_owned(),
             created_at: at,
             updated_at: at,
-            revision: FIRST_REVISION,
+            revision,
             operation: write.operation.map(str::to_owned),
             state: LedgerState::Active,
             provenance: write.provenance.cloned(),
@@ -638,9 +705,14 @@ impl Catalog for FileCatalog {
         if found.name == name {
             return Ok(found.clone());
         }
+        let marks = self.ledger_names_path(&owner.id);
+        self.mark_name(&marks, &found.name, found.revision)?;
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
-        found.revision += 1;
+        found.revision = found
+            .revision
+            .max(self.first_revision_for(&marks, name)?.saturating_sub(1))
+            + 1;
         found.operation = write.operation.map(str::to_owned);
 
         let renamed = found.clone();
@@ -679,6 +751,11 @@ impl Catalog for FileCatalog {
 
         // The tombstone first, the index second; the ledger's directory, its objects and refs,
         // stays for the garbage collection (WP-7.3b).
+        self.mark_name(
+            &self.ledger_names_path(&owner.id),
+            &found.name,
+            found.revision,
+        )?;
         let tombstone = Tombstone {
             id: found.id.clone(),
             zone_id: Some(owner.id.clone()),

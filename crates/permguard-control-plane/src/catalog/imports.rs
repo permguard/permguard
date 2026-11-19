@@ -6,7 +6,7 @@
 //!
 //! | Mode       | What lands                                                     | Served                   |
 //! | ---------- | -------------------------------------------------------------- | ------------------------ |
-//! | `archive`  | the archive verbatim, `<zone>/archives/<id>/{ARCHIVE, RECORD.json}` | never: foreign evidence |
+//! | `archive`  | the archive verbatim, `<zone>/archives/<id>/{ARCHIVE, REQUEST.json, RECORD.json}` | never: foreign evidence |
 //! | `re-home`  | a new ledger per source ledger, its provenance in its catalog record, the objects | once an operator pushes a head |
 //!
 //! Before anything is written the archive is verified whole: the manifest from the source Host's
@@ -48,6 +48,19 @@ use crate::store::FileObjectStore;
 pub const ARCHIVE: &str = "ARCHIVE";
 /// Its record.
 pub const RECORD: &str = "RECORD.json";
+/// The request that kept it, so a retry is answered with it (BUG-0187).
+pub const REQUEST: &str = "REQUEST.json";
+
+/// What an archive keeps of the request that imported it: its id, and what the request asked,
+/// the name and the manifest. A retry naming the same id and asking the same is answered with the
+/// archive; the same id asking anything else is `request_id_reused`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Requested {
+    request_id: String,
+    name: String,
+    manifest_digest: String,
+}
 /// The directory of a zone's archives.
 pub const ARCHIVES: &str = "archives";
 
@@ -210,6 +223,20 @@ pub(crate) async fn import_with(
         )
         .into());
     }
+    // Named, as every catalog change names it, and bounded as the Host API bounds it: a retry
+    // repeats it, and both modes answer a retry by it (BUG-0187).
+    if request.request_id.trim().is_empty() {
+        return Err(invalid("an import names its `request_id`, which a retry repeats").into());
+    }
+    if request.request_id.len() > permguard_host::api::MAX_REQUEST_ID_BYTES
+        || request.request_id.chars().any(char::is_control)
+    {
+        return Err(invalid(format!(
+            "a `request_id` is at most {} bytes, with no control character",
+            permguard_host::api::MAX_REQUEST_ID_BYTES
+        ))
+        .into());
+    }
     let exports = facade.exports.as_deref().ok_or_else(|| {
         ApiError::new(
             ErrorClass::Unavailable,
@@ -221,10 +248,13 @@ pub(crate) async fn import_with(
     let _importing = exports.importing.lock().await;
     let imported = match request.mode {
         Mode::Archive => {
-            let record = keep(exports.zones_root(), &zone, request, &verified)?;
-            facade
-                .record("zone.archive_imported", &super::target::zone(&zone.id))
-                .await?;
+            let (record, replayed) = keep(exports.zones_root(), &zone, request, &verified)?;
+            // A retry answered with the archive it kept records nothing again.
+            if !replayed {
+                facade
+                    .record("zone.archive_imported", &super::target::zone(&zone.id))
+                    .await?;
+            }
             Imported {
                 mode: Mode::Archive.as_str(),
                 manifest_digest: verified.manifest_digest.clone(),
@@ -431,13 +461,42 @@ pub fn archived(zones_root: &std::path::Path, zone: &Zone) -> Result<Vec<Archive
     Ok(held)
 }
 
-/// Keeps the archive verbatim as foreign evidence: never a ledger, never served.
+/// The archive a request with `request_id` kept in `zone`, with what that request asked: `None`
+/// when none did, or when it was cut before its record, which keeps nothing yet.
+fn kept_by(
+    zones_root: &std::path::Path,
+    zone: &Zone,
+    request_id: &str,
+) -> Result<Option<(ArchiveRecord, Requested)>, ApiError> {
+    let dir = archives(zones_root, zone)?;
+    for id in dir.subdirs().map_err(internal)? {
+        let archive = dir.subdir(&id, false).map_err(internal)?;
+        let Some(asked) = archive.read(REQUEST).map_err(internal)? else {
+            continue;
+        };
+        let asked: Requested = serde_json::from_slice(&asked)
+            .map_err(|error| internal(format!("the archive {id}'s request: {error}")))?;
+        if asked.request_id != request_id {
+            continue;
+        }
+        let Some(record) = archive.read(RECORD).map_err(internal)? else {
+            continue;
+        };
+        let record: ArchiveRecord = serde_json::from_slice(&record)
+            .map_err(|error| internal(format!("the archive {id}'s record: {error}")))?;
+        return Ok(Some((record, asked)));
+    }
+    Ok(None)
+}
+
+/// Keeps the archive verbatim as foreign evidence: never a ledger, never served. Answers the
+/// record, and whether it was kept by an earlier request this one retries.
 fn keep(
     zones_root: &std::path::Path,
     zone: &Zone,
     request: &Request<'_>,
     verified: &Verified,
-) -> Result<ArchiveRecord, Refusal> {
+) -> Result<(ArchiveRecord, bool), Refusal> {
     let manifest = &verified.manifest;
     let name = match (request.name, manifest.ledgers.as_slice()) {
         (Some(name), _) => name.to_owned(),
@@ -445,6 +504,28 @@ fn keep(
         (None, _) => manifest.zone_name.clone(),
     };
     permguard_core::catalog::validate_name(&name).map_err(super::api_error)?;
+    let asked = Requested {
+        request_id: request.request_id.to_owned(),
+        name: name.clone(),
+        manifest_digest: verified.manifest_digest.clone(),
+    };
+    // A retry is answered with what the first request kept; the id asking anything else is
+    // another request under a reused id (BUG-0187).
+    if let Some((record, held)) = kept_by(zones_root, zone, request.request_id)? {
+        if held == asked {
+            return Ok((record, true));
+        }
+        return Err(ApiError::new(
+            ErrorClass::Conflict,
+            codes::host::REQUEST_ID_REUSED,
+            format!(
+                "the request `{}` already kept the archive `{}` of another import: a new import \
+                 names a new `request_id`",
+                request.request_id, record.name
+            ),
+        )
+        .into());
+    }
     if archived(zones_root, zone)?
         .iter()
         .any(|record| record.name == name)
@@ -484,13 +565,18 @@ fn keep(
         held == archive
     })
     .map_err(internal)?;
-    // The record last: an archive without one is not listed.
+    let asked = serde_json::to_vec(&asked).map_err(internal)?;
+    publish_immutable(&dir, REQUEST, &asked, &|read| read == asked, &|held| {
+        held == asked
+    })
+    .map_err(internal)?;
+    // The record last: an archive without one is not listed, nor answered to a retry.
     let body = serde_json::to_vec(&record).map_err(internal)?;
     publish_immutable(&dir, RECORD, &body, &|read| read == body, &|held| {
         held == body
     })
     .map_err(internal)?;
-    Ok(record)
+    Ok((record, false))
 }
 
 /// Creates a ledger per source ledger, its provenance recorded, and lands its objects.
@@ -852,6 +938,66 @@ mod tests {
         .expect("another name");
         let held = archived(&fixture.root.join("zones"), &fixture.zone).expect("listed");
         assert_eq!(held.len(), 2);
+    }
+
+    /// BUG-0187: an archive import answers a retry by its `request_id`: the same request is
+    /// answered with the archive it kept, and keeps no second one; the same id asking another
+    /// name is `409 request_id_reused`; an empty id is `400` in both modes, nothing kept.
+    #[tokio::test]
+    async fn an_archive_import_is_answered_by_its_request_id() {
+        let fixture = fixture("archive-retry");
+        let check = under(&fixture.ring);
+        let first = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, None, "rid-1"),
+            &check,
+        )
+        .await
+        .expect("imported")
+        .archive
+        .expect("an archive");
+        let retried = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, None, "rid-1"),
+            &check,
+        )
+        .await
+        .expect("the retry is answered")
+        .archive
+        .expect("an archive");
+        assert_eq!(retried, first, "the same archive, by the same id");
+
+        let reused = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, Some("evidence-two"), "rid-1"),
+            &check,
+        )
+        .await
+        .expect_err("another import under the same id");
+        assert_eq!(status(reused), 409);
+
+        for mode in [Mode::Archive, Mode::ReHome] {
+            for id in ["", "   "] {
+                let refused = import_with(
+                    &fixture.target,
+                    &actor(),
+                    &fixture.zone.id,
+                    &request(&fixture, mode, Some("evidence-three"), id),
+                    &check,
+                )
+                .await
+                .expect_err("an empty request id");
+                assert_eq!(status(refused), 400, "{mode:?} {id:?}");
+            }
+        }
+        let held = archived(&fixture.root.join("zones"), &fixture.zone).expect("listed");
+        assert_eq!(held.len(), 1, "one archive kept: {held:?}");
     }
 
     /// WP-7.10: a `re-home` import creates a new ledger under this Host, its provenance in its

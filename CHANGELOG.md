@@ -226,6 +226,15 @@ is cut.
 
 ### Fixed
 
+- **A change carrying a revision read from a deleted or renamed zone or ledger is never applied to the one that took its name.**
+  A record created under a name another record held started again at revision 1, so `--expected-revision` read from the old record matched the new one.
+  The catalog now keeps, beside each index, the highest revision each name reached (`names.json`); a record created or renamed under a name starts above it, so the stale revision is a `revision_conflict`.
+  Without `--expected-revision`, `zones` and `ledgers` `update`, `archive`, `restore` and `delete` send the change for the record they read, by its ids.
+- **An archive import is answered by its `request_id`.**
+  A retry of an archive import that succeeded was refused `409 name_taken`, the same `request_id` with another name kept a second archive, and an empty one was accepted.
+  An archive now keeps the request that imported it: a retry of the same request is answered with the archive, the same id asking another import is `409 request_id_reused`, and an empty or overlong `request_id` is `400` for `archive` and `re-home`, over REST and gRPC.
+- **`migrate plan` and `migrate run` refuse a `--legacy` location that is not a directory.**
+  A mistyped or missing location was planned, then run as "nothing to migrate", exit `0`, spending the plan and leaving the real legacy data unmigrated; it is now refused, exit `64`, naming it, for `keys`, `audit` and `decisions`.
 - **`decisions export -o json|yaml` refuses `--since` and `--decision` instead of ignoring them.**
   The archive held every decision of its scope whatever the filters said, while the terminal form applied them; an archive is the whole signed snapshot `decisions verify --file` checks, so the filters are now refused there, exit `64`, and the terminal report still applies them.
 - **The decision evidence contract says what the reads answer.**

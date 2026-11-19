@@ -329,11 +329,21 @@ const LEGACY_RINGS: [&str; 3] = [
 ];
 
 /// Refuses `--legacy` values the subsystem's migration would refuse, before a plan is signed or
-/// spent (after the TC-3 review).
+/// spent (after the TC-3 review), and a location that is not a directory: named, the legacy data
+/// is there, and a mistyped one would run as "nothing to migrate" and spend the plan (BUG-0189).
 fn checked_legacy(subsystem: &str, legacy: &[String]) -> Result<(), Failure> {
     for location in legacy {
         printable(location, "--legacy")?;
     }
+    let existing = |location: &str, named: &str| -> Result<(), Failure> {
+        if Path::new(named).is_dir() {
+            return Ok(());
+        }
+        Err(Failure::usage(format!(
+            "`--legacy {location}`: `{named}` is not a directory; name where the legacy data \
+             moved, relative to where this runs, or leave --legacy out for the default location"
+        )))
+    };
     match subsystem {
         "keys" => {
             let mut seen = Vec::new();
@@ -353,12 +363,16 @@ fn checked_legacy(subsystem: &str, legacy: &[String]) -> Result<(), Failure> {
                     )));
                 }
                 seen.push(ring);
+                existing(location, directory)?;
             }
             Ok(())
         }
         "audit" | "decisions" if legacy.len() > 1 => Err(Failure::usage(format!(
             "`{subsystem}` takes one --legacy directory"
         ))),
+        "audit" | "decisions" => legacy
+            .iter()
+            .try_for_each(|location| existing(location, location)),
         "events" if !legacy.is_empty() => Err(Failure::usage(
             "`events` reads where the history is from --server-config, not --legacy",
         )),

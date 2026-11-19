@@ -173,8 +173,9 @@ fn zones_commands_speak_to_a_server_end_to_end() {
         ("GET", "/catalog/v1/zones/acme"),
         (200, zone_json("z-1", "acme")),
     );
+    // Read by name, changed by the id read (BUG-0146).
     routes.insert(
-        ("PATCH", "/catalog/v1/zones/acme"),
+        ("PATCH", "/catalog/v1/zones/z-1"),
         (200, zone_json("z-1", "renamed")),
     );
     routes.insert(
@@ -262,12 +263,13 @@ fn ledgers_commands_speak_to_a_server_end_to_end() {
         ("GET", "/catalog/v1/zones/acme/ledgers/main-ledger"),
         (200, ledger.to_owned()),
     );
+    // Read by names, changed by the ids read (BUG-0146).
     routes.insert(
-        ("PATCH", "/catalog/v1/zones/acme/ledgers/main-ledger"),
+        ("PATCH", "/catalog/v1/zones/z-1/ledgers/l-1"),
         (200, ledger.to_owned()),
     );
     routes.insert(
-        ("DELETE", "/catalog/v1/zones/acme/ledgers/main-ledger"),
+        ("DELETE", "/catalog/v1/zones/z-1/ledgers/l-1"),
         (200, ledger.to_owned()),
     );
     let stub = serve(routes);
@@ -321,13 +323,17 @@ fn the_cli_renames_with_the_revision_it_read() {
     let zone = r#"{"id":"z-1","name":"acme","created_at":1,"updated_at":1,"revision":7}"#;
     let ledger = r#"{"id":"l-1","zone_id":"z-1","name":"main-ledger","default_ref":"main","created_at":1,"updated_at":1,"revision":4}"#;
     let mut routes = HashMap::new();
+    // A change after a read is sent for the record read, by its ids; one given its revision is
+    // sent by the names it was given (BUG-0146).
     routes.insert(("GET", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
     routes.insert(("PATCH", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
-    routes.insert(("DELETE", "/catalog/v1/zones/acme"), (200, zone.to_owned()));
+    routes.insert(("PATCH", "/catalog/v1/zones/z-1"), (200, zone.to_owned()));
+    routes.insert(("DELETE", "/catalog/v1/zones/z-1"), (200, zone.to_owned()));
     let path = "/catalog/v1/zones/acme/ledgers/main-ledger";
     routes.insert(("GET", path), (200, ledger.to_owned()));
-    routes.insert(("PATCH", path), (200, ledger.to_owned()));
     routes.insert(("DELETE", path), (200, ledger.to_owned()));
+    let by_ids = "/catalog/v1/zones/z-1/ledgers/l-1";
+    routes.insert(("PATCH", by_ids), (200, ledger.to_owned()));
     let stub = serve(routes);
     let endpoint = format!("http://{}", stub.address);
     let dir = scratch("revisions");
@@ -346,6 +352,10 @@ fn the_cli_renames_with_the_revision_it_read() {
     let read_first = sent(&["zones", "update", "acme", "--name", "renamed"]);
     assert_eq!(read_first.len(), 2, "{read_first:?}");
     assert!(read_first[0].starts_with("GET /catalog/v1/zones/acme "));
+    assert!(
+        read_first[1].starts_with("PATCH /catalog/v1/zones/z-1 "),
+        "sent for the zone read, by its id: {read_first:?}"
+    );
     let rename = body(&read_first[1]);
     assert_eq!(rename["expected_revision"], 7);
     assert_eq!(rename["name"], "renamed");
@@ -374,7 +384,7 @@ fn the_cli_renames_with_the_revision_it_read() {
 
     let delete = sent(&["zones", "delete", "acme"]);
     assert!(
-        delete[1].starts_with("DELETE /catalog/v1/zones/acme?"),
+        delete[1].starts_with("DELETE /catalog/v1/zones/z-1?"),
         "{delete:?}"
     );
     assert!(delete[1].contains("expected_revision=7"), "{delete:?}");
@@ -389,6 +399,10 @@ fn the_cli_renames_with_the_revision_it_read() {
         "--name",
         "renamed",
     ]);
+    assert!(
+        ledger_rename[1].starts_with("PATCH /catalog/v1/zones/z-1/ledgers/l-1 "),
+        "{ledger_rename:?}"
+    );
     assert_eq!(body(&ledger_rename[1])["expected_revision"], 4);
     let ledger_delete = sent(&[
         "ledgers",
@@ -438,8 +452,10 @@ fn the_cli_archives_and_restores_with_the_revision_it_read() {
         ("GET".to_owned(), path.to_owned()),
         (200, ledger("active", 6)),
     );
+    // Read by names, archived by the ids read (BUG-0146).
+    let by_ids = "/catalog/v1/zones/z-1/ledgers/l-1";
     routes.insert(
-        ("POST".to_owned(), format!("{path}/archive")),
+        ("POST".to_owned(), format!("{by_ids}/archive")),
         (200, ledger("archived", 7)),
     );
     routes.insert(
@@ -465,7 +481,7 @@ fn the_cli_archives_and_restores_with_the_revision_it_read() {
     let (requests, report) = sent(&["ledgers", "archive", "main-ledger", "--zone", "acme"]);
     assert_eq!(requests.len(), 2, "{requests:?}");
     assert!(requests[0].starts_with(&format!("GET {path} ")));
-    assert!(requests[1].starts_with(&format!("POST {path}/archive ")));
+    assert!(requests[1].starts_with(&format!("POST {by_ids}/archive ")));
     let archive = body(&requests[1]);
     assert_eq!(archive["expected_revision"], 6);
     assert_eq!(archive["request_id"].as_str().map(str::len), Some(32));

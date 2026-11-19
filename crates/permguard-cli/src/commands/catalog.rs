@@ -104,9 +104,14 @@ pub fn catalog_command(
                 name,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_zone(&zone).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its id, never for whatever
+                // holds the name when it arrives (BUG-0146).
+                let (zone, revision) = match expected_revision {
+                    Some(revision) => (zone, revision),
+                    None => {
+                        let read = backend.get_zone(&zone).map_err(failed)?;
+                        (read.id, read.revision)
+                    }
                 };
                 let zone = backend
                     .rename_zone(&zone, &name, revision)
@@ -125,9 +130,14 @@ pub fn catalog_command(
                 zone,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_zone(&zone).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its id, never for whatever
+                // holds the name when it arrives (BUG-0146).
+                let (zone, revision) = match expected_revision {
+                    Some(revision) => (zone, revision),
+                    None => {
+                        let read = backend.get_zone(&zone).map_err(failed)?;
+                        (read.id, read.revision)
+                    }
                 };
                 let zone = backend.delete_zone(&zone, revision).map_err(failed)?;
 
@@ -220,9 +230,14 @@ pub fn catalog_command(
                 name,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its ids, never for whatever
+                // holds the names when it arrives (BUG-0146).
+                let (zone, ledger, revision) = match expected_revision {
+                    Some(revision) => (zone, ledger, revision),
+                    None => {
+                        let read = backend.get_ledger(&zone, &ledger).map_err(failed)?;
+                        (read.zone_id, read.id, read.revision)
+                    }
                 };
                 let ledger = backend
                     .rename_ledger(&zone, &ledger, &name, revision)
@@ -242,9 +257,14 @@ pub fn catalog_command(
                 ledger,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its ids, never for whatever
+                // holds the names when it arrives (BUG-0146).
+                let (zone, ledger, revision) = match expected_revision {
+                    Some(revision) => (zone, ledger, revision),
+                    None => {
+                        let read = backend.get_ledger(&zone, &ledger).map_err(failed)?;
+                        (read.zone_id, read.id, read.revision)
+                    }
                 };
                 let ledger = backend
                     .archive_ledger(&zone, &ledger, revision)
@@ -264,9 +284,14 @@ pub fn catalog_command(
                 ledger,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its ids, never for whatever
+                // holds the names when it arrives (BUG-0146).
+                let (zone, ledger, revision) = match expected_revision {
+                    Some(revision) => (zone, ledger, revision),
+                    None => {
+                        let read = backend.get_ledger(&zone, &ledger).map_err(failed)?;
+                        (read.zone_id, read.id, read.revision)
+                    }
                 };
                 let ledger = backend
                     .restore_ledger(&zone, &ledger, revision)
@@ -286,9 +311,14 @@ pub fn catalog_command(
                 ledger,
                 expected_revision,
             } => {
-                let revision = match expected_revision {
-                    Some(revision) => revision,
-                    None => backend.get_ledger(&zone, &ledger).map_err(failed)?.revision,
+                // Read, the change is sent for the record read, by its ids, never for whatever
+                // holds the names when it arrives (BUG-0146).
+                let (zone, ledger, revision) = match expected_revision {
+                    Some(revision) => (zone, ledger, revision),
+                    None => {
+                        let read = backend.get_ledger(&zone, &ledger).map_err(failed)?;
+                        (read.zone_id, read.id, read.revision)
+                    }
                 };
                 let ledger = backend
                     .delete_ledger(&zone, &ledger, revision)
