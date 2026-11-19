@@ -562,6 +562,35 @@ impl HostApi {
             checkpoints = sealed.len(),
             "the audit trails were checkpointed before the identity reset"
         );
+        // The streams too (BUG-0163): closed to appends, every record appended sealed while the
+        // rings that sign it are active, so nothing is journaled into a run its identity can no
+        // longer seal. A decision the log requires is refused from here until the restart.
+        if let Some(engine) = self.shipping() {
+            let batches = engine.close().map_err(|error| {
+                tracing::error!(
+                    event.name = "host.identity_reset_unsealed",
+                    component = super::COMPONENT,
+                    error = %error,
+                    "an identity reset was refused: the streams could not be sealed"
+                );
+                Refusal::Api(
+                    permguard_core::ApiError::new(
+                        ErrorClass::Unavailable,
+                        codes::host::AUDIT_UNAVAILABLE,
+                        "the streams could not be sealed before the reset, and the identity is \
+                         unchanged: they take no more records until the server restarts; plan \
+                         again once they can be sealed",
+                    )
+                    .with_internal(error),
+                )
+            })?;
+            tracing::info!(
+                event.name = "host.identity_reset_streams_sealed",
+                component = super::COMPONENT,
+                batches,
+                "the streams were sealed and closed to appends before the identity reset"
+            );
+        }
         Ok(())
     }
 }

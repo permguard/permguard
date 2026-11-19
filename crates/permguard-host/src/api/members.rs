@@ -2876,7 +2876,7 @@ impl HostApi {
     }
 
     /// The engine the member side ships with, when one is composed.
-    fn shipping(&self) -> Option<&Arc<dyn crate::composition::StreamShipping>> {
+    pub(crate) fn shipping(&self) -> Option<&Arc<dyn crate::composition::StreamShipping>> {
         self.memberships
             .as_deref()
             .and_then(|memberships| memberships.shipping.as_ref())
@@ -2886,6 +2886,14 @@ impl HostApi {
     /// (WP-5.8).
     pub fn ships_streams(&self) -> bool {
         self.shipping().is_some()
+    }
+
+    /// Whether this process's Host identity was reset (WP-4.9): it signs nothing more, so a drain
+    /// ships nothing and only marks what is behind, which needs no identity (BUG-0163).
+    pub fn identity_retired(&self) -> bool {
+        self.identity
+            .as_deref()
+            .is_some_and(crate::identity::Identity::is_retired)
     }
 
     /// Keeps a subscription for every ship task of every live membership, shipping nothing

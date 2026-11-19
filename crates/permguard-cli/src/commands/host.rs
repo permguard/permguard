@@ -99,7 +99,7 @@ fn grants_bootstrap(
 }
 
 /// The initiator the CLI's operations name in the mutation journal and the audit trail.
-pub(super) const INITIATOR: &str = "cli";
+pub(super) const INITIATOR: &str = permguard_host::operations::plan::OFFLINE_PLANNER;
 
 /// Opens the bootstrap commitment and the mutation journal of `volume`, resolving any mutation a
 /// crash left open: what a command that mutates needs.
@@ -1408,8 +1408,9 @@ impl Report for ResetPlan {
         if self.approvals_required > 0 {
             writeln!(
                 out,
-                "The plan requires {} approval(s) before it runs, each by another holder of \
-                 `identity.admin`: `POST /host/v1/plans/{}/approve` on the Host API.",
+                "The plan requires {} approval(s) before it runs, each by a distinct holder of \
+                 `identity.admin`: planned offline, its planner is unauthenticated and counts for \
+                 nobody. `POST /host/v1/plans/{}/approve` on the Host API.",
                 self.approvals_required, self.plan_id
             )?;
         }

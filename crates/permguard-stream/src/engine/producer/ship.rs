@@ -1047,6 +1047,29 @@ impl<C: RecordCodec> Producer<C> {
 }
 
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn close(&self) -> Result<usize, String> {
+        let wrap = |error: StreamError| error.to_string();
+        // Closed first: an append racing the seals is refused, never left unsealed behind them.
+        self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut sealed = 0;
+        for physical in self.every().map_err(wrap)? {
+            let resource = Resource::parse(&physical.key.resource)
+                .map_err(|error| format!("the stream of `{}`: {error}", physical.key.resource))?;
+            loop {
+                match self.seal(&resource, u64::MAX) {
+                    Ok(super::Sealing::Sealed { .. }) => sealed += 1,
+                    // A forked stream seals nothing; one awaiting its cutover is sealed by the
+                    // key the coordinator journals, which the reset retires: left to the drain's
+                    // mark.
+                    Ok(super::Sealing::Nothing | super::Sealing::AwaitingCutover { .. })
+                    | Err(StreamError::Forked { .. }) => break,
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+        }
+        Ok(sealed)
+    }
+
     fn refused(&self) -> Result<Vec<composition::RefusedShipping>, String> {
         let wrap = |error: StreamError| error.to_string();
         let mut found = Vec::new();

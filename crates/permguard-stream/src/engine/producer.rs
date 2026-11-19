@@ -127,6 +127,8 @@ pub struct Producer<C> {
     /// The runs whose records no live membership ships, already stated at WARN by this process
     /// (BUG-0105): each said once.
     pub(crate) stated: Mutex<std::collections::BTreeSet<[u8; 16]>>,
+    /// Closed to appends by an identity reset (BUG-0163).
+    pub(crate) closed: std::sync::atomic::AtomicBool,
     /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
     /// `None` deletes it at once.
     acknowledged_retention: Option<std::time::Duration>,
@@ -156,6 +158,7 @@ impl<C: RecordCodec> Producer<C> {
             fences: Mutex::new(Vec::new()),
             held_by: Mutex::new(BTreeMap::new()),
             stated: Mutex::new(std::collections::BTreeSet::new()),
+            closed: std::sync::atomic::AtomicBool::new(false),
             acknowledged_retention: None,
         }
     }
@@ -360,6 +363,7 @@ impl<C: RecordCodec> Producer<C> {
         resource: &Resource,
         bytes: Vec<u8>,
     ) -> Result<Receipt, StreamError> {
+        self.open_to_appends()?;
         // The typed validator: what is appended reads back as a record, and is its canonical
         // encoding (after the review).
         self.check(&bytes)?;
@@ -382,6 +386,7 @@ impl<C: RecordCodec> Producer<C> {
         resource: &Resource,
         build: impl FnOnce(Position) -> Result<Vec<Vec<u8>>, String>,
     ) -> Result<Receipt, StreamError> {
+        self.open_to_appends()?;
         let physical = self.physical(resource)?;
         let mut build = Some(build);
         physical.append(
@@ -416,6 +421,14 @@ impl<C: RecordCodec> Producer<C> {
             .find(|(_, fence)| fence.membership_id != LOCAL_MEMBERSHIP)
             .or_else(|| covering().next())
             .map(|(_, fence)| fence.clone())
+    }
+
+    /// Refuses an append once an identity reset closed the producer (BUG-0163).
+    fn open_to_appends(&self) -> Result<(), StreamError> {
+        if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(StreamError::Closed);
+        }
+        Ok(())
     }
 
     /// Whether a subscription of `membership_id`'s task `task_id` was seen shipping by this

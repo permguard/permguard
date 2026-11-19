@@ -494,3 +494,104 @@ async fn a_process_that_seals_no_trail_refuses_the_reset_before_anything_changes
         );
     }
 }
+
+/// A stream engine that says when it was closed, or refuses to be.
+#[derive(Default)]
+struct Closing {
+    closed: std::sync::atomic::AtomicUsize,
+    fails: bool,
+}
+
+impl crate::composition::StreamShipping for Closing {
+    fn due(&self, _: &crate::composition::Subscribed<'_>) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        Ok(None)
+    }
+
+    fn answered(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: &crate::composition::Shipment,
+        _: &[u8],
+    ) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], _: &[String]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(Vec::new())
+    }
+
+    fn close(&self) -> Result<usize, String> {
+        self.closed
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.fails {
+            return Err("a stream could not be sealed".to_owned());
+        }
+        Ok(3)
+    }
+}
+
+fn with_streams(api: &mut HostApi, engine: &Arc<Closing>) {
+    let service = Arc::get_mut(api.memberships.as_mut().expect("memberships"))
+        .expect("the test owns the membership service");
+    service.shipping = Some(Arc::clone(engine) as Arc<dyn crate::composition::StreamShipping>);
+}
+
+/// BUG-0163: an online reset seals and closes the streams before the rings that sign them retire,
+/// so a decision the log requires is refused from there until the restart, never journaled into a
+/// run its identity can no longer seal; streams that cannot be sealed refuse the reset, the
+/// identity unchanged. After the reset the drain ships nothing: the identity is retired.
+#[tokio::test]
+async fn a_reset_seals_and_closes_the_streams_before_its_rings_retire() {
+    let root = scratch("reset-streams");
+    let (mut api, _, volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    sealing(&mut api, &volume);
+    let refusing = Arc::new(Closing {
+        fails: true,
+        ..Closing::default()
+    });
+    with_streams(&mut api, &refusing);
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-1", "emergency"))
+        .await
+        .expect("planned");
+    let refused = api
+        .run_identity_reset(&admin(), run("run-1", &planned))
+        .await
+        .expect_err("the streams cannot be sealed");
+    assert_eq!(code(&refused), codes::host::AUDIT_UNAVAILABLE);
+    assert!(!api.identity_retired(), "the identity unchanged");
+
+    let closing = Arc::new(Closing::default());
+    with_streams(&mut api, &closing);
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-2", "emergency"))
+        .await
+        .expect("planned again");
+    api.run_identity_reset(&admin(), run("run-2", &planned))
+        .await
+        .expect("reset");
+    assert_eq!(
+        closing.closed.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "sealed and closed once, before the identity retired"
+    );
+    assert!(api.identity_retired());
+}

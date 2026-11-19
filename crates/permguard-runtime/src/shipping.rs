@@ -41,6 +41,11 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
     if !api.ships_streams() {
         return Ok(Drained::Complete);
     }
+    // An identity reset retired the rings that ship (BUG-0163): nothing is shipped, but what is
+    // behind is marked, so the next start, under the new identity, reports it.
+    if api.identity_retired() {
+        return mark_behind(api, true);
+    }
     // A subscription is kept by the first pass that ships to it: every live membership's are
     // kept now, and one pass runs, before a stream is judged shipped (after the review).
     api.register_subscriptions()
@@ -70,6 +75,12 @@ pub async fn drain(api: &HostApi, deadline: Instant) -> Result<Drained> {
     }
     // A deadline the listeners' drain already spent still marks what is behind, so the next
     // process recovers it (BUG-0222): only the shipping pass is skipped, never the marks.
+    mark_behind(api, passed)
+}
+
+/// Marks every stream still behind `unshipped`: the drain is incomplete when one is. `passed`
+/// says whether a shipping pass ran, or none was owed.
+fn mark_behind(api: &HostApi, passed: bool) -> Result<Drained> {
     let marked = api
         .mark_unshipped()
         .map_err(|error| anyhow!("marking the unshipped streams: {error}"))?;

@@ -161,6 +161,10 @@ is cut.
 
 ### Fixed
 
+- **An online identity reset seals and closes the streams before it retires their rings.**
+  Every decision and event record appended is sealed while the rings that sign it are active, and the streams take nothing more until the server restarts under the new identity: under `decisions.log.mode: required` a decision is refused `decision_unrecordable`, where it was answered and journaled into a run nothing could seal any more. Streams that cannot be sealed refuse the reset, the identity unchanged. The shutdown drain after a reset no longer needs the retired identity: it ships nothing and marks what is behind.
+- **Under dual control, an offline-planned identity reset needs two approvals.**
+  `host identity reset plan` authenticates nobody, so its planner, `cli`, counts for no one: the plan requires one approval more than its operation does, each by a distinct holder of `identity.admin`, so no one holder approves and runs it alone; the plan's output says why.
 - **`scripts/cli-tour.sh` starts on Linux, and every tour starts from a new volume.**
   Its working directory's `mktemp` template had no `X`, which GNU `mktemp` refuses; and a container or volume an interrupted run left behind, with its administrator, is now removed before the tour starts, where the tour reused it and failed at its second step.
 - **`ops/administrative-surface.md` names today's paths and authorization.**

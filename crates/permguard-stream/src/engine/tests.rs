@@ -8012,3 +8012,34 @@ fn a_host_keeps_shipping_to_itself_across_key_rotations() {
         "every record appended reached the consumer"
     );
 }
+
+/// BUG-0163: an identity reset closes the streams before it retires the rings: every record
+/// appended is sealed while they sign, and nothing more is appended until the restart, so no
+/// record is journaled into a run its identity can no longer seal.
+#[test]
+fn a_closed_producer_seals_its_tail_and_takes_no_more_records() {
+    let host = Host::new("closed");
+    let producer = host.sealer();
+    for at in 0..3 {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    let sealed = StreamShipping::close(&producer).expect("closed");
+    assert!(sealed >= 1, "the tail sealed: {sealed}");
+    assert!(
+        matches!(
+            producer.seal(&ledger(1), u64::MAX).expect("read"),
+            super::producer::Sealing::Nothing
+        ),
+        "every record appended is sealed"
+    );
+    assert!(matches!(
+        producer.append(&ledger(1), &"after the reset".to_owned()),
+        Err(StreamError::Closed)
+    ));
+    assert!(matches!(
+        producer.append(&ledger(2), &"a new stream too".to_owned()),
+        Err(StreamError::Closed)
+    ));
+}

@@ -65,6 +65,12 @@ pub const OPERATIONS: &[&str] = &[
     MIGRATE,
 ];
 
+/// The planner an offline plan names (BUG-0100, DEC-0012): an offline command authenticates
+/// nobody, so the name stands for whoever holds the volume, and under dual control such a plan
+/// requires one approval more than its operation does, each by a distinct principal, so no one
+/// holder of the operation's grant completes it alone.
+pub const OFFLINE_PLANNER: &str = "cli";
+
 /// How long a plan that requires no approval may be run after it was made.
 pub const LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// How long a plan that requires approvals lives, approvals and run included.

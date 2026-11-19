@@ -440,3 +440,78 @@ async fn a_principal_approves_a_plan_once_whatever_the_count() {
     assert_eq!(second.plan.status, "ready");
     assert_eq!(second.plan.approvals.len(), 2);
 }
+
+/// BUG-0100: an offline plan names no authenticated planner, so under dual control it requires
+/// one approval more than its operation, each by a distinct principal: one holder of
+/// `identity.admin` approving an offline reset leaves it short, and the run step refuses it.
+#[tokio::test]
+async fn an_offline_plan_under_dual_control_is_not_completed_by_one_approver() {
+    const ALICE: &str = "spiffe://acme/operators/alice";
+    let api = regulated(facade_with("plans-offline", vec![HOST_OPERATIONS]));
+    let signer = api
+        .keys
+        .rings()
+        .iter()
+        .find(|ring| ring.id() == HOST_OPERATIONS)
+        .cloned()
+        .expect("the operations ring");
+    let now = api.time.now_secs();
+    let issue = |principal: &Principal, dual_control: bool| {
+        sign_plan(
+            Some(signer.as_ref() as &dyn plan::PlanSigner),
+            Issue {
+                kind: plan::IDENTITY_RESET,
+                internal: plan::IDENTITY_RESET,
+                stored_target: "emergency\n".to_owned(),
+                target: "host".to_owned(),
+                revision: 1,
+                parameters: &[("mode", "emergency")],
+                principal,
+            },
+            [1; 16],
+            dual_control,
+            now,
+        )
+        .expect("signed")
+    };
+    let offline_planner = Principal::new(plan::OFFLINE_PLANNER).expect("a principal");
+    let offline = issue(&offline_planner, true);
+    assert_eq!(offline.approvals_required, 2);
+    let alice = Principal::new(ALICE).expect("a principal");
+    assert_eq!(
+        issue(&alice, true).approvals_required,
+        1,
+        "an authenticated planner"
+    );
+    assert_eq!(
+        issue(&offline_planner, false).approvals_required,
+        0,
+        "no dual control"
+    );
+
+    // Planned offline, as `host identity reset plan` keeps it; alice approves over the Host API.
+    api.replay
+        .plan(
+            &crate::operations::mutation::Applying::for_tests(1),
+            offline.plan.clone(),
+        )
+        .expect("kept");
+    grant_to(
+        ALICE,
+        &[permguard_core::authz::operations::IDENTITY_ADMIN],
+        &permguard_core::authz::Selector::under(permguard_core::authz::Resource::host())
+            .to_string(),
+    );
+    api.approve_plan(
+        &actor(ALICE),
+        &offline.plan.plan_id,
+        ApprovePlan {
+            request_id: "offline-a1".to_owned(),
+        },
+    )
+    .await
+    .expect("one approval");
+    let refused = held_plan(&api.replay, &offline_planner, &offline.envelope, now)
+        .expect_err("one approver does not complete dual control alone");
+    assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
+}

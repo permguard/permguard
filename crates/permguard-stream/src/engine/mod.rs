@@ -115,6 +115,10 @@ pub enum StreamError {
     Storage(permguard_host::storage::StorageError),
     /// What is on disk contradicts itself; nothing was changed.
     Corruption(String),
+    /// The producer was closed to appends: the Host identity whose rings seal its records was
+    /// reset, and nothing more is appended until the process restarts under the new one
+    /// (BUG-0163).
+    Closed,
 }
 
 impl fmt::Display for StreamError {
@@ -131,6 +135,11 @@ impl fmt::Display for StreamError {
             ),
             Self::Storage(error) => write!(f, "{error}"),
             Self::Corruption(detail) => write!(f, "the stream is corrupt: {detail}"),
+            Self::Closed => write!(
+                f,
+                "the Host identity was reset: nothing more is appended until the server restarts \
+                 under the new identity"
+            ),
         }
     }
 }
@@ -762,6 +771,22 @@ impl permguard_host::composition::StreamShipping for Served {
             found.extend(producer.refused()?);
         }
         Ok(found)
+    }
+
+    fn close(&self) -> Result<usize, String> {
+        // Every producer closed before any seals, so no stream takes a record the others would
+        // refuse.
+        let mut sealed = 0;
+        let mut first = None;
+        for producer in &self.shipping {
+            match producer.close() {
+                Ok(count) => sealed += count,
+                Err(error) => {
+                    first.get_or_insert(error);
+                }
+            }
+        }
+        first.map_or(Ok(sealed), Err)
     }
 }
 

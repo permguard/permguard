@@ -2211,6 +2211,14 @@ pub trait StreamShipping: Send + Sync {
     /// it rather than let shipping stop silently. Required of every engine: one that forgot it
     /// would report nothing, which is the silence this exists to end.
     fn refused(&self) -> Result<Vec<RefusedShipping>, String>;
+
+    /// Closes every stream to appends, then seals every record appended, while the rings that
+    /// sign them are still active: what an identity reset does before it retires them, so no
+    /// record is journaled into a run its identity can no longer seal (BUG-0163). Answers how many
+    /// batches were sealed.
+    fn close(&self) -> Result<usize, String> {
+        Ok(0)
+    }
 }
 
 /// A subscription that does not ship now because the coordinator refused it (F-08).

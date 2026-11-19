@@ -224,7 +224,11 @@ pub fn sign_plan(
             .try_into()
             .map_err(|_| unreachable_reconciliation(issue.internal))
     };
-    let approvals_required = plan::approvals_required(issue.kind, dual_control);
+    // An offline plan names no authenticated planner, so the planner counts for nobody: under
+    // dual control it takes one approval more, each by a distinct principal (BUG-0100).
+    let base = plan::approvals_required(issue.kind, dual_control);
+    let approvals_required =
+        base + u64::from(base > 0 && issue.principal.as_str() == plan::OFFLINE_PLANNER);
     let expires = now.saturating_add(plan::lifetime(approvals_required).as_secs());
     let plan_digest =
         plan::plan_digest(issue.kind, &issue.target, issue.revision, issue.parameters);

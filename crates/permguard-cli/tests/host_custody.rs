@@ -352,12 +352,14 @@ fn under_dual_control_the_offline_reset_is_refused_until_approved() {
     let planned = json(&host(&[
         "reset", "plan", "--reason", "a drill", "--out", plan_arg,
     ]));
-    assert_eq!(planned["approvals_required"], 1);
+    // BUG-0100: planned offline, the planner is unauthenticated, so the operation's one approval
+    // under dual control becomes two, each by a distinct principal.
+    assert_eq!(planned["approvals_required"], 2);
     for _ in 0..2 {
         let refused = host(&["reset", "run", "--confirm-file", plan_arg]);
         assert!(!refused.status.success());
         assert!(
-            stderr(&refused).contains("requires 1 approval(s) and holds 0"),
+            stderr(&refused).contains("requires 2 approval(s) and holds 0"),
             "{}",
             stderr(&refused)
         );
