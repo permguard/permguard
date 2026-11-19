@@ -266,7 +266,13 @@ fn read(path: &Path) -> Result<InvitationHandoff, String> {
     file.take(MAX_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| refused(&error.to_string()))?;
-    serde_json::from_slice(&bytes).map_err(|_| refused("is not an invitation handoff"))
+    let handoff: InvitationHandoff =
+        serde_json::from_slice(&bytes).map_err(|_| refused("is not an invitation handoff"))?;
+    // The address is checked at start, named, rather than tried against the coordinator and
+    // reported as the coordinator failing (BUG-0290).
+    permguard_host::membership::peer_address(&handoff.coordinator.address)
+        .map_err(|why| refused(&why))?;
+    Ok(handoff)
 }
 
 #[cfg(test)]
@@ -320,6 +326,23 @@ mod tests {
         assert!(read(&file).is_err_and(|why| why.contains("larger")));
         assert!(read(&dir.join("absent")).is_err());
         assert!(read(&dir).is_err_and(|why| why.contains("regular file")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// BUG-0290: a handoff whose coordinator address names no listener is refused at start,
+    /// naming the address, rather than tried and reported as the coordinator refusing.
+    #[test]
+    fn a_handoff_whose_address_names_no_listener_is_refused_at_start() {
+        let dir = scratch("address");
+        let file = dir.join("invitation-0");
+        for address in ["https://cp:5444/x?y#z", "https://cp", "http://cp:5444"] {
+            write(&file, &HANDOFF.replace("https://cp:5444", address), 0o400);
+            let why = read(&file).expect_err("no listener");
+            assert!(
+                why.contains(address) && why.contains("https://<host>:<port>"),
+                "{why}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

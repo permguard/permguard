@@ -154,6 +154,14 @@ const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
     }
 }
 
+/// A mutation an operator may give a reason for, at most 256 bytes (BUG-0153).
+const fn mutation_with_reason(action: &'static str, root: &'static str) -> ActionSchema {
+    ActionSchema {
+        facts: &[("reason", FactType::Text(256))],
+        ..mutation(action, root)
+    }
+}
+
 /// A token the Authority Plane issued (`2-security/8` Audit).
 pub const AUDIT_TOKEN_ISSUED: &str = "authority.token.issued";
 /// A token request the Authority Plane refused.
@@ -292,16 +300,16 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.invite_revoked", HOST),
     mutation("host.membership.enrolled", HOST),
     mutation("host.membership.approved", HOST),
-    mutation("host.membership.rejected", HOST),
-    mutation("host.membership.suspended", HOST),
+    mutation_with_reason("host.membership.rejected", HOST),
+    mutation_with_reason("host.membership.suspended", HOST),
     // Dormancy (WP-4.6): a membership silent past its `dormant_after`, suspended by the system.
     mutation("host.membership.dormant", HOST),
-    mutation("host.membership.resumed", HOST),
-    mutation("host.membership.fenced", HOST),
+    mutation_with_reason("host.membership.resumed", HOST),
+    mutation_with_reason("host.membership.fenced", HOST),
     // A member renamed or regrouped (iteration 02, WP-10.3).
     mutation("host.membership.member_record", HOST),
-    mutation("host.membership.revoke_planned", HOST),
-    mutation("host.membership.revoked", HOST),
+    mutation_with_reason("host.membership.revoke_planned", HOST),
+    mutation_with_reason("host.membership.revoked", HOST),
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
     mutation("host.membership.verified", HOST),
@@ -1762,7 +1770,7 @@ fn facts_of(
 /// Whether a text looks like what a fact or a target may never carry: an authorization header,
 /// a PEM block, a compact JWS, JWT or JWE (detached and unsecured forms included), a PASETO, or a
 /// well-known API key. A heuristic over shapes, never a proof of absence.
-fn looks_secret(text: &str) -> bool {
+pub(crate) fn looks_secret(text: &str) -> bool {
     let trimmed = text.trim();
     let lower = trimmed.to_ascii_lowercase();
     let scheme = lower.split_whitespace().next().unwrap_or_default();

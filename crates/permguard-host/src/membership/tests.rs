@@ -1801,6 +1801,40 @@ pub(crate) mod protocol {
         // A second sync is a retry: nothing new.
         assert_eq!(member.sync(who(), &id).await.expect("again").epoch(), 2);
 
+        // BUG-0152: the periodic pass adopts what the coordinator decided, with no operator
+        // action on the member: a suspension, then a resumption, each within one pass.
+        assert_eq!(member.sync_due(who()).await, 0, "nothing moved yet");
+        for (applying, to, epoch) in [(42, Status::Suspended, 3), (43, Status::Active, 4)] {
+            let next = c
+                .host
+                .store
+                .check_successor(
+                    &c.host.coordinator(),
+                    &id,
+                    to,
+                    None,
+                    permguard_core::time::unix_now(),
+                )
+                .expect("a successor");
+            c.host
+                .store
+                .transition(
+                    &Applying::for_tests(applying),
+                    &c.host.coordinator(),
+                    &next,
+                    permguard_core::time::unix_now(),
+                )
+                .expect("moved");
+            assert_eq!(member.sync_due(who()).await, 1, "adopted in one pass");
+            let held = m.host.store.membership(&id).expect("held");
+            assert_eq!((held.status, held.epoch()), (to, epoch));
+            assert_eq!(
+                member.sync_due(who()).await,
+                0,
+                "a second pass moves nothing"
+            );
+        }
+
         let revoked = member
             .revoke(who(), &id)
             .await
@@ -1910,7 +1944,23 @@ fn every_membership_action_is_a_registered_mutation() {
             .find(|schema| schema.action == action)
             .unwrap_or_else(|| panic!("`{action}` is not registered"));
         assert!(schema.phases, "`{action}` is recorded at each phase");
-        assert!(schema.facts.is_empty(), "`{action}` carries no facts");
+        // An operator's reason is the one fact a change may carry (BUG-0153); never a token,
+        // a proof or a key.
+        let reasoned = [
+            AUDIT_REJECTED,
+            AUDIT_SUSPENDED,
+            AUDIT_RESUMED,
+            AUDIT_FENCED,
+            AUDIT_REVOKE_PLANNED,
+            AUDIT_REVOKED,
+        ]
+        .contains(&action);
+        let expected: &[(&str, crate::audit::FactType)] = if reasoned {
+            &[("reason", crate::audit::FactType::Text(256))]
+        } else {
+            &[]
+        };
+        assert_eq!(schema.facts, expected, "`{action}` facts");
     }
 }
 
@@ -2955,6 +3005,146 @@ fn check_named(c: &Host, id: &[u8; 16], name: &str) -> Manifest {
         .0
 }
 
+/// BUG-0290: a coordinator address is `https://<host>:<port>`, `grpcs://` written as such, and
+/// nothing else names a listener a member can join.
+#[test]
+fn a_peer_address_is_a_scheme_a_host_and_a_port() {
+    for (address, canonical) in [
+        ("https://cp.internal:5444", "https://cp.internal:5444"),
+        ("https://cp.internal:5444/", "https://cp.internal:5444"),
+        ("grpcs://cp.internal:5444", "https://cp.internal:5444"),
+        ("https://127.0.0.1:5444", "https://127.0.0.1:5444"),
+        ("https://[::1]:5444", "https://[::1]:5444"),
+        ("https://cp-1:65535", "https://cp-1:65535"),
+    ] {
+        assert_eq!(super::peer_address(address).as_deref(), Ok(canonical));
+    }
+    for address in [
+        "",
+        "http://cp:5444",
+        "cp:5444",
+        "https://",
+        "https://cp",
+        "https://cp:",
+        "https://:5444",
+        "https://cp:0",
+        "https://cp:65536",
+        "https://cp:+1",
+        "https://cp:5444/x",
+        "https://cp:5444?y",
+        "https://cp:5444#z",
+        "https://user@cp:5444",
+        "https://::1:5444",
+        "https://[::1:5444",
+        "https://[cp]:5444",
+        "https://c p:5444",
+        "https://-cp:5444",
+        "https://cp..internal:5444",
+    ] {
+        let why = super::peer_address(address).expect_err(address);
+        assert!(why.contains("https://<host>:<port>"), "{address}: {why}");
+    }
+}
+
+/// BUG-0289: an enrollment asking for a name another live member Host holds is refused
+/// `member_name_taken`, as an approval or a rename is, never the generic `enrollment_refused`;
+/// the joining Host reads it as a conflict, and every other enrollment refusal keeps its code.
+#[test]
+fn an_enrollment_asking_a_taken_name_is_refused_member_name_taken() {
+    let c = Host::new("enroll-name-c");
+    let (m1, m2) = (Host::new("enroll-name-m1"), Host::new("enroll-name-m2"));
+    let first = enroll(&c, &m1).membership_id;
+    let approval = check_named(&c, &first, "edge");
+    c.store
+        .approve(
+            &Applying::for_tests(70),
+            &c.coordinator(),
+            &approval,
+            permguard_core::time::unix_now(),
+        )
+        .expect("edge is m1's");
+
+    let (invitation, token) = invite(&c, Some(m2.identity.first_fingerprint().to_owned()));
+    let verified = m2.verified();
+    let enrolling = Enrolling {
+        peer: &verified,
+        presentation: &m2.presentation(),
+        declared_assurance: AssuranceProfile::Production,
+        exporter: &EXPORTER,
+    };
+    let refused = c
+        .store
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &EnrollRequest {
+                name: Some("edge".to_owned()),
+                ..request(&c, &m2, &invitation, &token, &EXPORTER)
+            },
+            permguard_core::time::unix_now(),
+        )
+        .expect_err("edge is held");
+    assert!(
+        matches!(&refused, MembershipError::NameTaken(name) if name == "edge"),
+        "{refused:?}"
+    );
+    assert_eq!(
+        super::service::code_of(&refused),
+        permguard_core::codes::host::MEMBER_NAME_TAKEN
+    );
+    let at_member = crate::api::members::refusal_of(MembershipError::Remote {
+        code: super::service::code_of(&refused).to_owned(),
+        reason: refused.to_string(),
+    });
+    let error = at_member.error().expect("an API error");
+    assert_eq!(
+        (error.class(), error.code()),
+        (
+            permguard_core::ErrorClass::Conflict,
+            permguard_core::codes::host::MEMBER_NAME_TAKEN
+        )
+    );
+    assert!(
+        error
+            .disclosed_message(permguard_core::api::Disclosure::Minimal)
+            .contains("choose another name"),
+        "{error:?}"
+    );
+    assert!(
+        !crate::api::members::retryable(&at_member),
+        "a taken name is final"
+    );
+
+    // Another refusal keeps `enrollment_refused`; the invitation is not spent by either.
+    let wrong = c
+        .store
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &EnrollRequest {
+                token_proof: [0; 64],
+                ..request(&c, &m2, &invitation, &token, &EXPORTER)
+            },
+            permguard_core::time::unix_now(),
+        )
+        .expect_err("a forged proof");
+    assert_eq!(
+        super::service::code_of(&wrong),
+        permguard_core::codes::host::ENROLLMENT_REFUSED
+    );
+    c.store
+        .check_enroll(
+            &c.coordinator(),
+            &enrolling,
+            &EnrollRequest {
+                name: Some("other".to_owned()),
+                ..request(&c, &m2, &invitation, &token, &EXPORTER)
+            },
+            permguard_core::time::unix_now(),
+        )
+        .expect("a free name enrolls on the same invitation");
+}
+
 #[test]
 fn two_approvals_checked_together_never_give_one_name_to_two_hosts() {
     let c = Host::new("race-name-c");
@@ -3124,6 +3314,6 @@ fn an_enrollment_asking_for_a_name_another_host_holds_is_refused() {
             &asked,
             permguard_core::time::unix_now(),
         ),
-        Err(MembershipError::Enrollment(_))
+        Err(MembershipError::NameTaken(name)) if name == "edge"
     ));
 }

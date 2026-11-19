@@ -1116,6 +1116,10 @@ pub fn retryable(refusal: &Refusal) -> bool {
     }
 }
 
+/// A reason is recorded in the audit trail, which takes nothing shaped like a secret (BUG-0153).
+const REASON_SECRET: &str =
+    "`reason` is shaped like a token, a key or a proof: it is recorded in the audit trail";
+
 pub fn refusal_of(error: MembershipError) -> Refusal {
     // What the coordinator refused keeps its code where the caller can act on it; a transport
     // failure is `unavailable`, its detail internal.
@@ -1132,6 +1136,10 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
             codes::host::MEMBERSHIP_UNKNOWN => {
                 (ErrorClass::NotFound, codes::host::MEMBERSHIP_UNKNOWN)
             }
+            // The name the join asked for is another live member Host's (BUG-0289).
+            codes::host::MEMBER_NAME_TAKEN => {
+                (ErrorClass::Conflict, codes::host::MEMBER_NAME_TAKEN)
+            }
             codes::host::IDENTITY_RESET_INCOMPLETE => {
                 (ErrorClass::Conflict, codes::host::IDENTITY_RESET_INCOMPLETE)
             }
@@ -1143,8 +1151,14 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
             ),
             _ => (ErrorClass::Unavailable, codes::common::UNAVAILABLE),
         };
+        let message = if code == codes::host::MEMBER_NAME_TAKEN {
+            "the coordinator refused the member name asked for: another live member Host holds \
+             it; choose another name, or revoke that Host's memberships first"
+        } else {
+            "the coordinator did not complete it"
+        };
         return Refusal::Api(
-            permguard_core::ApiError::new(class, code, "the coordinator did not complete it")
+            permguard_core::ApiError::new(class, code, message)
                 .with_internal(format!("`{said}`: {reason}")),
         );
     }
@@ -1221,6 +1235,41 @@ impl HostApi {
             now: self.time.now_secs(),
             store: &memberships.store,
         }
+    }
+
+    /// Records why an operator changed a membership, inside the operation and before its change,
+    /// under the operation's own action (BUG-0153): the `reason` a suspension, a resumption, a
+    /// fence, a rejection or a revocation was asked with, which its phase records cannot carry. A
+    /// record that cannot be written refuses the operation.
+    fn record_reason(
+        &self,
+        applying: &Applying<'_>,
+        action: &'static str,
+        principal: &permguard_core::authz::Principal,
+        membership_id: &str,
+        reason: &str,
+    ) -> Result<(), Failure<Refusal>> {
+        let mutations = self.mutations().map_err(Failure::Refused)?;
+        let operation_id = applying.operation_id();
+        let facts = [("reason", Fact::Text(reason))];
+        mutations
+            .project(
+                &AuditEvent::new(action, Subject::Principal(principal.as_str()))
+                    .in_operation(operation_id.as_bytes(), AuditPhase::Intent)
+                    .with_outcome(AuditOutcome::Ok)
+                    .on(membership_id)
+                    .with_facts(&facts),
+            )
+            .map_err(|error| {
+                Failure::Refused(Refusal::Api(
+                    permguard_core::ApiError::new(
+                        ErrorClass::Unavailable,
+                        codes::common::UNAVAILABLE,
+                        "the audit trail did not take the change's reason",
+                    )
+                    .with_internal(error),
+                ))
+            })
     }
 
     /// Records each operator approval an operation took, inside it, before its change: the
@@ -1905,6 +1954,13 @@ impl HostApi {
         {
             return Err(invalid("`reason` is printable text of at most 256 bytes"));
         }
+        if change
+            .reason
+            .as_deref()
+            .is_some_and(crate::audit::looks_secret)
+        {
+            return Err(invalid(REASON_SECRET));
+        }
         let now = self.time.now_secs();
         let check = || {
             memberships.store.check_successor(
@@ -1930,6 +1986,9 @@ impl HostApi {
             || check().map(|_| ()).map_err(refusal_of),
             |applying| {
                 let manifest = check().map_err(failure)?;
+                if let Some(reason) = change.reason.as_deref() {
+                    self.record_reason(applying, action, &admitted.principal, id, reason)?;
+                }
                 let (envelope, _) = if manifest.epoch == 1 {
                     memberships
                         .store
@@ -2213,6 +2272,9 @@ impl HostApi {
         {
             return Err(invalid("`reason` is printable text of 1 to 256 bytes"));
         }
+        if crate::audit::looks_secret(&plan.reason) {
+            return Err(invalid(REASON_SECRET));
+        }
         let now = self.time.now_secs();
         let current = || -> Result<u64, Refusal> {
             memberships
@@ -2246,6 +2308,13 @@ impl HostApi {
             || current().map(|_| ()),
             |applying| {
                 let revision = current().map_err(Failure::Refused)?;
+                self.record_reason(
+                    applying,
+                    AUDIT_REVOKE_PLANNED,
+                    &admitted.principal,
+                    id,
+                    &plan.reason,
+                )?;
                 let issued = self
                     .issue_plan(
                         applying,
@@ -2326,6 +2395,10 @@ impl HostApi {
             || presented().map(|_| ()),
             |applying| {
                 let plan = presented().map_err(Failure::Refused)?;
+                // The reason the plan was issued with, carried by the run's record too.
+                if let Some((_, reason)) = plan.target.split_once('\n') {
+                    self.record_reason(applying, AUDIT_REVOKED, &admitted.principal, id, reason)?;
+                }
                 let manifest = memberships
                     .store
                     .check_successor(
@@ -2383,6 +2456,23 @@ impl HostApi {
         };
         member
             .repin_due(crate::operations::journal::Initiator::System(
+                "host".to_owned(),
+            ))
+            .await
+    }
+
+    /// Adopts what the coordinators of this Host's memberships as a member decided since the last
+    /// pass, a revocation, a suspension or a resumption (BUG-0152): the server's periodic pass.
+    /// Nothing without a peer client.
+    pub async fn sync_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .sync_due(crate::operations::journal::Initiator::System(
                 "host".to_owned(),
             ))
             .await
@@ -2941,11 +3031,8 @@ impl HostApi {
         }
         .validated()?;
         let host_id = id_of(&join.coordinator.host_id)?;
-        if !join.coordinator.address.starts_with("https://") {
-            return Err(invalid(
-                "the coordinator's address is `https://<host>:<port>`",
-            ));
-        }
+        // One grammar for where a member reaches its coordinator (BUG-0290).
+        crate::membership::peer_address(&join.coordinator.address).map_err(invalid)?;
         let token = URL_SAFE_NO_PAD
             .decode(&join.token)
             .map_err(|_| invalid("`token` is base64url"))?;

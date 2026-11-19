@@ -283,6 +283,65 @@ impl MembershipError {
     }
 }
 
+/// Where a member reaches its coordinator, in its one canonical form, `https://<host>:<port>`,
+/// or what is wrong with `address` (BUG-0290, DEC-0017): a `grpcs://` endpoint is the same
+/// listener; an empty host, a missing port, a path, a query, a fragment or user info names no
+/// listener a member could join, and is refused before an invitation's handoff carries it.
+pub fn peer_address(address: &str) -> Result<String, String> {
+    let refused = |why: &str| {
+        format!(
+            "`{address}` is not where a member reaches a coordinator ({why}): https://<host>:<port>"
+        )
+    };
+    let rest = address
+        .strip_prefix("https://")
+        .or_else(|| address.strip_prefix("grpcs://"))
+        .ok_or_else(|| refused("the scheme is https or grpcs"))?;
+    let authority = rest.strip_suffix('/').unwrap_or(rest);
+    if authority.contains(['/', '?', '#', '@']) {
+        return Err(refused(
+            "a path, a query, a fragment or user info names no listener",
+        ));
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() && host != "[" => (host, port),
+        _ => return Err(refused("the host and its port are both needed")),
+    };
+    if port.is_empty()
+        || !port.bytes().all(|byte| byte.is_ascii_digit())
+        || port.parse::<u16>().map_or(true, |port| port == 0)
+    {
+        return Err(refused("the port is a number from 1 to 65535"));
+    }
+    match host
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+    {
+        Some(inner) => {
+            if inner.parse::<std::net::Ipv6Addr>().is_err() {
+                return Err(refused("the bracketed host is an IPv6 address"));
+            }
+        }
+        None if host.contains(':') => {
+            return Err(refused("an IPv6 host is written in brackets"));
+        }
+        None => {
+            let label = |label: &str| {
+                !label.is_empty()
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            };
+            if host.len() > 253 || !host.split('.').all(label) {
+                return Err(refused("the host is a DNS name or an IP address"));
+            }
+        }
+    }
+    Ok(format!("https://{host}:{port}"))
+}
+
 /// The task contracts this Host registered (WP-4.4, owner decisions of 2026-10-11): each a type,
 /// the version it speaks and whether it is the provider's handler or the consumer's client, as
 /// the Planes and the Host declare them in the composition. Approval refuses a task unless the
@@ -1851,10 +1910,10 @@ impl Store {
         }
         // A name another live member Host holds is refused now, not left for the approval: the
         // approving operator decides the name, never which of two Hosts keeps it.
-        if let Some(name) = invitation.name.as_ref().or(request.name.as_ref())
-            && self.check_name_free(name, &peer.host_id).is_err()
-        {
-            return Err(refused("the member name is held by another member Host"));
+        // Refused under its own code, `member_name_taken`, as at approval and rename (BUG-0289):
+        // the joining Host is told why, not only the coordinator's log.
+        if let Some(name) = invitation.name.as_ref().or(request.name.as_ref()) {
+            self.check_name_free(name, &peer.host_id)?;
         }
         Ok(Pending {
             membership_id: fresh_id(now)?,

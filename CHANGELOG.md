@@ -161,6 +161,14 @@ is cut.
 
 ### Fixed
 
+- **A member adopts a revocation, a suspension or a resumption within one pass.**
+  Every pass, a member asks its coordinators for the manifests of its pending, active and suspended memberships, so what an operator decides on the coordinator is held on the member with no `host members sync` on the member, and a resumed membership ships again at the same pass; `host.membership.synced` is logged when one moved.
+- **The reason of a membership change is recorded.**
+  The `reason` given to reject, suspend, resume, fence, plan a revocation or revoke a membership is a fact of its audit record, where it was accepted and kept nowhere; a reason shaped like a token, a key or a proof is refused `400 invalid_argument`.
+- **A join asking for a member name another live member Host holds is refused `member_name_taken`.**
+  The joining Host gets class `conflict` with code `member_name_taken`, over the command line (exit `64`) and in `host.join_refused`, as an approval or a rename does, where it got `enrollment_refused` with nothing about the name; every other enrollment refusal keeps `enrollment_refused`.
+- **A coordinator address is `https://<host>:<port>` and nothing else.**
+  `host members invite create --coordinator-address`, and the coordinator address a handoff carries, refuse a path, a query, a fragment, user info, a missing or empty host, a missing port or one outside 1 to 65535, and a host that is neither a DNS name nor an IP address (an IPv6 one in brackets); the command exits `64` before an invitation is created, and `host.join` refuses such a handoff at start naming the address, where the join was tried and reported as the coordinator refusing.
 - **A `zone.secrets` member is alive while it is reachable, and receives a new root version within one pass.**
   Every pass, a member asks its coordinator the root version it delivers at, on a session that carries no key: a member whose only task is `zone.secrets` is no longer suspended for dormancy minutes after receiving its keys, and a root moved to a new version reaches every member at its next pass instead of waiting for a new manifest. The member view's `zone_receipts[].behind` (REST and gRPC) says when a member's keys are older than the root.
 - **A `zone.secrets` task that could never deliver is refused when it is offered.**

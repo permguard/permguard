@@ -888,15 +888,7 @@ fn verify_identity(
 
 /// The Host-to-Host session endpoint corresponding to an administrative Host endpoint.
 fn peer_address(address: &str) -> Result<String, Failure> {
-    if let Some(authority) = address.strip_prefix("grpcs://") {
-        return Ok(format!("https://{authority}"));
-    }
-    if address.starts_with("https://") {
-        return Ok(address.to_owned());
-    }
-    Err(Failure::usage(
-        "the Host endpoint has no canonical HTTPS peer-session address",
-    ))
+    permguard_host::membership::peer_address(address).map_err(Failure::usage)
 }
 
 fn members(globals: &Globals, action: MembersAction, trace: &Trace) -> Result<ExitCode, Failure> {

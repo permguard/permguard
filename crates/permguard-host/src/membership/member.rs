@@ -638,6 +638,48 @@ impl Member<'_> {
         self.ask(initiator, id, Action::Fetch).await
     }
 
+    /// Fetches the manifests of every membership this Host holds as a member that the coordinator
+    /// may still move, pending, active or suspended: the server's periodic pass (BUG-0152). A
+    /// revocation, a suspension or a resumption on the coordinator is adopted here within one
+    /// pass, with no operator action on the member. Answers how many moved; one that fails is
+    /// logged and tried again at the next pass.
+    pub async fn sync_due(&self, initiator: Initiator) -> usize {
+        let mut moved = 0;
+        for (id, held) in self.store.memberships() {
+            if held.role != super::record::Role::Member
+                || !matches!(
+                    held.status,
+                    super::record::Status::Pending
+                        | super::record::Status::Active
+                        | super::record::Status::Suspended
+                )
+            {
+                continue;
+            }
+            match self.sync(initiator.clone(), &id).await {
+                Ok(synced) if synced.status != held.status || synced.epoch() != held.epoch() => {
+                    tracing::info!(
+                        event.name = "host.membership.synced",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        status = %synced.status.as_str(),
+                        "the coordinator moved this membership, and this Host adopted it"
+                    );
+                    moved += 1;
+                }
+                Ok(_) => {}
+                Err(error) => tracing::debug!(
+                    event.name = "host.membership.sync_failed",
+                    component = "host",
+                    membership_id = %uuid_text(&id),
+                    error = %error,
+                    "the membership could not be synced: the next pass tries again"
+                ),
+            }
+        }
+        moved
+    }
+
     /// Asks the coordinator to revoke `id`; its revoked manifest, recorded, is the receipt.
     pub async fn revoke(
         &self,

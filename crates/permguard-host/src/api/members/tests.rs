@@ -395,7 +395,12 @@ async fn an_invitation_shows_its_token_once_lists_by_hash_and_keeps_it_in_no_fil
 #[tokio::test]
 async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_member() {
     let root = scratch("members-lifecycle");
-    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let trail = std::sync::Arc::new(crate::api::testing::Recording::default());
+    let (api, _, _volume) = crate::api::testing::reopen_with(
+        &root,
+        vec![HOST_OPERATIONS],
+        std::sync::Arc::clone(&trail),
+    );
     let member = Host::new("api-lifecycle-member");
     let (id, pending) = enrolled(&api, &member, "life-1").await;
 
@@ -486,8 +491,28 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
     assert_eq!(view.lease_policy.expect("signed").max_session_seconds, 1800);
     assert_eq!(view.manifest.as_deref(), Some(approved.manifest.as_str()));
 
+    // A reason is recorded in the audit trail: one shaped like a secret is refused up front.
+    let secret = api
+        .suspend_member(
+            &admin(),
+            &id,
+            ChangeMember {
+                reason: Some("Bearer abc.def.ghi".to_owned()),
+                ..change("life-5s", view.revision)
+            },
+        )
+        .await
+        .expect_err("a secret-shaped reason");
+    assert_eq!(code(&secret), codes::common::INVALID_ARGUMENT);
     let suspended = api
-        .suspend_member(&admin(), &id, change("life-5", view.revision))
+        .suspend_member(
+            &admin(),
+            &id,
+            ChangeMember {
+                reason: Some("h7-suspend-reason".to_owned()),
+                ..change("life-5", view.revision)
+            },
+        )
         .await
         .expect("suspended");
     assert_eq!(
@@ -552,6 +577,25 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
         .await
         .expect("revoked");
     assert_eq!((revoked.status.as_str(), revoked.epoch), ("revoked", 5));
+    // BUG-0153: each change's reason is in its own audit record, inside its operation.
+    let facts = trail.facts.lock().expect("lock").clone();
+    let reason_of = |wanted: &str| {
+        facts
+            .iter()
+            .filter(|(action, _)| action == wanted)
+            .flat_map(|(_, recorded)| recorded.iter())
+            .find(|(fact, _)| fact == "reason")
+            .map(|(_, value)| value.clone())
+    };
+    assert_eq!(
+        reason_of(AUDIT_SUSPENDED).as_deref(),
+        Some("h7-suspend-reason")
+    );
+    assert_eq!(
+        reason_of(AUDIT_REVOKE_PLANNED).as_deref(),
+        Some("decommissioned")
+    );
+    assert_eq!(reason_of(AUDIT_REVOKED).as_deref(), Some("decommissioned"));
     let twice = api
         .run_member_revoke(
             &admin(),

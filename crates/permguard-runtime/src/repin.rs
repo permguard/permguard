@@ -70,6 +70,9 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress)
                     "the coordinator's re-pin pass stopped; the next pass tries again"
                 ),
             }
+            // What the coordinators decided since the last pass, adopted before anything is
+            // shipped under a membership they may have suspended or revoked (BUG-0152).
+            let _ = api.sync_due().await;
             let repinned = api.repin_due().await + api.cutover_due().await;
             let shipped = api.ship_due().await;
             // The origins' history this Host imports, after what it ships (WP-6.2c2a).

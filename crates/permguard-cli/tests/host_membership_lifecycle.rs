@@ -616,25 +616,42 @@ fn lifecycle(scheme: &str) {
         &tls,
         &words(&["host", "members", "invite", "list"]),
     );
-    let refused = cli(
-        &root,
-        &coordinator_endpoint,
-        &tls,
-        &words(&[
-            "host",
-            "members",
-            "invite",
-            "create",
-            "--selector",
-            "plane/data/*",
-            "--tasks",
-            "tasks.json",
-            "--coordinator-address",
-            "http://iam.internal:5444",
-        ]),
-    );
-    assert!(!refused.status.success(), "{refused:?}");
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("--coordinator-address"));
+    // BUG-0290: only `https://<host>:<port>` names a listener a member can join; anything else
+    // is a usage error before an invitation is created.
+    for address in [
+        "http://iam.internal:5444",
+        "https://iam.internal:5444/x?y#z",
+        "https://iam.internal:5444/path",
+        "https://user@iam.internal:5444",
+        "https://iam.internal",
+        "https://:5444",
+        "https://iam.internal:0",
+        "https://iam internal:5444",
+    ] {
+        let refused = cli(
+            &root,
+            &coordinator_endpoint,
+            &tls,
+            &words(&[
+                "host",
+                "members",
+                "invite",
+                "create",
+                "--selector",
+                "plane/data/*",
+                "--tasks",
+                "tasks.json",
+                "--coordinator-address",
+                address,
+            ]),
+        );
+        assert_eq!(refused.status.code(), Some(64), "{address}: {refused:?}");
+        let stderr = String::from_utf8_lossy(&refused.stderr);
+        assert!(
+            stderr.contains("--coordinator-address") && stderr.contains("https://<host>:<port>"),
+            "{address}: {stderr}"
+        );
+    }
     assert_eq!(
         call(
             &root,
