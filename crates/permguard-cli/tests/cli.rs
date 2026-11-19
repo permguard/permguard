@@ -2814,7 +2814,7 @@ fn a_control_endpoint_named_for_the_run_is_refused_by_the_sync_commands() {
             "--control-endpoint",
             "http://127.0.0.1:1",
             "checkout",
-            "origin/z/l",
+            "origin/zone-a/ledger-a",
         ],
         vec![
             "--control-endpoint",
@@ -3459,4 +3459,173 @@ fn a_history_event_of_another_store_is_refused_by_its_file() {
         Some(0),
         "a case built on that event does not pass"
     );
+}
+
+/// BUG-0294, DEC-0008: under `-o json` or `-o yaml`, a command line clap refuses is the same
+/// `{class, code, message}` document every other refusal is, wherever `-o` is written; without
+/// `-o` it is clap's text, and help and version are unchanged.
+#[test]
+fn a_command_line_refusal_is_a_document_under_o_json() {
+    let dir = scratch("clap-json");
+    for args in [
+        &["-o", "json", "zones", "list", "--size", "abc"][..],
+        &["-o", "json", "history", "--limit", "0"][..],
+        &["-o", "json", "zones", "list", "--bogus"][..],
+        &["-o", "json", "zones"][..],
+        &["zones", "list", "--size", "abc", "-o", "json"][..],
+    ] {
+        let output = run(&dir, args);
+        assert_eq!(output.status.code(), Some(64), "{args:?}");
+        let failure: serde_json::Value = serde_json::from_str(&stderr(&output))
+            .unwrap_or_else(|_| panic!("{args:?}: {}", stderr(&output)));
+        assert_eq!(failure["class"], "validation", "{args:?}");
+        assert_eq!(failure["code"], "usage", "{args:?}");
+        assert!(
+            failure["message"]
+                .as_str()
+                .is_some_and(|said| !said.is_empty())
+        );
+    }
+    let yaml = run(&dir, &["-o", "yaml", "zones", "list", "--page", "x"]);
+    assert_eq!(yaml.status.code(), Some(64));
+    assert!(
+        stderr(&yaml).starts_with("class: validation\ncode: usage\n"),
+        "{}",
+        stderr(&yaml)
+    );
+    let plain = run(&dir, &["zones", "list", "--size", "abc"]);
+    assert!(stderr(&plain).starts_with("error: "), "{}", stderr(&plain));
+    assert!(run(&dir, &["-o", "json", "--help"]).status.success());
+}
+
+/// BUG-0247: what clap says on the diagnostics is coloured by the diagnostics: never when
+/// `NO_COLOR` is set or the stream is not a terminal, and when `CLICOLOR_FORCE` asks.
+#[test]
+fn a_command_line_refusal_is_coloured_by_its_own_stream() {
+    let dir = scratch("clap-colour");
+    let plain = run_with(&dir, &[], &["nosuch"]);
+    assert!(!stderr(&plain).contains('\u{1b}'), "{:?}", stderr(&plain));
+    let forced = Command::new(env!("CARGO_BIN_EXE_permguard"))
+        .args(["nosuch"])
+        .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+        .env_remove("NO_COLOR")
+        .env("CLICOLOR_FORCE", "1")
+        .output()
+        .expect("runs");
+    assert!(stderr(&forced).contains('\u{1b}'), "{:?}", stderr(&forced));
+}
+
+/// BUG-0248: a reader that closes the pipe early ends `completion` cleanly, for every shell, and
+/// the whole script is still written to a file.
+#[test]
+fn completion_ends_cleanly_when_its_reader_stops_early() {
+    use std::io::Read as _;
+
+    let dir = scratch("completion-pipe");
+    for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_permguard"))
+            .args(["completion", shell])
+            .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("runs");
+        // Read one byte, then close the pipe on the rest.
+        let mut first = [0u8; 1];
+        child
+            .stdout
+            .take()
+            .expect("piped")
+            .read_exact(&mut first)
+            .expect("one byte");
+        let output = child.wait_with_output().expect("ends");
+        assert_ne!(
+            output.status.code(),
+            Some(101),
+            "{shell}: {}",
+            stderr(&output)
+        );
+        assert!(
+            !stderr(&output).contains("panicked"),
+            "{shell}: {}",
+            stderr(&output)
+        );
+    }
+    let whole = run(&dir, &["completion", "bash"]);
+    assert!(whole.status.success());
+    assert!(stdout(&whole).contains("permguard"), "the whole script");
+}
+
+/// BUG-0243, DEC-0006: `decisions get` and `decisions signers` refuse the options of `list` they
+/// would not apply, naming them, before anything is read.
+#[test]
+fn decisions_get_and_signers_refuse_what_they_do_not_apply() {
+    let dir = scratch("decisions-get-options");
+    for args in [
+        &[
+            "decisions",
+            "get",
+            "d-1",
+            "--zone",
+            "acme",
+            "--ledger",
+            "main",
+            "--verify",
+            "--keys",
+            "./no-such-keys.json",
+        ][..],
+        &[
+            "decisions",
+            "get",
+            "d-1",
+            "--zone",
+            "acme",
+            "--ledger",
+            "main",
+            "--decision",
+            "deny",
+        ][..],
+        &[
+            "decisions",
+            "signers",
+            "--pdp",
+            "p",
+            "--instance",
+            "i",
+            "--verify",
+        ][..],
+    ] {
+        let output = run(&dir, args);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("does not take"),
+            "{}",
+            stderr(&output)
+        );
+    }
+}
+
+/// BUG-0251, DEC-0017: a clone URL or a reference with a query or a fragment is refused, naming
+/// it, and nothing is created.
+#[test]
+fn a_ledger_url_with_a_query_or_fragment_is_refused() {
+    let dir = scratch("clone-query");
+    for url in [
+        "http://127.0.0.1:1/shop/orders?view=1",
+        "http://127.0.0.1:1/shop/orders#top",
+    ] {
+        let output = run(&dir, &["clone", url]);
+        assert_eq!(output.status.code(), Some(64), "{url}: {}", stderr(&output));
+        assert!(
+            stderr(&output).contains("query") || stderr(&output).contains("fragment"),
+            "{}",
+            stderr(&output)
+        );
+        assert!(!dir.join("orders?view=1").exists() && !dir.join("orders#top").exists());
+    }
 }

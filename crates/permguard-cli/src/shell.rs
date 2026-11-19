@@ -118,13 +118,16 @@ fn with_headroom(command: impl FnOnce() -> ExitCode) -> ExitCode {
 }
 
 fn run_command(args: Vec<std::ffi::OsString>) -> ExitCode {
+    // The format the line asked for, read before clap: a line clap refuses never reaches the
+    // parsed `-o`, and its refusal is still a document under `-o json` (BUG-0294).
+    let asked = asked_format(&args);
     // Parsed by hand so that a wrong command line exits `EX_USAGE` rather than clap's default of
     // 2 — which is a status this CLI has already given a meaning of its own.
     let matches = match args::command().try_get_matches_from(args) {
         Ok(matches) => matches,
         Err(error) => {
             let requested = !error.use_stderr();
-            print_clap(&error);
+            print_clap(&error, asked);
 
             // `--help` and `--version` are errors only in clap's plumbing: the user asked, and got
             // what they asked for.
@@ -136,14 +139,14 @@ fn run_command(args: Vec<std::ffi::OsString>) -> ExitCode {
     // same way — here rather than in `run`, because the stand-in that parsed it deliberately has no
     // variant in `Command` to be derived into.
     if let Some(path) = args::help_request(&matches) {
-        return print_help(&path);
+        return print_help(&path, asked);
     }
 
     let cli = match <Cli as clap::FromArgMatches>::from_arg_matches(&matches) {
         Ok(cli) => cli,
         Err(error) => {
             let requested = !error.use_stderr();
-            print_clap(&error);
+            print_clap(&error, asked);
 
             // `--help` and `--version` are errors only in clap's plumbing: the user asked, and got
             // what they asked for.
@@ -176,10 +179,16 @@ fn run_command(args: Vec<std::ffi::OsString>) -> ExitCode {
 }
 
 /// What clap says, where the binary would have said it: help and version on the output, a wrong
-/// command line on the diagnostics, coloured when the output may carry colour.
-fn print_clap(error: &clap::Error) {
+/// command line on the diagnostics, coloured by the stream it is written to (BUG-0247). Under
+/// `-o json` or `-o yaml` a wrong command line is the same `{class, code, message}` document every
+/// other refusal is (BUG-0294); help and version stay what they are.
+fn print_clap(error: &clap::Error, asked: OutputFormat) {
+    if error.use_stderr() && asked != OutputFormat::Terminal {
+        let _ = Failure::usage(clap_message(error)).report(asked);
+        return;
+    }
     let rendered = error.render();
-    let text = if crate::style::coloured() {
+    let text = if clap_coloured(error.use_stderr()) {
         rendered.ansi().to_string()
     } else {
         rendered.to_string()
@@ -191,10 +200,88 @@ fn print_clap(error: &clap::Error) {
     };
 }
 
+/// Clap's refusal as one sentence: its first paragraph, without the `error: ` it starts with and
+/// the usage and tip that follow. A missing subcommand, for which clap prints the help, is said.
+fn clap_message(error: &clap::Error) -> String {
+    use clap::error::ErrorKind;
+
+    if matches!(
+        error.kind(),
+        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand | ErrorKind::MissingSubcommand
+    ) {
+        return "a subcommand is required: see --help".to_owned();
+    }
+    let rendered = error.render().to_string();
+    let first = rendered.split("\n\n").next().unwrap_or_default().trim();
+    first.strip_prefix("error: ").unwrap_or(first).to_owned()
+}
+
+/// The `-o` or `--output` a command line names, wherever it names it; the terminal when it names
+/// none or one that is not a format, which clap then refuses.
+fn asked_format(args: &[std::ffi::OsString]) -> OutputFormat {
+    let words: Vec<String> = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let mut asked = None;
+    for (at, word) in words.iter().enumerate() {
+        let value = match word.as_str() {
+            "-o" | "--output" => words.get(at + 1).map(String::as_str),
+            other => other
+                .strip_prefix("--output=")
+                .or_else(|| other.strip_prefix("-o=")),
+        };
+        if let Some(value) = value {
+            asked = Some(value.to_owned());
+        }
+        // `-ojson`, the short flag with its value attached.
+        if let Some(value) = word.strip_prefix("-o")
+            && !value.is_empty()
+            && !value.starts_with('=')
+            && !word.starts_with("--")
+        {
+            asked = Some(value.to_owned());
+        }
+    }
+    match asked.as_deref() {
+        Some("json") => OutputFormat::Json,
+        Some("yaml" | "yml") => OutputFormat::Yaml,
+        _ => OutputFormat::Terminal,
+    }
+}
+
+/// Whether what clap says may be coloured: decided for the stream it is written to, the
+/// diagnostics or the output, as clap decides it — `NO_COLOR`, `CLICOLOR_FORCE` and `CLICOLOR`
+/// honoured — and by the capture's own decision in a captured run (BUG-0247).
+fn clap_coloured(on_stderr: bool) -> bool {
+    use std::io::IsTerminal as _;
+
+    if crate::streams::current().is_some() {
+        return crate::style::coloured();
+    }
+    if std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()) {
+        return false;
+    }
+    if std::env::var_os("CLICOLOR_FORCE").is_some_and(|value| !value.is_empty() && value != "0") {
+        return true;
+    }
+    if std::env::var_os("CLICOLOR").is_some_and(|value| value == "0") {
+        return false;
+    }
+    if std::env::var("TERM").is_ok_and(|term| term == "dumb") {
+        return false;
+    }
+    if on_stderr {
+        std::io::stderr().is_terminal()
+    } else {
+        std::io::stdout().is_terminal()
+    }
+}
+
 /// A command's help, on the output, coloured as clap colours `--help`.
 fn print_command_help(command: &mut clap::Command) -> std::io::Result<()> {
     let rendered = command.render_help();
-    let text = if crate::style::coloured() {
+    let text = if clap_coloured(false) {
         rendered.ansi().to_string()
     } else {
         rendered.to_string()
@@ -208,7 +295,7 @@ fn print_command_help(command: &mut clap::Command) -> std::io::Result<()> {
 ///
 /// The tree is built before it is walked so that each command already knows its own name in full —
 /// otherwise `permguard help zones create` answers with a usage line reading `create`.
-fn print_help(path: &[String]) -> ExitCode {
+fn print_help(path: &[String], asked: OutputFormat) -> ExitCode {
     let mut root = args::command();
     root.build();
 
@@ -216,10 +303,13 @@ fn print_help(path: &[String]) -> ExitCode {
 
     for name in path {
         let Some(found) = current.find_subcommand(name) else {
-            print_clap(&current.clone().error(
-                clap::error::ErrorKind::InvalidSubcommand,
-                format!("unrecognized subcommand '{name}'"),
-            ));
+            print_clap(
+                &current.clone().error(
+                    clap::error::ErrorKind::InvalidSubcommand,
+                    format!("unrecognized subcommand '{name}'"),
+                ),
+                asked,
+            );
 
             return ExitCode::from(EXIT_USAGE);
         };
@@ -270,8 +360,14 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
             // report wrapper would be syntax errors in someone's rc file.
             let mut script = Vec::new();
             clap_complete::generate(shell, &mut args::command(), "permguard", &mut script);
-            crate::streams::out(|out| std::io::Write::write_all(out, &script))
-                .map_err(Failure::internal)?;
+            // A reader that stopped early, `| head -n 1`, closed the pipe on a script it had what
+            // it wanted of: that is how a pipe ends, not a failure of this command (BUG-0248), as
+            // every report already treats it.
+            match crate::streams::out(|out| std::io::Write::write_all(out, &script)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+                Err(error) => return Err(Failure::internal(error)),
+            }
 
             Ok(ExitCode::from(EXIT_READY))
         }

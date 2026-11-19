@@ -161,6 +161,14 @@ is cut.
 
 ### Fixed
 
+- **Under `-o json` or `-o yaml`, a command line the parser refuses is a document too.**
+  An invalid value, an unknown flag, a missing argument or subcommand prints the `{class, code, message}` document every other refusal prints, wherever `-o` is written, where it printed clap's text; without `-o`, and for `--help` and `--version`, nothing changes.
+- **What the parser says is coloured by the stream it is written to.**
+  A refusal on standard error is coloured when standard error is a terminal, never because standard output is; `NO_COLOR`, `CLICOLOR_FORCE` and `CLICOLOR=0` are honoured.
+- **`completion` ends cleanly when its reader stops early**, as `| head -n 1` does, where it exited `70` on the closed pipe.
+- **`decisions get` and `decisions signers` refuse `--verify`, `--keys`, `--decision` and `--since`**, which they shared with `decisions list` and ignored, so a `--verify` never reports a check that was not made.
+- **A clone URL or a ledger reference with a query or a fragment is refused.**
+  `clone http://…/shop/orders?view=1`, `…#top` and `checkout origin/shop/orders?view=1` name the query or fragment and exit `64`, where the ledger was recorded, and a folder created, as `orders?view=1`; a zone or ledger must be a name the catalog accepts, or an id.
 - **`permguard test` answers as the plane would.**
   A case decided by a policy without an alias passes, the policy named by its id, where it was reported as drift; an identity the workspace does not hold still is. A history event whose `store` names another zone, ledger or profile than the request's is refused as the plane refuses or ignores it, `ledger_not_served` or `profile_unknown`, naming the event's file, where it was used to permit; and every refusal of a history event names its file.
 - **`permguard test --remote` refuses what it cannot ask, and stops on a plane nobody reaches.**

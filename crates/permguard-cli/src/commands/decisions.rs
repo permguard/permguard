@@ -43,15 +43,48 @@ pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode
     match action {
         DecisionsAction::List(query) => list(globals, query, false),
         DecisionsAction::Tail { query, follow } => tail(globals, query, *follow),
-        DecisionsAction::Get { id, query } => get(globals, query, id),
+        DecisionsAction::Get { id, query } => {
+            not_taken("decisions get", query)?;
+            get(globals, query, id)
+        }
         DecisionsAction::Signers {
             query,
             from_seq,
             until_seq,
-        } => signers(globals, query, *from_seq, *until_seq),
+        } => {
+            not_taken("decisions signers", query)?;
+            signers(globals, query, *from_seq, *until_seq)
+        }
         DecisionsAction::Export(query) => list(globals, query, true),
         DecisionsAction::Verify { file, keys } => verify_file(globals, file, keys),
     }
+}
+
+/// Refuses what `command` shares with `decisions list` and does not apply (BUG-0243, DEC-0006):
+/// a `--verify` that verifies nothing, a `--keys` never read, a `--decision` or `--since` that
+/// filters nothing would each report a check that was never made.
+fn not_taken(command: &str, query: &DecisionsQuery) -> Result<(), Failure> {
+    let mut given = Vec::new();
+    if query.verify {
+        given.push("--verify");
+    }
+    if query.keys.is_some() {
+        given.push("--keys");
+    }
+    if query.decision.is_some() {
+        given.push("--decision");
+    }
+    if query.since.is_some() {
+        given.push("--since");
+    }
+    if given.is_empty() {
+        return Ok(());
+    }
+    Err(Failure::usage(format!(
+        "`{command}` does not take {}: it reads what it names as it is; `decisions list` and \
+         `decisions export` filter and verify",
+        given.join(", ")
+    )))
 }
 
 /// One page, or a whole finite snapshot.
