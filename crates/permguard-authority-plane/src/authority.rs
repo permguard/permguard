@@ -29,6 +29,7 @@ use permguard_host::operations::journal::{Initiator, RequestKey};
 use permguard_host::operations::mutation::{
     Applied, Applying, Begin, Failure, MutationError, Outcome,
 };
+use permguard_host::storage::Dir;
 use permguard_host::time::TimeGuard;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
@@ -537,10 +538,63 @@ struct SignedList {
     compact: String,
 }
 
-/// How far ahead the first list a process signs of a list it inherited is dated: past anything an
-/// earlier process signed of it, which ran ahead of the clock only by the changes it made in one
-/// second; a Plane refuses a list not after the one it holds.
+/// How far ahead the first list a process signs of a list it inherited is dated when the volume
+/// holds no mark of what an earlier process signed: one written before the marks were kept. A
+/// Plane refuses a list not after the one it holds.
 pub const INHERITED_AHEAD: u64 = 60;
+
+/// The highest `iat` signed of each list, kept on the volume so a restarted process signs past
+/// it (BUG-0278): each change signed moves `iat` one second past the last, so a burst of changes
+/// runs it ahead of the clock by as many seconds, and a fixed lead cannot cover that.
+pub const SIGNED_MARKS: &str = "lists-signed.json";
+
+/// The marks, by list id in hex.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignedMarks {
+    lists: BTreeMap<String, u64>,
+}
+
+/// The marks the volume holds; none when it holds no file or one that does not read, which the
+/// fixed lead then covers as before.
+fn read_marks(dir: &Dir) -> BTreeMap<[u8; 16], u64> {
+    let Ok(Some(bytes)) = dir.read(SIGNED_MARKS) else {
+        return BTreeMap::new();
+    };
+    let Ok(marks) = serde_json::from_slice::<SignedMarks>(&bytes) else {
+        return BTreeMap::new();
+    };
+    marks
+        .lists
+        .into_iter()
+        .filter_map(|(id, iat)| tokens::parse_id(&id).map(|id| (id, iat)))
+        .collect()
+}
+
+/// Writes `marks` whole, replacing the file.
+fn write_marks(dir: &Dir, marks: &BTreeMap<[u8; 16], u64>) -> Result<(), String> {
+    let held = SignedMarks {
+        lists: marks
+            .iter()
+            .map(|(id, iat)| (uuid_text(id), *iat))
+            .collect(),
+    };
+    let bytes = serde_json::to_vec(&held).map_err(|error| error.to_string())?;
+    permguard_host::storage::write::replace_bytes(dir, SIGNED_MARKS, &bytes)
+        .map_err(|error| error.to_string())
+}
+
+/// The `iat` the next list token of a list is signed at: past the one this process signed, past
+/// the mark an earlier process left, and never before `now`; a list inherited with no mark is
+/// dated the fixed lead ahead.
+fn next_iat(held: Option<u64>, mark: Option<u64>, inherited: bool, now: u64) -> u64 {
+    let past = held.max(mark).map(|iat| iat.saturating_add(1));
+    match past {
+        Some(past) => now.max(past),
+        None if inherited => now.saturating_add(INHERITED_AHEAD),
+        None => now,
+    }
+}
 
 /// The token requests within the current minute, by key digest: a fixed size whatever a caller
 /// claims.
@@ -608,6 +662,8 @@ pub struct Parts {
     pub audit: Option<AuditHandle<AuthorityAudit>>,
     pub trust: Option<Arc<AuthorityTrust>>,
     pub time: Arc<TimeGuard>,
+    /// Where the highest `iat` signed of each list is kept (BUG-0278); `None` keeps none.
+    pub marks: Option<Dir>,
 }
 
 /// The Authority Plane's facade: one per process, shared by both transports.
@@ -627,6 +683,9 @@ pub struct Authority {
     time: Arc<TimeGuard>,
     signed: Mutex<BTreeMap<[u8; 16], SignedList>>,
     inherited: BTreeSet<[u8; 16]>,
+    /// The highest `iat` signed of each list, as the volume holds it, and where.
+    marks: Mutex<BTreeMap<[u8; 16], u64>>,
+    marks_dir: Option<Dir>,
     limiter: Limiter,
     /// Every Argon2id verification, one bound.
     pub hashing: Arc<tokio::sync::Semaphore>,
@@ -654,8 +713,11 @@ pub struct Issued {
 impl Authority {
     pub fn new(parts: Parts) -> Self {
         let inherited = parts.registry.list_ids().into_iter().collect();
+        let marks = parts.marks.as_ref().map(read_marks).unwrap_or_default();
         Self {
             inherited,
+            marks: Mutex::new(marks),
+            marks_dir: parts.marks,
             accounts: parts.accounts,
             registry: parts.registry,
             tokens: parts.tokens,
@@ -764,11 +826,31 @@ impl Authority {
             return Ok(None);
         };
         // A change is signed at once, so a revocation holds here at once; `iat` grows strictly.
-        let iat = match signed.get(list_id) {
-            Some(held) => now.max(held.iat.saturating_add(1)),
-            None if self.inherited.contains(list_id) => now.saturating_add(INHERITED_AHEAD),
-            None => now,
-        };
+        let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
+        let iat = next_iat(
+            signed.get(list_id).map(|held| held.iat),
+            marks.get(list_id).copied(),
+            self.inherited.contains(list_id),
+            now,
+        );
+        // The mark is on the volume before the list leaves this process: a restart then signs
+        // past it. A mark that cannot be kept is a list not signed, never one a restart could
+        // date before (BUG-0278).
+        if let Some(dir) = &self.marks_dir
+            && marks.get(list_id).is_none_or(|held| *held < iat)
+        {
+            let previous = marks.insert(*list_id, iat);
+            if let Err(error) = write_marks(dir, &marks) {
+                match previous {
+                    Some(previous) => marks.insert(*list_id, previous),
+                    None => marks.remove(list_id),
+                };
+                return Err(unavailable(format!(
+                    "keeping the list's signed mark: {error}"
+                )));
+            }
+        }
+        drop(marks);
         let lst = view.list.encode().map_err(unavailable)?;
         let payload = serde_json::json!({
             "iss": self.issuer,
@@ -1991,5 +2073,62 @@ mod tests {
         ));
         assert_eq!(own_token(&certificate, jti), None);
         assert_eq!(own_token(&Actor::Anonymous, jti), None);
+    }
+}
+
+#[cfg(test)]
+mod signed_marks {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// BUG-0278: 150 changes signed within a few seconds run `iat` ahead of the clock by about as
+    /// many seconds; the mark kept on the volume makes the first list a restarted process signs
+    /// strictly later than every list signed before, which a fixed lead did not.
+    #[test]
+    fn a_restarted_authority_signs_past_every_list_it_signed_before() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-authority-marks-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("created");
+        let dir = Dir::open(&root).expect("the directory");
+        let list = [7u8; 16];
+        let start = 1_794_213_639;
+
+        let mut held = None;
+        let mut marks = BTreeMap::new();
+        for change in 0..150 {
+            let now = start + change / 40;
+            let iat = next_iat(held, marks.get(&list).copied(), false, now);
+            assert!(held.is_none_or(|before| iat > before), "strictly later");
+            held = Some(iat);
+            marks.insert(list, iat);
+            write_marks(&dir, &marks).expect("kept");
+        }
+        let last = held.expect("signed");
+        assert!(last >= start + 145, "ahead of the clock: {last}");
+
+        // Restarted a second later: what the volume says, not the fixed lead.
+        let reopened = read_marks(&dir);
+        assert_eq!(reopened.get(&list), Some(&last));
+        let first = next_iat(None, reopened.get(&list).copied(), true, start + 5);
+        assert!(first > last, "{first} after {last}");
+        assert!(
+            start + 5 + INHERITED_AHEAD < last,
+            "the fixed lead alone would have dated it before"
+        );
+
+        // With no mark, the fixed lead still applies to an inherited list; a fresh list is now.
+        assert_eq!(next_iat(None, None, true, 100), 100 + INHERITED_AHEAD);
+        assert_eq!(next_iat(None, None, false, 100), 100);
+        assert_eq!(next_iat(Some(250), None, false, 100), 251);
+        assert_eq!(next_iat(Some(5), Some(300), true, 100), 301);
+
+        // A file that does not read is no mark.
+        std::fs::write(root.join(SIGNED_MARKS), b"not json").expect("written");
+        assert!(read_marks(&dir).is_empty());
     }
 }

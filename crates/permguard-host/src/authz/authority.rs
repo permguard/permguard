@@ -59,6 +59,10 @@ pub struct AuthorityTrust {
     keys_wanted: AtomicBool,
     /// When the key set was last asked for after an unknown key, to bound how often.
     asked: Mutex<Option<std::time::Instant>>,
+    /// A token named a list none of which is held: the next refresh fetches the lists at once.
+    lists_wanted: AtomicBool,
+    /// When each unknown list was last asked for, to bound how often (BUG-0336).
+    lists_asked: Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 impl std::fmt::Debug for AuthorityTrust {
@@ -74,6 +78,13 @@ impl std::fmt::Debug for AuthorityTrust {
 /// How often an unknown key may ask for the key set again.
 const ASK_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How often one unknown list may ask for the lists again (BUG-0336): a token naming a list the
+/// issuer does not publish costs one fetch in this long, never one per request.
+const ASK_LIST_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The most unknown lists remembered at once; past it the memory starts again.
+const MAX_LISTS_ASKED: usize = 1024;
+
 impl AuthorityTrust {
     /// A trust held in memory only: a test, or a Host with no volume. `issuer` is the configured
     /// `authority.url`, none while the Authority Plane in this process has not announced it.
@@ -86,6 +97,8 @@ impl AuthorityTrust {
             dir: None,
             keys_wanted: AtomicBool::new(false),
             asked: Mutex::default(),
+            lists_wanted: AtomicBool::new(false),
+            lists_asked: Mutex::default(),
         }
     }
 
@@ -107,6 +120,8 @@ impl AuthorityTrust {
             dir: Some(dir),
             keys_wanted: AtomicBool::new(false),
             asked: Mutex::default(),
+            lists_wanted: AtomicBool::new(false),
+            lists_asked: Mutex::default(),
         };
         let kept = trust
             .dir
@@ -270,6 +285,11 @@ impl AuthorityTrust {
     pub fn take_keys_wanted(&self) -> bool {
         self.keys_wanted.swap(false, Ordering::SeqCst)
     }
+
+    /// Whether a token asked for the lists since the last call (BUG-0336).
+    pub fn take_lists_wanted(&self) -> bool {
+        self.lists_wanted.swap(false, Ordering::SeqCst)
+    }
 }
 
 impl Trust for AuthorityTrust {
@@ -293,6 +313,24 @@ impl Trust for AuthorityTrust {
             *asked = Some(std::time::Instant::now());
             self.keys_wanted.store(true, Ordering::SeqCst);
         }
+    }
+
+    fn unknown_list(&self, uri: &str) {
+        let mut asked = self
+            .lists_asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if asked
+            .get(uri)
+            .is_some_and(|at| at.elapsed() < ASK_LIST_EVERY)
+        {
+            return;
+        }
+        if asked.len() >= MAX_LISTS_ASKED {
+            asked.clear();
+        }
+        asked.insert(uri.to_owned(), std::time::Instant::now());
+        self.lists_wanted.store(true, Ordering::SeqCst);
     }
 }
 
@@ -444,6 +482,23 @@ mod tests {
         )
         .expect("reopens");
         assert_eq!(elsewhere.anchor(), None);
+    }
+
+    /// BUG-0336: an unknown list asks for the lists once per uri in a while, another uri asks
+    /// again at once; the ask is taken once.
+    #[test]
+    fn an_unknown_list_asks_for_the_lists_once_per_uri() {
+        use crate::authz::access_tokens::Trust as _;
+
+        let trust = AuthorityTrust::in_memory(Some("https://iam.example"), "permguard");
+        assert!(!trust.take_lists_wanted());
+        trust.unknown_list("https://iam.example/authority/v1/status-lists/a");
+        assert!(trust.take_lists_wanted());
+        assert!(!trust.take_lists_wanted(), "taken once");
+        trust.unknown_list("https://iam.example/authority/v1/status-lists/a");
+        assert!(!trust.take_lists_wanted(), "the same uri waits its turn");
+        trust.unknown_list("https://iam.example/authority/v1/status-lists/b");
+        assert!(trust.take_lists_wanted(), "another uri asks at once");
     }
 
     #[test]

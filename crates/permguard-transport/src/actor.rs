@@ -97,9 +97,14 @@ pub struct Actored<S> {
     anonymous_refused: Option<Arc<[String]>>,
 }
 
+/// How long a request whose credential names something being fetched waits for it, at most, and
+/// how often it asks again (BUG-0336).
+const PENDING_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+const PENDING_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+
 impl<S> Service<Request<Body>> for Actored<S>
 where
-    S: Service<Request<Body>, Response = Response<Body>> + Send + 'static,
+    S: Service<Request<Body>, Response = Response<Body>> + Clone + Send + 'static,
     S::Future: Send + 'static,
 {
     type Response = S::Response;
@@ -191,6 +196,49 @@ where
                         );
                     }
                     Ok(response)
+                })
+            }
+            // A credential naming what is being fetched, a status list the Host does not hold yet:
+            // asked again for a moment, never refused as invalid (BUG-0336). Still pending after
+            // the wait, `503` with `Retry-After`.
+            Err(denial) if denial.is_pending() => {
+                let clone = self.inner.clone();
+                let mut inner = std::mem::replace(&mut self.inner, clone);
+                let authenticator = Arc::clone(&self.authenticator);
+                Box::pin(async move {
+                    let mut settled = Err(denial);
+                    let mut waited = std::time::Duration::ZERO;
+                    while waited < PENDING_WAIT
+                        && settled
+                            .as_ref()
+                            .is_err_and(permguard_core::AccessDenial::is_pending)
+                    {
+                        tokio::time::sleep(PENDING_POLL).await;
+                        waited += PENDING_POLL;
+                        settled = authenticator.authenticate(peer.as_deref(), bearer.as_deref());
+                    }
+                    match settled {
+                        Ok(actor) => {
+                            request.extensions_mut().insert(Arc::new(actor));
+                            inner.call(request).await
+                        }
+                        Err(denial) => {
+                            let pending = denial.is_pending();
+                            let body = request.into_body();
+                            let mut refusal = if pending {
+                                crate::gate::refused(denial, grpc)
+                            } else {
+                                bearer_refused(denial, grpc)
+                            };
+                            if pending && !grpc {
+                                refusal.headers_mut().insert(
+                                    http::header::RETRY_AFTER,
+                                    http::HeaderValue::from_static("1"),
+                                );
+                            }
+                            Ok(crate::gate::drained(body, refusal).await)
+                        }
+                    }
                 })
             }
             Err(denial) => {
@@ -502,6 +550,72 @@ mod tests {
         assert_eq!(
             ask(None, None).await,
             (http::StatusCode::OK, "anonymous".to_owned())
+        );
+    }
+
+    /// BUG-0336: a credential naming what is being fetched is asked again for a moment and the
+    /// request served once it settles; still pending after the wait it is `503` with
+    /// `Retry-After`, never `401`.
+    #[tokio::test(start_paused = true)]
+    async fn a_pending_credential_waits_for_its_fetch_and_is_never_refused_as_invalid() {
+        struct Settling(std::sync::atomic::AtomicU32, u32);
+
+        impl Authenticator for Settling {
+            fn authenticate(
+                &self,
+                _peer: Option<&PeerIdentity>,
+                _bearer: Option<&str>,
+            ) -> Result<Actor, AccessDenial> {
+                let asked = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if asked < self.1 {
+                    return Err(AccessDenial::pending("a list is being fetched"));
+                }
+                Ok(Actor::Authenticated(ActorContext::new(
+                    Principal::new("sa:billing").expect("p"),
+                    Credential::Certificate,
+                    None,
+                )))
+            }
+        }
+
+        let ask = |settles_after: u32| async move {
+            let router = Router::new()
+                .route(
+                    "/who",
+                    get(|ActorOf(actor): ActorOf| async move { actor.label() }),
+                )
+                .layer(ActorLayer::new(Arc::new(Settling(
+                    std::sync::atomic::AtomicU32::new(0),
+                    settles_after,
+                ))));
+            router
+                .oneshot(
+                    Request::get("/who")
+                        .header(http::header::AUTHORIZATION, "Bearer t")
+                        .body(Body::empty())
+                        .expect("a request"),
+                )
+                .await
+                .expect("answered")
+        };
+
+        let settled = ask(5).await;
+        assert_eq!(settled.status(), http::StatusCode::OK);
+        let refused = ask(u32::MAX).await;
+        assert_eq!(refused.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            refused
+                .headers()
+                .get(http::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("1")
+        );
+        assert!(
+            refused
+                .headers()
+                .get(http::header::WWW_AUTHENTICATE)
+                .is_none(),
+            "never a challenge to drop the token"
         );
     }
 

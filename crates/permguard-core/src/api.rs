@@ -379,6 +379,10 @@ pub enum AccessDenial {
     Unauthenticated { code: &'static str, message: String },
     /// The principal is known and holds no grant covering what it named: `403`, `PERMISSION_DENIED`.
     Forbidden { code: &'static str, message: String },
+    /// The credential cannot be judged yet: what it names is being fetched (BUG-0336). `503`,
+    /// `UNAVAILABLE`, with `Retry-After`: never `401`, which would tell a client to drop a
+    /// credential that may be valid.
+    Unavailable { code: &'static str, message: String },
 }
 
 impl AccessDenial {
@@ -398,15 +402,32 @@ impl AccessDenial {
         }
     }
 
+    /// A credential that cannot be judged until what it names is fetched.
+    pub fn pending(message: impl Into<String>) -> Self {
+        Self::Unavailable {
+            code: codes::common::UNAVAILABLE,
+            message: message.into(),
+        }
+    }
+
+    /// Whether this denial is a credential not yet judged, which a moment may settle.
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Self::Unavailable { .. })
+    }
+
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Unauthenticated { code, .. } | Self::Forbidden { code, .. } => code,
+            Self::Unauthenticated { code, .. }
+            | Self::Forbidden { code, .. }
+            | Self::Unavailable { code, .. } => code,
         }
     }
 
     pub fn message(&self) -> &str {
         match self {
-            Self::Unauthenticated { message, .. } | Self::Forbidden { message, .. } => message,
+            Self::Unauthenticated { message, .. }
+            | Self::Forbidden { message, .. }
+            | Self::Unavailable { message, .. } => message,
         }
     }
 
@@ -414,6 +435,7 @@ impl AccessDenial {
         match self {
             Self::Unauthenticated { .. } => 401,
             Self::Forbidden { .. } => 403,
+            Self::Unavailable { .. } => 503,
         }
     }
 
@@ -421,6 +443,7 @@ impl AccessDenial {
         match self {
             Self::Unauthenticated { .. } => GrpcCode::Unauthenticated,
             Self::Forbidden { .. } => GrpcCode::PermissionDenied,
+            Self::Unavailable { .. } => GrpcCode::Unavailable,
         }
     }
 
@@ -429,7 +452,7 @@ impl AccessDenial {
     pub fn challenge(&self) -> Option<&'static str> {
         match self {
             Self::Unauthenticated { .. } => Some(MUTUAL_TLS_CHALLENGE),
-            Self::Forbidden { .. } => None,
+            Self::Forbidden { .. } | Self::Unavailable { .. } => None,
         }
     }
 

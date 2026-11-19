@@ -195,12 +195,16 @@ async fn run(
                 pause
             }
         };
-        // A token naming a key the set lacks wakes the next round early, within a second.
+        // A token naming a key the set lacks, or a list none of which is held, wakes the next
+        // round early, within a quarter of a second (BUG-0336).
         let until = std::time::Instant::now() + pause;
         while std::time::Instant::now() < until {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_millis(250)).await;
             if trust.anchor().is_some() && trust.take_keys_wanted() {
                 keys_due = std::time::Instant::now();
+                break;
+            }
+            if trust.anchor().is_some() && trust.take_lists_wanted() {
                 break;
             }
         }

@@ -235,6 +235,12 @@ is cut.
 
 ### Fixed
 
+- **A restarted Authority Plane signs every status list past what it signed before.**
+  Each change signed moves a list's `iat` one second past the last, so a burst of revocations ran it ahead of the clock by as many seconds, and the fixed lead a restarted process used dated its first list before one members already held, which they refused as a rollback.
+  The highest `iat` signed of each list is now kept on the volume (`lists-signed.json`) before the list leaves the process, and a restart signs past it; a list whose mark cannot be kept is not signed.
+- **A token naming a status list opened since the last fetch is served, not refused.**
+  A Host verifying a remote Authority Plane's tokens refused one whose list it did not hold yet, `401 invalid_token`, until its next scheduled refresh, 15 to 30 seconds later: the first token of a new Authority Plane and every list rollover.
+  Such a token now wakes the refresh at once, at most once per list in five seconds, and the request waits up to two seconds for it; still not held, it is answered `503` with `Retry-After: 1`, `UNAVAILABLE` over gRPC, never `401`.
 - **Every documentation URL the product ships reaches a page.**
   The chart's alert runbooks pointed at pages the documentation site never built (`/observability`, `/decision-logs`, `/data-plane-mirrors`, `/authorization-check`); they now point at the operations commands, the evidence, Data Plane and Authority Plane pages, and a conformance test fails when a URL in the chart, the READMEs or a shipped configuration names no page the site builds.
 - **The development and Docker configurations let the README read decisions back.**

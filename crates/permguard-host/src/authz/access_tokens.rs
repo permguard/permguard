@@ -121,6 +121,27 @@ pub fn key_id_of(token: &str) -> Option<String> {
     header.get("kid")?.as_str().map(str::to_owned)
 }
 
+/// The status list `uri` a token names, read without verifying: what a token refused for a list
+/// this Host does not hold yet asks to be fetched (BUG-0336). Only asked of a token whose
+/// signature already verified, so what it names is the issuer's.
+pub fn status_list_uri_of(token: &str) -> Option<String> {
+    if token.len() > MAX_TOKEN_BYTES {
+        return None;
+    }
+    let payload = token.split('.').nth(1)?;
+    let claims: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
+    claims
+        .get("status")?
+        .get("status_list")?
+        .get("uri")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// Why step 6 refuses a token whose list this Host holds none of: not yet fetched.
+pub const LIST_NOT_HELD: &str = "no list of that issuer and uri is held";
+
 /// Reads `permguard_scopes`: at most [`MAX_TOKEN_SCOPES`] entries, each operations on a selector.
 /// An operation outside the registry is kept: it matches no route, so it allows nothing.
 pub fn scopes_of(value: Option<&serde_json::Value>) -> Option<Vec<TokenScope>> {
@@ -266,7 +287,7 @@ pub fn verify(
     };
     let list = lists
         .list(&anchor.issuer, uri)
-        .ok_or_else(|| refused(6, "no list of that issuer and uri is held"))?;
+        .ok_or_else(|| refused(6, LIST_NOT_HELD))?;
     if list.exp <= now {
         return Err(refused(6, "the held list has expired"));
     }
@@ -299,6 +320,10 @@ pub trait Trust: Send + Sync {
     /// A token named a key the held set lacks: the Authority Plane may have rotated, so the set is
     /// fetched again, at most once a minute (`2-security/8` Keys and lists on a Plane).
     fn unknown_key(&self, _kid: &str) {}
+    /// A token named a status list none of which is held: the issuer may have opened it since the
+    /// last fetch, so the lists are fetched again at once, at most once per `uri` in a while
+    /// (BUG-0336).
+    fn unknown_list(&self, _uri: &str) {}
 }
 
 /// The Host's authenticator: a bearer is an access token of the Authority Plane, verified here,
@@ -331,6 +356,12 @@ impl permguard_core::authz::Authenticator for TokenAuthenticator {
                     {
                         self.trust.unknown_key(&kid);
                     }
+                    if refused.step == 6
+                        && refused.reason == LIST_NOT_HELD
+                        && let Some(uri) = status_list_uri_of(token)
+                    {
+                        self.trust.unknown_list(&uri);
+                    }
                 }),
             None => Err(refused(2, "no key set of the Authority Plane is held yet")),
         };
@@ -338,6 +369,13 @@ impl permguard_core::authz::Authenticator for TokenAuthenticator {
             Ok(verified) => Ok(permguard_core::authz::Actor::Authenticated(
                 permguard_core::authz::ActorContext::of_token(verified.subject, verified.grant),
             )),
+            // A list the issuer opened since the last fetch: not judged yet, never `401`; the
+            // boundary asks again while the list is fetched (BUG-0336).
+            Err(refused) if refused.step == 6 && refused.reason == LIST_NOT_HELD => {
+                Err(permguard_core::AccessDenial::pending(
+                    "the access token names a status list this Host is fetching: retry in a moment",
+                ))
+            }
             Err(refused) => {
                 tracing::info!(
                     event.name = "authz.token_refused",
@@ -582,7 +620,12 @@ mod tests {
         );
     }
 
-    struct Fixed(Option<Anchor>, HeldLists, std::sync::Mutex<Vec<String>>);
+    struct Fixed(
+        Option<Anchor>,
+        HeldLists,
+        std::sync::Mutex<Vec<String>>,
+        std::sync::Mutex<Vec<String>>,
+    );
 
     impl Trust for Fixed {
         fn anchor(&self) -> Option<Anchor> {
@@ -595,6 +638,10 @@ mod tests {
 
         fn unknown_key(&self, kid: &str) {
             self.2.lock().expect("held").push(kid.to_owned());
+        }
+
+        fn unknown_list(&self, uri: &str) {
+            self.3.lock().expect("held").push(uri.to_owned());
         }
     }
 
@@ -617,6 +664,7 @@ mod tests {
         let trust = Arc::new(Fixed(
             Some(anchor(&pair)),
             lists(NOW + 60),
+            std::sync::Mutex::default(),
             std::sync::Mutex::default(),
         ));
         let authenticator = TokenAuthenticator {
@@ -647,9 +695,31 @@ mod tests {
             *trust.2.lock().expect("held"),
             vec!["authority.tokens:k2".to_owned()]
         );
+        // BUG-0336: a list none of which is held is not judged yet, never refused as invalid,
+        // and the lists are asked for once per uri.
+        let other =
+            format!("{ISSUER}/authority/v1/status-lists/0198f2aa-0000-7000-8000-000000000009");
+        let opened = sign(
+            &pair,
+            header(),
+            claims(json!({"status": {"status_list": {"idx": 0, "uri": other}}})),
+        );
+        let pending = authenticator
+            .authenticate(None, Some(&opened))
+            .expect_err("not held");
+        assert!(pending.is_pending(), "{pending}");
+        assert_eq!(pending.http_status(), 503);
+        assert_eq!(status_list_uri_of(&opened).as_deref(), Some(other.as_str()));
+        assert_eq!(*trust.3.lock().expect("held"), vec![other.clone()]);
+
         // No key set held yet: every bearer refused.
         let empty = TokenAuthenticator {
-            trust: Arc::new(Fixed(None, HeldLists::in_memory(), Default::default())),
+            trust: Arc::new(Fixed(
+                None,
+                HeldLists::in_memory(),
+                Default::default(),
+                Default::default(),
+            )),
             inner: Arc::new(Inner),
             time: Arc::new(crate::time::TimeGuard::fixed(NOW)),
         };

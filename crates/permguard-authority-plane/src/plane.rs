@@ -191,6 +191,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         audit: audit.clone(),
         trust: registration.authority_trust(),
         time,
+        marks: permguard_host::storage::Dir::open(dir.path()).ok(),
     }));
     authority.feed_trust();
     if let (Some(access_key), Some(audit)) = (offline, audit) {
