@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Git-like Versioning
-description: Every policy change is a commit, every published version is signed, and history is never rewritten. Git's model, built for policy.
+description: Every policy change is a commit, every published version is signed, and history is never rewritten.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->

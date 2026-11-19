@@ -41,6 +41,12 @@
 
 .pg-page-concepts .pgx-zl__head { fill: var(--pgx-brand); }
 
+/* The wide drawing is scaled down to the text column: its labels start a little larger. */
+.pg-page-concepts .pgx-zl__wide .pgx-zl__k { font-size: 12px; }
+.pg-page-concepts .pgx-zl__wide .pgx-zl__s { font-size: 16px; }
+.pg-page-concepts .pgx-zl__wide .pgx-zl__m { font-size: 13px; }
+.pg-page-concepts .pgx-zl__wide .pgx-zl__c { font-size: 14px; }
+
 /* The tall drawing is shown small: its labels start larger so a phone still reads them. */
 .pg-page-concepts .pgx-zl__compact .pgx-zl__k { font-size: 12px; }
 .pg-page-concepts .pgx-zl__compact .pgx-zl__s { font-size: 16px; }

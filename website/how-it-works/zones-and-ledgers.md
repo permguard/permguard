@@ -20,31 +20,31 @@ A zone has one or more [ledgers](./glossary#ledger), and a ledger is the version
 A ledger belongs to exactly one zone, for life: nothing moves it to another.
 
 <figure class="pgx-zl" role="img" aria-label="Two zones, acme and billing, each a security boundary. Zone acme has the ledgers main-ledger and sessions; zone billing has the ledger invoices. A request naming zone acme and ledger main-ledger reaches that one ledger.">
-  <svg class="pgx-zl__wide" viewBox="0 0 960 320" aria-hidden="true" focusable="false">
-    <rect class="pgx-zl__request" x="16" y="96" width="216" height="124" rx="14"/>
-    <text class="pgx-zl__k" x="34" y="124">REQUEST</text>
-    <text class="pgx-zl__c" x="34" y="154"><tspan>zone</tspan>   acme</text>
-    <text class="pgx-zl__c" x="34" y="178"><tspan>ledger</tspan> main-ledger</text>
-    <text class="pgx-zl__m" x="34" y="204">+ who · what · on what</text>
-    <path class="pgx-zl__flow" d="M232 158 H256 V130 H284"/>
-    <path class="pgx-zl__head" d="M284 124 L292 130 L284 136 Z"/>
-    <rect class="pgx-zl__zone" x="268" y="20" width="372" height="280" rx="18"/>
-    <text class="pgx-zl__k" x="292" y="50">ZONE · ACME</text>
-    <text class="pgx-zl__m" x="292" y="70">the security boundary</text>
-    <rect class="pgx-zl__ledger pgx-zl__ledger--target" x="292" y="92" width="324" height="76" rx="12"/>
-    <text class="pgx-zl__s" x="312" y="124">main-ledger</text>
-    <text class="pgx-zl__m" x="312" y="148">policies · history · signed version</text>
-    <rect class="pgx-zl__ledger" x="292" y="184" width="324" height="76" rx="12"/>
-    <text class="pgx-zl__s" x="312" y="216">sessions</text>
-    <text class="pgx-zl__m" x="312" y="240">its own history</text>
-    <rect class="pgx-zl__zone pgx-zl__zone--other" x="688" y="20" width="256" height="280" rx="18"/>
-    <text class="pgx-zl__k" x="712" y="50">ZONE · BILLING</text>
-    <text class="pgx-zl__m" x="712" y="70">another boundary</text>
-    <rect class="pgx-zl__ledger" x="712" y="92" width="208" height="76" rx="12"/>
-    <text class="pgx-zl__s" x="732" y="124">invoices</text>
-    <text class="pgx-zl__m" x="732" y="148">outside acme's grants</text>
+  <svg class="pgx-zl__wide" viewBox="0 0 760 320" aria-hidden="true" focusable="false">
+    <rect class="pgx-zl__request" x="8" y="96" width="180" height="124" rx="14"/>
+    <text class="pgx-zl__k" x="24" y="124">REQUEST</text>
+    <text class="pgx-zl__c" x="24" y="154"><tspan>zone</tspan>   acme</text>
+    <text class="pgx-zl__c" x="24" y="178"><tspan>ledger</tspan> main-ledger</text>
+    <text class="pgx-zl__m" x="24" y="204">+ who · what · on what</text>
+    <rect class="pgx-zl__zone" x="220" y="20" width="300" height="280" rx="18"/>
+    <text class="pgx-zl__k" x="240" y="50">ZONE · ACME</text>
+    <text class="pgx-zl__m" x="240" y="70">the security boundary</text>
+    <rect class="pgx-zl__ledger pgx-zl__ledger--target" x="240" y="92" width="260" height="76" rx="12"/>
+    <text class="pgx-zl__s" x="256" y="124">main-ledger</text>
+    <text class="pgx-zl__m" x="256" y="148">policies · history · signed version</text>
+    <rect class="pgx-zl__ledger" x="240" y="184" width="260" height="76" rx="12"/>
+    <text class="pgx-zl__s" x="256" y="216">sessions</text>
+    <text class="pgx-zl__m" x="256" y="240">its own history</text>
+    <rect class="pgx-zl__zone pgx-zl__zone--other" x="540" y="20" width="212" height="280" rx="18"/>
+    <text class="pgx-zl__k" x="558" y="50">ZONE · BILLING</text>
+    <text class="pgx-zl__m" x="558" y="70">another boundary</text>
+    <rect class="pgx-zl__ledger" x="558" y="92" width="178" height="76" rx="12"/>
+    <text class="pgx-zl__s" x="574" y="124">invoices</text>
+    <text class="pgx-zl__m" x="574" y="148">outside acme's grants</text>
+    <path class="pgx-zl__flow" d="M188 158 H204 V130 H232"/>
+    <path class="pgx-zl__head" d="M232 124 L240 130 L232 136 Z"/>
   </svg>
-  <svg class="pgx-zl__compact" viewBox="0 0 360 592" aria-hidden="true" focusable="false">
+  <svg class="pgx-zl__compact" viewBox="0 0 360 572" aria-hidden="true" focusable="false">
     <rect class="pgx-zl__request" x="16" y="8" width="328" height="112" rx="14"/>
     <text class="pgx-zl__k" x="32" y="34">REQUEST</text>
     <text class="pgx-zl__c" x="32" y="62"><tspan>zone</tspan>   acme</text>
@@ -60,7 +60,7 @@ A ledger belongs to exactly one zone, for life: nothing moves it to another.
     <rect class="pgx-zl__ledger" x="32" y="288" width="296" height="76" rx="12"/>
     <text class="pgx-zl__s" x="48" y="320">sessions</text>
     <text class="pgx-zl__m" x="48" y="344">its own history</text>
-    <rect class="pgx-zl__zone pgx-zl__zone--other" x="16" y="404" width="328" height="180" rx="18"/>
+    <rect class="pgx-zl__zone pgx-zl__zone--other" x="16" y="404" width="328" height="156" rx="18"/>
     <text class="pgx-zl__k" x="32" y="432">ZONE · BILLING</text>
     <rect class="pgx-zl__ledger" x="32" y="460" width="296" height="76" rx="12"/>
     <text class="pgx-zl__s" x="48" y="492">invoices</text>

@@ -117,7 +117,7 @@
 
 /* Long commands belong to their own horizontal viewport. The code surface never
    widens the document column or leaks into the page gutter. */
-.pg-page-concepts .vp-doc div[class*="language-"] {
+.pg-page-concepts .vp-doc div[class^="language-"] {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -127,7 +127,7 @@
   border-radius: 0;
 }
 
-.pg-page-concepts .vp-doc div[class*="language-"] pre {
+.pg-page-concepts .vp-doc div[class^="language-"] pre {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -137,7 +137,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.pg-page-concepts .vp-doc div[class*="language-"] pre code {
+.pg-page-concepts .vp-doc div[class^="language-"] pre code {
   display: block;
   width: max-content;
   min-width: 100%;

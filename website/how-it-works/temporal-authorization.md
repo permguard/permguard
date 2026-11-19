@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Temporal Authorization
-description: Decisions that depend on what already happened, written in Dogwood. Experimental.
+description: Decisions that depend on what already happened, written in Dogwood, an experimental policy language.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -22,7 +22,7 @@ A temporal policy also sees the history before it, so it can say: alice may read
 <ol class="pgx-tline" aria-label="One user's day, in order. A read before any login is denied. Then alice logs in, and the login is recorded. A read inside the hour after the login is permitted. Then alice logs out, and the logout is recorded. A read after the logout is denied.">
   <li class="is-deny"><small>FIRST</small><strong>Read</strong><span>no login yet</span><em>Deny</em></li>
   <li class="is-event"><small>THEN</small><strong>Login</strong><span>recorded in the history</span><em>Event</em></li>
-  <li class="is-permit"><small>WITHIN 1 HOUR</small><strong>Read</strong><span>a login before it, no logout</span><em>Permit</em></li>
+  <li class="is-permit"><small>WITHIN 1H</small><strong>Read</strong><span>a login before it, no logout</span><em>Permit</em></li>
   <li class="is-event"><small>LATER</small><strong>Logout</strong><span>recorded in the history</span><em>Event</em></li>
   <li class="is-deny"><small>AFTER</small><strong>Read</strong><span>logged out</span><em>Deny</em></li>
 </ol>
