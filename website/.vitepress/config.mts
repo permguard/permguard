@@ -29,21 +29,34 @@ const planeItem = (name: string, link: string, line: string) => ({
   link
 })
 
-const planesSidebar = [
+// Every plane, and the command line, is a section of its own: a landing page (`<section>.md`), its
+// pages under `<section>/`, and a sidebar that lists only them. The plane in view is named in the bar
+// (CurrentPlane.vue); the Planes menu moves between them.
+const section = (title: string, base: string, pages: [string, string][]) => [
   {
-    text: 'Planes',
-    items: [
-      {
-        text: 'Authority Plane',
-        link: '/authority-plane',
-        items: [{ text: 'Access Tokens & Clusters', link: '/authority-plane/access-tokens' }]
-      },
-      { text: 'Control Plane', link: '/control-plane' },
-      { text: 'Data Plane', link: '/data-plane' },
-      { text: 'Trust Plane', link: '/trust-plane' }
-    ]
+    text: title,
+    items: [{ text: 'Overview', link: base }, ...pages.map(([text, slug]) => ({ text, link: `${base}/${slug}` }))]
   }
 ]
+
+// For now each plane is its overview alone, explained as How it works explains Permguard; the
+// detail pages return one by one, each added to its plane's list here.
+const authoritySidebar = section('Authority Plane', '/authority-plane', [])
+
+const controlSidebar = section('Control Plane', '/control-plane', [])
+
+const dataSidebar = section('Data Plane', '/data-plane', [])
+
+const trustSidebar = section('Trust Plane', '/trust-plane', [])
+
+const commandLineSidebar = section('Command Line', '/command-line', [
+  ['Configuration', 'configuration'],
+  ['Workspaces & Policies', 'workspaces'],
+  ['Zones & Ledgers', 'zones-and-ledgers'],
+  ['Decisions & Evidence', 'decisions'],
+  ['Authority', 'authority'],
+  ['Server Operations', 'operations']
+])
 
 const versionLink = (target: string) => ({
   text: target,
@@ -100,13 +113,13 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       // A section is a link; its pages are listed by the sidebar of the section, not by a menu.
       { text: 'How it works', link: '/how-it-works', activeMatch: '^/how-it-works' },
-      { text: 'Command Line', link: '/command-line' },
+      { text: 'Command Line', link: '/command-line', activeMatch: '^/command-line' },
       {
         text: 'Planes',
         activeMatch: '^/(authority|control|data|trust)-plane',
         items: [
-          planeItem('Authority Plane', '/authority-plane', 'Service accounts, access keys, tokens'),
-          planeItem('Control Plane', '/control-plane', 'Zones, ledgers, signed policy'),
+          planeItem('Authority Plane', '/authority-plane', 'Identities, access keys, tokens'),
+          planeItem('Control Plane', '/control-plane', 'Policies, decision logs, events'),
           planeItem('Data Plane', '/data-plane', 'Decisions beside the workload'),
           planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X')
         ]
@@ -125,10 +138,11 @@ export default defineConfig({
     // section's own page, `how-it-works.md` or `authority-plane.md`, as well as every page under it:
     // the overview is a `layout: page`, which VitePress still gives a sidebar.
     sidebar: {
-      '/authority-plane': planesSidebar,
-      '/control-plane': planesSidebar,
-      '/data-plane': planesSidebar,
-      '/trust-plane': planesSidebar,
+      '/authority-plane': authoritySidebar,
+      '/control-plane': controlSidebar,
+      '/data-plane': dataSidebar,
+      '/trust-plane': trustSidebar,
+      '/command-line': commandLineSidebar,
       '/how-it-works': [
         {
           text: 'Start',

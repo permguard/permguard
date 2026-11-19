@@ -76,7 +76,7 @@ See [Server, Host & Planes](./architecture).
 
 ### Control Plane {#control-plane}
 
-Where policies live: in ledgers, versioned like Git, published as signed versions.
+The center of Permguard: policies, versioned and signed in ledgers, and the decision logs and events every Data Plane sends back.
 Port `6443`.
 See [Control Plane](../control-plane).
 
@@ -89,7 +89,7 @@ See [Data Plane](../data-plane).
 
 ### Authority Plane {#authority-plane}
 
-Issues the access tokens with which callers of Permguard itself prove who they are: service accounts, scopes and access keys.
+Issues the access tokens with which callers of Permguard itself prove who they are: identities, their scopes and access keys.
 Port `8443`.
 See [Authority Plane](../authority-plane).
 

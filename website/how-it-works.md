@@ -180,7 +180,7 @@ onBeforeUnmount(() => observer?.disconnect())
         </svg>
       </div>
       <dl class="pgx-legend">
-        <div data-term="cp"><dt><a :href="withBase('/how-it-works/glossary#control-plane')">Control Plane</a></dt><dd>Where policies are written, versioned and signed.</dd></div>
+        <div data-term="cp"><dt><a :href="withBase('/how-it-works/glossary#control-plane')">Control Plane</a></dt><dd>The center: policies, decision logs and events.</dd></div>
         <div data-term="pdp"><dt><a :href="withBase('/how-it-works/glossary#pdp')">PDP</a></dt><dd>Policy Decision Point: answers permit or deny, beside each workload.</dd></div>
         <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>Policy Enforcement Point: the line in your code that asks, and obeys.</dd></div>
         <div data-term="idp"><dt><a :href="withBase('/how-it-works/glossary#identity-provider')">Your IdP</a></dt><dd>Says who the user is. Permguard decides what they may do.</dd></div>
@@ -329,8 +329,8 @@ permit (
         <div class="pgx-system-map__host"><small>SERVER HOST</small><strong>Identity · Authorization · Keys · Audit · Membership · Streams</strong></div>
         <div class="pgx-system-map__bus" aria-hidden="true"></div>
         <div class="pgx-system-map__planes">
-          <article><small>AUTHORITY PLANE</small><strong>Admit</strong><span>service accounts · access tokens</span></article>
-          <article><small>CONTROL PLANE</small><strong>Publish</strong><span>versioned, signed policy</span></article>
+          <article><small>AUTHORITY PLANE</small><strong>Admit</strong><span>identities · access tokens</span></article>
+          <article><small>CONTROL PLANE</small><strong>Govern</strong><span>policies · decision logs · events</span></article>
           <article><small>DATA PLANE</small><strong>Decide</strong><span>sidecar · remote · embedded</span></article>
         </div>
       </div>
@@ -410,7 +410,7 @@ permit (
       <details><summary>Does Permguard replace my Identity Provider?</summary><p>No. Your IdP says who the user is; your code passes that subject to Permguard, which decides what it may do. The Authority Plane only issues the tokens that callers of Permguard itself present.</p></details>
       <details><summary>Which language are policies written in?</summary><p>Cedar or Rego, side by side in the same ledger. Dogwood, for decisions that depend on history, is experimental. See <a :href="withBase('/how-it-works/policy-languages')">Policy as Code</a>.</p></details>
       <details><summary>Can I test a policy without a server?</summary><p>Yes: <code>permguard test</code> runs the same engine and decision algebra as the Data Plane, offline. See <a :href="withBase('/how-it-works/getting-started')">Getting Started</a>.</p></details>
-      <details><summary>Can anyone call my PDP?</summary><p>Only in development, where the configuration grants it publicly. In production every caller presents an access token of the Authority Plane, and each plane checks it itself. See <a :href="withBase('/authority-plane/access-tokens')">Access Tokens</a>.</p></details>
+      <details><summary>Can anyone call my PDP?</summary><p>Only in development, where the configuration grants it publicly. In production every caller presents an access token of the Authority Plane, and each plane checks it itself. See <a :href="withBase('/authority-plane')">the Authority Plane</a>.</p></details>
       <details><summary>Is it worth it for a small application?</summary><p>Yes: any application that decides who may do what gains from rules out of the code, tested offline and kept on record. The value grows with the stakes: enterprise and complex applications, AI agents acting on someone's behalf, rules that change without a redeploy, and the need to show who was allowed what, and why.</p></details>
     </div>
   </section>

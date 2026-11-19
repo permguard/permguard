@@ -25,8 +25,8 @@ A plane owns one job: the [Authority Plane](./glossary#authority-plane) admits c
     <div class="pgx-system-map__host"><small>HOST · :5443</small><strong>Identity · Keys · Audit · Membership</strong></div>
     <div class="pgx-system-map__bus" aria-hidden="true"></div>
     <div class="pgx-system-map__planes">
-      <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>service accounts · access tokens</span></article>
-      <article><small>CONTROL PLANE · :6443</small><strong>Publish</strong><span>zones · ledgers · signed policy</span></article>
+      <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>identities · access tokens</span></article>
+      <article><small>CONTROL PLANE · :6443</small><strong>Govern</strong><span>policies · decision logs · events</span></article>
       <article><small>DATA PLANE · :7443</small><strong>Decide</strong><span>beside the workload</span></article>
     </div>
     <div class="pgx-system-map__next"><small>TRUST PLANE · NEXT</small><span>authority continuity with PIC-X · not served today</span></div>
@@ -38,9 +38,9 @@ Each part keeps its own standard port.
 | Part            | Port   | Its job                                         |
 | --------------- | -----: | ----------------------------------------------- |
 | Server Host     | `5443` | discovery, health, readiness, version, metrics  |
-| Control Plane   | `6443` | zones, ledgers, signed policy                   |
+| Control Plane   | `6443` | policies, decision logs, events                 |
 | Data Plane      | `7443` | decisions, beside the workload                  |
-| Authority Plane | `8443` | service accounts, access keys, tokens           |
+| Authority Plane | `8443` | identities, access keys, tokens                 |
 | Trust Plane     |      — | next on the roadmap; not served today           |
 
 Run every plane in one process, all-in-one, or split them so that each process runs one Host with one plane.

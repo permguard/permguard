@@ -1,7 +1,7 @@
 ---
 pageClass: pg-page-concepts
 title: Access Tokens & Clusters
-redirect: /authority-plane/access-tokens
+redirect: /authority-plane
 search: false
 sidebar: false
 aside: false
@@ -14,4 +14,4 @@ aside: false
 
 # Access Tokens & Clusters moved
 
-Access Tokens & Clusters is now part of the [Planes](/authority-plane/access-tokens).
+Access Tokens & Clusters is now part of the [Authority Plane](/authority-plane).

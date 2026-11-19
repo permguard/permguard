@@ -1,0 +1,174 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Command Line (command-line.md): the one CLI above the six targets its commands reach. A wide
+   container draws the targets as a row of three under a rail; a narrow one stacks them on a
+   vertical rail, each card centred. The family cards carry their commands as small chips. */
+
+.pg-page-concepts .pgx-cli-map {
+  container-type: inline-size;
+  margin: 28px 0 30px;
+  padding: 26px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    var(--pgx-surface);
+}
+
+.pg-page-concepts .pgx-cli-map__cli {
+  display: flex;
+  max-width: 380px;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 auto;
+  padding: 18px 20px;
+  border: 1px solid var(--pgx-brand);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--pgx-brand) 7%, var(--pgx-bg));
+  box-shadow: 0 0 30px var(--pgx-glow);
+  text-align: center;
+}
+
+.pg-page-concepts .pgx-cli-map small {
+  color: var(--pgx-brand);
+  font-size: 10.5px;
+  font-weight: 850;
+  letter-spacing: .12em;
+  line-height: 1.4;
+}
+
+.pg-page-concepts .pgx-cli-map strong {
+  margin-top: 6px;
+  color: var(--pgx-ink);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.pg-page-concepts .pgx-cli-map span {
+  margin-top: 4px;
+  color: var(--pgx-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pg-page-concepts .pgx-cli-map__bus {
+  width: 1px;
+  height: 30px;
+  margin: 0 auto;
+  background: var(--pgx-brand);
+}
+
+.pg-page-concepts .pgx-cli-map__targets {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 26px 14px;
+  padding-top: 18px;
+}
+
+/* The rail the three columns hang from. */
+.pg-page-concepts .pgx-cli-map__targets::before {
+  position: absolute;
+  top: 0;
+  right: 16.66%;
+  left: 16.66%;
+  height: 1px;
+  background: var(--pgx-brand);
+  content: "";
+}
+
+.pg-page-concepts .pgx-cli-map__targets article {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 132px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 14px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 13px;
+  background: var(--pgx-bg);
+  text-align: center;
+}
+
+/* The first row hangs from the rail; the second from the card above it. */
+.pg-page-concepts .pgx-cli-map__targets article::before {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  width: 1px;
+  height: 18px;
+  background: var(--pgx-brand);
+  content: "";
+}
+
+.pg-page-concepts .pgx-cli-map__targets article:nth-child(n + 4)::before {
+  top: -27px;
+  height: 27px;
+  background: var(--pgx-line);
+}
+
+.pg-page-concepts .pgx-cli-map__targets code {
+  overflow-wrap: anywhere;
+}
+
+.pg-page-concepts .pgx-cli-map__accent {
+  border-color: var(--pgx-brand) !important;
+  box-shadow: 0 0 24px var(--pgx-glow);
+}
+
+.pg-page-concepts .pgx-cli-map__offline {
+  border-style: dashed !important;
+  border-color: var(--pgx-warm) !important;
+}
+
+.pg-page-concepts .pgx-cli-map__offline small { color: var(--pgx-warm); }
+
+.pg-page-concepts .pgx-cli-map__note {
+  display: block;
+  margin-top: 18px !important;
+  text-align: center;
+}
+
+@container (max-width: 640px) {
+  .pg-page-concepts .pgx-cli-map__targets {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    max-width: 380px;
+    margin: 0 auto;
+  }
+
+  /* One vertical rail behind the stack. */
+  .pg-page-concepts .pgx-cli-map__targets::before {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    height: auto;
+  }
+
+  .pg-page-concepts .pgx-cli-map__targets article { min-height: 0; }
+  .pg-page-concepts .pgx-cli-map__targets article::before,
+  .pg-page-concepts .pgx-cli-map__targets article:nth-child(n + 4)::before { display: none; }
+}
+
+/* Family cards: the commands of a family, as chips under the sentence. */
+.pg-page-concepts .pgx-card .pgx-cli-family {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.pg-page-concepts .pgx-card .pgx-cli-family code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .pg-page-concepts .pgx-cli-map { padding: 18px 12px; }
+  .pg-page-concepts .pgx-cli-map__cli { padding: 16px 14px; }
+}

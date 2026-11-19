@@ -26,7 +26,7 @@ description: Pull versioned Permguard images from GHCR or Docker Hub and verify 
 
 <div class="pgx-image-grid">
   <article><small>ALL-IN-ONE</small><strong>Every plane</strong><code>all-in-one</code><span>Authority, Control and Data in one process, for local use or compact deployments.</span></article>
-  <article><small>AUTHORITY PLANE</small><strong>Issue tokens</strong><code>authority-plane</code><span>Service accounts, access keys and the tokens every Plane verifies.</span></article>
+  <article><small>AUTHORITY PLANE</small><strong>Issue tokens</strong><code>authority-plane</code><span>Identities, access keys and the tokens every Plane verifies.</span></article>
   <article><small>CONTROL PLANE</small><strong>Publish policy</strong><code>control-plane</code><span>Authoritative ledgers and policy distribution.</span></article>
   <article><small>DATA PLANE</small><strong>Make decisions</strong><code>data-plane</code><span>Verified policy close to the workload.</span></article>
   <article><small>COMMAND LINE</small><strong>Automate the CLI</strong><code>cli</code><span>CI jobs and container-native workflows.</span></article>

@@ -1,0 +1,9 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Trust Plane overview: the hop that widens its authority, drawn as the site draws an error, dashed
+   in the warm accent: it is no step of the chain. */
+.pgx-hv__invalid rect { fill: none; stroke: var(--pgx-warm); stroke-dasharray: 5 5; }
+.pgx-hv__invalid text { fill: var(--pgx-warm); }
+.pgx-hv__flow--invalid { stroke: var(--pgx-warm); stroke-dasharray: 4 6; opacity: 0.8; }
+.pgx-hero__status { margin-top: 18px; }

@@ -789,18 +789,30 @@
     z-index: calc(var(--vp-z-index-sidebar) + 1);
   }
 
-  /* The sidebar ends where the footer begins, and scrolls within what is left (see index.ts). */
-  /* VitePress pins `bottom: 0` with a scoped rule; this outranks it. */
+  /* The sidebar is as long as its links, never the whole window: its scroller ends at its last
+     link, or where the footer begins when that comes first, and scrolls only then (see index.ts).
+     VitePress pins `bottom: 0` and a 6rem tail with scoped rules; these outrank them. The sidebar
+     and the page share one background, so where the sidebar ends nothing shows. */
   :root .VPSidebar.VPSidebar {
-    bottom: var(--pg-footer-overlap, 0px);
+    bottom: auto;
+    max-height: calc(100vh - var(--vp-layout-top-height, 0px) - var(--pg-footer-overlap, 0px));
+    padding-bottom: 2rem;
   }
 }
 
 /* The same rule for every fixed column, so no page can hide its own navigation under the footer:
-   the outline on the right ("On this page") ends where the footer begins, scrolls within what is
-   left, and its bottom fade follows. One variable, measured once in index.ts, drives them all. */
+   the outline on the right ("On this page") is as long as its links, ends where the footer begins
+   when that comes first, scrolls within what is left only then, and its bottom fade follows.
+   VitePress stretches it to the window with a minimum height; that is undone, so its scroller
+   never runs over empty space and the outline never slips out of a column shortened by the
+   footer. One variable, measured once in index.ts, drives them all. */
 :root .VPDoc .aside-container {
-  height: calc(100vh - var(--pg-footer-overlap, 0px));
+  height: auto;
+  max-height: calc(100vh - var(--pg-footer-overlap, 0px));
+}
+
+:root .VPDoc .aside-content {
+  min-height: 0;
 }
 
 :root .VPDoc .aside-curtain {

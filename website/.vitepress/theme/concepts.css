@@ -1891,6 +1891,43 @@
   border-radius: 22px;
 }
 
+/* An overview opens as How it works does: the title alone, centred, with no frame, grid or
+   watermark. The framed title belongs to the pages below an overview. */
+.pg-page-concepts .pgx-doc-hero.pgx-doc-hero--overview {
+  min-height: 0;
+  margin: 28px 0 56px;
+  overflow: visible;
+  padding: 36px 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-align: center;
+}
+
+.pgx-doc-hero--overview::before,
+.pgx-doc-hero--overview::after {
+  content: none;
+}
+
+.pgx-doc-hero--overview h1 {
+  max-width: none;
+  font-size: clamp(40px, 6vw, 72px);
+}
+
+.pgx-doc-hero--overview > .pgx-kicker,
+.pgx-doc-hero--overview > p {
+  margin-right: auto;
+  margin-left: auto;
+}
+
+@media (max-width: 520px) {
+  .pg-page-concepts .pgx-doc-hero.pgx-doc-hero--overview {
+    margin-right: 0;
+    margin-left: 0;
+    padding: 20px 0 0;
+  }
+}
+
 /* Diagrams on documentation pages: a clean rounded panel with the soft glow, no grid. The grid
    belongs to page titles only; the overview keeps its own drawings as they are. */
 .pg-page-concepts .vp-doc :is(
