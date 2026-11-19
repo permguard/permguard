@@ -7561,8 +7561,9 @@ fn acknowledgement_points_survive_a_clock_stepped_back_and_collapse_when_idle() 
 
 /// A Host running both Planes ships its own streams to its own consumer, in-process, verified
 /// under its own `data.attest`: a run opened before the first pass carries no fence and is rolled
-/// over, its records left unshipped; what follows is shipped and acknowledged. The local pins
-/// answer the local membership only.
+/// over, and the local task reads it as every other run (DEC-0034 option A), so its records are
+/// shipped too; what follows is shipped and acknowledged. The local pins answer the local
+/// membership only.
 #[test]
 fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
     use super::ingest::StreamPins as _;
@@ -7592,8 +7593,8 @@ fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
         host.identity.host_id(),
         Arc::clone(&host.attest),
     );
-    // The first pass fences the stream: the unfenced run ends, nothing of it ships.
-    assert_eq!(local.ship_due(), 0);
+    // The first pass fences the stream: the unfenced run ends, and is shipped all the same.
+    assert_eq!(local.ship_due(), 1);
     let fenced = producer
         .append(&ledger(1), &"r1".to_owned())
         .expect("appended")
@@ -7608,7 +7609,11 @@ fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
         .expect("read")
         .expect("held");
     assert_eq!(subscription.acked(&fenced), 2);
-    assert_eq!(subscription.acked(&unfenced), 0);
+    assert_eq!(
+        subscription.acked(&unfenced),
+        1,
+        "the unfenced run's record too"
+    );
     // Nothing left: the next pass ships nothing.
     assert_eq!(local.ship_due(), 0);
     // The local pins are this Host's own set, for the local membership alone.
@@ -7623,6 +7628,234 @@ fn a_host_ships_its_own_streams_to_itself_under_its_own_ring() {
     assert!(
         pins.verifying_pins(&LOCAL_MEMBERSHIP, "control.attest", "any", 1)
             .is_empty()
+    );
+}
+
+/// A subscription of `membership_id`'s `decisions` task at `epoch`, covering `selector`.
+fn subscribed_by<'a>(
+    membership_id: [u8; 16],
+    selector: &'a permguard_core::authz::Selector,
+    epoch: u64,
+) -> Subscribed<'a> {
+    Subscribed {
+        membership_id,
+        task_type: TaskType::DecisionsShip,
+        task_id: "decisions",
+        required: true,
+        epoch,
+        selector,
+        coordinator_boot_id: None,
+    }
+}
+
+/// BUG-0198: a run fenced by a membership that ended belongs to nobody. While the membership
+/// lives, a second one covering the stream ships nothing and is named on health; once it ended,
+/// the second one's next pass rolls the run over under its own fence, and what follows ships.
+#[test]
+fn a_run_fenced_by_a_membership_that_ended_is_rolled_over_for_the_live_one() {
+    const ENDED: [u8; 16] = [6; 16];
+    let host = Host::new("rejoin-ship");
+    let coordinator = Host::new("rejoin-ship-c");
+    let consumer = consumer_on(&coordinator);
+    let producer = host.sealer();
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let old = subscribed_by(ENDED, &covering, 1);
+    let new = subscribed_by(MEMBERSHIP, &covering, 1);
+    producer.due(&old).expect("due");
+    let held = producer
+        .append(&ledger(1), &"a".to_owned())
+        .expect("appended")
+        .run_id;
+
+    // Both live: the run is the first one's, and the second says it cannot ship.
+    assert!(pump(&producer, &consumer, &host, &new, vec![pin_of(&host)], 1).is_empty());
+    let refused = producer.refused().expect("read");
+    assert!(
+        refused
+            .iter()
+            .any(|refusal| refusal.membership_id == MEMBERSHIP
+                && refusal.state.contains("fenced by membership")),
+        "{refused:?}"
+    );
+    assert_eq!(
+        producer
+            .append(&ledger(1), &"b".to_owned())
+            .expect("appended")
+            .run_id,
+        held
+    );
+
+    // The first one ended: its run is rolled over at the second one's next pass.
+    producer.retain(&ENDED, &[]).expect("dropped");
+    assert!(pump(&producer, &consumer, &host, &new, vec![pin_of(&host)], 1).is_empty());
+    let own = producer
+        .append(&ledger(1), &"c".to_owned())
+        .expect("appended")
+        .run_id;
+    assert_ne!(own, held, "a successor under the live membership's fence");
+    assert!(!pump(&producer, &consumer, &host, &new, vec![pin_of(&host)], 1).is_empty());
+    let subscription = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(subscription.acked(&own), 1, "shipped");
+    assert!(
+        producer
+            .refused()
+            .expect("read")
+            .iter()
+            .all(|refusal| refusal.membership_id != MEMBERSHIP),
+        "nothing named once it ships"
+    );
+}
+
+/// BUG-0105: the decisions a member answers between its join, which registers the membership's
+/// subscriptions, and its first ship pass are in the membership's run and ship; a run written
+/// before any membership covered the stream cannot be, and is stated, with its records, once.
+#[test]
+fn decisions_before_the_first_ship_pass_ship_and_an_earlier_run_is_stated() {
+    let host = Host::new("first-pass");
+    let coordinator = Host::new("first-pass-c");
+    let consumer = consumer_on(&coordinator);
+    let producer = host.sealer();
+    let before = producer
+        .append(&ledger(1), &"before any membership".to_owned())
+        .expect("appended")
+        .run_id;
+
+    // The join registers the membership's subscription: no shipping yet.
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let membership = subscribed_by(MEMBERSHIP, &covering, 1);
+    producer.due(&membership).expect("registered");
+    assert!(
+        producer.stated.lock().expect("lock").contains(&before),
+        "the run no membership ships is stated"
+    );
+    let fenced = producer
+        .append(&ledger(1), &"d1".to_owned())
+        .expect("appended")
+        .run_id;
+    producer
+        .append(&ledger(1), &"d2".to_owned())
+        .expect("appended");
+    assert_ne!(fenced, before);
+
+    // The first ship pass ships both.
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &membership,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    let subscription = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(subscription.acked(&fenced), 2);
+}
+
+/// BUG-0229, DEC-0034 option A: a Host running both Planes that is a member ships every decision
+/// to its coordinator, the membership's task taking the stream's runs from the local task, and
+/// its own Control Plane still reads every run, the membership's included.
+#[test]
+fn a_both_planes_member_ships_to_its_coordinator_and_to_itself() {
+    use permguard_host::membership::local::{LOCAL_MEMBERSHIP, LOCAL_TASK, LocalShipping};
+
+    let host = Host::new("both-ship");
+    let coordinator = Host::new("both-ship-c");
+    let remote = consumer_on(&coordinator);
+    let own = Arc::new(consumer_on(&host));
+    let producer = Arc::new(host.sealer());
+    let pins = Arc::new(super::ingest::LocalPins {
+        ring: Arc::clone(&host.attest),
+    });
+    let ingest = || {
+        Arc::new(super::ingest::Ingest {
+            consumer: Arc::clone(&own),
+            pins: Arc::clone(&pins) as Arc<dyn super::ingest::StreamPins>,
+        })
+    };
+    let local = LocalShipping::new(
+        Arc::clone(&producer) as Arc<dyn StreamShipping>,
+        Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>,
+        ingest(),
+        ingest(),
+        host.identity.host_id(),
+        Arc::clone(&host.attest),
+    );
+    producer
+        .append(&ledger(1), &"before".to_owned())
+        .expect("appended");
+    assert_eq!(local.ship_due(), 1, "the local task fences the stream");
+    let local_run = producer
+        .append(&ledger(1), &"local".to_owned())
+        .expect("appended")
+        .run_id;
+
+    // The membership's first pass takes the stream from the local task.
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let membership = subscribed_by(MEMBERSHIP, &covering, 1);
+    assert!(
+        pump(
+            &producer,
+            &remote,
+            &host,
+            &membership,
+            vec![pin_of(&host)],
+            1
+        )
+        .is_empty()
+    );
+    let shipped_run = producer
+        .append(&ledger(1), &"m1".to_owned())
+        .expect("appended")
+        .run_id;
+    producer
+        .append(&ledger(1), &"m2".to_owned())
+        .expect("appended");
+    assert_ne!(shipped_run, local_run, "the membership's own run");
+    assert_eq!(
+        pump(
+            &producer,
+            &remote,
+            &host,
+            &membership,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    let to_coordinator = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(
+        to_coordinator.acked(&shipped_run),
+        2,
+        "the coordinator holds both"
+    );
+
+    // The local task keeps reading: its own run, and the membership's.
+    assert!(local.ship_due() >= 2);
+    let to_itself = producer
+        .subscription(&ledger(1), &LOCAL_MEMBERSHIP, LOCAL_TASK)
+        .expect("read")
+        .expect("held");
+    assert_eq!(to_itself.acked(&local_run), 1);
+    assert_eq!(to_itself.acked(&shipped_run), 2);
+    // A later pass of the local task leaves the membership's run alone.
+    assert_eq!(local.ship_due(), 0);
+    assert_eq!(
+        producer
+            .append(&ledger(1), &"m3".to_owned())
+            .expect("appended")
+            .run_id,
+        shipped_run
     );
 }
 

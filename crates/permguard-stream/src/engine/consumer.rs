@@ -637,20 +637,28 @@ impl<C: RecordCodec> Consumer<C> {
         ) else {
             return unverifiable();
         };
-        let membership = permguard_host::identity::record::uuid_text(&shipping.membership_id);
         if envelope.stream_key != KeyView::of(&key)
             || envelope.descriptor_version != self.descriptor.version
             || envelope.run != claimed.run
-            || envelope.membership_id.as_deref() != Some(membership.as_str())
         {
             return unverifiable();
         }
-        // The run's fence epoch is the one it was opened under: a re-pin moves the lease's on
-        // while the run goes on, so an earlier epoch of the same membership is the run's own; a
-        // later one no lease has issued (after the review). A restored volume is fenced by the
-        // lease's epoch and boot id before its batches arrive (WP-4.3).
-        if envelope.epoch.is_none_or(|epoch| epoch > shipping.epoch) {
-            return unverifiable();
+        // The local task of a Host running both Planes reads every run of its own producer,
+        // whatever membership fences it (BUG-0229, DEC-0034 option A): in process, under this
+        // Host's own pins, and never reachable by a peer, as the nil membership is never minted.
+        // Any other batch names the membership it ships under.
+        if shipping.membership_id != permguard_host::membership::local::LOCAL_MEMBERSHIP {
+            let membership = permguard_host::identity::record::uuid_text(&shipping.membership_id);
+            if envelope.membership_id.as_deref() != Some(membership.as_str()) {
+                return unverifiable();
+            }
+            // The run's fence epoch is the one it was opened under: a re-pin moves the lease's
+            // on while the run goes on, so an earlier epoch of the same membership is the run's
+            // own; a later one no lease has issued (after the review). A restored volume is
+            // fenced by the lease's epoch and boot id before its batches arrive (WP-4.3).
+            if envelope.epoch.is_none_or(|epoch| epoch > shipping.epoch) {
+                return unverifiable();
+            }
         }
         // The typed Plane validator.
         if records.iter().any(|record| self.validate(record).is_err()) {

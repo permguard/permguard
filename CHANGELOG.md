@@ -161,6 +161,12 @@ is cut.
 
 ### Fixed
 
+- **A member Host running both Planes ships its decisions and events to its coordinator again.**
+  Since 0.1.12 the local ship task fenced every run first and a `decisions.ship` or `events.ship` membership shipped nothing; a membership's task now takes the stream's runs from the local task, and the local task reads every run, whatever fences it, so the coordinator and the Host's own Control Plane both receive every record (DEC-0034 option A). The local task also ships the run opened before its first pass, which it used to leave behind.
+- **A member that re-joins with the same ship task ships again.**
+  A run fenced by a membership that ended, revoked, rejected or expired, is rolled over at the next pass of a live ship task covering the stream, where it held the stream for good and nothing was shipped or reported; a stream whose open run another live membership holds is named on health, `degraded: evidence_shipping`, and logged at WARN (`host.stream.run_held`).
+- **Records no membership will ship are stated.**
+  A run written before any membership covered the stream, fenced by the local task, or by a membership that ended, is logged at WARN (`host.stream.run_unshipped`) with its record count and the reason, once per run and process: its batches name the fence they were sealed under, so they are kept on the member and never sent under another membership's name.
 - **A member adopts a revocation, a suspension or a resumption within one pass.**
   Every pass, a member asks its coordinators for the manifests of its pending, active and suspended memberships, so what an operator decides on the coordinator is held on the member with no `host members sync` on the member, and a resumed membership ships again at the same pass; `host.membership.synced` is logged when one moved.
 - **The reason of a membership change is recorded.**

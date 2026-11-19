@@ -16,6 +16,7 @@
 //! again: whatever step a crash stops at, opening completes it with the same signed bytes.
 
 use permguard_core::encoding::hex;
+use permguard_host::membership::local::LOCAL_MEMBERSHIP;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
@@ -98,6 +99,9 @@ pub struct Restored {
     pub forked: Vec<(String, u64)>,
 }
 
+/// A subscription a stream's open run is held from: `(resource, membership, task)`.
+pub(crate) type HeldKey = (String, [u8; 16], String);
+
 /// The typed producer handle of one descriptor.
 pub struct Producer<C> {
     context: Context,
@@ -116,6 +120,13 @@ pub struct Producer<C> {
     /// The fence of each subscription seen shipping, with its task's selector: what a stream it
     /// covers opens its genesis run under (WP-6.1, after the review).
     fences: Mutex<Vec<(permguard_core::authz::Selector, Fence)>>,
+    /// Each live subscription whose covered stream's open run another live membership fences,
+    /// by `(resource, membership, task)`, with that membership: named on health until the run is
+    /// its own (BUG-0198, BUG-0229).
+    pub(crate) held_by: Mutex<BTreeMap<HeldKey, [u8; 16]>>,
+    /// The runs whose records no live membership ships, already stated at WARN by this process
+    /// (BUG-0105): each said once.
+    pub(crate) stated: Mutex<std::collections::BTreeSet<[u8; 16]>>,
     /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
     /// `None` deletes it at once.
     acknowledged_retention: Option<std::time::Duration>,
@@ -143,6 +154,8 @@ impl<C: RecordCodec> Producer<C> {
             floor: std::sync::RwLock::new(None),
             lease: super::retention::Lease::default(),
             fences: Mutex::new(Vec::new()),
+            held_by: Mutex::new(BTreeMap::new()),
+            stated: Mutex::new(std::collections::BTreeSet::new()),
             acknowledged_retention: None,
         }
     }
@@ -389,14 +402,41 @@ impl<C: RecordCodec> Producer<C> {
     }
 
     /// The fence a stream of `resource` opens its genesis run under: the first subscription seen
-    /// shipping whose task covers it, `None` on a standalone Host.
+    /// shipping whose task covers it, a membership's before the local task's (DEC-0034 option A:
+    /// the local task reads every run, a membership only the runs it fences), `None` on a
+    /// standalone Host.
     fn genesis_fence(&self, resource: &Resource) -> Option<Fence> {
+        let fences = self.fences.lock().unwrap_or_else(PoisonError::into_inner);
+        let covering = || {
+            fences
+                .iter()
+                .filter(|(selector, _)| selector.contains(resource))
+        };
+        covering()
+            .find(|(_, fence)| fence.membership_id != LOCAL_MEMBERSHIP)
+            .or_else(|| covering().next())
+            .map(|(_, fence)| fence.clone())
+    }
+
+    /// Whether a subscription of `membership_id`'s task `task_id` was seen shipping by this
+    /// process and not dropped since.
+    pub(crate) fn remembers(&self, membership_id: &[u8; 16], task_id: &str) -> bool {
         self.fences
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
-            .find(|(selector, _)| selector.contains(resource))
-            .map(|(_, fence)| fence.clone())
+            .any(|(_, fence)| fence.membership_id == *membership_id && fence.task_id == task_id)
+    }
+
+    /// Forgets the fences of `membership_id`'s tasks other than `kept`: a membership that ended,
+    /// or a task its manifest no longer carries, opens no genesis run (BUG-0198).
+    pub(crate) fn forget_fences(&self, membership_id: &[u8; 16], kept: &[String]) {
+        self.fences
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(_, fence)| {
+                fence.membership_id != *membership_id || kept.contains(&fence.task_id)
+            });
     }
 
     /// Remembers `fence`, with its task's `selector`, for the genesis runs it covers: in place of

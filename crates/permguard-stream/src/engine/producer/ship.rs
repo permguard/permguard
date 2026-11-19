@@ -34,6 +34,7 @@ use std::sync::PoisonError;
 use permguard_core::authz::Resource;
 use permguard_core::codes;
 use permguard_host::composition::{self, Shipment, StreamShipping, Subscribed};
+use permguard_host::membership::local::LOCAL_MEMBERSHIP;
 use permguard_host::storage::Dir;
 use permguard_host::storage::format;
 use permguard_host::storage::write::{read_view, replace_view};
@@ -434,10 +435,11 @@ pub(super) fn truncate_safe_of(
     run: &[u8; 16],
     fence: Option<[u8; 16]>,
 ) -> Option<u64> {
-    let fence = fence?;
     subscriptions
         .iter()
-        .filter(|subscription| subscription.required && subscription.membership_id == fence)
+        .filter(|subscription| {
+            subscription.required && reads_run(subscription.membership_id, fence)
+        })
         .map(|subscription| subscription.acked(run))
         .min()
 }
@@ -450,12 +452,20 @@ pub(super) fn acknowledged_by(
     fence: Option<[u8; 16]>,
     cutoff: u64,
 ) -> Option<u64> {
-    let fence = fence?;
     subscriptions
         .iter()
-        .filter(|subscription| subscription.required && subscription.membership_id == fence)
+        .filter(|subscription| {
+            subscription.required && reads_run(subscription.membership_id, fence)
+        })
         .map(|subscription| subscription.acked_by(run, cutoff))
         .min()
+}
+
+/// Whether a subscription of `membership_id` reads a run fenced by `fence` (DEC-0034 option A):
+/// a membership the runs it fences, the local task of a Host running both Planes every run, so
+/// its own Control Plane reads what a membership ships and what none does.
+pub(super) fn reads_run(membership_id: [u8; 16], fence: Option<[u8; 16]>) -> bool {
+    membership_id == LOCAL_MEMBERSHIP || fence == Some(membership_id)
 }
 
 /// The fence of the runs `subscribed` ships.
@@ -535,8 +545,11 @@ impl<C: RecordCodec> Producer<C> {
     /// Rolls the stream of `physical` over to a successor fenced by `subscribed` when its task
     /// covers the stream and the current run is unfenced, or fenced by an older epoch of the same
     /// task (owner decision of 2026-10-13, WP-6.1): the run a subscription ships carries its
-    /// fence. A run fenced by another membership or task is left to it, and a forked stream to
-    /// its operator.
+    /// fence. A run fenced by a task no live subscription holds any more, a membership that ended,
+    /// belongs to nobody and is rolled over too (BUG-0198); so is one fenced by the local task
+    /// when a membership covers the stream, which the local task reads whatever fences it
+    /// (BUG-0229, DEC-0034 option A). A run fenced by another live membership is left to it, and
+    /// a forked stream to its operator.
     fn fence_for(
         &self,
         physical: &Physical,
@@ -560,18 +573,157 @@ impl<C: RecordCodec> Producer<C> {
                 None => false,
                 Some(run) => match &run.statement.fence {
                     None => true,
+                    Some(fence)
+                        if fence.membership_id == subscribed.membership_id
+                            && fence.task_id == subscribed.task_id =>
+                    {
+                        fence.epoch < subscribed.epoch
+                    }
                     Some(fence) => {
-                        fence.membership_id == subscribed.membership_id
-                            && fence.task_id == subscribed.task_id
-                            && fence.epoch < subscribed.epoch
+                        let live = self.remembers(&fence.membership_id, &fence.task_id)
+                            || subscriptions_held(&writer.dir)?.iter().any(|held| {
+                                held.membership_id == fence.membership_id
+                                    && held.task_id == fence.task_id
+                            });
+                        !live
+                            || (fence.membership_id == LOCAL_MEMBERSHIP
+                                && subscribed.membership_id != LOCAL_MEMBERSHIP)
                     }
                 },
             }
         };
         if stale {
+            // The subscription is kept before its run opens, so a restart between the two never
+            // finds the run's fence held by nobody.
+            {
+                let writer = physical.writer();
+                if subscription_of(&writer.dir, &subscribed.membership_id, subscribed.task_id)?
+                    .is_none()
+                {
+                    keep_subscription(&writer.dir, &Subscription::new(subscribed))?;
+                }
+            }
             physical.rollover(&self.context, Some(fence_of(subscribed)), None)?;
         }
         Ok(())
+    }
+
+    /// Whether any subscription of `membership_id` is live on `physical`: kept in its directory,
+    /// or seen shipping by this process and not dropped since.
+    fn membership_live(
+        &self,
+        physical: &Physical,
+        membership_id: &[u8; 16],
+    ) -> Result<bool, StreamError> {
+        let remembered = self
+            .fences
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|(_, fence)| fence.membership_id == *membership_id);
+        Ok(remembered
+            || subscriptions_held(&physical.writer().dir)?
+                .iter()
+                .any(|held| held.membership_id == *membership_id))
+    }
+
+    /// States, once per run and process, the records of a covered run that `subscribed`'s
+    /// membership will never be shipped: unfenced, written before any membership covered the
+    /// stream; fenced by the local task, read only by this Host's own Control Plane; or fenced by
+    /// a membership that ended (BUG-0105, DEC-0010 answer 3). Its batches name the fence they were
+    /// sealed under, which no other membership's coordinator takes, so the loss is said, with its
+    /// count, rather than left silent.
+    fn state_unshipped(
+        &self,
+        physical: &Physical,
+        subscribed: &Subscribed<'_>,
+        runs: &[super::seal::RunView],
+    ) -> Result<(), StreamError> {
+        if subscribed.membership_id == LOCAL_MEMBERSHIP {
+            return Ok(());
+        }
+        for (run, fence, last, _) in runs {
+            if *last == 0 || *fence == Some(subscribed.membership_id) {
+                continue;
+            }
+            let reason = match fence {
+                None => "written before any membership's task covered the stream",
+                Some(held) if *held == LOCAL_MEMBERSHIP => {
+                    "fenced by the local task: read by this Host's own Control Plane only"
+                }
+                Some(held) if !self.membership_live(physical, held)? => {
+                    "fenced by a membership that ended"
+                }
+                Some(_) => continue,
+            };
+            if !self
+                .stated
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(*run)
+            {
+                continue;
+            }
+            tracing::warn!(
+                event.name = "host.stream.run_unshipped",
+                component = "stream",
+                stream = %self.stream_name(),
+                resource = %physical.key.resource,
+                run = %hex(run),
+                records = *last,
+                membership_id = %permguard_host::identity::record::uuid_text(&subscribed.membership_id),
+                reason,
+                "the records of this run are not shipped to this membership's coordinator"
+            );
+        }
+        Ok(())
+    }
+
+    /// The live membership other than `subscribed`'s whose fence holds the open run of a stream
+    /// `subscribed` covers, after [`Self::fence_for`]: named on health, as the stream cannot
+    /// ship to `subscribed` (BUG-0198, BUG-0229).
+    fn note_holder(&self, physical: &Physical, subscribed: &Subscribed<'_>) {
+        if subscribed.membership_id == LOCAL_MEMBERSHIP {
+            return;
+        }
+        let covered = Resource::parse(&physical.key.resource)
+            .is_ok_and(|resource| subscribed.selector.contains(&resource));
+        let holder = covered
+            .then(|| {
+                physical
+                    .writer()
+                    .run
+                    .as_ref()
+                    .filter(|run| !run.ended)
+                    .and_then(|run| run.statement.fence.as_ref())
+                    .map(|fence| fence.membership_id)
+                    .filter(|held| *held != subscribed.membership_id)
+            })
+            .flatten();
+        let key = (
+            physical.key.resource.clone(),
+            subscribed.membership_id,
+            subscribed.task_id.to_owned(),
+        );
+        let mut held_by = self.held_by.lock().unwrap_or_else(PoisonError::into_inner);
+        match holder {
+            Some(holder) => {
+                if held_by.insert(key, holder) != Some(holder) {
+                    tracing::warn!(
+                        event.name = "host.stream.run_held",
+                        component = "stream",
+                        stream = %self.stream_name(),
+                        resource = %physical.key.resource,
+                        membership_id = %permguard_host::identity::record::uuid_text(&subscribed.membership_id),
+                        holder = %permguard_host::identity::record::uuid_text(&holder),
+                        "the stream's open run is fenced by another live membership: nothing is shipped to this one"
+                    );
+                }
+            }
+            None => {
+                held_by.remove(&key);
+            }
+        }
     }
 
     pub(super) fn signer_ring(&self) -> Result<&permguard_host::keys::ring::Ring, StreamError> {
@@ -916,6 +1068,25 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                 });
             }
         }
+        // A live subscription whose stream another live membership's run holds ships nothing,
+        // and says so (BUG-0198, BUG-0229).
+        for ((resource, membership_id, task_id), holder) in self
+            .held_by
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            found.push(composition::RefusedShipping {
+                membership_id: *membership_id,
+                stream: self.stream_name(),
+                resource: resource.clone(),
+                task_id: task_id.clone(),
+                state: format!(
+                    "its open run is fenced by membership {}",
+                    permguard_host::identity::record::uuid_text(holder)
+                ),
+            });
+        }
         Ok(found)
     }
 
@@ -976,15 +1147,22 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         let mut due = Vec::new();
         for physical in self.every().map_err(wrap)? {
             self.fence_for(&physical, subscribed).map_err(wrap)?;
+            self.note_holder(&physical, subscribed);
             // A forked stream ships nothing until its operator approves a successor, and keeps no
             // other stream from shipping (WP-6.1, found by its test).
             let runs = match physical.runs(signer, &self.descriptor) {
                 Err(StreamError::Forked { .. }) => continue,
                 runs => runs.map_err(wrap)?,
             };
+            if Resource::parse(&physical.key.resource)
+                .is_ok_and(|resource| subscribed.selector.contains(&resource))
+            {
+                self.state_unshipped(&physical, subscribed, &runs)
+                    .map_err(wrap)?;
+            }
             let fenced: Vec<&super::seal::RunView> = runs
                 .iter()
-                .filter(|(_, fence, ..)| *fence == Some(subscribed.membership_id))
+                .filter(|(_, fence, ..)| reads_run(subscribed.membership_id, *fence))
                 .collect();
             if fenced.is_empty() {
                 continue;
@@ -1069,7 +1247,7 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         // its last retained batch (WP-7.9b).
         let mut chosen = None;
         for (run, fence, last, _) in &runs {
-            if *fence != Some(subscribed.membership_id) {
+            if !reads_run(subscribed.membership_id, *fence) {
                 continue;
             }
             let acked = subscription.acked(run);
@@ -1304,6 +1482,12 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
 
     fn retain(&self, membership_id: &[u8; 16], task_ids: &[String]) -> Result<(), String> {
         let wrap = |error: StreamError| error.to_string();
+        // A task dropped, or a membership that ended, fences no run any more (BUG-0198).
+        self.forget_fences(membership_id, task_ids);
+        self.held_by
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(_, held, task), _| held != membership_id || task_ids.contains(task));
         for physical in self.every().map_err(wrap)? {
             let writer = physical.writer();
             let dir = subscriptions_dir(&writer.dir).map_err(wrap)?;

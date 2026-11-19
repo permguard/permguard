@@ -27,9 +27,12 @@
 //! local_pins(data.attest) ─▶ the pins the ingest verifies the batch under: this Host's own set
 //! ```
 //!
-//! A run opened before the first local pass carries no fence, so the pass rolls it over; its
-//! records stay in the producer and are never shipped. Nothing here is reachable by a peer: the
-//! nil UUID is never minted, so no membership's pins answer for it.
+//! The local task reads every run of a stream it covers, whatever fences it (DEC-0034 option A):
+//! one opened before the first local pass, which carries no fence, and one a membership's
+//! `decisions.ship` or `events.ship` task fences. A membership's task takes the stream's runs from
+//! the local task, so a Host that runs both Planes and is a member ships to its coordinator and
+//! to its own Control Plane alike (BUG-0229). Nothing here is reachable by a peer: the nil UUID is
+//! never minted, so no membership's pins answer for it.
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
