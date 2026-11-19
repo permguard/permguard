@@ -301,6 +301,228 @@
   .pgx-hv * { animation: none !important; }
 }
 
+/* The legend of the hero picture: one line per part. Pointing at a line lights its part, and
+   pointing at a part lights its line; CSS only, so it works before any script runs. */
+.pgx-legend {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 18px;
+  margin: 22px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--pgx-line);
+  text-align: left;
+}
+
+@container (max-width: 860px) { .pgx-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 520px) { .pgx-legend { grid-template-columns: 1fr; } }
+
+.pgx-legend > div { padding: 8px 10px; border-radius: 10px; transition: background 0.2s ease; }
+.pgx-legend dt { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.pgx-legend dt a { color: var(--pgx-brand); text-decoration: none; }
+.pgx-legend dt a:hover { text-decoration: underline; }
+.pgx-legend dd { margin: 2px 0 0; color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
+
+.pgx-hero-visual:has([data-term="cp"]:hover) .pgx-hv__node--cp rect,
+.pgx-hero-visual:has([data-term="pdp"]:hover) .pgx-hv__pdp,
+.pgx-hero-visual:has([data-term="pep"]:hover) .pgx-hv__node--sdk > rect,
+.pgx-hero-visual:has([data-term="idp"]:hover) .pgx-hv__node--idp rect,
+.pgx-hero-visual:has([data-term="evidence"]:hover) .pgx-hv__block,
+.pgx-hero-visual:has([data-term="siem"]:hover) .pgx-hv__node--siem rect {
+  stroke: var(--pgx-brand);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 10px rgb(217 70 239 / 0.6));
+}
+
+.pgx-hero-visual:has(.pgx-hv__node--cp:hover) [data-term="cp"],
+.pgx-hero-visual:has(.pgx-hv__pdp:hover) [data-term="pdp"],
+.pgx-hero-visual:has(.pgx-hv__node--sdk:hover) [data-term="pep"],
+.pgx-hero-visual:has(.pgx-hv__node--idp:hover) [data-term="idp"],
+.pgx-hero-visual:has(.pgx-hv__chain:hover) [data-term="evidence"],
+.pgx-hero-visual:has(.pgx-hv__node--siem:hover) [data-term="siem"],
+.pgx-legend > div:hover {
+  background: rgb(204 52 223 / 0.1);
+}
+
+/* Today and with Permguard, the same handler, one above the other: side by side, a Go line of
+   eighty characters would scroll out of sight in either column. */
+.pgx-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.pgx-compare__col {
+  min-width: 0;
+  padding: 18px 18px 4px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 16px;
+  background: var(--pgx-bg);
+}
+
+.pgx-compare__col--after { border-color: rgb(204 52 223 / 0.55); box-shadow: 0 0 28px var(--pgx-glow); }
+.pgx-compare .pgx-compare__label { margin: 0 0 4px; color: var(--pgx-muted); font-size: 14px; line-height: 1.5; }
+.pgx-compare__label b { display: block; margin-bottom: 4px; color: var(--pgx-brand); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
+
+/* The four nouns of every question. */
+.pgx-parc {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.pgx-parc article {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 16px 18px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 14px;
+  background: var(--pgx-surface);
+}
+
+.pgx-parc small { color: var(--pgx-brand); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
+.pgx-parc strong { color: var(--pgx-ink); font-size: 16px; }
+.pgx-parc span { color: var(--pgx-muted); font-size: 13px; line-height: 1.45; }
+
+/* One decision, end to end: the question, the rule, the answer. */
+.pgx-anatomy { margin-top: 26px; }
+
+.pgx-anatomy__row {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  padding: 6px 0;
+}
+
+.pgx-anatomy__label { display: flex; flex-direction: column; gap: 6px; padding-top: 20px; }
+.pgx-anatomy__label b { color: var(--pgx-brand); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.pgx-anatomy__label span { color: var(--pgx-muted); font-size: 14px; line-height: 1.5; }
+.pgx-section .pgx-anatomy__note { margin-top: 12px; color: var(--pgx-muted); font-size: 14px; }
+
+/* The analogy: a building, row by row. */
+.pgx-analogy { border-top: 1px solid var(--pgx-line); }
+
+.pgx-analogy > div {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 20px;
+  align-items: baseline;
+  padding: 16px 4px;
+  border-bottom: 1px solid var(--pgx-line);
+}
+
+.pgx-analogy__head span { color: var(--pgx-muted); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.pgx-analogy strong { color: var(--pgx-ink); font-size: 16px; }
+.pgx-analogy span { color: var(--pgx-muted); }
+.pgx-analogy a { color: var(--pgx-brand); font-weight: 600; text-decoration: none; }
+.pgx-analogy a:hover { text-decoration: underline; }
+
+/* Follow one request: the steps scroll, the picture stays in view and lights the step's parts. */
+.pgx-follow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 44px;
+  align-items: start;
+}
+
+.pgx-follow__stage {
+  position: sticky;
+  top: calc(var(--vp-nav-height) + 32px);
+  order: 2;
+  padding: 18px;
+  border: 1px solid var(--pgx-line);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 0%, var(--pgx-glow), transparent 70%),
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--pgx-bg);
+}
+
+.pgx-follow__steps { order: 1; margin: 0; padding: 0; list-style: none; }
+
+.pgx-follow__steps li {
+  display: flex;
+  min-height: 42vh;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 0 18px 24px;
+  border-left: 2px solid var(--pgx-line);
+  transition: opacity 0.3s ease, border-color 0.3s ease;
+}
+
+.pgx-follow__steps b { color: var(--pgx-brand); font-size: 12px; letter-spacing: 0.12em; }
+.pgx-follow__steps h3 { margin: 6px 0 8px; color: var(--pgx-ink); font-size: 22px; line-height: 1.25; }
+.pgx-follow__steps p { margin: 0; color: var(--pgx-muted); line-height: 1.6; }
+
+.pgx-follow[data-step] .pgx-follow__steps li:not(.is-active) { opacity: 0.4; }
+.pgx-follow__steps li.is-active { border-left-color: var(--pgx-brand); }
+
+.pgx-follow__art .f { transition: opacity 0.35s ease; }
+.pgx-follow__art .pgx-hv__node--pep rect { fill: rgb(204 52 223 / 0.12); stroke: var(--pgx-brand); }
+.pgx-follow[data-step] .pgx-follow__art .f { opacity: 0.25; }
+
+.pgx-follow[data-step="1"] .pgx-follow__art :is(.f-user, .f-click, .f-app, .f-pep),
+.pgx-follow[data-step="2"] .pgx-follow__art :is(.f-app, .f-pep, .f-ask, .f-pdp),
+.pgx-follow[data-step="3"] .pgx-follow__art :is(.f-pdp, .f-cp, .f-mirror),
+.pgx-follow[data-step="4"] .pgx-follow__art :is(.f-pdp, .f-answer, .f-app, .f-pep),
+.pgx-follow[data-step="5"] .pgx-follow__art :is(.f-user, .f-click, .f-app, .f-pep),
+.pgx-follow[data-step="6"] .pgx-follow__art :is(.f-pdp, .f-record, .f-ev, .f-export, .f-siem) {
+  opacity: 1;
+}
+
+.pgx-follow[data-step="1"] .pgx-follow__art .f-user rect,
+.pgx-follow[data-step="2"] .pgx-follow__art .f-pdp rect,
+.pgx-follow[data-step="3"] .pgx-follow__art :is(.f-pdp, .f-cp) rect,
+.pgx-follow[data-step="4"] .pgx-follow__art .f-pep rect,
+.pgx-follow[data-step="5"] .pgx-follow__art .f-app rect,
+.pgx-follow[data-step="6"] .pgx-follow__art :is(.f-ev, .f-siem) rect {
+  stroke: var(--pgx-brand);
+  filter: drop-shadow(0 0 10px rgb(217 70 239 / 0.5));
+}
+
+/* Questions: one line each, opened on demand. */
+.pgx-faq { border-top: 1px solid var(--pgx-line); }
+.pgx-faq details { border-bottom: 1px solid var(--pgx-line); }
+
+.pgx-faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 4px;
+  color: var(--pgx-ink);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.pgx-faq summary::-webkit-details-marker { display: none; }
+.pgx-faq summary::after { flex: 0 0 auto; color: var(--pgx-brand); font-size: 22px; font-weight: 400; content: "+"; }
+.pgx-faq details[open] summary::after { content: "−"; }
+.pgx-faq summary:focus-visible { outline: 2px solid var(--pgx-brand); outline-offset: 2px; }
+.pgx-faq details p { margin: 0 0 18px; padding: 0 4px; color: var(--pgx-muted); line-height: 1.65; }
+.pgx-faq a { color: var(--pgx-brand); }
+
+@media (max-width: 960px) {
+  .pgx-parc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pgx-anatomy__row { grid-template-columns: 1fr; gap: 0; }
+  .pgx-anatomy__label { padding-top: 10px; }
+  .pgx-analogy > div { grid-template-columns: 1fr; gap: 4px; }
+  .pgx-analogy__head { display: none !important; }
+  .pgx-follow { grid-template-columns: 1fr; gap: 20px; }
+  .pgx-follow__stage { top: calc(var(--vp-nav-height) + 56px); z-index: 1; order: 0; padding: 10px; }
+  .pgx-follow__steps li { min-height: 55vh; }
+}
+
+@media (max-width: 520px) {
+  .pgx-parc { grid-template-columns: 1fr; }
+}
+
 .pgx-kicker {
   color: var(--pgx-brand);
   font-size: 13px;

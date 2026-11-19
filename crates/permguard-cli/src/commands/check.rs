@@ -227,6 +227,14 @@ fn apply_store(payload: &mut Value, target: &target::Target) -> Result<(), Failu
             target.origin
         ));
     }
+    // A workspace's ledger is asked by its identity: the names it was checked out under may have
+    // been renamed since, or taken by another ledger, whose policies would answer (BUG-0007).
+    if let Some((zone_id, ledger_id)) = &target.ids
+        && store.is_some()
+    {
+        payload["zone"] = Value::String(zone_id.clone());
+        payload["ledger"] = Value::String(ledger_id.clone());
+    }
     Ok(())
 }
 
@@ -329,6 +337,7 @@ mod tests {
             endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: Some("acme".to_owned()),
             ledger: Some("main-ledger".to_owned()),
+            ids: None,
             origin: "workspace",
         };
         apply_store(&mut payload, &workspace)
@@ -342,12 +351,32 @@ mod tests {
             endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: None,
             ledger: None,
+            ids: None,
             origin: "payload",
         };
         apply_store(&mut untouched, &ignored)
             .map_err(|failure| failure.message)
             .expect("the document names its own");
         assert_eq!(untouched["zone"], "from-file");
+    }
+
+    /// BUG-0007: a workspace's ledger is asked by its ids, so a rename keeps answering from it and
+    /// a new ledger under the old name never does.
+    #[test]
+    fn a_workspace_asks_its_ledger_by_identity() {
+        let mut payload = serde_json::json!({"subject": {"type": "user", "id": "alice"}});
+        let workspace = target::Target {
+            endpoint: "http://127.0.0.1:7443".to_owned(),
+            zone: Some("wsz".to_owned()),
+            ledger: Some("ren1".to_owned()),
+            ids: Some(("zone-guid".to_owned(), "ledger-guid".to_owned())),
+            origin: "workspace",
+        };
+        apply_store(&mut payload, &workspace)
+            .map_err(|failure| failure.message)
+            .expect("the store is named");
+        assert_eq!(payload["zone"], "zone-guid");
+        assert_eq!(payload["ledger"], "ledger-guid");
     }
 
     #[test]
@@ -357,6 +386,7 @@ mod tests {
             endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: None,
             ledger: None,
+            ids: None,
             origin: "payload",
         };
 

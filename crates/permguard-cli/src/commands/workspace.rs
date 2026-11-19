@@ -402,8 +402,10 @@ fn expectation_line(expect: &cases::Expectation) -> String {
 /// One workspace operation, dispatched below.
 pub enum WorkspaceOp {
     Init {
-        name: String,
-        languages: Vec<String>,
+        /// The name asked for, when one was.
+        name: Option<String>,
+        /// The languages asked for, when any were.
+        languages: Option<Vec<String>>,
     },
     Remote(RemoteAction),
     Clone {
@@ -683,6 +685,53 @@ pub fn workspace_command(
     match op {
         WorkspaceOp::Init { name, languages } => {
             let adopted = store.exists("manifest.yml") || store.exists("manifest.yaml");
+            // Over a manifest already here, `init` adopts it and reports what is in force: the
+            // manifest's own name and languages. An argument that says otherwise is refused, never
+            // announced as if it had been applied (BUG-0005, DEC-0003).
+            let (name, languages) = if adopted {
+                let manifest = ws.manifest().map_err(usage)?;
+                let mut held: Vec<String> = manifest
+                    .runtimes
+                    .values()
+                    .map(|runtime| runtime.language.name.clone())
+                    .collect();
+                held.sort();
+                held.dedup();
+                let mut contradicted = Vec::new();
+                if let Some(asked) = &name
+                    && *asked != manifest.name
+                {
+                    contradicted.push(format!(
+                        "the name `{asked}` (the manifest names `{}`)",
+                        manifest.name
+                    ));
+                }
+                if let Some(asked) = &languages {
+                    let mut asked = asked.clone();
+                    asked.sort();
+                    asked.dedup();
+                    if asked != held {
+                        contradicted.push(format!(
+                            "the languages {} (the manifest declares {})",
+                            asked.join(", "),
+                            held.join(", ")
+                        ));
+                    }
+                }
+                if !contradicted.is_empty() {
+                    return Err(Failure::usage(format!(
+                        "`init` adopts the manifest already here, and the arguments contradict it \
+                         ({}): edit the manifest, or leave the arguments out",
+                        contradicted.join(" and ")
+                    )));
+                }
+                (manifest.name.clone(), held)
+            } else {
+                (
+                    name.unwrap_or_else(|| "permguard-workspace".to_owned()),
+                    languages.unwrap_or_else(|| vec!["cedar".to_owned()]),
+                )
+            };
             let refs: Vec<&str> = languages.iter().map(String::as_str).collect();
             ws.init(&name, &refs).map_err(usage)?;
             render(
@@ -795,6 +844,7 @@ pub fn workspace_command(
                     updated: pulled.updated,
                     removed: pulled.removed,
                     previous_counter: pulled.previous_counter,
+                    missing_ref: pulled.missing_ref,
                 },
                 format,
                 trace,
@@ -838,6 +888,7 @@ pub fn workspace_command(
                     updated: pulled.updated,
                     removed: pulled.removed,
                     previous_counter: pulled.previous_counter,
+                    missing_ref: pulled.missing_ref,
                 },
                 format,
                 trace,
@@ -860,6 +911,7 @@ pub fn workspace_command(
                     updated: pulled.updated,
                     removed: pulled.removed,
                     previous_counter: pulled.previous_counter,
+                    missing_ref: pulled.missing_ref,
                 },
                 format,
                 trace,
@@ -921,7 +973,7 @@ pub fn workspace_command(
             render(
                 &ApplyReport {
                     changes,
-                    r#ref: "main".to_owned(),
+                    r#ref: applied.r#ref.clone(),
                     counter: applied.counter,
                     head: applied.head,
                     uploaded: applied.uploaded,

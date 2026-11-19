@@ -90,6 +90,12 @@ export default defineConfig({
             { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
             { text: 'Policy Languages', link: '/how-it-works/policy-languages' }
           ]
+        },
+        {
+          text: 'Reference',
+          items: [
+            { text: 'Glossary', link: '/how-it-works/glossary' }
+          ]
         }
       ]
     },

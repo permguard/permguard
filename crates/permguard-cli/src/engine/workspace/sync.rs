@@ -28,6 +28,8 @@ use permguard_client::pull;
 /// What an apply reports.
 #[derive(Debug, Clone)]
 pub struct ApplyOutcome {
+    /// The ref the apply moved: the one this workspace tracks (BUG-0204).
+    pub r#ref: String,
     pub head: String,
     pub counter: u64,
     pub uploaded: usize,
@@ -58,6 +60,9 @@ pub struct PullOutcome {
     /// nothing to do, which the object count alone cannot: a refused pull
     /// leaves its objects in the store, so the retry fetches none.
     pub previous_counter: Option<u64>,
+    /// The ref a checkout bound to when it does not exist yet on a ledger whose default ref has
+    /// a history: the ledger is not empty, the ref is new (BUG-0204).
+    pub missing_ref: Option<String>,
 }
 
 /// The request id of a push: the ledger, the ref and the new head name it. A retry of the same
@@ -104,6 +109,7 @@ impl Workspace<'_> {
             && let Some(checkpoint) = checkpoint.clone()
         {
             return Ok(ApplyOutcome {
+                r#ref: r#ref.clone(),
                 head: checkpoint.head,
                 counter: checkpoint.counter,
                 uploaded: 0,
@@ -242,6 +248,7 @@ impl Workspace<'_> {
         config::write_checkpoint(self.store, &r#ref, &checkpoint).map_err(err)?;
         config::write_head(self.store, &r#ref).map_err(err)?;
         Ok(ApplyOutcome {
+            r#ref,
             head: checkpoint.head,
             counter: checkpoint.counter,
             uploaded,
@@ -336,6 +343,7 @@ impl Workspace<'_> {
             updated: landed.updated(),
             removed: landed.removals,
             previous_counter,
+            missing_ref: None,
         })
     }
 
@@ -462,6 +470,7 @@ impl Workspace<'_> {
                     updated: Vec::new(),
                     removed,
                     previous_counter: None,
+                    missing_ref: self.missing_ref(remote, r#ref)?,
                 });
             }
             let mut outcome = self.pull(remote, false)?;
@@ -473,6 +482,7 @@ impl Workspace<'_> {
         // A ledger with no ref yet is not an error to bind to: the first apply will create it. The
         // binding stays; there is nothing to pull. Asked of the remote, as a switch asks it, rather
         // than read from the wording of a failed pull, which every server words its own way.
+        let missing_ref = self.missing_ref(remote, r#ref)?;
         let empty = || PullOutcome {
             head: String::new(),
             counter: 0,
@@ -481,6 +491,7 @@ impl Workspace<'_> {
             updated: Vec::new(),
             removed: Vec::new(),
             previous_counter: None,
+            missing_ref: missing_ref.clone(),
         };
         if remote.get_ref(r#ref).map_err(err)?.is_none() {
             return Ok(empty());
@@ -495,6 +506,18 @@ impl Workspace<'_> {
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// `r#ref` when it is not the default ref and the default ref has a history: a checkout
+    /// bound to a ref that does not exist yet on a ledger that is not empty (BUG-0204).
+    fn missing_ref(&self, remote: &dyn Remote, r#ref: &str) -> Result<Option<String>> {
+        if r#ref == super::DEFAULT_REF {
+            return Ok(None);
+        }
+        Ok(remote
+            .get_ref(super::DEFAULT_REF)
+            .map_err(err)?
+            .map(|_| r#ref.to_owned()))
     }
 
     /// History: the commit DAG of the current ref, newest first.
@@ -549,10 +572,9 @@ impl Workspace<'_> {
             .map_err(err)?
             .unwrap_or_else(|| super::DEFAULT_REF.to_owned());
         let checkpoint = config::read_checkpoint(self.store, &r#ref).map_err(err)?;
-        let answer = remote
-            .get_ref(&r#ref)
-            .map_err(err)?
-            .ok_or_else(|| err(format!("the remote has no ref `{ref}`", ref = r#ref)))?;
+        let Some(answer) = remote.get_ref(&r#ref).map_err(err)? else {
+            return Err(err(missing_ref_or_ledger(remote, ledger, &r#ref)));
+        };
         let jwks = remote.keyring().map_err(err)?;
         let statement = verify::verify_statement(
             &jwks,
@@ -953,6 +975,34 @@ impl Workspace<'_> {
         }
 
         Ok(plan)
+    }
+}
+
+/// Why a ref read answered nothing: the ref is missing on the ledger this workspace tracks, or the
+/// ledger itself is gone (BUG-0006). A ref read answers "not found" for both, so the ledger is
+/// looked up by the names it was checked out under, and its id, the identity (DEC-0005), says
+/// which: none answers, another ledger answers, or the tracked one does and the ref is missing.
+fn missing_ref_or_ledger(
+    remote: &dyn Remote,
+    ledger: &config::LedgerConfig,
+    r#ref: &str,
+) -> String {
+    let tracked = format!("{}/{}", ledger.zone, ledger.ledger);
+    match remote.resolve(&ledger.zone, &ledger.ledger) {
+        Ok((_, found)) if ledger.ledger_id.is_empty() || found == ledger.ledger_id => {
+            format!("the remote has no ref `{ref}` on `{tracked}`", ref = r#ref)
+        }
+        Ok((_, found)) => format!(
+            "the ledger this workspace tracks (`{tracked}`, id {}) no longer exists on the \
+             remote: `{tracked}` now names another ledger (id {found}). Check out the ledger to \
+             work on",
+            ledger.ledger_id
+        ),
+        Err(answer) => format!(
+            "the ledger this workspace tracks (`{tracked}`, id {}) does not exist on the remote \
+             ({answer}): it was deleted or renamed. Check out the ledger to work on",
+            ledger.ledger_id
+        ),
     }
 }
 

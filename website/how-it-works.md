@@ -9,7 +9,26 @@ description: Authorization leaves the code. Applications and AI agents ask Permg
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
 <script setup>
+import { onBeforeUnmount, onMounted } from 'vue'
 import { withBase } from 'vitepress'
+
+// "Follow one request": the step nearest the middle of the window lights its part of the picture.
+// Without JavaScript, or before it runs, every step and every part stay lit.
+let observer
+onMounted(() => {
+  const root = document.querySelector('.pgx-follow')
+  if (!root || !('IntersectionObserver' in window)) return
+  const steps = [...root.querySelectorAll('.pgx-follow__steps li')]
+  const show = (step) => {
+    root.dataset.step = step.dataset.step
+    for (const li of steps) li.classList.toggle('is-active', li === step)
+  }
+  observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) show(entry.target)
+  }, { rootMargin: '-45% 0px -45% 0px' })
+  for (const li of steps) observer.observe(li)
+})
+onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <main class="pgx-page">
@@ -17,147 +36,157 @@ import { withBase } from 'vitepress'
     <div class="pgx-kicker">How it works</div>
     <h1>Authorization leaves the code.</h1>
     <p>Identity left your applications years ago. Authorization stayed inside them, different in every one. Permguard takes it out, gives it an owner and keeps every decision on record.</p>
-    <div class="pgx-hero-visual" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP through the Permguard SDKs, for Go, Java, .NET, Node.js, Python and Rust, their Policy Enforcement Point; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
-      <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 420" aria-hidden="true" focusable="false">
-        <defs>
-          <linearGradient id="pgx-hv-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="186"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
-        </defs>
-        <g class="pgx-hv__flows">
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H349 V186"/>
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V186"/>
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H799 V186"/>
-          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M170 212 H200"/>
-          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M860 210 H840"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M295 270 V336"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M520 270 V336"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M745 270 V336"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M840 360 H870"/>
-        </g>
-        <g class="pgx-hv__node pgx-hv__node--cp">
-          <rect x="400" y="20" width="240" height="64" rx="14"/>
-          <text class="pgx-hv__k" x="520" y="46" text-anchor="middle">CONTROL PLANE</text>
-          <text class="pgx-hv__s" x="520" y="68" text-anchor="middle">versioned · signed policy</text>
-        </g>
-        <g class="pgx-hv__node">
-          <rect x="20" y="180" width="150" height="64" rx="14"/>
-          <text class="pgx-hv__k" x="95" y="206" text-anchor="middle">IDENTITY</text>
-          <text class="pgx-hv__s" x="95" y="228" text-anchor="middle">Your IdP</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="200" y="150" width="190" height="120" rx="16"/>
-          <text class="pgx-hv__m" x="216" y="172">cluster · eu-west</text>
-          <rect class="pgx-hv__pod" x="216" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="205" text-anchor="middle">orders · app</text>
-          <rect class="pgx-hv__pdp" x="324" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="205" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="216" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="245" text-anchor="middle">planner · agent</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="324" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="245" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="425" y="150" width="190" height="120" rx="16"/>
-          <text class="pgx-hv__m" x="441" y="172">cluster · us-east</text>
-          <rect class="pgx-hv__pod" x="441" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="205" text-anchor="middle">billing · api</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="549" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="205" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="441" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="245" text-anchor="middle">support · agent</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="549" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="245" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="650" y="150" width="190" height="120" rx="16"/>
-          <text class="pgx-hv__m" x="666" y="172">edge</text>
-          <rect class="pgx-hv__pod" x="666" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="205" text-anchor="middle">gateway</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="774" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="205" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="666" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="245" text-anchor="middle">worker · agent</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="774" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="245" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__node pgx-hv__node--sdk">
-          <rect x="860" y="150" width="160" height="120" rx="14"/>
-          <text class="pgx-hv__k" x="940" y="170" text-anchor="middle">PEP · SDKS</text>
-          <g class="pgx-hv__lang"><title>Go</title><rect x="887" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="893" y="184" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Java</title><rect x="927" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="933" y="184" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>.NET</title><rect x="967" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="973" y="184" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Node.js</title><rect x="887" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="893" y="220" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Python</title><rect x="927" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="933" y="220" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Rust</title><rect x="967" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="973" y="220" width="20" height="20"/></g>
-          <text class="pgx-hv__m" x="940" y="261" text-anchor="middle">in every workload</text>
-        </g>
-        <text class="pgx-hv__k" x="200" y="326">EVIDENCE · SIGNED · CHAINED</text>
-        <g class="pgx-hv__chain">
-          <path class="pgx-hv__link" d="M290 360 H310 M400 360 H420 M510 360 H530 M620 360 H640 M730 360 H750"/>
-          <rect class="pgx-hv__block pgx-hv__block--1" x="200" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="245" y="365" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--2" x="310" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="355" y="365" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--3" x="420" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="465" y="365" text-anchor="middle">deny</text>
-          <rect class="pgx-hv__block pgx-hv__block--4" x="530" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="575" y="365" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--5" x="640" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="685" y="365" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--6" x="750" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="795" y="365" text-anchor="middle">deny</text>
-        </g>
-        <g class="pgx-hv__node">
-          <rect x="870" y="328" width="150" height="64" rx="14"/>
-          <text class="pgx-hv__k" x="945" y="354" text-anchor="middle">EXPORT</text>
-          <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM</text>
-        </g>
-      </svg>
-      <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 676" aria-hidden="true" focusable="false">
-        <defs>
-          <linearGradient id="pgx-hv-compact-flow" gradientUnits="userSpaceOnUse" x1="0" y1="74" x2="0" y2="332"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
-        </defs>
-        <g class="pgx-hv__flows">
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 74 V112"/>
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 204 V222"/>
-          <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 314 V332"/>
-          <path class="pgx-hv__flow pgx-hv__flow--identity" d="M180 424 V440"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 516 V534"/>
-          <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 574 V606"/>
-        </g>
-        <g class="pgx-hv__node pgx-hv__node--cp">
-          <rect x="70" y="14" width="220" height="60" rx="14"/>
-          <text class="pgx-hv__k" x="180" y="38" text-anchor="middle">CONTROL PLANE</text>
-          <text class="pgx-hv__s" x="180" y="60" text-anchor="middle">versioned · signed policy</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="16" y="112" width="328" height="92" rx="16"/>
-          <text class="pgx-hv__m" x="32" y="134">cluster · eu-west</text>
-          <rect class="pgx-hv__pod" x="32" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="174" text-anchor="middle">orders</text>
-          <rect class="pgx-hv__pdp" x="134" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="174" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="186" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="174" text-anchor="middle">planner</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="288" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="174" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="16" y="222" width="328" height="92" rx="16"/>
-          <text class="pgx-hv__m" x="32" y="244">cluster · us-east</text>
-          <rect class="pgx-hv__pod" x="32" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="284" text-anchor="middle">billing</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="134" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="284" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="186" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="284" text-anchor="middle">support</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="288" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="284" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__cluster">
-          <rect class="pgx-hv__frame" x="16" y="332" width="328" height="92" rx="16"/>
-          <text class="pgx-hv__m" x="32" y="354">edge</text>
-          <rect class="pgx-hv__pod" x="32" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="394" text-anchor="middle">gateway</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="134" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="394" text-anchor="middle">PDP</text>
-          <rect class="pgx-hv__pod" x="186" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="394" text-anchor="middle">worker</text>
-          <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="288" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="394" text-anchor="middle">PDP</text>
-        </g>
-        <g class="pgx-hv__node pgx-hv__node--sdk">
-          <rect x="16" y="440" width="328" height="76" rx="14"/>
-          <text class="pgx-hv__k" x="180" y="460" text-anchor="middle">PEP · SDKS IN EVERY WORKLOAD</text>
-          <g class="pgx-hv__lang"><title>Go</title><rect x="44" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="50" y="476" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Java</title><rect x="92" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="98" y="476" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>.NET</title><rect x="140" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="146" y="476" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Node.js</title><rect x="188" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="194" y="476" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Python</title><rect x="236" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="242" y="476" width="20" height="20"/></g>
-          <g class="pgx-hv__lang"><title>Rust</title><rect x="284" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="290" y="476" width="20" height="20"/></g>
-        </g>
-        <g class="pgx-hv__chain">
-          <path class="pgx-hv__link" d="M95 554 H109 M173 554 H187 M251 554 H265"/>
-          <rect class="pgx-hv__block pgx-hv__block--1" x="31" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="63" y="559" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--2" x="109" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="141" y="559" text-anchor="middle">permit</text>
-          <rect class="pgx-hv__block pgx-hv__block--3" x="187" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="219" y="559" text-anchor="middle">deny</text>
-          <rect class="pgx-hv__block pgx-hv__block--4" x="265" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="297" y="559" text-anchor="middle">permit</text>
-        </g>
-        <g class="pgx-hv__node">
-          <rect x="90" y="606" width="180" height="56" rx="14"/>
-          <text class="pgx-hv__k" x="180" y="628" text-anchor="middle">EXPORT</text>
-          <text class="pgx-hv__s" x="180" y="650" text-anchor="middle">Your SIEM</text>
-        </g>
-      </svg>
+    <div class="pgx-hero-visual">
+      <div class="pgx-hero-visual__art" role="img" aria-label="The Control Plane distributes signed policy to a Policy Decision Point beside every workload, in three clusters. Applications and AI agents ask their PDP through the Permguard SDKs, for Go, Java, .NET, Node.js, Python and Rust, their Policy Enforcement Point; identities come from your Identity Provider. Every decision becomes a signed, chained record, exported to your SIEM.">
+        <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 420" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="pgx-hv-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="186"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
+          </defs>
+          <g class="pgx-hv__flows">
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H349 V186"/>
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V186"/>
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-wide-flow)" d="M520 84 V120 H799 V186"/>
+            <path class="pgx-hv__flow pgx-hv__flow--identity" d="M170 212 H200"/>
+            <path class="pgx-hv__flow pgx-hv__flow--identity" d="M860 210 H840"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M295 270 V336"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M520 270 V336"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M745 270 V336"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M840 360 H870"/>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--cp">
+            <rect x="400" y="20" width="240" height="64" rx="14"/>
+            <text class="pgx-hv__k" x="520" y="46" text-anchor="middle">CONTROL PLANE</text>
+            <text class="pgx-hv__s" x="520" y="68" text-anchor="middle">versioned · signed policy</text>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--idp">
+            <rect x="20" y="180" width="150" height="64" rx="14"/>
+            <text class="pgx-hv__k" x="95" y="206" text-anchor="middle">IDENTITY</text>
+            <text class="pgx-hv__s" x="95" y="228" text-anchor="middle">Your IdP</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="200" y="150" width="190" height="120" rx="16"/>
+            <text class="pgx-hv__m" x="216" y="172">cluster · eu-west</text>
+            <rect class="pgx-hv__pod" x="216" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="205" text-anchor="middle">orders · app</text>
+            <rect class="pgx-hv__pdp" x="324" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="205" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="216" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="267" y="245" text-anchor="middle">planner · agent</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="324" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="349" y="245" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="425" y="150" width="190" height="120" rx="16"/>
+            <text class="pgx-hv__m" x="441" y="172">cluster · us-east</text>
+            <rect class="pgx-hv__pod" x="441" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="205" text-anchor="middle">billing · api</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="549" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="205" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="441" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="492" y="245" text-anchor="middle">support · agent</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="549" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="574" y="245" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="650" y="150" width="190" height="120" rx="16"/>
+            <text class="pgx-hv__m" x="666" y="172">edge</text>
+            <rect class="pgx-hv__pod" x="666" y="186" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="205" text-anchor="middle">gateway</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="774" y="186" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="205" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="666" y="226" width="102" height="30" rx="8"/><text class="pgx-hv__p" x="717" y="245" text-anchor="middle">worker · agent</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="774" y="226" width="50" height="30" rx="8"/><text class="pgx-hv__d" x="799" y="245" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--sdk">
+            <rect x="860" y="150" width="160" height="120" rx="14"/>
+            <text class="pgx-hv__k" x="940" y="170" text-anchor="middle">PEP · SDKS</text>
+            <g class="pgx-hv__lang"><title>Go</title><rect x="887" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="893" y="184" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Java</title><rect x="927" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="933" y="184" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>.NET</title><rect x="967" y="178" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="973" y="184" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Node.js</title><rect x="887" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="893" y="220" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Python</title><rect x="927" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="933" y="220" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Rust</title><rect x="967" y="214" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="973" y="220" width="20" height="20"/></g>
+            <text class="pgx-hv__m" x="940" y="261" text-anchor="middle">in every workload</text>
+          </g>
+          <text class="pgx-hv__k" x="200" y="326">EVIDENCE · SIGNED · CHAINED</text>
+          <g class="pgx-hv__chain">
+            <path class="pgx-hv__link" d="M290 360 H310 M400 360 H420 M510 360 H530 M620 360 H640 M730 360 H750"/>
+            <rect class="pgx-hv__block pgx-hv__block--1" x="200" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="245" y="365" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--2" x="310" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="355" y="365" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--3" x="420" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="465" y="365" text-anchor="middle">deny</text>
+            <rect class="pgx-hv__block pgx-hv__block--4" x="530" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="575" y="365" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--5" x="640" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="685" y="365" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--6" x="750" y="340" width="90" height="40" rx="8"/><text class="pgx-hv__p" x="795" y="365" text-anchor="middle">deny</text>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--siem">
+            <rect x="870" y="328" width="150" height="64" rx="14"/>
+            <text class="pgx-hv__k" x="945" y="354" text-anchor="middle">EXPORT</text>
+            <text class="pgx-hv__s" x="945" y="376" text-anchor="middle">Your SIEM</text>
+          </g>
+        </svg>
+        <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 676" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="pgx-hv-compact-flow" gradientUnits="userSpaceOnUse" x1="0" y1="74" x2="0" y2="332"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
+          </defs>
+          <g class="pgx-hv__flows">
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 74 V112"/>
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 204 V222"/>
+            <path class="pgx-hv__flow pgx-hv__flow--policy" stroke="url(#pgx-hv-compact-flow)" d="M180 314 V332"/>
+            <path class="pgx-hv__flow pgx-hv__flow--identity" d="M180 424 V440"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 516 V534"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M180 574 V606"/>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--cp">
+            <rect x="70" y="14" width="220" height="60" rx="14"/>
+            <text class="pgx-hv__k" x="180" y="38" text-anchor="middle">CONTROL PLANE</text>
+            <text class="pgx-hv__s" x="180" y="60" text-anchor="middle">versioned · signed policy</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="16" y="112" width="328" height="92" rx="16"/>
+            <text class="pgx-hv__m" x="32" y="134">cluster · eu-west</text>
+            <rect class="pgx-hv__pod" x="32" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="174" text-anchor="middle">orders</text>
+            <rect class="pgx-hv__pdp" x="134" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="174" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="186" y="152" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="174" text-anchor="middle">planner</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--2" x="288" y="152" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="174" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="16" y="222" width="328" height="92" rx="16"/>
+            <text class="pgx-hv__m" x="32" y="244">cluster · us-east</text>
+            <rect class="pgx-hv__pod" x="32" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="284" text-anchor="middle">billing</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--3" x="134" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="284" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="186" y="262" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="284" text-anchor="middle">support</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--4" x="288" y="262" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="284" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__cluster">
+            <rect class="pgx-hv__frame" x="16" y="332" width="328" height="92" rx="16"/>
+            <text class="pgx-hv__m" x="32" y="354">edge</text>
+            <rect class="pgx-hv__pod" x="32" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="80" y="394" text-anchor="middle">gateway</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--5" x="134" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="154" y="394" text-anchor="middle">PDP</text>
+            <rect class="pgx-hv__pod" x="186" y="372" width="96" height="34" rx="8"/><text class="pgx-hv__p" x="234" y="394" text-anchor="middle">worker</text>
+            <rect class="pgx-hv__pdp pgx-hv__pdp--6" x="288" y="372" width="40" height="34" rx="8"/><text class="pgx-hv__d" x="308" y="394" text-anchor="middle">PDP</text>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--sdk">
+            <rect x="16" y="440" width="328" height="76" rx="14"/>
+            <text class="pgx-hv__k" x="180" y="460" text-anchor="middle">PEP · SDKS IN EVERY WORKLOAD</text>
+            <g class="pgx-hv__lang"><title>Go</title><rect x="44" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/go.svg')" x="50" y="476" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Java</title><rect x="92" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/java.svg')" x="98" y="476" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>.NET</title><rect x="140" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/dotnet.svg')" x="146" y="476" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Node.js</title><rect x="188" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/nodejs.svg')" x="194" y="476" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Python</title><rect x="236" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/python.svg')" x="242" y="476" width="20" height="20"/></g>
+            <g class="pgx-hv__lang"><title>Rust</title><rect x="284" y="470" width="32" height="32" rx="7"/><image :href="withBase('/permguard/languages/rust.svg')" x="290" y="476" width="20" height="20"/></g>
+          </g>
+          <g class="pgx-hv__chain">
+            <path class="pgx-hv__link" d="M95 554 H109 M173 554 H187 M251 554 H265"/>
+            <rect class="pgx-hv__block pgx-hv__block--1" x="31" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="63" y="559" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--2" x="109" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="141" y="559" text-anchor="middle">permit</text>
+            <rect class="pgx-hv__block pgx-hv__block--3" x="187" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="219" y="559" text-anchor="middle">deny</text>
+            <rect class="pgx-hv__block pgx-hv__block--4" x="265" y="534" width="64" height="40" rx="8"/><text class="pgx-hv__p" x="297" y="559" text-anchor="middle">permit</text>
+          </g>
+          <g class="pgx-hv__node pgx-hv__node--siem">
+            <rect x="90" y="606" width="180" height="56" rx="14"/>
+            <text class="pgx-hv__k" x="180" y="628" text-anchor="middle">EXPORT</text>
+            <text class="pgx-hv__s" x="180" y="650" text-anchor="middle">Your SIEM</text>
+          </g>
+        </svg>
+      </div>
+      <dl class="pgx-legend">
+        <div data-term="cp"><dt><a :href="withBase('/how-it-works/glossary#control-plane')">Control Plane</a></dt><dd>Where policies are written, versioned and signed.</dd></div>
+        <div data-term="pdp"><dt><a :href="withBase('/how-it-works/glossary#pdp')">PDP</a></dt><dd>Policy Decision Point: answers permit or deny, beside each workload.</dd></div>
+        <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>Policy Enforcement Point: the line in your code that asks, and obeys.</dd></div>
+        <div data-term="idp"><dt><a :href="withBase('/how-it-works/glossary#identity-provider')">Your IdP</a></dt><dd>Says who the user is. Permguard decides what they may do.</dd></div>
+        <div data-term="evidence"><dt><a :href="withBase('/how-it-works/glossary#evidence')">Evidence</a></dt><dd>A signed record of every decision, chained to the one before.</dd></div>
+        <div data-term="siem"><dt><a :href="withBase('/how-it-works/glossary#siem')">Your SIEM</a></dt><dd>Where you analyse those records, beside your other security logs.</dd></div>
+      </dl>
     </div>
   </section>
 
@@ -168,16 +197,153 @@ import { withBase } from 'vitepress'
       <article><span>Later</span><h3>Identity left the application.</h3><p>An Identity Provider and standard protocols. Identity got an owner, a console and an audit.</p></article>
       <article><span>Today</span><h3>Authorization is still in the code.</h3><p>An <code>if</code> here, a role table there, and nobody holds the map. AI agents now act inside applications at machine speed: every forgotten rule is an open door.</p></article>
     </div>
+    <div class="vp-doc pgx-compare">
+      <div class="pgx-compare__col"><p class="pgx-compare__label"><b>Today</b>The rule is an <code>if</code>, copied into every handler that needs it.</p>
+
+```go
+func readBudget(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	if user.Role != "finance" && user.ID != "alice" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	serveBudget(w)
+}
+```
+
+</div>
+      <div class="pgx-compare__col pgx-compare__col--after"><p class="pgx-compare__label"><b>With Permguard</b>The code asks. The rule lives in a policy, out of the code.</p>
+
+```go
+func readBudget(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	answer, err := pdp.Evaluate(r.Context(), &permguard.EvaluateRequest{
+		Zone:     "quickstart",
+		Ledger:   "policies",
+		Subject:  &permguard.Entity{Type: "User", ID: user.ID},
+		Action:   &permguard.Action{Name: "read"},
+		Resource: &permguard.Entity{Type: "Document", ID: "budget"},
+	})
+	if err != nil || !answer.Decision { // no answer is a no: fail closed
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	serveBudget(w)
+}
+```
+
+</div>
+    </div>
   </section>
 
   <section class="pgx-section">
     <div class="pgx-section-head"><div><div class="pgx-kicker">The same turn</div><h2>Ask. Decide. Enforce.</h2></div><p>Every application and every AI agent asks Permguard the same question.</p></div>
     <div class="pgx-discovery pgx-discovery--decision" role="img" aria-label="An application or AI agent asks whether a subject may perform an action on a resource, the Policy Decision Point evaluates the published policy, and the application enforces the answer, which names the policy that decided it.">
-      <article><small>PEP · ASK</small><strong>May this subject do this action, on this resource?</strong><span>application · AI agent · API</span></article><i>→</i>
+      <article><small>PEP · ASK</small><strong>May alice read the budget?</strong><span>subject · action · resource</span></article><i>→</i>
       <article class="pgx-discovery__accent"><small>PDP · DECIDE</small><strong>Evaluate the published policy</strong><span>Permguard Data Plane</span></article><i>→</i>
       <article><small>PEP · ENFORCE</small><strong>Apply the answer</strong><span>permit or deny, naming its policy</span></article>
     </div>
     <p>The <strong>Policy Enforcement Point</strong> guards an action: it asks and it enforces. The <strong>Policy Decision Point</strong> decides, with the exact policy version it names in the answer.</p>
+    <div class="pgx-parc">
+      <article><small>SUBJECT</small><strong>Who</strong><span><code>User alice</code>, as your IdP knows her</span></article>
+      <article><small>ACTION</small><strong>Does what</strong><span><code>read</code></span></article>
+      <article><small>RESOURCE</small><strong>On what</strong><span><code>Document budget</code></span></article>
+      <article><small>CONTEXT</small><strong>Under which facts</strong><span>time, network, risk: anything the policy reads</span></article>
+    </div>
+    <div class="vp-doc pgx-anatomy">
+      <div class="pgx-anatomy__row"><div class="pgx-anatomy__label"><b>1 · The question</b><span>Your code sends who, does what, on what, in which zone and ledger.</span></div>
+
+```json
+{
+  "zone": "quickstart",
+  "ledger": "policies",
+  "subject": { "type": "User", "id": "alice" },
+  "action": { "name": "read" },
+  "resource": { "type": "Document", "id": "budget" },
+  "context": {}
+}
+```
+
+</div>
+      <div class="pgx-anatomy__row"><div class="pgx-anatomy__label"><b>2 · The rule</b><span>A Cedar policy in that ledger. It permits exactly this; whatever no policy permits is denied.</span></div>
+
+```txt
+@alias("alice-can-read")
+permit (
+    principal == User::"alice",
+    action == Action::"read",
+    resource == Document::"budget"
+);
+```
+
+</div>
+      <div class="pgx-anatomy__row"><div class="pgx-anatomy__label"><b>3 · The answer</b><span>Permit, the policy that decided and the id of this decision, already on record. Ask for <code>bob</code> and <code>decision</code> is <code>false</code>: “no policy permits this request”.</span></div>
+
+```json
+{
+  "decision": true,
+  "request_id": "quickstart-1",
+  "context": {
+    "id": "01a1f111-df65-77cf-b171-3facea0cbc27",
+    "reason_admin": {
+      "code": "200",
+      "message": "permitted by 92efe24a-8620-8bcd-b026-a19c1f440c45"
+    },
+    "policies": ["92efe24a-8620-8bcd-b026-a19c1f440c45"],
+    "evidence": { "mode": "required", "status": "durable" }
+  }
+}
+```
+
+</div>
+    </div>
+    <p class="pgx-anatomy__note">A real answer of the Data Plane, abridged: the full one also carries a message meant for the user and the position of the record. Run it yourself in <a :href="withBase('/how-it-works/getting-started')">Getting Started</a>.</p>
+  </section>
+
+  <section class="pgx-section">
+    <div class="pgx-section-head"><div><div class="pgx-kicker">An analogy</div><h2>Think of an office building.</h2></div><p>Six things you already know, and what each one is in Permguard.</p></div>
+    <div class="pgx-analogy" role="table" aria-label="An office building compared with Permguard">
+      <div class="pgx-analogy__head" role="row"><span role="columnheader">In the building</span><span role="columnheader">What it does</span><span role="columnheader">In Permguard</span></div>
+      <div role="row"><strong role="cell">Your badge</strong><span role="cell">Says who you are.</span><a role="cell" :href="withBase('/how-it-works/glossary#identity-provider')">Your Identity Provider</a></div>
+      <div role="row"><strong role="cell">The door reader</strong><span role="cell">Asks before the door opens, and keeps it shut on a no.</span><a role="cell" :href="withBase('/how-it-works/glossary#pep')">PEP: the SDK in your code</a></div>
+      <div role="row"><strong role="cell">The security desk</strong><span role="cell">Checks the rulebook and answers yes or no.</span><a role="cell" :href="withBase('/how-it-works/glossary#pdp')">PDP: the Data Plane</a></div>
+      <div role="row"><strong role="cell">The rulebook</strong><span role="cell">Who may enter where, and when.</span><a role="cell" :href="withBase('/how-it-works/glossary#policy')">A policy</a></div>
+      <div role="row"><strong role="cell">Head office</strong><span role="cell">Writes the rulebook and sends signed copies to every desk.</span><a role="cell" :href="withBase('/how-it-works/glossary#control-plane')">The Control Plane</a></div>
+      <div role="row"><strong role="cell">The access log</strong><span role="cell">Every yes and every no, in a log nobody can rewrite.</span><a role="cell" :href="withBase('/how-it-works/glossary#evidence')">Evidence</a></div>
+    </div>
+  </section>
+
+  <section class="pgx-section pgx-section--tint">
+    <div class="pgx-section-head"><div><div class="pgx-kicker">Step by step</div><h2>Follow one request.</h2></div><p>Scroll: the picture follows alice's request from her click to the record.</p></div>
+    <div class="pgx-follow">
+      <div class="pgx-follow__stage" role="img" aria-label="alice uses an application; its Policy Enforcement Point asks the Data Plane, the PDP, which decides with a policy mirrored from the Control Plane, answers, and records the decision as evidence exported to the SIEM.">
+        <svg class="pgx-hv pgx-follow__art" viewBox="0 0 560 300" aria-hidden="true" focusable="false">
+          <g class="pgx-hv__flows">
+            <path class="f f-click pgx-hv__flow pgx-hv__flow--identity" d="M120 150 H150"/>
+            <path class="f f-ask pgx-hv__flow pgx-hv__flow--evidence" d="M304 156 H380"/>
+            <path class="f f-answer pgx-hv__flow pgx-hv__flow--evidence" d="M380 178 H304"/>
+            <path class="f f-mirror pgx-hv__flow pgx-hv__flow--identity" d="M460 64 V110"/>
+            <path class="f f-record pgx-hv__flow pgx-hv__flow--evidence" d="M430 194 V214 H330 V236"/>
+            <path class="f f-export pgx-hv__flow pgx-hv__flow--evidence" d="M400 260 H430"/>
+          </g>
+          <g class="f f-user pgx-hv__node"><rect x="10" y="120" width="110" height="60" rx="14"/><text class="pgx-hv__k" x="65" y="144" text-anchor="middle">USER</text><text class="pgx-hv__s" x="65" y="166" text-anchor="middle">alice</text></g>
+          <g class="f f-app pgx-hv__node"><rect x="150" y="100" width="170" height="100" rx="14"/><text class="pgx-hv__k" x="235" y="126" text-anchor="middle">APPLICATION</text></g>
+          <g class="f f-pep pgx-hv__node pgx-hv__node--pep"><rect x="166" y="144" width="138" height="42" rx="10"/><text class="pgx-hv__d" x="235" y="170" text-anchor="middle">PEP · SDK</text></g>
+          <g class="f f-cp pgx-hv__node pgx-hv__node--cp"><rect x="380" y="10" width="160" height="54" rx="14"/><text class="pgx-hv__k" x="460" y="32" text-anchor="middle">CONTROL PLANE</text><text class="pgx-hv__s" x="460" y="52" text-anchor="middle">signed policy</text></g>
+          <g class="f f-pdp pgx-hv__node"><rect x="380" y="110" width="160" height="84" rx="14"/><text class="pgx-hv__k" x="460" y="136" text-anchor="middle">DATA PLANE</text><text class="pgx-hv__s" x="460" y="158" text-anchor="middle">PDP</text><text class="pgx-hv__m" x="460" y="178" text-anchor="middle">policy already here</text></g>
+          <g class="f f-ev pgx-hv__node"><rect x="150" y="236" width="250" height="52" rx="14"/><text class="pgx-hv__k" x="275" y="258" text-anchor="middle">EVIDENCE</text><text class="pgx-hv__m" x="275" y="277" text-anchor="middle">signed · chained</text></g>
+          <g class="f f-siem pgx-hv__node"><rect x="430" y="236" width="110" height="52" rx="14"/><text class="pgx-hv__k" x="485" y="258" text-anchor="middle">EXPORT</text><text class="pgx-hv__s" x="485" y="278" text-anchor="middle">SIEM</text></g>
+        </svg>
+      </div>
+      <ol class="pgx-follow__steps">
+        <li data-step="1"><b>01</b><h3>alice opens the budget.</h3><p>A handler in your application is about to serve the document. Before it does, the Permguard SDK, your Policy Enforcement Point, stops and asks.</p></li>
+        <li data-step="2"><b>02</b><h3>The PEP asks its PDP.</h3><p>Subject <code>alice</code>, action <code>read</code>, resource <code>budget</code>. The PDP is the Data Plane: a sidecar beside the application, a remote service, or a library inside the process.</p></li>
+        <li data-step="3"><b>03</b><h3>The PDP decides with the policy it already holds.</h3><p>The Control Plane published the policy as a signed version, and the Data Plane mirrored and verified it before this request. Deciding needs no call to the Control Plane.</p></li>
+        <li data-step="4"><b>04</b><h3>The answer comes back.</h3><p>Permit, naming the policy that decided and the id of this decision. No policy that permits means deny; no answer at all, the PEP treats as a no.</p></li>
+        <li data-step="5"><b>05</b><h3>The PEP enforces.</h3><p>The handler serves the budget to alice. For bob, the same line returns 403.</p></li>
+        <li data-step="6"><b>06</b><h3>The decision is on record.</h3><p>The Data Plane records it, signed and chained to the ones before, so nobody can alter it unnoticed. Export the records to your SIEM.</p></li>
+      </ol>
+    </div>
   </section>
 
   <section class="pgx-section pgx-section--tint">
@@ -246,6 +412,20 @@ import { withBase } from 'vitepress'
     </div>
   </section>
 
+  <section class="pgx-section" id="faq">
+    <div class="pgx-section-head"><div><div class="pgx-kicker">Questions</div><h2>What people ask first.</h2></div><p>Straight answers before you start.</p></div>
+    <div class="pgx-faq">
+      <details><summary>Does every check go over the network?</summary><p>Only as far as the PDP you choose. As a sidecar it is a local call beside your application; embedded, it is a function call in the process. The PDP never calls the Control Plane to decide: the policy is already there.</p></details>
+      <details><summary>What happens if the Control Plane is down?</summary><p>The Data Plane keeps deciding with the policy it already mirrored and verified. Only new versions wait until the Control Plane is back.</p></details>
+      <details><summary>What happens if the PDP does not answer?</summary><p>The SDK returns an error, not a deny: a deny is a normal answer with <code>decision</code> false. Treat an error as a no, as the code above does: fail closed.</p></details>
+      <details><summary>Does Permguard replace my Identity Provider?</summary><p>No. Your IdP says who the user is; your code passes that subject to Permguard, which decides what it may do. The Authority Plane only issues the tokens that callers of Permguard itself present.</p></details>
+      <details><summary>Which language are policies written in?</summary><p>Cedar or Rego, side by side in the same ledger. Dogwood, for decisions that depend on history, is experimental. See <a :href="withBase('/how-it-works/policy-languages')">Policy Languages</a>.</p></details>
+      <details><summary>Can I test a policy without a server?</summary><p>Yes: <code>permguard test</code> runs the same engine and decision algebra as the Data Plane, offline. See <a :href="withBase('/how-it-works/getting-started')">Getting Started</a>.</p></details>
+      <details><summary>Can anyone call my PDP?</summary><p>Only in development, where the configuration grants it publicly. In production every caller presents an access token of the Authority Plane, and each plane checks it itself. See <a :href="withBase('/how-it-works/access-tokens')">Access Tokens</a>.</p></details>
+      <details><summary>When do I not need it?</summary><p>A single application with a few fixed roles can live with its own checks for a while. Permguard pays off when several applications or agents must follow the same rules, when rules change without a redeploy, or when you must show who was allowed what, and why.</p></details>
+    </div>
+  </section>
+
   <section class="pgx-section">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Start</div><h2>See it working.</h2></div><p>The tools first. A real server next.</p></div>
     <div class="pgx-cards pgx-cards--3">
@@ -267,7 +447,9 @@ import { withBase } from 'vitepress'
       <a :href="withBase('/how-it-works/decision-lifecycle')"><strong>Decision Lifecycle</strong><span>request → evaluation → answer</span></a>
       <a :href="withBase('/how-it-works/evidence')"><strong>Evidence &amp; Verification</strong><span>record → chain → proof</span></a>
       <a :href="withBase('/how-it-works/temporal-authorization')"><strong>Temporal Authorization</strong><span>history becomes policy input</span></a>
-      <a :href="withBase('/how-it-works/policy-languages')"><strong>Policy Languages</strong><span>Cedar · Rego · Dogwood</span></a>    </div>
+      <a :href="withBase('/how-it-works/policy-languages')"><strong>Policy Languages</strong><span>Cedar · Rego · Dogwood</span></a>
+      <a :href="withBase('/trust-plane')"><strong>Trust Plane</strong><span>authority continuity · in development</span></a>
+      <a :href="withBase('/how-it-works/glossary')"><strong>Glossary</strong><span>every term, in one line</span></a>    </div>
     <nav class="pgx-pager pgx-pager--next-only" aria-label="Documentation pages">
       <a class="pgx-pager__next" :href="withBase('/how-it-works/install')"><span>Next</span><strong>Install <b aria-hidden="true">→</b></strong></a>
     </nav>

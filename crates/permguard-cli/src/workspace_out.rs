@@ -151,12 +151,25 @@ pub struct PullReport {
     /// already carries where the workspace landed.
     #[serde(skip)]
     pub previous_counter: Option<u64>,
+    /// The ref a checkout bound to that does not exist yet, on a ledger that has a history.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub missing_ref: Option<String>,
 }
 
 impl Report for PullReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         if let Some(reference) = &self.reference {
             writeln!(out, "{} {}", style::dim("From"), reference)?;
+        }
+        if self.counter == 0
+            && let Some(missing) = &self.missing_ref
+        {
+            return writeln!(
+                out,
+                "{} The ref `{missing}` does not exist on this ledger yet, and the ledger has a \
+                 history on other refs: the first `apply` creates `{missing}` from this workspace.",
+                style::bold("Bound.")
+            );
         }
         if self.counter == 0 {
             return writeln!(
@@ -1089,6 +1102,7 @@ mod tests {
             updated: vec![],
             removed: vec![],
             previous_counter: Some(2),
+            missing_ref: None,
         };
         assert!(terminal(&base).contains("Pull complete."));
 
@@ -1112,8 +1126,20 @@ mod tests {
             updated: vec![],
             removed: vec![],
             previous_counter: None,
+            missing_ref: None,
         };
         assert!(terminal(&empty).contains("Bound."), "an empty ledger binds");
+        assert!(terminal(&empty).contains("The ledger is empty"));
+
+        // BUG-0204: a ref that does not exist yet, on a ledger with a history, is not an empty
+        // ledger.
+        let new_ref = PullReport {
+            missing_ref: Some("dev".to_owned()),
+            ..empty
+        };
+        let text = terminal(&new_ref);
+        assert!(text.contains("`dev` does not exist"), "{text}");
+        assert!(!text.contains("The ledger is empty"), "{text}");
     }
 
     #[test]
@@ -1132,6 +1158,7 @@ mod tests {
             updated: vec![],
             removed: vec![],
             previous_counter: Some(7),
+            missing_ref: None,
         };
         let text = terminal(&resolved);
         assert!(

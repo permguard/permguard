@@ -25,6 +25,12 @@ is cut.
   A configuration that starts today with such a grant under `production` no longer starts: move the callers to a token, or state `assurance.profile: development` on a developer's machine.
   A public grant that stands is published in the assurance block as the relaxation `authz.public`, and `authz.public_write` when it names a write; its start line is now a warning.
 
+- **A workspace `check` asks its ledger by identity.**
+  Inside a checkout, `check` sends the tracked zone and ledger ids, so a renamed ledger keeps answering and a new ledger under the old name never does.
+- **`init` over an existing manifest reports the manifest in force**, its own name and languages, and refuses a name or `--language` that contradicts it, exit 64; it no longer announces arguments it did not apply.
+- **`apply` reports the ref it moved**, `dev` on a workspace tracking `@dev`, where it always said `main`; a checkout of a ref the ledger does not hold yet says so instead of calling the ledger empty.
+- **`verify` tells a ledger that is gone from a ref that is missing**: a deleted ledger, or another one recreated under its names, is named as such, where it said the ref was missing.
+
 - **`pull`, `plan` and `status` compare the whole snapshot three ways: base, local and incoming.**
   The manifest, schemas and artifacts are merged like policies: a manifest unchanged here since the checkpoint takes the remote's change on `pull`, so the next `apply` no longer reverts it; changed on both sides, `pull` refuses and names it.
   A policy or artifact deleted here is a pending deletion `pull` keeps, instead of writing it back; deleted here and changed on the remote is a conflict that writes nothing.

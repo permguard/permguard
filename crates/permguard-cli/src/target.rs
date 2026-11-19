@@ -56,6 +56,10 @@ pub struct Target {
     pub zone: Option<String>,
     /// The ledger to act on, when anything named one.
     pub ledger: Option<String>,
+    /// The ids of the zone and ledger a workspace tracks, when the store came from it: the
+    /// ledger's identity, which a rename does not change and a new ledger under the old name does
+    /// not take (BUG-0007, DEC-0005).
+    pub ids: Option<(String, String)>,
     /// Where the store came from, for `-v` and for a report that has to
     /// explain itself: `flag`, `workspace`, or `payload`.
     pub origin: &'static str,
@@ -91,6 +95,7 @@ pub fn resolve(
             endpoint,
             zone: Some(zone.clone()),
             ledger: Some(ledger.clone()),
+            ids: None,
             origin: "flag",
         });
     }
@@ -107,6 +112,7 @@ pub fn resolve(
             endpoint,
             zone: None,
             ledger: None,
+            ids: None,
             origin: "payload",
         });
     }
@@ -122,10 +128,13 @@ pub fn resolve(
             tracked.zone, tracked.ledger
         ));
 
+        let ids = (!tracked.zone_id.is_empty() && !tracked.ledger_id.is_empty())
+            .then(|| (tracked.zone_id.clone(), tracked.ledger_id.clone()));
         return Ok(Target {
             endpoint,
             zone: Some(tracked.zone),
             ledger: Some(tracked.ledger),
+            ids,
             origin: "workspace",
         });
     }
@@ -136,6 +145,7 @@ pub fn resolve(
         endpoint,
         zone: None,
         ledger: None,
+        ids: None,
         origin: "payload",
     })
 }

@@ -310,17 +310,14 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Discover { url, timeout } => {
             commands::discover::discover_command(&globals, &url, timeout, &trace)
         }
-        Command::Init { name, language } => {
-            let languages: Vec<&str> = language.iter().map(String::as_str).collect();
-            workspace_command(
-                &globals,
-                WorkspaceOp::Init {
-                    name,
-                    languages: languages.iter().map(|s| s.to_string()).collect(),
-                },
-                &trace,
-            )
-        }
+        Command::Init { name, language } => workspace_command(
+            &globals,
+            WorkspaceOp::Init {
+                name,
+                languages: language,
+            },
+            &trace,
+        ),
         Command::Remote { action } => {
             workspace_command(&globals, WorkspaceOp::Remote(action), &trace)
         }

@@ -53,6 +53,7 @@ Every language must provide:
 
 One profile may combine partitions. A deny still wins across the whole profile.
 
-<nav class="pgx-pager pgx-pager--previous-only" aria-label="Documentation pages">
+<nav class="pgx-pager" aria-label="Documentation pages">
   <a class="pgx-pager__previous" href="./temporal-authorization"><span>Previous</span><strong><b aria-hidden="true">←</b> Temporal Authorization</strong></a>
+  <a class="pgx-pager__next" href="./glossary"><span>Next</span><strong>Glossary <b aria-hidden="true">→</b></strong></a>
 </nav>

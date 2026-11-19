@@ -220,7 +220,7 @@ fn init_validate_plan_and_status_work_offline() {
 fn a_file_the_workspace_does_not_know_is_refused_until_it_is_moved_removed_or_ignored() {
     let dir = scratch("dirt");
     write_sources(&dir);
-    run(&dir, &["init", "dirt"]);
+    run(&dir, &["init"]);
     let ignores = std::fs::read_to_string(dir.join(".permguardignore")).expect("init wrote it");
     assert!(ignores.contains("tests/"), "{ignores}");
 
@@ -804,7 +804,7 @@ fn help_for_something_that_is_not_a_command_is_a_usage_error() {
 fn test_runs_the_cases_of_a_workspace_offline() {
     let dir = scratch("test-cases");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
 
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::write(
@@ -878,7 +878,7 @@ fn test_runs_the_cases_of_a_workspace_offline() {
 fn test_answers_in_every_format_and_says_when_there_is_nothing_to_run() {
     let dir = scratch("test-formats");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
 
     let output = run(&dir, &["test"]);
     assert_eq!(output.status.code(), Some(64), "no cases is a usage error");
@@ -919,7 +919,7 @@ fn test_answers_in_every_format_and_says_when_there_is_nothing_to_run() {
 fn a_name_filter_that_matches_nothing_names_the_filter_not_a_missing_folder() {
     let dir = scratch("test-name-filter");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     write_one_case(&dir);
 
     let output = run(&dir, &["test", "--name", "zzz-nonexistent"]);
@@ -946,7 +946,7 @@ fn a_name_filter_that_matches_nothing_names_the_filter_not_a_missing_folder() {
 fn a_file_that_does_not_read_as_cases_is_reported_and_the_others_still_run() {
     let dir = scratch("test-broken-file");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     write_one_case(&dir);
     std::fs::write(dir.join("tests/broken.yml"), "invalid: yaml: [[[\n").expect("the broken file");
 
@@ -1015,7 +1015,7 @@ fn write_one_case(dir: &Path) {
 fn a_value_that_cannot_mean_anything_is_refused_before_any_network() {
     let dir = scratch("refused-values");
     write_sources(&dir);
-    run(&dir, &["init", "refused"]);
+    run(&dir, &["init"]);
     std::fs::write(dir.join("request.json"), "{}").expect("the request is written");
 
     let scope = [
@@ -1235,7 +1235,7 @@ fn every_path_a_flag_names_is_read_from_the_working_directory() {
 fn test_refuses_a_request_the_data_plane_would_refuse() {
     let dir = scratch("test-malformed");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
 
@@ -1304,7 +1304,7 @@ fn test_refuses_a_request_the_data_plane_would_refuse() {
 fn test_refuses_a_payload_the_data_plane_would_not_read() {
     let dir = scratch("test-types");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
 
@@ -1411,7 +1411,7 @@ fn test_refuses_a_payload_the_data_plane_would_not_read() {
 fn test_reports_an_unknown_profile_the_way_a_plane_reports_it() {
     let dir = scratch("test-profile");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
     std::fs::write(
@@ -1457,7 +1457,7 @@ fn test_reports_an_unknown_profile_the_way_a_plane_reports_it() {
 fn test_names_the_policies_of_every_evaluation_in_a_batch() {
     let dir = scratch("test-batch-policies");
     write_sources(&dir);
-    run(&dir, &["init", "batch"]);
+    run(&dir, &["init"]);
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
     std::fs::write(
@@ -2493,7 +2493,7 @@ fn host_identity_pins_are_canonical_private_idempotent_and_conflict_safe() {
 fn an_ambiguous_request_is_refused_by_check_and_test() {
     let dir = scratch("ambiguous-request");
     write_sources(&dir);
-    run(&dir, &["init", "cases"]);
+    run(&dir, &["init"]);
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
     let repeated = r#"{"subject":{"type":"u","id":"a","properties":{"role":"x","role":"admin"}},
@@ -2630,4 +2630,58 @@ fn a_policy_is_never_hidden_in_silence() {
         said.contains("partition `app`") && said.contains("`/app/`"),
         "{said}"
     );
+}
+
+/// BUG-0005: over a manifest already here, `init` reports the manifest in force, and refuses an
+/// argument that contradicts it; in an empty directory it reports what it wrote.
+#[test]
+fn init_reports_the_manifest_in_force_and_refuses_what_contradicts_it() {
+    let dir = scratch("init-adopts");
+    write_sources(&dir);
+    let adopted = run(&dir, &["-o", "json", "init"]);
+    assert!(adopted.status.success(), "{}", stderr(&adopted));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&adopted)).expect("JSON");
+    assert_eq!(report["name"], "cli-test", "{report}");
+    assert_eq!(
+        report["languages"],
+        serde_json::json!(["cedar"]),
+        "{report}"
+    );
+    assert_eq!(report["adopted_manifest"], true, "{report}");
+
+    for args in [
+        vec!["init", "other-name"],
+        vec!["init", "--language", "rego"],
+        vec!["init", "cli-test", "--language", "cedar,rego"],
+    ] {
+        let refused = run(&dir, &args);
+        assert_eq!(
+            refused.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&refused)
+        );
+        assert!(
+            stderr(&refused).contains("contradict"),
+            "{}",
+            stderr(&refused)
+        );
+    }
+    // The manifest's own values are not a contradiction.
+    let agreeing = scratch("init-agrees");
+    write_sources(&agreeing);
+    let agreed = run(&agreeing, &["init", "cli-test", "--language", "cedar"]);
+    assert!(agreed.status.success(), "{}", stderr(&agreed));
+
+    let fresh = scratch("init-fresh");
+    let wrote = run(&fresh, &["-o", "json", "init"]);
+    assert!(wrote.status.success(), "{}", stderr(&wrote));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&wrote)).expect("JSON");
+    assert_eq!(report["name"], "permguard-workspace", "{report}");
+    assert_eq!(
+        report["languages"],
+        serde_json::json!(["cedar"]),
+        "{report}"
+    );
+    assert_eq!(report["adopted_manifest"], false, "{report}");
 }

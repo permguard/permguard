@@ -1688,3 +1688,61 @@ fn the_manifest_is_pending_before_the_first_head_and_an_empty_folder_is_nothing(
         .unwrap();
     assert!(ws_b.plan().unwrap().1.is_empty(), "a clone plans nothing");
 }
+
+/// BUG-0204: a checkout of a ref the ledger does not hold yet says so, not that the ledger is
+/// empty, and an apply from it reports the ref it moved.
+#[test]
+fn a_new_ref_is_not_an_empty_ledger_and_apply_reports_the_ref_it_moved() {
+    let remote = EngineRemote::new("new-ref");
+    let store_a = FsStore::new(scratch("new-ref-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    let applied = ws_a.apply(&remote, "a@acme.com", "base").unwrap();
+    assert_eq!((applied.r#ref.as_str(), applied.counter), ("main", 1));
+
+    let store_b = FsStore::new(scratch("new-ref-b"));
+    let ws_b = bind(&store_b);
+    let bound = ws_b
+        .checkout(&remote, "origin", "delivery", "main-ledger", "dev")
+        .unwrap();
+    assert_eq!(bound.counter, 0);
+    assert_eq!(bound.missing_ref.as_deref(), Some("dev"));
+    store_b
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let applied = ws_b.apply(&remote, "b@acme.com", "dev").unwrap();
+    assert_eq!(applied.r#ref, "dev");
+}
+
+/// BUG-0006: `verify` tells a ledger that is gone from a ref that is missing. A ledger recreated
+/// under the tracked names is another ledger, and says so; the tracked ledger without the ref says
+/// the ref is missing.
+#[test]
+fn verify_tells_a_ledger_that_is_gone_from_a_missing_ref() {
+    let remote = EngineRemote::new("verify-gone");
+    let store = FsStore::new(scratch("verify-gone"));
+    let ws = bind(&store);
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let _ = ws.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(ws.apply(&remote, "a@acme.com", "base").unwrap().counter, 1);
+    ws.verify(&remote).unwrap();
+
+    // The ledger deleted, and a new one created under the same names: another id.
+    let recreated = EngineRemote::for_ledger("verify-recreated", "ledger-recreated-guid");
+    let refused = ws.verify(&recreated).unwrap_err().to_string();
+    assert!(
+        refused.contains("no longer exists") && refused.contains("ledger-recreated-guid"),
+        "{refused}"
+    );
+
+    // The tracked ledger itself, without the ref: the ref is what is missing.
+    let unpushed = EngineRemote::new("verify-unpushed");
+    let refused = ws.verify(&unpushed).unwrap_err().to_string();
+    assert!(refused.contains("has no ref `main`"), "{refused}");
+}

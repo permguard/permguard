@@ -440,12 +440,13 @@ pub enum Command {
         after_help = "Examples:\n  permguard init\n  permguard init release-pipeline --language cedar,rego"
     )]
     Init {
-        /// The workspace name, written into the manifest.
-        #[arg(default_value = "permguard-workspace")]
-        name: String,
-        /// The languages to author in (comma-separated). Cedar by default.
-        #[arg(long, value_delimiter = ',', default_value = "cedar")]
-        language: Vec<String>,
+        /// The workspace name, written into the manifest: `permguard-workspace` when left out.
+        /// Over a manifest already here, it must be the manifest's own, or be left out.
+        name: Option<String>,
+        /// The languages to author in (comma-separated): `cedar` when left out. Over a manifest
+        /// already here, they must be the manifest's own, or be left out.
+        #[arg(long, value_delimiter = ',')]
+        language: Option<Vec<String>>,
     },
     /// Manage the named remote servers of this workspace.
     Remote {
