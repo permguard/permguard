@@ -3051,3 +3051,156 @@ fn a_zero_timeout_is_refused() {
         );
     }
 }
+
+/// BUG-0295, DEC-0031: every workspace file a Windows editor writes with a UTF-8 byte order mark
+/// reads as the same file without it: the manifest and a policy validate, a case and its request
+/// test, and `check -f` decides.
+#[test]
+fn a_byte_order_mark_is_read_as_a_windows_editor_writes_it() {
+    let dir = scratch("bom");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    let plain = run(&dir, &["-o", "json", "validate"]);
+    assert!(plain.status.success(), "{}", stderr(&plain));
+    let before: serde_json::Value = serde_json::from_str(&stdout(&plain)).expect("JSON");
+    let bom = |path: &str| {
+        let file = dir.join(path);
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend(std::fs::read(&file).expect("read"));
+        std::fs::write(&file, bytes).expect("written");
+    };
+    bom("manifest.yml");
+    bom("app/rules.cedar");
+    let marked = run(&dir, &["-o", "json", "validate"]);
+    assert!(marked.status.success(), "{}", stderr(&marked));
+    let after: serde_json::Value = serde_json::from_str(&stdout(&marked)).expect("JSON");
+    assert_eq!(
+        after["root"], before["root"],
+        "the same policies, the same root"
+    );
+
+    write_one_case(&dir);
+    bom("tests/cases.yml");
+    bom("requests/read.json");
+    let tested = run(&dir, &["test"]);
+    assert!(tested.status.success(), "{}", stderr(&tested));
+    assert!(stdout(&tested).contains("1 passed"), "{}", stdout(&tested));
+    // `check` reads the request and goes to the plane: past the JSON, to the network.
+    let checked = run(
+        &dir,
+        &[
+            "check",
+            "-f",
+            "requests/read.json",
+            "--zone",
+            "acme",
+            "--ledger",
+            "main",
+            "--data-endpoint",
+            "http://127.0.0.1:1",
+        ],
+    );
+    assert_eq!(checked.status.code(), Some(69), "{}", stderr(&checked));
+    assert!(
+        !stderr(&checked).contains("not valid JSON"),
+        "{}",
+        stderr(&checked)
+    );
+}
+
+/// BUG-0296, DEC-0002: a `.permguardignore` pattern excludes what `.gitignore` would, so a
+/// draft kept out with a wildcard is never compiled; a negation and a broken pattern are refused
+/// by their line.
+#[test]
+fn an_ignore_pattern_keeps_a_draft_out_of_the_build() {
+    let dir = scratch("ignore-pattern");
+    write_sources(&dir);
+    assert!(run(&dir, &["init"]).status.success());
+    std::fs::create_dir_all(dir.join("app/drafts")).expect("created");
+    std::fs::write(
+        dir.join("app/drafts/wip-open-all.cedar"),
+        "@alias(\"open-all\")\npermit(principal, action, resource);\n",
+    )
+    .expect("written");
+    let policies = |dir: &Path| {
+        let output = run(dir, &["-o", "json", "validate"]);
+        assert!(output.status.success(), "{}", stderr(&output));
+        serde_json::from_str::<serde_json::Value>(&stdout(&output)).expect("JSON")["policies"]
+            .as_u64()
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        policies(&dir),
+        3,
+        "the draft is compiled while nothing excludes it"
+    );
+    let ignores = std::fs::read_to_string(dir.join(".permguardignore")).expect("read");
+    std::fs::write(
+        dir.join(".permguardignore"),
+        format!("{ignores}\napp/drafts/*.cedar\n"),
+    )
+    .expect("written");
+    assert_eq!(policies(&dir), 2, "the pattern keeps the draft out");
+
+    for (line, said) in [
+        ("!app/drafts/keep.cedar", "negated"),
+        ("app/[drafts", "not a pattern"),
+    ] {
+        std::fs::write(dir.join(".permguardignore"), format!("{ignores}\n{line}\n"))
+            .expect("written");
+        let output = run(&dir, &["validate"]);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{line}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains(said),
+            "{line}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains(line),
+            "{line}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+/// BUG-0210, BUG-0234: `init` never reports a workspace its own `validate` refuses: any name is
+/// written as itself, a language named twice is one partition, and a language it cannot write a
+/// valid manifest for is refused, with nothing written.
+#[test]
+fn init_writes_only_a_workspace_validate_accepts() {
+    for name in ["team: billing", "#c", "[x]", "*a"] {
+        let dir = scratch(&format!("init-name-{}", name.len()));
+        let init = run(&dir, &["init", name]);
+        assert!(init.status.success(), "{name}: {}", stderr(&init));
+        let validate = run(&dir, &["validate"]);
+        assert!(validate.status.success(), "{name}: {}", stderr(&validate));
+        let manifest = std::fs::read_to_string(dir.join("manifest.yml")).expect("read");
+        let parsed: serde_json::Value = serde_norway::from_str(&manifest).expect("YAML");
+        assert_eq!(parsed["metadata"]["name"], name, "{manifest}");
+    }
+
+    let dir = scratch("init-twice");
+    let init = run(&dir, &["init", "dupe", "--language", "cedar,cedar"]);
+    assert!(init.status.success(), "{}", stderr(&init));
+    assert!(!stdout(&init).contains("cedar, cedar"), "{}", stdout(&init));
+    assert!(run(&dir, &["validate"]).status.success());
+
+    for languages in ["dogwood", "cedar,dogwood"] {
+        let dir = scratch(&format!("init-{}", languages.len()));
+        let init = run(&dir, &["init", "demo", "--language", languages]);
+        assert_eq!(
+            init.status.code(),
+            Some(64),
+            "{languages}: {}",
+            stderr(&init)
+        );
+        assert!(!stdout(&init).contains("Initialized"), "{}", stdout(&init));
+        assert!(!dir.join("manifest.yml").exists(), "nothing is written");
+        assert!(!dir.join(".permguard").exists(), "nothing is written");
+    }
+}

@@ -36,12 +36,24 @@ pub struct Snapshot {
     pub policies: Vec<PolicyRecord>,
 }
 
+/// `bytes` without a leading UTF-8 byte order mark (`EF BB BF`): every file a workspace holds is
+/// read as a Windows editor writes it, as the token file already is (BUG-0295, DEC-0031).
+pub(crate) fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes)
+}
+
 /// The authored bytes of a workspace file (6-contract-ledger-notp, Policy identity): every `\r\n`
 /// made `\n`, and nothing else changed. Read here, before anything is extracted, hashed or stored,
 /// so the blob, its digest and the derived id come from the same bytes, and a Windows checkout,
 /// where git writes CRLF by default, derives what a Linux or macOS one does. Every registered
 /// artifact type is text, so artifacts are read the same way.
 pub(crate) fn authored(bytes: Vec<u8>) -> Vec<u8> {
+    // A UTF-8 byte order mark, which Windows editors write by default, is not part of what was
+    // authored (BUG-0295, DEC-0031): the same policy with and without it is one policy.
+    let bytes = match without_bom(&bytes) {
+        rest if rest.len() < bytes.len() => rest.to_vec(),
+        _ => bytes,
+    };
     if !bytes.windows(2).any(|pair| pair == b"\r\n") {
         return bytes;
     }
@@ -754,6 +766,9 @@ pub(crate) fn hiding_entry<'a>(ignores: &'a [String], path: &str, is_dir: bool) 
                 Some(rooted) => (rooted, true),
                 None => (entry, entry.contains('/')),
             };
+            if is_pattern(entry) {
+                return pattern_hides(entry, anchored, folder_only, &segments, is_dir);
+            }
             if anchored {
                 (path == entry && (!folder_only || is_dir))
                     || path.starts_with(&format!("{entry}/"))
@@ -762,6 +777,51 @@ pub(crate) fn hiding_entry<'a>(ignores: &'a [String], path: &str, is_dir: bool) 
             }
         })
         .map(String::as_str)
+}
+
+/// Whether an entry is a pattern, with a wildcard or a class in it, rather than an exact name or
+/// path.
+fn is_pattern(entry: &str) -> bool {
+    entry.contains(['*', '?', '['])
+}
+
+/// A pattern, compiled as `.gitignore` reads one: `*` and `?` stay inside one segment, `**` spans
+/// any number of them (BUG-0296, DEC-0002).
+fn pattern(entry: &str) -> std::result::Result<globset::GlobMatcher, globset::Error> {
+    globset::GlobBuilder::new(entry)
+        .literal_separator(true)
+        .backslash_escape(true)
+        .build()
+        .map(|glob| glob.compile_matcher())
+}
+
+/// Whether a pattern entry hides the path `segments`: an anchored one matches the path or one of
+/// the folders above it, from the root; a name one matches the path's own name or the name of a
+/// folder above it, at any depth. A folder-only entry matches folders, and what is under them.
+fn pattern_hides(
+    entry: &str,
+    anchored: bool,
+    folder_only: bool,
+    segments: &[&str],
+    is_dir: bool,
+) -> bool {
+    // Checked when the file is read: an entry that does not compile never gets here.
+    let Ok(matcher) = pattern(entry) else {
+        return false;
+    };
+    let count = segments.len();
+    (1..=count).any(|depth| {
+        // The path itself, or a folder above it: a folder above is always a folder.
+        let whole = depth == count;
+        if whole && folder_only && !is_dir {
+            return false;
+        }
+        if anchored {
+            matcher.is_match(segments[..depth].join("/"))
+        } else {
+            matcher.is_match(segments[depth - 1])
+        }
+    })
 }
 
 /// The root entries that are not part of this workspace.
@@ -802,12 +862,36 @@ pub(crate) fn read_ignores(store: &dyn Store) -> Result<Vec<String>> {
     let Some(bytes) = store.read(".permguardignore").map_err(err)? else {
         return Ok(Vec::new());
     };
-    Ok(String::from_utf8_lossy(&bytes)
+    let mut entries = Vec::new();
+    for (number, line) in String::from_utf8_lossy(without_bom(&bytes))
         .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(ToOwned::to_owned)
-        .collect())
+        .enumerate()
+    {
+        let entry = line.trim();
+        if entry.is_empty() || entry.starts_with('#') {
+            continue;
+        }
+        // What this file cannot read is refused by its line, never matched as something else
+        // (BUG-0296): an exclusion that silently excludes nothing puts a draft in the ledger.
+        if entry.starts_with('!') {
+            return Err(err(format!(
+                "`.permguardignore` line {} `{entry}`: a negated entry is not supported, so \
+                 nothing would be re-included; list only what is excluded",
+                number + 1
+            )));
+        }
+        if is_pattern(entry) {
+            let bare = entry.trim_start_matches('/').trim_end_matches('/');
+            if let Err(error) = pattern(bare) {
+                return Err(err(format!(
+                    "`.permguardignore` line {} `{entry}` is not a pattern: {error}",
+                    number + 1
+                )));
+            }
+        }
+        entries.push(entry.to_owned());
+    }
+    Ok(entries)
 }
 
 #[cfg(test)]
@@ -827,6 +911,65 @@ mod ignore_tests {
         assert!(super::os_noise("desktop.ini"));
         assert!(!super::os_noise("documents.cedar"));
         assert!(!super::os_noise(".gitkeep"));
+    }
+
+    /// BUG-0296, DEC-0002: a pattern matches as `.gitignore` reads it — `*` and `?` inside one
+    /// segment, `**` across any number of them, a name pattern at any depth, a path pattern from
+    /// the root — and never a file the same pattern would not match there.
+    #[test]
+    fn a_pattern_matches_what_gitignore_would_and_nothing_else() {
+        let drafts = entries(&["cedar/drafts/*.cedar"]);
+        assert!(ignored(&drafts, "cedar/drafts/wip-open-all.cedar", false));
+        assert!(
+            !ignored(&drafts, "cedar/drafts/deep/wip.cedar", false),
+            "`*` stays in one segment"
+        );
+        assert!(!ignored(&drafts, "cedar/read.cedar", false));
+
+        let any = entries(&["*.cedar"]);
+        assert!(ignored(&any, "read.cedar", false));
+        assert!(
+            ignored(&any, "cedar/deep/read.cedar", false),
+            "a name pattern at any depth"
+        );
+        assert!(!ignored(&any, "cedar/read.rego", false));
+
+        let rooted = entries(&["cedar/*.cedar"]);
+        assert!(ignored(&rooted, "cedar/read.cedar", false));
+        assert!(!ignored(&rooted, "cedar/sub/read.cedar", false));
+        assert!(
+            !ignored(&rooted, "other/cedar/read.cedar", false),
+            "a path pattern is rooted"
+        );
+
+        let stem = entries(&["cedar/drop.*"]);
+        assert!(ignored(&stem, "cedar/drop.cedar", false));
+        assert!(!ignored(&stem, "cedar/keep.cedar", false));
+
+        let deep = entries(&["**/drop.cedar"]);
+        assert!(ignored(&deep, "drop.cedar", false));
+        assert!(ignored(&deep, "cedar/a/b/drop.cedar", false));
+        assert!(!ignored(&deep, "cedar/a/b/keep.cedar", false));
+
+        // A folder pattern hides the folders it matches and what is under them, never a file.
+        let folders = entries(&["draft-*/"]);
+        assert!(ignored(&folders, "cedar/draft-1/read.cedar", false));
+        assert!(ignored(&folders, "cedar/draft-1", true));
+        assert!(!ignored(&folders, "cedar/draft-1", false));
+
+        // `?` is one character, and a class is a class.
+        assert!(ignored(&entries(&["v?.cedar"]), "cedar/v1.cedar", false));
+        assert!(!ignored(&entries(&["v?.cedar"]), "cedar/v10.cedar", false));
+        assert!(ignored(
+            &entries(&["v[0-9].cedar"]),
+            "cedar/v7.cedar",
+            false
+        ));
+        assert!(!ignored(
+            &entries(&["v[0-9].cedar"]),
+            "cedar/vx.cedar",
+            false
+        ));
     }
 
     #[test]
@@ -882,6 +1025,22 @@ mod ignore_tests {
 #[cfg(test)]
 mod tests {
     use super::authored;
+
+    /// BUG-0295, DEC-0031: a leading UTF-8 byte order mark is not part of what was authored, so
+    /// the same policy with and without it is the same bytes, the same digest and the same id;
+    /// a mark anywhere else is kept.
+    #[test]
+    fn a_leading_byte_order_mark_is_not_authored() {
+        let plain = b"permit(principal, action, resource);\n".to_vec();
+        let mut marked = vec![0xEF, 0xBB, 0xBF];
+        marked.extend_from_slice(&plain);
+        assert_eq!(authored(marked), plain);
+        let mut crlf = vec![0xEF, 0xBB, 0xBF];
+        crlf.extend_from_slice(b"a\r\nb");
+        assert_eq!(authored(crlf), b"a\nb");
+        let inside = b"a\xEF\xBB\xBFb".to_vec();
+        assert_eq!(authored(inside.clone()), inside);
+    }
 
     #[test]
     fn only_crlf_becomes_lf() {

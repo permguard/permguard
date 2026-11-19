@@ -1241,8 +1241,6 @@ fn a_dogwood_bundle_the_cli_builds_is_accepted_by_the_control_plane() {
     let dir = scratch("dogwood-author");
     let store = FsStore::new(&dir);
     let workspace = Workspace::open(&store);
-    workspace.init("session-access", &["dogwood"]).unwrap();
-
     // The example's own manifest and its own bundle: a test that authored a smaller one would be
     // proving something about the test rather than about what ships.
     for file in [
@@ -1254,9 +1252,9 @@ fn a_dogwood_bundle_the_cli_builds_is_accepted_by_the_control_plane() {
         let bytes = std::fs::read(example.join(file)).expect("the example carries it");
         store.write(file, &bytes).unwrap();
     }
-    // `init` named its partition after the language; the example's manifest declares
-    // `governance` instead, and a partition folder nobody declares is dirt, not decoration.
-    store.remove("dogwood").unwrap();
+    // `init` adopts the example's manifest, as it adopts any manifest already there: it never
+    // writes a Dogwood manifest of its own (BUG-0234).
+    workspace.init("session-access", &["dogwood"]).unwrap();
 
     let mut config = workspace.config().unwrap();
     config.remotes.insert(
@@ -1307,8 +1305,6 @@ fn a_plane_that_has_not_enabled_dogwood_refuses_the_push() {
     let dir = scratch("dogwood-off-author");
     let store = FsStore::new(&dir);
     let workspace = Workspace::open(&store);
-    workspace.init("session-access", &["dogwood"]).unwrap();
-
     for file in [
         "manifest.yml",
         "governance/read-after-login.dw",
@@ -1318,9 +1314,9 @@ fn a_plane_that_has_not_enabled_dogwood_refuses_the_push() {
         let bytes = std::fs::read(example.join(file)).expect("the example carries it");
         store.write(file, &bytes).unwrap();
     }
-    // `init` named its partition after the language; the example's manifest declares
-    // `governance` instead, and a partition folder nobody declares is dirt, not decoration.
-    store.remove("dogwood").unwrap();
+    // `init` adopts the example's manifest, as it adopts any manifest already there: it never
+    // writes a Dogwood manifest of its own (BUG-0234).
+    workspace.init("session-access", &["dogwood"]).unwrap();
 
     let mut config = workspace.config().unwrap();
     config.remotes.insert(

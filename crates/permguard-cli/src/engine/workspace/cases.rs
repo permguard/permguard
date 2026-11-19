@@ -184,7 +184,8 @@ fn read_cases(store: &dyn Store, file: &str) -> std::result::Result<Vec<Located>
     let bytes = store
         .read(file)?
         .ok_or_else(|| format!("{file} vanished mid-read"))?;
-    let text = String::from_utf8(bytes).map_err(|_| format!("{file} is not UTF-8"))?;
+    let text = String::from_utf8(super::build::without_bom(&bytes).to_vec())
+        .map_err(|_| format!("{file} is not UTF-8"))?;
     let read: Vec<Case> = serde_norway::from_str(&text)
         .map_err(|error| format!("{file}: not a list of cases: {error}"))?;
 
@@ -508,8 +509,9 @@ pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String
             located.source, located.request
         ))
     })?;
-    refuse_repeated(&located.request, &bytes)?;
-    let payload: Value = serde_json::from_slice(&bytes)
+    let bytes = super::build::without_bom(&bytes);
+    refuse_repeated(&located.request, bytes)?;
+    let payload: Value = serde_json::from_slice(bytes)
         .map_err(|error| err(format!("{}: not JSON: {error}", located.request)))?;
 
     let profile = located
@@ -1045,10 +1047,11 @@ fn run_temporal(
             .read(path)
             .map_err(err)?
             .ok_or_else(|| err(format!("{}: no event at {path}", located.source)))?;
-        refuse_repeated(path, &bytes)?;
+        let bytes = super::build::without_bom(&bytes);
+        refuse_repeated(path, bytes)?;
         documents.push((
             path.clone(),
-            serde_json::from_slice::<Value>(&bytes)
+            serde_json::from_slice::<Value>(bytes)
                 .map_err(|error| err(format!("{path}: not JSON: {error}")))?,
         ));
     }

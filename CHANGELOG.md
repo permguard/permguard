@@ -161,6 +161,12 @@ is cut.
 
 ### Fixed
 
+- **A `.permguardignore` pattern excludes what `.gitignore` would.**
+  `*`, `?`, `**` and character classes are read as `.gitignore` reads them, so `cedar/drafts/*.cedar`, `*.cedar`, `cedar/drop.*` and `**/drop.cedar` keep their files out of the build, where they matched nothing and a draft meant to stay out was compiled, pushed and enforced; name and folder entries are unchanged. A negated entry (`!…`) and a pattern that does not compile are refused, naming the line.
+- **A UTF-8 byte order mark no longer breaks a workspace file.**
+  The manifest, policies and schemas, `.permguardignore`, test cases, requests and events, and `check -f` (a file or standard input) read a file that starts with one as the same file without it, so a Windows editor's files validate, test and decide; a policy has the same id and digest with or without it.
+- **`init` writes only a workspace its own `validate` accepts.**
+  Any name is written as itself, quoted, where `team: billing` or `#c` wrote a manifest that did not parse; a language named twice is one partition; and a language it cannot write a valid manifest for, `dogwood` today, is refused with exit `64` and nothing written, where it printed `Initialized.`. A directory that already holds a manifest is adopted as before.
 - **The command line's configuration file refuses a key no setting reads.**
   A misspelled key such as `controlPlane.endpont` or `tls.caFIle` was ignored and the command went to the default endpoint; now every unknown key is named and the command exits `64`, before anything is asked of a plane, `config show` included.
 - **`PERMGUARD_TLS_SKIP_VERIFY` is read by the commands that use TLS, and names itself.**

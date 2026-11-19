@@ -2459,6 +2459,7 @@ dependencies = [
  "base64 0.23.1",
  "clap",
  "clap_complete",
+ "globset",
  "permguard-authority-plane",
  "permguard-authority-plane-server",
  "permguard-client",

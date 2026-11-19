@@ -143,6 +143,9 @@ fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
             std::fs::read_to_string(&named)
                 .map_err(|error| Failure::usage(format!("reading {}: {error}", named.display())))?
         };
+        // A file a Windows editor wrote starts with a byte order mark, which JSON does not
+        // allow: read as the workspace reads it (BUG-0295, DEC-0031).
+        let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned();
         // A member named twice is refused here, as the plane refuses it, rather than sent as the
         // de-duplicated copy a JSON value keeps (BUG-0055, DEC-0004).
         if let Some(member) = permguard_languages::members::repeated_member(&text) {

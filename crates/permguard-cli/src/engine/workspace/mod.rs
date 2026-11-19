@@ -36,8 +36,9 @@ pub const DEFAULT_REF: &str = "main";
 pub const DEFAULT_IGNORES: &str = "\
 # What Permguard never reads, one per line, as .gitignore reads them: a name matches a file or
 # folder of that name at any depth, a path with a `/` in it, or starting with one, is anchored to
-# the workspace root and matches whole segments, and a trailing `/` names a folder. A name entry
-# that would hide a policy inside a partition is refused. Everything else that is not the manifest, a declared partition or
+# the workspace root and matches whole segments, and a trailing `/` names a folder; `*`, `?`, `**`
+# and `[...]` match as they do there, and a `!` line is refused. A name entry that would hide a
+# policy inside a partition is refused. Everything else that is not the manifest, a declared partition or
 # `.permguard/` is refused: a policy in a folder nobody compiles is a policy nobody enforces. What
 # an operating system drops on its own (.DS_Store, Thumbs.db, desktop.ini) is never read and
 # needs no line here.
@@ -228,7 +229,11 @@ impl<'a> Workspace<'a> {
         let mut runtimes = String::new();
         let mut partitions = String::new();
         let mut profile_partitions = Vec::new();
-        for language in languages {
+        let mut written = Vec::new();
+        // A language named twice is one partition (BUG-0210): a manifest naming it twice would
+        // be refused by the `validate` that follows.
+        let mut seen = std::collections::BTreeSet::new();
+        for language in languages.iter().filter(|language| seen.insert(**language)) {
             let plugin = permguard_languages::language(language).ok_or_else(|| {
                 let known: Vec<&str> = permguard_languages::languages()
                     .iter()
@@ -249,17 +254,39 @@ impl<'a> Workspace<'a> {
                 name = plugin.name()
             ));
             profile_partitions.push(plugin.name().to_owned());
+            written.push(plugin.name().to_owned());
+        }
+
+        // The name as one quoted scalar: whatever it holds, a `:`, a `#`, a `[` or a newline, it
+        // is the name and nothing else (BUG-0210). JSON's quoting is YAML's double-quoted form.
+        let quoted = serde_json::to_string(name)
+            .map_err(|error| err(format!("writing the name: {error}")))?;
+        let manifest = format!(
+            "metadata:\n  kind: policy\n  name: {quoted}\nruntimes:\n{runtimes}partitions:\n{partitions}profiles:\n  default: {{ type: permguard.api.pdp.native.v1, partitions: [{profiles}] }}\n",
+            profiles = profile_partitions.join(", "),
+        );
+        // Read back as `validate` reads it, before anything is written: `init` never reports a
+        // workspace its own `validate` refuses (BUG-0210, BUG-0234), and a refusal leaves the
+        // directory as it was.
+        let read = permguard_languages::manifest_file::from_yaml(manifest.as_bytes())
+            .map_err(|error| err(format!("init cannot write a valid manifest: {error}")))?;
+        permguard_objects::manifest::check_load_gate(
+            &read,
+            &permguard_languages::registry::provided_runtimes(),
+        )
+        .map_err(|error| err(format!("init cannot write a valid manifest: {error}")))?;
+        if read.name != name {
+            return Err(err(format!(
+                "init cannot write the name `{name}` as it is: name the workspace without it"
+            )));
+        }
+        for partition in &written {
             // The partition directory exists from birth — a `.gitkeep`, the
             // one convention every VCS understands for an empty directory.
             self.store
-                .write(&format!("{}/.gitkeep", plugin.name()), b"")
+                .write(&format!("{partition}/.gitkeep"), b"")
                 .map_err(err)?;
         }
-
-        let manifest = format!(
-            "metadata:\n  kind: policy\n  name: {name}\nruntimes:\n{runtimes}partitions:\n{partitions}profiles:\n  default: {{ type: permguard.api.pdp.native.v1, partitions: [{profiles}] }}\n",
-            profiles = profile_partitions.join(", "),
-        );
         self.store
             .write(manifest_file::MANIFEST_YML, manifest.as_bytes())
             .map_err(err)?;

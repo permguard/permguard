@@ -760,6 +760,10 @@ pub fn workspace_command(
                     languages.unwrap_or_else(|| vec!["cedar".to_owned()]),
                 )
             };
+            // A language named twice is one partition, and is reported once (BUG-0210).
+            let mut languages = languages;
+            let mut seen = std::collections::BTreeSet::new();
+            languages.retain(|language| seen.insert(language.clone()));
             let refs: Vec<&str> = languages.iter().map(String::as_str).collect();
             ws.init(&name, &refs).map_err(usage)?;
             render(

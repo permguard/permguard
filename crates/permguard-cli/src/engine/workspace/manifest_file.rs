@@ -44,5 +44,6 @@ pub fn load(store: &dyn Store) -> Result<Manifest, String> {
     };
     let bytes = store.read(path)?.unwrap_or_default();
 
-    permguard_languages::manifest_file::from_yaml(&bytes).map_err(|error| format!("{path} {error}"))
+    permguard_languages::manifest_file::from_yaml(super::build::without_bom(&bytes))
+        .map_err(|error| format!("{path} {error}"))
 }

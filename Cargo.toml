@@ -118,6 +118,9 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 flate2 = "1"
 futures-core = "0.3"
+# `.permguardignore` patterns, read as `.gitignore` reads them (DEC-0002). Already in the tree
+# through `regorus`, at the same version.
+globset = { version = "0.4.20", default-features = false }
 # Pinned to the generation `sha2` is on. `hmac` 0.13 is built on `digest` 0.11 and `sha2` 0.10 on
 # `digest` 0.10, and the two cannot meet: `Hmac<Sha256>` needs its hash to implement the *same*
 # generation's traits. Bumping one without the other does not fail at resolution — it fails deep in

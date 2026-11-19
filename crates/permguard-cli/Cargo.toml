@@ -48,6 +48,8 @@ permguard-offline = { workspace = true, features = ["cli", "kms"] }
 # The evaluating half: this package decides.
 permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-stream.workspace = true
+# `.permguardignore` patterns, as `.gitignore` reads them (BUG-0296, DEC-0002).
+globset.workspace = true
 # Reads a PEM public key or certificate, and names the client's token cache (TC-6, TC-7).
 ring.workspace = true
 rustls.workspace = true
