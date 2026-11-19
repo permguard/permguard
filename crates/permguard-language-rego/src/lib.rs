@@ -454,4 +454,71 @@ allow if {
 
         assert!(refused.contains("rego:"), "{refused}");
     }
+
+    /// BUG-0219: a regex that cannot be decided within the backtracking limit fails validation
+    /// wherever it sits. Up to `jsonschema` 0.56 it counted as no match, which under `not`, `if`,
+    /// `patternProperties` or `propertyNames` let the document through: a schema the engine
+    /// cannot finish reading never admits a document.
+    #[test]
+    fn a_pattern_past_the_backtracking_limit_refuses_the_document_wherever_it_sits() {
+        let catastrophic = "^(a|a?)+(?=!)$";
+        let long = format!("{}!", "a".repeat(30));
+        for (schema, document) in [
+            (
+                serde_json::json!({"patternProperties": {catastrophic: false}}),
+                serde_json::json!({long.clone(): 1}),
+            ),
+            (
+                serde_json::json!({"propertyNames": {"not": {"pattern": catastrophic}}}),
+                serde_json::json!({long.clone(): 1}),
+            ),
+            (
+                serde_json::json!({"properties": {"v": {"if": {"pattern": catastrophic}, "then": false}}}),
+                serde_json::json!({"v": long.clone()}),
+            ),
+            (
+                serde_json::json!({"properties": {"v": {"not": {"pattern": catastrophic}}}}),
+                serde_json::json!({"v": long.clone()}),
+            ),
+            (
+                serde_json::json!({"properties": {"v": {"oneOf": [{"pattern": catastrophic}, {"type": "string"}]}}}),
+                serde_json::json!({"v": long.clone()}),
+            ),
+            (
+                serde_json::json!({"properties": {"v": {"type": "string", "pattern": catastrophic}}}),
+                serde_json::json!({"v": long.clone()}),
+            ),
+        ] {
+            let validator = compile_schema(schema.to_string().as_bytes()).expect("it compiles");
+            assert!(
+                validator.validate(&document).is_err(),
+                "fail-closed: {schema} admitted {document}"
+            );
+        }
+    }
+
+    /// BUG-0219: patterns are ECMA-262 regular expressions, as JSON Schema specifies them. Pinned
+    /// so a dependency bump that changes what a stored schema admits fails here, and is written
+    /// in the CHANGELOG, rather than changing answers unseen.
+    #[test]
+    fn patterns_are_read_as_ecma_262() {
+        let admits = |pattern: &str, value: &str| {
+            compile_schema(
+                serde_json::json!({"properties": {"v": {"type": "string", "pattern": pattern}}})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .expect("it compiles")
+            .is_valid(&serde_json::json!({"v": value}))
+        };
+        // `\s` is ECMA-262 white space and line terminators, U+2028 and U+2029 included.
+        assert!(admits("^\\s$", " "));
+        assert!(admits("^\\s$", "\u{2028}"));
+        assert!(admits("^\\s$", "\u{2029}"));
+        assert!(!admits("^\\s$", "a"));
+        // `[[:alpha:]]` is a bracket expression of `[`, `:`, `a`, `l`, `p`, `h`, then one or
+        // more `]`, never a POSIX class.
+        assert!(!admits("^[[:alpha:]]+$", "abc"));
+        assert!(admits("^[[:alpha:]]+$", "a]"));
+    }
 }

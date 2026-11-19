@@ -14,14 +14,15 @@ use permguard_core::{ApiError, ErrorClass};
 use serde_json::Value;
 
 /// The JSON value of `body`, read strictly, or the refusal `what` names: a body that is not
-/// declared JSON, is not one JSON value, or names a member twice.
+/// declared JSON, is not one JSON value, names a member twice, or writes a number its double
+/// would misstate.
 pub(crate) fn json(headers: &HeaderMap, body: &[u8], what: &str) -> Result<Value, ApiError> {
     if !declared_json(headers) {
         return Err(malformed(format!(
             "{what}: the body is not declared `application/json`"
         )));
     }
-    permguard_stream::jcs::parse_strict(body).map_err(|error| match error {
+    let value = permguard_stream::jcs::parse_strict(body).map_err(|error| match error {
         // An integer past ±2^53 is a number the transports do not carry exactly: refused as
         // what it is, the code gRPC answers for it (IFACE-06).
         permguard_stream::jcs::CanonicalError::OutOfRange(_) => ApiError::new(
@@ -45,7 +46,23 @@ pub(crate) fn json(headers: &HeaderMap, body: &[u8], what: &str) -> Result<Value
             ))
         }
         error => malformed(format!("{what}: {error}")),
-    })
+    })?;
+    // A fraction that rounds to a whole double would reach a policy as that integer, a value the
+    // caller did not write (BUG-0181): refused on its literal, which the value no longer holds.
+    if let Some(literal) = permguard_languages::request::rounded_to_whole(body) {
+        return Err(ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+            format!(
+                "{what}: `{literal}` is not a whole number, but the nearest IEEE-754 double is, \
+                 so it would reach a policy as a value it is not; numbers travel on both \
+                 transports as doubles, so send it with the digits a double holds, or as the \
+                 string it is"
+            ),
+        ));
+    }
+
+    Ok(value)
 }
 
 /// `value` in the scalar domain both transports carry exactly (IFACE-06), or the refusal

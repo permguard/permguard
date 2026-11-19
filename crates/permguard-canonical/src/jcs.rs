@@ -447,6 +447,28 @@ fn ecmascript(double: f64) -> String {
 /// `1.8446744073709552e19`. `-0` is the one integer spelling allowed to print differently: it is
 /// zero, read as zero. Text that is not JSON is left to serde_json to refuse.
 fn number_tokens(bytes: &[u8]) -> Result<Vec<String>, CanonicalError> {
+    let tokens = number_literals(bytes);
+    for token in &tokens {
+        // Up to fifteen digits every integer is an exact double and prints as written.
+        let integer = !token.bytes().any(|byte| b".eE".contains(&byte));
+        let digits = token.bytes().filter(u8::is_ascii_digit).count();
+        // Not a number at all is serde_json's to refuse, as syntax.
+        if integer
+            && digits > 15
+            && token != "-0"
+            && let Ok(double) = token.parse::<f64>()
+            && !(double.is_finite() && ecmascript(double) == *token)
+        {
+            return Err(CanonicalError::OutOfRange(token.clone()));
+        }
+    }
+
+    Ok(tokens)
+}
+
+/// Every number literal of a JSON text, as written, in document order: the spelling serde_json
+/// does not keep. Text inside strings is skipped; text that is not JSON is not judged here.
+pub fn number_literals(bytes: &[u8]) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut index = 0;
     let mut in_string = false;
@@ -473,26 +495,13 @@ fn number_tokens(bytes: &[u8]) -> Result<Vec<String>, CanonicalError> {
             {
                 index += 1;
             }
-            let token = &bytes[start..index];
-            tokens.push(String::from_utf8_lossy(token).into_owned());
-            // Up to fifteen digits every integer is an exact double and prints as written.
-            let integer = !token.iter().any(|byte| b".eE".contains(byte));
-            let digits = token.iter().filter(|byte| byte.is_ascii_digit()).count();
-            if integer && digits > 15 && token != b"-0" {
-                let text = std::str::from_utf8(token).unwrap_or_default();
-                // Not a number at all is serde_json's to refuse, as syntax.
-                if let Ok(double) = text.parse::<f64>()
-                    && !(double.is_finite() && ecmascript(double) == text)
-                {
-                    return Err(CanonicalError::OutOfRange(text.to_owned()));
-                }
-            }
+            tokens.push(String::from_utf8_lossy(&bytes[start..index]).into_owned());
             continue;
         }
         index += 1;
     }
 
-    Ok(tokens)
+    tokens
 }
 
 fn write_string(text: &str, out: &mut Vec<u8>) {

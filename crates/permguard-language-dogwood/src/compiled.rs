@@ -396,6 +396,13 @@ impl permguard_language_core::remembering::Temporal for CompiledDogwood {
     }
 
     fn check(&self, occurrence: &Occurrence) -> Result<Checked, Refused> {
+        // A version 2 occurrence carries one `fields` map, projected below into the two bags the
+        // checks read: a refusal names the member the caller sent, `fields.…`, never a bag its
+        // payload does not have and may not send (BUG-0178).
+        let (logged_bag, context_bag) = match occurrence.fields {
+            Some(_) => ("fields", "fields"),
+            None => ("logged", "request_context"),
+        };
         let occurrence = &*self.projected(occurrence)?;
         let Some(signature) = self
             .contract
@@ -410,7 +417,7 @@ impl permguard_language_core::remembering::Temporal for CompiledDogwood {
         // temporal predicate can correlate on, so sending one is a mistake to hear about rather
         // than a value to store and never read.
         for (group, value) in &occurrence.logged {
-            check_leaf(signature, "logged", &mut vec![group.clone()], value, true)?;
+            check_leaf(signature, logged_bag, &mut vec![group.clone()], value, true)?;
             // Declared is not the same as carriable. Upstream's public builder writes a logged
             // field either as one of the two scope aliases or inside a named group, so a bare
             // top-level leaf the schema declares — `requestId`, `sessionId` — has nowhere to go.
@@ -421,9 +428,9 @@ impl permguard_language_core::remembering::Temporal for CompiledDogwood {
                 return Err(Refused::new(
                     permguard_core::codes::pdp_temporal::EVENT_FIELD_NOT_CARRIABLE,
                     format!(
-                        "`logged.{group}` is a top-level field, and this build writes a logged \
-                         field only as `{}` / `{}` or inside a group. It would be dropped rather \
-                         than stored, so it is refused instead",
+                        "`{logged_bag}.{group}` is a top-level field, and this build writes a \
+                         logged field only as `{}` / `{}` or inside a group. It would be dropped \
+                         rather than stored, so it is refused instead",
                         super::occurrence::CALLER_PRINCIPAL,
                         super::occurrence::CALLER_RESOURCE
                     ),
@@ -440,7 +447,7 @@ impl permguard_language_core::remembering::Temporal for CompiledDogwood {
         for (group, value) in &occurrence.request_context {
             check_leaf(
                 signature,
-                "request_context",
+                context_bag,
                 &mut vec![group.clone()],
                 value,
                 false,
@@ -460,10 +467,10 @@ impl permguard_language_core::remembering::Temporal for CompiledDogwood {
                 return Err(Refused::new(
                     permguard_core::codes::pdp_temporal::EVENT_PIN_CONTRADICTED,
                     format!(
-                        "`logged.{}` was sent as {} and this partition's schema pins it to {}, \
-                         which is {}. A pin decides which history the event belongs to, so it is \
-                         derived from the request's authoritative roots and never taken from the \
-                         caller",
+                        "`{logged_bag}.{}` was sent as {} and this partition's schema pins it \
+                         to {}, which is {}. A pin decides which history the event belongs to, \
+                         so it is derived from the request's authoritative roots and never taken \
+                         from the caller",
                         pin.field.join("."),
                         value::render(sent),
                         pin.source.describe(),
@@ -1298,6 +1305,25 @@ mod tests {
             refused.code,
             permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED
         );
+
+        // BUG-0178: a refusal names the member the caller sent, `fields.…`, never the version 1
+        // bag the map was projected into.
+        let mistyped = occurrence_v2(
+            102,
+            "Drupe::Action::Login",
+            "request",
+            "alice",
+            json!({"input": {"user": 5, "server": "s1"}}),
+        );
+        let refused = temporal
+            .check(&mistyped)
+            .expect_err("`user` is declared `String`");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::pdp_temporal::EVENT_FIELD_MISTYPED
+        );
+        assert!(refused.message.contains("`fields.input.user`"), "{refused}");
+        assert!(!refused.message.contains("logged"), "{refused}");
     }
 
     /// TL-5c, the migration fixture: a version 1 history replayed by a version 2 partition decides
@@ -1415,6 +1441,75 @@ when { Run::Away(context.input.document).ok == true };
                 ),
                 other => panic!("{case}: {other:?}"),
             }
+        }
+    }
+
+    /// BUG-0230: Dogwood 1.1 decodes the escapes of every string inside `temporal { … }` and of
+    /// every annotation, as Cedar does, and refuses an invalid one. Pinned so a change of either
+    /// is seen here, and written in the CHANGELOG, rather than changing a stored policy's answer.
+    #[test]
+    fn a_temporal_string_and_an_annotation_are_read_with_their_escapes_decoded() {
+        let with_server = |server: &str| {
+            POLICY.replace(
+                r#"Login"::response{ input.user: context.input.user }"#,
+                &format!(
+                    r#"Login"::response{{ input.user: context.input.user, input.server: "{server}" }}"#
+                ),
+            )
+        };
+        let parts = || {
+            vec![
+                (registry::ACTION_SCHEMA, ACTION_SCHEMA),
+                (registry::EVENT_SCHEMA, EVENT_SCHEMA),
+            ]
+        };
+        let decided = |policy: &str, logged_server: &str| {
+            let compiled = compile_policy_with(policy, parts()).expect("it compiles");
+            let temporal = compiled.temporal().expect("it remembers");
+            let login = occurrence(
+                5,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"input": {"user": "alice", "server": logged_server}, "output": {}}),
+            );
+            let checked = temporal.check(&login).expect("well formed");
+            let key = history(&checked);
+            assert!(matches!(
+                temporal.apply(&key, &login, &checked),
+                Applied::Observed
+            ));
+            let read = occurrence(
+                100,
+                "Drupe::Action::Read",
+                "request",
+                "alice",
+                json!({"input": {"user": "alice", "document": "doc1"}}),
+            );
+            let checked = temporal.check(&read).expect("well formed");
+            match temporal.apply(&key, &read, &checked) {
+                Applied::Decided(verdict) => verdict.permitted(),
+                other => panic!("{other:?}"),
+            }
+        };
+
+        // `"s\u{31}"` is `s1`: it matches the login on `s1`, and not one on the escape spelled out.
+        let escaped = with_server(r"s\u{31}");
+        assert!(decided(&escaped, "s1"), "the decoded string matches");
+        assert!(!decided(&escaped, r"s\u{31}"), "the spelling does not");
+
+        // An invalid escape is a parse error, in a temporal string and in any annotation alike.
+        for policy in [
+            with_server(r"s\q"),
+            POLICY.replace(
+                r#"@id("read_login_not_logout")"#,
+                "@advice(\"bad\\q\")\n@id(\"read_login_not_logout\")",
+            ),
+        ] {
+            let Err(refused) = compile_policy_with(&policy, parts()) else {
+                panic!("an invalid escape is refused: {policy}");
+            };
+            assert!(refused.contains(r"\q"), "{refused}");
         }
     }
 

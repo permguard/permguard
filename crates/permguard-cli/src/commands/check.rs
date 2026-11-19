@@ -166,6 +166,20 @@ fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
         }
         let payload: Value = serde_json::from_str(&text)
             .map_err(|error| Failure::usage(format!("the request is not valid JSON: {error}")))?;
+        // A fraction that rounds to a whole double is refused here, on its literal, as the plane
+        // refuses it over REST: over gRPC it would leave as that double, and reach a policy as an
+        // integer the caller did not write (BUG-0181, DEC-0004).
+        if let Some(literal) = permguard_languages::request::rounded_to_whole(text.as_bytes()) {
+            return Err(Failure::usage(format!(
+                "`{literal}` is not a whole number, but the nearest IEEE-754 double is, so it \
+                 would reach a policy as a value it is not; send it with the digits a double \
+                 holds, or as the string it is"
+            ))
+            .named(
+                "validation",
+                permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
+            ));
+        }
         if !payload.is_object() {
             return Err(Failure::usage(
                 "a request is a JSON object — the payload `permguard.api.pdp.native.v1` documents",

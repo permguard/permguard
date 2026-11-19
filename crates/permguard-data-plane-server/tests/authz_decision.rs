@@ -2453,6 +2453,59 @@ mod parity {
             refused["code"],
             json!(permguard_core::codes::notp::PAYLOAD_MALFORMED)
         );
+
+        // BUG-0181: whole is a property of the literal. A fraction whose nearest double is whole
+        // would reach the policy as that integer, so REST refuses it on the bytes, at any depth;
+        // a whole number in any spelling, and a fraction a double keeps fractional, are not this.
+        // A client value is already the double, so the production client cannot send these: the
+        // CLI refuses them on its file before either transport (`cli.rs`).
+        let with_number = |number: &str| {
+            format!(
+                r#"{{"zone": "acme", "ledger": "main-ledger",
+                    "subject": {{"type": "user", "id": "alice"}},
+                    "resource": {{"type": "document", "id": "budget"}},
+                    "action": {{"name": "read"}},
+                    "context": {{"deep": [{{"n": {number}}}]}}}}"#
+            )
+        };
+        for literal in [
+            "4.9999999999999999",
+            "4.99999999999999999999",
+            "5.0000000000000001",
+            "-4.9999999999999999",
+            "1e-400",
+        ] {
+            let (status, body) = reqwest_free_post(&served.http, &with_number(literal));
+            assert_eq!(status, 400, "{literal}: {body}");
+            let refused: Value = serde_json::from_str(&body).expect("a refusal body");
+            assert_eq!(
+                refused["code"],
+                json!(permguard_core::codes::notp::VALUE_UNREPRESENTABLE),
+                "{literal}"
+            );
+            assert!(
+                refused["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(literal)),
+                "the refusal names the literal: {body}"
+            );
+        }
+        for literal in ["5", "5.0", "5e0", "50e-1"] {
+            let (status, body) = reqwest_free_post(&served.http, &with_number(literal));
+            assert_eq!(status, 200, "{literal} is answered: {body}");
+        }
+        // A fraction a double keeps fractional reaches the engine as the fraction it is, and
+        // Cedar, which has no fractions, refuses it there: never as an integer.
+        for literal in ["4.5", "4.999999999999999"] {
+            let (status, body) = reqwest_free_post(&served.http, &with_number(literal));
+            assert_eq!(status, 400, "{literal}: {body}");
+            let refused: Value = serde_json::from_str(&body).expect("a refusal body");
+            assert_eq!(
+                refused["code"],
+                json!("evaluation_input_rejected"),
+                "{literal}"
+            );
+        }
     }
 
     /// One raw POST to the evaluation path over a plain socket: the client cannot send a JSON

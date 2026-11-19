@@ -2584,6 +2584,85 @@ fn host_identity_pins_are_canonical_private_idempotent_and_conflict_safe() {
     assert_eq!(parsed["pins"].as_array().expect("pins").len(), 0);
 }
 
+/// BUG-0181: a fraction whose nearest double is whole is refused on its literal, by `check -f`
+/// with exit 64 before either transport carries it as that double, and by `test` naming the file;
+/// a whole number written as a decimal is not this.
+#[test]
+fn a_fraction_that_rounds_to_a_whole_double_is_refused_by_check_and_test() {
+    let dir = scratch("rounded-request");
+    write_sources(&dir);
+    run(&dir, &["init"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    let request = |amount: &str| {
+        format!(
+            r#"{{"subject":{{"type":"u","id":"a"}},"action":{{"name":"read"}},
+            "resource":{{"type":"d","id":"b"}},"context":{{"amount":{amount}}}}}"#
+        )
+    };
+    std::fs::write(
+        dir.join("requests/rounded.json"),
+        request("4.9999999999999999"),
+    )
+    .expect("written");
+
+    for endpoint in ["http://127.0.0.1:1", "grpc://127.0.0.1:1"] {
+        let checked = run(
+            &dir,
+            &[
+                "check",
+                "-f",
+                "requests/rounded.json",
+                "--data-endpoint",
+                endpoint,
+            ],
+        );
+        assert_eq!(
+            checked.status.code(),
+            Some(64),
+            "{endpoint}: {}",
+            stderr(&checked)
+        );
+        assert!(
+            stderr(&checked).contains("`4.9999999999999999` is not a whole number"),
+            "{}",
+            stderr(&checked)
+        );
+    }
+
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: rounded\n  request: ../requests/rounded.json\n  expect: { decision: deny }\n",
+    )
+    .expect("the cases are written");
+    let tested = run(&dir, &["test"]);
+    assert!(!tested.status.success(), "{}", stdout(&tested));
+    let said = format!("{}{}", stdout(&tested), stderr(&tested));
+    assert!(
+        said.contains("`4.9999999999999999` is not a whole number"),
+        "{said}"
+    );
+
+    // A whole number written as a decimal is the integer it is: not refused for its spelling,
+    // so the run goes on to the unreachable endpoint and fails there.
+    std::fs::write(dir.join("requests/whole.json"), request("50e-1")).expect("written");
+    let checked = run(
+        &dir,
+        &[
+            "check",
+            "-f",
+            "requests/whole.json",
+            "--data-endpoint",
+            "grpc://127.0.0.1:1",
+        ],
+    );
+    assert!(
+        !stderr(&checked).contains("not a whole number"),
+        "{}",
+        stderr(&checked)
+    );
+}
+
 /// BUG-0055, BUG-0012: a request naming a member twice, and an empty profile, are refused before
 /// anything is asked, by `check` with exit 64 and by `test` naming the path; a de-duplicated copy
 /// is never evaluated or sent.

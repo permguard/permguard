@@ -154,6 +154,68 @@ pub fn lossless(value: Value) -> Result<Value, Malformed> {
     })
 }
 
+/// The first number literal of the JSON text `bytes` that is not a whole number but whose nearest
+/// IEEE-754 double is one (BUG-0181), or `None`.
+///
+/// Both transports carry a number as a double, and a whole double reaches a policy as the integer
+/// it is. A literal such as `4.9999999999999999`, or `1e-400`, would therefore reach it as `5`, or
+/// `0`: a value the caller did not write, on the far side of a threshold. Only the literal says
+/// what was meant, so the check is made on the text, before the value is read; a literal that
+/// denotes a whole number, `5.0`, `5e0`, `50e-1`, is the integer it is and is not this.
+#[must_use]
+pub fn rounded_to_whole(bytes: &[u8]) -> Option<String> {
+    permguard_canonical::jcs::number_literals(bytes)
+        .into_iter()
+        .find(|literal| {
+            !denotes_whole(literal)
+                && literal
+                    .parse::<f64>()
+                    .is_ok_and(|double| double.is_finite() && double.fract() == 0.0)
+        })
+}
+
+/// Whether a JSON number literal denotes a whole number, read as decimal digits and never through
+/// a double: `5`, `5.0`, `5e0`, `50e-1` and `0.0e-999` do; `4.9999999999999999` and `1e-400` do
+/// not. Text that is not a number literal is not whole.
+#[must_use]
+pub fn denotes_whole(literal: &str) -> bool {
+    let unsigned = literal.strip_prefix('-').unwrap_or(literal);
+    let (mantissa, exponent) = match unsigned.find(['e', 'E']) {
+        Some(at) => (&unsigned[..at], &unsigned[at + 1..]),
+        None => (unsigned, "0"),
+    };
+    let (integer, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits: Vec<u8> = integer.bytes().chain(fraction.bytes()).collect();
+    if integer.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    // Zero, however it is spelled, is whole.
+    let Some(last) = digits.iter().rposition(|byte| *byte != b'0') else {
+        return true;
+    };
+    let (negative, magnitude) = match exponent.as_bytes().first() {
+        Some(b'-') => (true, &exponent[1..]),
+        Some(b'+') => (false, &exponent[1..]),
+        _ => (false, exponent),
+    };
+    if magnitude.is_empty() || !magnitude.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    // The value is the digit string times 10^(exponent - fraction length); it is whole when the
+    // digit string's trailing zeros cover a negative power. The magnitude is clamped well past
+    // any digit count a body can hold, so a long exponent cannot overflow the arithmetic.
+    let significant = magnitude.trim_start_matches('0');
+    let magnitude = if significant.len() > 18 {
+        i128::MAX / 4
+    } else {
+        significant.parse::<i128>().unwrap_or(0)
+    };
+    let exponent = if negative { -magnitude } else { magnitude };
+    let trailing_zeros = i128::try_from(digits.len() - 1 - last).unwrap_or(i128::MAX / 4);
+    let fraction = i128::try_from(fraction.len()).unwrap_or(i128::MAX / 4);
+    exponent - fraction + trailing_zeros >= 0
+}
+
 /// What this interface offers, as a caller configures itself from it.
 ///
 /// # The rule for this list
@@ -887,6 +949,83 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// BUG-0181: whole is a property of the literal, read as decimal digits, never of its double.
+    #[test]
+    fn a_literal_is_whole_by_its_digits_not_by_its_nearest_double() {
+        for whole in [
+            "5",
+            "-5",
+            "0",
+            "-0",
+            "5.0",
+            "5.000",
+            "5e0",
+            "5E+0",
+            "50e-1",
+            "500e-2",
+            "0.5e1",
+            "1e300",
+            "0.0e-999",
+            "0e-99999999999999999999",
+            "1e99999999999999999999",
+            "123.4500e2",
+        ] {
+            assert!(denotes_whole(whole), "{whole} is whole");
+        }
+        for fractional in [
+            "4.5",
+            "4.9999999999999999",
+            "4.99999999999999999999",
+            "5.0000000000000001",
+            "-4.9999999999999999",
+            "1e-400",
+            "5e-1",
+            "123.4501e2",
+            "1e-99999999999999999999",
+        ] {
+            assert!(!denotes_whole(fractional), "{fractional} is not whole");
+        }
+        for not_a_number in ["", "-", ".5", "5e", "5e+", "abc", "5.x"] {
+            assert!(!denotes_whole(not_a_number), "{not_a_number:?}");
+        }
+    }
+
+    /// BUG-0181: a literal that is not whole but rounds to a whole double is found, at any depth
+    /// and only outside strings; one that stays fractional, or is whole, is left to the rest of
+    /// the interface.
+    #[test]
+    fn a_fraction_that_rounds_to_a_whole_double_is_found_in_the_text() {
+        for (body, found) in [
+            (
+                r#"{"context":{"amount":4.9999999999999999}}"#,
+                "4.9999999999999999",
+            ),
+            (
+                r#"{"a":[1,{"b":5.0000000000000001}]}"#,
+                "5.0000000000000001",
+            ),
+            (
+                r#"{"n":-4.99999999999999999999}"#,
+                "-4.99999999999999999999",
+            ),
+            (r#"{"n":1e-400}"#, "1e-400"),
+        ] {
+            assert_eq!(
+                rounded_to_whole(body.as_bytes()).as_deref(),
+                Some(found),
+                "{body}"
+            );
+        }
+        for body in [
+            r#"{"n":5,"m":5.0,"o":50e-1,"p":4.5,"q":4.999999999999999,"r":0.1}"#,
+            r#"{"s":"4.9999999999999999"}"#,
+            r#"{"s":"\"4.9999999999999999"}"#,
+            r#"{"n":1e300}"#,
+        ] {
+            assert_eq!(rounded_to_whole(body.as_bytes()), None, "{body}");
+        }
+    }
 
     /// IFACE-06: the scalar domain both transports carry exactly. Inside ±2^53 a number is kept,
     /// a whole number as the integer it is at any depth; beyond it, as an integer or a double, it

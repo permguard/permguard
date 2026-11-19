@@ -163,6 +163,10 @@ is cut.
 
 ### Security
 
+- **A number written with more digits than a double holds no longer crosses a threshold by rounding.**
+  `4.9999999999999999` rounds to the double `5.0`, so it reached a policy as the integer `5` and passed `context.amount >= 5`, over REST and gRPC alike.
+  Whole is now read from the literal's digits: `5.0`, `5e0` and `50e-1` are still `5`, and a literal that is not whole but whose nearest double is, such as `4.9999999999999999` or `1e-400`, is refused `400 value_unrepresentable` on REST, by `permguard check -f` (exit `64`) before either transport carries it, and by `permguard test`.
+  A gRPC client of its own has already rounded the number into the double it sends.
 - **A reload whose revocation list names a client certificate ends the connections it authenticated.**
   Until now the list was checked at the handshake only, so a client already connected kept everything its certificate authenticated, REST, gRPC and peer sessions alike, for as long as it kept the connection busy; with `limits.connection_lifetime` unset, that was forever.
   Every listener with `client_ca` now verifies its open connections again at each reload, on SIGHUP or when its watcher sees the files change, and ends at once those whose certificate the list in force revokes.
@@ -210,6 +214,8 @@ is cut.
 
 ### Fixed
 
+- **A version 2 Dogwood event refused for a field names `fields.…`, the member the caller sent.**
+  A mistyped field, a top-level field the build cannot carry and a contradicted pin were named `logged.…` or `request_context.…`, bags a version 2 occurrence does not have and may not send.
 - **A member can end a membership whose coordinator no longer acknowledges it.**
   `host members revoke plan` and `revoke run` on a member Host, for a membership it holds as a member, ask the coordinator to revoke it, and when the coordinator does not acknowledge, unreachable or answering as another Host after its own identity reset, end it on the member as `orphaned`: its subscriptions are dropped and a new membership to the coordinator's new identity takes its streams. A member whose coordinator answers as another Host, or under a key no pin names, is refused `session_refused` (class `conflict`) naming a possible reset and these commands, and logs `host.membership.coordinator_changed` at WARN at every pass.
 - **A signed-response request whose digest cannot be taken is the caller's to fix.**
@@ -1043,6 +1049,11 @@ is cut.
   The Dogwood runtime is upstream's published `dogwood-language` 1.1.0, pinned exactly, instead of a git revision before 1.0.0; no git source remains in the build, and `cargo deny` allows none.
   The language descriptor names the engine as it is published: `engine_name` is `dogwood-language` and `engine_version` `1.1.0`, so the Dogwood `descriptor_digest` a data plane announces changes; Cedar's and Rego's do not.
   Upstream now decodes an `@id` it lowers, and refuses an invalid escape such as `@id("bad\q")` that it used to accept; the alias Permguard derives is unchanged, since it already decoded the value and already refused that escape.
+  The same holds for every string literal inside a `temporal { … }` block and for every annotation value, which the earlier revision kept verbatim, escapes included:
+  - A temporal predicate holding an escape now compares the decoded string, as Cedar does: `input.server: "s\u{31}"` matches `s1`, so a stored policy can permit where it denied, on the same history.
+  - An invalid escape in a temporal string or any annotation (`"s\q"`, `@advice("C:\data")`) is a parse error: a ledger holding one stops being served after the upgrade, every decision answering `503 ledger_incompatible`, and `pull`, `validate` and `apply` exit `64` in its workspace until it is edited.
+  - Before upgrading, run the new CLI's `permguard validate` in each Dogwood workspace, which refuses the invalid escapes, and look for a backslash inside the `temporal { … }` blocks of the `.dw` sources, the strings whose meaning changes.
+  During a rolling upgrade, data planes on either side of 0.1.12 can answer such a policy differently.
   Cedar stays at 4.11: Dogwood 1.1.0 still links the Cedar schema generator of the 0.6 line, which requires `cedar-policy-core` 4.11.0 exactly.
 
 ### Fixed
@@ -1059,6 +1070,15 @@ is cut.
 - **The Windows binaries are reproducible.**
   The Windows linker stamps the build time into each binary, so the release's independent rebuild matched every Linux binary and no Windows one (v0.1.10).
   The build now zeroes those timestamps, which nothing reads, in the binaries that ship and in the rebuild alike.
+
+### Security
+
+- **Rego partition schemas are enforced by `jsonschema` 0.59, since 0.1.10, and some answers change.**
+  Up to 0.1.8, a `pattern` that hit the regex backtracking limit inside `not`, `if`, `oneOf`, `contains`, `patternProperties` or `propertyNames` counted as no match, so the document could pass a schema that should refuse it, contrary to the fail-closed rule; it is now refused `400 partition_input_schema`.
+  Rolling back to 0.1.8 or earlier brings that fail-open back, and those binaries start on a newer volume without complaint.
+  Patterns are now read as ECMA-262 regular expressions: `\s` also matches U+2028 and U+2029, and `[[:alpha:]]` is a bracket expression, not a POSIX class, so a value a schema refused can be admitted, and one it admitted refused.
+  Before upgrading from 0.1.8 or earlier, look in the `*.regoschema` files for `[[:` and for `\s`, and for patterns with nested repetition such as `(a|a?)+`.
+  The Rego `descriptor_digest` a data plane announces changes with the engine; decision records carry the digest of the build that decided them.
 
 ## [0.1.8] - 2026-10-28
 

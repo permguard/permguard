@@ -483,8 +483,9 @@ fn object(snapshot: &Snapshot, digest: &str) -> Result<Vec<u8>> {
 
 /// Refuses a document at `path` that names a member twice in one object: read as JSON it would be
 /// decided on whichever came last, and never as the plane decides it, which refuses it
-/// (BUG-0055, DEC-0004).
-fn refuse_repeated(path: &str, bytes: &[u8]) -> Result<()> {
+/// (BUG-0055, DEC-0004). A number its double would misstate is refused too, by
+/// [`refuse_rounded`].
+fn refuse_ambiguous(path: &str, bytes: &[u8]) -> Result<()> {
     match std::str::from_utf8(bytes)
         .ok()
         .and_then(permguard_languages::members::repeated_member)
@@ -492,6 +493,20 @@ fn refuse_repeated(path: &str, bytes: &[u8]) -> Result<()> {
         Some(member) => Err(err(format!(
             "{path}: the member `{member}` appears twice in one object, and a request whose \
              bytes mean two things is refused"
+        ))),
+        None => refuse_rounded(path, bytes),
+    }
+}
+
+/// Refuses a document at `path` that writes a fraction whose nearest double is whole: read as
+/// JSON it would be decided on that integer, a value the case does not state, and the plane
+/// refuses it (BUG-0181, DEC-0004).
+fn refuse_rounded(path: &str, bytes: &[u8]) -> Result<()> {
+    match permguard_languages::request::rounded_to_whole(bytes) {
+        Some(literal) => Err(err(format!(
+            "{path}: `{literal}` is not a whole number, but the nearest IEEE-754 double is, so it \
+             would reach a policy as a value it is not; write it with the digits a double holds, \
+             or as the string it is"
         ))),
         None => Ok(()),
     }
@@ -510,7 +525,7 @@ pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String
         ))
     })?;
     let bytes = super::build::without_bom(&bytes);
-    refuse_repeated(&located.request, bytes)?;
+    refuse_ambiguous(&located.request, bytes)?;
     let payload: Value = serde_json::from_slice(bytes)
         .map_err(|error| err(format!("{}: not JSON: {error}", located.request)))?;
 
@@ -1051,7 +1066,7 @@ fn run_temporal(
             .map_err(err)?
             .ok_or_else(|| err(format!("{}: no event at {path}", located.source)))?;
         let bytes = super::build::without_bom(&bytes);
-        refuse_repeated(path, bytes)?;
+        refuse_ambiguous(path, bytes)?;
         documents.push((
             path.clone(),
             serde_json::from_slice::<Value>(bytes)
