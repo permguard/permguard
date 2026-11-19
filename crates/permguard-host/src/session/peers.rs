@@ -35,6 +35,10 @@ use super::record::Presentation;
 /// The directory below `host/`.
 pub const DIRECTORY: &str = "peers";
 
+/// Why a peer is refused when no pin names it: a coordinator whose identity was reset presents a
+/// first key the member never pinned (BUG-0164).
+pub const UNPINNED: &str = "no pin names the peer and its first key";
+
 /// Why a peer's identity was not accepted.
 #[derive(Debug)]
 pub enum PeerRefusal {
@@ -54,7 +58,7 @@ impl fmt::Display for PeerRefusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Identity(detail) => write!(f, "the peer's identity does not verify: {detail}"),
-            Self::Unpinned => f.write_str("no pin names the peer and its first key"),
+            Self::Unpinned => f.write_str(UNPINNED),
             Self::Rollback { seen, presented } => write!(
                 f,
                 "the peer presents epoch {presented}, below epoch {seen} already seen: rollback"

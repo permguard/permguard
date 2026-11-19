@@ -671,6 +671,19 @@ impl Member<'_> {
                     moved += 1;
                 }
                 Ok(_) => {}
+                // A coordinator whose identity was reset answers as another Host: said at WARN,
+                // with the way out (BUG-0164).
+                Err(error) if crate::api::members::coordinator_changed(&error.to_string()) => {
+                    tracing::warn!(
+                        event.name = "host.membership.coordinator_changed",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        error = %error,
+                        "the coordinator at the pinned address answers as another Host: if its \
+                         identity was reset, end this membership here with `host members revoke \
+                         plan` and `revoke run`"
+                    );
+                }
                 Err(error) => tracing::debug!(
                     event.name = "host.membership.sync_failed",
                     component = "host",

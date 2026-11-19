@@ -595,3 +595,74 @@ async fn a_reset_seals_and_closes_the_streams_before_its_rings_retire() {
     );
     assert!(api.identity_retired());
 }
+
+/// BUG-0164: a membership this Host holds as a member whose coordinator does not acknowledge its
+/// revocation, unreachable or answering as another Host after its own identity reset, is ended on
+/// this Host by the operator's revoke plan and run: recorded `orphaned`, so its subscriptions are
+/// dropped and a new membership takes its streams; it stays active at its coordinator until
+/// revoked there. A coordinator answering as another Host is refused naming the way out.
+#[tokio::test]
+async fn a_member_ends_a_membership_its_coordinator_no_longer_acknowledges() {
+    use crate::api::members::{PlanMemberRevoke, RunMemberRevoke};
+
+    let root = scratch("member-orphan");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let coordinator = Host::new("member-orphan-c");
+    let id = uuid_text(&joined(&api, &coordinator));
+    let planned = api
+        .plan_member_revoke(
+            &admin(),
+            &id,
+            PlanMemberRevoke {
+                request_id: "orphan-plan".to_owned(),
+                reason: "the coordinator was reset".to_owned(),
+                expected_revision: None,
+            },
+        )
+        .await
+        .expect("a member may plan to end its membership");
+    let ended = api
+        .run_member_revoke(
+            &admin(),
+            &id,
+            RunMemberRevoke {
+                request_id: "orphan-run".to_owned(),
+                receipt: planned.receipt.clone(),
+            },
+        )
+        .await
+        .expect("ended here, as the coordinator did not acknowledge it");
+    assert_eq!(ended.status, "orphaned");
+    assert_eq!(api.member(&admin(), &id).expect("read").status, "orphaned");
+    let again = api
+        .plan_member_revoke(
+            &admin(),
+            &id,
+            PlanMemberRevoke {
+                request_id: "orphan-plan-2".to_owned(),
+                reason: "again".to_owned(),
+                expected_revision: None,
+            },
+        )
+        .await
+        .expect_err("an ended membership");
+    assert_eq!(code(&again), codes::host::MEMBERSHIP_TRANSITION_REFUSED);
+
+    // What the member is told when its coordinator answers as another Host.
+    let refused = crate::api::members::refusal_of(crate::membership::MembershipError::Remote {
+        code: codes::host::SESSION_REFUSED.to_owned(),
+        reason: crate::session::ANOTHER_HOST.to_owned(),
+    });
+    let error = refused.error().expect("an API error");
+    assert_eq!(
+        (error.class(), error.code()),
+        (ErrorClass::Conflict, codes::host::SESSION_REFUSED)
+    );
+    assert!(
+        error
+            .disclosed_message(permguard_core::api::Disclosure::Minimal)
+            .contains("revoke plan"),
+        "{error:?}"
+    );
+    assert!(!crate::api::members::retryable(&refused));
+}

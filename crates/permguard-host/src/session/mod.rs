@@ -29,6 +29,10 @@
 pub mod peers;
 pub mod record;
 
+/// Why a session is refused when the Host answering at the pinned address is not the one asked
+/// for: what a coordinator whose identity was reset presents (BUG-0164).
+pub const ANOTHER_HOST: &str = "the responder is another Host than the one asked for";
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -945,9 +949,7 @@ impl Initiator {
                 )?;
                 self.known.epoch = Some(peer.epoch);
                 if peer.host_id != self.request.peer {
-                    return Err(Refusal::session(
-                        "the responder is another Host than the one asked for",
-                    ));
+                    return Err(Refusal::session(ANOTHER_HOST));
                 }
                 Ok((
                     Initiating::Challenge {

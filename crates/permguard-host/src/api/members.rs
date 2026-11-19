@@ -1120,12 +1120,36 @@ pub fn retryable(refusal: &Refusal) -> bool {
 const REASON_SECRET: &str =
     "`reason` is shaped like a token, a key or a proof: it is recorded in the audit trail";
 
+/// Whether a coordinator's refusal, or this Host's of it, says the coordinator at the pinned
+/// address now answers as another Host or under a key no pin names: what a coordinator whose
+/// identity was reset looks like from its members (BUG-0164).
+pub fn coordinator_changed(reason: &str) -> bool {
+    reason.contains(crate::session::ANOTHER_HOST)
+        || reason.contains(crate::session::peers::UNPINNED)
+}
+
+/// What a member is told when its coordinator answers as another Host (BUG-0164).
+const COORDINATOR_CHANGED: &str = "the coordinator at the pinned address answers as another Host, \
+     or under a key no pin names: if its identity was reset, its memberships ended there; end \
+     this one on this Host with `permguard host members revoke plan <id>` and `revoke run`, which \
+     records it `orphaned`, and join the coordinator's new identity with a new invitation";
+
 pub fn refusal_of(error: MembershipError) -> Refusal {
     // What the coordinator refused keeps its code where the caller can act on it; a transport
     // failure is `unavailable`, its detail internal.
     if let MembershipError::Remote { code, reason } = &error {
         // What the peer said, kept internal as it said it: [`peer_code`] reads it there.
         let said = code;
+        if code == codes::host::SESSION_REFUSED && coordinator_changed(reason) {
+            return Refusal::Api(
+                permguard_core::ApiError::new(
+                    ErrorClass::Conflict,
+                    codes::host::SESSION_REFUSED,
+                    COORDINATOR_CHANGED,
+                )
+                .with_internal(format!("`{said}`: {reason}")),
+            );
+        }
         let (class, code) = match code.as_str() {
             codes::host::ENROLLMENT_REFUSED => {
                 (ErrorClass::Validation, codes::host::ENROLLMENT_REFUSED)
@@ -2277,6 +2301,27 @@ impl HostApi {
         }
         let now = self.time.now_secs();
         let current = || -> Result<u64, Refusal> {
+            // A membership this Host holds as a member is revoked by asking its coordinator, or,
+            // when it cannot acknowledge, ended here as `orphaned` (BUG-0164): any status not
+            // already terminal.
+            if let Some(held) = memberships
+                .store
+                .membership(&membership_id)
+                .filter(|held| held.role == crate::membership::record::Role::Member)
+            {
+                if held.status.is_terminal() {
+                    return Err(refusal_of(MembershipError::Transition {
+                        from: held.status,
+                        to: Status::Revoked,
+                    }));
+                }
+                if let Some(expected) = plan.expected_revision
+                    && expected != held.revision
+                {
+                    return Err(Refusal::revision_mismatch(expected, held.revision));
+                }
+                return Ok(held.revision);
+            }
             memberships
                 .store
                 .check_successor(
@@ -2384,6 +2429,110 @@ impl HostApi {
             request_id: run.request_id.clone(),
             expected_revision: None,
         };
+        // A membership this Host holds as a member (BUG-0164): its coordinator is asked first,
+        // as an identity reset asks it; what it could not acknowledge is ended here.
+        let as_member = memberships
+            .store
+            .membership(&membership_id)
+            .is_some_and(|held| held.role == crate::membership::record::Role::Member);
+        let asked = if as_member
+            && presented().is_ok()
+            && memberships
+                .store
+                .membership(&membership_id)
+                .is_some_and(|held| !held.status.is_terminal())
+        {
+            Some(self.ask_revoke(&admitted.principal, &membership_id).await)
+        } else {
+            None
+        };
+        if as_member {
+            return self.transact(
+                DOMAIN,
+                &admitted.principal,
+                REVOKE_RUN,
+                AUDIT_REVOKED,
+                &mutation,
+                &(id, &run),
+                Some(id.to_owned()),
+                || presented().map(|_| ()),
+                |applying| {
+                    let plan = presented().map_err(Failure::Refused)?;
+                    if let Some((_, reason)) = plan.target.split_once('\n') {
+                        self.record_reason(
+                            applying,
+                            AUDIT_REVOKED,
+                            &admitted.principal,
+                            id,
+                            reason,
+                        )?;
+                    }
+                    match &asked {
+                        Some(Ok(_)) => {}
+                        Some(Err(error)) => {
+                            tracing::warn!(
+                                event.name = "host.membership.orphaned",
+                                component = super::COMPONENT,
+                                membership_id = %id,
+                                error = %error,
+                                "the coordinator did not acknowledge the revocation: the \
+                                 membership is ended on this Host as orphaned, and stays active \
+                                 at its coordinator until revoked there"
+                            );
+                            memberships
+                                .store
+                                .orphan(applying, &membership_id, now)
+                                .map_err(failure)?;
+                        }
+                        None => {
+                            return Err(Failure::Refused(refusal_of(
+                                MembershipError::Transition {
+                                    from: memberships
+                                        .store
+                                        .membership(&membership_id)
+                                        .map_or(Status::Revoked, |held| held.status),
+                                    to: Status::Revoked,
+                                },
+                            )));
+                        }
+                    }
+                    if let Err(error) =
+                        self.replay
+                            .consume(applying, &admitted.principal, &plan.plan_id)
+                    {
+                        tracing::warn!(
+                            event.name = "host.plan_unconsumed",
+                            component = super::COMPONENT,
+                            error = %error,
+                            "a run plan could not be marked consumed; the membership is ended"
+                        );
+                    }
+                    let held = memberships
+                        .store
+                        .membership(&membership_id)
+                        .ok_or_else(|| {
+                            Failure::Refused(super::unreachable_reconciliation(REVOKE_RUN))
+                        })?;
+                    Ok(Applied {
+                        revision: held.revision,
+                        target: Some(id.to_owned()),
+                        value: MemberChanged {
+                            receipt: self.receipt(applying.operation_id(), held.revision),
+                            status: held.status.as_str().to_owned(),
+                            epoch: held.epoch(),
+                            manifest: held
+                                .manifest
+                                .as_ref()
+                                .map(|(_, envelope, _)| URL_SAFE_NO_PAD.encode(envelope))
+                                .unwrap_or_default(),
+                        },
+                    })
+                },
+                |operation_id, revision, _| {
+                    self.reconciled(&membership_id, operation_id, revision, REVOKE_RUN)
+                },
+            );
+        }
         self.transact(
             DOMAIN,
             &admitted.principal,
@@ -2430,6 +2579,26 @@ impl HostApi {
                 self.reconciled(&membership_id, operation_id, revision, REVOKE_RUN)
             },
         )
+    }
+
+    /// Asks the coordinator of a membership this Host holds as a member to revoke it: its revoked
+    /// manifest, recorded, or why it could not.
+    async fn ask_revoke(
+        &self,
+        principal: &permguard_core::authz::Principal,
+        id: &[u8; 16],
+    ) -> Result<crate::membership::Held, String> {
+        let (memberships, connector) = self
+            .member_side()
+            .map_err(|refusal| format!("{refusal:?}"))?;
+        self.acting_member(memberships, connector)
+            .map_err(|refusal| format!("{refusal:?}"))?
+            .revoke(
+                crate::operations::journal::Initiator::Principal(principal.as_str().to_owned()),
+                id,
+            )
+            .await
+            .map_err(|error| error.to_string())
     }
 
     fn member_side(&self) -> Result<(&MembershipService, &dyn Connector), Refusal> {
