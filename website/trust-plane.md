@@ -2,7 +2,7 @@
 layout: page
 pageClass: pg-page-concepts
 title: Trust Plane
-description: "Next on the roadmap: authority that holds along a chain of executions, with PIC-X."
+description: "Next on the roadmap: Authority Continuity with formal proof, along a chain of executions, with PIC-X."
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -15,8 +15,8 @@ import { withBase } from 'vitepress'
 <main class="pgx-page">
   <section class="pgx-hero pgx-hero--center">
     <div class="pgx-kicker">Trust Plane · next on the roadmap</div>
-    <h1>Authority that holds along the chain.</h1>
-    <p>When an AI agent hands work to a tool, and the tool to a service, the authority the chain started with should carry on at every step, and never grow.</p>
+    <h1>Authority Continuity with formal proof.</h1>
+    <p>When an AI agent hands work to a tool, and the tool to a service, the authority the chain started with carries on at every step and, within the protocol itself, never grows. The model behind it is peer-reviewed and its theorems are machine-checked.</p>
     <p class="pgx-hero__status"><em class="pgx-status pgx-status--next">Not served today</em></p>
     <div class="pgx-hero-visual">
       <div class="pgx-hero-visual__art" role="img" aria-label="A chain of executions. alice grants authority to read and comment on the budget. Her AI agent carries the same authority or less; the tool it calls carries the same as the agent or less. A hop that adds authority, deleting the budget, is invalid within the protocol and the next hop does not accept it. Underneath, the Trust Plane with PIC-X, next on the roadmap, checks every hop.">
@@ -147,6 +147,7 @@ import { withBase } from 'vitepress'
       <details><summary>Is the signed evidence not enough?</summary><p>Evidence proves what was decided, in which order and under which policy. It cannot say whether the authority a step used came, unexpanded, from where the chain began: that is continuity.</p></details>
       <details><summary>What is PIC-X?</summary><p>The open-source trust-plane component of PIC, which turns the possession of a token into verifiable authority continuity. See <a href="https://pic-protocol.org/pic-x">pic-protocol.org</a>.</p></details>
       <details><summary>Is a Trust Anchor the same thing?</summary><p>No. A Trust Anchor answers for one hand-off at one boundary, in the Data Plane. The Trust Plane keeps authority continuous along the whole chain.</p></details>
+      <details><summary>Is it really proven?</summary><p>Yes, as a model. Authority Continuity comes from PIC, Provenance Identity Continuity, published at IEEE NCA 2026 (preprint on <a href="https://arxiv.org/abs/2607.08906">arXiv</a>). Its definitions and theorems are machine-checked in Lean 4: within a valid chain, a step cannot carry authority the origin did not grant.</p></details>
       <details><summary>Can any protocol promise this absolutely?</summary><p>Within the protocol itself, yes: a hop that widens its authority is invalid. Outside it, on a compromised machine for instance, no protocol can promise anything absolute.</p></details>
       <details><summary>What exists today that it builds on?</summary><p>Host identities and keys, signed policy versions, signed decision records, and the <a :href="withBase('/authority-plane')">Authority Plane</a>'s scoped tokens, which narrow an account's scopes and never widen them.</p></details>
     </div>

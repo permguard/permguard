@@ -166,7 +166,7 @@ import { withBase } from 'vitepress'
     <div class="pgx-cards pgx-cards--3">
       <article class="pgx-card pgx-card--accent"><span>Sidecar</span><h3>Beside each application.</h3><p>One Data Plane next to each workload: a local call, and the policy already there.</p></article>
       <article class="pgx-card"><span>Service</span><h3>One your applications call.</h3><p>A shared Data Plane over HTTP or gRPC on port <code>7443</code>, for the applications that prefer it.</p></article>
-      <a class="pgx-card" :href="withBase('/how-it-works/bring-your-own-data-plane')"><span>In your process</span><h3>Inside your own code.</h3><p>Pull the signed policy and evaluate it with the same engine libraries: no network on the decision path.</p><b aria-hidden="true">→</b></a>
+      <a class="pgx-card" :href="withBase('/how-it-works/bring-your-own-data-plane')"><span>Embedded</span><h3>Inside your own code.</h3><p>For mission-critical networks, the edge and disconnected sites: embed the same engine libraries, pull the signed policy, and decide with no network on the decision path.</p><b aria-hidden="true">→</b></a>
     </div>
   </section>
 
