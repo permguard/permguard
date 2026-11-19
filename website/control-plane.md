@@ -167,7 +167,6 @@ permguard apply -m "readers may read documents"
       <details><summary>Does the Control Plane decide anything?</summary><p>No. It publishes policy and keeps the decision logs and events that come back. Decisions are made by the <a :href="withBase('/data-plane')">Data Plane</a>, with the version the Control Plane signed.</p></details>
       <details><summary>What happens if it is down?</summary><p>New versions wait until it is back. Every Data Plane keeps deciding with the version it already mirrored and verified.</p></details>
       <details><summary>Can a published version be changed?</summary><p>No. A change is always a new version; the old one stays as it was, so the history cannot be rewritten.</p></details>
-      <details><summary>Who may publish?</summary><p>A caller whose access token, issued by the <a :href="withBase('/authority-plane')">Authority Plane</a>, grants publishing on that ledger. The development configurations grant it to everyone, to get started; production grants it to nobody by default.</p></details>
       <details><summary>Which policy languages does it hold?</summary><p>Cedar and Rego, side by side in the same ledger. See <a :href="withBase('/how-it-works/policy-languages')">Policy as Code</a>.</p></details>
       <details><summary>Where does it run?</summary><p>On port <code>6443</code>, for HTTP and gRPC alike: in the all-in-one image beside the other planes, or on its own. See <a :href="withBase('/how-it-works/container-images')">Containers</a>.</p></details>
     </div>

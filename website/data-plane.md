@@ -2,7 +2,7 @@
 layout: page
 pageClass: pg-page-concepts
 title: Data Plane
-description: Decide beside the workload. The Data Plane holds a verified copy of your policy, answers every authorization question, and keeps a signed record of each answer.
+description: Decide beside the workload. Any enforcement point asks the Data Plane, which decides with the policies synced from the Control Plane and syncs its decision logs and events back.
 ---
 
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
@@ -16,9 +16,9 @@ import { withBase } from 'vitepress'
   <section class="pgx-hero pgx-hero--center">
     <div class="pgx-kicker">Data Plane · :7443</div>
     <h1>Decide beside the workload.</h1>
-    <p>The Data Plane holds a verified copy of your policy, answers every authorization question your applications and AI agents ask, and keeps a signed record of each answer.</p>
+    <p>Any enforcement point asks it: an application, an AI agent, a gateway, an infrastructure component, a tool. It decides with the policies synced from the Control Plane, and syncs its decision logs and events back to it.</p>
     <div class="pgx-hero-visual">
-      <div class="pgx-hero-visual__art" role="img" aria-label="The Control Plane publishes a signed policy version. The Data Plane on port 7443 mirrors it and verifies its signature before using it, then answers the questions of applications and AI agents, asked through the Permguard SDKs, their Policy Enforcement Point. Every answer becomes a signed record chained to the one before, sent back to the Control Plane and exportable to your SIEM.">
+      <div class="pgx-hero-visual__art" role="img" aria-label="The Control Plane holds the policies, the decision logs and the events. The Data Plane on port 7443 syncs the policies from it and verifies their signature before using them, then answers any enforcement point: applications, AI agents, API gateways, infrastructure components, tools and services. Every answer becomes a signed record chained to the one before; the decision logs and the events are synced back to the Control Plane.">
         <svg class="pgx-hv pgx-hv--wide" viewBox="0 0 1040 400" aria-hidden="true" focusable="false">
           <defs>
             <linearGradient id="pgx-dp-wide-flow" gradientUnits="userSpaceOnUse" x1="0" y1="84" x2="0" y2="130"><stop offset="0" stop-color="#f05c80"/><stop offset="1" stop-color="#cc34df"/></linearGradient>
@@ -28,14 +28,14 @@ import { withBase } from 'vitepress'
             <path class="pgx-hv__flow pgx-hv__flow--identity" d="M700 196 H780"/>
             <path class="pgx-hv__flow pgx-hv__flow--identity" d="M780 240 H700"/>
             <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M520 290 V318"/>
-            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M820 358 H850"/>
+            <path class="pgx-hv__flow pgx-hv__flow--evidence" d="M820 358 H840"/>
           </g>
           <g class="pgx-hv__node pgx-hv__node--cp">
             <rect x="400" y="20" width="240" height="64" rx="14"/>
             <text class="pgx-hv__k" x="520" y="46" text-anchor="middle">CONTROL PLANE</text>
-            <text class="pgx-hv__s" x="520" y="68" text-anchor="middle">the signed version in force</text>
+            <text class="pgx-hv__s" x="520" y="68" text-anchor="middle">policies · decision logs · events</text>
           </g>
-          <text class="pgx-hv__m" x="532" y="112">mirror · verify the signature</text>
+          <text class="pgx-hv__m" x="532" y="112">policies, synced and verified</text>
           <g class="pgx-hv__node">
             <rect x="340" y="130" width="360" height="160" rx="18"/>
             <text class="pgx-hv__k" x="520" y="158" text-anchor="middle">DATA PLANE · :7443</text>
@@ -45,14 +45,14 @@ import { withBase } from 'vitepress'
           </g>
           <g class="pgx-hv__node pgx-hv__node--sdk">
             <rect x="780" y="150" width="240" height="130" rx="14"/>
-            <text class="pgx-hv__k" x="900" y="172" text-anchor="middle">YOUR APPS · AI AGENTS</text>
-            <g class="pgx-hv__lang"><rect x="796" y="184" width="66" height="20" rx="10"/><text x="829" y="198" text-anchor="middle">Go</text></g>
-            <g class="pgx-hv__lang"><rect x="868" y="184" width="66" height="20" rx="10"/><text x="901" y="198" text-anchor="middle">Java</text></g>
-            <g class="pgx-hv__lang"><rect x="940" y="184" width="66" height="20" rx="10"/><text x="973" y="198" text-anchor="middle">.NET</text></g>
-            <g class="pgx-hv__lang"><rect x="796" y="210" width="66" height="20" rx="10"/><text x="829" y="224" text-anchor="middle">Node.js</text></g>
-            <g class="pgx-hv__lang"><rect x="868" y="210" width="66" height="20" rx="10"/><text x="901" y="224" text-anchor="middle">Python</text></g>
-            <g class="pgx-hv__lang"><rect x="940" y="210" width="66" height="20" rx="10"/><text x="973" y="224" text-anchor="middle">Rust</text></g>
-            <text class="pgx-hv__m" x="900" y="256" text-anchor="middle">the SDK asks · your code obeys</text>
+            <text class="pgx-hv__k" x="900" y="172" text-anchor="middle">ENFORCEMENT POINTS</text>
+            <g class="pgx-hv__lang"><rect x="794" y="182" width="102" height="20" rx="10"/><text x="845" y="196" text-anchor="middle">Applications</text></g>
+            <g class="pgx-hv__lang"><rect x="904" y="182" width="102" height="20" rx="10"/><text x="955" y="196" text-anchor="middle">AI agents</text></g>
+            <g class="pgx-hv__lang"><rect x="794" y="206" width="102" height="20" rx="10"/><text x="845" y="220" text-anchor="middle">API gateways</text></g>
+            <g class="pgx-hv__lang"><rect x="904" y="206" width="102" height="20" rx="10"/><text x="955" y="220" text-anchor="middle">Infrastructure</text></g>
+            <g class="pgx-hv__lang"><rect x="794" y="230" width="102" height="20" rx="10"/><text x="845" y="244" text-anchor="middle">Tools</text></g>
+            <g class="pgx-hv__lang"><rect x="904" y="230" width="102" height="20" rx="10"/><text x="955" y="244" text-anchor="middle">Any service</text></g>
+            <text class="pgx-hv__m" x="900" y="268" text-anchor="middle">each one asks, then obeys</text>
           </g>
           <text class="pgx-hv__m" x="740" y="188" text-anchor="middle">answer</text>
           <text class="pgx-hv__m" x="740" y="258" text-anchor="middle">ask</text>
@@ -75,9 +75,9 @@ import { withBase } from 'vitepress'
             <rect class="pgx-hv__block pgx-hv__block--6" x="770" y="338" width="50" height="40" rx="8"/><text class="pgx-hv__p" x="795" y="363" text-anchor="middle">…</text>
           </g>
           <g class="pgx-hv__node pgx-hv__node--siem">
-            <rect x="850" y="326" width="170" height="64" rx="14"/>
-            <text class="pgx-hv__k" x="935" y="352" text-anchor="middle">RECORDS GO TO</text>
-            <text class="pgx-hv__s" x="935" y="374" text-anchor="middle">Control Plane · SIEM</text>
+            <rect x="840" y="326" width="186" height="64" rx="14"/>
+            <text class="pgx-hv__k" x="933" y="352" text-anchor="middle">TO THE CONTROL PLANE</text>
+            <text class="pgx-hv__s" x="933" y="374" text-anchor="middle">decision logs · events</text>
           </g>
         </svg>
         <svg class="pgx-hv pgx-hv--compact" viewBox="0 0 360 700" aria-hidden="true" focusable="false">
@@ -93,7 +93,7 @@ import { withBase } from 'vitepress'
           <g class="pgx-hv__node pgx-hv__node--cp">
             <rect x="60" y="14" width="240" height="60" rx="14"/>
             <text class="pgx-hv__k" x="180" y="38" text-anchor="middle">CONTROL PLANE</text>
-            <text class="pgx-hv__s" x="180" y="60" text-anchor="middle">the signed version</text>
+            <text class="pgx-hv__s" x="180" y="60" text-anchor="middle">policies · logs · events</text>
           </g>
           <g class="pgx-hv__node">
             <rect x="16" y="110" width="328" height="180" rx="18"/>
@@ -104,14 +104,14 @@ import { withBase } from 'vitepress'
           </g>
           <g class="pgx-hv__node pgx-hv__node--sdk">
             <rect x="16" y="322" width="328" height="144" rx="14"/>
-            <text class="pgx-hv__k" x="180" y="346" text-anchor="middle">YOUR APPS · AI AGENTS</text>
-            <g class="pgx-hv__lang"><rect x="32" y="360" width="92" height="24" rx="12"/><text x="78" y="377" text-anchor="middle">Go</text></g>
-            <g class="pgx-hv__lang"><rect x="134" y="360" width="92" height="24" rx="12"/><text x="180" y="377" text-anchor="middle">Java</text></g>
-            <g class="pgx-hv__lang"><rect x="236" y="360" width="92" height="24" rx="12"/><text x="282" y="377" text-anchor="middle">.NET</text></g>
-            <g class="pgx-hv__lang"><rect x="32" y="392" width="92" height="24" rx="12"/><text x="78" y="409" text-anchor="middle">Node.js</text></g>
-            <g class="pgx-hv__lang"><rect x="134" y="392" width="92" height="24" rx="12"/><text x="180" y="409" text-anchor="middle">Python</text></g>
-            <g class="pgx-hv__lang"><rect x="236" y="392" width="92" height="24" rx="12"/><text x="282" y="409" text-anchor="middle">Rust</text></g>
-            <text class="pgx-hv__m" x="180" y="446" text-anchor="middle">ask · answer · obey</text>
+            <text class="pgx-hv__k" x="180" y="346" text-anchor="middle">ENFORCEMENT POINTS</text>
+            <g class="pgx-hv__lang"><rect x="32" y="358" width="144" height="24" rx="12"/><text x="104" y="375" text-anchor="middle">Applications</text></g>
+            <g class="pgx-hv__lang"><rect x="184" y="358" width="144" height="24" rx="12"/><text x="256" y="375" text-anchor="middle">AI agents</text></g>
+            <g class="pgx-hv__lang"><rect x="32" y="388" width="144" height="24" rx="12"/><text x="104" y="405" text-anchor="middle">API gateways</text></g>
+            <g class="pgx-hv__lang"><rect x="184" y="388" width="144" height="24" rx="12"/><text x="256" y="405" text-anchor="middle">Infrastructure</text></g>
+            <g class="pgx-hv__lang"><rect x="32" y="418" width="144" height="24" rx="12"/><text x="104" y="435" text-anchor="middle">Tools</text></g>
+            <g class="pgx-hv__lang"><rect x="184" y="418" width="144" height="24" rx="12"/><text x="256" y="435" text-anchor="middle">Any service</text></g>
+            <text class="pgx-hv__m" x="180" y="458" text-anchor="middle">each one asks, then obeys</text>
           </g>
           <g class="pgx-hv__chain">
             <path class="pgx-hv__link" d="M110 545 H130 M230 545 H250"/>
@@ -121,33 +121,33 @@ import { withBase } from 'vitepress'
           </g>
           <g class="pgx-hv__node pgx-hv__node--siem">
             <rect x="60" y="612" width="240" height="64" rx="14"/>
-            <text class="pgx-hv__k" x="180" y="638" text-anchor="middle">RECORDS GO TO</text>
-            <text class="pgx-hv__s" x="180" y="660" text-anchor="middle">Control Plane · SIEM</text>
+            <text class="pgx-hv__k" x="180" y="638" text-anchor="middle">TO THE CONTROL PLANE</text>
+            <text class="pgx-hv__s" x="180" y="660" text-anchor="middle">decision logs · events</text>
           </g>
         </svg>
       </div>
       <dl class="pgx-legend">
-        <div data-term="cp"><dt><a :href="withBase('/control-plane')">Control Plane</a></dt><dd>Publishes the signed version the Data Plane decides with.</dd></div>
+        <div data-term="cp"><dt><a :href="withBase('/control-plane')">Control Plane</a></dt><dd>Holds the policies the Data Plane decides with, and the decision logs and events it syncs back.</dd></div>
         <div data-term="pdp"><dt><a :href="withBase('/how-it-works/glossary#pdp')">PDP</a></dt><dd>Policy Decision Point: the Data Plane's answer, permit or deny.</dd></div>
-        <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">PEP · SDK</a></dt><dd>The line in your code that asks, and obeys the answer.</dd></div>
+        <div data-term="pep"><dt><a :href="withBase('/how-it-works/glossary#pep')">Enforcement point</a></dt><dd>Any application, AI agent, gateway, component or tool that asks, then obeys.</dd></div>
         <div data-term="idp"><dt><a :href="withBase('/how-it-works/bring-your-own-data-plane')">Where it runs</a></dt><dd>Beside your app, as a service, or inside your process.</dd></div>
         <div data-term="evidence"><dt><a :href="withBase('/how-it-works/glossary#evidence')">Evidence</a></dt><dd>Every answer, signed and chained to the one before.</dd></div>
-        <div data-term="siem"><dt><a :href="withBase('/how-it-works/glossary#siem')">Your SIEM</a></dt><dd>Your own tools read the records beside your other logs.</dd></div>
+        <div data-term="siem"><dt><a :href="withBase('/control-plane')">Synced back</a></dt><dd>Decision logs and events return to the Control Plane; export them from there to your SIEM.</dd></div>
       </dl>
     </div>
   </section>
 
   <section class="pgx-section">
-    <div class="pgx-section-head"><div><div class="pgx-kicker">The idea</div><h2>The answer is already here.</h2></div><p>Your code asks one question; the Data Plane answers it with the rules it already holds.</p></div>
+    <div class="pgx-section-head"><div><div class="pgx-kicker">The idea</div><h2>The answer is already here.</h2></div><p>An enforcement point asks one question; the Data Plane answers it with the policies it already holds.</p></div>
     <div class="pgx-principles">
       <article><span>Verify</span><h3>Only a policy it trusts.</h3><p>It takes the version the <a :href="withBase('/control-plane')">Control Plane</a> signed, checks the signature, and refuses anything that does not verify.</p></article>
       <article><span>Decide</span><h3>Permit or deny, right here.</h3><p>Who, does what, on what: the <a :href="withBase('/how-it-works/glossary#pdp')">PDP</a> answers on the spot, without calling anyone else first.</p></article>
-      <article><span>Record</span><h3>Every answer, on record.</h3><p>Each decision becomes a signed record chained to the one before, naming the policy that made it, so nobody can alter it unnoticed.</p></article>
+      <article><span>Record</span><h3>Every answer, on record.</h3><p>Each decision becomes a signed record chained to the one before, naming the policy that made it. The decision logs and the events it receives are synced back to the Control Plane.</p></article>
     </div>
   </section>
 
   <section class="pgx-section pgx-section--tint">
-    <div class="pgx-section-head"><div><div class="pgx-kicker">In practice</div><h2>One line in your code asks.</h2></div><p>The SDK is your Policy Enforcement Point: it asks the Data Plane, and treats no answer as a no.</p></div>
+    <div class="pgx-section-head"><div><div class="pgx-kicker">In practice</div><h2>One line in your code asks.</h2></div><p>Any enforcement point asks the same way: an SDK in your code, or a gateway or tool calling the HTTP or gRPC API. No answer is a no.</p></div>
     <div class="pgx-discovery pgx-discovery--decision" role="img" aria-label="Your code asks whether a subject may perform an action on a resource; the Data Plane decides with the verified policy and records the decision; your code applies the answer.">
       <article><small>YOUR CODE · ASK</small><strong>May alice read the budget?</strong><span>through the SDK, your PEP</span></article><i>→</i>
       <article class="pgx-discovery__accent"><small>DATA PLANE · DECIDE</small><strong>Verified policy, signed record</strong><span>permit or deny, on record</span></article><i>→</i>
@@ -185,8 +185,8 @@ import { withBase } from 'vitepress'
       <details><summary>What if the Control Plane is down?</summary><p>The Data Plane keeps deciding with the version it already verified. Only new versions wait until the Control Plane is back.</p></details>
       <details><summary>What if the Data Plane does not answer?</summary><p>The SDK returns an error, not a deny. Treat it as a no, as the code above does: fail closed.</p></details>
       <details><summary>Can it decide with a policy nobody signed?</summary><p>No. A version whose signature does not verify is never used.</p></details>
-      <details><summary>Is every decision recorded?</summary><p>In the shipped configurations an answer leaves only once its record is durable: signed and chained to the one before. The records then travel to the Control Plane. See <a :href="withBase('/how-it-works/evidence')">Verifiable Evidence</a>.</p></details>
-      <details><summary>Can anyone ask it?</summary><p>In development the configuration lets anyone ask, to get started. In production every caller presents an access token of the <a :href="withBase('/authority-plane')">Authority Plane</a>.</p></details>
+      <details><summary>Is every decision recorded?</summary><p>In the shipped configurations an answer leaves only once its record is durable: signed and chained to the one before. The Data Plane syncs the records, and the events it receives, back to the Control Plane. See <a :href="withBase('/how-it-works/evidence')">Verifiable Evidence</a>.</p></details>
+      <details><summary>What can be an enforcement point?</summary><p>Anything that must allow or refuse an action: an application, an AI agent, an API gateway or proxy, an infrastructure component, a tool. It asks over HTTP or gRPC, or through an SDK, and obeys the answer.</p></details>
       <details><summary>Does it decide with what happened before?</summary><p>It can: events you send build a history the policy reads, for rules like "only after a login". See <a :href="withBase('/how-it-works/temporal-authorization')">Temporal Authorization</a>.</p></details>
     </div>
   </section>
