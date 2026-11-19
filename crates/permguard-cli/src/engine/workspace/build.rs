@@ -77,12 +77,31 @@ fn place_of(source: &[u8], first: &[u8], second: &[u8]) -> (usize, usize) {
     let after = text
         .find(first.trim())
         .map_or(0, |at| at + first.trim().len());
+    // The second policy begins at its first annotation or keyword, past the comments that lead
+    // it (BUG-0245).
+    let second = second.trim();
     let at = text[after..]
-        .find(second.trim())
-        .map_or(0, |found| after + found);
+        .find(second)
+        .map_or(0, |found| after + found + code_start(second));
     let line = text[..at].matches('\n').count() + 1;
-    let column = at - text[..at].rfind('\n').map_or(0, |newline| newline + 1) + 1;
+    let line_start = text[..at].rfind('\n').map_or(0, |newline| newline + 1);
+    // Counted in characters, as an editor counts them, not in bytes.
+    let column = text[line_start..at].chars().count() + 1;
     (line, column)
+}
+
+/// The offset of the first byte of `slice` that is neither blank nor part of a line comment.
+fn code_start(slice: &str) -> usize {
+    let mut offset = 0;
+    for line in slice.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            offset += line.len();
+            continue;
+        }
+        return offset + (line.len() - trimmed.len());
+    }
+    0
 }
 
 /// Builds the snapshot of the working tree.
@@ -591,22 +610,40 @@ fn build_directory(
                 };
             let id = resolved.id().to_owned();
 
+            // A repetition is named once, with each file once (BUG-0246): a third copy in the
+            // same file is the same problem, not another line saying "twice".
             if let Some(other) = context.ids_seen.insert(id.clone(), child_fs.clone()) {
-                context.problems.push(if other == child_fs {
-                    format!("{child_fs}: the same policy ({id}) appears twice in it: one policy, one place")
+                let said = if other == child_fs {
+                    format!(
+                        "{child_fs}: the same policy ({id}) appears more than once in it: one \
+                         policy, one place"
+                    )
                 } else {
                     format!(
                         "the same policy ({id}) appears in both {other} and {child_fs}: one policy, one place"
                     )
-                });
+                };
+                if !context.problems.contains(&said) {
+                    context.problems.push(said);
+                }
                 continue;
             }
             if let Some(alias) = &policy.alias
                 && let Some(other) = context.aliases_seen.insert(alias.clone(), child_fs.clone())
             {
-                context.problems.push(format!(
-                    "the alias `{alias}` is declared in both {other} and {child_fs}: aliases are unique"
-                ));
+                let said = if other == child_fs {
+                    format!(
+                        "{child_fs}: the alias `{alias}` is declared more than once in it: \
+                         aliases are unique"
+                    )
+                } else {
+                    format!(
+                        "the alias `{alias}` is declared in both {other} and {child_fs}: aliases are unique"
+                    )
+                };
+                if !context.problems.contains(&said) {
+                    context.problems.push(said);
+                }
                 continue;
             }
 
@@ -1024,7 +1061,38 @@ mod ignore_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::authored;
+    use super::{authored, place_of};
+
+    /// BUG-0245: the second policy is placed at its first annotation or keyword, past the
+    /// comments that lead it and the one that ends the first policy's line, and the column counts
+    /// characters.
+    #[test]
+    fn the_second_policy_is_placed_at_its_own_first_token() {
+        let first = "permit(principal, action, resource); // note";
+        let second =
+            "// a comment\n// another\n@alias(\"b\")\nforbid(principal, action, resource);";
+        let source = format!("{first}\n{second}\n");
+        assert_eq!(
+            place_of(source.as_bytes(), first.as_bytes(), second.as_bytes()),
+            (4, 1)
+        );
+
+        let first = "permit(principal, action, resource); // note";
+        let second = "forbid(principal, action, resource);";
+        let source = format!("{first}\n{second}\n");
+        assert_eq!(
+            place_of(source.as_bytes(), first.as_bytes(), second.as_bytes()),
+            (2, 1)
+        );
+
+        // Characters, not bytes: `é` is two bytes and one column.
+        let first = "permit(principal, action, resource) when { context.city == \"Liège\" };";
+        let second = "forbid(principal, action, resource);";
+        let source = format!("{first} {second}\n");
+        let (line, column) = place_of(source.as_bytes(), first.as_bytes(), second.as_bytes());
+        assert_eq!(line, 1);
+        assert_eq!(column, first.chars().count() + 2);
+    }
 
     /// BUG-0295, DEC-0031: a leading UTF-8 byte order mark is not part of what was authored, so
     /// the same policy with and without it is the same bytes, the same digest and the same id;

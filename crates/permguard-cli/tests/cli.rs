@@ -369,9 +369,10 @@ fn one_policy_per_file_is_a_teams_choice_and_validate_honours_it() {
 fn the_same_policy_twice_in_a_file_is_named_once() {
     let dir = scratch("twice");
     write_sources(&dir);
+    // Three times: one problem, said once, never "twice" (BUG-0246).
     std::fs::write(
         dir.join("app/twice.cedar"),
-        "permit(principal, action == Action::\"c\", resource);\npermit(principal, action == Action::\"c\", resource);\n",
+        "permit(principal, action == Action::\"c\", resource);\npermit(principal, action == Action::\"c\", resource);\npermit(principal, action == Action::\"c\", resource);\n",
     )
     .expect("the file writes");
     assert!(run(&dir, &["init", "cli-test"]).status.success());
@@ -383,8 +384,41 @@ fn the_same_policy_twice_in_a_file_is_named_once() {
         said.contains("app/twice.cedar: the same policy ("),
         "{said}"
     );
-    assert!(said.contains("appears twice in it"), "{said}");
+    assert_eq!(
+        said.matches("appears more than once in it").count(),
+        1,
+        "{said}"
+    );
+    assert!(!said.contains("appears twice"), "{said}");
     assert!(!said.contains("appears in both"), "{said}");
+
+    // An alias declared twice in one file names the file once; across two files, both.
+    std::fs::write(
+        dir.join("app/twice.cedar"),
+        "@alias(\"docs\")\npermit(principal, action == Action::\"c\", resource);\n@alias(\"docs\")\npermit(principal, action == Action::\"d\", resource);\n",
+    )
+    .expect("the file writes");
+    let said = stderr(&run(&dir, &["validate"]));
+    assert!(
+        said.contains("app/twice.cedar: the alias `docs` is declared more than once in it"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("app/twice.cedar and app/twice.cedar"),
+        "{said}"
+    );
+    std::fs::write(
+        dir.join("app/twice.cedar"),
+        "@alias(\"docs\")\npermit(principal, action == Action::\"c\", resource);\n",
+    )
+    .expect("the file writes");
+    std::fs::write(
+        dir.join("app/other.cedar"),
+        "@alias(\"docs\")\npermit(principal, action == Action::\"d\", resource);\n",
+    )
+    .expect("the file writes");
+    let said = stderr(&run(&dir, &["validate"]));
+    assert!(said.contains("is declared in both app/"), "{said}");
 }
 
 // ---- the guards ------------------------------------------------------------------------------

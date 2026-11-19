@@ -881,8 +881,13 @@ impl Workspace<'_> {
                         },
                     });
                 } else {
-                    plan.creates
-                        .push((canonical.clone(), load_blob_data(self.store, digest)?));
+                    // A file ends with a newline: the build trims it from the policy's bytes,
+                    // so the file round-trips as its author wrote it (BUG-0298).
+                    let mut written = load_blob_data(self.store, digest)?;
+                    if !written.is_empty() && !written.ends_with(b"\n") {
+                        written.push(b'\n');
+                    }
+                    plan.creates.push((canonical.clone(), written));
                 }
                 continue;
             };
@@ -960,9 +965,11 @@ impl Workspace<'_> {
 
         // Schemas and every other non-policy blob: no identity to track them
         // by, so the path is the identity and the bytes are the comparison.
+        // The file is compared as the build reads it, its CRLF made LF (BUG-0238), and an update
+        // is written in the file's own line endings.
         for (path, digest) in &incoming.others {
             let theirs = load_blob_data(self.store, digest)?;
-            let Some(ours) = self.store.read(path).map_err(err)? else {
+            let Some(raw) = self.store.read(path).map_err(err)? else {
                 // Deleted here since the checkpoint: a pending deletion, or a conflict when the
                 // remote changed it (DEC-0003).
                 match base.others.get(path) {
@@ -977,6 +984,8 @@ impl Workspace<'_> {
                 }
                 continue;
             };
+            let crlf = has_crlf(&raw);
+            let ours = super::build::authored(raw);
             if ours == theirs {
                 continue;
             }
@@ -996,7 +1005,8 @@ impl Workspace<'_> {
                 continue;
             }
             if based == ours {
-                plan.updates.push((path.clone(), theirs));
+                plan.updates
+                    .push((path.clone(), if crlf { to_crlf(&theirs) } else { theirs }));
             } else {
                 plan.conflicts.push(Conflict {
                     path: path.clone(),
@@ -1014,7 +1024,7 @@ impl Workspace<'_> {
             let Some(ours) = self.store.read(path).map_err(err)? else {
                 continue;
             };
-            if ours == load_blob_data(self.store, digest)? {
+            if super::build::authored(ours) == load_blob_data(self.store, digest)? {
                 plan.removals.push(path.clone());
             } else {
                 plan.conflicts.push(Conflict {
@@ -1224,6 +1234,17 @@ struct FileEdits {
 /// slice is found by its bytes. `None` when it is not there: the file moved
 /// since the last build, and the pull does not guess.
 fn splice(content: &[u8], old: &[u8], new: Option<&[u8]>) -> Option<Vec<u8>> {
+    // A blob is the authored text, LF; a file a Windows checkout wrote is CRLF. The policy is
+    // found, and its new text written, in the file's own line endings (BUG-0238).
+    let crlf = has_crlf(content);
+    let (old, new) = if crlf {
+        (to_crlf(old), new.map(to_crlf))
+    } else {
+        (old.to_vec(), new.map(<[u8]>::to_vec))
+    };
+    let (old, new) = (old.as_slice(), new.as_deref());
+    let separator: &[u8] = if crlf { b"\r\n\r\n" } else { b"\n\n" };
+    let ending: &[u8] = if crlf { b"\r\n" } else { b"\n" };
     let at = find(content, old)?;
     let (before, after) = (&content[..at], &content[at + old.len()..]);
     Some(match new {
@@ -1236,11 +1257,28 @@ fn splice(content: &[u8], old: &[u8], new: Option<&[u8]>) -> Option<Vec<u8>> {
             match (before.is_empty(), after.is_empty()) {
                 (true, true) => Vec::new(),
                 (true, false) => after.to_vec(),
-                (false, true) => [before, b"\n".as_slice()].concat(),
-                (false, false) => [before, b"\n\n".as_slice(), after].concat(),
+                (false, true) => [before, ending].concat(),
+                (false, false) => [before, separator, after].concat(),
             }
         }
     })
+}
+
+/// Whether a file's lines end in CRLF, as a Windows checkout writes them.
+fn has_crlf(bytes: &[u8]) -> bool {
+    bytes.windows(2).any(|pair| pair == b"\r\n")
+}
+
+/// `bytes` with every LF made CRLF; an LF already after a CR is left as it is.
+fn to_crlf(bytes: &[u8]) -> Vec<u8> {
+    let mut written = Vec::with_capacity(bytes.len() + bytes.len() / 16);
+    for (at, byte) in bytes.iter().enumerate() {
+        if *byte == b'\n' && (at == 0 || bytes[at - 1] != b'\r') {
+            written.push(b'\r');
+        }
+        written.push(*byte);
+    }
+    written
 }
 
 /// The first position of `needle` in `haystack`.

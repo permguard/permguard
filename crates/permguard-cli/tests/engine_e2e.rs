@@ -847,6 +847,193 @@ fn a_pull_advances_one_policy_of_a_file_and_keeps_the_rest() {
     assert!(plan.actions.is_empty(), "{plan:?}");
 }
 
+/// BUG-0238, DEC-0031: in a workspace a Windows checkout wrote, CRLF, a remote edit to a policy
+/// and to a schema lands with `pull`: the file is compared as the build reads it and written in its
+/// own line endings; a real local edit of the same policy is still a conflict.
+#[test]
+fn a_pull_lands_a_remote_edit_in_a_crlf_workspace() {
+    const SCHEMA: &str = "entity Group;\nentity User in [Group];\nentity Document { owner: User };\naction read, write appliesTo { principal: [User], resource: [Document] };\n";
+    let remote = EngineRemote::new("crlf-pull");
+    let crlf = |text: &str| text.replace('\n', "\r\n");
+    let all_crlf = |text: &str| {
+        text.match_indices('\n')
+            .all(|(at, _)| at > 0 && text.as_bytes()[at - 1] == b'\r')
+    };
+
+    let store_a = FsStore::new(scratch("crlf-pull-a"));
+    let ws_a = bind(&store_a);
+    let manifest = text(&store_a, "manifest.yml").replace(
+        "cedar: { runtime: cedar, schema: false }",
+        "cedar: { runtime: cedar, schema: true }",
+    );
+    store_a.write("manifest.yml", manifest.as_bytes()).unwrap();
+    store_a
+        .write("cedar/documents.cedar", crlf(DOCUMENTS).as_bytes())
+        .unwrap();
+    store_a
+        .write("cedar/model.cedarschema", crlf(SCHEMA).as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    // Author two, on Linux, edits the readers and the schema.
+    let store_b = FsStore::new(scratch("crlf-pull-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    let readers = text(&store_b, "cedar/document-readers.cedar");
+    store_b
+        .write(
+            "cedar/document-readers.cedar",
+            readers
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    let schema = text(&store_b, "cedar/model.cedarschema");
+    store_b
+        .write(
+            "cedar/model.cedarschema",
+            schema
+                .replace("action read, write", "action read, write, list")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "readers may list")
+            .unwrap()
+            .counter,
+        2
+    );
+
+    // Author one pulls into the CRLF files.
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert_eq!(pulled.counter, 2);
+    let documents = text(&store_a, "cedar/documents.cedar");
+    assert!(documents.contains("Action::\"list\""), "{documents}");
+    assert!(documents.contains("document-owners"), "{documents}");
+    assert!(
+        all_crlf(&documents),
+        "the file keeps its line endings: {documents:?}"
+    );
+    let model = text(&store_a, "cedar/model.cedarschema");
+    assert!(model.contains("read, write, list"), "{model}");
+    assert!(all_crlf(&model), "{model:?}");
+    let (_, plan) = ws_a.plan().unwrap();
+    assert!(
+        plan.actions.is_empty(),
+        "a converged workspace plans nothing: {plan:?}"
+    );
+
+    // A real local edit of the policy the remote also moved is still the author's to reconcile.
+    store_a
+        .write(
+            "cedar/documents.cedar",
+            documents
+                .replace("Group::\"finance\"", "Group::\"audit\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    let readers = text(&store_b, "cedar/document-readers.cedar");
+    store_b
+        .write(
+            "cedar/document-readers.cedar",
+            readers
+                .replace("Group::\"finance\"", "Group::\"ops\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "ops read")
+            .unwrap()
+            .counter,
+        3
+    );
+    let refused = ws_a.pull(&remote, false).unwrap_err().to_string();
+    assert!(refused.contains("cedar/documents.cedar"), "{refused}");
+}
+
+/// BUG-0298, DEC-0031: a comment stays with the policy it was written for: a note on a policy's
+/// `;` line travels with that policy through `apply` and `clone`, the file's last comment is
+/// written back, a single-policy file round-trips byte for byte, and `plan` attributes an edit of
+/// a note to the policy it belongs to.
+#[test]
+fn a_comment_travels_with_its_policy_through_apply_and_clone() {
+    const REFUNDS: &str = "// Refunds are approved by finance.\n@alias(\"refunds\")\npermit (principal in Group::\"finance\", action == Action::\"refund\", resource); // TEMP: until the Q4 review\n// end of file: reviewed by security\n";
+    const PAIR: &str = "@alias(\"alice-reads\")\npermit (principal == User::\"alice\", action == Action::\"read\", resource); // TEMP: remove after 2026-12 audit\n\n@alias(\"bob-deny\")\nforbid (principal == User::\"bob\", action, resource);\n// end of file: reviewed by security\n";
+    let remote = EngineRemote::new("comments");
+
+    let store_a = FsStore::new(scratch("comments-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/refunds.cedar", REFUNDS.as_bytes())
+        .unwrap();
+    store_a.write("cedar/pair.cedar", PAIR.as_bytes()).unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    ws_a.apply(&remote, "a@acme.com", "base").unwrap();
+
+    let store_b = FsStore::new(scratch("comments-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    assert_eq!(
+        text(&store_b, "cedar/refunds.cedar"),
+        REFUNDS,
+        "a one-policy file round-trips"
+    );
+    let alice = text(&store_b, "cedar/alice-reads.cedar");
+    let bob = text(&store_b, "cedar/bob-deny.cedar");
+    assert!(
+        alice.contains("// TEMP: remove after 2026-12 audit"),
+        "{alice}"
+    );
+    assert!(!bob.contains("TEMP"), "{bob}");
+    assert!(
+        bob.contains("// end of file: reviewed by security"),
+        "{bob}"
+    );
+
+    // An edit of the note is an update of the policy it is written on, and of no other.
+    store_a
+        .write(
+            "cedar/pair.cedar",
+            PAIR.replace("2026-12 audit", "2027-01 audit").as_bytes(),
+        )
+        .unwrap();
+    let (_, plan) = ws_a.plan().unwrap();
+    let updated: Vec<Option<String>> = plan
+        .actions
+        .iter()
+        .map(|action| match action {
+            permguard_cli::engine::workspace::PlanAction::Update(policy) => policy.alias.clone(),
+            other => panic!("only an update: {other:?}"),
+        })
+        .collect();
+    assert_eq!(updated, vec![Some("alice-reads".to_owned())]);
+    // An edit of the file's last comment is a change, of the last policy.
+    store_a.write("cedar/pair.cedar", PAIR.as_bytes()).unwrap();
+    store_a
+        .write(
+            "cedar/pair.cedar",
+            PAIR.replace("reviewed by security", "reviewed by audit")
+                .as_bytes(),
+        )
+        .unwrap();
+    let (_, plan) = ws_a.plan().unwrap();
+    assert_eq!(plan.actions.len(), 1, "{plan:?}");
+    assert!(
+        matches!(&plan.actions[0], permguard_cli::engine::workspace::PlanAction::Update(policy) if policy.alias.as_deref() == Some("bob-deny")),
+        "{plan:?}"
+    );
+}
+
 /// A tree that does not build cannot say what the author changed, so the pull
 /// refuses rather than advance the checkpoint over it: once the tree builds
 /// again, an apply against that checkpoint would revert the remote's commit.

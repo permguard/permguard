@@ -347,11 +347,16 @@ pub(crate) fn parse_policy(text: &str) -> Result<cedar_policy::Policy, String> {
 const ALIAS_ANNOTATION: &str = "alias";
 
 /// Cuts a Cedar source at every policy-terminating `;`: nesting depth zero,
-/// outside strings and line comments. Returns the trimmed verbatim slices,
-/// comment-only remainders dropped.
+/// outside strings and line comments. Returns the trimmed verbatim slices.
+///
+/// What the author wrote stays with the policy it was written for (BUG-0298, DEC-0031): a
+/// comment on the line of a policy's `;` (`permit(…); // TEMP: remove after the audit`) is that
+/// policy's, not the next one's, and the comments after the last policy are the last policy's,
+/// never dropped. Comment lines between two policies lead the second, as before.
 fn split_policies(text: &str) -> Vec<&str> {
     let bytes = text.as_bytes();
-    let mut slices = Vec::new();
+    // The byte ranges of the slices, untrimmed: a trailing comment extends the range it ends.
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
     let mut start = 0usize;
     let mut depth: i64 = 0;
     let mut in_string = false;
@@ -380,11 +385,17 @@ fn split_policies(text: &str) -> Vec<&str> {
                 b'{' | b'(' | b'[' => depth += 1,
                 b'}' | b')' | b']' => depth -= 1,
                 b';' if depth == 0 => {
-                    let slice = text[start..=at].trim();
-                    if !is_blank(slice) {
-                        slices.push(slice);
+                    let mut end = at + 1;
+                    // The rest of the line, when it holds only blanks and a line comment.
+                    let line_end = text[end..].find('\n').map_or(text.len(), |at| end + at);
+                    if text[end..line_end].trim_start().starts_with("//") {
+                        end = line_end;
+                        at = line_end.saturating_sub(1);
                     }
-                    start = at + 1;
+                    if !is_blank(&text[start..end]) {
+                        ranges.push((start, end));
+                    }
+                    start = end;
                 }
                 _ => {}
             }
@@ -392,12 +403,20 @@ fn split_policies(text: &str) -> Vec<&str> {
         at += 1;
     }
     // Whatever trails without a `;` is left for the parser to refuse — a
-    // truncated policy must be an error, not silently dropped.
+    // truncated policy must be an error, not silently dropped. Comments alone
+    // after the last policy are that policy's.
     let tail = text[start..].trim();
     if !is_blank(tail) {
-        slices.push(tail);
+        ranges.push((start, text.len()));
+    } else if !tail.is_empty()
+        && let Some(last) = ranges.last_mut()
+    {
+        last.1 = text.len();
     }
-    slices
+    ranges
+        .into_iter()
+        .map(|(from, to)| text[from..to].trim())
+        .collect()
 }
 
 /// Whether a slice holds nothing but whitespace and line comments.
@@ -556,6 +575,40 @@ permit (principal, action == Action::"list", resource);
         assert_eq!(policies[1].alias, None);
         // Verbatim: the slice ends exactly at its `;`.
         assert!(policies[0].bytes.ends_with(b";"));
+    }
+
+    /// BUG-0298, DEC-0031: a comment on the line of a policy's `;` is that policy's, the
+    /// comments after the last policy are the last policy's, and comment lines between two
+    /// policies lead the second; a policy with no comment after it keeps exactly its bytes.
+    #[test]
+    fn a_comment_stays_with_the_policy_it_was_written_for() {
+        let source = "permit (principal, action == Action::\"read\", resource); // TEMP: remove after 2026-12 audit\n\
+                      // why bob is denied\n\
+                      forbid (principal == User::\"bob\", action, resource);\n\
+                      // end of file: reviewed by security\n";
+        let policies = Cedar.extract(source.as_bytes()).unwrap();
+        assert_eq!(policies.len(), 2);
+        let first = String::from_utf8(policies[0].bytes.clone()).unwrap();
+        let second = String::from_utf8(policies[1].bytes.clone()).unwrap();
+        assert!(
+            first.ends_with("; // TEMP: remove after 2026-12 audit"),
+            "{first}"
+        );
+        assert!(second.starts_with("// why bob is denied"), "{second}");
+        assert!(!second.contains("TEMP"), "{second}");
+        assert!(
+            second.ends_with("// end of file: reviewed by security"),
+            "{second}"
+        );
+
+        let plain = "permit (principal, action, resource);\n";
+        let policies = Cedar.extract(plain.as_bytes()).unwrap();
+        assert_eq!(policies[0].bytes, b"permit (principal, action, resource);");
+        // A `;` inside the trailing comment does not split.
+        let semicolon = "permit (principal, action, resource); // a; b\npermit (principal, action == Action::\"x\", resource);\n";
+        let policies = Cedar.extract(semicolon.as_bytes()).unwrap();
+        assert_eq!(policies.len(), 2);
+        assert!(policies[0].bytes.ends_with(b"// a; b"));
     }
 
     #[test]

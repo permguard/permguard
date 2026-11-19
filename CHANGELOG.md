@@ -161,6 +161,12 @@ is cut.
 
 ### Fixed
 
+- **A Cedar comment stays with the policy it was written for.**
+  A comment on the line of a policy's `;` is that policy's, where it became the next policy's first line; the comments after a file's last policy are the last policy's, where they were dropped; and a file `clone` writes ends with a newline. A single-policy file round-trips through `apply` and `clone` as written, and `plan` reports an edit of a note as an update of the policy it is on. A policy with such a comment is one update after the upgrade, its id unchanged; every other policy keeps its bytes and digest.
+- **`pull` lands a remote edit in a CRLF workspace.**
+  A policy or a schema a Windows checkout wrote with CRLF endings is compared as the build reads it, and the incoming text is written in the file's own line endings, where the pull stopped with "the policy to advance is not where the last build read it" or reported a conflict; a real local edit is still a conflict.
+- **A repeated policy or alias in one file is named once.**
+  The same policy three times in one file is one problem, "appears more than once in it"; an alias declared twice in one file names the file once; across two files, both are named as before. With `workspace.one_policy_per_file`, the second policy is placed at its first annotation or keyword, past any comment, and its column counts characters.
 - **A `.permguardignore` pattern excludes what `.gitignore` would.**
   `*`, `?`, `**` and character classes are read as `.gitignore` reads them, so `cedar/drafts/*.cedar`, `*.cedar`, `cedar/drop.*` and `**/drop.cedar` keep their files out of the build, where they matched nothing and a draft meant to stay out was compiled, pushed and enforced; name and folder entries are unchanged. A negated entry (`!…`) and a pattern that does not compile are refused, naming the line.
 - **A UTF-8 byte order mark no longer breaks a workspace file.**
