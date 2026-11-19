@@ -800,6 +800,12 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
             permguard_core::codes::common::UNAVAILABLE,
             format!("{detail}; nothing was applied"),
         ),
+        // The same push in flight (BUG-0169): retried once the first has answered.
+        EngineError::InFlight { detail } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::host::REQUEST_IN_FLIGHT,
+            detail,
+        ),
         EngineError::NotFound { what } => ApiError::new(
             ErrorClass::NotFound,
             permguard_core::codes::common::NOT_FOUND,

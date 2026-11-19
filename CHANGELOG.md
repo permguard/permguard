@@ -19,6 +19,15 @@ is cut.
 
 ### Changed
 
+- **`inspect` reports a plane that refuses the operator as `refused`, and exits `64`; with no plane answering it exits `69`, not `1`.**
+  A gate denial (`401`/`403`, `unauthenticated`/`forbidden` over gRPC) or a certificate or scheme refused at the handshake makes the plane `refused`, reachable, with the refusal's code as its reason, over REST and gRPC alike; the summary says how many refused, and the report carries `refused`.
+  No plane answering exits `69`, as every other command whose target does not answer: a script that read `1` as "down" reads `69`.
+- **A request id in flight answers `request_in_flight`, retryable, not `request_id_reused`.**
+  The same request id arriving while its first request is still being processed is refused `503 request_in_flight` (`UNAVAILABLE` over gRPC; the command line exits `69`), on the catalog, the Host API, the Authority Plane and a push; retried once the first has answered, it learns that answer.
+  `request_id_reused` keeps meaning one thing: the id names another change.
+- **A damaged object of the local store no longer stops `objects list` and `objects prune`, and exits `65`.**
+  `objects list` lists every object, the damaged one as `corrupt`; `objects prune` keeps damaged objects, reports them under `corrupt` and still prunes the rest, unless a damaged tree or commit hides what it reaches, when it removes nothing.
+  `list`, `prune` and `cat` of a damaged object exit `65` with `object_corrupt`, where they exited `64`.
 - **A certificate refused at the TLS handshake, or a scheme that does not match the listener, exits `64` on every transport.**
   A missing client certificate (`tls_client_certificate_required`), one the listener refuses or revokes, or a server certificate the client does not trust (`tls_handshake_failed`), and every other `tls_*` code, are the operator's to fix: they exit `64` with the class `validation`, over HTTPS and gRPCS alike, where they exited `69`, or `70` with `operation was canceled` and `transport error` over gRPCS.
   `grpc://` at a TLS listener answers `tls_expected` and names `grpcs://`, as `http://` does with `https://`, where it exited `70` with `h2 protocol error`; `remote add` reads it too.

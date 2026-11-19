@@ -578,6 +578,14 @@ impl CatalogFacade {
             MutationError::RequestIdReused(detail) => {
                 ApiError::new(ErrorClass::Conflict, codes::host::REQUEST_ID_REUSED, detail).into()
             }
+            // The same change in flight (BUG-0169): retried once the first has answered, it
+            // learns that answer.
+            MutationError::InFlight(detail) => ApiError::new(
+                ErrorClass::Unavailable,
+                codes::host::REQUEST_IN_FLIGHT,
+                detail,
+            )
+            .into(),
             MutationError::AuditUnavailable(detail) => ApiError::new(
                 ErrorClass::Unavailable,
                 codes::host::AUDIT_UNAVAILABLE,

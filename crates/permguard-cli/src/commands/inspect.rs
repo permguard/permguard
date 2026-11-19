@@ -12,7 +12,7 @@ use crate::failure::Failure;
 use crate::inspect;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
-use crate::{EXIT_NOT_READY, EXIT_READY, EXIT_UNREACHABLE};
+use crate::{EXIT_NOT_READY, EXIT_READY, EXIT_UNREACHABLE, EXIT_USAGE};
 use permguard_client::http::Client;
 
 pub fn inspect_command(
@@ -86,10 +86,13 @@ pub fn inspect_command(
     render(&report, globals.output, trace)?;
 
     // The report is the answer, so a plane that is down is not an error. What the status carries is
-    // the one thing a script cannot read from a report it did not parse: nothing answered, so there
-    // was no runtime to inspect, is a different situation from a runtime that answered and is not
-    // serving yet.
-    Ok(ExitCode::from(if report.reachable == 0 {
+    // the one thing a script cannot read from a report it did not parse: a plane that refused this
+    // client is the operator's to fix, `64` (BUG-0086); nothing answered, so there was no runtime to
+    // inspect, is `69`, retried later like every other target that did not answer (DEC-0008 option
+    // A retired the `1` it was); a runtime that answered and is not serving yet is `2`.
+    Ok(ExitCode::from(if report.refused > 0 {
+        EXIT_USAGE
+    } else if report.reachable == 0 {
         EXIT_UNREACHABLE
     } else if report.ready < report.total {
         EXIT_NOT_READY

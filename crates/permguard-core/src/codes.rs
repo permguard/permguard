@@ -325,6 +325,8 @@ pub mod client {
     pub const DECISION_EXPORT_TRUNCATED: &str = "decision_export_truncated";
     pub const DECISION_EXPORT_TYPE_UNSUPPORTED: &str = "decision_export_type_unsupported";
     pub const DECISION_EXPORT_UNREADABLE: &str = "decision_export_unreadable";
+    /// An object of the local store is damaged at rest: exit 65 (BUG-0065).
+    pub const OBJECT_CORRUPT: &str = "object_corrupt";
     /// Another live permguard command holds the workspace's lock (BUG-0212).
     pub const WORKSPACE_LOCKED: &str = "workspace_locked";
     pub const EVENT_EXPORT_MALFORMED: &str = "event_export_malformed";
@@ -429,6 +431,8 @@ pub mod host {
     pub const REQUEST_ID_REQUIRED: &str = "request_id_required";
     /// A request id a principal already used for a different mutation inside the replay window.
     pub const REQUEST_ID_REUSED: &str = "request_id_reused";
+    /// The same request id is in flight: retry once it has answered (BUG-0169).
+    pub const REQUEST_IN_FLIGHT: &str = "request_in_flight";
     /// The expected revision a mutation stated is not the current one; the answer carries it.
     pub const REVISION_MISMATCH: &str = "revision_mismatch";
     /// No grant has the id named.
@@ -785,6 +789,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::DECISION_EXPORT_TYPE_UNSUPPORTED,
         client::DECISION_EXPORT_UNREADABLE,
         client::WORKSPACE_LOCKED,
+        client::OBJECT_CORRUPT,
         client::EVENT_EXPORT_MALFORMED,
         client::EVENT_EXPORT_TRUNCATED,
         client::EVENT_EXPORT_TYPE_UNSUPPORTED,
@@ -839,6 +844,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         storage::OBJECTIVE_MARGIN,
         host::REQUEST_ID_REQUIRED,
         host::REQUEST_ID_REUSED,
+        host::REQUEST_IN_FLIGHT,
         host::REVISION_MISMATCH,
         host::GRANT_UNKNOWN,
         host::GRANT_TERMINAL,

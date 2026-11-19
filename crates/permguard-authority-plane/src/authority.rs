@@ -308,6 +308,11 @@ fn mutation_refusal(error: MutationError<AccountsError>) -> Refusal {
         MutationError::RequestIdReused(detail) => {
             refused(ErrorClass::Conflict, codes::host::REQUEST_ID_REUSED, detail)
         }
+        MutationError::InFlight(detail) => refused(
+            ErrorClass::Unavailable,
+            codes::host::REQUEST_IN_FLIGHT,
+            detail,
+        ),
         MutationError::AuditUnavailable(detail) => Refusal::Api(
             ApiError::new(
                 ErrorClass::Unavailable,

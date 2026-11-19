@@ -36,6 +36,9 @@ pub enum Status {
     Degraded,
     /// Answers, and reports itself wedged. It has to be restarted.
     Unhealthy,
+    /// Answers, and refuses this client: its credential at the gate, its certificate at the
+    /// handshake, or the scheme it was asked with (BUG-0086). The operator's to fix.
+    Refused,
     /// Did not answer.
     Unreachable,
 }
@@ -47,6 +50,7 @@ impl Status {
             Self::Ready => "ready",
             Self::Degraded => "degraded",
             Self::Unhealthy => "unhealthy",
+            Self::Refused => "refused",
             Self::Unreachable => "unreachable",
         }
     }
@@ -68,7 +72,7 @@ pub struct PlaneInspection {
     pub status: Status,
     /// The stable code for a status that is not [`Status::Ready`].
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<&'static str>,
+    pub reason: Option<String>,
     /// The same thing, in a sentence.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -118,8 +122,10 @@ pub struct InspectReport {
     pub checked_at: String,
     /// How many planes were probed.
     pub total: usize,
-    /// How many answered.
+    /// How many answered, a refusal included.
     pub reachable: usize,
+    /// How many answered with a refusal of this client (BUG-0086).
+    pub refused: usize,
     /// How many are willing to be sent work.
     pub ready: usize,
     /// One entry per plane, in the order they were asked.
@@ -152,11 +158,16 @@ pub fn inspect(
         .iter()
         .filter(|plane| plane.status == Status::Ready)
         .count();
+    let refused = planes
+        .iter()
+        .filter(|plane| plane.status == Status::Refused)
+        .count();
 
     InspectReport {
         checked_at: time::to_rfc3339(now()),
         total: planes.len(),
         reachable,
+        refused,
         ready,
         planes,
     }
@@ -193,7 +204,12 @@ fn probe(
         Err(unreachable) => PlaneInspection {
             plane,
             endpoint: endpoint.clone(),
-            status: Status::Unreachable,
+            // A plane that refused this client answered: it is reached, and denied.
+            status: if unreachable.refused {
+                Status::Refused
+            } else {
+                Status::Unreachable
+            },
             reason: Some(unreachable.reason),
             detail: Some(unreachable.detail),
             latency_ms,
@@ -213,7 +229,7 @@ fn probe(
                 plane,
                 endpoint: endpoint.clone(),
                 status,
-                reason,
+                reason: reason.map(ToOwned::to_owned),
                 detail,
                 latency_ms,
                 live: answered.health.live(),
@@ -268,10 +284,12 @@ struct PlaneAnswer {
     health: HealthAnswer,
 }
 
-/// Why a plane counts as not having answered.
+/// Why a plane gave no answer this probe could use.
 struct Unreachable {
-    reason: &'static str,
+    reason: String,
     detail: String,
+    /// It answered, refusing this client: a gate denial, or a certificate or scheme refused.
+    refused: bool,
 }
 
 /// What a plane said about its health, including that it did not say.
@@ -327,6 +345,7 @@ fn read_plane(
         fetch(client, endpoint, "/version", trace).map_err(|failure| Unreachable {
             reason: failure.reason,
             detail: failure.detail,
+            refused: failure.refused,
         })?;
     let health = match fetch::<HealthBody>(client, endpoint, "/health", trace) {
         Ok(body) => HealthAnswer::Known {
@@ -375,20 +394,32 @@ fn read_plane_grpc(
         Box::new(permguard_client::narrate::Silent),
     )
     .map_err(|detail| Unreachable {
-        reason: permguard_core::codes::client::CONNECT_FAILED,
+        reason: permguard_core::codes::client::CONNECT_FAILED.to_owned(),
         detail,
+        refused: false,
     })?;
     let service = if plane == "data" {
         permguard_client::grpc::Plane::Data
     } else {
         permguard_client::grpc::Plane::Control
     };
-    let (info, health) = channel
-        .probe(service, prober.timeout)
-        .map_err(|status| Unreachable {
-            reason: permguard_client::grpc::reason_of(&status),
-            detail: format!("`{endpoint}` did not answer GetInfo: {}", status.message()),
-        })?;
+    let (info, health) = channel.probe(service, prober.timeout).map_err(|status| {
+        // A denial at the gate, or a refusal the channel diagnosed as the operator's (a
+        // certificate, a scheme), carries its code: the plane answered and refused.
+        let denied = permguard_client::grpc::refusal_of(&status);
+        match denied {
+            Some(code) => Unreachable {
+                reason: code,
+                detail: format!("`{endpoint}` refused GetInfo: {}", status.message()),
+                refused: true,
+            },
+            None => Unreachable {
+                reason: permguard_client::grpc::reason_of(&status).to_owned(),
+                detail: format!("`{endpoint}` did not answer GetInfo: {}", status.message()),
+                refused: false,
+            },
+        }
+    })?;
     let health = match health {
         Ok(body) => HealthAnswer::Known {
             live: body.live,
@@ -421,8 +452,10 @@ fn read_plane_grpc(
 
 /// A request that did not produce a body this CLI could read.
 struct Failure {
-    reason: &'static str,
+    reason: String,
     detail: String,
+    /// The plane refused this client rather than failing to answer (BUG-0086).
+    refused: bool,
 }
 
 /// Asks for one path and decodes what came back.
@@ -438,22 +471,49 @@ fn fetch<T: for<'de> Deserialize<'de>>(
         trace.say(format!("GET {endpoint}{path} failed: {error}"));
 
         Failure {
-            reason: error.reason(),
+            reason: error.reason().to_owned(),
             detail: error.to_string(),
+            refused: error.usage(),
         }
     })?;
 
     trace.say(format!("GET {endpoint}{path} answered {}", response.status));
 
+    // A denial at the gate is the plane answering, with its code and sentence (BUG-0086).
+    if matches!(response.status, 401 | 403) {
+        let denial: Option<serde_json::Value> = serde_json::from_str(&response.body).ok();
+        let said = |key: &str| {
+            denial
+                .as_ref()
+                .and_then(|denial| denial.get(key))
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        };
+        let fallback = if response.status == 401 {
+            permguard_core::codes::common::UNAUTHENTICATED
+        } else {
+            permguard_core::codes::common::FORBIDDEN
+        };
+        return Err(Failure {
+            reason: said("code").unwrap_or_else(|| fallback.to_owned()),
+            detail: format!(
+                "`{endpoint}{path}` refused this client: {}",
+                said("message").unwrap_or_else(|| format!("answered {}", response.status))
+            ),
+            refused: true,
+        });
+    }
     if response.status != 200 {
         return Err(Failure {
-            reason: permguard_core::codes::client::HTTP_STATUS,
+            reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
             detail: format!("`{endpoint}{path}` answered {}", response.status),
+            refused: false,
         });
     }
 
     serde_json::from_str(&response.body).map_err(|error| Failure {
-        reason: permguard_core::codes::client::DECODE_FAILED,
+        refused: false,
+        reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
         detail: format!("`{endpoint}{path}` answered something unreadable: {error}"),
     })
 }
@@ -537,7 +597,7 @@ impl Report for InspectReport {
             writeln!(out, "  endpoint: {}", plane.endpoint)?;
             writeln!(out, "  status:   {}", plane.status.as_str())?;
 
-            if let Some(reason) = plane.reason {
+            if let Some(reason) = plane.reason.as_deref() {
                 writeln!(out, "  reason:   {reason}")?;
             }
 
@@ -608,8 +668,15 @@ impl Report for InspectReport {
 
         writeln!(
             out,
-            "{} of {} planes ready, {} reachable",
-            self.ready, self.total, self.reachable
+            "{} of {} planes ready, {} reachable{}",
+            self.ready,
+            self.total,
+            self.reachable,
+            if self.refused > 0 {
+                format!(", {} refused this client", self.refused)
+            } else {
+                String::new()
+            }
         )
     }
 }

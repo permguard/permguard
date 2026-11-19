@@ -79,6 +79,8 @@ pub enum EngineError {
     /// A backup barrier holds new mutations (WP-7.8): nothing was applied, and the push succeeds
     /// once the backup ends.
     Quiesced { detail: String },
+    /// The same request id is in flight: retried once it has answered (BUG-0169).
+    InFlight { detail: String },
     /// Nothing answers: an absent ref, an absent object.
     NotFound { what: String },
     /// A quota refused the work.
@@ -108,7 +110,9 @@ impl std::fmt::Display for EngineError {
             EngineError::MutationsUnavailable { detail } => {
                 write!(f, "the mutation journal is unavailable: {detail}")
             }
-            EngineError::Quiesced { detail } => write!(f, "{detail}"),
+            EngineError::Quiesced { detail } | EngineError::InFlight { detail } => {
+                write!(f, "{detail}")
+            }
             EngineError::NotFound { what } => write!(f, "not found: {what}"),
             EngineError::Unavailable { message } => write!(f, "refused by quota: {message}"),
             EngineError::SigningUnavailable { message } => {
@@ -791,6 +795,9 @@ impl Engine<'_> {
                 Err(EngineError::MutationsUnavailable { detail })
             }
             Err(MutationError::Quiesced(detail)) => Err(EngineError::Quiesced { detail }),
+            Err(MutationError::InFlight(detail)) => Err(EngineError::InFlight {
+                detail: detail.to_owned(),
+            }),
         }
     }
 

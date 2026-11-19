@@ -615,6 +615,11 @@ fn refusal_of_mutation(operation: &str, error: MutationError<Refusal>) -> Refusa
         MutationError::RequestIdReused(detail) => {
             Refusal::new(ErrorClass::Conflict, codes::host::REQUEST_ID_REUSED, detail)
         }
+        MutationError::InFlight(detail) => Refusal::new(
+            ErrorClass::Unavailable,
+            codes::host::REQUEST_IN_FLIGHT,
+            detail,
+        ),
         MutationError::AuditUnavailable(detail) => {
             tracing::error!(
                 event.name = "host.audit_unavailable",

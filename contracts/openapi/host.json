@@ -592,7 +592,7 @@
             }
           },
           "503": {
-            "description": "No Host identity is open or it could not rotate (`identity_unavailable`), the mutation journal or the audit trail cannot record (`replay_unavailable`, `audit_unavailable`, nothing applied), or the principal is over its bound.",
+            "description": "No Host identity is open or it could not rotate (`identity_unavailable`), the mutation journal or the audit trail cannot record (`replay_unavailable`, `audit_unavailable`, nothing applied), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -697,7 +697,7 @@
             }
           },
           "503": {
-            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`).",
+            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -812,7 +812,7 @@
             }
           },
           "503": {
-            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`).",
+            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1316,7 +1316,7 @@
             }
           },
           "503": {
-            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1443,7 +1443,7 @@
             }
           },
           "503": {
-            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1570,7 +1570,7 @@
             }
           },
           "503": {
-            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1823,7 +1823,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1949,7 +1949,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2348,7 +2348,7 @@
             }
           },
           "503": {
-            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve.",
+            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2475,7 +2475,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2602,7 +2602,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2729,7 +2729,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2856,7 +2856,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2983,7 +2983,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3110,7 +3110,7 @@
             }
           },
           "503": {
-            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve (`unavailable`).",
+            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3333,7 +3333,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3460,7 +3460,7 @@
             }
           },
           "503": {
-            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3565,7 +3565,7 @@
             }
           },
           "503": {
-            "description": "This Host has no outbound peer client: its Host listener has no TLS certificate or client CA (`peer_client_unconfigured`); or the coordinator refused or could not be reached (`enrollment_refused`, `unavailable`).",
+            "description": "This Host has no outbound peer client: its Host listener has no TLS certificate or client CA (`peer_client_unconfigured`); or the coordinator refused or could not be reached (`enrollment_refused`, `unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5312,7 +5312,7 @@
             }
           },
           "503": {
-            "description": "This Host runs without `operations.keys`, so nothing attests the approval (`unavailable`), the mutation journal is unavailable (`replay_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "description": "This Host runs without `operations.keys`, so nothing attests the approval (`unavailable`), the mutation journal is unavailable (`replay_unavailable`), or the principal is over its bound (`principal_bound_exceeded`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5562,7 +5562,7 @@
             }
           },
           "503": {
-            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`).",
+            "description": "The Plane that provides the job is not composed or its sweep could not run, the Host has no `operations.keys`, or the mutation journal or the audit trail cannot record (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {

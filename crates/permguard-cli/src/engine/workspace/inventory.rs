@@ -14,6 +14,9 @@ use permguard_objects::digest::Digest;
 use permguard_client::Store;
 use permguard_client::objects;
 
+/// The kind an object damaged at rest is listed as (BUG-0065).
+pub const CORRUPT: &str = "corrupt";
+
 /// Where a workspace keeps its mirror — the primitives are told, every time.
 pub const OBJECTS_DIR: &str = ".permguard/objects";
 
@@ -27,6 +30,11 @@ pub fn get(store: &dyn Store, digest: &Digest) -> Result<Option<Vec<u8>>, String
     objects::get(store, OBJECTS_DIR, digest)
 }
 
+/// Reads one object, saying whether a failure is the object's damage or the store's (BUG-0065).
+pub fn read(store: &dyn Store, digest: &Digest) -> Result<Option<Vec<u8>>, objects::Unread> {
+    objects::read(store, OBJECTS_DIR, digest)
+}
+
 /// Whether an object is present.
 pub fn has(store: &dyn Store, digest: &Digest) -> bool {
     objects::has(store, OBJECTS_DIR, digest)
@@ -36,7 +44,8 @@ pub fn has(store: &dyn Store, digest: &Digest) -> bool {
 #[derive(Debug, Clone)]
 pub struct InventoryRecord {
     pub digest: Digest,
-    /// `blob`, `tree` or `commit`; `unreadable` when the bytes do not decode.
+    /// `blob`, `tree` or `commit`; `unreadable` when the bytes do not decode; `corrupt` when they
+    /// are not the object their digest names, damaged at rest (BUG-0065).
     pub kind: &'static str,
     /// Reachable from the tracked remote head (the checkpoint).
     pub tracked: bool,
@@ -62,14 +71,18 @@ pub fn inventory(store: &dyn Store) -> Result<Vec<InventoryRecord>, String> {
 
     let mut records = Vec::new();
     for digest in list(store)? {
-        let kind = match get(store, &digest)? {
-            Some(bytes) => match permguard_objects::object::decode(&bytes) {
+        // One damaged object is listed as damaged, and the rest of the store with it: the store
+        // this command exists to diagnose is the damaged one (BUG-0065).
+        let kind = match read(store, &digest) {
+            Ok(Some(bytes)) => match permguard_objects::object::decode(&bytes) {
                 Ok(permguard_objects::object::Object::Blob(_)) => "blob",
                 Ok(permguard_objects::object::Object::Tree(_)) => "tree",
                 Ok(permguard_objects::object::Object::Commit(_)) => "commit",
                 Err(_) => "unreadable",
             },
-            None => continue,
+            Ok(None) => continue,
+            Err(objects::Unread::Corrupt) => CORRUPT,
+            Err(objects::Unread::Store(error)) => return Err(error),
         };
         records.push(InventoryRecord {
             tracked: tracked.contains(&digest),

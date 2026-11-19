@@ -11,8 +11,9 @@
 use crate::output::OutputFormat;
 /// Every plane it asked about is ready.
 pub const EXIT_READY: u8 = 0;
-/// No plane answered.
-pub const EXIT_UNREACHABLE: u8 = 1;
+/// No plane answered: retry later, as for every target that did not answer (DEC-0008 option A,
+/// BUG-0086). It was `1`, a status no other command used.
+pub const EXIT_UNREACHABLE: u8 = EXIT_UNAVAILABLE;
 /// Planes answered, and not all of them are ready.
 pub const EXIT_NOT_READY: u8 = 2;
 /// The command line, or something it named, was wrong. `EX_USAGE`, from `sysexits`.
@@ -21,6 +22,9 @@ pub const EXIT_USAGE: u8 = 64;
 /// or it refused for something that will change without the operator — a ledger with no history
 /// yet. `EX_UNAVAILABLE`, from `sysexits`.
 pub const EXIT_UNAVAILABLE: u8 = 69;
+/// Data the command read is damaged at rest: an object of the local store that is not what its
+/// digest names (DEC-0008 option A, BUG-0065). `EX_DATAERR`, from `sysexits`.
+pub const EXIT_DATAERR: u8 = 65;
 /// The command failed for an internal reason. `EX_SOFTWARE`, from `sysexits`.
 pub const EXIT_SOFTWARE: u8 = 70;
 
@@ -65,6 +69,16 @@ impl Failure {
             code: code.to_owned(),
             message: message.to_string(),
             status: EXIT_NOT_READY,
+        }
+    }
+
+    /// Data the command read is damaged at rest: a store to repair, not a command to fix.
+    pub fn corrupt(message: impl std::fmt::Display) -> Self {
+        Self {
+            class: "internal".to_owned(),
+            code: permguard_core::codes::client::OBJECT_CORRUPT.to_owned(),
+            message: message.to_string(),
+            status: EXIT_DATAERR,
         }
     }
 

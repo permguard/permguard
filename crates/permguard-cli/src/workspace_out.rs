@@ -1681,6 +1681,9 @@ pub struct PruneReport {
     pub bytes: u64,
     /// Objects kept because something reaches them.
     pub kept: usize,
+    /// Objects damaged at rest, kept and never removed (BUG-0065).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub corrupt: Vec<String>,
 }
 
 impl Report for PruneReport {
@@ -1712,6 +1715,14 @@ impl Report for PruneReport {
             ),
         };
         writeln!(out, "{}", style::bold(&summary))?;
+        for digest in &self.corrupt {
+            writeln!(
+                out,
+                "  {} {}",
+                style::id(digest),
+                style::dim("(corrupt: damaged at rest, kept)")
+            )?;
+        }
 
         Ok(())
     }

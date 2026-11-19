@@ -1617,6 +1617,35 @@ fn a_denial_reads_the_same_over_https_and_grpcs() {
             "{command:?}"
         );
     }
+    // `inspect` reads the denial as a plane that answered and refused this client, with the
+    // denial's code, and exits `64` over both transports (BUG-0086).
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let output = cli(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "--tls-ca-file",
+                pki.authority.to_str().unwrap(),
+                "--token-file",
+                token.to_str().unwrap(),
+                "inspect",
+                "--control-endpoint",
+                &endpoint,
+                "--data-endpoint",
+                &endpoint,
+            ],
+        );
+        assert_eq!(output.status.code(), Some(64), "{scheme}: {output:?}");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["refused"], 2, "{scheme}: {report}");
+        assert_eq!(report["reachable"], 2, "{scheme}: {report}");
+        for plane in report["planes"].as_array().unwrap() {
+            assert_eq!(plane["status"], "refused", "{scheme}: {plane}");
+            assert_eq!(plane["reason"], "unauthenticated", "{scheme}: {plane}");
+        }
+    }
     // A workspace command reads the same denial the same way (BUG-0087): its own remote client
     // no longer reports it as `validation`/`usage`, nor prints a `(class/code)` suffix.
     let workspace = dir.join("workspace");

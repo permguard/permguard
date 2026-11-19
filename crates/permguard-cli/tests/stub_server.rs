@@ -1228,7 +1228,7 @@ fn inspect_with_nobody_listening_exits_unreachable() {
         ],
     );
 
-    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
 }
 
 /// `permguard test --remote` asks a plane the cases instead of deciding them here, and judges the

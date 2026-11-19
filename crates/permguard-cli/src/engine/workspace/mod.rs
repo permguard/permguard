@@ -113,6 +113,9 @@ pub struct WorkspaceError {
     /// A verification that ran and did not pass, rather than one that could not run (TC-1): the
     /// command exits 2 instead of 64.
     pub unverified: bool,
+    /// An object of the local store is damaged at rest (BUG-0065): the command exits 65, a
+    /// store to repair, rather than 64.
+    pub corrupt: bool,
 }
 
 impl std::fmt::Display for WorkspaceError {
@@ -128,6 +131,7 @@ impl From<String> for WorkspaceError {
         Self {
             message,
             unverified: false,
+            corrupt: false,
         }
     }
 }
@@ -136,6 +140,16 @@ pub(crate) fn err(message: impl Into<String>) -> WorkspaceError {
     WorkspaceError {
         message: message.into(),
         unverified: false,
+        corrupt: false,
+    }
+}
+
+/// An object of the local store damaged at rest (BUG-0065).
+pub(crate) fn corrupt(message: impl Into<String>) -> WorkspaceError {
+    WorkspaceError {
+        message: message.into(),
+        unverified: false,
+        corrupt: true,
     }
 }
 
@@ -144,6 +158,7 @@ pub(crate) fn unverified(message: impl Into<String>) -> WorkspaceError {
     WorkspaceError {
         message: message.into(),
         unverified: true,
+        corrupt: false,
     }
 }
 

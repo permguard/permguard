@@ -188,7 +188,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -388,7 +388,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -484,7 +484,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -752,7 +752,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -962,7 +962,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1058,7 +1058,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1228,7 +1228,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1367,7 +1367,7 @@
             }
           },
           "503": {
-            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`).",
+            "description": "The change was not made: its audit record could not be written (`audit_unavailable`), or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1741,7 +1741,7 @@
             }
           },
           "503": {
-            "description": "This plane composes no transfer of ledgers, or the Host composes no mutation transaction (`unavailable`).",
+            "description": "This plane composes no transfer of ledgers, or the Host composes no mutation transaction (`unavailable`). The same request id is in flight: retry once it has answered, and the retry learns its answer (`request_in_flight`).",
             "content": {
               "application/json": {
                 "schema": {

@@ -41,19 +41,37 @@ pub fn publish(store: &dyn Store, root: &str, bytes: &[u8]) -> Result<(Digest, b
     Ok((digest, written))
 }
 
-/// Reads one object, decompressed and hash-verified on the way out.
-pub fn get(store: &dyn Store, root: &str, digest: &Digest) -> Result<Option<Vec<u8>>, String> {
-    match store.read(&path_of(root, digest))? {
+/// Why a stored object could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unread {
+    /// Its bytes are there and are not the object their digest names: damaged at rest.
+    Corrupt,
+    /// The store could not be read.
+    Store(String),
+}
+
+/// Reads one object, decompressed and hash-verified on the way out, saying whether a failure is
+/// the object's own damage or the store's (BUG-0065).
+pub fn read(store: &dyn Store, root: &str, digest: &Digest) -> Result<Option<Vec<u8>>, Unread> {
+    match store.read(&path_of(root, digest)).map_err(Unread::Store)? {
         None => Ok(None),
         Some(stored) => {
             let bytes = compress::inflate(&stored, limits::MAX_OBJECT_BYTES)
-                .map_err(|_| format!("local object {digest} is corrupt"))?;
+                .map_err(|_| Unread::Corrupt)?;
             if Digest::compute(&bytes) != *digest {
-                return Err(format!("local object {digest} is corrupt"));
+                return Err(Unread::Corrupt);
             }
             Ok(Some(bytes))
         }
     }
+}
+
+/// Reads one object, decompressed and hash-verified on the way out.
+pub fn get(store: &dyn Store, root: &str, digest: &Digest) -> Result<Option<Vec<u8>>, String> {
+    read(store, root, digest).map_err(|unread| match unread {
+        Unread::Corrupt => format!("local object {digest} is corrupt"),
+        Unread::Store(error) => error,
+    })
 }
 
 /// Whether an object is present.

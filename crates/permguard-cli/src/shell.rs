@@ -21,19 +21,20 @@
 //! | Status | Meaning |
 //! | -----: | ------- |
 //! | `0` | the command succeeded, and every plane it asked about is ready |
-//! | `1` | no plane answered — there was nothing to inspect |
 //! | `2` | the command ran and its subject did not pass: planes answered and not all are ready, or cases failed |
 //! | `64` | the command line, or something it named, was wrong: a certificate either side refused at the TLS handshake, or a scheme that does not match the listener, included (`EX_USAGE`) |
-//! | `69` | the plane could not answer right now — unreachable, or a ledger with no history yet — and retrying is reasonable (`EX_UNAVAILABLE`) |
+//! | `65` | data the command read is damaged at rest: an object of the local store that is not what its digest names (`EX_DATAERR`) |
+//! | `69` | the plane could not answer right now — unreachable, no plane answered `inspect`, or a ledger with no history yet — and retrying is reasonable (`EX_UNAVAILABLE`) |
 //! | `70` | the command failed for an internal reason (`EX_SOFTWARE`) |
 //!
 //! `69` and `70` are the line between "wait" and "page somebody": a data plane that has not
 //! mirrored a ledger's first commit yet answers `ledger_empty`, which is nothing the operator
 //! typed and nothing in this CLI, and used to exit `70` beside a decode failure.
 //!
-//! The distinction between `1` and `2` is what makes `permguard inspect` usable as a gate: a
+//! The distinction between `69` and `2` is what makes `permguard inspect` usable as a gate: a
 //! deployment that waits for `0` waits for a runtime that is actually serving, and can tell "not up
-//! yet" apart from "up, still draining" while it waits. `permguard test` draws the same line from
+//! yet" apart from "up, still draining" while it waits; a plane that refuses the operator's
+//! credential exits `64`, which no wait will change. `permguard test` draws the same line from
 //! the other side: `2` is a workspace whose cases did not all pass, which is not the CLI failing —
 //! it did exactly what it was asked, and the answer is no.
 

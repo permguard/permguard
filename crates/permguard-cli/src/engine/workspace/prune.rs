@@ -43,7 +43,7 @@ use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Object};
 
 use super::inventory::{self, OBJECTS_DIR};
-use super::{Result, WorkspaceError, config, err};
+use super::{Result, WorkspaceError, config, corrupt, err};
 
 /// One object a prune took, or would take.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +66,8 @@ pub struct Pruned {
     pub applied: bool,
     /// Temporary files of publishes a crash interrupted, removed when applied.
     pub temporaries: usize,
+    /// Objects damaged at rest, never removed: kept for whoever repairs the store (BUG-0065).
+    pub corrupt: Vec<Digest>,
 }
 
 impl Pruned {
@@ -81,6 +83,9 @@ impl Pruned {
 pub fn prune(store: &dyn Store, apply: bool) -> Result<Pruned> {
     let tracked = reachable(store, tracked_head(store)?)?;
     let staged = reachable(store, staged_root(store)?)?;
+    // A blob both walks met damaged is kept like any reached one, and said.
+    let mut corrupt_reached: BTreeSet<Digest> = tracked.1.union(&staged.1).cloned().collect();
+    let (tracked, staged) = (tracked.0, staged.0);
 
     let mut pruned = Pruned {
         applied: apply,
@@ -91,6 +96,12 @@ pub fn prune(store: &dyn Store, apply: bool) -> Result<Pruned> {
         pruned.temporaries = objects::sweep_temporaries(store, OBJECTS_DIR).map_err(err)?;
     }
     for record in inventory::inventory(store).map_err(err)? {
+        // Damaged bytes are evidence, and an orphan's are no less: never removed here.
+        if record.kind == inventory::CORRUPT {
+            corrupt_reached.insert(record.digest.clone());
+            pruned.kept += 1;
+            continue;
+        }
         if tracked.contains(&record.digest) || staged.contains(&record.digest) {
             pruned.kept += 1;
             continue;
@@ -106,6 +117,8 @@ pub fn prune(store: &dyn Store, apply: bool) -> Result<Pruned> {
             bytes,
         });
     }
+
+    pruned.corrupt = corrupt_reached.into_iter().collect();
 
     Ok(pruned)
 }
@@ -126,42 +139,75 @@ fn stored_bytes(store: &dyn Store, digest: &Digest) -> u64 {
         .unwrap_or(0)
 }
 
-/// Everything reachable from `start`, refusing on a hole.
+/// Everything reachable from `start`, refusing on a hole, and the blobs met damaged at rest.
 ///
 /// Strict where [`inventory`](super::inventory) is tolerant, and deliberately
 /// so: a listing may show an incomplete picture, a deletion may not act on
-/// one.
-fn reachable(store: &dyn Store, start: Option<Digest>) -> Result<BTreeSet<Digest>> {
+/// one. A damaged blob has no children, so the picture stays whole and the walk goes on; a
+/// damaged tree or commit hides what it reaches, and nothing is pruned (BUG-0065).
+fn reachable(
+    store: &dyn Store,
+    start: Option<Digest>,
+) -> Result<(BTreeSet<Digest>, BTreeSet<Digest>)> {
     let mut reached = BTreeSet::new();
-    let mut queue: Vec<Digest> = start.into_iter().collect();
+    let mut damaged = BTreeSet::new();
+    // Each digest with the kind its referrer declares, when it declares one.
+    let mut queue: Vec<(Digest, Option<object::Kind>)> = start
+        .into_iter()
+        .map(|digest| (digest, Some(object::Kind::Commit)))
+        .collect();
 
-    while let Some(digest) = queue.pop() {
+    while let Some((digest, kind)) = queue.pop() {
         if !reached.insert(digest.clone()) {
             continue;
         }
-        let bytes = inventory::get(store, &digest)
-            .map_err(err)?
-            .ok_or_else(|| WorkspaceError {
-                message: format!(
-                    "the object {digest} is referenced and missing: run `permguard verify` \
+        let read = match inventory::read(store, &digest) {
+            Ok(read) => read,
+            Err(objects::Unread::Corrupt) if kind == Some(object::Kind::Blob) => {
+                damaged.insert(digest);
+                continue;
+            }
+            Err(objects::Unread::Corrupt) => {
+                return Err(corrupt(format!(
+                    "the object {digest} is damaged at rest and what it reaches cannot be known, \
+                     so nothing is pruned: restore the workspace's objects, or clone the ledger \
+                     again"
+                )));
+            }
+            Err(objects::Unread::Store(error)) => return Err(err(error)),
+        };
+        let bytes = read.ok_or_else(|| WorkspaceError {
+            message: format!(
+                "the object {digest} is referenced and missing: run `permguard verify` \
                          before pruning"
-                ),
-                unverified: false,
-            })?;
+            ),
+            unverified: false,
+            corrupt: false,
+        })?;
         match object::decode(&bytes).map_err(|error| err(format!("{digest}: {error}")))? {
             Object::Commit(commit) => {
-                queue.push(commit.tree);
-                queue.push(commit.manifest);
-                queue.extend(commit.predecessors);
+                queue.push((commit.tree, Some(object::Kind::Tree)));
+                // The manifest's kind is not declared by the commit: a damaged one refuses.
+                queue.push((commit.manifest, None));
+                queue.extend(
+                    commit
+                        .predecessors
+                        .into_iter()
+                        .map(|predecessor| (predecessor, Some(object::Kind::Commit))),
+                );
             }
             Object::Tree(tree) => {
-                queue.extend(tree.entries.into_iter().map(|entry| entry.digest));
+                queue.extend(
+                    tree.entries
+                        .into_iter()
+                        .map(|entry| (entry.digest, Some(entry.kind))),
+                );
             }
             Object::Blob(_) => {}
         }
     }
 
-    Ok(reached)
+    Ok((reached, damaged))
 }
 
 fn tracked_head(store: &dyn Store) -> Result<Option<Digest>> {
@@ -367,6 +413,81 @@ mod tests {
             inventory::has(&store, &orphan),
             "and nothing was removed on the way to finding out"
         );
+    }
+
+    /// Overwrites one stored object with bytes that are not it: damage at rest.
+    fn damage(root: &std::path::Path, digest: &Digest) {
+        let hex = digest.to_string();
+        let hex = &hex["sha256:".len()..];
+        let path = root.join(OBJECTS_DIR).join(&hex[..2]).join(&hex[2..]);
+        std::fs::write(&path, [0x78, 0x9c, 0xde, 0xad]).expect("damaged by hand");
+    }
+
+    /// BUG-0065: a tracked blob damaged at rest is listed as `corrupt` beside every other
+    /// object; the prune still runs, takes the orphan, and keeps and reports the damaged blob
+    /// and a damaged orphan alike.
+    #[test]
+    fn a_damaged_blob_is_listed_kept_and_reported_and_the_prune_still_runs() {
+        let root = scratch("damaged-blob");
+        let store = FsStore::new(&root);
+        let policy = blob(&store, "kept");
+        let commit = track(&store, &policy);
+        let orphan = blob(&store, "an interrupted pull left this");
+        let damaged_orphan = blob(&store, "damaged and reached by nobody");
+        damage(&root, &policy);
+        damage(&root, &damaged_orphan);
+
+        let listed = inventory::inventory(&store).expect("the listing runs");
+        let kind_of = |digest: &Digest| {
+            listed
+                .iter()
+                .find(|record| &record.digest == digest)
+                .map(|record| record.kind)
+        };
+        assert_eq!(kind_of(&policy), Some(inventory::CORRUPT));
+        assert_eq!(kind_of(&damaged_orphan), Some(inventory::CORRUPT));
+        assert_eq!(kind_of(&commit), Some("commit"));
+        assert_eq!(kind_of(&orphan), Some("blob"));
+
+        let pruned = prune(&store, true).expect("the prune runs");
+        assert_eq!(
+            pruned
+                .reclaimed
+                .iter()
+                .map(|object| &object.digest)
+                .collect::<Vec<_>>(),
+            vec![&orphan]
+        );
+        let mut reported = vec![policy.clone(), damaged_orphan.clone()];
+        reported.sort();
+        assert_eq!(pruned.corrupt, reported);
+        assert!(inventory::has(&store, &policy), "a damaged object is kept");
+        assert!(inventory::has(&store, &damaged_orphan));
+        assert!(!inventory::has(&store, &orphan));
+    }
+
+    /// BUG-0065: a damaged tree hides what it reaches, so the prune refuses as damage at rest and
+    /// removes nothing.
+    #[test]
+    fn a_damaged_tree_refuses_the_prune_as_damage_at_rest() {
+        let root = scratch("damaged-tree");
+        let store = FsStore::new(&root);
+        let policy = blob(&store, "kept");
+        let commit = track(&store, &policy);
+        let orphan = blob(&store, "would have gone");
+        let Some(Object::Commit(tracked)) = inventory::get(&store, &commit)
+            .expect("read")
+            .map(|bytes| object::decode(&bytes).expect("decodes"))
+        else {
+            panic!("the head is a commit");
+        };
+        damage(&root, &tracked.tree);
+
+        let refused = prune(&store, true).expect_err("a damaged tree cannot be walked");
+
+        assert!(refused.corrupt, "{refused:?}");
+        assert!(refused.message.contains("damaged at rest"), "{refused:?}");
+        assert!(inventory::has(&store, &orphan), "nothing was removed");
     }
 
     #[test]

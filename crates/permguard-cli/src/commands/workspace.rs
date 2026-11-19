@@ -1090,27 +1090,45 @@ pub fn workspace_command(
         }
         WorkspaceOp::Objects(action) => match action {
             ObjectsAction::List { tracked, staged } => {
-                let objects = crate::engine::workspace::inventory::inventory(&store)
-                    .map_err(usage)?
-                    .into_iter()
-                    .filter(|record| {
-                        (!tracked && !staged)
-                            || (tracked && record.tracked)
-                            || (staged && record.staged)
-                    })
-                    .map(|record| ObjectLine {
-                        digest: record.digest.to_string(),
-                        kind: record.kind,
-                        tracked: record.tracked,
-                        staged: record.staged,
-                        label: record.label,
-                    })
-                    .collect();
+                let objects: Vec<ObjectLine> =
+                    crate::engine::workspace::inventory::inventory(&store)
+                        .map_err(usage)?
+                        .into_iter()
+                        .filter(|record| {
+                            (!tracked && !staged)
+                                || (tracked && record.tracked)
+                                || (staged && record.staged)
+                        })
+                        .map(|record| ObjectLine {
+                            digest: record.digest.to_string(),
+                            kind: record.kind,
+                            tracked: record.tracked,
+                            staged: record.staged,
+                            label: record.label,
+                        })
+                        .collect();
+                let corrupt = objects
+                    .iter()
+                    .filter(|line| line.kind == crate::engine::workspace::inventory::CORRUPT)
+                    .count();
                 render(&ObjectsReport { objects }, format, trace)?;
+                // Listed whole, and the damage said by the status: the store needs repair.
+                if corrupt > 0 {
+                    return Err(Failure::corrupt(format!(
+                        "{corrupt} object(s) of the local store are damaged at rest: restore the \
+                         workspace's objects, or clone the ledger again"
+                    )));
+                }
             }
             ObjectsAction::Prune { dry_run } => {
                 let pruned =
-                    crate::engine::workspace::prune::prune(&store, !dry_run).map_err(usage)?;
+                    crate::engine::workspace::prune::prune(&store, !dry_run).map_err(|error| {
+                        if error.corrupt {
+                            Failure::corrupt(error)
+                        } else {
+                            usage(error)
+                        }
+                    })?;
                 render(
                     &workspace_out::PruneReport {
                         applied: pruned.applied,
@@ -1125,10 +1143,18 @@ pub fn workspace_command(
                                 bytes: object.bytes,
                             })
                             .collect(),
+                        corrupt: pruned.corrupt.iter().map(ToString::to_string).collect(),
                     },
                     format,
                     trace,
                 )?;
+                if !pruned.corrupt.is_empty() {
+                    return Err(Failure::corrupt(format!(
+                        "{} object(s) of the local store are damaged at rest and were kept: \
+                         restore the workspace's objects, or clone the ledger again",
+                        pruned.corrupt.len()
+                    )));
+                }
             }
             ObjectsAction::Cat {
                 digest,
@@ -1139,8 +1165,14 @@ pub fn workspace_command(
             } => {
                 use permguard_objects::object::{self, Object};
                 let digest = permguard_objects::digest::Digest::parse(&digest).map_err(usage)?;
-                let bytes = crate::engine::workspace::inventory::get(&store, &digest)
-                    .map_err(usage)?
+                let bytes = crate::engine::workspace::inventory::read(&store, &digest)
+                    .map_err(|unread| match unread {
+                        permguard_client::objects::Unread::Corrupt => Failure::corrupt(format!(
+                            "local object {digest} is damaged at rest: restore the workspace's \
+                             objects, or clone the ledger again"
+                        )),
+                        permguard_client::objects::Unread::Store(error) => Failure::usage(error),
+                    })?
                     .ok_or_else(|| Failure::usage("no such local object"))?;
                 if raw {
                     // The exact stored bytes, no banner: this view exists to be piped.

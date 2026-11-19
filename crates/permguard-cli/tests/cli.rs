@@ -510,6 +510,60 @@ fn a_workspace_written_by_another_layout_is_refused_with_the_way_out() {
 
 // ---- objects ---------------------------------------------------------------------------------
 
+/// BUG-0065, DEC-0008 option A: one object damaged at rest is listed as `corrupt` beside every
+/// other, the prune still runs and keeps it, and `list`, `prune` and `cat` of it exit `65` with
+/// `object_corrupt`, never `64`.
+#[test]
+fn a_damaged_object_is_listed_kept_and_exits_65() {
+    let dir = scratch("objects-damaged");
+    write_sources(&dir);
+    assert!(run(&dir, &["init", "cli-test"]).status.success());
+    assert!(run(&dir, &["refresh"]).status.success());
+    let list = run(&dir, &["-o", "json", "objects", "list"]);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout(&list)).expect("list JSON");
+    let before = parsed["objects"].as_array().expect("objects").len();
+    let blob = parsed["objects"]
+        .as_array()
+        .expect("objects")
+        .iter()
+        .find(|o| o["kind"] == "blob")
+        .expect("a blob exists")["digest"]
+        .as_str()
+        .expect("a digest")
+        .to_owned();
+    let hex = blob.trim_start_matches("sha256:");
+    std::fs::write(
+        dir.join(".permguard/objects")
+            .join(&hex[..2])
+            .join(&hex[2..]),
+        [0x78, 0x9c, 0xde, 0xad],
+    )
+    .expect("damaged by hand");
+
+    let list = run(&dir, &["-o", "json", "objects", "list"]);
+    assert_eq!(list.status.code(), Some(65), "{}", stderr(&list));
+    let parsed: serde_json::Value = serde_json::from_str(&stdout(&list)).expect("list JSON");
+    let objects = parsed["objects"].as_array().expect("objects");
+    assert_eq!(objects.len(), before, "every object is still listed");
+    assert!(
+        objects
+            .iter()
+            .any(|o| o["digest"] == blob.as_str() && o["kind"] == "corrupt")
+    );
+    let failure: serde_json::Value = serde_json::from_str(&stderr(&list)).expect("failure JSON");
+    assert_eq!(failure["code"], "object_corrupt");
+
+    let prune = run(&dir, &["-o", "json", "objects", "prune", "--dry-run"]);
+    assert_eq!(prune.status.code(), Some(65), "{}", stderr(&prune));
+    let parsed: serde_json::Value = serde_json::from_str(&stdout(&prune)).expect("prune JSON");
+    assert_eq!(parsed["corrupt"], serde_json::json!([blob]));
+
+    let cat = run(&dir, &["-o", "json", "objects", "cat", &blob]);
+    assert_eq!(cat.status.code(), Some(65), "{}", stderr(&cat));
+    let failure: serde_json::Value = serde_json::from_str(&stderr(&cat)).expect("failure JSON");
+    assert_eq!(failure["code"], "object_corrupt");
+}
+
 #[test]
 fn objects_list_and_every_cat_view_answer() {
     let dir = scratch("objects");
@@ -1938,7 +1992,7 @@ fn a_command_names_one_target_class_and_never_falls_back() {
             "1",
         ],
     );
-    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(output.status.code(), Some(69), "{}", stderr(&output));
 }
 
 /// WP-4.8: every normative Host command is present before a request is sent.

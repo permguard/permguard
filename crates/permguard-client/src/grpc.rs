@@ -72,6 +72,32 @@ pub struct PlaneHealth {
 #[cfg(feature = "http")]
 const DIAGNOSIS: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// The code of a status that refuses this client rather than failing to answer (BUG-0086): a
+/// denial at the gate, `unauthenticated` or `forbidden` with no class, or a refusal the channel
+/// diagnosed as the operator's to fix, class `validation` (a certificate, a scheme). `None` for
+/// anything else.
+pub fn refusal_of(status: &tonic::Status) -> Option<String> {
+    let metadata = |key: &str| {
+        status
+            .metadata()
+            .get(key)
+            .and_then(|value| value.to_str().ok())
+            .map(ToOwned::to_owned)
+    };
+    let class = metadata(GRPC_ERROR_CLASS);
+    let code = metadata(GRPC_ERROR_CODE);
+    match status.code() {
+        tonic::Code::Unauthenticated if class.is_none() => {
+            Some(code.unwrap_or_else(|| permguard_core::codes::common::UNAUTHENTICATED.to_owned()))
+        }
+        tonic::Code::PermissionDenied if class.is_none() => {
+            Some(code.unwrap_or_else(|| permguard_core::codes::common::FORBIDDEN.to_owned()))
+        }
+        _ if class.as_deref() == Some("validation") => code,
+        _ => None,
+    }
+}
+
 /// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
 /// not be reached, or a transport failure after it was.
 pub fn reason_of(status: &tonic::Status) -> &'static str {

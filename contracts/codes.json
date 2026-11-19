@@ -126,6 +126,12 @@
       "kind": "local",
       "class": "validation"
     },
+    "client.OBJECT_CORRUPT": {
+      "code": "object_corrupt",
+      "contract": "6-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "internal"
+    },
     "client.PLAINTEXT_EXPECTED": {
       "code": "plaintext_expected",
       "contract": "6-command-line/1-command-line.md",
@@ -480,6 +486,12 @@
       "contract": "7-contracts/8-contract-host-api.md",
       "kind": "refusal",
       "class": "conflict"
+    },
+    "host.REQUEST_IN_FLIGHT": {
+      "code": "request_in_flight",
+      "contract": "7-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
     },
     "host.REVISION_MISMATCH": {
       "code": "revision_mismatch",

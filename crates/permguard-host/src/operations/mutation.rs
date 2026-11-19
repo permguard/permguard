@@ -295,8 +295,11 @@ pub enum Outcome<T> {
 pub enum MutationError<E> {
     /// The domain refused it: nothing was applied.
     Refused(E),
-    /// The request id is in flight, or names another request inside the window.
+    /// The request id names another request inside the window.
     RequestIdReused(&'static str),
+    /// The same request id is in flight: the same request succeeds, or learns the first answer,
+    /// once that one has answered (BUG-0169).
+    InFlight(&'static str),
     /// An audit record could not be written before anything was applied: nothing was.
     AuditUnavailable(String),
     /// Applied, or possibly applied, and its commit or its outcome record could not be written:
@@ -316,7 +319,7 @@ impl<E: std::fmt::Display> std::fmt::Display for MutationError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(error) => write!(f, "{error}"),
-            Self::RequestIdReused(detail) => f.write_str(detail),
+            Self::RequestIdReused(detail) | Self::InFlight(detail) => f.write_str(detail),
             Self::AuditUnavailable(detail) => {
                 write!(
                     f,
@@ -1064,7 +1067,7 @@ impl Mutations {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if !in_flight.insert(key.clone()) {
-                return Err(MutationError::RequestIdReused(
+                return Err(MutationError::InFlight(
                     "a mutation with this request id is in flight; retry once it has answered",
                 ));
             }

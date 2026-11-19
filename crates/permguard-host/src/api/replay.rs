@@ -328,9 +328,11 @@ impl Replay {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !in_flight.insert(key.clone()) {
+            // Retryable, and said so by its class and its own code: `request_id_reused` means
+            // "never retry this", and the same request in flight is the opposite (BUG-0169).
             return Err(Refusal::new(
-                ErrorClass::Conflict,
-                codes::host::REQUEST_ID_REUSED,
+                ErrorClass::Unavailable,
+                codes::host::REQUEST_IN_FLIGHT,
                 "a mutation with this request id is in flight; retry once it has answered",
             ));
         }
@@ -1145,7 +1147,7 @@ mod tests {
             .expect_err("the same pair, while in flight");
         assert_eq!(
             second.error().expect("refusal").code(),
-            codes::host::REQUEST_ID_REUSED
+            codes::host::REQUEST_IN_FLIGHT
         );
         assert!(
             replay.begin(&principal("bob"), "r1").is_ok(),

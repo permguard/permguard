@@ -258,7 +258,9 @@ fn a_request_id_in_flight_is_refused_to_a_second_arrival() {
                 panic!("a second arrival never applies")
             },
         );
-        assert!(matches!(second, Err(MutationError::RequestIdReused(_))));
+        // Retryable, under its own variant: never `RequestIdReused`, which means "another
+        // change" (BUG-0169).
+        assert!(matches!(second, Err(MutationError::InFlight(_))));
         release.send(()).expect("released");
         let first = first.join().expect("the first answers");
         assert_eq!(first.expect("applied"), Outcome::Applied("z1@1".to_owned()));
