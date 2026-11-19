@@ -44,9 +44,12 @@ pub const CAPABILITIES: [&str; 6] = [
     "tenant-scoped-reads",
 ];
 
-/// The filter names a read accepts, in the order [`super::read::Filters`] declares them.
+/// The filter names a read accepts, in the order [`super::read::Filters`] declares them: the very
+/// names the REST read takes, from this one list, so the document cannot publish a name the read
+/// refuses (BUG-0140, DEC-0007). `event_type` is repeated to ask for several types; over gRPC the
+/// same list is the field `event_types`.
 pub const FILTERS: [&str; 10] = [
-    "event_types",
+    "event_type",
     "producer",
     "instance",
     "profile",

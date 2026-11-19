@@ -158,6 +158,12 @@ is cut.
 
 ### Fixed
 
+- **An event read's `since` and `until_time` are instants.**
+  Any RFC 3339 instant is accepted and compared in UTC, so `2026-10-20T17:27:13+02:00` and `2026-10-20T15:27:13Z` select the same records, over REST and gRPC; anything else, `yesterday` or a bare date, is refused `400 invalid_argument` naming the parameter, where it answered `200` with an empty or a full page. `permguard events list --since/--until` refuse it before sending, as `decisions list --since` does.
+- **The event discovery document publishes the filter names the read takes.**
+  `filters` names `event_type`, which a read repeats to ask for several types, where it named `event_types`, which every read refused; the list is the one the read itself checks against.
+- **`events verify` and `events list --verify` by zone and ledger name verify what the same read by ids verifies.**
+  The names are resolved to the ids the records carry, from the workspace or the catalog, before the records are checked; a read the catalog does not answer is checked as typed, so a read by ids is unchanged.
 - **A coordinator with connected members drains in moments.**
   On a stop, every listener now ends its long-lived peer channels, a member's `policy.mirror` watch among them, with `UNAVAILABLE`, which the member reads as "open it again later"; the drain no longer waits for them until `shutdown.drain_timeout`, so the process exits `0` and releases the volume lock at once instead of exiting `75` after the whole budget.
   When the drain budget is spent before the shipping pass runs, the streams behind are still marked `unshipped` for the next start, and the reason says the pass never ran, rather than "before any stream was shipped".

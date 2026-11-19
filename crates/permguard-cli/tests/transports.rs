@@ -1777,6 +1777,7 @@ fn an_event_read_that_does_not_verify_exits_two_over_both_transports() {
             &[
                 "-o",
                 "json",
+                "-v",
                 "--tls-ca-file",
                 pki.authority.to_str().unwrap(),
                 "events",
@@ -1793,6 +1794,12 @@ fn an_event_read_that_does_not_verify_exits_two_over_both_transports() {
         assert_eq!(output.status.code(), Some(2), "{scheme}: {output:?}");
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.contains("events_unverified"), "{scheme}: {stderr}");
+        // The names were resolved to the ids the records carry before they were checked
+        // (BUG-0132).
+        assert!(
+            stderr.contains("acme/main-ledger is zone z-1 ledger l-1"),
+            "{scheme}: {stderr}"
+        );
         assert!(!output.stdout.is_empty(), "{scheme}");
     }
 }

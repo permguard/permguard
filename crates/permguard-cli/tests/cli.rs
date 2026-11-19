@@ -1100,6 +1100,16 @@ fn a_value_that_cannot_mean_anything_is_refused_before_any_network() {
         argv.extend(scope);
         cases.push((argv, said));
     }
+    // The event reads refuse the same, as instants (BUG-0138).
+    for (flag, value) in [
+        ("--since", "yesterday"),
+        ("--until", "tomorrow"),
+        ("--since", "2026-10-20"),
+    ] {
+        let mut argv = vec!["events", "list", flag, value];
+        argv.extend(scope);
+        cases.push((argv, "RFC 3339"));
+    }
 
     for (argv, said) in cases {
         let output = run(&dir, &argv);

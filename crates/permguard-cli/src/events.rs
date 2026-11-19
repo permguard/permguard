@@ -245,8 +245,21 @@ impl Read {
 }
 
 /// The page, as the report prints it.
+/// What was read, with its verdict when the shape asks for one, checked against `scope` itself.
 pub fn report(scope: &ReadScope, read: Read, shape: &Shape, keys: Option<&[Jwk]>) -> EventsReport {
-    let verified = shape.verify.then(|| check(scope, &read, keys));
+    report_checked(scope, scope, read, shape, keys)
+}
+
+/// `scope` names the read as the operator wrote it; `checked` is the same scope with the ids the
+/// records carry, which the verification compares them with (BUG-0132).
+pub fn report_checked(
+    scope: &ReadScope,
+    checked: &ReadScope,
+    read: Read,
+    shape: &Shape,
+    keys: Option<&[Jwk]>,
+) -> EventsReport {
+    let verified = shape.verify.then(|| check(checked, &read, keys));
 
     EventsReport {
         scope: match scope {

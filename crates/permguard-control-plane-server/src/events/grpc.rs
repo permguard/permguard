@@ -50,7 +50,8 @@ impl EventLog for crate::served::Served<EventFacade> {
                 return Err(read_status(error, self.0.disclosure));
             }
         };
-        let filters = filters_of(&asked);
+        let filters =
+            filters_of(&asked).map_err(|refused| status_of(&refused, self.0.disclosure))?;
         let window = permguard_stream::Window {
             from: (!asked.from.is_empty()).then(|| asked.from.clone()),
             until: (!asked.until.is_empty())
@@ -367,11 +368,11 @@ fn scope_of(asked: &ListRecordsRequest) -> Result<(Scope, &'static str), ApiErro
 ///
 /// `producer`/`instance` narrow a *tenant* read; on a stream read they already selected the scope,
 /// so repeating them as filters would be checking what the directory already guarantees.
-fn filters_of(asked: &ListRecordsRequest) -> Filters {
+fn filters_of(asked: &ListRecordsRequest) -> Result<Filters, ApiError> {
     let some = |value: &str| (!value.is_empty()).then(|| value.to_owned());
     let stream_scoped = !asked.producer.is_empty() && !asked.instance.is_empty();
 
-    Filters {
+    Ok(Filters {
         event_types: asked.event_types.clone(),
         producer: (!stream_scoped).then(|| some(&asked.producer)).flatten(),
         instance: (!stream_scoped).then(|| some(&asked.instance)).flatten(),
@@ -379,10 +380,20 @@ fn filters_of(asked: &ListRecordsRequest) -> Filters {
         policy_partition: some(&asked.policy_partition),
         kind: some(&asked.kind),
         event_id: some(&asked.event_id),
-        since: some(&asked.since),
-        until_time: some(&asked.until_time),
+        // Instants, read as instants, as over REST (BUG-0138).
+        since: read::instant("since", some(&asked.since)).map_err(invalid)?,
+        until_time: read::instant("until_time", some(&asked.until_time)).map_err(invalid)?,
         history: some(&asked.history),
-    }
+    })
+}
+
+/// A request field that does not read, as REST refuses it.
+fn invalid(detail: String) -> ApiError {
+    ApiError::new(
+        ErrorClass::Validation,
+        permguard_core::codes::common::INVALID_ARGUMENT,
+        detail,
+    )
 }
 
 /// A read refusal, as gRPC says it.

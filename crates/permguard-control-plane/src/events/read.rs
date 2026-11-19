@@ -177,6 +177,25 @@ impl Filters {
     }
 }
 
+/// A time bound of a read, `name`, as the canonical UTC instant every record carries: any RFC
+/// 3339 instant is accepted, an offset applied, and anything else refused, naming the parameter
+/// (BUG-0138). Two spellings of one instant select the same records, and a value that is not one
+/// never answers a wrong page.
+pub fn instant(name: &str, value: Option<String>) -> Result<Option<String>, String> {
+    value
+        .map(|value| {
+            permguard_core::time::from_rfc3339(&value)
+                .map(permguard_core::time::to_rfc3339)
+                .ok_or_else(|| {
+                    format!(
+                        "`{name}` is not an RFC 3339 instant: `{value}`; write one like \
+                         2026-08-01T00:00:00Z"
+                    )
+                })
+        })
+        .transpose()
+}
+
 /// Why a read was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {

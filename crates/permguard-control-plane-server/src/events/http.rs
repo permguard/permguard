@@ -222,19 +222,8 @@ impl Asked {
     }
 }
 
-/// The filters a read of events narrows by.
-const FILTERS: [&str; 10] = [
-    "event_type",
-    "producer",
-    "instance",
-    "profile",
-    "policy_partition",
-    "kind",
-    "event_id",
-    "since",
-    "until_time",
-    "history",
-];
+/// The filters a read of events narrows by: the list the configuration document publishes.
+use super::configuration::FILTERS;
 
 /// Reads the query string of a read taking `names`, strictly (WP-5.5): a parameter it does not
 /// name, one given twice (but `event_type`, which a reader repeats to ask for several), or a value
@@ -256,8 +245,23 @@ fn asked_of(query: Option<&str>, names: &[&str]) -> Result<Asked, ApiError> {
     asked.filters.policy_partition = query.value("policy_partition");
     asked.filters.kind = query.value("kind");
     asked.filters.event_id = query.value("event_id");
-    asked.filters.since = query.value("since");
-    asked.filters.until_time = query.value("until_time");
+    // Instants, read as instants: refused when they are not one, compared in the canonical form
+    // the records carry (BUG-0138).
+    asked.filters.since = read::instant("since", query.value("since")).map_err(|detail| {
+        ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::common::INVALID_ARGUMENT,
+            detail,
+        )
+    })?;
+    asked.filters.until_time =
+        read::instant("until_time", query.value("until_time")).map_err(|detail| {
+            ApiError::new(
+                ErrorClass::Validation,
+                permguard_core::codes::common::INVALID_ARGUMENT,
+                detail,
+            )
+        })?;
     asked.filters.history = query.value("history");
     asked.query = query;
     Ok(asked)
@@ -812,8 +816,36 @@ mod openapi {
         }
         // A read without a window refuses one.
         assert!(asked_of(Some("from=a"), &FILTERS).is_err());
+        // BUG-0138: a time bound is an instant, refused when it is not one, and read in the
+        // canonical form the records carry whatever the spelling.
+        for query in [
+            "since=yesterday",
+            "until_time=tomorrow",
+            "since=2026-10-20",
+            "since=2026-10-20T15:27:13",
+        ] {
+            let error = asked_of(Some(query), &names).expect_err(query);
+            assert_eq!(
+                error.code(),
+                permguard_core::codes::common::INVALID_ARGUMENT,
+                "{query}"
+            );
+        }
+        for (query, canonical) in [
+            ("since=2026-10-20T17:27:13%2B02:00", "2026-10-20T15:27:13Z"),
+            ("since=2026-10-20t15:27:13z", "2026-10-20T15:27:13Z"),
+            ("since=2026-10-20T15:27:13.250Z", "2026-10-20T15:27:13Z"),
+        ] {
+            let asked = asked_of(Some(query), &names).expect(query);
+            assert_eq!(asked.filters.since.as_deref(), Some(canonical), "{query}");
+        }
+        let asked = asked_of(Some("until_time=2026-10-20T17:27:13%2B02:00"), &names)
+            .expect("an offset instant");
+        assert_eq!(
+            asked.filters.until_time.as_deref(),
+            Some("2026-10-20T15:27:13Z")
+        );
     }
-
     /// WP-5.5: over REST, an offset of another read is `forged` and a malformed one
     /// `offset_invalid`, both `400`.
     #[tokio::test]
@@ -1057,6 +1089,24 @@ mod gate {
                 StatusCode::FORBIDDEN,
                 "{refused}"
             );
+        }
+    }
+
+    /// BUG-0140: every filter name the configuration document publishes is one the tenant read
+    /// takes.
+    #[tokio::test]
+    async fn every_published_filter_is_accepted_by_the_tenant_read() {
+        let held = facade("published-filters", "plane/control/zone/acme/ledger/main");
+        let document = crate::events::configuration::FILTERS;
+        assert!(document.contains(&"event_type"), "{document:?}");
+        for name in document {
+            let value = if matches!(name, "since" | "until_time") {
+                "2026-10-20T15:27:13Z"
+            } else {
+                "x"
+            };
+            let uri = format!("/events/v1alpha1/zones/acme/ledgers/main/records?{name}={value}");
+            assert_eq!(status(&held, &uri).await, StatusCode::OK, "{uri}");
         }
     }
 

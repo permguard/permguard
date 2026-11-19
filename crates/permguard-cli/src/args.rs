@@ -842,11 +842,11 @@ pub struct EventsQuery {
     pub policy_partition: Option<String>,
 
     /// Only events at or after this RFC 3339 instant.
-    #[arg(long, value_name = "TIMESTAMP")]
+    #[arg(long, value_name = "TIMESTAMP", value_parser = rfc3339_instant)]
     pub since: Option<String>,
 
     /// Only events at or before this RFC 3339 instant.
-    #[arg(long, value_name = "TIMESTAMP")]
+    #[arg(long, value_name = "TIMESTAMP", value_parser = rfc3339_instant)]
     pub until: Option<String>,
 
     /// Only events in this Dogwood history partition, by the key's digest.

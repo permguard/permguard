@@ -28,7 +28,7 @@
 
 use std::process::ExitCode;
 
-use crate::events::{MAX_PAGES, Read, Shape, check, report};
+use crate::events::{MAX_PAGES, Read, Shape, check, report, report_checked};
 use permguard_client::events::{self, EventLog, ReadError, ReadFilters, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use serde_json::Value;
@@ -92,7 +92,8 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
             read.inclusion.clone(),
         )
     });
-    let mut answer = report(&scope, read, &shape_of(query), keys.as_deref());
+    let checked = checked_scope(globals, query, &scope, &trace);
+    let mut answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_deref());
     answer.truncated = truncated;
     let unverified = unverified(&answer);
     if let Some((records, envelopes, inclusion)) = evidence {
@@ -148,6 +149,7 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
     let keys = key_set(globals, query)?;
     // No `until`: a tail is deliberately unbounded, which is what makes it a tail.
     let mut window = window_of(query);
+    let checked = checked_scope(globals, query, &scope, &trace);
 
     loop {
         let page = reader.read(&scope, &window).map_err(read_failure)?;
@@ -156,7 +158,7 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
         if !page.records.is_empty() {
             let mut read = Read::default();
             read.absorb(page, &mut ReadWindow::default());
-            let answer = report(&scope, read, &shape_of(query), keys.as_deref());
+            let answer = report_checked(&scope, &checked, read, &shape_of(query), keys.as_deref());
             render(&answer, globals.output, &trace)?;
             // A followed tail stops at the first page that does not verify: what follows a
             // record the store cannot account for is not read as if it were.
@@ -274,9 +276,11 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
     let truncated = walked == MAX_PAGES && read.more;
     let resume = read.next.clone();
 
-    let checked = check(&scope, &read, Some(&keys));
+    // The records carry ids, so they are checked against the ids the names resolve to (BUG-0132).
+    let resolved = by_ids(globals, query, &scope, &trace);
+    let checked = check(&resolved, &read, Some(&keys));
     let holds = checked.holds();
-    let mut report = report(&scope, read, &shape_of(query), Some(&keys));
+    let mut report = report_checked(&scope, &resolved, read, &shape_of(query), Some(&keys));
     report.truncated = truncated;
     report.verified = Some(checked);
     render(&report, globals.output, &trace)?;
@@ -464,6 +468,82 @@ fn connect(
     };
 
     Ok((reader, scope))
+}
+
+/// The scope a read is verified against: resolved to ids when the read is verified, as it is,
+/// with no catalog call, when it is not.
+fn checked_scope(
+    globals: &Globals,
+    query: &EventsQuery,
+    scope: &ReadScope,
+    trace: &Trace,
+) -> ReadScope {
+    if shape_of(query).verify {
+        by_ids(globals, query, scope, trace)
+    } else {
+        scope.clone()
+    }
+}
+
+/// `scope` with the zone and ledger ids its names resolve to: the ids a workspace tracks, or the
+/// catalog's answer for the names (BUG-0132, DEC-0005: the id is the identity). Records carry
+/// ids, so a scope read by names is checked against them. When neither resolves them, as for a
+/// caller the catalog does not answer, the scope is left as it was typed, and a scope given by ids
+/// is checked as it always was.
+fn by_ids(globals: &Globals, query: &EventsQuery, scope: &ReadScope, trace: &Trace) -> ReadScope {
+    let resolved = || -> Option<(String, String)> {
+        let store = open_store(globals, trace).ok()?;
+        let target = target::resolve(
+            "control-plane.endpoint",
+            globals.control_endpoint.as_deref(),
+            &Asked {
+                zone: query.zone.clone(),
+                ledger: query.ledger.clone(),
+                ignore_workspace: query.ignore_workspace,
+            },
+            globals,
+            &store,
+            trace,
+        )
+        .ok()?;
+        if let Some(ids) = target.ids {
+            return Some(ids);
+        }
+        let (zone, ledger) = (target.zone?, target.ledger?);
+        let catalog = permguard_client::catalog::client(
+            &target.endpoint,
+            &target::tls(globals, &store, trace).ok()?,
+            crate::narrator::for_run(globals.verbose),
+        )
+        .ok()?;
+        let held = catalog.get_ledger(&zone, &ledger).ok()?;
+        trace.say(format!(
+            "{zone}/{ledger} is zone {} ledger {}",
+            held.zone_id, held.id
+        ));
+        Some((held.zone_id, held.id))
+    };
+    let Some((zone_id, ledger_id)) = resolved() else {
+        return scope.clone();
+    };
+    match scope.clone() {
+        ReadScope::Tenant { .. } => ReadScope::Tenant {
+            zone: zone_id,
+            ledger: ledger_id,
+        },
+        ReadScope::Stream {
+            class,
+            producer,
+            instance,
+            ..
+        } => ReadScope::Stream {
+            zone: zone_id,
+            ledger: ledger_id,
+            class,
+            producer,
+            instance,
+        },
+    }
 }
 
 fn archive_scope(scope: &ReadScope) -> ArchiveScope {
@@ -748,6 +828,21 @@ mod host_verify {
         moved.records[1]["stream"]["producer"]["instance"] = json!("08".repeat(16));
         let partly = check(&tenant(), &moved, Some(&[key.jwk()]));
         assert_eq!(partly.included, 1);
+    }
+
+    /// BUG-0132: records carry the ids of their zone and ledger, so a scope read by names checks
+    /// nothing until it is resolved to them; resolved, the same page is wholly included.
+    #[test]
+    fn a_scope_read_by_names_is_checked_against_the_ids_it_resolves_to() {
+        let key = Key::new("k1");
+        let named = ReadScope::Tenant {
+            zone: "acme-by-name".to_owned(),
+            ledger: "gov1".to_owned(),
+        };
+        let unresolved = check(&named, &page(&key), Some(&[key.jwk()]));
+        assert_eq!((unresolved.included, unresolved.not_included), (0, 2));
+        let resolved = check(&tenant(), &page(&key), Some(&[key.jwk()]));
+        assert_eq!((resolved.included, resolved.not_included), (2, 0));
     }
 
     #[test]
