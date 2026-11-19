@@ -19,6 +19,16 @@ is cut.
 
 ### Changed
 
+- **The Control Plane's event store is kept in `data/event-store` by default, out of the legacy event history.**
+  The default `controlPlane.events.directory` was `data/events/store`, inside `dataPlane.events.directory` (`data/events`), so every restart took the store for a drained legacy history it refused to archive, and `migrate finalize --subsystem events-legacy` could remove it.
+  With the directory left at its default, a store found at `data/events/store` is moved to `data/event-store` at start, and by `migrate events`, in one rename on the volume (`events.store_relocated`); a store at both places is left as it is and said (`events.store_duplicated`).
+  A configuration that names `data/events/store` explicitly keeps it there.
+- **`migrate finalize` removes only what the migration recorded.**
+  A file written into the old generation's directory after the commit, or one changed there, makes `migrate finalize` refuse, naming it, instead of removing it with the old generation; for the legacy event history every start says so too (`events.legacy_finalize_blocked`).
+- **A migration's `INTENT` and `COMMIT` hold up to 64 MiB of digests, and are never written past it.**
+  Archiving a legacy event history of more than about 6000 files wrote a layout record no build could read, after which no start and no `migrate` command could open the volume; the records now take a few hundred thousand files, and a migration whose records would not fit is refused before anything is written.
+- **From the `production` profile, the legacy event warning names what keeps the history from being archived.**
+  A drained history outside the volume, or holding a file that is not the history's, is reported with that refusal, as below `production`; `migrate events` is named only for a history it would archive.
 - **A Host stream read for a ledger the stream does not hold answers `404 ledger_not_held`, and `evidence anchors` exits `64`.**
   `frontier`, `records`, `signers`, `subscriptions`, `gaps` and `anchors` of a served stream, over REST and gRPC, answered an empty read for ids that name nothing or are swapped; they now answer `not_found`/`ledger_not_held`, and `permguard host streams …` exits `64`.
   `permguard evidence anchors` and `gc objects plan --zone/--ledger` take ids (UUIDs) and refuse a name, exit `64`, pointing at `zones list` and `ledgers list`; `evidence anchors` answers a ledger none of the Host's streams holds as `ledger_not_held`, exit `64`, never as a served ledger with no anchors.

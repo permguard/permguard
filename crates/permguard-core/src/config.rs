@@ -1109,8 +1109,14 @@ const DEFAULT_LOG_SPOOL_DIRECTORY: &str = "data/decisions/spool";
 
 /// Where the temporal event journals live, under the volume.
 pub const DEFAULT_EVENTS_DIRECTORY: &str = "data/events";
-/// Where the control plane's event store lives, under the volume.
-pub const DEFAULT_EVENT_STORE_DIRECTORY: &str = "data/events/store";
+/// Where the control plane's event store lives, under the volume: beside the legacy event history,
+/// never inside it, so neither its archive nor `migrate finalize` takes it for the history's
+/// (BUG-0122, BUG-0124).
+pub const DEFAULT_EVENT_STORE_DIRECTORY: &str = "data/event-store";
+/// Where releases before kept the control plane's event store by default, inside
+/// [`DEFAULT_EVENTS_DIRECTORY`]: a store found there is moved to [`DEFAULT_EVENT_STORE_DIRECTORY`]
+/// at start when the configuration names the default.
+pub const LEGACY_EVENT_STORE_DIRECTORY: &str = "data/events/store";
 /// How long a control plane keeps a tenant's events before dropping sealed segments.
 ///
 /// Thirty days: long enough that an investigation into something noticed a week later still has
@@ -3859,6 +3865,12 @@ produce: use `EdDSA` or `ES256`"
     /// Where the event store keeps what it receives.
     pub fn event_store_directory(&self) -> PathBuf {
         self.working_dir().join(&self.event_store_directory)
+    }
+
+    /// Whether the control plane's event store is where it is by default, not where the
+    /// configuration put it.
+    pub fn event_store_directory_is_default(&self) -> bool {
+        self.event_store_directory == DEFAULT_EVENT_STORE_DIRECTORY
     }
 
     /// How long a tenant's events are kept before sealed segments are dropped.

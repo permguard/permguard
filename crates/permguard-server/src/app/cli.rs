@@ -195,14 +195,28 @@ impl App {
             }) => verify_volume(volume, *sample, &self.verified_trees, out),
             Action::Named(Command::Migrate {
                 what: MigrateCommand::Events { volume, backup, .. },
-            }) => crate::legacy_events::migrate_events(
-                volume,
-                backup,
-                config.working_dir(),
-                &config.events_directory(),
-                crate::legacy_events::bounds_of(config),
-                out,
-            ),
+            }) => {
+                // The store releases before kept inside the history by default moves out first,
+                // under the volume's hold, as at start (BUG-0122, BUG-0124).
+                if config.event_store_directory_is_default() {
+                    let _held = permguard_host::storage::volume::hold(volume)
+                        .with_context(|| format!("holding the volume at {}", volume.display()))?;
+                    crate::legacy_events::relocate_event_store(
+                        &config
+                            .working_dir()
+                            .join(permguard_core::config::LEGACY_EVENT_STORE_DIRECTORY),
+                        &config.event_store_directory(),
+                    )?;
+                }
+                crate::legacy_events::migrate_events(
+                    volume,
+                    backup,
+                    config.working_dir(),
+                    &config.events_directory(),
+                    crate::legacy_events::bounds_of(config),
+                    out,
+                )
+            }
             Action::Named(Command::Migrate { what }) => migrate(what, out),
             Action::Named(Command::Drain { pid, wait }) => {
                 crate::prestop::drain(*pid, std::time::Duration::from_secs(*wait), out).await

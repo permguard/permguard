@@ -1724,6 +1724,17 @@ impl Composition {
             config.assurance().profile(),
             time.now_secs(),
         );
+        // The Control Plane's event store, where releases before kept it by default inside the
+        // legacy event history, moved to where it is kept now before anything opens either
+        // (BUG-0122, BUG-0124).
+        if config.event_store_directory_is_default() {
+            permguard_offline::legacy_events::relocate_event_store(
+                &config
+                    .working_dir()
+                    .join(permguard_core::config::LEGACY_EVENT_STORE_DIRECTORY),
+                &config.event_store_directory(),
+            )?;
+        }
         // The legacy event journals and the retired pull's store once shipped and older than every
         // window (WP-6.2d), before the Data Plane opens them.
         permguard_offline::legacy_events::archive_at_start(

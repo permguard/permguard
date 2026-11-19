@@ -183,7 +183,7 @@ controlPlane:
   #     controlPlane:
   #       events:
   #         enabled: "true"
-  #         directory: "data/events/store"     # a PersistentVolume, for the same reason
+  #         directory: "data/event-store"      # a PersistentVolume, for the same reason
   #         retention: "90d"
   #         # no producer key file: events arrive over the Host's `events.ship`
   #     experimental:

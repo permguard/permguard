@@ -7,7 +7,9 @@
 //!
 //! | Where the history stands | At start                                                      |
 //! | ------------------------ | ------------------------------------------------------------- |
-//! | absent, archived         | nothing                                                       |
+//! | absent                   | nothing                                                       |
+//! | archived                 | nothing; a warning when the kept old directory holds files    |
+//! |                          | the archive did not record, which `migrate finalize` refuses  |
 //! | undrained                | nothing: the Data Plane ships and reads it, as before         |
 //! | drained                  | archived below `production`; a warning naming the command     |
 //! |                          | from it upward, or naming what keeps it from being archived   |
@@ -81,7 +83,33 @@ pub fn archive_at_start(
         }
     };
     match found {
-        Standing::Absent | Standing::Archived | Standing::Undrained => {}
+        Standing::Absent | Standing::Undrained => {}
+        // The old directory stays until `migrate finalize`, which refuses while anything the
+        // archive did not record is in it: said at every start, before anybody runs it (BUG-0124).
+        Standing::Archived => {
+            let unrecorded = permguard_host::storage::migrate::Layout::open(volume, SUBSYSTEM)
+                .and_then(|layout| layout.unrecorded());
+            match unrecorded {
+                Ok(unrecorded) if !unrecorded.is_empty() => tracing::warn!(
+                    event.name = "events.legacy_finalize_blocked",
+                    component = COMPONENT,
+                    directory = %directory.display(),
+                    files = unrecorded.len(),
+                    "the archived legacy event history's old directory holds {} file(s) the \
+                     archive did not record ({}): `migrate finalize --subsystem {SUBSYSTEM}` \
+                     refuses to remove them with it; move them out of it",
+                    unrecorded.len(),
+                    unrecorded.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
+                ),
+                Ok(_) => {}
+                Err(error) => tracing::warn!(
+                    event.name = "events.legacy_unreadable",
+                    component = COMPONENT,
+                    directory = %directory.display(),
+                    "the archived legacy event history's old directory cannot be read: {error}"
+                ),
+            }
+        }
         Standing::Orphan => {
             tracing::warn!(
                 event.name = "events.legacy_orphan",
@@ -91,8 +119,10 @@ pub fn archive_at_start(
                  {TARGET} already: it is not archived twice, and the Data Plane does not read it"
             );
         }
+        // The command is named only for a history it would archive; what keeps it from being
+        // archived is named otherwise, as below `production` (BUG-0126).
         Standing::Drained if profile.at_least(AssuranceProfile::Production) => {
-            unarchived(&command(volume.root(), config_file));
+            unarchived(&production_reason(volume, &directory, config_file));
         }
         Standing::Drained => match obstacle(volume, &directory) {
             Ok(Some(reason)) => unarchived(&reason),
@@ -108,6 +138,91 @@ pub fn archive_at_start(
                 Err(error) => unarchived(&error),
             },
         },
+    }
+}
+
+/// Moves the Control Plane's event store from `legacy`, the default releases before kept it in,
+/// inside the legacy event history, to `configured`, the default it has now (BUG-0122,
+/// BUG-0124): one rename on the volume, before anything opens it, so neither the history's
+/// archive nor `migrate finalize` takes it for the history's. Only when `configured` holds
+/// nothing and `legacy` is a directory; both holding something is said, and left as it is.
+/// Answers whether it moved.
+pub fn relocate_event_store(legacy: &Path, configured: &Path) -> Result<bool> {
+    let held = |path: &Path| -> Result<bool> {
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_dir() => Ok(std::fs::read_dir(path)
+                .with_context(|| format!("listing {}", path.display()))?
+                .next()
+                .is_some()),
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+        }
+    };
+    if !std::fs::symlink_metadata(legacy).is_ok_and(|metadata| metadata.is_dir()) {
+        return Ok(false);
+    }
+    if held(configured)? {
+        tracing::warn!(
+            event.name = "events.store_duplicated",
+            component = COMPONENT,
+            legacy = %legacy.display(),
+            configured = %configured.display(),
+            "an event store is at {}, where releases before kept it, and another at {}, where it \
+             is kept now: the second is used; the first stays inside the legacy event history, \
+             whose archive refuses it until it is moved out",
+            legacy.display(),
+            configured.display()
+        );
+        return Ok(false);
+    }
+    // Through the storage library: one rename, an empty directory left where the store goes
+    // replaced by it, both parents flushed, so the move survives a crash whole.
+    let parts = |path: &Path| -> Result<(std::path::PathBuf, String)> {
+        let parent = path
+            .parent()
+            .with_context(|| format!("{} has no parent", path.display()))?;
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .with_context(|| format!("{} has no name", path.display()))?;
+        Ok((parent.to_path_buf(), name.to_owned()))
+    };
+    let (from_parent, from_name) = parts(legacy)?;
+    let (to_parent, to_name) = parts(configured)?;
+    std::fs::create_dir_all(&to_parent)
+        .with_context(|| format!("creating {}", to_parent.display()))?;
+    let open = |path: &Path| {
+        permguard_host::storage::Dir::open(path)
+            .with_context(|| format!("opening {}", path.display()))
+    };
+    open(&from_parent)?
+        .move_to(&from_name, &open(&to_parent)?, &to_name)
+        .with_context(|| {
+            format!(
+                "moving the event store from {} to {}",
+                legacy.display(),
+                configured.display()
+            )
+        })?;
+    tracing::info!(
+        event.name = "events.store_relocated",
+        component = COMPONENT,
+        from = %legacy.display(),
+        to = %configured.display(),
+        "the Control Plane's event store moved out of the legacy event history, to where it is \
+         kept by default now"
+    );
+    Ok(true)
+}
+
+/// Why a drained history stays from the production profile upward: what keeps it from being
+/// archived when something does, the command that archives it otherwise (BUG-0126).
+fn production_reason(volume: &Volume, directory: &Path, config_file: &Path) -> String {
+    match obstacle(volume, directory) {
+        Ok(Some(reason)) => reason.to_string(),
+        Err(error) => error.to_string(),
+        Ok(None) => command(volume.root(), config_file),
     }
 }
 

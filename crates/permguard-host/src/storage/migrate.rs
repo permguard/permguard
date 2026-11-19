@@ -50,8 +50,12 @@ pub const MANIFEST: &str = "MANIFEST";
 pub const INTENT: &str = "INTENT";
 /// The view a migration writes once the manifest is switched.
 pub const COMMIT: &str = "COMMIT";
-/// The most bytes a record takes.
+/// The most bytes a `MANIFEST` takes.
 pub const MAX_RECORD_BYTES: usize = 1024 * 1024;
+/// The most bytes an `INTENT` or a `COMMIT` takes: they carry a digest per file of a generation,
+/// so a few hundred thousand files. A migration whose digests would not fit is refused before its
+/// intent is written, and no record is ever written that its decoder would refuse (BUG-0125).
+pub const MAX_MIGRATION_RECORD_BYTES: usize = 64 * 1024 * 1024;
 
 /// The versions a binary reads for one subsystem: its current one and a bounded set of older ones.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -502,7 +506,42 @@ impl<'a> Layout<'a> {
             backup: preflight.backup.clone(),
             at: preflight.now,
         };
-        self.write(INTENT, &intent.encode()?)?;
+        // Both records are measured before anything is written: the commit carries the old
+        // digests and the new, about as many, so one that could not be written once the manifest
+        // switched is refused now, with nothing to undo (BUG-0125).
+        let too_many = |bytes: usize| {
+            StorageError::Refused(format!(
+                "the old generation of {} holds {} files, and recording their digests takes about \
+                 {bytes} bytes, past the {MAX_MIGRATION_RECORD_BYTES} a migration record takes: \
+                 nothing was written",
+                self.subsystem,
+                intent.old_digests.len()
+            ))
+        };
+        let intent_bytes = match intent.encode() {
+            Ok(bytes) => bytes,
+            Err(RecordError::TooLarge(bytes, _)) => return Err(too_many(bytes)),
+            Err(error) => return Err(error.into()),
+        };
+        let prospective = MigrationCommit {
+            subsystem: intent.subsystem.clone(),
+            from: intent.from.clone(),
+            to: intent.to.clone(),
+            old_digests: intent.old_digests.clone(),
+            new_digests: intent.old_digests.clone(),
+            backup: intent.backup.clone(),
+            committed_at: preflight.now,
+        };
+        let estimate = match prospective.encode() {
+            // A new generation's paths may be longer than the old's: a quarter more is kept free.
+            Ok(bytes) => bytes.len().saturating_add(bytes.len() / 4),
+            Err(RecordError::TooLarge(bytes, _)) => bytes,
+            Err(error) => return Err(error.into()),
+        };
+        if estimate > MAX_MIGRATION_RECORD_BYTES {
+            return Err(too_many(estimate));
+        }
+        self.write(INTENT, &intent_bytes)?;
         point("migrate.intent_written");
 
         let new = walk(&root, &intent.to.directory, true)?;
@@ -528,9 +567,6 @@ impl<'a> Layout<'a> {
         let new_digests = self.verify(&intent, &built, &old, &new)?;
         point("migrate.verified");
 
-        self.switch(&manifest, &intent, preflight.now)?;
-        point("migrate.switched");
-
         let commit = MigrationCommit {
             subsystem: intent.subsystem.clone(),
             from: intent.from.clone(),
@@ -540,7 +576,31 @@ impl<'a> Layout<'a> {
             backup: intent.backup.clone(),
             committed_at: preflight.now,
         };
-        self.write(COMMIT, &commit.encode()?)?;
+        // Encoded before the switch: a commit that could not be written leaves the build to be
+        // abandoned, never a switched manifest with no commit (BUG-0125).
+        let commit_bytes = match commit.encode() {
+            Ok(bytes) => bytes,
+            Err(RecordError::TooLarge(bytes, limit)) => {
+                let refused = StorageError::Refused(format!(
+                    "the migration of {} would commit {bytes} bytes of digests, past the {limit} \
+                     a migration record takes: nothing was switched",
+                    self.subsystem
+                ));
+                return match self.abandon(&intent.to.directory) {
+                    Ok(()) => Err(refused),
+                    Err(error) => Err(StorageError::Refused(format!(
+                        "{refused}; the build could not be removed ({error}): run `migrate \
+                         recover` before migrating again"
+                    ))),
+                };
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        self.switch(&manifest, &intent, preflight.now)?;
+        point("migrate.switched");
+
+        self.write(COMMIT, &commit_bytes)?;
         point("migrate.committed");
         Ok(commit)
     }
@@ -698,6 +758,29 @@ impl<'a> Layout<'a> {
                 )));
             }
         }
+        // The old generation goes whole: anything written into its directory since the commit
+        // would go with it, so finalize removes only what the migration recorded (BUG-0124).
+        let unrecorded = self.unrecorded()?;
+        if !unrecorded.is_empty() {
+            let directory = manifest
+                .previous
+                .as_ref()
+                .map_or_else(String::new, |previous| previous.directory.clone());
+            return Err(StorageError::Refused(format!(
+                "the old generation `{directory}` of {} holds {} file(s) its migration did not \
+                 record, or that changed since: {}{}; finalize removes the old generation whole, \
+                 so they would go with it: move them out of `{directory}`, then finalize",
+                self.subsystem,
+                unrecorded.len(),
+                unrecorded
+                    .iter()
+                    .take(5)
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                if unrecorded.len() > 5 { ", …" } else { "" }
+            )));
+        }
         let finalized = LayoutManifest {
             previous: None,
             switched_at: now,
@@ -706,6 +789,26 @@ impl<'a> Layout<'a> {
         self.write(MANIFEST, &finalized.encode()?)?;
         point("migrate.finalize_manifest");
         self.complete_interrupted()
+    }
+
+    /// The files of the old generation a committed migration keeps that its commit did not
+    /// record, or that changed since, by path relative to it: what `finalize` would remove that
+    /// is not the old generation's (BUG-0124). Nothing without a commit.
+    pub fn unrecorded(&self) -> Result<Vec<String>> {
+        let Some(commit) = self.commit()? else {
+            return Ok(Vec::new());
+        };
+        let root = self.root()?;
+        if !root_has(&root, &commit.from.directory)? {
+            return Ok(Vec::new());
+        }
+        let old = walk(&root, &commit.from.directory, false)?;
+        let (held, _) = digest_tree(&old)?;
+        Ok(held
+            .into_iter()
+            .filter(|(path, digest)| commit.old_digests.get(path) != Some(digest))
+            .map(|(path, _)| path)
+            .collect())
     }
 
     /// Returns to the old generation of a committed migration, when the new one is as the commit
@@ -1027,7 +1130,8 @@ type RecordResult<T> = std::result::Result<T, RecordError>;
 /// Why a record did not read or write.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordError {
-    TooLarge(usize),
+    /// The record's bytes, and the most its kind takes.
+    TooLarge(usize, usize),
     Cbor(String),
     Malformed(String),
 }
@@ -1035,11 +1139,8 @@ pub enum RecordError {
 impl fmt::Display for RecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TooLarge(bytes) => {
-                write!(
-                    f,
-                    "{bytes} bytes; a layout record takes up to {MAX_RECORD_BYTES}"
-                )
+            Self::TooLarge(bytes, limit) => {
+                write!(f, "{bytes} bytes; a layout record takes up to {limit}")
             }
             Self::Cbor(detail) => write!(f, "not canonical CBOR: {detail}"),
             Self::Malformed(detail) => write!(f, "not a layout record: {detail}"),
@@ -1053,6 +1154,15 @@ impl From<RecordError> for StorageError {
     fn from(error: RecordError) -> Self {
         StorageError::Corruption(error.to_string())
     }
+}
+
+/// The canonical bytes of `value`, refused past `limit`: what the decoder reads back (BUG-0125).
+fn bounded(value: &Value, limit: usize) -> RecordResult<Vec<u8>> {
+    let bytes = cbor::encode(value).map_err(|e| RecordError::Cbor(e.to_string()))?;
+    if bytes.len() > limit {
+        return Err(RecordError::TooLarge(bytes.len(), limit));
+    }
+    Ok(bytes)
 }
 
 fn uint(value: u64) -> RecordResult<Value> {
@@ -1103,13 +1213,13 @@ impl LayoutManifest {
             pairs.push((Value::Int(5), previous.encode()?));
         }
         pairs.push((Value::Int(6), uint(self.switched_at)?));
-        cbor::encode(&Value::Map(pairs)).map_err(|e| RecordError::Cbor(e.to_string()))
+        bounded(&Value::Map(pairs), MAX_RECORD_BYTES)
     }
 
     /// Reads the canonical bytes, refusing an unknown label, a missing required one or a value
     /// of another type.
     pub fn decode(bytes: &[u8]) -> RecordResult<Self> {
-        let mut map = Labelled::root(bytes, 6)?;
+        let mut map = Labelled::root(bytes, 6, MAX_RECORD_BYTES)?;
         let manifest = Self {
             subsystem: map.text(1)?,
             active: Generation {
@@ -1142,12 +1252,12 @@ impl MigrationIntent {
         }
         pairs.push((Value::Int(9), uint(self.at)?));
         pairs.push((Value::Int(10), Value::Text(self.from.directory.clone())));
-        cbor::encode(&Value::Map(pairs)).map_err(|e| RecordError::Cbor(e.to_string()))
+        bounded(&Value::Map(pairs), MAX_MIGRATION_RECORD_BYTES)
     }
 
     /// Reads the canonical bytes.
     pub fn decode(bytes: &[u8]) -> RecordResult<Self> {
-        let mut map = Labelled::root(bytes, 10)?;
+        let mut map = Labelled::root(bytes, 10, MAX_MIGRATION_RECORD_BYTES)?;
         let intent = Self {
             subsystem: map.text(1)?,
             from: Generation {
@@ -1187,12 +1297,12 @@ impl MigrationCommit {
         }
         pairs.push((Value::Int(10), uint(self.committed_at)?));
         pairs.push((Value::Int(11), Value::Text(self.from.directory.clone())));
-        cbor::encode(&Value::Map(pairs)).map_err(|e| RecordError::Cbor(e.to_string()))
+        bounded(&Value::Map(pairs), MAX_MIGRATION_RECORD_BYTES)
     }
 
     /// Reads the canonical bytes.
     pub fn decode(bytes: &[u8]) -> RecordResult<Self> {
-        let mut map = Labelled::root(bytes, 11)?;
+        let mut map = Labelled::root(bytes, 11, MAX_MIGRATION_RECORD_BYTES)?;
         let commit = Self {
             subsystem: map.text(1)?,
             from: Generation {
@@ -1221,9 +1331,9 @@ struct Labelled {
 }
 
 impl Labelled {
-    fn root(bytes: &[u8], highest: i64) -> RecordResult<Self> {
-        if bytes.len() > MAX_RECORD_BYTES {
-            return Err(RecordError::TooLarge(bytes.len()));
+    fn root(bytes: &[u8], highest: i64, limit: usize) -> RecordResult<Self> {
+        if bytes.len() > limit {
+            return Err(RecordError::TooLarge(bytes.len(), limit));
         }
         let value = cbor::decode_canonical(bytes).map_err(|e| RecordError::Cbor(e.to_string()))?;
         Self::new(value, highest)
@@ -1512,6 +1622,117 @@ mod tests {
             "the old generation is gone"
         );
         assert!(root.join("data/notes/g2/INDEX").is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// BUG-0124: a file written into the old generation after the commit, or one changed there,
+    /// is not the old generation's: finalize refuses, names it and leaves it, and finalizes once
+    /// it is moved out.
+    #[test]
+    fn finalize_refuses_to_remove_what_the_migration_did_not_record() {
+        let (root, volume) = laid_out("finalize-unrecorded");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        layout
+            .migrate(
+                &NotesV2 {
+                    tamper: false,
+                    write_old: false,
+                    omit: false,
+                },
+                preflight(),
+            )
+            .expect("migrates");
+        assert!(layout.unrecorded().expect("read").is_empty());
+        let old = root.join("data/notes/g1");
+        std::fs::create_dir_all(old.join("store")).expect("a directory");
+        std::fs::write(old.join("store/LOCK"), b"live").expect("written after the commit");
+        std::fs::write(old.join("beta"), b"changed").expect("changed after the commit");
+        assert_eq!(
+            layout.unrecorded().expect("read"),
+            vec!["beta".to_owned(), "store/LOCK".to_owned()]
+        );
+        let refused = layout.finalize(NOW + 1).expect_err("unrecorded files");
+        assert!(
+            matches!(&refused, StorageError::Refused(detail)
+                if detail.contains("store/LOCK") && detail.contains("beta")),
+            "{refused}"
+        );
+        assert!(old.join("store/LOCK").is_file(), "nothing removed");
+        assert_eq!(
+            layout.status().expect("status").expect("laid out").phase,
+            Phase::Committed
+        );
+        std::fs::remove_dir_all(old.join("store")).expect("moved out");
+        std::fs::write(old.join("beta"), b"second note").expect("restored");
+        layout.finalize(NOW + 2).expect("finalized");
+        assert!(!old.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// BUG-0125: a generation whose digests take more than a `MANIFEST`'s megabyte migrates, and
+    /// its records read back; a record past the migration bound is never encoded, so never written.
+    #[test]
+    fn a_large_generation_migrates_and_its_records_read_back() {
+        let root = scratch("large");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        layout.declare(1, "data/notes/g1", NOW).expect("declared");
+        let old = layout.active(&Reads::only(1)).expect("the generation");
+        // About 8000 files of digests: well past 1 MiB in each record.
+        for at in 0..8000 {
+            let mut file = old
+                .create_exclusive(&format!("note-{at:05}-{}", "x".repeat(40)))
+                .expect("created");
+            std::io::Write::write_all(&mut file, format!("{at}").as_bytes()).expect("written");
+        }
+        old.sync().expect("flushed");
+        let commit = layout
+            .migrate(
+                &NotesV2 {
+                    tamper: false,
+                    write_old: false,
+                    omit: false,
+                },
+                preflight(),
+            )
+            .expect("migrates");
+        assert!(
+            commit.encode().expect("encoded").len() > MAX_RECORD_BYTES,
+            "the commit is past a manifest's bound"
+        );
+        let status = layout
+            .status()
+            .expect("the records read back")
+            .expect("laid out");
+        assert_eq!(status.phase, Phase::Committed);
+        assert_eq!(super::status(&volume).expect("status").len(), 1);
+        layout.finalize(NOW + 1).expect("finalized");
+
+        let huge = MigrationIntent {
+            subsystem: SUBSYSTEM.to_owned(),
+            from: commit.from.clone(),
+            to: commit.to.clone(),
+            old_digests: (0..20_000)
+                .map(|at| {
+                    (
+                        format!("{at:05}-{}", "p".repeat(3500)),
+                        commit
+                            .old_digests
+                            .values()
+                            .next()
+                            .expect("a digest")
+                            .clone(),
+                    )
+                })
+                .collect(),
+            backup: None,
+            at: NOW,
+        };
+        assert!(matches!(
+            huge.encode(),
+            Err(RecordError::TooLarge(_, MAX_MIGRATION_RECORD_BYTES))
+        ));
+        drop(volume);
         let _ = std::fs::remove_dir_all(root);
     }
 

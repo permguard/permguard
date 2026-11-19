@@ -290,6 +290,134 @@ fn a_declared_history_is_not_archived_while_the_configured_one_holds_history() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// BUG-0126: from `production` upward, a drained history that a foreign file keeps from being
+/// archived is reported with that refusal; the command is named only for one it would archive.
+#[test]
+fn a_production_start_names_the_obstacle_rather_than_a_command_that_refuses() {
+    let root = scratch("start-production-obstacle");
+    let history = written(&root, 2, 2);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    assert!(production_reason(&volume, &history, config_file()).contains("migrate events"));
+    std::fs::write(history.join("README"), "not the history's").expect("a foreign file");
+    let said = production_reason(&volume, &history, config_file());
+    assert!(said.contains("README"), "{said}");
+    assert!(!said.contains("migrate events"), "{said}");
+    archive_at_start(
+        &volume,
+        &history,
+        Bounds::default(),
+        config_file(),
+        AssuranceProfile::Production,
+        later(),
+    );
+    assert_eq!(laid_out(&volume), None, "left in place, the start goes on");
+    drop(volume);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// BUG-0122: the default store is not inside the default history any more, and a store releases
+/// before kept there is moved out at start: a volume with no legacy history then reads as having
+/// none, and a real one beside the store layout is archived. Two stores are left as they are.
+#[test]
+fn the_event_store_moves_out_of_the_legacy_history_and_a_volume_without_one_has_none() {
+    use permguard_core::config::{
+        DEFAULT_EVENT_STORE_DIRECTORY, DEFAULT_EVENTS_DIRECTORY, LEGACY_EVENT_STORE_DIRECTORY,
+    };
+    assert!(
+        !DEFAULT_EVENT_STORE_DIRECTORY.starts_with(&format!("{DEFAULT_EVENTS_DIRECTORY}/")),
+        "the defaults do not nest"
+    );
+    let root = scratch("store-relocated");
+    let legacy = root.join(LEGACY_EVENT_STORE_DIRECTORY);
+    let configured = root.join(DEFAULT_EVENT_STORE_DIRECTORY);
+    std::fs::create_dir_all(legacy.join("streams")).expect("a store");
+    for name in ["CURSOR_KEY", "CURSOR_KEY.witness", "LOCK"] {
+        std::fs::write(legacy.join(name), name).expect("a store file");
+    }
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let history = root.join(DEFAULT_EVENTS_DIRECTORY);
+    let horizon = horizon(Bounds::default(), i64::try_from(later()).unwrap());
+    assert_eq!(
+        standing(&volume, &history, Bounds::default(), horizon).expect("read"),
+        Standing::Drained,
+        "the store taken for a history: the bug"
+    );
+    assert!(relocate_event_store(&legacy, &configured).expect("moved"));
+    assert!(!legacy.exists());
+    assert_eq!(
+        std::fs::read(configured.join("CURSOR_KEY")).expect("moved whole"),
+        b"CURSOR_KEY"
+    );
+    assert_eq!(
+        standing(&volume, &history, Bounds::default(), horizon).expect("read"),
+        Standing::Absent
+    );
+    assert!(!relocate_event_store(&legacy, &configured).expect("nothing to move"));
+
+    // A real drained history beside the store layout is archived.
+    let history = written(&root, 2, 2);
+    archive_at_start(
+        &volume,
+        &history,
+        Bounds::default(),
+        config_file(),
+        AssuranceProfile::Development,
+        later(),
+    );
+    assert_eq!(laid_out(&volume), Some(2));
+    assert!(
+        configured.join("CURSOR_KEY").is_file(),
+        "the store untouched"
+    );
+
+    // Two stores: neither moves.
+    std::fs::create_dir_all(&legacy).expect("another");
+    std::fs::write(legacy.join("LOCK"), "x").expect("written");
+    assert!(!relocate_event_store(&legacy, &configured).expect("left"));
+    assert!(legacy.join("LOCK").is_file() && configured.join("LOCK").is_file());
+    drop(volume);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// BUG-0124: a file written under the archived history's old directory is not the history's:
+/// the start names it, and `migrate finalize` refuses and leaves it.
+#[test]
+fn finalize_never_removes_a_file_written_under_the_old_directory_after_the_archive() {
+    let root = scratch("finalize-store");
+    let history = written(&root, 2, 2);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    archive_at_start(
+        &volume,
+        &history,
+        Bounds::default(),
+        config_file(),
+        AssuranceProfile::Development,
+        later(),
+    );
+    assert_eq!(laid_out(&volume), Some(2));
+    std::fs::create_dir_all(history.join("store")).expect("a store turned on later");
+    std::fs::write(history.join("store/LOCK"), "live").expect("written");
+    let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+    assert_eq!(
+        layout.unrecorded().expect("read"),
+        vec!["store/LOCK".to_owned()]
+    );
+    // The start says so, and goes on.
+    archive_at_start(
+        &volume,
+        &history,
+        Bounds::default(),
+        config_file(),
+        AssuranceProfile::Development,
+        later(),
+    );
+    let refused = layout.finalize(later()).expect_err("an unrecorded file");
+    assert!(refused.to_string().contains("store/LOCK"), "{refused}");
+    assert!(history.join("store/LOCK").is_file(), "never removed");
+    drop(volume);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn migrate_events_refuses_an_undrained_legacy_and_archives_a_drained_one() {
     let root = scratch("command");
