@@ -36,6 +36,8 @@ impl AuditSchema for DataPlaneAudit {
     const NAME: &'static str = "data-plane.v1";
     const ACTIONS: &'static [&'static str] = &[
         "authz.decision",
+        "authz.quarantine_opened",
+        "authz.quarantine_closed",
         "ledger.synchronized",
         "mirror.tombstoned",
         "mirror.restored",

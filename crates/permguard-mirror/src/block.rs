@@ -17,18 +17,20 @@
 //! So the refusal is written down:
 //!
 //! ```text
-//! <mirror>/BLOCKED   { commit, reason, at }
+//! <mirror>/BLOCKED   { commit, engine, reason, at }
 //! ```
 //!
 //! # How it clears itself
 //!
 //! There is nothing to configure and no timer to tune. The rule is one line:
 //!
-//! > if the block names the commit that is now the head, skip; otherwise try
-//! > again.
+//! > if the block names the commit that is now the head, and the engine build
+//! > that is running, skip; otherwise try again.
 //!
 //! A synchronization that brings a *new* commit therefore retries on its own —
-//! which is exactly the moment something might have changed. A ledger that
+//! which is exactly the moment something might have changed — and so does a
+//! plane upgraded to another engine build, which may accept what the last one
+//! refused (BUG-0256). A ledger that
 //! stays put stays blocked, for free. And because the block is a file on the
 //! volume, a plane that restarts does not forget what it learned.
 //!
@@ -51,6 +53,10 @@ pub const BLOCK_FILE: &str = "BLOCKED";
 pub struct Block {
     /// The commit that could not be served. The whole mechanism turns on this.
     pub commit: String,
+    /// The engine build that refused it, `<version>+<commit>`: another build tries again. Empty
+    /// in a block written before it was recorded, which no build matches.
+    #[serde(default)]
+    pub engine: String,
     /// The sentence an operator needs — the load gate's own words.
     pub reason: String,
     /// When it was decided, as seconds since the epoch, for the report.
@@ -64,6 +70,7 @@ pub struct Block {
 pub fn write(mirror: &Path, commit: &str, reason: &str) {
     let block = Block {
         commit: commit.to_owned(),
+        engine: engine(),
         reason: reason.to_owned(),
         at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -86,12 +93,28 @@ pub fn read(mirror: &Path) -> Option<Block> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Whether this commit is the one that was refused.
+/// The engine build this process runs, as a block records it: the release and the source commit
+/// it was built from.
+pub fn engine() -> String {
+    format!(
+        "{}+{}",
+        permguard_core::build::VERSION,
+        permguard_core::build::COMMIT
+    )
+}
+
+/// Whether this commit is the one that was refused, by the engine build running now.
 ///
 /// The only question anybody asks: a block that names another commit is a
-/// block about the past, and the past is not what is being served.
+/// block about the past, and one another build wrote is about another engine;
+/// neither is what is being served.
 pub fn blocks(mirror: &Path, commit: &str) -> Option<Block> {
-    read(mirror).filter(|block| block.commit == commit)
+    blocks_for(mirror, commit, &engine())
+}
+
+/// [`blocks`] for the engine build `engine`.
+pub fn blocks_for(mirror: &Path, commit: &str, engine: &str) -> Option<Block> {
+    read(mirror).filter(|block| block.commit == commit && block.engine == engine)
 }
 
 /// Forgets the block. Called when a commit is served successfully, so a ledger
@@ -148,6 +171,31 @@ mod tests {
         assert!(
             blocks(&mirror, "sha256:bbb").is_none(),
             "a new commit is a new chance"
+        );
+    }
+
+    /// BUG-0256: a block names the engine build that refused the commit; another build tries
+    /// again, and a block written before the build was recorded blocks no build.
+    #[test]
+    fn a_block_stops_only_the_engine_build_that_refused() {
+        let mirror = scratch("engine");
+        write(&mirror, "sha256:aaa", "refused by this build");
+        let block = blocks(&mirror, "sha256:aaa").expect("this build refused it");
+        assert_eq!(block.engine, engine());
+        assert!(
+            blocks_for(&mirror, "sha256:aaa", "9.9.9+other").is_none(),
+            "another engine build is a new chance"
+        );
+
+        std::fs::write(
+            mirror.join(BLOCK_FILE),
+            br#"{"commit":"sha256:aaa","reason":"old","at":1}"#,
+        )
+        .expect("an older block");
+        assert_eq!(read(&mirror).expect("it reads").engine, "");
+        assert!(
+            blocks(&mirror, "sha256:aaa").is_none(),
+            "no build matches it"
         );
     }
 

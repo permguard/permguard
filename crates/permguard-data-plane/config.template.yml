@@ -186,6 +186,12 @@ dataPlane:
   #     partitions: "64"       # compiled partitions held at once (one ledger contributes one per partition)
   #     bytes: "256M"          # what they may weigh; accepts k/M/G
   #   max_evaluations: "256"   # the most evaluations one boxcarred request may carry
+  #   # A profile whose evaluation keeps overrunning its deadline is taken out of service, per
+  #   # ledger commit, engine build and authority, and one request tests it every cooldown; each
+  #   # opening and closing is audited.
+  #   quarantine:
+  #     overruns: "3"          # consecutive overruns that take it out, 1 to 100
+  #     cooldown: "30s"        # how long it stays out before one request tests it, 1s to 1h
 
   #   # A signed response, when a request sends `request_nonce`: a JWS under the plane's
   #   # `data.attest` ring, addressed to the authenticated caller. On by default where that ring is

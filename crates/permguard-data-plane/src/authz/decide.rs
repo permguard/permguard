@@ -710,7 +710,21 @@ impl Decider {
     /// Records authorization decisions through the data plane's bounded audit worker.
     pub fn with_audit(mut self, audit: Option<Arc<super::audit::DecisionAudit>>) -> Self {
         if let Some(audit) = audit {
+            observe_quarantine(&self.quarantine, &audit);
             self.audit = Some(AuditTarget::Queued(audit));
+        }
+
+        self
+    }
+
+    /// Opens a profile's breaker after `overruns` consecutive overruns and lets one request through
+    /// every `cooldown` (`dataPlane.authz.quarantine`, BUG-0256), each held to its bounds.
+    pub fn with_quarantine(mut self, overruns: u32, cooldown: std::time::Duration) -> Self {
+        self.quarantine = Arc::new(super::quarantine::Quarantine::with_bounds(
+            overruns, cooldown,
+        ));
+        if let Some(AuditTarget::Queued(audit)) = &self.audit {
+            observe_quarantine(&self.quarantine, audit);
         }
 
         self
@@ -1077,7 +1091,10 @@ impl Decider {
         // returning costs a permit from the bounded pool until it does. Letting every request for
         // the same profile take another permit is how a plane spends its whole capacity on work
         // nobody is waiting for; the breaker spends one request per cooldown instead.
-        let guarded = format!("{}/{}/{}", resolved.zone, resolved.ledger, resolved.profile);
+        // Keyed by what an overrun can be attributed to: the profile of this ledger at this commit,
+        // run by this engine build under this authority. A new commit, another build or another
+        // authority starts a new quarantine rather than inheriting the old one (BUG-0256).
+        let guarded = quarantine_key(&resolved.zone, &resolved.ledger, &resolved.profile, &head);
         // The probe reservation, when this is the one request a cooldown lets through, is *held*
         // rather than discarded: it travels into the blocking closure below and is handed to the
         // watchdog only once the work is actually running. Every path that does not get that far —
@@ -1779,6 +1796,41 @@ struct OwnedDecided {
     token_status: Option<permguard_core::authz::TokenStatusRef>,
 }
 
+/// The key a profile's quarantine is held under: the profile of this ledger at this commit, run
+/// by this engine build under this authority (BUG-0256).
+fn quarantine_key(zone: &str, ledger: &str, profile: &str, head: &Head) -> String {
+    format!(
+        "{zone}/{ledger}/{profile}@{}~{}^{}",
+        head.commit,
+        block::engine(),
+        head.authority_host_id.as_deref().unwrap_or("-")
+    )
+}
+
+/// Audits every transition of `quarantine` through `audit`, as this plane's own record: the key
+/// names the profile, the commit, the engine build and the authority it happened to.
+fn observe_quarantine(
+    quarantine: &super::quarantine::Quarantine,
+    audit: &Arc<super::audit::DecisionAudit>,
+) {
+    let audit = Arc::clone(audit);
+    quarantine.observe(Arc::new(move |transition, key| {
+        match transition {
+            super::quarantine::Transition::Opened => tracing::warn!(
+                event.name = "authz.quarantine_opened",
+                component = "data-plane",
+                "a profile kept overrunning its deadline and is out of service for the cooldown"
+            ),
+            super::quarantine::Transition::Closed => tracing::info!(
+                event.name = "authz.quarantine_closed",
+                component = "data-plane",
+                "a quarantined profile answered in time and is served again"
+            ),
+        }
+        audit.record_system(transition.action(), key.to_owned());
+    }));
+}
+
 /// The compiled-cache key of one partition (IFACE-03): its ledger, its commit, its name, the
 /// interface it is compiled for, the descriptor digest of the runtime that compiles it, the
 /// assurance profile and the enabled contracts. An engine upgrade, a feature or a limit is a new
@@ -1805,6 +1857,7 @@ fn partition_key(
             descriptor,
             profile: profile.as_str(),
             options: &options,
+            authority: head.authority_host_id.as_deref().unwrap_or("-"),
         },
     )
 }
@@ -2714,6 +2767,43 @@ mod tests {
     use super::*;
 
     use permguard_languages::Verdict;
+
+    /// BUG-0256: a quarantine is held for the profile of a ledger at one commit, run by one
+    /// engine build under one authority: a new commit or another authority starts afresh, and
+    /// the engine build is in the key.
+    #[test]
+    fn a_quarantine_is_keyed_by_commit_engine_and_authority() {
+        let head = Head {
+            authority_host_id: Some("host-a".to_owned()),
+            ..Head::for_test()
+        };
+        let key = quarantine_key("z", "l", "default", &head);
+        assert!(key.contains(&block::engine()), "{key}");
+        let next = Head {
+            commit: "sha256:next".to_owned(),
+            ..head.clone()
+        };
+        let other = Head {
+            authority_host_id: Some("host-b".to_owned()),
+            ..head.clone()
+        };
+        assert_ne!(
+            quarantine_key("z", "l", "default", &next),
+            key,
+            "a new commit"
+        );
+        assert_ne!(
+            quarantine_key("z", "l", "default", &other),
+            key,
+            "another authority"
+        );
+        assert_ne!(
+            quarantine_key("z", "l", "gateway", &head),
+            key,
+            "another profile"
+        );
+        assert_eq!(quarantine_key("z", "l", "default", &head), key, "stable");
+    }
 
     #[cfg(feature = "decision-evidence")]
     /// What a record keeps in clear: nothing unless named, the members named, or every member

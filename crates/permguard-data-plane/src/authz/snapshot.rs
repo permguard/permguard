@@ -94,7 +94,7 @@ impl std::fmt::Display for Refusal {
 }
 
 /// What one ledger is, at one commit: what it declares, and what it holds.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Head {
     /// The commit this was read at — the cache key, and what a decision cites.
     pub commit: String,

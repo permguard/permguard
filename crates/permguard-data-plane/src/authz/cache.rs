@@ -91,6 +91,9 @@ pub struct Compiled<'a> {
     pub profile: &'a str,
     /// The experimental contracts enabled, in name order, comma-separated.
     pub options: &'a str,
+    /// The Host whose head statement authorized the commit, `-` for a mirror that kept none: a
+    /// program compiled under one authority is never served under another (BUG-0256).
+    pub authority: &'a str,
 }
 
 /// The bounded, shared store of compiled programs.
@@ -176,8 +179,9 @@ impl Cache {
 
     /// The key of one compiled partition of that commit (IFACE-03): compiled for the evaluation
     /// interface `interface`, by the runtime whose descriptor digest is `descriptor`, under the
-    /// assurance profile `profile` with the experimental contracts `options` enabled — every input
-    /// that changes what a compile accepts or yields.
+    /// assurance profile `profile` with the experimental contracts `options` enabled, under the
+    /// authority `authority` — every input that changes what a compile accepts or yields, and whose
+    /// statement it serves.
     pub fn partition_key(
         zone_id: &str,
         ledger_id: &str,
@@ -186,8 +190,12 @@ impl Cache {
         compiled: &Compiled<'_>,
     ) -> String {
         format!(
-            "{zone_id}/{ledger_id}@{commit}#{partition}!{}~{}^{}+{}",
-            compiled.interface, compiled.descriptor, compiled.profile, compiled.options
+            "{zone_id}/{ledger_id}@{commit}#{partition}!{}~{}^{}+{}?{}",
+            compiled.interface,
+            compiled.descriptor,
+            compiled.profile,
+            compiled.options,
+            compiled.authority
         )
     }
 
@@ -323,6 +331,7 @@ mod tests {
             descriptor: "sha256:d",
             profile: "production",
             options: "",
+            authority: "host-a",
         }
     }
 
@@ -359,6 +368,14 @@ mod tests {
                     ..compiled()
                 },
                 "enabled contracts",
+            ),
+            // BUG-0256: a program compiled under one Host's authority is not another's.
+            (
+                Compiled {
+                    authority: "host-b",
+                    ..compiled()
+                },
+                "authority",
             ),
         ] {
             assert_ne!(

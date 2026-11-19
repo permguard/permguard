@@ -541,6 +541,14 @@ pub const SETTING_AUTHZ_CACHE_ZONE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_ZONE_BYT
 /// either way the answer is a refusal rather than a stalled worker.
 pub const SETTING_AUTHZ_MAX_EVALUATIONS: &str = "PERMGUARD_AUTHZ_MAX_EVALUATIONS";
 
+/// How many consecutive overruns of its deadline take a profile out of service, 1 to 100
+/// (BUG-0256): `dataPlane.authz.quarantine.overruns`, 3 unless set.
+pub const SETTING_AUTHZ_QUARANTINE_OVERRUNS: &str = "PERMGUARD_AUTHZ_QUARANTINE_OVERRUNS";
+
+/// How long a profile taken out of service stays out before one request tests it, 1s to 1h
+/// (BUG-0256): `dataPlane.authz.quarantine.cooldown`, 30s unless set.
+pub const SETTING_AUTHZ_QUARANTINE_COOLDOWN: &str = "PERMGUARD_AUTHZ_QUARANTINE_COOLDOWN";
+
 /// How many pieces of storage work of each kind this plane may have in flight at once.
 ///
 /// Loading a ledger, replaying temporal history and writing a decision record wait on a disk, and
@@ -1072,6 +1080,11 @@ const DEFAULT_GC_MAX_REMOVALS: u32 = 10_000;
 const DEFAULT_AUTHZ_CACHE_PARTITIONS: usize = 64;
 const DEFAULT_AUTHZ_CACHE_BYTES: u64 = 256 * 1024 * 1024;
 const DEFAULT_AUTHZ_MAX_EVALUATIONS: usize = 256;
+const DEFAULT_AUTHZ_QUARANTINE_OVERRUNS: u32 = 3;
+const MAX_AUTHZ_QUARANTINE_OVERRUNS: u32 = 100;
+const DEFAULT_AUTHZ_QUARANTINE_COOLDOWN: Duration = Duration::from_secs(30);
+const MIN_AUTHZ_QUARANTINE_COOLDOWN: Duration = Duration::from_secs(1);
+const MAX_AUTHZ_QUARANTINE_COOLDOWN: Duration = Duration::from_secs(3600);
 
 /// The default bound on concurrent blocking work.
 ///
@@ -1487,6 +1500,8 @@ pub struct Config {
     authz_cache_zone_partitions: Option<usize>,
     authz_cache_zone_bytes: Option<u64>,
     authz_max_evaluations: usize,
+    authz_quarantine_overruns: u32,
+    authz_quarantine_cooldown: Duration,
     max_blocking: usize,
     /// `None`: the Host's cores.
     evaluation_concurrency: Option<usize>,
@@ -1718,6 +1733,8 @@ impl Default for Config {
             authz_cache_zone_partitions: None,
             authz_cache_zone_bytes: None,
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
+            authz_quarantine_overruns: DEFAULT_AUTHZ_QUARANTINE_OVERRUNS,
+            authz_quarantine_cooldown: DEFAULT_AUTHZ_QUARANTINE_COOLDOWN,
             max_blocking: DEFAULT_MAX_BLOCKING,
             evaluation_concurrency: None,
             evaluation_queue: DEFAULT_EVALUATION_QUEUE,
@@ -4271,6 +4288,16 @@ produce: use `EdDSA` or `ES256`"
         self.authz_max_evaluations
     }
 
+    /// How many consecutive overruns take a profile out of service.
+    pub fn authz_quarantine_overruns(&self) -> u32 {
+        self.authz_quarantine_overruns
+    }
+
+    /// How long a profile taken out of service stays out before one request tests it.
+    pub fn authz_quarantine_cooldown(&self) -> Duration {
+        self.authz_quarantine_cooldown
+    }
+
     /// How many pieces of blocking work may run at once — see [`SETTING_MAX_BLOCKING`].
     pub fn max_blocking(&self) -> usize {
         self.max_blocking
@@ -4919,6 +4946,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
             SETTING_AUTHZ_CACHE_ZONE_BYTES => n(self.authz_cache_zone_bytes()),
             SETTING_AUTHZ_MAX_EVALUATIONS => n(self.authz_max_evaluations),
+            SETTING_AUTHZ_QUARANTINE_OVERRUNS => Some(self.authz_quarantine_overruns.to_string()),
+            SETTING_AUTHZ_QUARANTINE_COOLDOWN => d(self.authz_quarantine_cooldown),
             SETTING_MAX_BLOCKING => n(self.max_blocking),
             SETTING_EVALUATION_CONCURRENCY => n(self.evaluation_concurrency()),
             SETTING_EVALUATION_QUEUE => n(self.evaluation_queue),
@@ -6170,6 +6199,29 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        if let Some(value) = settings.get(SETTING_AUTHZ_QUARANTINE_OVERRUNS) {
+            let overruns: u32 = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_AUTHZ_QUARANTINE_OVERRUNS}"))?;
+            if !(1..=MAX_AUTHZ_QUARANTINE_OVERRUNS).contains(&overruns) {
+                anyhow::bail!(
+                    "reading {SETTING_AUTHZ_QUARANTINE_OVERRUNS}: {overruns} overruns; a profile \
+                     is taken out of service after 1 to {MAX_AUTHZ_QUARANTINE_OVERRUNS}"
+                );
+            }
+            self.authz_quarantine_overruns = overruns;
+        }
+        if let Some(value) = settings.get(SETTING_AUTHZ_QUARANTINE_COOLDOWN) {
+            let cooldown = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_AUTHZ_QUARANTINE_COOLDOWN}"))?;
+            if !(MIN_AUTHZ_QUARANTINE_COOLDOWN..=MAX_AUTHZ_QUARANTINE_COOLDOWN).contains(&cooldown)
+            {
+                anyhow::bail!(
+                    "reading {SETTING_AUTHZ_QUARANTINE_COOLDOWN}: a cooldown is 1s to 1h"
+                );
+            }
+            self.authz_quarantine_cooldown = cooldown;
+        }
         if let Some(value) = settings.get(SETTING_MIRRORS_ENABLED) {
             self.mirrors_enabled =
                 parse_bool(value).with_context(|| format!("reading {SETTING_MIRRORS_ENABLED}"))?;
@@ -6893,6 +6945,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUTHZ_CACHE_ZONE_BYTES,
     SETTING_AUTHZ_CACHE_ZONE_PARTITIONS,
     SETTING_AUTHZ_MAX_EVALUATIONS,
+    SETTING_AUTHZ_QUARANTINE_COOLDOWN,
+    SETTING_AUTHZ_QUARANTINE_OVERRUNS,
     SETTING_AUTOGENERATE,
     SETTING_CONTROL_KEYS_DIRECTORY,
     SETTING_CONTROL_KEYS_ENABLED,

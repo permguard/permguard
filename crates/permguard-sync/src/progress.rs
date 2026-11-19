@@ -120,9 +120,7 @@ fn one(
         }
     };
     let head = state.head.to_string();
-    let (state_name, reason) = if let Some(block) =
-        permguard_mirror::block::read(path).filter(|block| block.commit == head)
-    {
+    let (state_name, reason) = if let Some(block) = permguard_mirror::block::blocks(path, &head) {
         (BLOCKED, Some(block.reason))
     } else if let (Some(bound), Some(age)) = (stale_after, permguard_mirror::held::synced_age(path))
         && age >= bound

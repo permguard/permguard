@@ -37,15 +37,48 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// How many consecutive overruns open the breaker.
+/// How many consecutive overruns open the breaker, unless configured
+/// (`dataPlane.authz.quarantine.overruns`, 1 to [`MAX_OVERRUNS`]).
 ///
 /// More than one, because a single overrun is as likely to be a slow disk or a noisy neighbour as a
 /// provider that has stopped returning, and taking a profile out of service for that would make
 /// this the outage rather than the cure.
-const OVERRUNS_TO_OPEN: u32 = 3;
+pub const DEFAULT_OVERRUNS: u32 = 3;
 
-/// How long a profile stays out before one request is let through to test it.
-const COOLDOWN: Duration = Duration::from_secs(30);
+/// The most consecutive overruns a deployment may ask for before the breaker opens.
+pub const MAX_OVERRUNS: u32 = 100;
+
+/// How long a profile stays out before one request is let through to test it, unless configured
+/// (`dataPlane.authz.quarantine.cooldown`, [`MIN_COOLDOWN`] to [`MAX_COOLDOWN`]).
+pub const DEFAULT_COOLDOWN: Duration = Duration::from_secs(30);
+
+/// The shortest cooldown: a breaker that lets a probe through at once is no breaker.
+pub const MIN_COOLDOWN: Duration = Duration::from_secs(1);
+
+/// The longest cooldown: past it a recovered provider waits longer than anyone would.
+pub const MAX_COOLDOWN: Duration = Duration::from_secs(3600);
+
+/// A change of a breaker's state, reported to the observer the decider installs (BUG-0256).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transition {
+    /// Enough consecutive overruns: the key is out of service for the cooldown.
+    Opened,
+    /// An evaluation inside its deadline: the key is served again.
+    Closed,
+}
+
+impl Transition {
+    /// The audit action that records it.
+    pub fn action(self) -> &'static str {
+        match self {
+            Self::Opened => "authz.quarantine_opened",
+            Self::Closed => "authz.quarantine_closed",
+        }
+    }
+}
+
+/// What is told of each transition, with the key it happened to.
+pub type Observer = Arc<dyn Fn(Transition, &str) + Send + Sync>;
 
 /// What a profile is allowed to do right now.
 ///
@@ -124,10 +157,28 @@ struct State {
 }
 
 /// The breaker, keyed by what can actually be attributed.
-#[derive(Debug, Default)]
 pub struct Quarantine {
     held: Mutex<HashMap<String, State>>,
     next_token: AtomicU64,
+    overruns_to_open: u32,
+    cooldown: Duration,
+    observer: std::sync::OnceLock<Observer>,
+}
+
+impl std::fmt::Debug for Quarantine {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Quarantine")
+            .field("overruns_to_open", &self.overruns_to_open)
+            .field("cooldown", &self.cooldown)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for Quarantine {
+    fn default() -> Self {
+        Self::with_bounds(DEFAULT_OVERRUNS, DEFAULT_COOLDOWN)
+    }
 }
 
 const WATCHING: u8 = 0;
@@ -176,6 +227,29 @@ impl DeadlineWatch {
 impl Quarantine {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A breaker that opens after `overruns` consecutive overruns and lets one request through
+    /// every `cooldown`, both held to their bounds.
+    pub fn with_bounds(overruns: u32, cooldown: Duration) -> Self {
+        Self {
+            held: Mutex::new(HashMap::new()),
+            next_token: AtomicU64::new(0),
+            overruns_to_open: overruns.clamp(1, MAX_OVERRUNS),
+            cooldown: cooldown.clamp(MIN_COOLDOWN, MAX_COOLDOWN),
+            observer: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Tells `observer` of every transition from now on; the first observer installed stays.
+    pub fn observe(&self, observer: Observer) {
+        let _ = self.observer.set(observer);
+    }
+
+    fn notify(&self, transition: Transition, key: &str) {
+        if let Some(observer) = self.observer.get() {
+            observer(transition, key);
+        }
     }
 
     /// Watches one admitted evaluation against an absolute deadline.
@@ -230,10 +304,10 @@ impl Quarantine {
             return Admits::Yes;
         };
         let elapsed = opened_at.elapsed();
-        if elapsed < COOLDOWN {
+        if elapsed < self.cooldown {
             return Admits::No {
                 overruns: overrun_count(state),
-                retry_in: COOLDOWN.saturating_sub(elapsed),
+                retry_in: self.cooldown.saturating_sub(elapsed),
             };
         }
         if state.probing {
@@ -241,7 +315,7 @@ impl Quarantine {
             // point of one request is to find out cheaply, not to re-open the flood.
             return Admits::No {
                 overruns: overrun_count(state),
-                retry_in: COOLDOWN,
+                retry_in: self.cooldown,
             };
         }
         state.probing = true;
@@ -269,23 +343,40 @@ impl Quarantine {
 
     /// Records that evaluating `key` finished inside its deadline.
     fn record_in_time(&self, key: &str, token: u64) {
-        let Ok(mut held) = self.held.lock() else {
-            return;
+        let closed = {
+            let Ok(mut held) = self.held.lock() else {
+                return;
+            };
+            let state = held.entry(key.to_owned()).or_default();
+            if token <= state.latest_in_time {
+                return;
+            }
+            state.latest_in_time = token;
+            state.overruns.retain(|overrun| *overrun > token);
+            if state.overruns.len() < self.overruns_to_open as usize {
+                let was_open = state.opened_at.is_some();
+                state.opened_at = None;
+                state.probing = false;
+                was_open
+            } else {
+                false
+            }
         };
-        let state = held.entry(key.to_owned()).or_default();
-        if token <= state.latest_in_time {
-            return;
-        }
-        state.latest_in_time = token;
-        state.overruns.retain(|overrun| *overrun > token);
-        if state.overruns.len() < OVERRUNS_TO_OPEN as usize {
-            state.opened_at = None;
-            state.probing = false;
+        if closed {
+            self.notify(Transition::Closed, key);
         }
     }
 
     /// Records that evaluating `key` overran its deadline, and reports whether that opened it.
     fn record_overrun(&self, key: &str, token: u64) -> bool {
+        let opened = self.overrun(key, token);
+        if opened {
+            self.notify(Transition::Opened, key);
+        }
+        opened
+    }
+
+    fn overrun(&self, key: &str, token: u64) -> bool {
         let Ok(mut held) = self.held.lock() else {
             return false;
         };
@@ -293,13 +384,13 @@ impl Quarantine {
         if token <= state.latest_in_time || !state.overruns.insert(token) {
             return false;
         }
-        while state.overruns.len() > OVERRUNS_TO_OPEN as usize {
+        while state.overruns.len() > self.overruns_to_open as usize {
             if let Some(oldest) = state.overruns.first().copied() {
                 state.overruns.remove(&oldest);
             }
         }
         state.probing = false;
-        if state.overruns.len() >= OVERRUNS_TO_OPEN as usize {
+        if state.overruns.len() >= self.overruns_to_open as usize {
             let first = state.opened_at.is_none();
             state.opened_at = Some(Instant::now());
 
@@ -334,7 +425,7 @@ mod tests {
         let state = state.get_mut(KEY).expect("the breaker knows this profile");
         state.opened_at = Some(
             Instant::now()
-                .checked_sub(COOLDOWN + Duration::from_secs(1))
+                .checked_sub(DEFAULT_COOLDOWN + Duration::from_secs(1))
                 .expect("this machine has been up longer than one cooldown"),
         );
     }
@@ -506,8 +597,56 @@ mod tests {
         );
         assert_eq!(
             state.overruns.len(),
-            OVERRUNS_TO_OPEN as usize,
+            DEFAULT_OVERRUNS as usize,
             "and the overruns that opened it are untouched"
+        );
+    }
+
+    /// BUG-0256: the threshold and the cooldown are the deployment's, within their bounds, and
+    /// every opening and closing is told to the observer, with the key it happened to.
+    #[test]
+    fn its_bounds_are_configured_and_its_transitions_observed() {
+        let held = Arc::new(Quarantine::with_bounds(2, Duration::from_secs(5)));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&seen);
+        held.observe(Arc::new(move |transition, key: &str| {
+            observed
+                .lock()
+                .expect("the log")
+                .push((transition, key.to_owned()));
+        }));
+
+        assert!(!held.record_overrun(KEY, 1));
+        assert!(
+            held.record_overrun(KEY, 2),
+            "the second opens it at a threshold of 2"
+        );
+        let Admits::No { retry_in, .. } = held.admits(KEY) else {
+            panic!("open");
+        };
+        assert!(retry_in <= Duration::from_secs(5), "{retry_in:?}");
+        held.record_in_time(KEY, 3);
+        assert!(matches!(held.admits(KEY), Admits::Yes), "closed");
+        assert_eq!(
+            *seen.lock().expect("the log"),
+            [
+                (Transition::Opened, KEY.to_owned()),
+                (Transition::Closed, KEY.to_owned())
+            ]
+        );
+        assert_eq!(Transition::Opened.action(), "authz.quarantine_opened");
+        assert_eq!(Transition::Closed.action(), "authz.quarantine_closed");
+
+        // Out of bounds, held to them.
+        let clamped = Quarantine::with_bounds(0, Duration::ZERO);
+        assert_eq!(
+            (clamped.overruns_to_open, clamped.cooldown),
+            (1, MIN_COOLDOWN)
+        );
+        let clamped = Quarantine::with_bounds(u32::MAX, Duration::from_secs(86_400));
+        assert_eq!(
+            (clamped.overruns_to_open, clamped.cooldown),
+            (MAX_OVERRUNS, MAX_COOLDOWN)
         );
     }
 }

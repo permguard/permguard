@@ -28,7 +28,9 @@ static DECISION_AUDIT: OnceLock<Option<Arc<DecisionAudit>>> = OnceLock::new();
 
 #[derive(Debug)]
 struct Entry {
-    subject: String,
+    action: &'static str,
+    /// The principal that acted, or `None` for this plane itself.
+    subject: Option<String>,
     target: String,
 }
 
@@ -64,7 +66,24 @@ impl DecisionAudit {
 
     /// Queue one decision audit record, or drop it visibly when backpressure says to.
     pub fn record(&self, subject: String, target: String) {
-        match self.sender.try_send(Entry { subject, target }) {
+        self.queue(Entry {
+            action: "authz.decision",
+            subject: Some(subject),
+            target,
+        });
+    }
+
+    /// Queue one record of this plane's own `action`, a quarantine opened or closed (BUG-0256).
+    pub fn record_system(&self, action: &'static str, target: String) {
+        self.queue(Entry {
+            action,
+            subject: None,
+            target,
+        });
+    }
+
+    fn queue(&self, entry: Entry) {
+        match self.sender.try_send(entry) {
             Ok(()) => {
                 self.metrics
                     .count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "queued")]);
@@ -244,12 +263,12 @@ async fn record_one(recorder: crate::handles::Audit, entry: Entry, metrics: &Met
     let handle = tokio::runtime::Handle::current();
     let outcome = tokio::task::spawn_blocking(move || {
         handle.block_on(async move {
+            let subject = match &entry.subject {
+                Some(principal) => Subject::Principal(principal.as_str()),
+                None => Subject::System(COMPONENT),
+            };
             recorder
-                .record_on(
-                    "authz.decision",
-                    Subject::Principal(entry.subject.as_str()),
-                    &entry.target,
-                )
+                .record_on(entry.action, subject, &entry.target)
                 .await
         })
     })

@@ -2717,3 +2717,46 @@ fn test_the_event_record_bound_never_exceeds_the_stream() {
         );
     }
 }
+
+/// BUG-0256: the quarantine's threshold and cooldown default to 3 and 30s, are read from the
+/// `dataPlane.authz.quarantine` block's settings, and are refused outside 1 to 100 overruns and
+/// 1s to 1h.
+#[test]
+fn the_quarantine_bounds_are_configured_within_their_limits() {
+    use permguard_core::config::{
+        SETTING_AUTHZ_QUARANTINE_COOLDOWN, SETTING_AUTHZ_QUARANTINE_OVERRUNS,
+    };
+
+    let defaults = config(&[], &[], &[]);
+    assert_eq!(defaults.authz_quarantine_overruns(), 3);
+    assert_eq!(
+        defaults.authz_quarantine_cooldown(),
+        std::time::Duration::from_secs(30)
+    );
+    let set = config(
+        &[
+            (SETTING_AUTHZ_QUARANTINE_OVERRUNS, "5"),
+            (SETTING_AUTHZ_QUARANTINE_COOLDOWN, "2m"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(set.authz_quarantine_overruns(), 5);
+    assert_eq!(
+        set.authz_quarantine_cooldown(),
+        std::time::Duration::from_secs(120)
+    );
+    for (key, value) in [
+        (SETTING_AUTHZ_QUARANTINE_OVERRUNS, "0"),
+        (SETTING_AUTHZ_QUARANTINE_OVERRUNS, "101"),
+        (SETTING_AUTHZ_QUARANTINE_COOLDOWN, "0s"),
+        (SETTING_AUTHZ_QUARANTINE_COOLDOWN, "2h"),
+    ] {
+        let refused = Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[(key, value)])),
+        );
+        assert!(refused.is_err(), "{key}={value}");
+    }
+}

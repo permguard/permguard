@@ -226,6 +226,10 @@ pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
         // answer is abandoned rather than after it — the gap is what makes the difference
         // between a plane that sheds load and one that accumulates it.
         .with_budget(Some(decision_budget(config)))
+        .with_quarantine(
+            config.authz_quarantine_overruns(),
+            config.authz_quarantine_cooldown(),
+        )
         // The configured assurance profile (WP-2.8): the floor every partition meets at load,
         // and whether its engine runs supervised. A manifest cannot lower it.
         .with_profile(config.assurance().profile())

@@ -43,6 +43,7 @@ use serde::Deserialize;
 use crate::config::{
     SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
     SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS,
+    SETTING_AUTHZ_QUARANTINE_COOLDOWN, SETTING_AUTHZ_QUARANTINE_OVERRUNS,
     SETTING_EVALUATION_CONCURRENCY, SETTING_EVALUATION_QUEUE, SETTING_LOG_BATCH_BYTES,
     SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
     SETTING_LOG_ENABLED, SETTING_LOG_MODE, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID,
@@ -102,6 +103,19 @@ pub struct DecisionsSection {
     /// Signed native responses, on request (WP-6.6b).
     #[serde(default)]
     response_signing: ResponseSigningSection,
+    /// When a profile that keeps overrunning its deadline is taken out of service (BUG-0256).
+    #[serde(default)]
+    quarantine: QuarantineSection,
+}
+
+/// How many consecutive overruns take a profile out of service, and for how long.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuarantineSection {
+    #[serde(default)]
+    overruns: Option<String>,
+    #[serde(default)]
+    cooldown: Option<String>,
 }
 
 /// Whether a native decision response is signed when a request asks, and its lifetime.
@@ -419,6 +433,14 @@ impl DecisionsSection {
                 self.cache.zone_bytes.as_ref(),
             ),
             (SETTING_AUTHZ_MAX_EVALUATIONS, self.max_evaluations.as_ref()),
+            (
+                SETTING_AUTHZ_QUARANTINE_OVERRUNS,
+                self.quarantine.overruns.as_ref(),
+            ),
+            (
+                SETTING_AUTHZ_QUARANTINE_COOLDOWN,
+                self.quarantine.cooldown.as_ref(),
+            ),
             (SETTING_MAX_BLOCKING, self.max_blocking.as_ref()),
             (
                 SETTING_EVALUATION_CONCURRENCY,
@@ -820,6 +842,24 @@ mod tests {
                 ),
                 (SETTING_AUTHZ_CACHE_ZONE_BYTES.to_owned(), "32M".to_owned()),
                 (SETTING_AUTHZ_MAX_EVALUATIONS.to_owned(), "64".to_owned()),
+            ]
+        );
+    }
+
+    /// BUG-0256: `quarantine.overruns` and `quarantine.cooldown` become the plane's settings.
+    #[test]
+    fn the_quarantine_block_becomes_its_settings() {
+        let section: DecisionsSection =
+            serde_norway::from_str("quarantine:\n  overruns: \"5\"\n  cooldown: 2m\n")
+                .expect("the section parses");
+        assert_eq!(
+            section.settings(),
+            vec![
+                (SETTING_AUTHZ_QUARANTINE_OVERRUNS.to_owned(), "5".to_owned()),
+                (
+                    SETTING_AUTHZ_QUARANTINE_COOLDOWN.to_owned(),
+                    "2m".to_owned()
+                ),
             ]
         );
     }

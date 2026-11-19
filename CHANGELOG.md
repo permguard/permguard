@@ -19,6 +19,10 @@ is cut.
 
 ### Changed
 
+- **A Data Plane's refusals are remembered per engine build and authority, and its quarantine is configurable and audited.**
+  A ledger blocked by the load gate stays blocked for the commit and the engine build that refused it, so an upgraded plane tries it again; a block written before is retried once.
+  A compiled partition is cached under the authority of the head statement it serves, so a program compiled under one Host's authority is never served under another's.
+  A profile's quarantine is held per ledger commit, engine build and authority, so a new commit starts afresh; `dataPlane.authz.quarantine.overruns` (1 to 100, default 3) and `cooldown` (1s to 1h, default 30s) configure it, and each opening and closing is audited (`authz.quarantine_opened`, `authz.quarantine_closed`).
 - **Cedar's validator and schema warnings are reported with stable codes, and `regulated` refuses them.**
   A partition whose schema or strict validation drew only warnings, such as a policy that can never apply (`cedar.impossible_policy`), a confusable identifier, or a schema declaration shadowing a builtin, was accepted everywhere and the warnings discarded.
   `permguard validate` now lists each by partition, code and policy, such as `[cedar.impossible_policy] policy app/never.cedar`, and still validates; a Control Plane logs them at push (`catalog.partition_warnings`) and a Data Plane at load (`authz.partition_warnings`), by code and policy only.

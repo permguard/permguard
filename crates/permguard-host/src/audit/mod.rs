@@ -514,6 +514,9 @@ pub const REGISTRY: &[ActionSchema] = &[
     action("store.swept", Class::Operations, CONTROL),
     // The Data Plane: decisions and mirrors.
     action("authz.decision", Class::Access, DATA),
+    // A profile taken out of service, and served again (BUG-0256).
+    action("authz.quarantine_opened", Class::Operations, DATA),
+    action("authz.quarantine_closed", Class::Operations, DATA),
     action("ledger.synchronized", Class::Operations, DATA),
     // A mirror's reap candidacy (WP-7.2d): its task no longer lists it, lists it again, or it went.
     action("mirror.tombstoned", Class::Operations, DATA),
