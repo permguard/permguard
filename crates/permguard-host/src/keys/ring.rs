@@ -262,6 +262,13 @@ pub trait ActivationGate: Send + Sync {
     fn may_activate(&self, ring: &str, epoch: u64) -> bool;
 }
 
+/// What holds a ring's background maintenance: a backup barrier, during which no key is published,
+/// activated, retired or archived, so a snapshot taken under it holds the ring it was inventoried
+/// with (BUG-0207). A ring with no active key is still given one: it is never left unable to sign.
+pub trait MaintenanceHold: Send + Sync {
+    fn holds(&self) -> bool;
+}
+
 /// Where a ring's transitions are recorded besides its journal: the `operations` audit.
 pub trait Recorder: Send + Sync {
     fn record(&self, ring: &str, entry: &Entry);
@@ -701,6 +708,8 @@ pub struct Ring {
     retired: AtomicBool,
     /// Asked before a prepublished key takes over (WP-4.5); none lets every one take over.
     gate: RwLock<Option<Arc<dyn ActivationGate>>>,
+    /// Asked before a background maintenance pass (BUG-0207); none never holds it.
+    hold: RwLock<Option<Arc<dyn MaintenanceHold>>>,
 }
 
 impl fmt::Debug for Ring {
@@ -887,6 +896,7 @@ impl Ring {
             stopped: AtomicBool::new(false),
             retired: AtomicBool::new(false),
             gate: RwLock::new(None),
+            hold: RwLock::new(None),
         };
         Ok(opened)
     }
@@ -895,6 +905,11 @@ impl Ring {
     /// memberships the ring is pinned by are open.
     pub fn set_gate(&self, gate: Arc<dyn ActivationGate>) {
         *self.gate.write().unwrap_or_else(PoisonError::into_inner) = Some(gate);
+    }
+
+    /// Asks `hold` before every background maintenance pass (BUG-0207): the Host's backup barrier.
+    pub fn set_hold(&self, hold: Arc<dyn MaintenanceHold>) {
+        *self.hold.write().unwrap_or_else(PoisonError::into_inner) = Some(hold);
     }
 
     /// Signs the ring's bindings with `binder`.
@@ -1729,6 +1744,23 @@ impl permguard_core::KeyManager for Ring {
     }
 
     fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+        // Held while a backup barrier holds, unless the ring has no active key: deferred to the
+        // first pass after the barrier lowers (BUG-0207).
+        let held = self
+            .hold
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|hold| hold.holds());
+        if held && self.read().active().is_some() {
+            tracing::debug!(
+                event.name = "host.keys.maintenance_held",
+                component = "host",
+                ring = self.id,
+                "a backup barrier holds: this ring's maintenance waits for it to lower"
+            );
+            return Ok(Maintenance::default());
+        }
         self.maintain_now().map_err(core_error)
     }
 }

@@ -395,6 +395,62 @@ mod tests {
         assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
     }
 
+    /// BUG-0208: under a backup barrier a push is refused at its negotiation and at its upload,
+    /// before any session or object is written, so the ledger's storage holds nothing new; once
+    /// the barrier lowers the same push lands.
+    #[tokio::test]
+    async fn a_push_under_a_backup_barrier_writes_nothing() {
+        let (routes, zone, ledger) = testing_routes();
+        let engine = crate::testing::last_ref_mutations();
+        let base = format!("/notp/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        engine
+            .quiesce(
+                std::time::Instant::now() + Duration::from_secs(60),
+                Duration::from_secs(1),
+            )
+            .expect("the barrier");
+        let negotiate = NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_ref: None,
+            closure: objects
+                .iter()
+                .map(|bytes| ObjectClaim {
+                    digest: Digest::compute(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect(),
+            request_id: "push-1".into(),
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/push/negotiate"),
+            negotiate.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 503, "{}", String::from_utf8_lossy(&body));
+        assert!(
+            String::from_utf8_lossy(&body).contains("backup"),
+            "{}",
+            String::from_utf8_lossy(&body)
+        );
+        let upload = UploadObjectsRequest {
+            objects: objects.clone(),
+            compression: None,
+            transfer_id: [7; 16],
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 503, "{}", String::from_utf8_lossy(&body));
+        engine.release();
+        rest_push(&routes, &base, &objects, &head).await;
+    }
+
     /// WP-7.12: a member pulls over the `policy.mirror` task what a REST client pushed, through
     /// the same facade, within the resource its session reads; its transfer is its membership's,
     /// which a REST caller cannot name.

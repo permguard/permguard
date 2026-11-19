@@ -120,7 +120,7 @@ async fn a_prepared_backup_holds_mutations_until_it_is_finalized() {
             .iter()
             .map(|root| root.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["host", "data", "operations"]
+        vec!["host", "data", "operations", "planes"]
     );
     assert!(manifest.roots[0].files > 0, "the Host's files are bound");
     assert!(manifest.revisions.contains_key("mutations"));
@@ -391,6 +391,141 @@ fn bundle(api: &HostApi) -> (Vec<u8>, Vec<Vec<u8>>, String) {
             .first_fingerprint()
             .to_owned(),
     )
+}
+
+/// BUG-0184, BUG-0206, BUG-0335: a store the barrier holds is bound exactly, a grant journal one
+/// frame longer is a difference; an append-only file of a writer outside the barrier may grow; the
+/// clock's high-water mark may be refreshed; the Authority Plane's accounts, tokens and first
+/// administrator's key are inventoried and verified.
+#[tokio::test]
+async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
+    let (api, root, _) = backed("backup-held", None);
+    let segment = |bytes: &[u8]| {
+        let mut held = permguard_core::domains::magic::JOURNAL_SEGMENT
+            .as_bytes()
+            .to_vec();
+        held.extend_from_slice(bytes);
+        held
+    };
+    for (path, bytes) in [
+        ("host/authz/journal/seg-x.pgj", segment(b"grant-1")),
+        ("operations/streams/seg-x.pgj", segment(b"record-1")),
+        ("host/state/CLOCK", b"1800000000".to_vec()),
+        (
+            "planes/authority/accounts/journal/seg-0.pgj",
+            segment(b"account-1"),
+        ),
+        (
+            "planes/authority/tokens/journal/seg-0.pgj",
+            segment(b"token-1"),
+        ),
+        ("planes/authority/admin.key", b"secret".to_vec()),
+    ] {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("dirs");
+        std::fs::write(path, bytes).expect("written");
+    }
+    let prepared = api
+        .prepare_backup(&admin(), PrepareBackup {})
+        .expect("prepared");
+    let inside = scratch("backup-held-inside");
+    copy(&root, &inside);
+    api.finalize_backup(
+        &admin(),
+        FinalizeBackup {
+            token: prepared.token.clone(),
+            snapshot_id: "copy:held".to_owned(),
+        },
+    )
+    .expect("finalized");
+    let (manifest, decoded) = manifest_of(&prepared);
+    let planes = decoded
+        .roots
+        .iter()
+        .find(|root| root.name == "planes")
+        .expect("the planes are a root");
+    assert_eq!(planes.files, 3, "the accounts, the tokens and the key");
+    let (bundle_manifest, items, pin) = bundle(&api);
+    let verify = |at: &std::path::Path| {
+        backup::verify(at, &manifest, &bundle_manifest, &items, &pin).expect("labelled")
+    };
+    let append = |at: &std::path::Path, path: &str, bytes: &[u8]| {
+        let mut held = std::fs::read(at.join(path)).expect("reads");
+        held.extend_from_slice(bytes);
+        std::fs::write(at.join(path), held).expect("grown");
+    };
+
+    // An outside writer's journal grown, and the clock refreshed: application-consistent.
+    let fine = scratch("backup-held-fine");
+    copy(&inside, &fine);
+    append(&fine, "operations/streams/seg-x.pgj", b"record-2");
+    append(
+        &fine,
+        "planes/authority/tokens/journal/seg-0.pgj",
+        b"token-2",
+    );
+    std::fs::write(fine.join("host/state/CLOCK"), b"1800000060").expect("refreshed");
+    let verdict = verify(&fine);
+    assert_eq!(verdict.consistency, Consistency::ApplicationConsistent);
+    assert!(
+        verdict
+            .grown
+            .contains(&"operations/streams/seg-x.pgj".to_owned())
+    );
+    assert_eq!(verdict.refreshed, vec!["host/state/CLOCK".to_owned()]);
+
+    // One grant frame past the inventory: a difference, naming the journal (BUG-0184).
+    let granted = scratch("backup-held-grant");
+    copy(&inside, &granted);
+    append(&granted, "host/authz/journal/seg-x.pgj", b"grant-2");
+    let Consistency::CrashConsistent(differences) = verify(&granted).consistency else {
+        panic!("a grant journal past the inventory is not application-consistent");
+    };
+    assert!(
+        differences
+            .iter()
+            .any(|difference| difference.starts_with("host/authz/journal/seg-x.pgj")),
+        "{differences:?}"
+    );
+
+    // The Authority Plane's state, changed, removed or missing (BUG-0335).
+    for (what, change) in [
+        (
+            "planes/authority/accounts/journal/seg-0.pgj",
+            Box::new(|at: &std::path::Path| {
+                let path = at.join("planes/authority/accounts/journal/seg-0.pgj");
+                let mut bytes = std::fs::read(&path).expect("reads");
+                let last = bytes.len() - 1;
+                bytes[last] ^= 1;
+                std::fs::write(path, bytes).expect("changed");
+            }) as Box<dyn Fn(&std::path::Path)>,
+        ),
+        (
+            "planes/authority/tokens/journal/seg-0.pgj",
+            Box::new(|at: &std::path::Path| {
+                std::fs::remove_dir_all(at.join("planes/authority/tokens")).expect("removed");
+            }),
+        ),
+        (
+            "planes/authority/admin.key",
+            Box::new(|at: &std::path::Path| {
+                std::fs::remove_file(at.join("planes/authority/admin.key")).expect("removed");
+            }),
+        ),
+    ] {
+        let changed = scratch("backup-held-planes");
+        copy(&inside, &changed);
+        change(&changed);
+        let Consistency::CrashConsistent(differences) = verify(&changed).consistency else {
+            panic!("{what}: a changed Authority Plane is not application-consistent");
+        };
+        assert!(
+            differences
+                .iter()
+                .any(|difference| difference.starts_with(what)),
+            "{what}: {differences:?}"
+        );
+    }
 }
 
 /// WP-7.8, done when: a snapshot taken inside the barrier verifies against its external bundle

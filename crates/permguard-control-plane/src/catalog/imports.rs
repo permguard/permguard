@@ -195,6 +195,21 @@ pub(crate) async fn import_with(
 ) -> Result<Imported, Refusal> {
     let zone = facade.resolve_zone(actor, operations::CATALOG_WRITE, zone)?;
     facade.authorize(actor, operations::POLICY_PUSH, &zone_resource(&zone.id))?;
+    // Refused under a backup barrier like every catalog change, archive or re-home, before
+    // anything is written (BUG-0208).
+    if facade
+        .mutations
+        .as_ref()
+        .is_some_and(|mutations| mutations.engine().quiesced())
+    {
+        return Err(ApiError::new(
+            ErrorClass::Unavailable,
+            codes::common::UNAVAILABLE,
+            "a backup is being prepared: imports resume when it is finalized or aborted; \
+             nothing was imported",
+        )
+        .into());
+    }
     let exports = facade.exports.as_deref().ok_or_else(|| {
         ApiError::new(
             ErrorClass::Unavailable,
@@ -730,6 +745,53 @@ mod tests {
     /// WP-7.10: an `archive` import keeps the archive verbatim as foreign evidence under a name:
     /// no ledger is created, nothing is served, and a name the zone keeps is refused while
     /// another is a second archive.
+    #[tokio::test]
+    async fn an_archive_import_under_a_backup_barrier_is_refused_and_writes_nothing() {
+        let fixture = fixture("archive-barrier");
+        let check = under(&fixture.ring);
+        let engine = fixture
+            .target
+            .mutations
+            .as_ref()
+            .expect("a transaction")
+            .engine();
+        engine
+            .quiesce(
+                std::time::Instant::now() + std::time::Duration::from_secs(60),
+                std::time::Duration::from_secs(1),
+            )
+            .expect("the barrier");
+        let refused = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, None, "r-1"),
+            &check,
+        )
+        .await
+        .expect_err("held by the barrier (BUG-0208)");
+        assert!(format!("{refused:?}").contains("backup"), "{refused:?}");
+        assert!(
+            !fixture
+                .root
+                .join("zones")
+                .join(&fixture.zone.id)
+                .join(ARCHIVES)
+                .exists(),
+            "nothing written"
+        );
+        engine.release();
+        import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, None, "r-1"),
+            &check,
+        )
+        .await
+        .expect("imported once the barrier lowers");
+    }
+
     #[tokio::test]
     async fn an_archive_import_keeps_the_archive_and_creates_no_ledger() {
         let fixture = fixture("archive");

@@ -1948,6 +1948,11 @@ impl Composition {
         mutations
             .recover(key_registry.as_ref())
             .context("recovering the key ring mutations a crash left open")?;
+        // No ring publishes, activates, retires or archives a key while a backup barrier holds:
+        // the snapshot holds the rings it was inventoried with (BUG-0207).
+        for ring in key_registry.rings() {
+            ring.set_hold(Arc::new(mutations.barrier()));
+        }
         // The Host's stream engine (WP-5.1), its runs signed under `host.operations`: the decision
         // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
         // The memberships a consumer's retention reads, bound once they are open below.

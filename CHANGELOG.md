@@ -19,6 +19,11 @@ is cut.
 
 ### Changed
 
+- **A snapshot binds what the backup barrier holds, and the Authority Plane's state.**
+  The inventory now covers `planes/`, so the Authority Plane's accounts, tokens and first administrator's key are verified: a changed accounts journal, a removed `tokens/` or a missing `admin.key` is a difference; a manifest made before keeps verifying on the roots it bound.
+  The journals of the stores the barrier holds (grants, key rings, identity, holds, memberships, the catalog, the Authority Plane's accounts) must match the inventory exactly: a grant journal holding frames past it is a difference, where it was taken for a grown prefix.
+  The clock's high-water mark (`host/state/CLOCK`), refreshed every minute, is reported `refreshed` and no longer makes an idle Host's snapshot crash-consistent.
+  The key rings' background maintenance waits for the barrier to lower, and a push (negotiation and upload) or an archive-mode `ledgers import` is refused before anything is written.
 - **An event behind its history is applied in its place, never answered `409 event_out_of_order`.**
   A late event inside `allowed_lateness` was recorded and used, yet answered `409` as if refused, and anyone who could post an event dated ahead within `clock_skew` kept every on-time read of its history undecided.
   Now the occurrence's history is rebuilt from the journal up to its own place in the order, the occurrence is decided, or accepted, on exactly what precedes it, and the history is rebuilt whole before the next one; `event_out_of_order` is no longer answered.

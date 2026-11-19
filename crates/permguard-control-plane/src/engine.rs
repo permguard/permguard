@@ -320,6 +320,7 @@ impl Engine<'_> {
     pub fn negotiate_push(&self, request: &NegotiatePushRequest) -> Result<NegotiatePushResponse> {
         grammar::validate_ref_name(&request.r#ref)
             .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
+        self.not_quiesced()?;
         if request.closure.len() as u64 > self.limits.max_push_objects {
             return Err(EngineError::Unavailable {
                 message: format!(
@@ -440,6 +441,7 @@ impl Engine<'_> {
     /// types validated, idempotent, each object one the session declared, and inside what the
     /// session reserved.
     pub fn upload(&self, request: &UploadObjectsRequest) -> Result<UploadObjectsResponse> {
+        self.not_quiesced()?;
         if request.objects.len() as u64 > self.limits.max_batch_objects {
             return Err(invalid(
                 permguard_core::codes::stream::BATCH_REJECTED,
@@ -963,6 +965,20 @@ impl Engine<'_> {
     }
 
     // ---- sessions ----
+
+    /// Refuses a push while a backup barrier holds (BUG-0208): asked before its session or any of
+    /// its objects is written, not only at its ref update, so a refused push leaves nothing in the
+    /// ledger's storage and the snapshot under the barrier holds the ledger as inventoried.
+    fn not_quiesced(&self) -> Result<()> {
+        if self.mutations.engine().quiesced() {
+            return Err(EngineError::Quiesced {
+                detail: "a backup is being prepared: pushes resume when it is finalized or \
+                         aborted"
+                    .to_owned(),
+            });
+        }
+        Ok(())
+    }
 
     fn now(&self) -> u64 {
         transfer::unix_now(self.clock)

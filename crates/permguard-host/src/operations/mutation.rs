@@ -522,6 +522,24 @@ impl Gate {
     }
 }
 
+/// Whether a backup barrier holds now, for a writer outside the mutation transaction that holds
+/// with it (BUG-0207): read from the engine, never copied, so it lowers when the barrier does.
+#[derive(Debug, Clone)]
+pub struct BarrierView(std::sync::Weak<Mutations>);
+
+impl BarrierView {
+    /// Whether the barrier holds now; never once the engine is gone.
+    pub fn holds(&self) -> bool {
+        self.0.upgrade().is_some_and(|engine| engine.quiesced())
+    }
+}
+
+impl crate::keys::ring::MaintenanceHold for BarrierView {
+    fn holds(&self) -> bool {
+        BarrierView::holds(self)
+    }
+}
+
 /// The domain a backup barrier lets through: the backup's own prepare, finalize and abort.
 pub const BARRIER_DOMAIN: &str = "backup";
 /// The operations of [`BARRIER_DOMAIN`] the barrier lets through, and no other.
@@ -879,6 +897,12 @@ impl Mutations {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .next
+    }
+
+    /// A view of the backup barrier for the writers outside the transaction that must hold with
+    /// it: the key rings' maintenance (BUG-0207). It keeps no engine alive.
+    pub fn barrier(self: &Arc<Self>) -> BarrierView {
+        BarrierView(Arc::downgrade(self))
     }
 
     /// Whether a backup barrier refuses new mutations now.

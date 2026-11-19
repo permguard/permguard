@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! prepare   authorize ─▶ barrier: new mutations refused, those in flight end
-//!           ─▶ intent (`host.backup.prepared`) ─▶ inventory of host/, data/, operations/
+//!           ─▶ intent (`host.backup.prepared`) ─▶ inventory of host/, data/, operations/, planes/
 //!           ─▶ MANIFEST.cose signed under `host.operations` ─▶ roots flushed ─▶ token, once
 //! (the storage driver snapshots the volume, bound to the token)
 //! finalize  token + snapshot id ─▶ `host.backup.finalized` ─▶ barrier lowered
@@ -16,10 +16,15 @@
 //! What the barrier stops is the mutation transaction: every Host domain, the catalog, the refs
 //! and the collections. Reads and decisions go on, and so do the writers outside the transaction —
 //! the audit trail, the stream engine's journals and views, the decision spool, the mirrors —
-//! which the barrier does not pause. Verification, not the barrier, decides whether a snapshot is
-//! application-consistent: a journal grown past the inventory is a prefix and passes, while a view
-//! one of those writers replaced, or a file it created, makes the snapshot crash-consistent only,
-//! and it must pass normal recovery. On an idle Host a snapshot inside the barrier verifies.
+//! which the barrier does not pause. The key rings' maintenance waits for the barrier to lower
+//! (BUG-0207), and a push or an archive import is refused before it writes anything (BUG-0208).
+//! Verification, not the barrier, decides whether a snapshot is application-consistent: a journal
+//! of a writer outside the barrier grown past the inventory is a prefix and passes, and the clock's
+//! high-water mark may have been refreshed (BUG-0206); a journal of a store the barrier holds —
+//! grants, key rings, identity, holds, memberships, the catalog, the Authority Plane's accounts —
+//! must be exactly as inventoried (BUG-0184), and a view one of the outside writers replaced, or a
+//! file it created, makes the snapshot crash-consistent only, and it must pass normal recovery. On
+//! an idle Host a snapshot inside the barrier verifies.
 //!
 //! The inventory reads every byte below the roots while mutations are held; one that outlasts the
 //! barrier aborts the backup rather than answering it.
@@ -38,7 +43,7 @@
 //! | 3     | `volume_id`          | 16 bytes, `host/VOLUME_ID`                                     |
 //! | 4     | `host_id`            | 16 bytes, the Host                                             |
 //! | 5     | `revisions`          | `{text: uint}`: `mutations`, the transaction's next intent     |
-//! | 6     | `roots`              | `[{1 name, 2 files, 3 bytes, 4 digest}]`, `host`, `data`, `operations` |
+//! | 6     | `roots`              | `[{1 name, 2 files, 3 bytes, 4 digest}]`, `host`, `data`, `operations`, `planes` |
 //! | 7     | `at`                 | seconds                                                        |
 //! | 8     | `inventory_digest`   | 32 bytes, the whole inventory                                  |
 //! | 9     | `recovery_key_id`    | optional, the recovery key's fingerprint or provider key id    |
@@ -83,8 +88,33 @@ pub const INVENTORY: &str = "INVENTORY.cborseq";
 pub const MANIFEST: &str = "MANIFEST.cose";
 /// The backup's state view.
 pub const STATE: &str = "STATE";
-/// The roots the inventory covers, below the volume.
-pub const ROOTS: [&str; 3] = ["host", "data", "operations"];
+/// The roots the inventory covers, below the volume: `planes` holds the Authority Plane's accounts,
+/// keys and tokens (BUG-0335). A manifest names the roots it bound, and is verified on those.
+pub const ROOTS: [&str; 4] = ["host", "data", "operations", "planes"];
+
+/// The stores the barrier holds: their journals never grow outside the mutation transaction, so a
+/// snapshot must hold them exactly as inventoried, never a prefix with frames past it (BUG-0184).
+const HELD_BY_THE_BARRIER: [&str; 7] = [
+    "host/authz/",
+    "host/keys/",
+    "host/identity/",
+    "host/holds/",
+    "host/members/journal.cborseq",
+    "data/zones/",
+    "planes/authority/accounts/",
+];
+
+/// Views a writer outside the barrier replaces with a later value, never another state: the
+/// clock's high-water mark (BUG-0206). One that changed is information, never a difference.
+const REFRESHED: [&str; 1] = ["host/state/CLOCK"];
+
+/// Whether the file at `path` below the volume may grow past its inventory in a snapshot: an
+/// append-only file of a writer the barrier does not pause.
+fn grows_outside_the_barrier(path: &str) -> bool {
+    !HELD_BY_THE_BARRIER
+        .iter()
+        .any(|held| path == *held || (held.ends_with('/') && path.starts_with(held)))
+}
 /// How long a barrier holds at most before it aborts and mutations resume.
 pub const LIFETIME: Duration = Duration::from_secs(10 * 60);
 /// How long a prepare waits for the operations already in flight.
@@ -427,9 +457,12 @@ fn file_digest(path: &Path, limit: Option<u64>) -> Result<([u8; 32], u64), Strin
     Ok((hasher.finalize().into(), read))
 }
 
-/// Whether the file at `path`, named `name`, only ever grows: a storage journal segment or a CBOR
-/// sequence.
-fn appends(path: &Path, name: &str) -> bool {
+/// Whether the file at `path`, named `name`, at `below` under the volume, only ever grows past the
+/// barrier: a storage journal segment or a CBOR sequence of a writer the barrier does not pause.
+fn appends(below: &str, path: &Path, name: &str) -> bool {
+    if !grows_outside_the_barrier(below) {
+        return false;
+    }
     if name.ends_with(".cborseq") {
         return true;
     }
@@ -445,8 +478,13 @@ fn appends(path: &Path, name: &str) -> bool {
 /// which process holds a volume, a journal or a spool, not what they hold, and a Windows lock is
 /// mandatory: the running Host cannot read its own (8-architecture-storage-operations, Backup).
 fn files(root: &Path) -> Result<Vec<(String, PathBuf, String)>, String> {
+    files_below(root, &ROOTS)
+}
+
+/// [`files`] below the roots `roots` alone: those a manifest bound.
+fn files_below(root: &Path, roots: &[&str]) -> Result<Vec<(String, PathBuf, String)>, String> {
     let mut found = Vec::new();
-    for name in ROOTS {
+    for &name in roots {
         let base = root.join(name);
         if std::fs::symlink_metadata(&base).is_ok_and(|metadata| metadata.is_dir()) {
             walk(&base, name, &mut found)?;
@@ -500,7 +538,7 @@ pub fn inventory(root: &Path) -> Result<Vec<Entry>, String> {
         .map(|(child, path, name)| {
             let (digest, length) = file_digest(&path, None)?;
             Ok(Entry {
-                append: appends(&path, &name),
+                append: appends(&child, &path, &name),
                 path: child,
                 length,
                 digest,
@@ -520,7 +558,12 @@ fn below_a_root(path: &str) -> bool {
 
 /// The roots the manifest binds, from `entries` in path order.
 pub fn roots_of(entries: &[Entry]) -> Result<Vec<Root>, String> {
-    ROOTS
+    roots_named(entries, &ROOTS)
+}
+
+/// The roots `names` bind, from `entries` in path order.
+fn roots_named(entries: &[Entry], names: &[&str]) -> Result<Vec<Root>, String> {
+    names
         .iter()
         .map(|name| {
             let prefix = format!("{name}/");
@@ -1482,6 +1525,9 @@ pub struct Verdict {
     /// The append-only files the snapshot holds longer than the inventory: grown past the
     /// prepare, the prefix it bound intact. Information, never a difference.
     pub grown: Vec<String>,
+    /// The views a writer outside the barrier replaced with a later value: the clock's high-water
+    /// mark (BUG-0206). Information, never a difference.
+    pub refreshed: Vec<String>,
 }
 
 /// The payload of `envelope`, a COSE_Sign1 of `protected_type` by the `host.operations` key it
@@ -1596,16 +1642,29 @@ pub fn verify(
     if !same(&inventory_digest(&entries)?, &manifest.inventory_digest) {
         return Err("the inventory is not the one the manifest binds".to_owned());
     }
-    if roots_of(&entries)? != manifest.roots {
+    // Verified on the roots the manifest bound: one made before a root joined them is verified
+    // as it was made (BUG-0335).
+    let names: Vec<&str> = manifest
+        .roots
+        .iter()
+        .map(|root| root.name.as_str())
+        .collect();
+    if let Some(unknown) = names.iter().find(|name| !ROOTS.contains(name)) {
+        return Err(format!(
+            "the manifest binds a root `{unknown}` this build does not know"
+        ));
+    }
+    if roots_named(&entries, &names)? != manifest.roots {
         return Err("the inventory's roots are not the manifest's".to_owned());
     }
 
     let mut differences = Vec::new();
     let mut grown = Vec::new();
+    let mut refreshed = Vec::new();
     // A file the snapshot holds and the inventory does not is state past the barrier.
     let bound: std::collections::BTreeSet<&str> =
         entries.iter().map(|entry| entry.path.as_str()).collect();
-    for (path, _, _) in files(volume)? {
+    for (path, _, _) in files_below(volume, &names)? {
         if !bound.contains(path.as_str()) {
             differences.push(format!("{path}: not in the manifest"));
         }
@@ -1620,9 +1679,17 @@ pub fn verify(
             differences.push(format!("{}: not a regular file", entry.path));
             continue;
         }
+        let refreshes = REFRESHED.contains(&entry.path.as_str());
+        // Whatever the inventory marked, a store the barrier holds never grows: an inventory
+        // made before that rule is read under it (BUG-0184).
+        let append = entry.append && grows_outside_the_barrier(&entry.path);
         let shorter = metadata.len() < entry.length;
         let longer = metadata.len() > entry.length;
-        if shorter || (longer && !entry.append) {
+        if refreshes && (shorter || longer) {
+            refreshed.push(entry.path.clone());
+            continue;
+        }
+        if shorter || (longer && !append) {
             differences.push(format!(
                 "{}: {} bytes, the manifest's {}",
                 entry.path,
@@ -1633,7 +1700,11 @@ pub fn verify(
         }
         let (digest, _) = file_digest(&path, Some(entry.length))?;
         if !same(&digest, &entry.digest) {
-            differences.push(format!("{}: other bytes", entry.path));
+            if refreshes {
+                refreshed.push(entry.path.clone());
+            } else {
+                differences.push(format!("{}: other bytes", entry.path));
+            }
         } else if longer {
             grown.push(entry.path.clone());
         }
@@ -1641,6 +1712,7 @@ pub fn verify(
     differences.sort();
     Ok(Verdict {
         grown,
+        refreshed,
         manifest,
         consistency: if differences.is_empty() {
             Consistency::ApplicationConsistent
@@ -1773,7 +1845,8 @@ mod tests {
         assert_eq!(
             paths,
             vec![
-                ("data/zones/z/journal.cborseq", true),
+                // The catalog is a store the barrier holds: bound exactly (BUG-0184).
+                ("data/zones/z/journal.cborseq", false),
                 ("host/VOLUME_ID", false),
                 ("operations/audit/seg-1.pgj", true),
                 ("operations/keys/key", false),
@@ -1787,7 +1860,12 @@ mod tests {
                 .iter()
                 .map(|root| (root.name.as_str(), root.files, root.bytes))
                 .collect::<Vec<_>>(),
-            vec![("host", 1, 2), ("data", 1, 1), ("operations", 2, 26)]
+            vec![
+                ("host", 1, 2),
+                ("data", 1, 1),
+                ("operations", 2, 26),
+                ("planes", 0, 0)
+            ]
         );
         let mut expected = Sha256::new();
         expected.update(b"permguard.snapshot.inventory.v1\n");

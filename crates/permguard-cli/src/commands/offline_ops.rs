@@ -56,6 +56,9 @@ struct BackupVerified {
     differences: Vec<String>,
     /// Append-only files grown past the prepare, their bound prefix intact.
     grown: Vec<String>,
+    /// Views replaced with a later value, the clock's high-water mark (BUG-0206).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    refreshed: Vec<String>,
 }
 
 impl Report for BackupVerified {
@@ -70,6 +73,9 @@ impl Report for BackupVerified {
         }
         for grown in &self.grown {
             writeln!(out, "grown        {grown}")?;
+        }
+        for refreshed in &self.refreshed {
+            writeln!(out, "refreshed    {refreshed}")?;
         }
         Ok(())
     }
@@ -140,6 +146,7 @@ pub fn backup_command(
         ),
         differences,
         grown: verdict.grown,
+        refreshed: verdict.refreshed,
     };
     render(&report, globals.output, trace)?;
     if report.differences.is_empty() {

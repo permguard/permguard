@@ -491,6 +491,57 @@ fn a_ring_activates_its_prepublished_key_only_once_the_gate_opens() {
     );
 }
 
+/// A hold answering what it is told: a backup barrier, raised or lowered.
+struct Holding(std::sync::atomic::AtomicBool);
+
+impl crate::keys::ring::MaintenanceHold for Holding {
+    fn holds(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// BUG-0207: while a backup barrier holds, a ring's background maintenance changes nothing, its
+/// prepublished key past its window included; once the barrier lowers, the next pass activates
+/// it. A ring with no active key still gets one under the barrier.
+#[test]
+fn a_ring_waits_for_a_backup_barrier_before_it_activates() {
+    use permguard_core::KeyManager as _;
+
+    let time = Arc::new(crate::time::TimeGuard::system(Duration::from_secs(30)));
+    let host = Host::new("hold-ring");
+    let ring = Arc::new(
+        crate::keys::ring::Ring::open(
+            host.volume(),
+            crate::keys::ring::CONTROL_ATTEST,
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            crate::keys::ring::Policy {
+                publish_ahead: Duration::ZERO,
+                rotate_every: Duration::from_secs(3600),
+                retain: Duration::from_secs(7200),
+            },
+            time,
+        )
+        .expect("the ring opens"),
+    );
+    let barrier = Arc::new(Holding(std::sync::atomic::AtomicBool::new(true)));
+    ring.set_hold(Arc::clone(&barrier) as Arc<dyn crate::keys::ring::MaintenanceHold>);
+    ring.maintain()
+        .expect("a ring with no active key is given one");
+    let first = ring.active_key_id().expect("active");
+    ring.rotate(&Applying::for_tests(97), ring.epoch())
+        .expect("rotated");
+    let held = ring.maintain().expect("held");
+    assert_eq!(held, permguard_core::keys::Maintenance::default());
+    assert_eq!(ring.active_key_id().expect("active"), first, "held");
+    barrier.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    ring.maintain().expect("lowered");
+    assert_ne!(
+        ring.active_key_id().expect("active"),
+        first,
+        "activated once the barrier lowered"
+    );
+}
+
 /// WP-4.5: a member's ring may not activate the key of an epoch a membership does not pin yet;
 /// once the re-pin is persisted it may.
 #[tokio::test]

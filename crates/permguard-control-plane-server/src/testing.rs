@@ -61,8 +61,25 @@ pub fn catalog_mutations_over(
 pub fn ref_mutations_for_tests(
     directory: &std::path::Path,
 ) -> permguard_host::composition::MutationHandle {
-    permguard_control_plane::store::testing::offline_ref_mutations(directory)
-        .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"))
+    let handle = permguard_control_plane::store::testing::offline_ref_mutations(directory)
+        .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
+    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(handle.engine()));
+    handle
+}
+
+thread_local! {
+    /// The transaction [`ref_mutations_for_tests`] opened last on this thread: what a test raises
+    /// a backup barrier on (BUG-0208).
+    static LAST_MUTATIONS: std::cell::RefCell<
+        Option<Arc<permguard_host::operations::mutation::Mutations>>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
+/// The transaction [`ref_mutations_for_tests`] opened last on this thread.
+pub fn last_ref_mutations() -> Arc<permguard_host::operations::mutation::Mutations> {
+    LAST_MUTATIONS
+        .with(|last| last.borrow().clone())
+        .unwrap_or_else(|| unreachable!("no test mutation transaction was opened on this thread"))
 }
 
 /// A ring a test holds itself.
