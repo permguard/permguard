@@ -365,6 +365,8 @@ host:
 #   request_timeout: "30s"          # how long one request may take
 #   handshake_timeout: "10s"        # how long a client has to finish a TLS handshake
 #   header_timeout: "10s"           # how long a client has to send a complete request head, and each part of its body
+#   header_bytes: "64k"             # bytes one request head may carry, on HTTP/1.1 and HTTP/2
+#   header_fields: 100              # fields one request head may carry, on HTTP/1.1 and HTTP/2: past it, 431
 #   body_bytes: "1M"                # bytes one request body may carry
 #   connection_lifetime: "0s"       # how long one connection may exist; "0s" leaves it unbounded (a reload whose crl revokes a client ends its connections either way)
 #   write_stall_timeout: "30s"      # a response making no progress: the client stopped reading

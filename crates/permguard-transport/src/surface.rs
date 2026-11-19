@@ -252,6 +252,7 @@ impl<'a> Listener<'a> {
             );
             let body_streaming = streaming.clone();
             let ending = drain::EndOnDrainLayer::new(streaming.clone(), drained);
+            let header_fields = limits.header_fields();
             let service = router
                 // Innermost of all, so it is between the handlers and everything else: a panic there
                 // becomes an answer rather than a connection that closes with nothing on it. Without
@@ -279,6 +280,22 @@ impl<'a> Listener<'a> {
                     limits.request_timeout(),
                 ))
                 .layer(overload)
+                // A head of more fields than `limits.header_fields` (BUG-0329): HTTP/2 carries
+                // it as one list hyper bounds only in bytes, so it is refused here, with the
+                // surface's error body, before it spends a slot of the budget.
+                .layer(axum::middleware::from_fn(
+                    move |request: http::Request<Body>, next: axum::middleware::Next| async move {
+                        if request.headers().len() > header_fields as usize {
+                            let grpc = request
+                                .headers()
+                                .get(http::header::CONTENT_TYPE)
+                                .and_then(|value| value.to_str().ok())
+                                .is_some_and(|value| value.starts_with("application/grpc"));
+                            return crate::gate::header_fields_exceeded(header_fields, grpc);
+                        }
+                        next.run(request).await
+                    },
+                ))
                 .layer(measure::MeasureLayer::new(surface, measuring.clone()))
                 .layer(request::IdentityLayer::new())
                 .into_make_service();
@@ -586,7 +603,10 @@ fn bound_connections<A: axum_server::Address>(
         .header_read_timeout(limits.header_timeout())
         // The head, bounded in bytes as well as in time: a client that sends fast can otherwise
         // make this buffer whatever hyper's default happens to be, per connection, repeatedly.
-        .max_buf_size(limits.header_bytes());
+        .max_buf_size(limits.header_bytes())
+        // And in fields, the setting of one name for both protocols (BUG-0329): hyper's parser
+        // refuses a head past it with a bare `431`, before any request exists.
+        .max_headers(limits.header_fields() as usize);
 
     server
         .http_builder()

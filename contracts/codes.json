@@ -333,6 +333,12 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "common.HEADER_FIELDS_EXCEEDED": {
+      "code": "header_fields_exceeded",
+      "contract": "7-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
     "common.INTERFACE_RETIRED": {
       "code": "interface_retired",
       "contract": "7-contracts/0-interfaces-model.md",

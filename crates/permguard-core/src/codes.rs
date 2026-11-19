@@ -37,6 +37,8 @@ pub mod common {
     pub const FORGED: &str = "forged";
     /// A path no route of the plane serves.
     pub const ROUTE_UNKNOWN: &str = "route_unknown";
+    /// A request head with more fields than `limits.header_fields` (BUG-0329): `431`.
+    pub const HEADER_FIELDS_EXCEEDED: &str = "header_fields_exceeded";
     /// A domain route asked of a Plane that has not reached Ready, or has left it; the phase
     /// travels beside the code.
     pub const PLANE_NOT_READY: &str = "plane_not_ready";
@@ -573,6 +575,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         common::FORBIDDEN,
         common::FORGED,
         common::ROUTE_UNKNOWN,
+        common::HEADER_FIELDS_EXCEEDED,
         common::PLANE_NOT_READY,
         catalog::NAME_TAKEN,
         catalog::ZONE_NOT_EMPTY,

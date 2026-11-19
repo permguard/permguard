@@ -256,6 +256,7 @@ pub const SETTING_LIMITS_CONNECTION_LIFETIME: &str = "PERMGUARD_LIMITS_CONNECTIO
 pub const SETTING_LIMITS_WRITE_STALL_TIMEOUT: &str = "PERMGUARD_LIMITS_WRITE_STALL_TIMEOUT";
 /// How many bytes one request head may carry.
 pub const SETTING_LIMITS_HEADER_BYTES: &str = "PERMGUARD_LIMITS_HEADER_BYTES";
+pub const SETTING_LIMITS_HEADER_FIELDS: &str = "PERMGUARD_LIMITS_HEADER_FIELDS";
 /// How many requests one surface has in flight at once.
 pub const SETTING_LIMITS_CONCURRENT_REQUESTS: &str = "PERMGUARD_LIMITS_CONCURRENT_REQUESTS";
 /// How long one request may take before it is given up on.
@@ -4825,6 +4826,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_CONNECTION_LIFETIME => self.limits.connection_lifetime().and_then(d),
             SETTING_LIMITS_WRITE_STALL_TIMEOUT => d(self.limits.write_stall_timeout()),
             SETTING_LIMITS_HEADER_BYTES => n(self.limits.header_bytes()),
+            SETTING_LIMITS_HEADER_FIELDS => n(self.limits.header_fields()),
             SETTING_LIMITS_CONCURRENT_REQUESTS => n(self.limits.concurrent_requests()),
             SETTING_LIMITS_REQUEST_TIMEOUT => d(self.limits.request_timeout()),
             SETTING_LIMITS_HANDSHAKE_TIMEOUT => d(self.limits.handshake_timeout()),
@@ -5472,6 +5474,13 @@ produce: use `EdDSA` or `ES256`"
                 parse_bytes(value)
                     .with_context(|| format!("reading {SETTING_LIMITS_HEADER_BYTES}"))?
                     as usize,
+            );
+        }
+
+        if let Some(value) = settings.get(SETTING_LIMITS_HEADER_FIELDS) {
+            self.limits = self.limits.clone().with_header_fields(
+                parse_count(value)
+                    .with_context(|| format!("reading {SETTING_LIMITS_HEADER_FIELDS}"))?,
             );
         }
 
@@ -6927,6 +6936,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LIMITS_CONNECTION_LIFETIME,
     SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES,
+    SETTING_LIMITS_HEADER_FIELDS,
     SETTING_LIMITS_HEADER_TIMEOUT,
     SETTING_LIMITS_PEER_EXEMPT,
     SETTING_LIMITS_REQUEST_TIMEOUT,

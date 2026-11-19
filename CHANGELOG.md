@@ -163,6 +163,8 @@ is cut.
 
 - **A member can end a membership whose coordinator no longer acknowledges it.**
   `host members revoke plan` and `revoke run` on a member Host, for a membership it holds as a member, ask the coordinator to revoke it, and when the coordinator does not acknowledge, unreachable or answering as another Host after its own identity reset, end it on the member as `orphaned`: its subscriptions are dropped and a new membership to the coordinator's new identity takes its streams. A member whose coordinator answers as another Host, or under a key no pin names, is refused `session_refused` (class `conflict`) naming a possible reset and these commands, and logs `host.membership.coordinator_changed` at WARN at every pass.
+- **A request head is bounded in fields too, `limits.header_fields`, the same on HTTP/1.1 and HTTP/2.**
+  The 100-field bound that refused an HTTP/1.1 head of more fields with a bare `431`, while HTTP/2 served it, was hyper's undocumented default; it is now the setting `limits.header_fields` (`PERMGUARD_LIMITS_HEADER_FIELDS`, default 100), applied to both protocols. HTTP/2 answers a head past it `431` with the surface's error body, class `validation`, code `header_fields_exceeded` (`INVALID_ARGUMENT` over gRPC); HTTP/1.1's parser answers a bare `431` before any request exists (owner decision of 2026-11-19).
 - **What a retired identity left unshipped is stated at every start and listed.**
   A stream an identity reset retired left on the volume with records no subscription acknowledged can never ship, as its memberships ended with the identity and its batches name it: every start logs it at WARN (`host.stream.retired_unshipped`, with the stream, the resource, the retired `host_id` and the record count), and `host streams list` shows the resource `retired`; the Host stays serving (owner decision of 2026-11-19). The retired journals are only read.
 - **An online identity reset seals and closes the streams before it retires their rings.**
@@ -2727,6 +2729,7 @@ more than the tidiness of dropping them.
   and gRPC `GetInfo` stop naming the version and commit, keeping plane and product so
   `permguard inspect` still identifies what answered.
 - **Request-head byte bound** (`limits.header_bytes`, default 64k), covering HTTP/1 and HTTP/2.
+  Correction (BUG-0329): a head was also bounded at 100 fields on HTTP/1 by hyper's default; since then that bound is the setting `limits.header_fields`, on both protocols.
 - **CRL expiry gauge** `permguard_tls_crl_expiry_timestamp_seconds`, with a lab alert at seven days.
 - A startup warning when secrets resolve from the environment outside development mode.
 - The Helm chart refuses at template time the shape that enables the all-in-one beside a

@@ -223,6 +223,58 @@ pub(crate) fn unavailable(message: &str, grpc: bool) -> Response<Body> {
     response
 }
 
+/// What a request head with more fields than `limit` is answered (BUG-0329): `431` with the
+/// surface's error body, class `validation` and code `header_fields_exceeded`; over gRPC,
+/// `INVALID_ARGUMENT` with the same class and code. HTTP/1.1's parser answers a bare `431` before a
+/// request exists; this is the bound for HTTP/2, which carries its head as one header list.
+pub(crate) fn header_fields_exceeded(limit: u32, grpc: bool) -> Response<Body> {
+    let code = permguard_core::codes::common::HEADER_FIELDS_EXCEEDED;
+    let message =
+        format!("the request head carries more than {limit} fields (`limits.header_fields`)");
+    if grpc {
+        let mut response = Response::new(Body::empty());
+        let headers = response.headers_mut();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/grpc"),
+        );
+        headers.insert(
+            "grpc-status",
+            http::HeaderValue::from_str(
+                &permguard_core::GrpcCode::InvalidArgument
+                    .number()
+                    .to_string(),
+            )
+            .unwrap_or_else(|_| http::HeaderValue::from_static("3")),
+        );
+        if let Ok(message) = http::HeaderValue::from_str(&grpc_message(&message)) {
+            headers.insert("grpc-message", message);
+        }
+        headers.insert(
+            permguard_core::GRPC_ERROR_CLASS,
+            http::HeaderValue::from_static("validation"),
+        );
+        headers.insert(
+            permguard_core::GRPC_ERROR_CODE,
+            http::HeaderValue::from_static(code),
+        );
+        return response;
+    }
+    let body = serde_json::to_vec(&permguard_core::api::WireError {
+        class: permguard_core::ErrorClass::Validation,
+        code: code.to_owned(),
+        message,
+    })
+    .unwrap_or_default();
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE;
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
 /// Whether a request speaks gRPC, as an extractor of the shed's handler: one look at the content
 /// type, where a `HeaderMap` extractor would clone every header of every request the surface
 /// serves — the handler's extractors run before the inner service, shed or not.

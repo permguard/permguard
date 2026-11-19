@@ -54,5 +54,7 @@ tokio-rustls.workspace = true
 tower = { workspace = true, features = ["util"] }
 # Reading a refusal's body back.
 http-body-util.workspace = true
+# An HTTP/2 client with prior knowledge, for the bounds HTTP/2 carries differently (BUG-0329).
+hyper = { workspace = true, features = ["client", "http2"] }
 # Capturing what a request writes to the log, to prove a client's name for it never gets there.
 tracing-subscriber.workspace = true

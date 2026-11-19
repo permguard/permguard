@@ -244,6 +244,7 @@
     "common.EXHAUSTED": "exhausted",
     "common.FORBIDDEN": "forbidden",
     "common.FORGED": "forged",
+    "common.HEADER_FIELDS_EXCEEDED": "header_fields_exceeded",
     "common.INTERFACE_RETIRED": "interface_retired",
     "common.INTERNAL": "internal",
     "common.INVALID_ARGUMENT": "invalid_argument",

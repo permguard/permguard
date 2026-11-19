@@ -902,3 +902,84 @@ async fn test_a_drain_ends_the_streaming_answers_and_completes_at_once() {
         String::from_utf8_lossy(&rest)
     );
 }
+
+/// An HTTP/2 request with `fields` small header fields besides the pseudo-headers: its status and
+/// body.
+async fn h2_with_fields(address: std::net::SocketAddr, fields: usize) -> (u16, String) {
+    use http_body_util::BodyExt as _;
+
+    let stream = TcpStream::connect(address).await.expect("connects");
+    let (mut sender, connection) = hyper::client::conn::http2::handshake(
+        hyper_util::rt::TokioExecutor::new(),
+        hyper_util::rt::TokioIo::new(stream),
+    )
+    .await
+    .expect("the HTTP/2 handshake");
+    tokio::spawn(connection);
+    let mut request = http::Request::builder().uri(format!("http://{address}/"));
+    for at in 0..fields {
+        request = request.header(format!("x-f{at}"), "v");
+    }
+    let answer = sender
+        .send_request(
+            request
+                .body(http_body_util::Empty::<axum::body::Bytes>::new())
+                .expect("a request"),
+        )
+        .await
+        .expect("answered");
+    let status = answer.status().as_u16();
+    let body = answer
+        .into_body()
+        .collect()
+        .await
+        .expect("a body")
+        .to_bytes();
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+/// BUG-0329: one bound, `limits.header_fields`, on a request head's fields over HTTP/1.1 and
+/// HTTP/2 alike: a head within it is served, one past it refused `431`; HTTP/2's refusal carries
+/// the surface's error body, HTTP/1.1's parser answers before a request exists.
+#[tokio::test]
+async fn test_a_head_of_too_many_fields_is_refused_on_both_protocols() {
+    let surface = Surface::listener("test", "127.0.0.1:0", router())
+        .limits(Limits::new().with_header_fields(10))
+        .start()
+        .await
+        .expect("the surface starts");
+    let address = surface.address();
+
+    let fields =
+        |count: usize| -> String { (0..count).map(|at| format!("X-F{at}: v\r\n")).collect() };
+    // Host and Connection are two fields of the ten.
+    let within = format!(
+        "GET / HTTP/1.1\r\nHost: test\r\nConnection: close\r\n{}\r\n",
+        fields(8)
+    );
+    assert_eq!(
+        status(&exchange(address, within.as_bytes()).await),
+        "HTTP/1.1 200 OK"
+    );
+    let past = format!(
+        "GET / HTTP/1.1\r\nHost: test\r\nConnection: close\r\n{}\r\n",
+        fields(9)
+    );
+    let answer = exchange(address, past.as_bytes()).await;
+    assert!(status(&answer).starts_with("HTTP/1.1 431"), "{answer}");
+
+    let (served, _) = h2_with_fields(address, 10).await;
+    assert_eq!(served, 200);
+    let (refused, body) = h2_with_fields(address, 11).await;
+    assert_eq!(refused, 431, "{body}");
+    assert!(
+        body.contains("\"class\":\"validation\"")
+            && body.contains("\"code\":\"header_fields_exceeded\""),
+        "{body}"
+    );
+
+    surface
+        .stop(Duration::from_secs(1))
+        .await
+        .expect("the surface stops");
+}

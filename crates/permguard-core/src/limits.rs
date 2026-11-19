@@ -17,6 +17,7 @@
 //! | `body_bytes` | bytes read from one body | announcing a megabyte and sending a gigabyte |
 //! | `connections_per_peer` | sockets held by one address | one client occupying the whole pool |
 //! | `header_bytes` | bytes of one request head | a header stuffed until memory notices |
+//! | `header_fields` | fields of one request head | a head of many small fields, each a parse and an allocation |
 //! | `connection_lifetime` | how long one socket may exist | a connection becoming permanent |
 //! | `write_stall_timeout` | a response making no progress | a client that stops reading its answer |
 //!
@@ -93,6 +94,12 @@ const DEFAULT_HEADER_TIMEOUT: Duration = Duration::from_secs(10);
 /// number in hyper's documentation into a number of ours, with a test on it.
 const DEFAULT_HEADER_BYTES: usize = 64 * 1024;
 
+/// How many fields one request head may carry, on HTTP/1.1 and HTTP/2 alike (BUG-0329).
+///
+/// A hundred is hyper's own HTTP/1 bound, kept and named: above it hyper allocates every request's
+/// field array on the heap, a cost paid by every request to serve an unusual one.
+const DEFAULT_HEADER_FIELDS: u32 = 100;
+
 /// How many bytes one request body may carry.
 ///
 /// A megabyte, which is orders of magnitude more than anything here reads: the discovery documents
@@ -110,6 +117,7 @@ pub struct Limits {
     handshake_timeout: Duration,
     header_timeout: Duration,
     header_bytes: usize,
+    header_fields: u32,
     body_bytes: usize,
     connection_lifetime: Option<Duration>,
     write_stall_timeout: Duration,
@@ -126,6 +134,7 @@ impl Default for Limits {
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             header_timeout: DEFAULT_HEADER_TIMEOUT,
             header_bytes: DEFAULT_HEADER_BYTES,
+            header_fields: DEFAULT_HEADER_FIELDS,
             body_bytes: DEFAULT_BODY_BYTES,
             // None, and deliberately: a gRPC channel that legitimately lives for days is normal, and
             // a default that beheads it would be this library deciding a policy the deployment did
@@ -214,6 +223,13 @@ impl Limits {
         self
     }
 
+    /// Bounds how many fields one request head may carry.
+    pub fn with_header_fields(mut self, fields: u32) -> Self {
+        self.header_fields = fields;
+
+        self
+    }
+
     /// Bounds how many bytes one request body may carry.
     pub fn with_body_bytes(mut self, bytes: usize) -> Self {
         self.body_bytes = bytes;
@@ -274,6 +290,11 @@ impl Limits {
     /// Returns how many bytes one request head may carry.
     pub fn header_bytes(&self) -> usize {
         self.header_bytes
+    }
+
+    /// Returns how many fields one request head may carry.
+    pub fn header_fields(&self) -> u32 {
+        self.header_fields
     }
 
     /// Returns how many bytes one request body may carry.
