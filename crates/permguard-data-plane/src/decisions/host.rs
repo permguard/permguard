@@ -366,6 +366,30 @@ impl super::DecisionRecorder for HostLog {
 }
 
 /// The `prev` a record at `position` names: the genesis digest at a run's first sequence.
+/// A decision record's `bytes`, rewritten for `position` (BUG-0115): its stream's instance, its
+/// sequence and its predecessor those of the new place, everything else as it was.
+pub(crate) fn rebase_decision(bytes: &[u8], position: StreamPosition) -> Result<Vec<u8>, String> {
+    let codec = permguard_decisions::stream::Codec;
+    let mut value = codec.decode(bytes)?;
+    let stream = value
+        .get_mut("stream")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("a decision record names no stream")?;
+    stream.insert(
+        "instance".to_owned(),
+        serde_json::Value::from(hex(&position.run_id)),
+    );
+    let object = value
+        .as_object_mut()
+        .ok_or("a decision record is an object")?;
+    object.insert("seq".to_owned(), serde_json::Value::from(position.seq));
+    object.insert(
+        "prev".to_owned(),
+        serde_json::Value::from(previous(&position)),
+    );
+    codec.encode(&value)
+}
+
 fn previous(position: &StreamPosition) -> String {
     if position.seq == 1 {
         GENESIS.to_owned()
@@ -391,4 +415,40 @@ fn uuid_text(host_id: &str) -> String {
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod carry_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// BUG-0115: a decision record carried into a fenced run is rewritten for its new place
+    /// alone: its stream's instance, its sequence and its predecessor.
+    #[test]
+    fn a_carried_decision_record_changes_only_its_place() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/vectors/evidence.json"
+        )))
+        .expect("the vectors");
+        let original = vectors["decision_record"][0]["record"].clone();
+        let codec = permguard_decisions::stream::Codec;
+        let bytes = codec.encode(&original).expect("encodes");
+        let position = StreamPosition {
+            run_id: [7; 16],
+            seq: 4,
+            prev: [2; 32],
+        };
+        let carried = codec
+            .decode(&rebase_decision(&bytes, position).expect("rebased"))
+            .expect("decodes");
+        assert_eq!(carried["stream"]["instance"], hex(&[7; 16]));
+        assert_eq!(carried["seq"], 4);
+        assert_eq!(carried["prev"], format!("sha256:{}", hex(&[2; 32])));
+        for member in ["kind", "pdp", "sampling", "commitments", "at"] {
+            assert_eq!(carried[member], original[member], "{member}");
+        }
+        assert_eq!(carried["stream"]["id"], original["stream"]["id"]);
+    }
 }

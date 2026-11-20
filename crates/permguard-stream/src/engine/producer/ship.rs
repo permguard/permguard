@@ -461,6 +461,54 @@ pub(super) fn acknowledged_by(
         .min()
 }
 
+/// A carry begun in a stream's directory (BUG-0115): `{1 run, 2 through, 3 done}`.
+const CARRY: &str = "CARRY";
+/// The runs a stream carried into a fenced successor (BUG-0115): `{1 [run]}`.
+const CARRIED: &str = "CARRIED";
+/// How many records a carry reads at a time.
+const CARRY_PAGE: usize = 256;
+
+fn encode_carry(run: &[u8; 16], through: u64, done: u64) -> Result<Vec<u8>, StreamError> {
+    encode(vec![
+        (1, Value::Bytes(run.to_vec())),
+        (2, uint(through)?),
+        (3, uint(done)?),
+    ])
+}
+
+fn decode_carry(bytes: &[u8]) -> Result<([u8; 16], u64, u64), StreamError> {
+    let mut map = Map::read(bytes, "a stream's carry")?;
+    let run = map.fixed(1)?;
+    let through = map.uint(2)?;
+    let done = map.uint(3)?;
+    map.finish()?;
+    Ok((run, through, done.min(through)))
+}
+
+fn encode_carried(runs: &[[u8; 16]]) -> Result<Vec<u8>, StreamError> {
+    encode(vec![(
+        1,
+        Value::Array(runs.iter().map(|run| Value::Bytes(run.to_vec())).collect()),
+    )])
+}
+
+/// The runs `dir`'s stream carried into a fenced successor (BUG-0115).
+pub(super) fn carried_runs(dir: &Dir) -> Result<Vec<[u8; 16]>, StreamError> {
+    let Some(bytes) = read_view(dir, CARRIED, format::VIEW)? else {
+        return Ok(Vec::new());
+    };
+    let mut map = Map::read(&bytes, "a stream's carried runs")?;
+    let mut runs = Vec::new();
+    for value in map.array(1)? {
+        let Value::Bytes(bytes) = value else {
+            return Err(StreamError::Invalid("a carried run is 16 bytes".to_owned()));
+        };
+        runs.push(super::super::codec::fixed(bytes, "a carried run")?);
+    }
+    map.finish()?;
+    Ok(runs)
+}
+
 /// Whether a subscription of `membership_id` reads a run fenced by `fence` (DEC-0034 option A):
 /// a membership the runs it fences, the local task of a Host running both Planes every run, so
 /// its own Control Plane reads what a membership ships and what none does.
@@ -593,6 +641,32 @@ impl<C: RecordCodec> Producer<C> {
             }
         };
         if stale {
+            // The open run no membership fenced, with records, when the Plane can rewrite them and
+            // no local task reads them already: carried into the run this subscription fences, so
+            // what was recorded before the first membership reaches its coordinator (BUG-0115).
+            let carry = {
+                let writer = physical.writer();
+                let local = subscriptions_held(&writer.dir)?
+                    .iter()
+                    .any(|held| held.membership_id == LOCAL_MEMBERSHIP);
+                writer
+                    .run
+                    .as_ref()
+                    .filter(|run| {
+                        !run.ended && run.statement.fence.is_none() && run.last_seq > 0 && !local
+                    })
+                    .map(|run| (run.statement.run_id, run.last_seq))
+                    .filter(|_| self.carrier().is_some())
+            };
+            if let Some((run, through)) = carry {
+                let writer = physical.writer();
+                replace_view(
+                    &writer.dir,
+                    CARRY,
+                    format::VIEW,
+                    &encode_carry(&run, through, 0)?,
+                )?;
+            }
             // The subscription is kept before its run opens, so a restart between the two never
             // finds the run's fence held by nobody.
             {
@@ -605,6 +679,96 @@ impl<C: RecordCodec> Producer<C> {
             }
             physical.rollover(&self.context, Some(fence_of(subscribed)), None)?;
         }
+        // A carry begun is finished, here or after a restart (BUG-0115).
+        self.carry_pending(physical)
+    }
+
+    /// The Plane's rewriter of its records, when it registered one (BUG-0115).
+    fn carrier(&self) -> Option<composition::Rebase> {
+        self.carrier
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Appends again, to the current run, the records of the run a `CARRY` names that are not yet
+    /// carried, each rewritten for its new place by the Plane, the marker kept at every step so a
+    /// restart resumes where it stopped; then names the run carried (BUG-0115).
+    fn carry_pending(&self, physical: &Physical) -> Result<(), StreamError> {
+        let marker = {
+            let writer = physical.writer();
+            read_view(&writer.dir, CARRY, format::VIEW)?
+        };
+        let Some(marker) = marker else {
+            return Ok(());
+        };
+        let (run, through, mut done) = decode_carry(&marker)?;
+        let Some(rebase) = self.carrier() else {
+            return Ok(());
+        };
+        let resource = Resource::parse(&physical.key.resource)
+            .map_err(|error| StreamError::Invalid(format!("the stream's resource: {error}")))?;
+        // Whatever the run took before it ended, an append racing the rollover included.
+        let through = self
+            .produced_runs(&resource)?
+            .iter()
+            .find(|held| held.run == run)
+            .map_or(through, |held| held.last_seq.max(through));
+        while done < through {
+            let page = self.produced_records(&resource, &run, done + 1, CARRY_PAGE)?;
+            if page.records.is_empty() {
+                break;
+            }
+            for (seq, bytes) in page.records {
+                if seq <= done {
+                    continue;
+                }
+                if seq > through {
+                    break;
+                }
+                self.append_with(&resource, |position| {
+                    Ok(vec![rebase(
+                        &bytes,
+                        composition::StreamPosition {
+                            run_id: position.run_id,
+                            seq: position.seq,
+                            prev: position.prev,
+                        },
+                    )?])
+                })?;
+                done = seq;
+                let writer = physical.writer();
+                replace_view(
+                    &writer.dir,
+                    CARRY,
+                    format::VIEW,
+                    &encode_carry(&run, through, done)?,
+                )?;
+            }
+        }
+        let writer = physical.writer();
+        let mut carried = carried_runs(&writer.dir)?;
+        if !carried.contains(&run) {
+            carried.push(run);
+            replace_view(
+                &writer.dir,
+                CARRIED,
+                format::VIEW,
+                &encode_carried(&carried)?,
+            )?;
+        }
+        writer.dir.unlink(CARRY)?;
+        drop(writer);
+        tracing::info!(
+            event.name = "host.stream.run_carried",
+            component = "stream",
+            stream = %self.stream_name(),
+            resource = %physical.key.resource,
+            run = %hex(&run),
+            records = done,
+            "the records of a run no membership fenced were carried into the run the first one \
+             fences: its coordinator receives them"
+        );
         Ok(())
     }
 
@@ -642,8 +806,9 @@ impl<C: RecordCodec> Producer<C> {
         if subscribed.membership_id == LOCAL_MEMBERSHIP {
             return Ok(());
         }
+        let carried = carried_runs(&physical.writer().dir)?;
         for (run, fence, last, _) in runs {
-            if *last == 0 || *fence == Some(subscribed.membership_id) {
+            if *last == 0 || *fence == Some(subscribed.membership_id) || carried.contains(run) {
                 continue;
             }
             let reason = match fence {

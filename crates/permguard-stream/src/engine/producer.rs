@@ -132,6 +132,9 @@ pub struct Producer<C> {
     /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
     /// `None` deletes it at once.
     acknowledged_retention: Option<std::time::Duration>,
+    /// How the Plane rewrites its records for another place: what carries a run no membership
+    /// fenced into the one the first fences (BUG-0115).
+    pub(crate) carrier: std::sync::RwLock<Option<permguard_host::composition::Rebase>>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -160,6 +163,7 @@ impl<C: RecordCodec> Producer<C> {
             stated: Mutex::new(std::collections::BTreeSet::new()),
             closed: std::sync::atomic::AtomicBool::new(false),
             acknowledged_retention: None,
+            carrier: std::sync::RwLock::new(None),
         }
     }
 
@@ -1576,6 +1580,13 @@ impl Writer {
 }
 
 impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C> {
+    fn carry_with(&self, rebase: permguard_host::composition::Rebase) {
+        *self
+            .carrier
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(rebase);
+    }
+
     fn append(
         &self,
         resource: &Resource,

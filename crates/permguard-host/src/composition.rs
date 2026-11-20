@@ -2041,10 +2041,21 @@ pub struct StreamPosition {
 /// The records a Plane builds from a stream's next position: consecutive sequences from it.
 pub type BuildRecords<'a> = &'a mut dyn FnMut(StreamPosition) -> Result<Vec<Vec<u8>>, String>;
 
+/// How a Plane rewrites one of its records for another place in the stream (BUG-0115): the same
+/// record, its run, sequence and predecessor those of `StreamPosition`.
+pub type Rebase = Arc<dyn Fn(&[u8], StreamPosition) -> Result<Vec<u8>, String> + Send + Sync>;
+
 /// One stream's producer as the Host's engine serves it: a record's bytes, checked by the codec
 /// the stream registered, appended durably (WP-5.1).
 pub trait StreamAppender: Send + Sync {
     fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String>;
+
+    /// Registers how the Plane rewrites its records for another place (BUG-0115): what carries
+    /// the records of a run no membership fences into the run the first one fences. Without it,
+    /// such records stay where they are, and are said to.
+    fn carry_with(&self, rebase: Rebase) {
+        let _ = rebase;
+    }
 
     /// Appends the records `build` makes from the stream's next position, called once under the
     /// lock that gives sequences: what a record naming its own place needs (WP-6.1). Answers the
@@ -2665,6 +2676,11 @@ impl StreamProducer {
     /// Appends `record` to the stream of `resource`; answers once it is durable.
     pub fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String> {
         self.appender.append(resource, record)
+    }
+
+    /// Registers how the Plane rewrites its records for another place (BUG-0115).
+    pub fn carry_with(&self, rebase: Rebase) {
+        self.appender.carry_with(rebase);
     }
 
     /// Appends the records `build` makes from the stream's next position; answers once the last

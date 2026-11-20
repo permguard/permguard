@@ -274,6 +274,9 @@ impl HostLedger {
         directory: PathBuf,
         legacy_through: u64,
     ) -> Result<Self, JournalError> {
+        // How the engine rewrites an event record it carries into the run the first membership
+        // fences (BUG-0115): the same record, its run, sequence and predecessor the new place's.
+        producer.carry_with(std::sync::Arc::new(rebase_event));
         std::fs::create_dir_all(directory.join(INDEXES_DIR)).map_err(io)?;
         let dir = permguard_host::storage::Dir::create_root(&directory).map_err(io)?;
         let legacy_through = match std::fs::read_to_string(directory.join(LEGACY_FILE)) {
@@ -382,6 +385,11 @@ impl HostLedger {
             };
             after = *last;
             for (ordinal, record) in &page {
+                // A record carried into a fenced run is a copy of one this Host already holds:
+                // the same occurrence, decided on once (BUG-0115).
+                if self.is_carried_copy(*ordinal, record)? {
+                    continue;
+                }
                 if *ordinal > indexed {
                     self.stage_index(*ordinal, record)?;
                 }
@@ -397,6 +405,27 @@ impl HostLedger {
         self.occurrences.sync()?;
         self.occurrences.cover(self.last)?;
         Ok(())
+    }
+
+    /// Whether the record at `ordinal` is a copy the engine carried of an occurrence already held
+    /// at an earlier ordinal of another run, the same occurrence by its digest (BUG-0115).
+    fn is_carried_copy(&self, ordinal: u64, record: &Value) -> Result<bool, JournalError> {
+        let (Some(event_id), Some(digest)) = (
+            record.get("event_id").and_then(Value::as_str),
+            record.get("occurrence_digest").and_then(Value::as_str),
+        ) else {
+            return Ok(false);
+        };
+        let source = record.get("source").and_then(Value::as_str);
+        Ok(self
+            .occurrences
+            .get(source, event_id)?
+            .is_some_and(|known| {
+                known.seq < ordinal
+                    && known.occurrence_digest == digest
+                    && self.locate(known.seq).map(|(run, _)| run)
+                        != self.locate(ordinal).map(|(run, _)| run)
+            }))
     }
 
     fn recover_occurrence(&mut self, ordinal: u64, record: &Value) -> Result<(), JournalError> {
@@ -813,6 +842,34 @@ pub fn placed_bytes(record: &Record) -> Result<usize, String> {
 /// A record's canonical bytes, checked as the producer checks them: the same codec, the same
 /// bound, so a record built under the engine's lock is never refused after its position was
 /// taken.
+/// An event record's `bytes`, rewritten for `position` (BUG-0115): the producer's run instance,
+/// the sequence and the predecessor its new place gives it, everything else as it was.
+fn rebase_event(
+    bytes: &[u8],
+    position: permguard_host::composition::StreamPosition,
+) -> Result<Vec<u8>, String> {
+    let mut value = permguard_events::stream::Codec.decode(bytes)?;
+    let prev = if position.seq == 1 {
+        GENESIS.to_owned()
+    } else {
+        format!("sha256:{}", hex(&position.prev))
+    };
+    let producer = value
+        .pointer_mut("/stream/producer")
+        .and_then(Value::as_object_mut)
+        .ok_or("an event record names no producer")?;
+    producer.insert("instance".to_owned(), Value::from(hex(&position.run_id)));
+    let object = value
+        .as_object_mut()
+        .ok_or("an event record is an object")?;
+    object.insert("seq".to_owned(), Value::from(position.seq));
+    object.insert("prev".to_owned(), Value::from(prev));
+    encoded(
+        &value,
+        permguard_events::stream::descriptor().max_record_bytes,
+    )
+}
+
 fn encoded(value: &Value, max_record_bytes: u32) -> Result<Vec<u8>, String> {
     let codec = permguard_events::stream::Codec;
     let bytes = codec.encode(value)?;

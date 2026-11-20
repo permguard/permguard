@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **What a member records before its first membership ships reaches the coordinator.**
+  When the first membership's subscription fences a stream whose open run no membership fenced, and no local task reads it, the producer carries that run's records into the fenced successor before anything else, each rewritten for its new place by the Plane that wrote it (decisions and events keep their ids), so the coordinator receives every record once instead of none (`host.stream.run_carried`).
+  The carry resumes after a restart, the member's temporal journal does not count a carried event twice, and a run that is still left behind is stated at WARN as before (BUG-0115).
 - **A member that joins after the coordinator pruned an origin's run imports it from what is held, and a gap can be accepted.**
   The coordinator's signed import checkpoint names, for a run whose prefix it deleted, the digest its first retained batch chains from (`checkpoint_run.anchor`), and a member holding nothing of the run starts it there instead of recording a gap that never closed; `shared-bounded` decides on it.
   An operator holding `membership.admin` accepts the open gaps of one origin's run over one ledger with `permguard host imports gaps accept` (`POST /host/v1/imports/gaps/accept`, `MembershipService/AcceptImportGaps`) and a reason: the gaps stay on the record marked when and by whom, the acceptance is audited `host.imports.gap_accepted`, and `shared-bounded` decides again; its refusal now names that command (BUG-0128).

@@ -298,6 +298,9 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
                 unavailable("the Host composes no stream engine producing `data/decisions`");
                 return None;
             };
+            // How the engine rewrites a decision record it carries into the run the first
+            // membership fences (BUG-0115).
+            producer.carry_with(Arc::new(host::rebase_decision));
             let Some(host_id) = crate::handles::host_id(context) else {
                 unavailable("the Host composes no identity to name the decision stream with");
                 return None;

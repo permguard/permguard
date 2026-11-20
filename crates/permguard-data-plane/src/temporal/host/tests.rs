@@ -363,3 +363,41 @@ fn a_position_the_producer_deleted_reads_as_absent_not_as_the_next_record() {
         "e-3"
     );
 }
+
+/// BUG-0115: an event record carried into a fenced run is rewritten for its new place alone: the
+/// producer's instance, the sequence and the predecessor; every other member as it was.
+#[test]
+fn a_carried_event_record_changes_only_its_place() {
+    let vectors: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/vectors/evidence.json"
+    )))
+    .expect("the vectors");
+    let original = vectors["event_batch"]["records"][0].clone();
+    let codec = permguard_events::stream::Codec;
+    let bytes = codec.encode(&original).expect("encodes");
+    let position = permguard_host::composition::StreamPosition {
+        run_id: [7; 16],
+        seq: 5,
+        prev: [1; 32],
+    };
+    let carried = codec
+        .decode(&super::rebase_event(&bytes, position).expect("rebased"))
+        .expect("decodes");
+    assert_eq!(carried["stream"]["producer"]["instance"], hex(&[7; 16]));
+    assert_eq!(carried["seq"], 5);
+    assert_eq!(carried["prev"], format!("sha256:{}", hex(&[1; 32])));
+    for member in [
+        "event_id",
+        "occurrence_digest",
+        "event",
+        "kind",
+        "history_key",
+    ] {
+        assert_eq!(carried[member], original[member], "{member}");
+    }
+    assert_eq!(
+        carried["stream"]["producer"]["id"],
+        original["stream"]["producer"]["id"]
+    );
+}

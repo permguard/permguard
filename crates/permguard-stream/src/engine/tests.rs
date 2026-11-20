@@ -8489,3 +8489,80 @@ fn a_run_started_past_its_beginning_admits_the_batch_that_chains_from_its_anchor
         Some(envelope.previous_head)
     );
 }
+
+/// BUG-0115: the records of a run written before any membership covered the stream are carried,
+/// rewritten by the Plane, into the run the first membership fences, ahead of what follows, and
+/// ship with it; the ended run is named carried and no longer stated as unshipped. A carry a
+/// restart interrupted resumes where its marker says.
+#[test]
+fn records_before_the_first_membership_are_carried_into_its_run_and_ship() {
+    use permguard_host::composition::StreamAppender as _;
+
+    let host = Host::new("carry");
+    let coordinator = Host::new("carry-c");
+    let consumer = consumer_on(&coordinator);
+    let producer = host.sealer();
+    let rebased = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counting = Arc::clone(&rebased);
+    producer.carry_with(Arc::new(move |bytes: &[u8], position| {
+        assert!(position.seq >= 1);
+        counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(bytes.to_vec())
+    }));
+    let before = producer
+        .append(&ledger(1), &"e1".to_owned())
+        .expect("appended")
+        .run_id;
+    producer
+        .append(&ledger(1), &"e2".to_owned())
+        .expect("appended");
+
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let membership = subscribed_by(MEMBERSHIP, &covering, 1);
+    producer.due(&membership).expect("registered");
+    assert_eq!(rebased.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(
+        !producer.stated.lock().expect("lock").contains(&before),
+        "a carried run is not stated as unshipped"
+    );
+    let fenced = producer
+        .append(&ledger(1), &"d1".to_owned())
+        .expect("appended")
+        .run_id;
+    assert_ne!(fenced, before);
+    let records = |run: &[u8; 16]| -> Vec<Vec<u8>> {
+        producer
+            .produced_records(&ledger(1), run, 1, 10)
+            .expect("read")
+            .records
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect()
+    };
+    let (original, carried) = (records(&before), records(&fenced));
+    assert_eq!(original.len(), 2);
+    assert_eq!(carried.len(), 3, "the two carried, then the one after");
+    assert_eq!(
+        carried[..2],
+        original[..],
+        "carried as the Plane rewrote them"
+    );
+
+    // Every record of the fenced run ships: the carried ones and the one after.
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &membership,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    let subscription = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(subscription.acked(&fenced), 3, "two carried and one after");
+}
