@@ -10,6 +10,7 @@
 | `decision_record`              | decision record digest under `permguard.decision.v1\n`             | `permguard-decisions`            |
 | `decision_batch`               | today's decision batch: flattened JWS, protected `{alg, kid}`      | `permguard-decisions`            |
 | `input_tag`                    | keyed input tag under `permguard.input.v1\n`                       | `permguard-decisions`            |
+| `key_fingerprint`              | a key's fingerprint under `permguard.key-fingerprint.v1\n`         | `permguard-decisions`            |
 | `event_digests`                | event record, occurrence and history digests                       | `permguard-events`               |
 | `event_batch`                  | today's event batch: compact JWS, protected `{alg, typ, kid}`      | `permguard-events`               |
 | `decision_record_token_status` | a decision record naming its token's status list version (WP-12.5) | `permguard-decisions`            |

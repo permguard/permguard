@@ -595,6 +595,11 @@ permguard decisions list --zone acme --ledger main-ledger --verify --keys data-p
 The `decision id` a caller gets back is the one the record carries: an answer and its evidence are joined by an identifier, not by a timestamp and a guess.
 Each line also names the data plane that answered, its member id and its name, resolved by the Control Plane from the Host id the record carries; the record itself is untouched, so what the data plane signed is what a reader verifies.
 
+A record's subject is a pseudonym, made at the data plane under its zone's `audit.pseudonym` key, and its inputs are commitments under its ledger's key.
+Each run's marker names both keys by version and by fingerprint, and `decisions list`, `export` and `get` print them beside each decision, in the terminal and in JSON.
+Two pseudonyms, or two commitments, compare exactly when their runs name the same fingerprint: a version label alone is not enough, since two Hosts keying with different material may both call their key `v1`.
+Data planes whose records must be correlated therefore share the zone's keys: they are members of one coordinator, which delivers the keys over each membership's `zone.secrets` task, rather than each holding a root of its own.
+
 ## Examples
 
 | Example                                                              | Domain                   | What it shows                                                                                                                     |

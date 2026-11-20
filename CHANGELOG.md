@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A decision run's marker names its keys by fingerprint, not by a version label alone.**
+  `commitments.key_fingerprint` and a new `pseudonyms {alg, key_version, key_fingerprint}` name the commitment key and the zone's pseudonym key: hex of the first 16 bytes of HMAC-SHA256 under the key of `permguard.key-fingerprint.v1\n`, which reveals nothing of it.
+  `decisions list`, `export` and `get` print both beside each decision, in the terminal and in JSON; two pseudonyms compare exactly when their runs name the same fingerprint, and a marker written before carries neither and still verifies (BUG-0344).
 - **A ledger its Control Plane deleted is no longer served for `mirrors.reap_grace`.**
   A member's `list_ledgers` now names the ledgers it mirrors under the task, and the coordinator answers, beside the listing, those it deleted, from their tombstones and under the session's resource only; their mirrors are removed in that round, by name and by id, whatever the grace, which stays for a coordinator that merely left a ledger out.
   Either side may predate the change: a coordinator that refuses the new body is asked again without it, and a member that sends none gets the listing alone.

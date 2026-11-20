@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use permguard_decisions::record::{
     ActionRef, Body, Build, Commitments, DecisionBody, Inputs, MarkerBody, Party, Predecessor,
-    Reason, Sampling, StoreRef, Trace,
+    Pseudonyms, Reason, Sampling, StoreRef, Trace,
 };
 use permguard_decisions::{Commitment, commitment};
 use serde_json::Value;
@@ -159,10 +159,14 @@ fn build_of(epoch: &Epoch) -> Build {
     }
 }
 
-/// The body of the marker that governs the records after it.
+/// The body of the marker that governs the records of `scope`'s stream after it: the keys its
+/// commitments and its subjects' pseudonyms are made under, by version and by fingerprint
+/// (BUG-0344).
 pub fn marker_body(
     epoch: &Epoch,
     commitment: &Commitment,
+    pseudonyms: Option<&permguard_host::secrets::ZoneHandle>,
+    scope: Option<&permguard_decisions::commitment::Scope>,
     predecessor: Option<Predecessor>,
 ) -> Body {
     Body::Marker(Box::new(MarkerBody {
@@ -174,7 +178,16 @@ pub fn marker_body(
         commitments: Commitments {
             alg: commitment::COMMITMENT_ALGORITHM.to_owned(),
             key_version: commitment.version().to_owned(),
+            key_fingerprint: commitment.fingerprint_in(scope),
         },
+        // A subject's pseudonym is keyed by its zone alone (WP-3.3).
+        pseudonyms: pseudonyms.zip(scope).and_then(|(handle, (zone, _))| {
+            Some(Pseudonyms {
+                alg: commitment::COMMITMENT_ALGORITHM.to_owned(),
+                key_version: handle.version().to_string(),
+                key_fingerprint: handle.fingerprint(zone, zone)?,
+            })
+        }),
     }))
 }
 
@@ -320,4 +333,79 @@ pub(crate) fn now() -> String {
         .unwrap_or_default();
 
     permguard_core::time::to_rfc3339(seconds)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use permguard_host::secrets::{Coordinator, KeyVersion, Root, ZoneHandle, ZonePurpose};
+
+    fn epoch() -> Epoch {
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        }
+    }
+
+    fn pseudonyms(material: u8) -> ZoneHandle {
+        ZoneHandle::coordinated(
+            ZonePurpose::AuditPseudonym,
+            Coordinator::new(
+                Root::from_material(&[material; 32], KeyVersion::new(1).expect("a version"))
+                    .expect("a root"),
+                [1; 16],
+            ),
+        )
+    }
+
+    fn marker(commitment: &Commitment, handle: Option<&ZoneHandle>) -> MarkerBody {
+        let scope = ([2u8; 16], [3u8; 16]);
+        match marker_body(&epoch(), commitment, handle, Some(&scope), None) {
+            Body::Marker(marker) => *marker,
+            other => panic!("not a marker: {other:?}"),
+        }
+    }
+
+    /// BUG-0344: a run's marker names the commitment key and the zone's pseudonym key by version
+    /// and fingerprint: the same material writes the same fingerprints, another material under the
+    /// same version another, and a rotation to a new key a new one.
+    #[test]
+    fn a_marker_names_its_keys_by_fingerprint() {
+        let first = marker(&Commitment::new(*b"key-a", "v1"), Some(&pseudonyms(9)));
+        let same = marker(&Commitment::new(*b"key-a", "v1"), Some(&pseudonyms(9)));
+        let other = marker(&Commitment::new(*b"key-b", "v1"), Some(&pseudonyms(8)));
+        let rotated = marker(&Commitment::new(*b"key-c", "v2"), Some(&pseudonyms(7)));
+
+        let fingerprints = |marker: &MarkerBody| {
+            (
+                marker
+                    .commitments
+                    .key_fingerprint
+                    .clone()
+                    .expect("a commitment fingerprint"),
+                marker
+                    .pseudonyms
+                    .as_ref()
+                    .expect("the pseudonyms")
+                    .key_fingerprint
+                    .clone(),
+            )
+        };
+        assert_eq!(fingerprints(&first), fingerprints(&same));
+        assert_eq!(first.commitments.key_version, other.commitments.key_version);
+        assert_ne!(fingerprints(&first).0, fingerprints(&other).0);
+        assert_ne!(fingerprints(&first).1, fingerprints(&other).1);
+        assert_ne!(fingerprints(&first).0, fingerprints(&rotated).0);
+        assert_eq!(first.pseudonyms.as_ref().expect("named").key_version, "v1");
+
+        // Without the zone's key handle, no pseudonym key is named; the record stays readable.
+        let bare = marker(&Commitment::new(*b"key-a", "v1"), None);
+        assert!(bare.pseudonyms.is_none());
+        let encoded = serde_json::to_value(&bare).expect("encodes");
+        assert!(encoded.get("pseudonyms").is_none());
+    }
 }

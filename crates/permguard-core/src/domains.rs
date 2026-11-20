@@ -112,6 +112,9 @@ pub mod digest {
     pub const EVENT_HISTORY: &str = "permguard.event.history.v1\n";
     /// A keyed decision-input tag.
     pub const INPUT_TAG: &str = "permguard.input.v1\n";
+    /// The fingerprint of a key: the first 16 bytes of HMAC-SHA256 under the key of this label
+    /// alone, which names the key without revealing it (BUG-0344).
+    pub const KEY_FINGERPRINT: &str = "permguard.key-fingerprint.v1\n";
     /// The v1 cursor MAC; legacy, verified only by the v1 codec.
     pub const STREAM_CURSOR_V1: &str = "permguard.stream.cursor.v1\n";
     /// The v2 cursor MAC, carrying key id and expiry.
@@ -479,6 +482,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.EVENT_OCCURRENCE", digest::EVENT_OCCURRENCE),
         ("digest.EVENT_HISTORY", digest::EVENT_HISTORY),
         ("digest.INPUT_TAG", digest::INPUT_TAG),
+        ("digest.KEY_FINGERPRINT", digest::KEY_FINGERPRINT),
         ("digest.STREAM_CURSOR_V1", digest::STREAM_CURSOR_V1),
         ("digest.STREAM_CURSOR_V2", digest::STREAM_CURSOR_V2),
         ("digest.STREAM_FILTERS", digest::STREAM_FILTERS),

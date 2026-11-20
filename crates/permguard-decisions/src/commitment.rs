@@ -130,6 +130,18 @@ impl Commitment {
 
         Ok(rendered)
     }
+
+    /// The fingerprint of the key `scope` commits under: hex of the first 16 bytes of HMAC-SHA256
+    /// under it of [`permguard_core::domains::digest::KEY_FINGERPRINT`] alone (BUG-0344). Equal
+    /// exactly when two schemes hold the same key, and revealing nothing of it; `None` when no key
+    /// is held for the scope.
+    pub fn fingerprint_in(&self, scope: Option<&Scope>) -> Option<String> {
+        let tag = (self.mac)(
+            scope,
+            &[permguard_core::domains::digest::KEY_FINGERPRINT.as_bytes()],
+        )?;
+        Some(tag[..16].iter().map(|byte| format!("{byte:02x}")).collect())
+    }
 }
 
 impl std::fmt::Debug for Commitment {

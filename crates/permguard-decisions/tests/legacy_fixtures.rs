@@ -76,7 +76,9 @@ fn body(seq: u64) -> Body {
             commitments: Commitments {
                 alg: "HMAC-SHA256".to_owned(),
                 key_version: "v1".to_owned(),
+                key_fingerprint: None,
             },
+            pseudonyms: None,
         }));
     }
     Body::Decision(Box::new(DecisionBody {

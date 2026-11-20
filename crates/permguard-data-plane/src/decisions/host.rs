@@ -22,7 +22,7 @@
 
 use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use permguard_core::Metrics;
 use permguard_core::authz::Resource;
@@ -90,6 +90,9 @@ pub struct HostLog {
     epoch: Epoch,
     permit_rate: f64,
     commitment: Commitment,
+    /// The zone keys subjects are pseudonymised under, whose fingerprint each marker names
+    /// (BUG-0344).
+    pseudonyms: Option<Arc<permguard_host::secrets::ZoneHandle>>,
     metrics: Metrics,
     bounds: Bounds,
     /// The run each stream was marked in by this process: a record whose stream is in another
@@ -117,12 +120,23 @@ impl HostLog {
             permit_rate: epoch.sampling.parse().unwrap_or(1.0),
             epoch,
             commitment,
+            pseudonyms: None,
             metrics,
             bounds,
             marked: Mutex::new(BTreeMap::new()),
             pressure: Mutex::new(BTreeMap::new()),
             measures: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// This log naming, in each marker, the fingerprint of the zone key its subjects are
+    /// pseudonymised under (BUG-0344).
+    pub fn with_pseudonyms(
+        mut self,
+        pseudonyms: Option<Arc<permguard_host::secrets::ZoneHandle>>,
+    ) -> Self {
+        self.pseudonyms = pseudonyms;
+        self
     }
 
     /// Records one decision, answering once it is durable.
@@ -152,7 +166,13 @@ impl HostLog {
             return Ok((Written::Refused(reason.to_owned()), None));
         }
         // Built before the engine's lock is taken: only the position is filled in under it.
-        let marker_body = marker_body(&self.epoch, &self.commitment, None);
+        let marker_body = marker_body(
+            &self.epoch,
+            &self.commitment,
+            self.pseudonyms.as_deref(),
+            decided.scope.as_ref(),
+            None,
+        );
         let decision_body = decision_body(&self.epoch, &self.commitment, decided);
         let mut marked_now = false;
         // The bytes appended, which the next pressure check adds to its measure (BUG-0119).

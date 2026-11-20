@@ -75,7 +75,9 @@ fn run(count: u64) -> Vec<Value> {
                 commitments: Commitments {
                     alg: "HMAC-SHA256".to_owned(),
                     key_version: "v1".to_owned(),
+                    key_fingerprint: None,
                 },
+                pseudonyms: None,
             })),
         };
         prev = record.digest().expect("it digests");

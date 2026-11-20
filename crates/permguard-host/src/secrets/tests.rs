@@ -405,3 +405,46 @@ fn the_zones_shared_pseudonyms_take_the_zone_as_their_only_scope() {
         "Debug names the purpose and version, never a key"
     );
 }
+
+/// BUG-0344: a zone key is named by its fingerprint: two Hosts keying with the same root write the
+/// same, another root under the same version writes another, and the fingerprint is neither the
+/// key nor a pseudonym made under it.
+#[test]
+fn a_zone_key_is_named_by_a_fingerprint_that_does_not_reveal_it() {
+    let zone = [2u8; 16];
+    let handle = |material: u8| {
+        ZoneHandle::coordinated(
+            ZonePurpose::AuditPseudonym,
+            Coordinator::new(
+                Root::from_material(&[material; 32], v(1)).expect("a root"),
+                [1; 16],
+            ),
+        )
+    };
+    let first = handle(9).fingerprint(&zone, &zone).expect("a fingerprint");
+    assert_eq!(first.len(), 32);
+    assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert_eq!(
+        handle(9).fingerprint(&zone, &zone).as_deref(),
+        Some(first.as_str()),
+        "the same key, the same fingerprint"
+    );
+    assert_ne!(
+        handle(8).fingerprint(&zone, &zone).as_deref(),
+        Some(first.as_str()),
+        "another key under the same version, another fingerprint"
+    );
+    assert_ne!(
+        handle(9).fingerprint(&[4u8; 16], &[4u8; 16]).as_deref(),
+        Some(first.as_str()),
+        "another zone's key, another fingerprint"
+    );
+    let pseudonym = handle(9)
+        .pseudonym(&zone, "user", "alice")
+        .expect("a pseudonym");
+    assert!(!pseudonym.contains(&first));
+    assert!(
+        handle(9).fingerprint(&zone, &[3u8; 16]).is_none(),
+        "no key, no fingerprint"
+    );
+}

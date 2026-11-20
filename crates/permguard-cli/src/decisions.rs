@@ -197,6 +197,81 @@ pub struct DecisionLine {
     /// them beside the page; empty when no membership names it.
     pub member: String,
     pub member_name: String,
+    /// The keys the run's marker names, when the read held it: what tells whether two records'
+    /// pseudonyms and commitments compare (BUG-0344).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keys: Option<RunKeys>,
+}
+
+/// One key a run's marker names: its version, and its fingerprint where the marker carries one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct KeyName {
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+}
+
+impl KeyName {
+    /// `v1 3f2a…` or `v1` alone, for a terminal line.
+    pub fn short(&self) -> String {
+        match &self.fingerprint {
+            Some(fingerprint) => format!("{} {fingerprint}", self.version),
+            None => self.version.clone(),
+        }
+    }
+}
+
+/// The keys a run's marker names (BUG-0344): the commitment key, and the zone key its subjects
+/// are pseudonymised under. Two records' pseudonyms compare exactly when their runs name the same
+/// pseudonym fingerprint (DEC-0035).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct RunKeys {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commitments: Option<KeyName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pseudonyms: Option<KeyName>,
+}
+
+impl RunKeys {
+    /// What `marker` names of its keys.
+    pub fn of(marker: &Value) -> Self {
+        let key = |member: &str| {
+            let block = marker.get(member)?;
+            Some(KeyName {
+                version: block.get("key_version")?.as_str()?.to_owned(),
+                fingerprint: block
+                    .get("key_fingerprint")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            })
+        };
+        Self {
+            commitments: key("commitments"),
+            pseudonyms: key("pseudonyms"),
+        }
+    }
+}
+
+/// The run a record belongs to: its `stream.id` and `stream.instance`.
+fn run_of(record: &Value) -> (String, String) {
+    let part = |name: &str| {
+        record
+            .get("stream")
+            .and_then(|stream| stream.get(name))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    (part("id"), part("instance"))
+}
+
+/// The keys each run's marker among `records` names, by run (BUG-0344).
+pub fn run_keys(records: &[Value]) -> std::collections::BTreeMap<(String, String), RunKeys> {
+    records
+        .iter()
+        .filter(|record| record.get("kind").and_then(Value::as_str) == Some("marker"))
+        .map(|marker| (run_of(marker), RunKeys::of(marker)))
+        .collect()
 }
 
 /// An object of members recorded in clear, or `None` when the record carries none: an empty
@@ -338,6 +413,7 @@ pub fn report(
         .verify
         .then(|| verify_under(scope, &records, &proof, &inclusion, keys));
 
+    let keys = run_keys(&records);
     let mut decisions = Vec::new();
     let mut events = Vec::new();
     for record in records {
@@ -391,6 +467,7 @@ pub fn report(
                 .map(|member| member.member_id.clone())
                 .unwrap_or_default(),
             member_name: named.map(|member| member.name.clone()).unwrap_or_default(),
+            keys: keys.get(&run_of(&record)).cloned(),
             subject: party(&record, "subject"),
             action: record
                 .get("action")
@@ -858,19 +935,29 @@ fn included(
 
 fn describe(kind: &str, record: &Value) -> String {
     match kind {
-        "marker" => format!(
-            "sampling permits={}, build {}",
-            record
-                .get("sampling")
-                .and_then(|sampling| sampling.get("permits"))
-                .and_then(Value::as_str)
-                .unwrap_or("?"),
-            record
-                .get("pdp")
-                .and_then(|pdp| pdp.get("version"))
-                .and_then(Value::as_str)
-                .unwrap_or("?")
-        ),
+        "marker" => {
+            let keys = RunKeys::of(record);
+            let mut detail = format!(
+                "sampling permits={}, build {}",
+                record
+                    .get("sampling")
+                    .and_then(|sampling| sampling.get("permits"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("?"),
+                record
+                    .get("pdp")
+                    .and_then(|pdp| pdp.get("version"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("?")
+            );
+            if let Some(key) = &keys.commitments {
+                detail.push_str(&format!(", commitment key {}", key.short()));
+            }
+            if let Some(key) = &keys.pseudonyms {
+                detail.push_str(&format!(", pseudonym key {}", key.short()));
+            }
+            detail
+        }
         "discontinuity" => format!(
             "the stream ended ({}); {} record(s) lost, continues as {}",
             string(record, "reason"),

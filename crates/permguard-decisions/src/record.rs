@@ -168,6 +168,24 @@ pub struct Commitments {
     pub alg: String,
     /// Which version of the commitment key.
     pub key_version: String,
+    /// The key's fingerprint, hex of the first 16 bytes of HMAC-SHA256 under it of
+    /// `permguard.key-fingerprint.v1\n`: equal exactly when two ranges were committed under the
+    /// same key, and revealing nothing of it; absent from a marker written before (BUG-0344).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub key_fingerprint: Option<String>,
+}
+
+/// How the subjects of a range were pseudonymised: under the zone's `audit.pseudonym` key, named
+/// by its version and its fingerprint, so two pseudonyms compare exactly when their ranges name
+/// the same fingerprint (BUG-0344, DEC-0035).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pseudonyms {
+    /// The algorithm — `HMAC-SHA256`.
+    pub alg: String,
+    /// Which version of the zone's pseudonym key.
+    pub key_version: String,
+    /// The key's fingerprint, as [`Commitments::key_fingerprint`] takes it.
+    pub key_fingerprint: String,
 }
 
 /// The stream a discontinuity ended, and where it continues.
@@ -419,6 +437,10 @@ pub struct MarkerBody {
     pub sampling: Sampling,
     /// How input commitments are computed in this range.
     pub commitments: Commitments,
+    /// How the subjects of this range are pseudonymised; absent from a marker written before
+    /// (BUG-0344).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub pseudonyms: Option<Pseudonyms>,
 }
 
 /// The last record of a stream.
@@ -570,7 +592,9 @@ mod tests {
                 commitments: Commitments {
                     alg: "HMAC-SHA256".to_owned(),
                     key_version: "v1".to_owned(),
+                    key_fingerprint: None,
                 },
+                pseudonyms: None,
             })),
         }
     }

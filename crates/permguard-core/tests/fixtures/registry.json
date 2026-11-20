@@ -89,6 +89,7 @@
     "digest.HOST_SESSION_HELLO": "permguard.host.session.hello.v1\n",
     "digest.HOST_SUCCESSION": "permguard.host.succession.v1\n",
     "digest.INPUT_TAG": "permguard.input.v1\n",
+    "digest.KEY_FINGERPRINT": "permguard.key-fingerprint.v1\n",
     "digest.KEY_SET": "permguard.key-set.v1\n",
     "digest.LANGUAGE_DESCRIPTOR": "permguard.language.descriptor.v1\n",
     "digest.NOTP_REF_STATE": "permguard.notp.ref-state.v1\n",

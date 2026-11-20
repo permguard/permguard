@@ -114,6 +114,14 @@ tag = hmac.new(tag_key, INPUT_DOMAIN.encode() + jcs(tag_value), hashlib.sha256).
 out["input_tag"] = {"key": tag_key.hex(), "version": "v7", "value": tag_value,
                     "tag": f"hmac-sha256:v7:{tag}"}
 
+# ---- key fingerprint (BUG-0344) -----------------------------------------------------------------
+# What a decision stream's marker names a key by: the first 16 bytes of HMAC-SHA256 under the key
+# of the label alone.
+FINGERPRINT_DOMAIN = "permguard.key-fingerprint.v1\n"
+out["key_fingerprint"] = {"key": tag_key.hex(),
+                          "fingerprint": hmac.new(tag_key, FINGERPRINT_DOMAIN.encode(),
+                                                  hashlib.sha256).hexdigest()[:32]}
+
 # ---- events ------------------------------------------------------------------------------------
 EV_REC = "permguard.event.record.v1\n"
 EV_OCC = "permguard.event.occurrence.v1\n"

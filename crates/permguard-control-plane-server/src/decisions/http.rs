@@ -378,7 +378,13 @@ mod openapi {
             commitments: Commitments {
                 alg: "HMAC-SHA256".to_owned(),
                 key_version: "v1".to_owned(),
+                key_fingerprint: Some("8ec09c066a810174a0afcfc03b810a1f".to_owned()),
             },
+            pseudonyms: Some(permguard_decisions::record::Pseudonyms {
+                alg: "HMAC-SHA256".to_owned(),
+                key_version: "v1".to_owned(),
+                key_fingerprint: "0f1e2d3c4b5a69788796a5b4c3d2e1f0".to_owned(),
+            }),
         }));
         let decision_full = Body::Decision(Box::new(DecisionBody {
             id: "id-2".to_owned(),
@@ -491,7 +497,9 @@ mod openapi {
             commitments: Commitments {
                 alg: "HMAC-SHA256".to_owned(),
                 key_version: "v2".to_owned(),
+                key_fingerprint: None,
             },
+            pseudonyms: None,
         }));
         let discontinuity = Body::Discontinuity(Box::new(DiscontinuityBody {
             reason: "spool_full".to_owned(),

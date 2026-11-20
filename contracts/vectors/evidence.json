@@ -199,6 +199,10 @@
     },
     "tag": "hmac-sha256:v7:5ceb7532b528ea7c8cf33aa4130483f6d0a8dc1ef8f3b214674e785a938c4e45"
   },
+  "key_fingerprint": {
+    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "fingerprint": "8ec09c066a810174a0afcfc03b810a1f"
+  },
   "event_digests": {
     "occurrence": {
       "id": "evt-0001",

@@ -704,11 +704,41 @@
           "key_version": {
             "type": "string",
             "description": "Which version of the commitment key."
+          },
+          "key_fingerprint": {
+            "type": "string",
+            "description": "The key's fingerprint: hex of the first 16 bytes of HMAC-SHA256 under the key of `permguard.key-fingerprint.v1\\n`. Equal exactly when two ranges were committed under the same key, revealing nothing of it; absent from a marker written before (BUG-0344)."
           }
         },
         "required": [
           "alg",
           "key_version"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Pseudonyms": {
+        "type": "object",
+        "description": "How the subjects of a range were pseudonymised: under the zone's `audit.pseudonym` key, by version and fingerprint. Two pseudonyms compare exactly when their ranges name the same fingerprint (BUG-0344, DEC-0035).",
+        "properties": {
+          "alg": {
+            "type": "string",
+            "description": "The algorithm, `HMAC-SHA256`."
+          },
+          "key_version": {
+            "type": "string",
+            "description": "Which version of the zone's pseudonym key."
+          },
+          "key_fingerprint": {
+            "type": "string",
+            "description": "The key's fingerprint, as `Commitments.key_fingerprint` takes it."
+          }
+        },
+        "required": [
+          "alg",
+          "key_version",
+          "key_fingerprint"
         ],
         "additionalProperties": false,
         "x-grpc-message": null,
@@ -1055,6 +1085,9 @@
           },
           "commitments": {
             "$ref": "#/components/schemas/Commitments"
+          },
+          "pseudonyms": {
+            "$ref": "#/components/schemas/Pseudonyms"
           }
         },
         "required": [

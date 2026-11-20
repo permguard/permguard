@@ -201,6 +201,23 @@ fn the_input_tag_matches_the_vector() {
     );
 }
 
+/// BUG-0344: a marker names a key by its fingerprint, reproduced from the vector's key.
+#[test]
+fn the_key_fingerprint_matches_the_vector() {
+    let vectors = vectors();
+    let vector = &vectors["key_fingerprint"];
+    let commitment = Commitment::new(hex(text(vector, "key")), "v1");
+    assert_eq!(
+        commitment.fingerprint_in(None).as_deref(),
+        Some(text(vector, "fingerprint"))
+    );
+    assert_ne!(
+        Commitment::new(*b"another key", "v1").fingerprint_in(None),
+        commitment.fingerprint_in(None),
+        "another key under the same version is another fingerprint"
+    );
+}
+
 #[test]
 fn the_merkle_roots_match_the_vectors() {
     let vectors = vectors();

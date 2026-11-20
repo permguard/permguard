@@ -796,6 +796,14 @@ impl ZoneHandle {
         Some(mac.finalize().into_bytes().into())
     }
 
+    /// The fingerprint of the key of `(zone, scope)`: hex of the first 16 bytes of HMAC-SHA256
+    /// under it of `permguard.key-fingerprint.v1\n` alone, which names the key without revealing
+    /// it (BUG-0344); `None` without the key.
+    pub fn fingerprint(&self, zone: &[u8; 16], scope: &[u8; 16]) -> Option<String> {
+        let tag = self.mac(zone, scope, &[digest::KEY_FINGERPRINT.as_bytes()])?;
+        Some(hex(&tag[..16]))
+    }
+
     /// The zone's shared pseudonym of `identifier` of `identifier_type`; `None` without the key.
     pub fn pseudonym(
         &self,

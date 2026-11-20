@@ -65,7 +65,9 @@ fn marker_at(spool: &Spool) -> Value {
             commitments: Commitments {
                 alg: "HMAC-SHA256".to_owned(),
                 key_version: "v1".to_owned(),
+                key_fingerprint: None,
             },
+            pseudonyms: None,
         })),
     }
     .to_value()

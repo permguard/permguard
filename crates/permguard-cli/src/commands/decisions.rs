@@ -696,18 +696,34 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
         ..ReadWindow::default()
     };
 
+    // The markers read on the way: a decision's run's marker precedes it (BUG-0344).
+    let mut keys = std::collections::BTreeMap::new();
     for page_number in 0..MAX_PAGES {
         let page = reader.read(&scope, &window).map_err(read_failure)?;
         if page_number == 0 {
             window.until = Some(page.high_watermark.clone());
         }
+        keys.extend(crate::decisions::run_keys(&page.records));
         if let Some(record) = page
             .records
             .iter()
             .find(|record| record.get("id").and_then(Value::as_str) == Some(id))
         {
+            let run = (
+                record
+                    .pointer("/stream/id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                record
+                    .pointer("/stream/instance")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+            );
             let report = DecisionReport {
                 record: record.clone(),
+                keys: keys.get(&run).cloned(),
             };
             render(&report, globals.output, &trace)?;
 
@@ -943,7 +959,9 @@ mod host_verify {
                         commitments: Commitments {
                             alg: "HMAC-SHA256".to_owned(),
                             key_version: "v1".to_owned(),
+                            key_fingerprint: None,
                         },
+                        pseudonyms: None,
                     }))
                 } else {
                     Body::Decision(Box::new(DecisionBody {
@@ -1276,7 +1294,9 @@ mod archive_verify {
                         commitments: Commitments {
                             alg: "HMAC-SHA256".to_owned(),
                             key_version: format!("v{seq}"),
+                            key_fingerprint: None,
                         },
+                        pseudonyms: None,
                     })),
                 }
                 .to_value()

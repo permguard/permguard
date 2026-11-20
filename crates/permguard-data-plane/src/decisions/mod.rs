@@ -334,17 +334,24 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
                 unavailable(&format!("{error:#}"));
                 return None;
             }
-            Some(Arc::new(HostLog::new(
-                producer,
-                host_id,
-                epoch_of(config),
-                commitment,
-                host::Bounds {
-                    max_bytes: config.log_spool_bytes(),
-                    max_age_secs: config.log_spool_age().as_secs(),
-                },
-                context.metrics().clone(),
-            )))
+            let pseudonyms = crate::handles::zone_key(
+                context,
+                permguard_host::secrets::ZonePurpose::AuditPseudonym,
+            );
+            Some(Arc::new(
+                HostLog::new(
+                    producer,
+                    host_id,
+                    epoch_of(config),
+                    commitment,
+                    host::Bounds {
+                        max_bytes: config.log_spool_bytes(),
+                        max_age_secs: config.log_spool_age().as_secs(),
+                    },
+                    context.metrics().clone(),
+                )
+                .with_pseudonyms(pseudonyms),
+            ))
         })
         .clone()
 }

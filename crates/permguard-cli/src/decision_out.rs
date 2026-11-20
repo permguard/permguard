@@ -136,6 +136,9 @@ impl Report for DecisionsReport {
                     style::id(short(&line.instance))
                 )?;
             }
+            if let Some(keys) = &line.keys {
+                render_keys(out, "         ", keys)?;
+            }
             for policy in &line.policies {
                 writeln!(
                     out,
@@ -263,6 +266,9 @@ impl Report for DecisionsReport {
 pub struct DecisionReport {
     /// The record, verbatim: what the producer signed, not a rendering of it.
     pub record: Value,
+    /// The keys its run's marker names, when the read held the marker (BUG-0344).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keys: Option<crate::decisions::RunKeys>,
 }
 
 /// Which key signed which stretch of one producer stream.
@@ -322,6 +328,28 @@ impl Report for DecisionSignersReport {
     }
 }
 
+/// The keys a run's marker names, one line each, indented by `indent` (BUG-0344).
+fn render_keys(
+    out: &mut dyn Write,
+    indent: &str,
+    keys: &crate::decisions::RunKeys,
+) -> io::Result<()> {
+    for (label, key) in [
+        ("commitment key", &keys.commitments),
+        ("pseudonym key ", &keys.pseudonyms),
+    ] {
+        if let Some(key) = key {
+            writeln!(
+                out,
+                "{indent}{} {}",
+                style::dim(label),
+                style::id(&key.short())
+            )?;
+        }
+    }
+    Ok(())
+}
+
 impl Report for DecisionReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         let field = |name: &str| {
@@ -352,6 +380,9 @@ impl Report for DecisionReport {
             style::id(&field("id"))
         )?;
         writeln!(out, "  {} {}", style::dim("at      "), field("at"))?;
+        if let Some(keys) = &self.keys {
+            render_keys(out, "  ", keys)?;
+        }
 
         let store = self.record.get("store").cloned().unwrap_or(Value::Null);
         let store_field = |name: &str| {
@@ -481,6 +512,7 @@ mod tests {
         DecisionLine {
             member: String::new(),
             member_name: String::new(),
+            keys: None,
             seq,
             at: "2026-10-03T10:00:00Z".to_owned(),
             decision,
@@ -635,6 +667,7 @@ mod tests {
                 "causes": ["evaluation_deadline_exceeded", "evaluation_failed"],
                 "reason": {"code": "evaluation_indeterminate"},
             }),
+            keys: None,
         });
         assert!(shown.contains("INDETERMINATE"), "{shown}");
         assert!(!shown.contains("DENY"), "{shown}");
