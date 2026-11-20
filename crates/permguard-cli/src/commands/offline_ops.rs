@@ -339,17 +339,22 @@ const LEGACY_RINGS: [&str; 3] = [
 /// Refuses `--legacy` values the subsystem's migration would refuse, before a plan is signed or
 /// spent (after the TC-3 review), and a location that is not a directory: named, the legacy data
 /// is there, and a mistyped one would run as "nothing to migrate" and spend the plan (BUG-0189).
-fn checked_legacy(subsystem: &str, legacy: &[String]) -> Result<(), Failure> {
+///
+/// A location is checked where the migration reads it: a ring's directory relative to where this
+/// runs, the audit chain's and the decision spool's relative to the volume, as `audit.directory`
+/// and `log.spool_directory` are.
+fn checked_legacy(subsystem: &str, volume: &Path, legacy: &[String]) -> Result<(), Failure> {
     for location in legacy {
         printable(location, "--legacy")?;
     }
-    let existing = |location: &str, named: &str| -> Result<(), Failure> {
-        if Path::new(named).is_dir() {
+    let existing = |location: &str, named: &Path, relative_to: &str| -> Result<(), Failure> {
+        if named.is_dir() {
             return Ok(());
         }
         Err(Failure::usage(format!(
-            "`--legacy {location}`: `{named}` is not a directory; name where the legacy data \
-             moved, relative to where this runs, or leave --legacy out for the default location"
+            "`--legacy {location}`: `{}` is not a directory; name where the legacy data moved, \
+             relative to {relative_to}, or leave --legacy out for the default location",
+            named.display()
         )))
     };
     match subsystem {
@@ -371,16 +376,22 @@ fn checked_legacy(subsystem: &str, legacy: &[String]) -> Result<(), Failure> {
                     )));
                 }
                 seen.push(ring);
-                existing(location, directory)?;
+                existing(location, Path::new(directory), "where this runs")?;
             }
             Ok(())
         }
         "audit" | "decisions" if legacy.len() > 1 => Err(Failure::usage(format!(
             "`{subsystem}` takes one --legacy directory"
         ))),
-        "audit" | "decisions" => legacy
-            .iter()
-            .try_for_each(|location| existing(location, location)),
+        "audit" | "decisions" => legacy.iter().try_for_each(|location| {
+            let given = Path::new(location);
+            let read = if given.is_relative() {
+                volume.join(given)
+            } else {
+                given.to_path_buf()
+            };
+            existing(location, &read, "the volume")
+        }),
         "events" if !legacy.is_empty() => Err(Failure::usage(
             "`events` reads where the history is from --server-config, not --legacy",
         )),
@@ -413,7 +424,7 @@ fn plan(
     use permguard_host::operations::plan::{MIGRATE, PlanSigner};
 
     printable(backup, "--backup")?;
-    checked_legacy(subsystem, legacy)?;
+    checked_legacy(subsystem, volume, legacy)?;
     let now = permguard_core::time::unix_now();
     let config = config_of(server_config)?;
     // An `events` plan binds where the history is, as the configuration names it now.
@@ -653,7 +664,7 @@ fn migration_of(
             backup: backup.to_owned(),
         });
     }
-    checked_legacy(subsystem, bound).map_err(refused)?;
+    checked_legacy(subsystem, volume, bound).map_err(refused)?;
     let volume = volume.to_path_buf();
     let backup = backup.to_owned();
     let one = || bound.first().map(std::path::PathBuf::from);

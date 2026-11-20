@@ -143,6 +143,10 @@ impl PdpApi {
         request: Request<EvaluateRequest>,
     ) -> Result<Response<EvaluateResponse>, Status> {
         let actor = permguard_transport::actor_of(request.extensions());
+        let listener = request
+            .extensions()
+            .get::<permguard_core::authz::ListenerAuthenticates>()
+            .copied();
         // The transport's own request id, when the caller sent one and the
         // payload did not.
         let carried = request
@@ -171,7 +175,8 @@ impl PdpApi {
             decider: &self.decider,
             submitter: None,
         };
-        let asked = crate::evaluation::EvaluationRequest::native(wire, carried, trace);
+        let asked = crate::evaluation::EvaluationRequest::native(wire, carried, trace)
+            .on_listener(listener);
         match crate::evaluation::evaluate(&services, &actor, asked).await {
             Ok(crate::evaluation::Answer::Native(answered)) => {
                 Ok(Response::new(translate::response_to_proto(*answered)))

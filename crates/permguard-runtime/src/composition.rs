@@ -1205,30 +1205,40 @@ impl Composition {
             let Some((path, _)) = &file else {
                 return error;
             };
-            let said = format!("{error:#}");
-            // The longest name the message carries: `PERMGUARD_LOG` is inside `PERMGUARD_LOG_LEVEL`.
-            let from_file = file_inputs
+            let mut said = format!("{error:#}");
+            // Every name the message carries that the file set, each by its own key: a refusal
+            // that weighs two settings names both as the operator wrote them (BUG-0177). Longest
+            // first, and only as a whole name: `PERMGUARD_LOG` is inside `PERMGUARD_LOG_LEVEL`.
+            let mut from_file: Vec<&(String, String)> = file_inputs
                 .iter()
                 .filter(|(key, _)| {
-                    said.contains(key.as_str())
+                    whole_name_at(&said, key).is_some()
                         && !environment.iter().any(|(set, _)| set == key)
                         && !command_line.iter().any(|(set, _)| set == key)
                 })
-                .max_by_key(|(key, _)| key.len());
-            let Some((key, value)) = from_file else {
+                .collect();
+            if from_file.is_empty() {
                 return error;
-            };
-            let yaml = std::fs::read_to_string(path)
-                .ok()
-                .and_then(|text| permguard_core::config_file::yaml_key_of(&text, key, value));
-            let named = match yaml {
-                Some(yaml) => format!(
-                    "`{yaml}` in the configuration file {} ({key})",
-                    path.display()
-                ),
-                None => format!("{key}, set in the configuration file {}", path.display()),
-            };
-            anyhow::anyhow!("{}", said.replacen(key.as_str(), &named, 1))
+            }
+            from_file.sort_by_key(|(key, _)| std::cmp::Reverse(key.len()));
+            let text = std::fs::read_to_string(path).ok();
+            for (key, value) in from_file {
+                let Some(at) = whole_name_at(&said, key) else {
+                    continue;
+                };
+                let yaml = text
+                    .as_deref()
+                    .and_then(|text| permguard_core::config_file::yaml_key_of(text, key, value));
+                let named = match yaml {
+                    Some(yaml) => format!(
+                        "`{yaml}` in the configuration file {} ({key})",
+                        path.display()
+                    ),
+                    None => format!("{key}, set in the configuration file {}", path.display()),
+                };
+                said.replace_range(at..at + key.len(), &named);
+            }
+            anyhow::anyhow!("{said}")
         })?;
 
         // Realms are structured, not flat settings, so they are attached here rather than merged
@@ -3179,4 +3189,23 @@ fn import_ledgers(config: &Config) -> Option<Vec<permguard_core::authz::Resource
         })
         .collect();
     (!ledgers.is_empty()).then_some(ledgers)
+}
+
+/// Where `name` first stands in `text` as a whole setting name, not inside a longer one: neither
+/// preceded nor followed by a character a setting name carries.
+fn whole_name_at(text: &str, name: &str) -> Option<usize> {
+    let carried = |character: char| {
+        character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+    };
+    let mut from = 0;
+    while let Some(found) = text[from..].find(name) {
+        let at = from + found;
+        let before = text[..at].chars().next_back();
+        let after = text[at + name.len()..].chars().next();
+        if !before.is_some_and(carried) && !after.is_some_and(carried) {
+            return Some(at);
+        }
+        from = at + name.len();
+    }
+    None
 }

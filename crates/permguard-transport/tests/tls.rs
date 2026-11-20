@@ -528,3 +528,65 @@ async fn test_an_optional_client_certificate_is_verified_when_presented_and_not_
         .await
         .expect("the listener stops");
 }
+
+/// BUG-0183: under TLS a listener whose authenticator verifies bearer tokens can authenticate a
+/// caller, so discovery may offer what only an authenticated caller is given; with no token
+/// authenticator and no client certificates it cannot.
+#[tokio::test]
+async fn test_a_tls_listener_with_a_token_authenticator_can_authenticate_a_caller() {
+    use permguard_core::AccessDenial;
+    use permguard_core::authz::{Actor, Authenticator, ListenerAuthenticates};
+
+    struct Tokens;
+    impl Authenticator for Tokens {
+        fn authenticate(
+            &self,
+            _peer: Option<&permguard_core::PeerIdentity>,
+            _bearer: Option<&str>,
+        ) -> Result<Actor, AccessDenial> {
+            Ok(Actor::Anonymous)
+        }
+        fn verifies_bearer_tokens(&self) -> bool {
+            true
+        }
+    }
+
+    let pki = Pki::new("tls-authenticates");
+    let (certificate, key) = self_signed(&pki, "server");
+    let settings = TlsSettings::new(&certificate, &key);
+    let reading = || {
+        Router::new().route(
+            "/",
+            get(
+                |axum::Extension(held): axum::Extension<ListenerAuthenticates>| async move {
+                    if held.0 { "authenticates" } else { "nobody" }
+                },
+            ),
+        )
+    };
+    for (authenticator, expected) in [
+        (None, "nobody"),
+        (
+            Some(Arc::new(Tokens) as Arc<dyn Authenticator>),
+            "authenticates",
+        ),
+    ] {
+        let surface = Surface::listener("test", "127.0.0.1:0", reading())
+            .tls(Some(&settings))
+            .authenticator(authenticator)
+            .start()
+            .await
+            .expect("the listener binds");
+        let client = rustls::ClientConfig::builder()
+            .with_root_certificates(roots_of(&certificate))
+            .with_no_client_auth();
+        let said = speak_tls(surface.address(), client)
+            .await
+            .expect("the handshake works");
+        assert!(said.ends_with(expected), "{said}");
+        surface
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("the listener stops");
+    }
+}

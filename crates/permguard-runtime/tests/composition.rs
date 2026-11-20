@@ -231,6 +231,52 @@ fn a_value_refused_from_the_file_is_named_by_its_key() {
     );
 }
 
+/// BUG-0177: a refusal that weighs two settings the file set names both by the keys the operator
+/// wrote, not only the one it is about.
+#[test]
+fn every_setting_a_refusal_names_from_the_file_is_named_by_its_key() {
+    let runs = Arc::new(AtomicUsize::new(0));
+    // The two warm-state bounds, read from `dataPlane.events.warm` as the data plane reads them.
+    let composition = composition(&runs).with_section_settings("dataPlane", |section| {
+        let warm = &section["events"]["warm"];
+        let mut pairs = Vec::new();
+        for (key, setting) in [
+            (
+                "zone_bytes",
+                permguard_core::config::SETTING_EVENTS_WARM_ZONE_BYTES,
+            ),
+            (
+                "partition_bytes",
+                permguard_core::config::SETTING_EVENTS_WARM_PARTITION_BYTES,
+            ),
+        ] {
+            if let Some(value) = warm[key].as_str() {
+                pairs.push((setting.to_owned(), value.to_owned()));
+            }
+        }
+        Ok(pairs)
+    });
+    let (file, volume) = fixture("refused-two-keys");
+    std::fs::write(
+        &file,
+        format!(
+            "working_dir: {}\ndataPlane:\n  events:\n    warm:\n      zone_bytes: 16M\n      partition_bytes: 32M\n",
+            volume.to_str().expect("a UTF-8 path")
+        ),
+    )
+    .expect("the configuration file");
+    let refused = composition
+        .config_from(Some(&file), Vec::<(String, String)>::new())
+        .expect_err("a partition's bound above its zone's");
+    let said = format!("{refused:#}");
+    for key in [
+        "`dataPlane.events.warm.partition_bytes` in the configuration file",
+        "`dataPlane.events.warm.zone_bytes` in the configuration file",
+    ] {
+        assert!(said.contains(key), "{key}: {said}");
+    }
+}
+
 /// The YAML key is found by the value and the setting's words, and only when one leaf answers.
 #[test]
 fn the_yaml_key_of_a_setting_is_found_by_its_value_and_words() {

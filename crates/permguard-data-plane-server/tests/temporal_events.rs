@@ -5296,3 +5296,241 @@ mod tenant_isolation {
         assert_eq!(body["decision"], true, "its own ledger's login: {body}");
     }
 }
+
+/// The Host's consumer as a member holds it for the ledgers it was configured to import: it
+/// answers for that ledger alone, as the import keyed by the configured ids does, and for any
+/// other ledger it holds nothing.
+struct ConfiguredImport {
+    ledger: String,
+    held: Arc<Imported>,
+}
+
+impl ConfiguredImport {
+    fn imports(&self, ledger: &permguard_core::authz::Resource) -> bool {
+        ledger.to_string() == self.ledger
+    }
+}
+
+impl permguard_host::composition::StreamConsumerReads for ConfiguredImport {
+    fn runs(
+        &self,
+        ledger: &permguard_core::authz::Resource,
+    ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
+        if self.imports(ledger) {
+            self.held.runs(ledger)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    fn locate(
+        &self,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<permguard_core::authz::Resource>, String> {
+        self.held.locate(producer, run)
+    }
+
+    fn records(
+        &self,
+        ledger: &permguard_core::authz::Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        from: u64,
+        limit: usize,
+    ) -> Result<permguard_host::composition::ConsumedPage, String> {
+        if self.imports(ledger) {
+            self.held.records(ledger, producer, run, from, limit)
+        } else {
+            Ok(permguard_host::composition::ConsumedPage {
+                records: Vec::new(),
+                low_watermark: None,
+            })
+        }
+    }
+
+    fn batch(
+        &self,
+        ledger: &permguard_core::authz::Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+        seq: u64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.held.batch(ledger, producer, run, seq)
+    }
+
+    fn import_state(
+        &self,
+        ledger: &permguard_core::authz::Resource,
+    ) -> Result<Option<permguard_host::membership::import::State>, String> {
+        if self.imports(ledger) {
+            self.held.import_state(ledger)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn retain_above(
+        &self,
+        floor: Arc<dyn permguard_host::composition::StreamFloor>,
+    ) -> Result<(), String> {
+        self.held.retain_above(floor)
+    }
+}
+
+/// BUG-0129: a ledger configured the way the template shows, `dataPlane.events.pull.ledgers[]` by
+/// zone id and ledger id, is accepted at start and is the ledger a shared decision reads the
+/// imported history of: a login another plane recorded permits this plane's read. A ledger the
+/// configuration does not name gives the same decision nothing to read, and an id written in
+/// capitals, which the import would never match, is refused at start naming the entry.
+#[tokio::test]
+async fn a_ledger_configured_as_the_template_shows_is_the_history_a_shared_decision_reads() {
+    use permguard_core::config::{
+        SETTING_EVENTS_ENABLED, SETTING_EVENTS_PULL_MODE, SETTING_EXPERIMENTAL_DOGWOOD,
+    };
+
+    // The template's `pull` block, its placeholders written as the ids `permguard ledgers get`
+    // shows, read by the function the server reads `dataPlane` with.
+    let configured = |zone: &str, ledger: &str| {
+        let file = permguard_core::ConfigFile::parse(&format!(
+            "dataPlane:\n  events:\n    pull:\n      mode: shared-eventual\n      \
+             max_staleness: \"10s\"\n      ledgers:\n        - zone: {zone}\n          \
+             ledger: {ledger}\n"
+        ))
+        .expect("the file parses");
+        let section = file.section("dataPlane").expect("the plane's section");
+        let ledgers =
+            permguard_core::planes::settings::pull_ledgers(section).expect("the ledgers read");
+        permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            Vec::<String>::new(),
+            permguard_core::config::Layers::new().with_file(vec![
+                (SETTING_EVENTS_ENABLED.to_owned(), "true".to_owned()),
+                (SETTING_EXPERIMENTAL_DOGWOOD.to_owned(), "true".to_owned()),
+                (
+                    SETTING_EVENTS_PULL_MODE.to_owned(),
+                    "shared-eventual".to_owned(),
+                ),
+            ]),
+        )
+        .expect("the configuration builds")
+        .with_pull_ledgers(ledgers)
+    };
+    let config = configured(ZONE_ID, LEDGER_ID);
+    permguard_data_plane::temporal::startup_check(&config).expect("ids start");
+    let subscription = &config.events_pull_ledgers()[0];
+    let imported_ledger = format!(
+        "plane/data/zone/{}/ledger/{}",
+        subscription.zone, subscription.ledger
+    );
+    // Capitals name no ledger the import keys: refused at start, naming the entry.
+    let shouting = configured(&ZONE_ID.to_uppercase(), LEDGER_ID);
+    let refused = permguard_data_plane::temporal::startup_check(&shouting)
+        .expect_err("an id in capitals imports nothing");
+    assert!(refused.to_string().contains("ledgers[0].zone"), "{refused}");
+
+    // Another plane, the origin, records alice's login.
+    let origin = plane("bug129-origin");
+    let origin_router = surface(&origin);
+    for (at, kind) in [(0, "request"), (5, "response")] {
+        let (status, body) = post(
+            &origin_router,
+            submission(
+                at,
+                "Drupe::Action::Login",
+                kind,
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let recorded = origin
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the origin's stream reads back");
+    assert_eq!(recorded.len(), 2, "{recorded:?}");
+    let origin_id = [0x29; 16];
+
+    // This plane reads alice's read, in a shared mode, over what its Host imported for `ledger`.
+    let read_after_login = |tag: &'static str, ledger: String| {
+        let recorded = recorded.clone();
+        async move {
+            let plane = plane(tag);
+            let held = Arc::new(Imported::default());
+            *held.extra.lock().expect("lock") = recorded
+                .iter()
+                .enumerate()
+                .map(|(at, record)| {
+                    let run = [0x30 + at as u8; 16];
+                    let event_id = record["event_id"].as_str().expect("an event id").to_owned();
+                    (
+                        origin_id,
+                        run,
+                        vec![imported_record(record, origin_id, run, &event_id, None)],
+                    )
+                })
+                .collect();
+            let reads = Arc::new(ConfiguredImport { ledger, held });
+            let imported = Arc::new(
+                permguard_data_plane::temporal::imported::Imported::new(
+                    permguard_host::composition::StreamConsumer::over(
+                        reads as Arc<dyn permguard_host::composition::StreamConsumerReads>,
+                    ),
+                    own_id(&plane),
+                    plane
+                        .events
+                        .parent()
+                        .expect("the scratch root")
+                        .join("planes"),
+                )
+                .expect("the floor is registered")
+                .with_local(Arc::clone(&plane.streams)
+                    as Arc<dyn permguard_data_plane::temporal::imported::Local>),
+            );
+            let submitter = Arc::try_unwrap(plane.submitter)
+                .unwrap_or_else(|_| panic!("the only holder"))
+                .with_shared_mode(
+                    permguard_core::config::Consistency::SharedEventual,
+                    std::time::Duration::from_secs(60),
+                )
+                .with_imported(imported);
+            let plane = Plane {
+                submitter: Arc::new(submitter),
+                ..plane
+            };
+            let (status, body) = post(
+                &surface(&plane),
+                submission(
+                    100,
+                    "Drupe::Action::Read",
+                    "request",
+                    "alice",
+                    json!({"user": "alice", "document": "doc100"}),
+                ),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{tag}: {body}");
+            body["decision"].as_bool()
+        }
+    };
+    assert_eq!(
+        read_after_login("bug129-configured", imported_ledger).await,
+        Some(true),
+        "the imported login permits the read"
+    );
+    assert_eq!(
+        read_after_login(
+            "bug129-other",
+            format!("plane/data/zone/{ZONE_ID}/ledger/01a3185c-5000-7000-8000-000000000b99"),
+        )
+        .await,
+        Some(false),
+        "a ledger the configuration does not name imports nothing to read"
+    );
+}

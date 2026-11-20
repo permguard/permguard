@@ -642,3 +642,46 @@ fn a_configuration_that_opens_the_catalog_also_opens_the_evidence_reads() {
     );
     assert!(missing.is_empty(), "no evidence.read: {missing:?}");
 }
+
+/// BUG-0173: a shipped configuration that serves Dogwood and lets anybody ask the Data Plane, the
+/// one `examples/dogwood-session-access` starts, also lets anybody submit the occurrences that
+/// example's steps submit: `event.submit` on the Data Plane.
+#[test]
+fn a_configuration_that_serves_dogwood_openly_also_takes_its_submissions() {
+    use permguard_core::authz::Selector;
+
+    let ledger =
+        Selector::parse("plane/data/zone/acme/ledger/agent-governance").expect("a selector");
+    let mut opened = 0;
+    let mut missing = Vec::new();
+    for path in shipped() {
+        let file = ConfigFile::load(&path).expect("it parses");
+        let dogwood = permguard_core::config::experimental_setting_key("dogwood");
+        if !file
+            .settings()
+            .iter()
+            .any(|(key, value)| key == &dogwood && value == "true")
+        {
+            continue;
+        }
+        let auth = file.host_auth().expect("the auth section reads");
+        let grants = |operation: &str| {
+            auth.public.iter().any(|grant| {
+                grant.operations.iter().any(|held| held == operation)
+                    && grant.selector.covers(&ledger)
+            })
+        };
+        if !grants("decision.evaluate") {
+            continue;
+        }
+        opened += 1;
+        if !grants("event.submit") {
+            missing.push(path.display().to_string());
+        }
+    }
+    assert!(
+        opened >= 1,
+        "the experimental development configuration serves Dogwood openly: {opened}"
+    );
+    assert!(missing.is_empty(), "no event.submit: {missing:?}");
+}

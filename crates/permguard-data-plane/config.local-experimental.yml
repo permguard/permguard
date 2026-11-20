@@ -102,9 +102,10 @@ dataPlane:
       group_commit_max_delay: "5ms"
 
     retention:
-      # A FLOOR, not the answer: the requirement is this plus what the loaded policies' longest
-      # `max_window` asks for, and a configuration shorter than that is refused at startup rather
-      # than quietly emptying the windows a policy looks in.
+      # A FLOOR: at start it must cover the build's default `max_window` (24h for Dogwood) plus
+      # `allowed_lateness` and `clock_skew`, or the start is refused; a ledger whose policies look
+      # further back is refused when it loads, rather than quietly emptying the windows a policy
+      # looks in.
       minimum: "48h"
       allowed_lateness: "5m"
       clock_skew: "30s"

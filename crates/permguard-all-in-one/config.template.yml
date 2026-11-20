@@ -537,6 +537,9 @@ dataPlane:
   #     ledgers:
   #       - zone: <zone id>              # the ledger's ids, as `permguard ledgers get` shows them:
   #         ledger: <ledger id>          # a name imports nothing, and is refused
+  #   # The Host imports each subscribed ledger's whole history over `events.import`, on its own
+  #   # schedule (every half of `max_staleness`): `pull.interval` is retired, and a ledger's
+  #   # `event_types` is not applied, so both are refused at start.
 
 # public:
 #   disclose_build: "true"     # "false": /version stops naming the version and commit

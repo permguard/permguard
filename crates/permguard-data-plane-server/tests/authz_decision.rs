@@ -5473,6 +5473,75 @@ mod signed_response {
         );
     }
 
+    /// BUG-0183: where discovery offers no signed response, because the listener authenticates
+    /// nobody, none is given, even for an actor that reached the plane authenticated: the nonce is
+    /// refused `401` before anything is decided, and the same request without one is answered.
+    #[test]
+    fn a_listener_that_authenticates_nobody_signs_nothing() {
+        let root = scratch("signed-clear-listener").join("mirrors");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+            &[("app", vec![&CEDAR_READ], None)],
+        );
+        let host = host_log::HostStream::new("signed-clear-listener-volume");
+        let decider = decider_signing(&root, &host, false);
+        let ask = |body: Value| {
+            let decider = Arc::clone(&decider);
+            async move {
+                let router = permguard_data_plane_server::authz::http::routes(http::Surface {
+                    authorization: permissive(),
+                    decider,
+                    disclosure: Disclosure::Full,
+                    base_url: "http://127.0.0.1:7443".to_owned(),
+                    describer: permguard_core::stages::Describer::detached("data-plane"),
+                });
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/access/v1/evaluation")
+                    .header("content-type", "application/json")
+                    .extension(authenticated())
+                    .extension(permguard_core::authz::ListenerAuthenticates(false))
+                    .body(Body::from(body.to_string()))
+                    .expect("the request builds");
+                let response = router.oneshot(request).await.expect("answers");
+                let status = response.status();
+                let bytes = response
+                    .into_body()
+                    .collect()
+                    .await
+                    .expect("the body")
+                    .to_bytes();
+                (
+                    status,
+                    serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+                )
+            }
+        };
+        let mut body = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "request_nonce": NONCE,
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let (status, refused) = runtime.block_on(ask(body.clone()));
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{refused}");
+        assert_eq!(refused["code"], "unauthenticated", "{refused}");
+        body.as_object_mut()
+            .expect("an object")
+            .remove("request_nonce");
+        let (status, answered) = runtime.block_on(ask(body));
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert!(answered.get("attestation").is_none(), "{answered}");
+    }
+
     async fn rest(
         decider: Arc<Decider>,
         actor: Arc<permguard_core::authz::Actor>,

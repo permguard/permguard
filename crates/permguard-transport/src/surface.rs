@@ -237,10 +237,13 @@ impl<'a> Listener<'a> {
                 .unwrap_or_else(|| std::sync::Arc::new(permguard_core::authz::NoRules));
             // Whether a caller can be authenticated here at all (BUG-0183): read by discovery
             // before it offers what only an authenticated caller is given.
+            // A token counts only under TLS: in the clear it is taken on loopback alone, no
+            // `permguard` command sends one there, and the listener publishes
+            // `authentication: none`, which discovery has to agree with.
             let router = router.layer(axum::Extension(
                 permguard_core::authz::ListenerAuthenticates(
                     listener_authenticates
-                        || (!clear_bearer_refused && authenticator.verifies_bearer_tokens()),
+                        || (accepting.is_some() && authenticator.verifies_bearer_tokens()),
                 ),
             ));
             let layer = crate::actor::ActorLayer::new(authenticator)

@@ -41,14 +41,14 @@ host:
   # `host grants bootstrap`.
   # What anybody may do without a credential: a development convenience, declared here and
   # never journaled. A production deployment declares none.
-  # The decision and event reads, and the event signers asked by name, are `evidence.read`'s
-  # and are not granted here: read them with a token whose scopes name `evidence.read` on the
-  # ledger, or on `plane/control/*` for every ledger.
+  # The catalog, the pushes and the evidence reads on the Control Plane; on the Data Plane the
+  # decisions and the temporal submissions `examples/dogwood-session-access` makes with
+  # `submit.sh` (BUG-0173).
   authz:
     public:
       - operations: [catalog.read, catalog.write, policy.push, evidence.read]
         selector: "plane/control/*"
-      - operations: [decision.evaluate]
+      - operations: [decision.evaluate, event.submit]
         selector: "plane/data/*"
 
 # The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over TLS, where the
@@ -196,9 +196,10 @@ dataPlane:
       group_commit_max_delay: "5ms"
 
     retention:
-      # A FLOOR, not the answer: the requirement is this plus what the loaded policies' longest
-      # `max_window` asks for, and a shorter configuration is refused at startup rather than
-      # quietly emptying the windows a policy looks in.
+      # A FLOOR: at start it must cover the build's default `max_window` (24h for Dogwood) plus
+      # `allowed_lateness` and `clock_skew`, or the start is refused; a ledger whose policies look
+      # further back is refused when it loads, rather than quietly emptying the windows a policy
+      # looks in.
       minimum: "48h"
       allowed_lateness: "5m"
       clock_skew: "30s"

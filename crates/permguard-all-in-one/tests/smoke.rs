@@ -228,3 +228,113 @@ fn a_zero_plane_deployment_serves_the_host_surface_and_nothing_else() {
         body.unwrap_or_else(|| panic!("the well-known document answers at {address:?}: {seen}"));
     assert!(body.contains("\"planes\":{}"), "{body}");
 }
+
+/// BUG-0063: an all-in-one whose optional data plane cannot bind its port starts, stays ready, and
+/// lists the data plane `failed` with every duty it had started stopped: none is `running` beside
+/// a `failed` plane, and none goes on synchronizing or shipping.
+#[test]
+fn an_optional_data_plane_whose_port_is_held_fails_with_its_duties_stopped() {
+    use std::io::{Read as _, Write as _};
+
+    let dir = std::env::temp_dir().join(format!(
+        "permguard-all-in-one-held-port-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+    // The port the data plane is given, held for the whole test.
+    let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a port to hold");
+    let port = held.local_addr().expect("its address").port();
+    std::fs::write(
+        dir.join("config.yml"),
+        format!(
+            "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n\
+             log:\n  level: info\n  format: json\n\
+             telemetry:\n  addr: 127.0.0.1:0\n\
+             runtime:\n  planes: [control, data]\n  optional_planes: [data]\n\
+             controlPlane:\n  public:\n    http: 127.0.0.1:0\n\
+             dataPlane:\n  public:\n    http: 127.0.0.1:{port}\n"
+        ),
+    )
+    .expect("the config writes");
+
+    let mut child = binary()
+        .arg(dir.join("config.yml"))
+        .env("PERMGUARD_WORKING_DIR", &dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the runtime starts");
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let mut seen = String::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut buffer = [0u8; 4096];
+    let control = |seen: &str| {
+        seen.lines()
+            .filter(|line| line.contains("plane.listening") && line.contains("control-plane"))
+            .find_map(|line| {
+                let (_, rest) = line.split_once("\"address\":\"")?;
+                let (address, _) = rest.split_once('"')?;
+                Some(address.to_owned())
+            })
+    };
+    while std::time::Instant::now() < deadline
+        && !(seen.contains("server.started") && control(&seen).is_some())
+    {
+        match stdout.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => seen.push_str(&String::from_utf8_lossy(&buffer[..read])),
+            Err(_) => break,
+        }
+    }
+    let health = control(&seen).and_then(|address| {
+        let mut stream = std::net::TcpStream::connect(&address).ok()?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .ok()?;
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n")
+            .ok()?;
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).ok()?;
+        let (_, body) = answer.split_once("\r\n\r\n")?;
+        serde_json::from_str::<serde_json::Value>(body.trim()).ok()
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+    drop(held);
+
+    assert!(
+        seen.contains("server.started"),
+        "the process starts: {seen}"
+    );
+    let health = health.unwrap_or_else(|| panic!("the control plane answers /health: {seen}"));
+    assert_eq!(
+        health["ready"], true,
+        "an optional plane does not gate readiness: {health}"
+    );
+    let state = |name: &str| {
+        health["components"]
+            .as_array()
+            .expect("components")
+            .iter()
+            .find(|component| component["component"] == name)
+            .map(|component| component["state"].as_str().unwrap_or_default().to_owned())
+    };
+    assert_eq!(state("data").as_deref(), Some("failed"), "{health}");
+    for duty in ["sync", "decisions", "events", "authz-audit"] {
+        let held = state(duty);
+        assert!(
+            held.as_deref().is_some_and(|state| state != "running"),
+            "`{duty}` is not running beside a failed data plane: {held:?} in {health}"
+        );
+    }
+    let after = seen
+        .split_once("\"plane.failed\"")
+        .map(|(_, after)| after)
+        .unwrap_or_default();
+    assert!(
+        !after.contains("sync.round") && !after.contains("decisions.shipped"),
+        "nothing synchronizes or ships after the plane failed: {after}"
+    );
+}

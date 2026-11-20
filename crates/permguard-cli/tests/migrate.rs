@@ -416,6 +416,63 @@ fn a_legacy_location_that_does_not_exist_is_refused_at_plan() {
         assert!(stderr(&refused).contains(missing), "{}", stderr(&refused));
         assert!(!plan.exists(), "{args:?}");
     }
+
+    // A relative location is checked where the migration reads it: the audit chain and the
+    // decision spool under the volume, so one that exists only where the command runs is refused
+    // naming the volume's path, and one under the volume is planned.
+    std::fs::create_dir_all(volume.dir.join("elsewhere")).expect("created");
+    let relative = |subsystem: &str| {
+        Command::new(env!("CARGO_BIN_EXE_permguard"))
+            .current_dir(&volume.dir)
+            .args(["-w", volume.dir.to_str().expect("utf-8"), "-o", "json"])
+            .args([
+                "migrate",
+                "plan",
+                "--backup",
+                "snap-1",
+                "--subsystem",
+                subsystem,
+            ])
+            .args([
+                "--legacy",
+                "elsewhere",
+                "--out",
+                plan.to_str().expect("utf-8"),
+            ])
+            .args(["--volume", volume.volume.to_str().expect("utf-8")])
+            .args(["--server-config", volume.config.to_str().expect("utf-8")])
+            .env("PERMGUARD_CONFIG", volume.dir.join("cli-config.yml"))
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("the binary runs")
+    };
+    let under_volume = volume.volume.join("elsewhere");
+    for subsystem in ["audit", "decisions"] {
+        let refused = relative(subsystem);
+        assert_eq!(
+            refused.status.code(),
+            Some(64),
+            "{subsystem}: {}",
+            stderr(&refused)
+        );
+        assert!(
+            stderr(&refused).contains(under_volume.to_str().expect("utf-8")),
+            "{subsystem}: {}",
+            stderr(&refused)
+        );
+        assert!(!plan.exists(), "{subsystem}");
+    }
+    std::fs::create_dir_all(&under_volume).expect("created");
+    for subsystem in ["audit", "decisions"] {
+        let planned = relative(subsystem);
+        assert!(
+            planned.status.success(),
+            "{subsystem}: {}",
+            stderr(&planned)
+        );
+        assert!(plan.exists(), "{subsystem}");
+        std::fs::remove_file(&plan).expect("removed");
+    }
 }
 
 /// TC-3, after the review: a volume restored for forensics is never written: no migration is

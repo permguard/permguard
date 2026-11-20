@@ -76,10 +76,12 @@ pub fn routes(surface: Surface) -> Router {
 async fn evaluation(
     State(surface): State<Surface>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    listener: Option<axum::Extension<permguard_core::authz::ListenerAuthenticates>>,
     headers: HeaderMap,
     body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
-    answer(&surface, &actor, &headers, body).await
+    let listener = listener.map(|axum::Extension(held)| held);
+    answer(&surface, &actor, listener, &headers, body).await
 }
 
 /// The boxcarred endpoint. The same handler: a request with no `evaluations[]`
@@ -87,15 +89,18 @@ async fn evaluation(
 async fn evaluations(
     State(surface): State<Surface>,
     permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
+    listener: Option<axum::Extension<permguard_core::authz::ListenerAuthenticates>>,
     headers: HeaderMap,
     body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
-    answer(&surface, &actor, &headers, body).await
+    let listener = listener.map(|axum::Extension(held)| held);
+    answer(&surface, &actor, listener, &headers, body).await
 }
 
 async fn answer(
     surface: &Surface,
     actor: &permguard_core::authz::Actor,
+    listener: Option<permguard_core::authz::ListenerAuthenticates>,
     headers: &HeaderMap,
     body: Result<axum::body::Bytes, axum::extract::rejection::BytesRejection>,
 ) -> Response {
@@ -128,7 +133,8 @@ async fn answer(
         decider: &surface.decider,
         submitter: None,
     };
-    let asked = crate::evaluation::EvaluationRequest::native(request, request_id.clone(), trace);
+    let asked = crate::evaluation::EvaluationRequest::native(request, request_id.clone(), trace)
+        .on_listener(listener);
     let response = match crate::evaluation::evaluate(&services, actor, asked).await {
         Ok(crate::evaluation::Answer::Native(answered)) => {
             (StatusCode::OK, Json(*answered)).into_response()

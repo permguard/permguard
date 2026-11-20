@@ -997,8 +997,9 @@ async fn test_a_head_of_too_many_fields_is_refused_on_both_protocols() {
 }
 
 /// BUG-0183: every request carries whether its listener can authenticate a caller at all: a
-/// loopback listener without client certificates cannot with an authenticator that verifies no
-/// token, and can with one that does.
+/// loopback listener in the clear without client certificates cannot, whatever its authenticator
+/// verifies: a token is taken there on loopback alone, no command sends one, and the listener
+/// publishes `authentication: none`. Under TLS a token authenticator can (`tls.rs`).
 #[tokio::test]
 async fn test_a_request_says_whether_its_listener_can_authenticate_a_caller() {
     use permguard_core::AccessDenial;
@@ -1032,7 +1033,7 @@ async fn test_a_request_says_whether_its_listener_can_authenticate_a_caller() {
         (None, "no"),
         (
             Some(std::sync::Arc::new(Tokens) as std::sync::Arc<dyn Authenticator>),
-            "yes",
+            "no",
         ),
     ] {
         let surface = Surface::listener("test", "127.0.0.1:0", reading())

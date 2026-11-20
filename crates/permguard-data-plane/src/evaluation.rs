@@ -60,6 +60,9 @@ pub struct EvaluationRequest {
     /// The caller's W3C trace context, when it propagated one.
     trace: Option<TraceContext>,
     question: Question,
+    /// Whether the listener it arrived on can authenticate a caller, as discovery read it
+    /// (BUG-0183): where it cannot, no signed response is offered, and none is given.
+    listener_authenticates: bool,
 }
 
 /// The store a question names: zone, ledger and profile, each as the caller wrote it, resolved
@@ -83,7 +86,20 @@ impl EvaluationRequest {
             request_id,
             trace,
             question: Question::Native(Box::new(request)),
+            listener_authenticates: true,
         }
+    }
+
+    /// The same request, asked on a listener that can or cannot authenticate a caller: the
+    /// transport's [`ListenerAuthenticates`](permguard_core::authz::ListenerAuthenticates), when it
+    /// attached one.
+    #[must_use]
+    pub fn on_listener(
+        mut self,
+        listener: Option<permguard_core::authz::ListenerAuthenticates>,
+    ) -> Self {
+        self.listener_authenticates = listener.is_none_or(|held| held.0);
+        self
     }
 
     /// A temporal occurrence. The temporal contract carries its own identifiers in the event.
@@ -93,6 +109,7 @@ impl EvaluationRequest {
             request_id: None,
             trace: None,
             question: Question::Temporal(Box::new(request)),
+            listener_authenticates: true,
         }
     }
 
@@ -160,10 +177,23 @@ pub async fn evaluate(
         request_id,
         trace,
         question,
+        listener_authenticates,
         ..
     } = request;
     match question {
         Question::Native(mut wire) => {
+            // Where discovery offers no signed response, because the listener authenticates
+            // nobody, none is given: a nonce is refused as on a plane that cannot address one
+            // (BUG-0183), never signed for a credential that arrived some other way.
+            if wire.request_nonce.is_some()
+                && !listener_authenticates
+                && services.decider.response_signing().is_some()
+            {
+                return Err(Refused::Denied(AccessDenial::unauthenticated(
+                    "a signed response is addressed to a caller this listener authenticates, and \
+                     it authenticates nobody: ask over TLS with a token, or over mutual TLS",
+                )));
+            }
             // What a signed response binds, taken before the transport's request id is filled
             // into the body (WP-6.6b); the actor the record names (IFACE-04).
             let asker =

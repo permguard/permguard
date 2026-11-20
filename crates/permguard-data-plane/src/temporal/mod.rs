@@ -339,12 +339,19 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
             ("zone", &subscription.zone),
             ("ledger", &subscription.ledger),
         ] {
-            if !permguard_core::catalog::is_guid_shaped(value) {
+            // An id as the catalog writes it: in lowercase. The import and the decisions key the
+            // ledger by its ids as written, so the same id in capitals would name nothing either.
+            if !permguard_core::catalog::is_guid_shaped(value)
+                || value
+                    .chars()
+                    .any(|character| character.is_ascii_uppercase())
+            {
                 anyhow::bail!(
                     "`dataPlane.events.pull.ledgers[{at}].{field}` is `{value}`, which is not an \
-                     id: the history a shared mode imports, and the decisions that read it, are \
-                     keyed by the ledger's ids, so a name would import nothing. Write the zone id \
-                     and the ledger id (`permguard ledgers get --zone <zone> <ledger>` shows them)"
+                     id as the catalog writes it: the history a shared mode imports, and the \
+                     decisions that read it, are keyed by the ledger's ids in lowercase, so a name \
+                     would import nothing. Write the zone id and the ledger id as `permguard \
+                     ledgers get --zone <zone> <ledger>` shows them"
                 );
             }
         }

@@ -299,20 +299,16 @@ dataPlane:
   #                                  # load, in the background; 0 is off
   #
   #   retention:
-  #     minimum: "48h"               # a FLOOR, not the answer: the requirement is this plus what
-  #                                  # the loaded policies' longest `max_window` asks for, and a
-  #                                  # configuration shorter than that is refused at startup rather
+  #     minimum: "48h"               # a FLOOR: at start it must cover the build's default
+  #                                  # `max_window` (24h for Dogwood) plus `allowed_lateness` and
+  #                                  # `clock_skew`, or the start is refused; a ledger whose
+  #                                  # policies look further back is refused when it loads, rather
   #                                  # than quietly emptying the windows a policy looks in
   #     allowed_lateness: "5m"       # how late an occurrence may arrive and still be recorded
   #     clock_skew: "30s"            # how far a caller's clock may run ahead of this one
   #
-  #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
-  #   # ships both to one control plane, and naming it twice is two settings to keep in step.
-  #   destination:
-  #     url: "grpcs://control.acme.com:6443"
-  #     transport: grpc              # absent: the URL's own scheme decides
-  #     tls:
-  #       ca_file: tls/control-plane-ca.pem
+  #   # Shipped by the Host over `events.ship` to its coordinator: there is no destination to
+  #   # name (`destination` is retired and refused at start).
   #
   #   # Whether this plane also READS history other planes recorded.
   #   #
@@ -331,6 +327,9 @@ dataPlane:
   #     ledgers:
   #       - zone: <zone id>              # the ledger's ids, as `permguard ledgers get` shows them:
   #         ledger: <ledger id>          # a name imports nothing, and is refused
+  #   # The Host imports each subscribed ledger's whole history over `events.import`, on its own
+  #   # schedule (every half of `max_staleness`): `pull.interval` is retired, and a ledger's
+  #   # `event_types` is not applied, so both are refused at start.
 
 # Contracts this build carries whose wire and replication shapes have not yet proven stable.
 # A block rather than scattered flags, so what is provisional is visible in one place.
