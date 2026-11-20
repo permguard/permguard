@@ -63,23 +63,24 @@ pub fn ref_mutations_for_tests(
 ) -> permguard_host::composition::MutationHandle {
     let handle = permguard_control_plane::store::testing::offline_ref_mutations(directory)
         .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
-    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(handle.engine()));
+    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(Arc::downgrade(&handle.engine())));
     handle
 }
 
 thread_local! {
     /// The transaction [`ref_mutations_for_tests`] opened last on this thread: what a test raises
-    /// a backup barrier on (BUG-0208).
+    /// a backup barrier on (BUG-0208). Named, never held: an engine dropped as its thread ends
+    /// would join its audit writer from a thread-local destructor, which never returns on Windows.
     static LAST_MUTATIONS: std::cell::RefCell<
-        Option<Arc<permguard_host::operations::mutation::Mutations>>,
+        Option<std::sync::Weak<permguard_host::operations::mutation::Mutations>>,
     > = const { std::cell::RefCell::new(None) };
 }
 
 /// The transaction [`ref_mutations_for_tests`] opened last on this thread.
 pub fn last_ref_mutations() -> Arc<permguard_host::operations::mutation::Mutations> {
     LAST_MUTATIONS
-        .with(|last| last.borrow().clone())
-        .unwrap_or_else(|| unreachable!("no test mutation transaction was opened on this thread"))
+        .with(|last| last.borrow().as_ref().and_then(std::sync::Weak::upgrade))
+        .unwrap_or_else(|| unreachable!("no test mutation transaction is open on this thread"))
 }
 
 /// A ring a test holds itself.
