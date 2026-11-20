@@ -416,7 +416,7 @@ impl Member<'_> {
                 run = %hex(&run),
                 from,
                 reason,
-                "a gap in the imported history: it stays until a snapshot or a change of the required origins"
+                "a gap in the imported history: it stays open, and the run is not imported past it"
             );
         }
     }

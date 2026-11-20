@@ -4518,6 +4518,20 @@ async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vo
         "{refused}"
     );
 
+    // Behind because of a gap the Host keeps: incomplete, not stale, since waiting does not bring
+    // it (BUG-0128).
+    *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 1));
+    *consumer.held.lock().expect("lock") = 0;
+    let (status, refused) = post(&router, submit()).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+    assert_eq!(refused["code"], "history_incomplete", "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|said| !said.contains("snapshot")),
+        "no resolution that does not exist: {refused}"
+    );
+
     // A gap the Host keeps: incomplete.
     *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 1));
     *consumer.held.lock().expect("lock") = 3;

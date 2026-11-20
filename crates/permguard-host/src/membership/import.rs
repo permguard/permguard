@@ -467,7 +467,7 @@ pub fn verify_checkpoint(
 }
 
 /// A durable hole in a ledger's imported history (`4-data-plane/5-data-plane-temporal.md`): never
-/// removed by the importer, resolved only by a snapshot or a change of the required origins.
+/// removed by the importer; no means resolves one yet (BUG-0128).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gap {
     pub origin: [u8; 16],

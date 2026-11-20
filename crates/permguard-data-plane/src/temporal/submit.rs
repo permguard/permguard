@@ -2226,7 +2226,21 @@ impl Submitter {
                 }
                 Some(_) => {}
             }
-            if let Some((_, _, have, wanted)) = shared.behind.first() {
+            // A run behind because of a gap the Host keeps is incomplete, not stale: waiting does
+            // not bring it, and the gap's refusal below says so (BUG-0128).
+            let gapped = |origin: &[u8; 16], run: &[u8; 16]| {
+                shared.state.as_ref().is_some_and(|state| {
+                    state
+                        .gaps
+                        .iter()
+                        .any(|gap| gap.origin == *origin && gap.run == *run)
+                })
+            };
+            if let Some((_, _, have, wanted)) = shared
+                .behind
+                .iter()
+                .find(|(origin, run, ..)| !gapped(origin, run))
+            {
                 return refuse(
                     permguard_core::codes::pdp_temporal::HISTORY_STALE,
                     format!(
@@ -2255,8 +2269,8 @@ impl Submitter {
                 format!(
                     "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s), and \
                      `shared-bounded` decides only on a history it holds whole. The event is \
-                     recorded; the decision is withheld until a snapshot or a change of the \
-                     required origins resolves them"
+                     recorded; the decision is withheld while a gap is open: the run is not \
+                     imported past it, and waiting does not close it"
                 ),
             );
         }

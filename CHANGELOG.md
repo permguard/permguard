@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A shared temporal decision refused because of an import gap says `history_incomplete`, and no longer promises a resolution that does not exist.**
+  A run held through less than the checkpoint because of a gap was refused `history_stale`, which suggests waiting; it is now `history_incomplete`.
+  The refusal and the `host.membership.import_gap` warning no longer say a snapshot or a change of the required origins resolves the gap: neither does, and a gap stays open (BUG-0128, in part).
 - **A shared temporal decision reads only the origins the coordinator's verified checkpoint names.**
   After a coordinator suspended a member, or found it forking, the other members verified a checkpoint that no longer named it and still decided on the history they had imported from it.
   A shared decision's frontier and window now leave out every origin the last verified checkpoint does not name, and the Data Plane logs `temporal.origin_left_out` once per origin (BUG-0137).
