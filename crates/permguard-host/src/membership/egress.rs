@@ -55,7 +55,7 @@ use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
 use crate::session::Refusal;
 use crate::storage::format;
-use crate::storage::write::{read_view, replace_view};
+use crate::storage::write::{Published, publish_immutable, read_view, replace_view};
 use crate::time::TimeGuard;
 
 /// The contract version this module speaks.
@@ -443,6 +443,18 @@ pub struct AuditFork {
     pub detected_at: u64,
 }
 
+/// A kept checkpoint as its file holds it: the COSE envelope itself since BUG-0155, which `audit
+/// verify --checkpoint` takes as is, or the storage view an earlier build wrote.
+fn read_kept(dir: &crate::storage::Dir, name: &str) -> Result<Option<Vec<u8>>, MembershipError> {
+    let Some(bytes) = dir.read(name)? else {
+        return Ok(None);
+    };
+    if bytes.starts_with(b"PGSVIEW\0") {
+        return Ok(read_view(dir, name, format::VIEW)?);
+    }
+    Ok(Some(bytes))
+}
+
 /// The last checkpoint a coordinator kept of a trail: how many it keeps, and its digest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Kept {
@@ -510,8 +522,7 @@ impl Store {
                 if *checkpoint.previous_checkpoint.raw() != held {
                     // An older one shipped again is kept already: acknowledged, nothing written.
                     for at in 1..=count {
-                        if read_view(&dir, &format!("{at:020}.cose"), format::VIEW)?.as_deref()
-                            == Some(envelope)
+                        if read_kept(&dir, &format!("{at:020}.cose"))?.as_deref() == Some(envelope)
                         {
                             return Ok(());
                         }
@@ -529,7 +540,7 @@ impl Store {
         if let Some((_, cited)) = anchor
             && cited != digest
             && !(1..count).any(|at| {
-                read_view(&dir, &format!("{at:020}.cose"), format::VIEW)
+                read_kept(&dir, &format!("{at:020}.cose"))
                     .ok()
                     .flatten()
                     .is_some_and(|held| envelope_digest(&held) == cited)
@@ -542,7 +553,11 @@ impl Store {
         if read_view(&dir, META, format::VIEW)?.is_none() {
             replace_view(&dir, META, format::VIEW, trail.as_bytes())?;
         }
-        replace_view(&dir, &format!("{count:020}.cose"), format::VIEW, envelope)?;
+        // The envelope itself, write-once: what `audit verify --checkpoint` reads (BUG-0155).
+        let same = |held: &[u8]| held == envelope;
+        match publish_immutable(&dir, &format!("{count:020}.cose"), envelope, &same, &same)? {
+            Published::Written | Published::AlreadyThere => {}
+        }
         if let Some((anchor, _)) = anchor {
             replace_view(&dir, ANCHOR, format::VIEW, anchor)?;
         }
@@ -672,7 +687,7 @@ impl Store {
         };
         (1..=count)
             .map(|at| {
-                read_view(&dir, &format!("{at:020}.cose"), format::VIEW)?.ok_or_else(|| {
+                read_kept(&dir, &format!("{at:020}.cose"))?.ok_or_else(|| {
                     MembershipError::Storage(format!("checkpoint {at} of `{trail}` is missing"))
                 })
             })
@@ -1043,7 +1058,18 @@ mod tests {
         ));
         assert_eq!(
             store.kept_checkpoints(&member, trail).expect("kept"),
-            vec![first, second]
+            vec![first.clone(), second]
+        );
+        // BUG-0155: the file holds the envelope itself, what `audit verify --checkpoint` reads.
+        let kept_dir = root
+            .join("host")
+            .join("members")
+            .join(AUDIT)
+            .join(hex(&member))
+            .join(hex(&Sha256::digest(trail.as_bytes())));
+        assert_eq!(
+            std::fs::read(kept_dir.join(format!("{:020}.cose", 1))).expect("the file"),
+            first
         );
         // BUG-0154: the fork is kept for the member view, by trail, with both digests.
         assert_eq!(store.last_kept(&member, trail).expect("read"), Some(two));

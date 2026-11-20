@@ -468,7 +468,8 @@ async fn audit_checkpoints(
     Path(class): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
-    let ([resource, period], malformed) = read_query(query.as_deref(), ["resource", "period"]);
+    let ([resource, period, membership], malformed) =
+        read_query(query.as_deref(), ["resource", "period", "membership"]);
     if let Some(malformed) = malformed {
         return refuse_query(
             &served,
@@ -481,6 +482,7 @@ async fn audit_checkpoints(
     let query = AuditCheckpointQuery {
         resource: resource.unwrap_or_default(),
         period,
+        membership,
     };
     answer(
         &served,

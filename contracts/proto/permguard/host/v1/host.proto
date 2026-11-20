@@ -975,6 +975,9 @@ message ListAuditCheckpointsRequest {
   string resource = 2;
   // One UTC day, `YYYY-MM-DD`; empty is every day.
   string period = 3;
+  // A membership this Host coordinates: the checkpoints its member shipped of the trail (BUG-0155);
+  // empty is this Host's own.
+  string membership = 4;
 }
 message ListAuditCheckpointsResponse {
   string class = 1;

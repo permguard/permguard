@@ -2132,7 +2132,7 @@ pub enum AuditAction {
     },
     /// Print a trail's signed checkpoints and the keys that cover them.
     #[command(
-        after_help = "Examples:\n  permguard host audit checkpoints --class security --resource host\n  permguard host audit checkpoints --class security --resource host --period 2026-10-01 -o json"
+        after_help = "Examples:\n  permguard host audit checkpoints --class security --resource host\n  permguard host audit checkpoints --class security --resource host --period 2026-10-01 -o json\n  permguard host audit checkpoints --class security --resource host --membership <id> --out kept"
     )]
     Checkpoints {
         /// The trail's class.
@@ -2144,6 +2144,12 @@ pub enum AuditAction {
         /// One UTC day, `YYYY-MM-DD`; every day when left out.
         #[arg(long)]
         period: Option<String>,
+        /// A membership this Host coordinates: the checkpoints its member shipped of the trail.
+        #[arg(long)]
+        membership: Option<String>,
+        /// A new directory each checkpoint is written to, as `audit verify --checkpoint` reads it.
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
     },
     /// Checkpoint a trail now, up to its last record, and print the checkpoint.
     #[command(

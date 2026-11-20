@@ -120,6 +120,7 @@ impl EvidenceService for Served {
                 &AuditCheckpointQuery {
                     resource: request.resource,
                     period: given(request.period),
+                    membership: given(request.membership),
                 },
             )
             .map_err(|refusal| self.refuse(refusal))?;

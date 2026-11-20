@@ -4015,6 +4015,16 @@
             },
             "description": "One UTC day, `YYYY-MM-DD`; every day when absent.",
             "x-grpc-field": "period"
+          },
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A membership this Host coordinates: the checkpoints its member shipped of the trail, as the coordinator keeps them, each the envelope `audit verify --checkpoint` reads (BUG-0155); this Host's own when absent.",
+            "x-grpc-field": "membership"
           }
         ],
         "responses": {

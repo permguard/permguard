@@ -268,10 +268,22 @@ pub(super) fn audit(
             class,
             resource,
             period,
+            membership,
+            out,
         } => {
             let held = host
-                .audit_checkpoints(&class, &AuditCheckpointQuery { resource, period })
+                .audit_checkpoints(
+                    &class,
+                    &AuditCheckpointQuery {
+                        resource,
+                        period,
+                        membership,
+                    },
+                )
                 .map_err(failed)?;
+            if let Some(out) = out {
+                write_checkpoints(globals, &out, &held)?;
+            }
             render_json(&held, globals, trace)?;
         }
         AuditAction::Checkpoint {
@@ -722,6 +734,35 @@ pub fn evidence_command(
         trace,
     )?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Writes each checkpoint of `held` to a new directory `out`, as its envelope, under its name:
+/// what `audit verify --checkpoint` reads as is (BUG-0155).
+fn write_checkpoints(
+    globals: &Globals,
+    out: &std::path::Path,
+    held: &permguard_host::api::audit::AuditCheckpoints,
+) -> Result<(), Failure> {
+    let out = globals.workdir.join(out);
+    std::fs::create_dir(&out).map_err(|error| {
+        Failure::usage(format!(
+            "{} must be a new directory: {error}",
+            out.display()
+        ))
+    })?;
+    for checkpoint in &held.checkpoints {
+        let envelope = base64::Engine::decode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            &checkpoint.envelope,
+        )
+        .map_err(|_| Failure::usage(format!("{} is not base64url", checkpoint.name)))?;
+        let name = std::path::Path::new(&checkpoint.name)
+            .file_name()
+            .ok_or_else(|| Failure::usage(format!("`{}` is not a file name", checkpoint.name)))?;
+        // Owner-only and new, as every file the command line writes (`Reserved`).
+        Reserved::claim(&out.join(name))?.fill(&envelope)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

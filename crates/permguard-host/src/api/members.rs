@@ -238,7 +238,7 @@ fn time(text: &str, what: &str) -> Result<u64, Refusal> {
 }
 
 /// Reads a membership or invitation id in its UUID text.
-fn id_of(text: &str) -> Result<[u8; 16], Refusal> {
+pub(super) fn id_of(text: &str) -> Result<[u8; 16], Refusal> {
     if !text.is_ascii() {
         return Err(invalid("an id is the UUID's text"));
     }

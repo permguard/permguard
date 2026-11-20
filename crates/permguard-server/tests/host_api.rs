@@ -865,6 +865,7 @@ impl Transport {
                             class: class.to_owned(),
                             resource: "host".to_owned(),
                             period: String::new(),
+                            membership: String::new(),
                         },
                     ))
                     .await,

@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A coordinator's copies of its members' audit checkpoints can be read back and verified.**
+  WP-5.9 kept each member's sealed checkpoints on the coordinator, and nothing read them back; the kept file was a storage view named `.cose`, which `audit verify --checkpoint` refused until its header was stripped by hand.
+  `GET /host/v1/audit/{class}/checkpoints` takes `membership`, and gRPC `ListAuditCheckpoints` its `membership` field, to answer the checkpoints the coordinator keeps of that member's trail, under `audit.read` on the trail's resource; `permguard host audit checkpoints --membership <id> --out <dir>` writes each as the envelope `audit verify --checkpoint` reads, and a coordinator now keeps the envelope itself (BUG-0155).
 - **An idle member resends to a coordinator restored from a snapshot.**
   A member learned of a restored coordinator only on a ship session, and opened one only for a stream with unacknowledged records, so a stream the old incarnation had acknowledged in full was never resent.
   A ship task with nothing due now opens one session per pass, and every stream acknowledged under another coordinator incarnation is probed with its last retained batch and resent, logged as `host.stream.coordinator_restored` (BUG-0186).

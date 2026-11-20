@@ -178,6 +178,7 @@ impl Operations for RestHost {
             query(&[
                 ("resource", Some(asked.resource.clone())),
                 ("period", asked.period.clone()),
+                ("membership", asked.membership.clone()),
             ])
         ))
     }
@@ -553,6 +554,7 @@ impl Operations for GrpcHost {
                         class: class.to_owned(),
                         resource: asked.resource.clone(),
                         period: blank(asked.period.as_ref()),
+                        membership: blank(asked.membership.as_ref()),
                     }),
             )
             .map_err(crate::grpc::failure_of)?;

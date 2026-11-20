@@ -80,6 +80,10 @@ pub struct AuditCheckpointQuery {
     /// One UTC day, `YYYY-MM-DD`; every day when absent.
     #[serde(default)]
     pub period: Option<String>,
+    /// A membership this Host coordinates: the checkpoints its member shipped of the trail, as
+    /// the coordinator keeps them (BUG-0155), instead of this Host's own.
+    #[serde(default)]
+    pub membership: Option<String>,
 }
 
 /// `POST /host/v1/audit/{class}/checkpoints`'s body.
@@ -396,6 +400,9 @@ impl HostApi {
     ) -> Result<AuditCheckpoints, Refusal> {
         let (engine, class, resource, _admitted) =
             self.audit_trail(actor, class, &query.resource, None)?;
+        if let Some(membership) = &query.membership {
+            return self.kept_checkpoints(membership, class, resource);
+        }
         let list = engine
             .checkpoints(class, &resource, query.period.as_deref())
             .map_err(refusal)?;
@@ -406,6 +413,52 @@ impl HostApi {
             omitted: list.omitted as u64,
             keys: self.operations_keys(),
             verification_keys: self.verification_keys(),
+        })
+    }
+
+    /// The checkpoints a member of `membership` shipped of its trail of `class` and `resource`, as
+    /// this coordinator keeps them (BUG-0155), each the envelope `audit verify --checkpoint`
+    /// reads; `audit.read` on the resource admitted first. The keys are the member's, which its
+    /// own volume holds.
+    fn kept_checkpoints(
+        &self,
+        membership: &str,
+        class: Class,
+        resource: String,
+    ) -> Result<AuditCheckpoints, Refusal> {
+        let id = super::members::id_of(membership)?;
+        let memberships = self.memberships()?;
+        let coordinated = memberships
+            .store
+            .membership(&id)
+            .is_some_and(|held| held.role == crate::membership::record::Role::Coordinator);
+        if !coordinated {
+            return Err(Refusal::new(
+                ErrorClass::NotFound,
+                codes::common::NOT_FOUND,
+                "this Host coordinates no such membership",
+            ));
+        }
+        let trail = format!("{}:{resource}", class.as_str());
+        let kept = memberships
+            .store
+            .kept_checkpoints(&id, &trail)
+            .map_err(|error| unavailable(error.to_string()))?;
+        Ok(AuditCheckpoints {
+            class: class.as_str().to_owned(),
+            resource,
+            checkpoints: kept
+                .into_iter()
+                .enumerate()
+                .map(|(at, envelope)| AuditCheckpointView {
+                    name: format!("{:020}.cose", at + 1),
+                    envelope: URL_SAFE_NO_PAD.encode(envelope),
+                    witness: None,
+                })
+                .collect(),
+            omitted: 0,
+            keys: None,
+            verification_keys: None,
         })
     }
 
@@ -637,10 +690,37 @@ mod tests {
                 &AuditCheckpointQuery {
                     resource: "plane/control".to_owned(),
                     period: None,
+                    membership: None,
                 },
             )
             .expect("served");
         assert!(held.checkpoints.is_empty(), "nothing sealed yet");
+        // BUG-0155: a membership this Host does not coordinate is not found, never this Host's
+        // own trail answered in its place; an id that is not one is refused.
+        for (membership, code) in [
+            (
+                "0190a5c3-0000-7000-8000-000000000044",
+                codes::common::NOT_FOUND,
+            ),
+            ("not-an-id", codes::common::INVALID_ARGUMENT),
+        ] {
+            let refused = api
+                .audit_checkpoints(
+                    &auditor,
+                    "security",
+                    &AuditCheckpointQuery {
+                        resource: "plane/control".to_owned(),
+                        period: None,
+                        membership: Some(membership.to_owned()),
+                    },
+                )
+                .expect_err(membership);
+            assert_eq!(
+                refused.error().map(|error| error.code()),
+                Some(code),
+                "{membership}"
+            );
+        }
         assert_eq!(
             held.keys.map(|keys| keys.ring),
             Some(HOST_OPERATIONS.to_owned())
