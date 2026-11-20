@@ -399,6 +399,36 @@ fn a_run_shipped_under_a_membership_carries_its_fence() {
     assert_eq!(successor.fence, Some(next));
 }
 
+/// BUG-0191: a run sealed through its end, then an ended run with no record, then a run with
+/// records: the seal moves past the empty run, in the same handle and without a restart.
+#[test]
+fn the_seal_passes_over_an_ended_run_with_no_record() {
+    let host = Host::new("seal-empty-run");
+    let producer = host.sealer();
+    let first = producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    producer
+        .rollover(&ledger(1), None)
+        .expect("an empty successor");
+    let last = producer.rollover(&ledger(1), None).expect("and another");
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let (run, from, through, _) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(
+        (run, from, through),
+        (first.run_id, 1, 1),
+        "the first run first"
+    );
+    let (run, from, through, _) = sealed(
+        producer
+            .seal(&ledger(1), 10)
+            .expect("the empty run is passed over"),
+    );
+    assert_eq!((run, from, through), (last.run_id, 1, 1));
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("nothing left"),
+        Sealing::Nothing
+    ));
+}
+
 /// WP-5.1, owner decisions: a rollover ends the run with a TERMINAL its successor names, the
 /// sequence restarting at 1; a successor after a fork names the approved plan.
 #[test]

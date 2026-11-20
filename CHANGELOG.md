@@ -235,6 +235,8 @@ is cut.
 
 ### Fixed
 
+- **A stream's seal passes over an ended run with no record.**
+  Once a run was sealed through its end, the seal moved to the next run even when that run had ended empty, as a `dr` restore followed by `host members fence` leaves one, and stopped there: nothing answered afterwards was sealed or shipped until a restart. The seal now moves to the first run with a record to seal (BUG-0191).
 - **A stream the coordinator refuses is logged when its subscription stops.**
   A producer whose subscription the coordinator stopped, on a fork, a gone or closed stream, or an acknowledgement ahead or behind, went on journaling with nothing said beyond the Host's degraded `evidence_shipping`; it now logs `host.stream.subscription_stopped` at ERROR with the code and the stream (BUG-0027).
 - **A shared temporal decision refused because of an import gap says `history_incomplete`, and no longer promises a resolution that does not exist.**

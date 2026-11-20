@@ -459,6 +459,14 @@ impl Physical {
         let Some(mut next) = self.next(&mut writer, signer, descriptor)? else {
             return Ok(Sealing::Nothing);
         };
+        // A cursor left on an ended run with nothing to seal, an empty run between two (BUG-0191),
+        // is surveyed again: the survey starts at the first run with a record to seal.
+        if next.sealed[next.at] >= next.runs[next.at].last_seq && next.at + 1 < next.runs.len() {
+            let Some(current) = writer.run.clone() else {
+                return Ok(Sealing::Nothing);
+            };
+            next = self.survey(&mut writer, signer, descriptor, &current)?;
+        }
         let run = &next.runs[next.at];
         let sealed = next.sealed[next.at];
         if sealed >= run.last_seq {
