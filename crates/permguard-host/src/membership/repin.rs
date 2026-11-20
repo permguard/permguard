@@ -251,23 +251,45 @@ impl Store {
             }
             crate::keys::ring::Continuity::Accept | crate::keys::ring::Continuity::Unbound => {}
         }
-        // One grace at a time: the replaced set's spans are acknowledged before another re-pin,
-        // unless the new set only removes keys, an archive, which no cutover needs (owner
-        // decision, after the review): then the current pin alone is replaced.
+        // During a grace a new set that only removes keys, an archive, needs no cutover (owner
+        // decision, after the review): the current pin alone is replaced.
         if retiring(manifest, Role::Member, &statement.ring) {
             let held = self
                 .member_statement(id, pin)
                 .map(|held| kids(&held.keys))
                 .unwrap_or_default();
             let presented = kids(&statement.keys);
-            if presented.is_empty()
-                || presented.len() >= held.len()
-                || !presented.iter().all(|kid| held.contains(kid))
-            {
-                return Err(MembershipError::Transition {
-                    from: Status::Active,
-                    to: Status::Active,
-                });
+            let archive = !presented.is_empty()
+                && presented.len() < held.len()
+                && presented.iter().all(|kid| held.contains(kid));
+            if !archive {
+                // A set that adds a key during the grace (BUG-0104, owner decision of
+                // 2026-11-20): a ring rotating faster than its old spans are acknowledged must
+                // not stop shipping. It is taken when the current set still holds every key of
+                // the retiring one: the current set then retires in its place, so every span
+                // sealed before the new cutover, under either set, still verifies, and the grace
+                // runs on under the new cutover. Otherwise the grace ends first, as before.
+                let retiring_keys = manifest
+                    .ring_pins
+                    .iter()
+                    .find(|other| {
+                        other.owner == Role::Member
+                            && other.ring == statement.ring
+                            && other.retiring
+                    })
+                    .and_then(|other| self.member_statement(id, other))
+                    .map(|other| kids(&other.keys))
+                    .unwrap_or_default();
+                if held.is_empty()
+                    || retiring_keys.is_empty()
+                    || !retiring_keys.iter().all(|kid| held.contains(kid))
+                {
+                    return Err(MembershipError::Transition {
+                        from: Status::Active,
+                        to: Status::Active,
+                    });
+                }
+                return self.successor_pin(coordinator, id, pin, statement, &binding, now);
             }
             let mut next = self.check_successor(coordinator, id, Status::Active, None, now)?;
             for held in &mut next.ring_pins {
@@ -279,6 +301,20 @@ impl Store {
             }
             return Ok(Repin::Successor(Box::new(next)));
         }
+        self.successor_pin(coordinator, id, pin, statement, &binding, now)
+    }
+
+    /// The successor manifest that pins `statement` for its ring and keeps `pin`, the set it
+    /// replaces, as the only retiring one.
+    fn successor_pin(
+        &self,
+        coordinator: &Coordinator<'_>,
+        id: &[u8; 16],
+        pin: &RingPin,
+        statement: &RingStatement,
+        binding: &crate::keys::record::Binding,
+        now: u64,
+    ) -> Result<Repin, MembershipError> {
         let replaced = pin.clone();
         let mut next = self.check_successor(coordinator, id, Status::Active, None, now)?;
         next.ring_pins

@@ -165,7 +165,8 @@ async fn a_repin_revises_the_manifest_and_the_session_goes_on() {
 }
 
 /// WP-4.5: the exact current set is an idempotent retry; a lower epoch is a rollback and the same
-/// epoch with another set an equivocation, both refused and recorded; one grace at a time.
+/// epoch with another set an equivocation, both refused and recorded; a second rotation during a
+/// grace is taken while the current set holds the retiring one (BUG-0104).
 #[tokio::test]
 async fn a_repin_is_retried_exactly_and_refuses_rollback_and_equivocation() {
     let (c, m) = (Side::new("retry-c", true), Side::new("retry-m", false));
@@ -273,8 +274,45 @@ async fn a_repin_is_retried_exactly_and_refuses_rollback_and_equivocation() {
         member_pins(&manifest_of(&c, &id)),
         vec![(archived, false), (1, true)]
     );
-    // A move that adds a key waits for the first grace to end.
+    // A move that adds a key during the grace (BUG-0104): the current set holds every key of
+    // the retiring one, so it is taken, and the current set retires in its place.
     ring.rotate(&Applying::for_tests(95), ring.epoch())
+        .expect("rotated");
+    ring.maintain_now().expect("bound");
+    let rotated = ring.epoch();
+    service
+        .repin(
+            &peer,
+            &id,
+            &m.host.statement(DATA_ATTEST),
+            c.context.time.now_secs() + 1,
+        )
+        .expect("a second rotation during the grace");
+    assert_eq!(
+        member_pins(&manifest_of(&c, &id)),
+        vec![(rotated, false), (archived, true)]
+    );
+    // The active key revoked out of the set, an archive: the current set no longer holds every
+    // key of the retiring one, so a move that adds a key waits for the grace to end.
+    let active = ring.active_key_id().expect("active");
+    ring.revoke(
+        &Applying::for_tests(96),
+        active.as_str(),
+        "drill",
+        None,
+        ring.epoch(),
+    )
+    .expect("revoked");
+    ring.maintain_now().expect("bound");
+    service
+        .repin(
+            &peer,
+            &id,
+            &m.host.statement(DATA_ATTEST),
+            c.context.time.now_secs() + 1,
+        )
+        .expect("an archive during the grace");
+    ring.rotate(&Applying::for_tests(97), ring.epoch())
         .expect("rotated");
     ring.maintain_now().expect("bound");
     let pending = service
@@ -284,7 +322,7 @@ async fn a_repin_is_retried_exactly_and_refuses_rollback_and_equivocation() {
             &m.host.statement(DATA_ATTEST),
             c.context.time.now_secs() + 1,
         )
-        .expect_err("one grace at a time");
+        .expect_err("a retiring key the current set dropped");
     assert!(
         matches!(pending, MembershipError::Transition { .. }),
         "{pending}"
@@ -840,6 +878,101 @@ async fn a_member_sends_its_streams_cutover_from_the_engine() {
         vec![(epoch, false), (replaced, true)],
         "the replaced set verifies below each stream's cutover until acknowledged"
     );
+}
+
+/// BUG-0104: a member signing streams rotates again while its old spans are not yet
+/// acknowledged: each re-pin is taken, the replaced set retires in place of the older one, and a
+/// span sealed under any earlier key still has a pin that verifies it; shipping never waits for
+/// a grace to end.
+#[tokio::test]
+async fn a_member_signing_streams_rotates_again_during_the_grace() {
+    let wall = Arc::new(crate::time::ManualClock::at(
+        i64::try_from(permguard_core::time::unix_now()).expect("in range"),
+    ));
+    let mono = Arc::new(crate::time::ManualMonotonic::default());
+    let time = Arc::new(crate::time::TimeGuard::new(
+        wall.clone(),
+        mono.clone(),
+        Duration::from_secs(30),
+    ));
+    let c = Side::timed(
+        Host::timed("again-c", Arc::clone(&time)),
+        true,
+        Arc::clone(&time),
+    );
+    let m = Side::timed(Host::timed("again-m", Arc::clone(&time)), false, time);
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Engine::default();
+    let acting = crate::membership::member::Member {
+        streams: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let ring = m
+        .host
+        .rings
+        .iter()
+        .find(|ring| ring.id() == DATA_ATTEST)
+        .expect("the ring")
+        .clone();
+    let stream = "data/decisions/aa/bb";
+    let mut replaced = member_pins(&manifest_of(&c, &id))[0].0;
+    let mut sealed = vec![ring.active_key_id().expect("a key").as_str().to_owned()];
+    for round in 0..3u64 {
+        let epoch = rotate(
+            &m.host,
+            DATA_ATTEST,
+            110 + u8::try_from(round).expect("small"),
+        );
+        assert_eq!(acting.repin_due(who()).await, 1, "round {round}: re-pinned");
+        assert_eq!(
+            member_pins(&manifest_of(&c, &id)),
+            vec![(epoch, false), (replaced, true)],
+            "round {round}: the replaced set retires in place of the older one"
+        );
+        wall.jump(601);
+        mono.advance(Duration::from_secs(601));
+        ring.maintain_now().expect("activated");
+        sealed.push(ring.active_key_id().expect("a key").as_str().to_owned());
+        let from = 10 * (round + 1);
+        *engine.due.lock().expect("lock") = Some(vec![(stream.to_owned(), from)]);
+        assert_eq!(
+            acting.cutover_due(who()).await,
+            1,
+            "round {round}: cut over"
+        );
+        // Nothing acknowledges the old spans: every key that sealed below the cutover is in
+        // the retiring set, every one at or above it in the current set.
+        let below = c.host.store.verifying_pins(&id, DATA_ATTEST, stream, 0);
+        let at = c.host.store.verifying_pins(&id, DATA_ATTEST, stream, from);
+        assert_eq!(below.len(), 1, "round {round}");
+        assert!(below[0].retiring && !at[0].retiring, "round {round}");
+        let below_keys = kids(
+            &c.host
+                .store
+                .member_statement(&id, &below[0])
+                .expect("kept")
+                .keys,
+        );
+        for kid in &sealed[..sealed.len() - 1] {
+            assert!(
+                below_keys.contains(kid),
+                "round {round}: {kid} verifies below"
+            );
+        }
+        let at_keys = kids(
+            &c.host
+                .store
+                .member_statement(&id, &at[0])
+                .expect("kept")
+                .keys,
+        );
+        assert!(
+            at_keys.contains(sealed.last().expect("one")),
+            "round {round}"
+        );
+        replaced = epoch;
+    }
 }
 
 /// WP-4.5 (after the review): a complete cutover whose retirement did not run, a crash between
