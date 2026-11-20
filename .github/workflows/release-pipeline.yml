@@ -28,8 +28,8 @@ jobs:
   # this runs, so the worst outcome here is a release that does not happen — which is recoverable,
   # and a released binary that was never tested is not.
   # Three jobs rather than one, because none of them needs another's output and a release waits for
-  # the slowest, not for their sum. Each restores the Rust cache the `check` and `benchmark` jobs of
-  # `ci.yml` save on `main` under the same `shared-key`; a tag can read `main`'s caches and nobody
+  # the slowest, not for their sum. Each restores the Rust cache the `check` job of `ci.yml` and the
+  # `benchmark` job of `integration.yml` save on `main` under the same `shared-key`; a tag can read `main`'s caches and nobody
   # can read a tag's, so nothing is saved here.
   lint:
     name: Lint and structure

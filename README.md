@@ -4,6 +4,7 @@
 # Permguard
 
 [![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
+[![integration](https://github.com/permguard/permguard/actions/workflows/integration.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/integration.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
 <p align="center">

@@ -388,6 +388,11 @@ fn a_legacy_location_the_migration_refuses_is_refused_at_plan() {
     }
 }
 
+/// Whether a refusal names `path`: it is JSON, where a Windows path's separators are escaped.
+fn names(refused: &std::process::Output, path: &str) -> bool {
+    stderr(refused).replace("\\\\", "\\").contains(path)
+}
+
 /// BUG-0189: a `--legacy` location that is not a directory is refused at plan, exit 64, naming
 /// it, for `keys`, `audit` and `decisions`, and no plan is written: a mistyped location would
 /// otherwise run as "nothing to migrate" and spend the plan.
@@ -413,9 +418,7 @@ fn a_legacy_location_that_does_not_exist_is_refused_at_plan() {
             "{args:?}: {}",
             stderr(&refused)
         );
-        // The refusal is JSON, where a Windows path's separators are escaped.
-        let named = stderr(&refused).replace("\\\\", "\\");
-        assert!(named.contains(missing), "{}", stderr(&refused));
+        assert!(names(&refused, missing), "{}", stderr(&refused));
         assert!(!plan.exists(), "{args:?}");
     }
 
@@ -458,7 +461,7 @@ fn a_legacy_location_that_does_not_exist_is_refused_at_plan() {
             stderr(&refused)
         );
         assert!(
-            stderr(&refused).contains(under_volume.to_str().expect("utf-8")),
+            names(&refused, under_volume.to_str().expect("utf-8")),
             "{subsystem}: {}",
             stderr(&refused)
         );

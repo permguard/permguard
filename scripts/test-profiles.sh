@@ -23,6 +23,9 @@
 #
 # A profile fails when it does not compile, when a test of it fails, or when it runs no test.
 
+# With no argument every profile runs, one after another. Named groups run only theirs, which is
+# how the pipeline runs them side by side: `languages`, `planes`, `runtime`, `fixtures`.
+
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -45,6 +48,26 @@ run() {
     fi
 }
 
+groups="languages planes runtime fixtures"
+for group in "$@"; do
+    case " ${groups} " in
+        *" ${group} "*) ;;
+        *)
+            printf 'error: no group `%s`: one of %s\n' "${group}" "${groups}" >&2
+            exit 64
+            ;;
+    esac
+done
+
+# Whether the group named runs: every one when none was asked for.
+want() {
+    [ "$#" -eq 1 ] || return 1
+    [ -z "${selected}" ] && return 0
+    case " ${selected} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+selected="$*"
+
+if want languages; then
 run "the catalogue, validating" -p permguard-languages
 for language in cedar rego dogwood; do
     run "the catalogue, ${language} alone, validating" \
@@ -56,6 +79,9 @@ for language in cedar rego dogwood; do
         -p "permguard-language-${language}" --features evaluate
 done
 
+fi
+
+if want planes; then
 # The embedded Data Plane selects its languages too, none by default. Its tests always decide in
 # every language, so what is proven here is that each selection compiles by itself; what it links
 # is `dependency_direction.rs`'s to prove.
@@ -94,6 +120,9 @@ done
 printf '==> permguard-decisions built with `evaluator`\n'
 cargo check --locked -p permguard-decisions --no-default-features --features evaluator
 
+fi
+
+if want runtime; then
 # Offline volume administration: a remote custody is an adapter a build selects. Without one, the
 # package builds with no network client and refuses that custody by name, which its test proves;
 # the headless runtime links it that way, and its own tests start a Host with no server.
@@ -112,6 +141,9 @@ done
 run "permguard-embedded, a Host composed for the application" -p permguard-embedded
 run "permguard-evaluation-worker, the dedicated worker" -p permguard-evaluation-worker
 
+fi
+
+if want fixtures; then
 # The embedded Data Plane as an application outside this workspace links it: every named profile
 # resolved, built and tested for that application alone.
 ./scripts/check-embedded-fixture.sh
@@ -145,5 +177,6 @@ done
 # A server assembled outside this workspace from the kit: a Plane the workspace does not know
 # beside an open-source one.
 ./scripts/check-external-plane-fixture.sh
+fi
 
-printf 'ok: every profile compiles and passes its tests on its own\n'
+printf 'ok: every profile%s compiles and passes its tests on its own\n' "${selected:+ of ${selected}}"

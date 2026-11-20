@@ -122,16 +122,22 @@ fn test_a_release_measures_what_it_published_and_attaches_the_report() {
 }
 
 #[test]
-fn test_ci_runs_the_harness_and_the_serving_gate_on_every_change() {
-    let ci = workflow("ci.yml");
-    let run = scripts(job(&ci, "benchmark"));
+fn test_integration_runs_the_harness_and_the_serving_gate() {
+    let integration = workflow("integration.yml");
+    // On a pull request and on a branch's latest commit: no event is left out of the job.
+    let benchmark = job(&integration, "benchmark");
+    assert!(
+        benchmark.get("if").is_none(),
+        "the gate runs on every event"
+    );
+    let run = scripts(benchmark);
     assert!(
         run.contains("permguard-bench run") && run.contains("permguard-bench capacity"),
         "{run}"
     );
     assert!(
         run.contains("permguard-bench gate"),
-        "TS-4 on every change:\n{run}"
+        "TS-4 before a change merges and on what a branch stands at:\n{run}"
     );
 }
 

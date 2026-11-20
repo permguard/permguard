@@ -42,7 +42,7 @@ target/release/permguard-bench capacity permguard-benchmark.json
 ### What a release publishes
 
 The release pipeline downloads the Linux binaries it has just published, measures them on a GitHub-hosted runner with the full ladder, and attaches `permguard-benchmark.json` to the release.
-CI runs a short ladder on every change, so the harness cannot rot between releases.
+CI runs a short ladder on every pull request and on the latest commit of a branch, so the harness cannot rot between releases.
 
 ### Reading capacity off a report
 
@@ -80,7 +80,7 @@ Every outbound client of the Host and its planes asks `permguard_core::egress` f
 The module lists the clients that check, and the one that need not.
 The series is published at zero, so a candidate whose failpoint is not installed fails too.
 
-CI runs the gate on every change, in the job that builds the release binaries, and the release pipeline runs it on the tagged commit before anything is published.
+CI runs the gate on every pull request and on the latest commit of a branch, in the job that builds the release binaries, and the release pipeline runs it on the tagged commit before anything is published.
 
 A slow disk is not something the gate can impose on a release binary: the fault hooks are armed only inside the process, by design.
 A test of the real decision path holds it to one instead: `a_slow_disk_delays_or_refuses_decisions_and_never_answers_one_unrecorded` in `permguard-data-plane`.
