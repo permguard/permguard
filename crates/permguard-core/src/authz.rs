@@ -730,6 +730,11 @@ impl ActorContext {
     }
 }
 
+/// What a caller whose certificate maps to no principal is told (BUG-0066): what would map it.
+pub const UNMAPPED: &str = "the certificate presented maps to no principal: a certificate acts only as the Host's \
+                 bootstrap principal, committed with `permguard host grants bootstrap`; any other \
+                 caller presents an access token of the Authority Plane";
+
 /// What the transport established about a request's caller: an authenticated actor, nobody, or
 /// a credential no rule maps.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -752,9 +757,7 @@ impl Actor {
         match self {
             Self::Authenticated(context) => Ok(context.authorization_principal().clone()),
             Self::Anonymous => Ok(Principal::anonymous()),
-            Self::Unmapped { .. } => Err(AccessDenial::unauthenticated(
-                "the credential presented is not one this deployment maps to a principal",
-            )),
+            Self::Unmapped { .. } => Err(AccessDenial::unauthenticated(UNMAPPED)),
         }
     }
 
@@ -767,9 +770,7 @@ impl Actor {
             Self::Anonymous => AccessDenial::unauthenticated(
                 "this operation requires an authenticated principal with a grant",
             ),
-            Self::Unmapped { .. } => AccessDenial::unauthenticated(
-                "the credential presented is not one this deployment maps to a principal",
-            ),
+            Self::Unmapped { .. } => AccessDenial::unauthenticated(UNMAPPED),
         }
     }
 

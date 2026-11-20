@@ -235,6 +235,10 @@ is cut.
 
 ### Fixed
 
+- **The client certificate an mTLS development profile generates acts, and a certificate that maps to nobody is told what would map it.**
+  Since certificates stopped granting anything on their own, the `client.pem` a `*-mtls` profile writes was refused `401` on every closed route.
+  A development volume the server provisions (`autogenerate: true`, the `development` profile) now commits that certificate as its bootstrap principal when the volume commits none, logged as `authz.bootstrap_development`; above `development` the bootstrap stays an operator's, `permguard host grants bootstrap`.
+  A certificate that maps to no principal is refused naming both ways in: the bootstrap commitment, or an access token of the Authority Plane (BUG-0066).
 - **A member's stream cutover is sent even when its next key is already prepublished, and a paused shipment says why.**
   A member sent the cutover of a newly active key only while its ring held no key waiting to take over; a ring that prepublished its next key before the pass, as frequent rotations and the hourly default both do, never sent it, so the old pin never retired, the next re-pin was refused `membership_transition_refused`, and the decision log stopped shipping.
   The cutover is now sent once the active key is one the current pin published (BUG-0104).

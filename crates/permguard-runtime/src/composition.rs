@@ -1309,6 +1309,41 @@ impl Composition {
         mutations
             .recover(&permguard_host::operations::grants::Grants(&bootstrap))
             .context("recovering the bootstrap commitment a crash left open")?;
+        // A development volume this server provisions: the operator certificate `autogenerate`
+        // wrote, `tls/client.pem`, is the bootstrap principal when the volume commits none, so the
+        // client it hands out acts (BUG-0066). Never above `development`: there the bootstrap is
+        // committed offline, by an operator, with `permguard host grants bootstrap`.
+        let operator = config.working_dir().join("tls").join("client.pem");
+        if config.autogenerate()
+            && config.assurance().profile()
+                == permguard_core::assurance::AssuranceProfile::Development
+            && bootstrap.bootstrap().is_none()
+            && operator.is_file()
+        {
+            let pem = std::fs::read(&operator)
+                .with_context(|| format!("reading {}", operator.display()))?;
+            if let Some(held) = permguard_host::operations::grants::bootstrap_development_operator(
+                mutations,
+                &bootstrap,
+                &pem,
+                time.now_secs(),
+            )
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .with_context(|| {
+                format!(
+                    "committing {} as the development volume's bootstrap principal",
+                    operator.display()
+                )
+            })? {
+                tracing::warn!(
+                    event.name = "authz.bootstrap_development",
+                    component = "server",
+                    fingerprint = %held.fingerprint,
+                    "the operator certificate autogenerate wrote is the bootstrap principal of this \
+                     development volume"
+                );
+            }
+        }
         let held = bootstrap.bootstrap();
         let mapper = PrincipalMapper::new(held.as_ref().map(|held| held.fingerprint.as_str()))
             .context("reading the bootstrap commitment")?;

@@ -43,6 +43,34 @@ pub fn bootstrap_principal(fingerprint: &str) -> Result<Principal, AuthzError> {
         .map_err(|error| AuthzError::Invalid(error.to_string()))
 }
 
+/// The fingerprint a bootstrap commits for the first certificate of `pem`: the SHA-256 of its
+/// DER, `sha256:<hex>`, what `openssl x509 -fingerprint -sha256` prints and the mapper compares.
+pub fn certificate_fingerprint(pem: &[u8]) -> Result<String, AuthzError> {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+
+    let text = std::str::from_utf8(pem)
+        .map_err(|_| AuthzError::Invalid("the certificate file is not PEM text".to_owned()))?;
+    let body = text
+        .split("-----BEGIN CERTIFICATE-----")
+        .nth(1)
+        .and_then(|rest| rest.split("-----END CERTIFICATE-----").next())
+        .ok_or_else(|| AuthzError::Invalid("the file holds no PEM certificate".to_owned()))?;
+    let compact: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let der = base64::engine::general_purpose::STANDARD
+        .decode(compact)
+        .map_err(|_| AuthzError::Invalid("the PEM certificate is not base64".to_owned()))?;
+    if der.is_empty() {
+        return Err(AuthzError::Invalid(
+            "the PEM certificate is empty".to_owned(),
+        ));
+    }
+    Ok(format!(
+        "sha256:{}",
+        permguard_core::encoding::hex(&sha2::Sha256::digest(&der))
+    ))
+}
+
 /// What the store refuses, beyond what the volume does.
 #[derive(Debug)]
 pub enum AuthzError {

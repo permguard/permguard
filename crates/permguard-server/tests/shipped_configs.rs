@@ -532,6 +532,56 @@ fn no_shipped_configuration_names_the_retired_link() {
 /// BUG-0072: every shipped configuration builds the configuration a server starts with — its
 /// settings and its plane sections through every layer check — so a setting retired later cannot
 /// leave a shipped file behind that no longer starts.
+/// BUG-0066: the client certificate an mTLS profile hands out maps to the bootstrap principal,
+/// which the server commits only on a development volume it provisions: every mTLS profile is one.
+#[test]
+fn every_mtls_profile_provisions_a_development_volume_whose_operator_acts() {
+    let mut profiles = 0;
+    for path in shipped() {
+        let name = path.file_name().and_then(|name| name.to_str());
+        if !matches!(
+            name,
+            Some("config.local-mtls.yml" | "config.docker-mtls.yml")
+        ) {
+            continue;
+        }
+        profiles += 1;
+        let file = ConfigFile::load(&path).expect("the file parses");
+        let mut pairs = file.settings();
+        for (section, keys) in [
+            ("controlPlane", PlaneSettingKeys::CONTROL),
+            ("dataPlane", PlaneSettingKeys::DATA),
+        ] {
+            if let Some(value) = file.section(section) {
+                pairs.extend(plane_settings(value, keys).expect("the plane section"));
+            }
+        }
+        let declared: Vec<String> = pairs.iter().map(|(key, _)| key.clone()).collect();
+        let config = permguard_core::Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            declared,
+            permguard_core::config::Layers::new().with_file(pairs),
+        )
+        .unwrap_or_else(|error| panic!("{} does not start: {error:#}", path.display()));
+        assert!(
+            config.autogenerate(),
+            "{} writes its operator",
+            path.display()
+        );
+        assert_eq!(
+            config.assurance().profile(),
+            permguard_core::assurance::AssuranceProfile::Development,
+            "{} commits its operator only in development",
+            path.display()
+        );
+    }
+    assert_eq!(profiles, 6);
+}
+
 #[test]
 fn every_shipped_configuration_builds_the_configuration_a_server_starts_with() {
     for path in shipped() {

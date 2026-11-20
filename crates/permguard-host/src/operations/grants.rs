@@ -48,6 +48,24 @@ pub fn failure<E>(error: AuthzError, render: impl FnOnce(AuthzError) -> E) -> Fa
     }
 }
 
+/// The development operator a provisioned volume hands out, `certificate_pem`, committed as the
+/// bootstrap principal when the volume commits none (BUG-0066): the client certificate
+/// `autogenerate` wrote acts, where it otherwise maps to nobody. Answers the commitment, or `None`
+/// when one is held already, for this certificate or another: a commitment is never replaced.
+pub fn bootstrap_development_operator(
+    mutations: &Mutations,
+    store: &BootstrapStore,
+    certificate_pem: &[u8],
+    now: u64,
+) -> Result<Option<Bootstrap>, MutationError<AuthzError>> {
+    if store.bootstrap().is_some() {
+        return Ok(None);
+    }
+    let fingerprint = crate::authz::store::certificate_fingerprint(certificate_pem)
+        .map_err(MutationError::Refused)?;
+    bootstrap(mutations, store, &fingerprint, now).map(|(held, _)| Some(held))
+}
+
 /// Writes the bootstrap commitment once, as one operation. A bootstrap already done for the same
 /// certificate is answered without an operation; one for another certificate is refused.
 pub fn bootstrap(
@@ -102,5 +120,82 @@ pub fn bootstrap(
         _ => Err(MutationError::Unrecorded(
             "the bootstrap answered without applying".to_owned(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::storage::volume::Volume;
+
+    fn pem_of(der: &[u8]) -> Vec<u8> {
+        use base64::Engine as _;
+        format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
+            base64::engine::general_purpose::STANDARD.encode(der)
+        )
+        .into_bytes()
+    }
+
+    /// BUG-0066: a provisioned volume's operator certificate is committed as the bootstrap
+    /// principal, by the SHA-256 of its DER, once; a held commitment is never replaced.
+    #[test]
+    fn the_development_operator_is_committed_once_and_never_replaces_a_commitment() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-grants-operator-{}-{}",
+            std::process::id(),
+            permguard_core::time::unix_now()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("the root");
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
+        let store = BootstrapStore::open(&volume).expect("the store");
+
+        let committed =
+            bootstrap_development_operator(&mutations, &store, &pem_of(b"operator"), 1_800_000_000)
+                .expect("committed")
+                .expect("a commitment");
+        let expected = {
+            use sha2::Digest as _;
+            permguard_core::encoding::hex(&sha2::Sha256::digest(b"operator"))
+        };
+        assert_eq!(
+            committed.principal.as_str(),
+            format!("cert:sha256:{expected}")
+        );
+        assert_eq!(
+            store.bootstrap().map(|held| held.principal),
+            Some(committed.principal.clone())
+        );
+        assert_eq!(
+            bootstrap_development_operator(&mutations, &store, &pem_of(b"another"), 1_800_000_001)
+                .expect("answered"),
+            None,
+            "a commitment is never replaced"
+        );
+        assert!(
+            bootstrap_development_operator(&mutations, &store, b"not pem", 1)
+                .expect("answered")
+                .is_none(),
+            "held already: the file is not even read"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_file_without_a_certificate_has_no_fingerprint() {
+        for pem in [
+            &b"not pem"[..],
+            b"-----BEGIN CERTIFICATE-----\n!!\n-----END CERTIFICATE-----",
+        ] {
+            assert!(crate::authz::store::certificate_fingerprint(pem).is_err());
+        }
     }
 }
