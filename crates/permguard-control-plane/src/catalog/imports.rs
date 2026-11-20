@@ -695,6 +695,14 @@ async fn rehome(
                 return Err(internal(error).into());
             }
         }
+        // The source's heads kept as roots once their closure landed (BUG-0185): the imported
+        // history stays while the ledger exists, whatever an operator pushes, never swept as
+        // unreachable.
+        let heads: Vec<_> = source.refs.iter().map(|named| named.head.clone()).collect();
+        if let Err(error) = store.keep_roots(&heads) {
+            stopped(&created);
+            return Err(internal(error).into());
+        }
         created.push(Ledger::public(ledger));
     }
     Ok(created)
@@ -1058,6 +1066,14 @@ mod tests {
         assert!(
             store.list_refs().expect("listed").is_empty(),
             "no ref until a push"
+        );
+        // BUG-0185: the source's heads are kept as roots, so the sweep keeps what they reach.
+        let roots = store.roots().expect("read");
+        assert!(!roots.is_empty(), "the source's heads are roots");
+        assert_eq!(
+            crate::gc::reachable(&store).expect("walked").len(),
+            4,
+            "every imported object is reached from the roots"
         );
 
         let refused = import_with(

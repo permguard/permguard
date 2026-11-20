@@ -69,6 +69,15 @@ pub enum RefUpdate {
 
 /// The domain of the ref updates (WP-3.6): what recovery asks of the ledgers' refs.
 pub const REFS_DOMAIN: &str = "ledger.refs";
+
+/// The directory of a ledger's kept roots (BUG-0185): one empty file per head, named for it.
+const ROOTS: &str = "roots";
+
+/// The file name a root is kept under: its digest, the colon a file name cannot carry everywhere
+/// replaced.
+fn root_name(head: &Digest) -> String {
+    head.to_string().replacen(':', "-", 1)
+}
 /// The operation of one ref update.
 pub const REF_UPDATE: &str = "ledger.ref.update";
 
@@ -368,6 +377,48 @@ impl FileObjectStore {
     /// one no-op; a name already holding *different* content — whose bytes no
     /// longer decompress to this object — is [`StoreError::Corrupt`], and the
     /// existing file is left byte-for-byte as it was.
+    /// Keeps `heads` as roots of the collection (BUG-0185): the history a re-home imported, which
+    /// no ref of the new ledger names, and none may ever name; what a root reaches is never swept
+    /// while the ledger exists. Kept once, a root is never removed.
+    pub fn keep_roots(&self, heads: &[Digest]) -> Result<()> {
+        self.check_format()?;
+        let directory = Dir::open(&self.root)
+            .and_then(|root| root.subdir(ROOTS, true))
+            .map_err(|error| storage("opening the roots", error))?;
+        for head in heads {
+            publish_immutable(&directory, &root_name(head), b"", &|_| true, &|held| {
+                held.is_empty()
+            })
+            .map_err(|error| storage("keeping a root", error))?;
+        }
+        Ok(())
+    }
+
+    /// The roots [`Self::keep_roots`] keeps, sorted.
+    pub fn roots(&self) -> Result<Vec<Digest>> {
+        if !self.root.join(ROOTS).is_dir() {
+            return Ok(Vec::new());
+        }
+        let directory = Dir::open(&self.root)
+            .and_then(|root| root.subdir(ROOTS, false))
+            .map_err(|error| storage("opening the roots", error))?;
+        let mut roots = Vec::new();
+        for name in directory
+            .names()
+            .map_err(|error| storage("listing the roots", error))?
+        {
+            let Some(digest) = name
+                .strip_prefix("sha256-")
+                .and_then(|hex| Digest::parse(&format!("sha256:{hex}")).ok())
+            else {
+                continue;
+            };
+            roots.push(digest);
+        }
+        roots.sort();
+        Ok(roots)
+    }
+
     pub fn publish_object(&self, bytes: &[u8]) -> Result<(Digest, Object, Published)> {
         if bytes.len() > limits::MAX_OBJECT_BYTES {
             return Err(ObjectError::Limit("object bytes").into());

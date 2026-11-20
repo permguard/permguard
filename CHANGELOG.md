@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A re-homed ledger keeps the history it imported: the object sweep no longer removes it.**
+  A `re-home` import landed the source ledger's objects and copied no ref, so once `storage.gc.grace` passed the object sweep removed them all, or all but what a later push shared by content.
+  The import now keeps the source's heads as roots of the ledger, under `roots/`, and the sweep keeps everything a root reaches while the ledger exists (BUG-0185).
 - **A member's rewritten audit trail is recorded in the coordinator's `security` trail and shown in its member view.**
   A checkpoint that does not continue the trail the coordinator keeps was refused `fork` with one ERROR line and nothing else.
   The coordinator now records `host.audit_checkpoint_forked` in its `security` trail, naming the membership, the task, the trail and both digests, and `host members get` shows it under `audit_forks` (REST and gRPC) (BUG-0154).

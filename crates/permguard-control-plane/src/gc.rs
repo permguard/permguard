@@ -18,7 +18,7 @@
 //! # The rule, and why it is safe
 //!
 //! ```text
-//! keep  =  reachable from ANY ref   ∪   pinned by a kept transfer session   ∪   younger than the grace period
+//! keep  =  reachable from ANY ref or kept root   ∪   pinned by a kept transfer session   ∪   younger than the grace period
 //!       ∪  everything of a ledger a hold keeps
 //! ```
 //!
@@ -1048,7 +1048,12 @@ pub(crate) fn sweep_within(
 /// is not a store to delete from.
 pub fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
     let refs = store.list_refs().map_err(|error| anyhow!("{error}"))?;
-    reachable_from(store, refs.into_iter().map(|(_, state)| state.head))
+    // The roots a re-home kept reach the history it imported, whatever the refs say (BUG-0185).
+    let roots = store.roots().map_err(|error| anyhow!("{error}"))?;
+    reachable_from(
+        store,
+        refs.into_iter().map(|(_, state)| state.head).chain(roots),
+    )
 }
 
 /// Everything `heads` reach in `store`; a hole in the closure is an error, as for [`reachable`].
@@ -1191,6 +1196,27 @@ mod tests {
             .iter()
             .map(|(_, store, digest)| store.has_object(digest))
             .collect()
+    }
+
+    /// BUG-0185: what a kept root reaches is never swept while its ledger exists, as a re-home's
+    /// imported history; the ledger beside it, with no root, is swept as before.
+    #[test]
+    fn what_a_kept_root_reaches_is_never_swept() {
+        let fixture = fixture("roots");
+        let (_, store, digest) = &fixture.ledgers[0];
+        store
+            .keep_roots(std::slice::from_ref(digest))
+            .expect("kept");
+        store
+            .keep_roots(std::slice::from_ref(digest))
+            .expect("kept again: nothing changes");
+        assert_eq!(store.roots().expect("read"), vec![digest.clone()]);
+        let outcome = fixture.sweep.run();
+        assert_eq!(outcome.removed, 1, "only the ledger without a root");
+        assert_eq!(present(&fixture), vec![true, false]);
+        let outcome = fixture.sweep.run();
+        assert_eq!(outcome.removed, 0);
+        assert_eq!(present(&fixture), vec![true, false]);
     }
 
     /// WP-7.3c, owner decision of 2026-10-21: a held ledger is not swept at all, its unreachable
