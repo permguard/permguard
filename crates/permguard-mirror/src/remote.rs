@@ -47,4 +47,12 @@ pub trait Remote {
         request: &NegotiatePullRequest,
     ) -> Result<NegotiatePullResponse, String>;
     fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse, String>;
+
+    /// The head a re-home imported for `ref`, as the ledger resolved last names it in its
+    /// provenance (BUG-0185): where a checkout starts before the first push. `None` for a ledger
+    /// created here, or a remote that does not read the record.
+    fn imported_head(&self, r#ref: &str) -> Result<Option<String>, String> {
+        let _ = r#ref;
+        Ok(None)
+    }
 }

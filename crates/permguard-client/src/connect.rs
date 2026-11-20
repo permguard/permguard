@@ -128,6 +128,15 @@ impl Remote for AnyRemote {
         }
     }
 
+    fn imported_head(&self, r#ref: &str) -> Result<Option<String>, String> {
+        match self {
+            #[cfg(feature = "http")]
+            Self::Http(remote) => remote.imported_head(r#ref),
+            #[cfg(feature = "grpc")]
+            Self::Grpc(remote) => remote.imported_head(r#ref),
+        }
+    }
+
     fn commit_push(&self, request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
         match self {
             #[cfg(feature = "http")]

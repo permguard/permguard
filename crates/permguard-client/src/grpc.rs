@@ -1181,6 +1181,14 @@ fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provena
         source_zone_id: provenance.source_zone_id,
         source_ledger_id: provenance.source_ledger_id,
         exported_at: provenance.exported_at,
+        heads: provenance
+            .heads
+            .into_iter()
+            .map(|named| permguard_core::ImportedHead {
+                r#ref: named.r#ref,
+                head: named.head,
+            })
+            .collect(),
     }
 }
 
@@ -1204,6 +1212,9 @@ pub struct GrpcRemote {
     channel: GrpcChannel,
     /// The resolved (zone GUID, ledger GUID), set by `resolve` or pre-bound.
     ids: RefCell<Option<(String, String)>>,
+    /// The refs and heads a re-home imported, as the ledger `resolve` read names them
+    /// (BUG-0185).
+    imported: RefCell<Vec<permguard_core::ImportedHead>>,
     /// The batch compression the last negotiation advertised — the transport
     /// concern, exactly as on HTTP.
     compression: RefCell<Option<String>>,
@@ -1221,6 +1232,7 @@ impl GrpcRemote {
         Ok(Self {
             channel: GrpcChannel::connect(url, tls, narrator)?,
             ids: RefCell::new(None),
+            imported: RefCell::new(Vec::new()),
             compression: RefCell::new(None),
             failed: RefCell::new(None),
         })
@@ -1350,8 +1362,21 @@ impl Remote for GrpcRemote {
             .map_err(|status| self.refused(status))?
             .ledger
             .ok_or_else(|| "the answer carries no ledger".to_owned())?;
+        *self.imported.borrow_mut() = ledger
+            .provenance
+            .map(|provenance| provenance_of(provenance).heads)
+            .unwrap_or_default();
         self.bind(&zone.id, &ledger.id);
         Ok((zone.id, ledger.id))
+    }
+
+    fn imported_head(&self, r#ref: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .imported
+            .borrow()
+            .iter()
+            .find(|named| named.r#ref == r#ref)
+            .map(|named| named.head.clone()))
     }
 
     fn keyring(&self) -> Result<Vec<u8>, String> {

@@ -235,6 +235,13 @@ is cut.
 
 ### Fixed
 
+- **A re-homed ledger continues its imported history.**
+  A ledger's provenance now names each source ref and the head it named at the export (`heads`, REST and gRPC).
+  `permguard checkout` of a re-homed ledger that no push has given a ref yet starts from that head, its files and `permguard history` the source's, and the first `permguard apply`, even of an unchanged tree, continues it: the ledger serves from then on, under this Host's head statement.
+  A ledger re-homed before this release checks out empty as before; its imported objects stay kept.
+- **A member's key ring may rotate again before its previous rotation's old spans are acknowledged.**
+  The coordinator refused a second re-pin while the first one's grace was open, so a ring rotating faster than the shipping caught up (for example `rotate_every: 2m`) stopped shipping decisions after its second rotation.
+  It now accepts it when the current set still holds every retiring key, and that set retires in place of the older one.
 - **What a member records before its first membership ships reaches the coordinator.**
   When the first membership's subscription fences a stream whose open run no membership fenced, and no local task reads it, the producer carries that run's records into the fenced successor before anything else, each rewritten for its new place by the Plane that wrote it (decisions and events keep their ids), so the coordinator receives every record once instead of none (`host.stream.run_carried`).
   The carry resumes after a restart, the member's temporal journal does not count a carried event twice, and a run that is still left behind is stated at WARN as before (BUG-0115).

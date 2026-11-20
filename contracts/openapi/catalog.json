@@ -2509,6 +2509,14 @@
             "minimum": 0,
             "description": "When the source exported it, seconds since the Unix epoch.",
             "x-grpc-field": "exported_at"
+          },
+          "heads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportedHead"
+            },
+            "description": "The source's refs and the heads they named, kept as the ledger's roots: a checkout before the first push starts from its ref's head, and that push continues the imported history (BUG-0185). Absent on a ledger re-homed before they were recorded.",
+            "x-grpc-field": "heads"
           }
         },
         "required": [
@@ -2521,6 +2529,28 @@
         "additionalProperties": false,
         "description": "The export a re-homed ledger was imported from (WP-7.10).",
         "x-grpc-message": "permguard.control.v1.LedgerProvenance"
+      },
+      "ImportedHead": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "The ref at the source.",
+            "x-grpc-field": "ref"
+          },
+          "head": {
+            "type": "string",
+            "description": "The head commit it named, `sha256:` and 64 lowercase hex characters.",
+            "x-grpc-field": "head"
+          }
+        },
+        "required": [
+          "ref",
+          "head"
+        ],
+        "additionalProperties": false,
+        "description": "One ref of a re-homed ledger's source and the head it named at the export (BUG-0185).",
+        "x-grpc-message": "permguard.control.v1.LedgerImportedHead"
       }
     }
   },

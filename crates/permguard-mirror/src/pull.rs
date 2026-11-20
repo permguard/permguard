@@ -204,6 +204,54 @@ pub fn fetch_closure_expecting(
     })
 }
 
+/// The history a re-home imported, fetched before a ref exists (BUG-0185): the closure of `head`,
+/// which the ledger's provenance names and the server keeps as a root. Nothing signs it yet, so
+/// the answer must carry no statement, counter 0 and exactly `head`; every object is checked by
+/// its digest and the closure proved whole. Answers the objects fetched; the checkpoint is the
+/// caller's, with counter 0, which the first push continues.
+pub fn fetch_imported(
+    store: &dyn Store,
+    objects_root: &str,
+    remote: &dyn Remote,
+    tracked: &TrackedRef,
+    head: &Digest,
+) -> Result<usize, String> {
+    let negotiated = remote.negotiate_pull(&NegotiatePullRequest {
+        r#ref: tracked.r#ref.clone(),
+        at: Some(head.clone()),
+        have: Vec::new(),
+        checkpoint: None,
+    })?;
+    if &negotiated.head != head || negotiated.counter != 0 || !negotiated.statement.is_empty() {
+        return Err(
+            "the server answered another state than the imported head the ledger names".to_owned(),
+        );
+    }
+    let mut fetched = 0usize;
+    let missing: Vec<Digest> = negotiated
+        .missing
+        .iter()
+        .filter(|digest| !crate::objects::has(store, objects_root, digest))
+        .cloned()
+        .collect();
+    for chunk in missing.chunks(negotiated.max_batch_objects.max(1) as usize) {
+        let answer = remote.fetch(&FetchObjectsRequest {
+            digests: chunk.to_vec(),
+            accept_compression: None,
+            transfer_id: negotiated.transfer_id,
+        })?;
+        for bytes in answer.objects {
+            let digest = crate::objects::put(store, objects_root, &bytes)?;
+            if !chunk.contains(&digest) {
+                return Err(format!("the server sent {digest}, which was not asked for"));
+            }
+            fetched += 1;
+        }
+    }
+    walk_local(store, objects_root, head)?;
+    Ok(fetched)
+}
+
 /// Advances the checkpoint to a head [`fetch_closure`] proved.
 pub fn commit_checkpoint(
     store: &dyn Store,

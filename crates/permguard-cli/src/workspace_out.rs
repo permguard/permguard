@@ -171,13 +171,23 @@ impl Report for PullReport {
                 style::bold("Bound.")
             );
         }
-        if self.counter == 0 {
+        if self.counter == 0 && self.head.is_empty() {
             return writeln!(
                 out,
                 "{} The ledger is empty: the workspace holds the manifest `init` writes, and the \
                  first `apply` will create its history.",
                 style::bold("Bound.")
             );
+        }
+        if self.counter == 0 {
+            // A re-homed ledger before its first push (BUG-0185).
+            writeln!(
+                out,
+                "{} The ledger holds the history a re-home imported, at {}: the first `apply` \
+                 continues it and the ledger serves from then on.",
+                style::bold("Bound."),
+                self.head
+            )?;
         }
         for path in &self.materialized {
             writeln!(out, "  {} {}", style::create("+"), style::create(path))?;
@@ -1271,6 +1281,18 @@ mod tests {
         };
         let text = terminal(&new_ref);
         assert!(text.contains("`dev` does not exist"), "{text}");
+        assert!(!text.contains("The ledger is empty"), "{text}");
+        // BUG-0185: a re-homed ledger checked out at its imported head says so, and lists what
+        // it materialized.
+        let imported = PullReport {
+            head: format!("sha256:{}", "ab".repeat(32)),
+            materialized: vec!["cedar/billing.cedar".to_owned()],
+            missing_ref: None,
+            ..new_ref
+        };
+        let text = terminal(&imported);
+        assert!(text.contains("a re-home imported"), "{text}");
+        assert!(text.contains("cedar/billing.cedar"), "{text}");
         assert!(!text.contains("The ledger is empty"), "{text}");
     }
 

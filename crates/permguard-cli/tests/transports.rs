@@ -641,6 +641,7 @@ impl ZoneCatalog for Plane {
                     source_zone_id: "z-src".to_owned(),
                     source_ledger_id: "l-src".to_owned(),
                     exported_at: 1_800_000_000,
+                    heads: Vec::new(),
                 }),
                 ..ledger()
             }],

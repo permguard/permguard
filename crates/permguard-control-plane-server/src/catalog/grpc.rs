@@ -55,6 +55,14 @@ fn wire_ledger(ledger: permguard_core::Ledger) -> v1::Ledger {
             source_zone_id: provenance.source_zone_id,
             source_ledger_id: provenance.source_ledger_id,
             exported_at: provenance.exported_at,
+            heads: provenance
+                .heads
+                .into_iter()
+                .map(|named| v1::LedgerImportedHead {
+                    r#ref: named.r#ref,
+                    head: named.head,
+                })
+                .collect(),
         }),
     }
 }

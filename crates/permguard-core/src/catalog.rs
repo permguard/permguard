@@ -107,6 +107,20 @@ pub struct Provenance {
     pub source_ledger_id: String,
     /// When the source exported it, seconds since the Unix epoch.
     pub exported_at: u64,
+    /// The source's refs and the heads they named, which the ledger keeps as roots (BUG-0185): a
+    /// checkout of the ledger before its first push starts from the head of its ref, and that
+    /// push continues the imported history. Empty on a ledger re-homed before they were recorded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub heads: Vec<ImportedHead>,
+}
+
+/// One ref of a re-homed ledger's source and the head it named at the export (BUG-0185).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedHead {
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    /// The head commit, `sha256:` and 64 lowercase hex characters.
+    pub head: String,
 }
 
 /// A ledger's state (WP-7.3b, owner decision of 2026-10-21): an archived ledger stays readable,

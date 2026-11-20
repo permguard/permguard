@@ -719,6 +719,14 @@ async fn rehome(
             source_zone_id: manifest.zone_id.clone(),
             source_ledger_id: source.id.clone(),
             exported_at: manifest.exported_at,
+            heads: source
+                .refs
+                .iter()
+                .map(|named| permguard_core::ImportedHead {
+                    r#ref: named.name.clone(),
+                    head: named.head.to_string(),
+                })
+                .collect(),
         };
         let outcome = match done {
             Some(done) => Ok(done),

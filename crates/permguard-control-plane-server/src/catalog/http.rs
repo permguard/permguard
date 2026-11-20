@@ -2171,6 +2171,10 @@ mod tests {
             source_zone_id: "zone".to_owned(),
             source_ledger_id: "ledger".to_owned(),
             exported_at: 1_800_000_000,
+            heads: vec![permguard_core::ImportedHead {
+                r#ref: "main".to_owned(),
+                head: format!("sha256:{}", "cd".repeat(32)),
+            }],
         };
         doc.check("Provenance", &provenance);
         let rehomed = permguard_core::Ledger {

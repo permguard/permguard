@@ -119,6 +119,15 @@ permguard zones import delivery.export --as evidence \
 
 `permguard host keys bundle export` writes a bundle in the shape `--bundle` reads; see [Server Operations](./operations#host-keys).
 
+A re-homed ledger keeps the source's history: check it out and it starts from the head the source's ref named, with that history in `permguard history`.
+Its first `permguard apply`, an unchanged tree included, continues that history, and the ledger serves from then on.
+
+```sh
+permguard checkout origin/delivery/release
+permguard history
+permguard apply -m "re-homed from the source Host"
+```
+
 <nav class="pgx-pager" aria-label="Documentation pages">
   <a class="pgx-pager__previous" href="./workspaces"><span>Previous</span><strong><b aria-hidden="true">←</b> Workspaces &amp; Policies</strong></a>
   <a class="pgx-pager__next" href="./decisions"><span>Next</span><strong>Decisions &amp; Evidence <b aria-hidden="true">→</b></strong></a>

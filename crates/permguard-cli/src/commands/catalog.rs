@@ -480,7 +480,8 @@ impl crate::output::Report for ImportReport<'_> {
         if !imported.ledgers.is_empty() {
             writeln!(
                 out,
-                "Re-homed: each ledger serves once you push its head (`permguard apply`)."
+                "Re-homed: check each ledger out to start from its imported history, and push \
+                 it (`permguard apply`): it serves from then on."
             )?;
         }
         Ok(())

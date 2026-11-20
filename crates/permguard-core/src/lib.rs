@@ -70,7 +70,7 @@ pub use audit::{
 };
 pub use authz::NoRules;
 pub use catalog::{
-    Catalog, CatalogError, Ledger, LedgerState, Provenance, Selector, Tombstone, Zone,
+    Catalog, CatalogError, ImportedHead, Ledger, LedgerState, Provenance, Selector, Tombstone, Zone,
 };
 pub use config::{BuildSettings, Config, Layers};
 pub use config_file::ConfigFile;

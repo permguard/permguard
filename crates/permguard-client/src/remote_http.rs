@@ -35,6 +35,9 @@ pub struct HttpRemote {
     /// The resolved (zone GUID, ledger GUID), set by `resolve` or pre-bound
     /// from the workspace config.
     ids: RefCell<Option<(String, String)>>,
+    /// The refs and heads a re-home imported, as the ledger `resolve` read names them
+    /// (BUG-0185).
+    imported: RefCell<Vec<permguard_core::ImportedHead>>,
     /// The batch compression the last negotiation advertised — remembered
     /// here because compression is this transport's concern, invisible to
     /// the engine: batches leave compressed and arrive decompressed.
@@ -46,6 +49,14 @@ pub struct HttpRemote {
 #[derive(Debug, Deserialize)]
 struct IdAnswer {
     id: String,
+}
+
+/// What a checkout reads of a ledger's record: its id, and the heads a re-home imported.
+#[derive(Debug, Deserialize)]
+struct LedgerAnswer {
+    id: String,
+    #[serde(default)]
+    provenance: Option<permguard_core::Provenance>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +87,7 @@ impl HttpRemote {
             prefix,
             narrator,
             ids: RefCell::new(None),
+            imported: RefCell::new(Vec::new()),
             compression: RefCell::new(None),
             failed: RefCell::new(None),
         })
@@ -246,15 +258,28 @@ impl Remote for HttpRemote {
             "{}/catalog/v1/zones/{zone_id}/ledgers/{ledger}",
             self.prefix
         ))?;
-        let ledger_id = serde_json::from_slice::<IdAnswer>(&ledger_body)
-            .map_err(|error| format!("the ledger answer does not parse: {error}"))?
-            .id;
+        let ledger = serde_json::from_slice::<LedgerAnswer>(&ledger_body)
+            .map_err(|error| format!("the ledger answer does not parse: {error}"))?;
+        let ledger_id = ledger.id;
+        *self.imported.borrow_mut() = ledger
+            .provenance
+            .map(|provenance| provenance.heads)
+            .unwrap_or_default();
         self.bind(&zone_id, &ledger_id);
         Ok((zone_id, ledger_id))
     }
 
     fn keyring(&self) -> Result<Vec<u8>, String> {
         self.get_json(&format!("{}/control-plane/v1/keys", self.prefix))
+    }
+
+    fn imported_head(&self, r#ref: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .imported
+            .borrow()
+            .iter()
+            .find(|named| named.r#ref == r#ref)
+            .map(|named| named.head.clone()))
     }
 
     fn get_ref(&self, r#ref: &str) -> Result<Option<RefAnswer>, String> {

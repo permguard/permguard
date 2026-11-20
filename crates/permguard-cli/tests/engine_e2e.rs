@@ -28,6 +28,8 @@ struct EngineRemote {
     identity: LedgerIdentity,
     /// The mutation transaction its ref updates run in (WP-7.12).
     mutations: permguard_host::composition::MutationHandle,
+    /// The ref and head a re-home imported, as the ledger's provenance names them (BUG-0185).
+    imported: Option<(String, String)>,
 }
 
 impl EngineRemote {
@@ -52,6 +54,7 @@ impl EngineRemote {
                 zone_id: "zone-guid".into(),
                 ledger_id: ledger_id.into(),
             },
+            imported: None,
         }
     }
 
@@ -165,6 +168,14 @@ impl Remote for EngineRemote {
 
     fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse, String> {
         self.engine().fetch(request).map_err(|e| e.to_string())
+    }
+
+    fn imported_head(&self, r#ref: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .imported
+            .as_ref()
+            .filter(|(named, _)| named == r#ref)
+            .map(|(_, head)| head.clone()))
     }
 }
 
@@ -2249,4 +2260,119 @@ fn a_refused_checkout_saves_no_binding() {
         "and so is the ref"
     );
     assert!(ws_b.config().unwrap().ledger.is_none(), "nothing is bound");
+}
+
+/// BUG-0185: a re-homed ledger holds the source's objects and keeps its head as a root, and no
+/// ref names it. A checkout starts from that head, its history the source's; the first apply,
+/// even of an unchanged tree, continues it and creates the ref; `history` shows the source's
+/// commits behind it. A push that names a head no re-home kept is still refused.
+#[test]
+fn a_rehomed_ledger_is_checked_out_at_its_imported_head_and_continued() {
+    let source = EngineRemote::new("rehome-source");
+    let dir = scratch("rehome-source-ws");
+    let store = FsStore::new(&dir);
+    let ws = Workspace::open(&store);
+    ws.init("acme-authz", &["cedar"]).unwrap();
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let mut config = ws.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws.save_config(&config).unwrap();
+    let _ = ws.checkout(&source, "origin", "acme", "source", "main");
+    ws.apply(&source, "alice@acme.com", "first").unwrap();
+    store
+        .write(
+            "cedar/extra.cedar",
+            "@alias(\"extra\")\npermit (principal, action == Action::\"write\", resource);\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    let imported = ws.apply(&source, "alice@acme.com", "second").unwrap().head;
+
+    // The re-home: every object landed in a new ledger, its head kept as a root, no ref.
+    let mut rehomed = EngineRemote::for_ledger("rehome-target", "ledger-rehomed-guid");
+    for object in source.store.list_objects().unwrap() {
+        let bytes = source.store.get_object(&object.digest).unwrap().unwrap();
+        rehomed.store.publish_object(&bytes).unwrap();
+    }
+    let head = permguard_objects::Digest::parse(&imported).unwrap();
+    rehomed
+        .store
+        .keep_roots(std::slice::from_ref(&head))
+        .unwrap();
+    // A pull naming a head no re-home kept is the ref's absence, as before.
+    let unknown = rehomed.negotiate_pull(&NegotiatePullRequest {
+        r#ref: "main".into(),
+        at: Some(permguard_objects::Digest::compute(b"elsewhere")),
+        have: Vec::new(),
+        checkpoint: None,
+    });
+    assert!(unknown.is_err(), "{unknown:?}");
+    rehomed.imported = Some(("main".to_owned(), imported.clone()));
+
+    let target = scratch("rehome-target-ws");
+    let target_store = FsStore::new(&target);
+    let target_ws = Workspace::open(&target_store);
+    // An empty workspace, as `clone` makes one.
+    let mut config = permguard_cli::engine::workspace::config::WorkspaceConfig::new();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    target_ws.save_config(&config).unwrap();
+    let pulled = target_ws
+        .checkout(&rehomed, "origin", "acme", "rehomed", "main")
+        .unwrap();
+    assert_eq!(
+        pulled.head, imported,
+        "the checkout starts at the imported head"
+    );
+    assert_eq!(pulled.counter, 0);
+    let materialized = cedar_files(&target_store).join("\n");
+    assert!(
+        materialized.contains("billing-ro") && materialized.contains("extra"),
+        "both policies are materialized: {materialized}"
+    );
+    let messages = |ws: &Workspace<'_>| {
+        ws.history()
+            .unwrap()
+            .into_iter()
+            .map(|(_, commit)| commit.message)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(messages(&target_ws), vec!["second", "first"]);
+    assert!(rehomed.get_ref("main").unwrap().is_none(), "no ref yet");
+
+    // The first apply, of the unchanged tree, continues the imported head and creates the ref.
+    let applied = target_ws
+        .apply(&rehomed, "bob@acme.com", "re-homed")
+        .unwrap();
+    assert_eq!(applied.counter, 1);
+    let answered = rehomed.get_ref("main").unwrap().expect("the ref exists");
+    assert_eq!(answered.head, applied.head);
+    assert_eq!(messages(&target_ws), vec!["re-homed", "second", "first"]);
+    // And the next one is an ordinary fast-forward.
+    target_store
+        .write(
+            "cedar/more.cedar",
+            "@alias(\"more\")\npermit (principal, action == Action::\"list\", resource);\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    let next = target_ws.apply(&rehomed, "bob@acme.com", "more").unwrap();
+    assert_eq!(next.counter, 2);
+    assert_eq!(
+        messages(&target_ws),
+        vec!["more", "re-homed", "second", "first"]
+    );
 }

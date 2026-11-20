@@ -815,12 +815,9 @@ impl Engine<'_> {
     ) -> Result<NegotiatePullResponse> {
         grammar::validate_ref_name(&request.r#ref)
             .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
-        let state = self
-            .store
-            .read_ref(&request.r#ref)?
-            .ok_or_else(|| EngineError::NotFound {
-                what: format!("ref `{}`", request.r#ref),
-            })?;
+        let Some(state) = self.store.read_ref(&request.r#ref)? else {
+            return self.negotiate_imported_pull(request);
+        };
 
         let head_reachable = self.reachable_from(&state.head)?;
         let target = match &request.at {
@@ -910,6 +907,84 @@ impl Engine<'_> {
             compression: None,
             transfer_id: session.transfer_id,
             expiry: session.expiry,
+        })
+    }
+
+    /// A pull of a ref no push created yet, at a head a re-home kept as a root (BUG-0185): the
+    /// imported history a checkout starts from, before the first push continues it. Nothing
+    /// signs it here, so it answers no statement and counter 0; the client checks every object
+    /// by its digest against the head the ledger's provenance names. Anything else is the
+    /// ref's absence, as before.
+    fn negotiate_imported_pull(
+        &self,
+        request: &NegotiatePullRequest,
+    ) -> Result<NegotiatePullResponse> {
+        let absent = || EngineError::NotFound {
+            what: format!("ref `{}`", request.r#ref),
+        };
+        let Some(at) = &request.at else {
+            return Err(absent());
+        };
+        if !self.store.roots()?.contains(at) {
+            return Err(absent());
+        }
+        let mut haved: BTreeSet<Digest> = BTreeSet::new();
+        for have in &request.have {
+            if self.store.has_object(have) {
+                haved.extend(self.reachable_from(have)?);
+            }
+        }
+        let missing = self
+            .walk_region(at, &haved)?
+            .into_iter()
+            .collect::<Vec<_>>();
+        let now = self.now();
+        let expiry = now.saturating_add(self.transfer.ttl.as_secs());
+        let mut transfer_id = self.transfer_id()?;
+        if !missing.is_empty() {
+            let transfers = self.store.transfers()?;
+            transfers.sweep(now, self.transfer.grace)?;
+            self.admit(&transfers.list()?, now, transfer::Direction::Pull)?;
+            let session = transfer::Session {
+                transfer_id,
+                direction: transfer::Direction::Pull,
+                principal: self.caller.clone(),
+                authority_host_id: self.authority,
+                zone: self.identity.zone_id.clone(),
+                ledger: self.identity.ledger_id.clone(),
+                r#ref: request.r#ref.clone(),
+                request_id: String::new(),
+                parameters: Digest::compute(&request.encode().map_err(|error| {
+                    EngineError::Internal {
+                        detail: format!("encoding a pull's parameters: {error}"),
+                    }
+                })?),
+                new_head: None,
+                expected_ref: None,
+                max_batch_bytes: self.limits.max_batch_bytes,
+                max_batch_objects: self.limits.max_batch_objects,
+                reservation: 0,
+                landed: 0,
+                expiry,
+                state: transfer::State::Open,
+                closed_at: None,
+                pins: missing.clone(),
+                result: None,
+            };
+            transfers.put(&session)?;
+            transfer_id = session.transfer_id;
+        }
+        Ok(NegotiatePullResponse {
+            head: at.clone(),
+            counter: 0,
+            statement: Vec::new(),
+            missing,
+            max_batch_bytes: self.limits.max_batch_bytes,
+            max_batch_objects: self.limits.max_batch_objects,
+            compression: None,
+            transfer_id,
+            ref_digest: at.clone(),
+            expiry,
         })
     }
 
@@ -1093,9 +1168,23 @@ impl Engine<'_> {
         expected_old: Option<&Digest>,
         old_reachable: Option<&BTreeSet<Digest>>,
     ) -> Result<BTreeSet<Digest>> {
-        // The new region: reachable from the new head, minus the old closure.
-        let empty = BTreeSet::new();
-        let stop = old_reachable.unwrap_or(&empty);
+        // The new region: reachable from the new head, minus the old closure. A push creating a
+        // ref stops at what a re-home's kept roots reach (BUG-0185): that history is landed and
+        // never swept, so the push neither carries it again nor counts it against its caps.
+        let rooted;
+        let stop = match old_reachable {
+            Some(old) => old,
+            None => {
+                let mut reached = BTreeSet::new();
+                for root in self.store.roots()? {
+                    if self.store.has_object(&root) {
+                        reached.extend(self.reachable_from(&root)?);
+                    }
+                }
+                rooted = reached;
+                &rooted
+            }
+        };
         let region = self.walk_region(new_head, stop)?;
 
         let mut total_bytes: u64 = 0;
@@ -1142,7 +1231,10 @@ impl Engine<'_> {
         };
 
         // Fast-forward: the expected old head must be an ancestor of the new
-        // head; `[]` predecessors are legal only for a history root.
+        // head; `[]` predecessors are legal only for a history root, or on the
+        // head a re-home kept as a root, which a ref-creating push continues
+        // (BUG-0185).
+        let mut continued: Option<Digest> = None;
         match expected_old {
             Some(old) => {
                 if !self.is_ancestor(old, new_head)? {
@@ -1154,10 +1246,19 @@ impl Engine<'_> {
             }
             None => {
                 if !head_commit.predecessors.is_empty() {
-                    return Err(invalid(
-                        permguard_core::codes::notp::NOT_A_ROOT,
-                        "a push creating a ref must carry a history root or branch an existing commit",
-                    ));
+                    let roots = self.store.roots()?;
+                    match head_commit.predecessors.as_slice() {
+                        [imported] if roots.contains(imported) => {
+                            continued = Some(imported.clone());
+                        }
+                        _ => {
+                            return Err(invalid(
+                                permguard_core::codes::notp::NOT_A_ROOT,
+                                "a push creating a ref must carry a history root, or continue the \
+                                 head a re-home imported",
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -1182,7 +1283,7 @@ impl Engine<'_> {
 
         // The manifest invariants and the partition + identity rules run on
         // the new snapshot, whether or not its trees are new objects.
-        self.check_snapshot(&head_commit, expected_old)?;
+        self.check_snapshot(&head_commit, expected_old.or(continued.as_ref()))?;
 
         // Every commit in the region within predecessor rules is already
         // enforced by decoding; depth of trees is enforced by walk_region.

@@ -110,8 +110,12 @@ impl Workspace<'_> {
             .unwrap_or_else(|| super::DEFAULT_REF.to_owned());
         let checkpoint = config::read_checkpoint(self.store, &r#ref).map_err(err)?;
 
+        // A checkout of a re-homed ledger starts from its imported head at counter 0, which no
+        // ref names yet: the first apply pushes even an unchanged tree, continuing that history
+        // so the ledger serves (BUG-0185).
         if plan.is_empty()
             && let Some(checkpoint) = checkpoint.clone()
+            && checkpoint.counter > 0
         {
             return Ok(ApplyOutcome {
                 r#ref: r#ref.clone(),
@@ -314,6 +318,11 @@ impl Workspace<'_> {
         let Some(held) = checkpoint else {
             return Ok(None);
         };
+        // The imported head a re-homed ledger was checked out at (BUG-0185): no ref exists yet,
+        // so the push creates it, continuing that head.
+        if held.counter == 0 {
+            return Ok(None);
+        }
         if let Some(digest) = &held.ref_digest {
             return Ok(Some(ExpectedRef {
                 counter: held.counter,
@@ -510,6 +519,12 @@ impl Workspace<'_> {
                 removed.push(file.to_owned());
             }
             if target_head.is_none() {
+                // A re-homed ledger before its first push: its imported head (BUG-0185).
+                if let Some(mut outcome) = self.pull_imported(remote, r#ref)? {
+                    removed.append(&mut outcome.removed);
+                    outcome.removed = removed;
+                    return Ok(outcome);
+                }
                 // An empty ledger is an empty workspace: bound, with nothing to pull. `init`
                 // gives it a shape again, and the first `apply` creates the ledger's history.
                 return Ok(PullOutcome {
@@ -560,6 +575,10 @@ impl Workspace<'_> {
             missing_ref: missing_ref.clone(),
         };
         if remote.get_ref(r#ref).map_err(err)?.is_none() {
+            // A re-homed ledger before its first push: its imported head (BUG-0185).
+            if let Some(outcome) = self.pull_imported(remote, r#ref)? {
+                return Ok(outcome);
+            }
             return Ok(empty());
         }
         match self.pull(remote, false) {
@@ -572,6 +591,58 @@ impl Workspace<'_> {
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// The imported head of a re-homed ledger whose `ref` no push created yet, fetched and
+    /// materialized, its checkpoint at counter 0 (BUG-0185): the first apply continues it. `None`
+    /// when the ledger names no imported head for the ref.
+    fn pull_imported(&self, remote: &dyn Remote, r#ref: &str) -> Result<Option<PullOutcome>> {
+        let Some(head) = remote.imported_head(r#ref).map_err(err)? else {
+            return Ok(None);
+        };
+        let head = Digest::parse(&head)
+            .map_err(|_| err("the ledger names an imported head that is not a digest"))?;
+        let config = self.config()?;
+        let ledger = config
+            .ledger
+            .as_ref()
+            .ok_or_else(|| err("no tracked ledger: run `permguard checkout` first"))?;
+        let tracked = pull::TrackedRef {
+            zone_id: ledger.zone_id.clone(),
+            ledger_id: ledger.ledger_id.clone(),
+            r#ref: r#ref.to_owned(),
+        };
+        let fetched = pull::fetch_imported(
+            self.store,
+            crate::engine::workspace::inventory::OBJECTS_DIR,
+            remote,
+            &tracked,
+            &head,
+        )
+        .map_err(err)?;
+        let landed = self.materialize(&head, false)?;
+        config::write_checkpoint(
+            self.store,
+            r#ref,
+            &Checkpoint {
+                head: head.to_string(),
+                counter: 0,
+                reference: Some(r#ref.to_owned()),
+                ..Checkpoint::default()
+            },
+        )
+        .map_err(err)?;
+        config::write_head(self.store, r#ref).map_err(err)?;
+        Ok(Some(PullOutcome {
+            head: head.to_string(),
+            counter: 0,
+            fetched,
+            materialized: landed.created(),
+            updated: landed.updated(),
+            removed: landed.removals,
+            previous_counter: None,
+            missing_ref: None,
+        }))
     }
 
     /// `r#ref` when it is not the default ref and the default ref has a history: a checkout
