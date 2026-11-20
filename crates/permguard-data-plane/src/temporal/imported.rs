@@ -686,9 +686,21 @@ impl Imported {
                 }
             }
         }
+        // Of the vouched origins only, as the frontier: when the coordinator stops vouching for
+        // one, the watermark moves, so every engine that replayed its history is rebuilt without
+        // it at once, never at the next restart (BUG-0137).
+        let vouched: Option<std::collections::BTreeSet<[u8; 16]>> =
+            checkpoint.as_ref().map(|checkpoint| {
+                checkpoint
+                    .origins
+                    .iter()
+                    .map(|origin| origin.host_id)
+                    .collect()
+            });
         let watermark = held
             .runs
             .iter()
+            .filter(|((origin, _), _)| vouched.as_ref().is_none_or(|set| set.contains(origin)))
             .map(|((origin, run), indexed)| {
                 format!("{}:{}:{}", hex(origin), hex(run), indexed.covered)
             })

@@ -5534,3 +5534,152 @@ async fn a_ledger_configured_as_the_template_shows_is_the_history_a_shared_decis
         "a ledger the configuration does not name imports nothing to read"
     );
 }
+
+/// An origin a checkpoint names, with each of its runs and the sequence it is acknowledged through.
+type Vouched = ([u8; 16], Vec<([u8; 16], u64)>);
+
+/// The Host's import state after verifying a checkpoint, at `revision`, that names `origins`.
+fn vouching(revision: u8, origins: &[Vouched]) -> permguard_host::membership::import::State {
+    use permguard_host::membership::import::{Checkpoint, CheckpointOrigin, CheckpointRun};
+
+    let checkpoint = Checkpoint {
+        coordinator: [2; 16],
+        resource: permguard_core::authz::Resource::ledger("data", ZONE_ID, LEDGER_ID).to_string(),
+        revision: [revision; 32],
+        origins: origins
+            .iter()
+            .map(|(host_id, runs)| CheckpointOrigin {
+                host_id: *host_id,
+                runs: runs
+                    .iter()
+                    .map(|(run, acked)| CheckpointRun {
+                        run: *run,
+                        acked: *acked,
+                        oldest_retained: 1,
+                        admitted_at: None,
+                        anchor: None,
+                    })
+                    .collect(),
+                pins: Vec::new(),
+            })
+            .collect(),
+        issued_at: 1,
+        channel_binding: [4; 32],
+        ring_epoch: 1,
+        key_set_digest: [5; 32],
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_secs();
+    permguard_host::membership::import::State {
+        membership_id: [6; 16],
+        revision: [revision; 32],
+        checkpoint: permguard_objects::cose::Sign1::sign_with(
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT,
+            b"k",
+            checkpoint.encode().expect("encodes"),
+            |_| Ok(vec![0; 64]),
+        )
+        .expect("an envelope")
+        .encode()
+        .expect("encodes"),
+        verified_at: now,
+        gaps: Vec::new(),
+    }
+}
+
+/// BUG-0137: once the coordinator's verified checkpoint stops naming an origin, suspended,
+/// revoked or forked, the running plane's shared decisions stop reading its history at once: the
+/// read the origin's login permitted is denied at the next submission, without a restart, its warm
+/// engines rebuilt without it.
+#[tokio::test]
+async fn an_origin_the_checkpoint_leaves_out_leaves_the_running_planes_decisions() {
+    // Another plane, the origin, records alice's login.
+    let origin = plane("bug137-origin");
+    let origin_router = surface(&origin);
+    for (at, kind) in [(0, "request"), (5, "response")] {
+        let (status, body) = post(
+            &origin_router,
+            submission(
+                at,
+                "Drupe::Action::Login",
+                kind,
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let recorded = origin
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 10)
+        .expect("the origin's stream reads back");
+    let origin_id = [0x37; 16];
+    let runs: Vec<([u8; 16], u64)> = (0..recorded.len())
+        .map(|at| ([0x40 + at as u8; 16], 1))
+        .collect();
+
+    let plane = plane("bug137-member");
+    let held = Arc::new(Imported::default());
+    *held.extra.lock().expect("lock") = recorded
+        .iter()
+        .zip(&runs)
+        .map(|(record, (run, _))| {
+            let event_id = record["event_id"].as_str().expect("an event id").to_owned();
+            (
+                origin_id,
+                *run,
+                vec![imported_record(record, origin_id, *run, &event_id, None)],
+            )
+        })
+        .collect();
+    *held.state.lock().expect("lock") = Some(vouching(1, &[(origin_id, runs.clone())]));
+    let imported = imported_over(&plane, &held);
+    let submitter = Arc::try_unwrap(plane.submitter)
+        .unwrap_or_else(|_| panic!("the only holder"))
+        .with_shared_mode(
+            permguard_core::config::Consistency::SharedEventual,
+            std::time::Duration::from_secs(60),
+        )
+        .with_imported(imported);
+    let plane = Plane {
+        submitter: Arc::new(submitter),
+        ..plane
+    };
+    let router = surface(&plane);
+    let read = |at: i64| {
+        submission(
+            at,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": format!("doc{at}")}),
+        )
+    };
+    let (status, vouched) = post(&router, read(100)).await;
+    assert_eq!(status, StatusCode::OK, "{vouched}");
+    assert_eq!(
+        vouched["decision"], true,
+        "the vouched origin's login permits: {vouched}"
+    );
+
+    // The coordinator suspends the origin: its next checkpoint names it no more.
+    *held.state.lock().expect("lock") = Some(vouching(2, &[]));
+    let (status, left_out) = post(&router, read(110)).await;
+    assert_eq!(status, StatusCode::OK, "{left_out}");
+    assert_eq!(
+        left_out["decision"], false,
+        "the running plane no longer decides on its history: {left_out}"
+    );
+    assert!(
+        !left_out.to_string().contains(&hex_of(&origin_id)),
+        "and cites none of it: {left_out}"
+    );
+}
+
+fn hex_of(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
