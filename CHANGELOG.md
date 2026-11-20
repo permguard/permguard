@@ -235,6 +235,8 @@ is cut.
 
 ### Fixed
 
+- **A stream the coordinator refuses is logged when its subscription stops.**
+  A producer whose subscription the coordinator stopped, on a fork, a gone or closed stream, or an acknowledgement ahead or behind, went on journaling with nothing said beyond the Host's degraded `evidence_shipping`; it now logs `host.stream.subscription_stopped` at ERROR with the code and the stream (BUG-0027).
 - **A shared temporal decision refused because of an import gap says `history_incomplete`, and no longer promises a resolution that does not exist.**
   A run held through less than the checkpoint because of a gap was refused `history_stale`, which suggests waiting; it is now `history_incomplete`.
   The refusal and the `host.membership.import_gap` warning no longer say a snapshot or a change of the required origins resolves the gap: neither does, and a gap stays open (BUG-0128, in part).

@@ -1398,6 +1398,7 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                     .map_err(wrap)?
                     .unwrap_or_else(|| Subscription::new(subscribed));
             let held = subscription.acked(&shipment.run);
+            let stopped_before = matches!(subscription.state, SubscriptionState::Stopped { .. });
             // A coordinator restored from a snapshot answers under a new boot id with what it
             // held then (WP-7.9b): the first answer below the ack under another incarnation.
             let restored = match (
@@ -1506,6 +1507,21 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                     false
                 }
             };
+            // A subscription the coordinator stops is said when it stops, at ERROR, with its reason:
+            // nothing ships under it until an operator acts (BUG-0027).
+            if let SubscriptionState::Stopped { reason } = &subscription.state
+                && !stopped_before
+            {
+                tracing::error!(
+                    event.name = "host.stream.subscription_stopped",
+                    component = "host",
+                    code = %reason,
+                    stream = %resource,
+                    run = %hex(&shipment.run),
+                    "the coordinator refused this stream: the subscription is stopped and nothing \
+                     ships under it until an operator acts"
+                );
+            }
             // An answer that states a position names the incarnation that gave it; one that does
             // not, `unverifiable` above all, leaves the next its chance to be read as a restore.
             if let Some(boot) = subscribed.coordinator_boot_id
