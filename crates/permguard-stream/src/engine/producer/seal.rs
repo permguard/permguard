@@ -749,6 +749,19 @@ impl Physical {
                 )));
             }
             if run.digest == current.digest {
+                // STATE's sealed watermark never moves back (BUG-0116): batches it counted are
+                // gone, and the range is not sealed again over what an auditor may hold.
+                if let Some(state) = writer.state.as_ref()
+                    && state.run_id == run.statement.run_id
+                    && sealed < state.signed_seq
+                {
+                    return Err(StreamError::Corruption(format!(
+                        "run {}: STATE says it was sealed through {}, and its batches reach \
+                         {sealed}: the range is not sealed again",
+                        hex(&run.statement.run_id),
+                        state.signed_seq
+                    )));
+                }
                 writer.keep_signed(current, sealed)?;
             }
             watermarks.push(sealed);
@@ -758,6 +771,18 @@ impl Physical {
             .zip(&watermarks)
             .position(|(run, sealed)| *sealed < run.last_seq)
             .unwrap_or(runs.len() - 1);
+        // A run is sealed only once every run before it is sealed through its end: one a later
+        // run's batches passed lost the batches it was sealed with, and is never sealed again
+        // (BUG-0116).
+        if watermarks[at + 1..].iter().any(|sealed| *sealed > 0) {
+            return Err(StreamError::Corruption(format!(
+                "run {}: a later run is sealed, and its batches reach {} of its {} record(s): the \
+                 batches it was sealed with are missing, and it is not sealed again",
+                hex(&runs[at].statement.run_id),
+                watermarks[at],
+                runs[at].last_seq
+            )));
+        }
         let (run, sealed) = (&runs[at], watermarks[at]);
         // The head before the next batch, and the frame its first record is in.
         let mut head = GENESIS_HEAD.to_owned();

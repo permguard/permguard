@@ -399,6 +399,69 @@ fn a_run_shipped_under_a_membership_carries_its_fence() {
     assert_eq!(successor.fence, Some(next));
 }
 
+/// BUG-0116: an ended run whose batches went, once a later run is sealed, is a finding offline
+/// and is never sealed again; nor is the current run's range whose batches went, its STATE
+/// sealed watermark never moving back.
+#[test]
+fn an_ended_runs_missing_batches_are_found_and_never_sealed_again() {
+    let host = Host::new("ended-batches");
+    let producer = host.sealer();
+    let first = producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    sealed(producer.seal(&ledger(1), 10).expect("the first run"));
+    producer.rollover(&ledger(1), None).expect("rolled over");
+    let second = producer.append(&ledger(1), &"c".to_owned()).expect("c");
+    sealed(producer.seal(&ledger(1), 10).expect("the second run"));
+    let producer_dir = host.producer_dir(&ledger(1));
+    let batches_of = |run: &[u8; 16]| {
+        std::fs::read_dir(producer_dir.join("batches").join(hex(run)))
+            .map(|entries| entries.count())
+            .unwrap_or(0)
+    };
+    std::fs::remove_dir_all(producer_dir.join("batches").join(hex(&first.run_id)))
+        .expect("the ended run's batches removed");
+
+    let keys = super::verify::Keys::from_document(
+        &host.attest.export_document().expect("the ring exports"),
+        DATA_ATTEST,
+    )
+    .expect("the keys");
+    let report =
+        super::verify::verify_directory(&producer_dir, &keys, &[descriptor()]).expect("checked");
+    assert!(!report.sound(), "{}", report.render());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.contains(&hex(&first.run_id))
+                && finding.contains("the seal passed it")),
+        "{}",
+        report.render()
+    );
+
+    // A fresh handle surveys, and refuses to seal the ended run again.
+    producer.append(&ledger(1), &"d".to_owned()).expect("d");
+    assert!(matches!(
+        host.sealer().seal(&ledger(1), 10),
+        Err(StreamError::Corruption(_))
+    ));
+    assert_eq!(batches_of(&first.run_id), 0, "not sealed again");
+
+    // The current run's batches removed: STATE's watermark does not move back.
+    let host = Host::new("current-batches");
+    let producer = host.sealer();
+    let only = producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let producer_dir = host.producer_dir(&ledger(1));
+    std::fs::remove_dir_all(producer_dir.join("batches").join(hex(&only.run_id))).expect("removed");
+    assert!(matches!(
+        host.sealer().seal(&ledger(1), 10),
+        Err(StreamError::Corruption(_))
+    ));
+    let _ = second;
+}
+
 /// BUG-0191: a run sealed through its end, then an ended run with no record, then a run with
 /// records: the seal moves past the empty run, in the same handle and without a restart.
 #[test]

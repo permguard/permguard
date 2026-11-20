@@ -513,6 +513,9 @@ fn verify_producer(
         None => Vec::new(),
     };
     let signed = state.as_ref().map(|state| (state.run_id, state.signed_seq));
+    // Each run's id, what its batches reach and its last record: a run the seal passed holds
+    // batches through its end (BUG-0116).
+    let mut reached: Vec<([u8; 16], u64, u64)> = Vec::new();
     for (id, key, records) in &runs {
         let name = hex(id);
         let run_dir = match batches {
@@ -542,7 +545,28 @@ fn verify_producer(
                 checked.sealed
             ));
         }
+        reached.push((
+            *id,
+            checked.sealed,
+            records.keys().next_back().copied().unwrap_or(0),
+        ));
         report.runs += 1;
+    }
+    // The seal moves to a run only once every run before it is sealed through its end: a run
+    // that a later one's batches or STATE passed, and whose batches do not reach its last record,
+    // lost batches it was sealed with, and whatever it holds past them is no longer covered.
+    for (index, (id, sealed, last)) in reached.iter().enumerate() {
+        let later = &reached[index + 1..];
+        let passed = later.iter().any(|(_, sealed, _)| *sealed > 0)
+            || signed
+                .is_some_and(|(run, seq)| seq > 0 && later.iter().any(|(later, ..)| *later == run));
+        if passed && sealed < last {
+            report.findings.push(format!(
+                "run {}: the seal passed it, and its batches reach {sealed} of its {last} \
+                 record(s): the batches it was sealed with are missing",
+                hex(id)
+            ));
+        }
     }
     // A batch directory of a run the journal no longer holds: only a run every batch of which its
     // anchor covers, its frames all gone with the prefix.

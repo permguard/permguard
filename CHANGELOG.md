@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A stream whose ended run lost its batches is found offline and never sealed again.**
+  Removing an ended run's batch files passed `streams verify`, and the producer sealed the run again over altered records; a current run's lost batches moved its STATE watermark back.
+  `streams verify` now reports a run the seal passed whose batches do not reach its last record, exit 2, and the seal refuses such a range, or a current run whose batches fall short of STATE, as corruption rather than sealing it again (BUG-0116).
 - **`permguard decisions` reads a producer's only instance when `--pdp` is named alone.**
   `--pdp` without `--instance` exited 64; it now reads the producer's only instance the Host listener's decision consumer holds, and with several, or none, the refusal names them, or says how to list them when no Host listener is reached (BUG-0040).
 - **A re-homed ledger keeps the history it imported: the object sweep no longer removes it.**
