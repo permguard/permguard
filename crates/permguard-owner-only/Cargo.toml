@@ -1,0 +1,26 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-owner-only"
+description = "Owner-only files and directories on Windows: the protected access list that grants the current user alone, and the check that finds any other principal one grants. The one crate allowed to call the Win32 security API; elsewhere the file mode does it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag.
+publish = false
+
+# The Win32 security API (BUG-0324, BUG-0325, owner decision of 2026-11-20): already in the
+# dependency graph, so no new crate enters it.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }

@@ -45,6 +45,8 @@ permguard-notp.workspace = true
 permguard-objects.workspace = true
 # Offline volume administration, the same code the server runs: no server, no listener.
 permguard-offline = { workspace = true, features = ["cli", "kms"] }
+# Owner-only files on Windows (BUG-0325).
+permguard-owner-only.workspace = true
 # The evaluating half: this package decides.
 permguard-languages = { workspace = true, features = ["evaluate"] }
 permguard-stream.workspace = true

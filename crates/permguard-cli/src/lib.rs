@@ -27,6 +27,7 @@ mod failure;
 mod inspect;
 mod narrator;
 mod output;
+mod owner_only;
 mod reference;
 mod session;
 mod settings;

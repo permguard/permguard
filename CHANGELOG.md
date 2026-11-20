@@ -235,6 +235,11 @@ is cut.
 
 ### Fixed
 
+- **On Windows the volume and the command line's secret files are their owner's alone.**
+  A volume the Host creates gets a protected access list granting the current user alone, inherited by everything below it, and `volume verify` and the start's inspection report `storage_mode` for any entry whose list grants anybody but its owner, `SYSTEM` and the Administrators (BUG-0324).
+  The command line restricts its token, secret, cache and `--out` files the same way when it writes them, and refuses to read a token or a secret file granted to others, naming who and the `icacls` line that restricts it (BUG-0325).
+  A volume created before keeps its inherited list and is reported until it is restricted: `icacls <volume> /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F"`.
+  The Win32 calls live in the new `permguard-owner-only` crate, the only one allowed `unsafe`.
 - **A surface bounds the request bytes it holds in flight, and the data plane returns a burst's memory.**
   `limits.inflight_body_bytes` (`PERMGUARD_LIMITS_INFLIGHT_BODY_BYTES`, default 16 MiB, never less than one `body_bytes`) bounds the body bytes of every request in flight together: a request declaring its length is charged it before its body is read and refused `overloaded` past the budget, one that does not (gRPC) is charged frame by frame, and both release it with their answer; the probes and the streaming routes are exempt.
   On Linux `permguard-data-plane` and the all-in-one allocate with jemalloc and start its background threads, so RSS falls back after a burst instead of staying at its high-water mark (BUG-0056).

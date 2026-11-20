@@ -2480,6 +2480,7 @@ dependencies = [
  "permguard-notp",
  "permguard-objects",
  "permguard-offline",
+ "permguard-owner-only",
  "permguard-server",
  "permguard-std",
  "permguard-stream",
@@ -2837,6 +2838,7 @@ dependencies = [
  "hmac",
  "permguard-core",
  "permguard-objects",
+ "permguard-owner-only",
  "ring",
  "rustix",
  "serde",
@@ -2990,6 +2992,13 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "permguard-owner-only"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

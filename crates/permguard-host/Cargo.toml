@@ -23,6 +23,8 @@ test-support = []
 
 [dependencies]
 permguard-core.workspace = true
+# The volume its owner's alone on Windows, by a protected access list (BUG-0324).
+permguard-owner-only.workspace = true
 # The canonical CBOR of the bootstrap commitment (`authz`).
 permguard-objects.workspace = true
 # The compact JWS of an access token and of a status list (`authz`); the Host API's documents and

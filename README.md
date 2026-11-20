@@ -976,6 +976,7 @@ The Host never depends on a concrete plane.
 | `permguard-server`                 | composition | The server kit: composition, listeners, Plane registration; a binary selects the command line and signals.    |
 | `permguard-all-in-one`             | composition | Runs every enabled plane behind one Host, in one process.                                                     |
 | `permguard-tls`                    | support     | What a TLS listener and a TLS client share: algorithms, material, binding.                                    |
+| `permguard-owner-only`             | support     | Owner-only files on Windows: the one crate allowed to call the Win32 security API.                            |
 | `permguard-transport`              | support     | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown.                                        |
 | `permguard-telemetry`              | support     | Liveness, readiness and metrics.                                                                              |
 | `permguard-std`                    | support     | Default implementations behind feature flags.                                                                 |

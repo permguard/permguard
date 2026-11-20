@@ -383,6 +383,11 @@ fn written(
     let mut file = options
         .open(output)
         .map_err(|error| Failure::usage(format!("--out {}: {error}", output.display())))?;
+    if let Err(error) = crate::owner_only::restrict(output) {
+        drop(file);
+        let _ = std::fs::remove_file(output);
+        return Err(Failure::unavailable(error));
+    }
     if let Err(error) = file.write_all(&export.archive) {
         // A partial archive is not left where a retry would be refused for it.
         drop(file);

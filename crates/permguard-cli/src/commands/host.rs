@@ -1991,6 +1991,11 @@ impl Reserved {
         let file = options
             .open(path)
             .map_err(|error| Failure::usage(format!("--out {}: {error}", path.display())))?;
+        if let Err(error) = crate::owner_only::restrict(path) {
+            drop(file);
+            let _ = std::fs::remove_file(path);
+            return Err(Failure::unavailable(error));
+        }
         Ok(Self {
             path: path.to_owned(),
             file: Some(file),
@@ -2033,6 +2038,11 @@ pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
     let mut file = options
         .open(path)
         .map_err(|error| Failure::usage(format!("--out {}: {error}", path.display())))?;
+    if let Err(error) = crate::owner_only::restrict(path) {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+        return Err(Failure::unavailable(error));
+    }
     file.write_all(bytes)
         .map_err(|error| Failure::unavailable(format!("writing {}: {error}", path.display())))
 }

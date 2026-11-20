@@ -123,6 +123,16 @@ pub fn restrict_creation_mask() {
 #[cfg(not(unix))]
 pub fn restrict_creation_mask() {}
 
+/// Restricts the volume root this process just created to its owner, everything below it
+/// inheriting: on Windows a protected access list (BUG-0324); on Unix nothing more, the mode and
+/// the creation mask doing it.
+pub fn restrict_root(root: &Path) -> Result<()> {
+    permguard_owner_only::restrict_to_owner(root).map_err(|source| super::StorageError::Io {
+        what: format!("restricting {} to its owner", root.display()),
+        source,
+    })
+}
+
 /// Walks the volume at `root` and reports every entry that is not private to this process's
 /// effective user.
 #[cfg(unix)]
@@ -166,9 +176,98 @@ pub fn inspect(root: &Path) -> Result<Inspection> {
     Ok(inspection)
 }
 
+/// Walks the volume at `root` and reports every entry whose access list grants anybody besides
+/// its owner, `SYSTEM` and the Administrators (BUG-0324), every link and every entry that is
+/// neither a directory nor a file. Windows has no mode: the access list is what a mode is on Unix.
 #[cfg(not(unix))]
-pub fn inspect(_root: &Path) -> Result<Inspection> {
-    Ok(Inspection::default())
+pub fn inspect(root: &Path) -> Result<Inspection> {
+    let mut inspection = Inspection::default();
+    let metadata = match std::fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(inspection),
+        Err(source) => {
+            return Err(super::StorageError::Io {
+                what: format!("reading {}", root.display()),
+                source,
+            });
+        }
+    };
+    if !metadata.is_dir() {
+        inspection.found(
+            Breach::Link,
+            root.to_path_buf(),
+            "the volume root is not a directory reached without following a link".to_owned(),
+        );
+        return Ok(inspection);
+    }
+    inspection.directories += 1;
+    judge_access(&mut inspection, root)?;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let entries = std::fs::read_dir(&directory).map_err(|source| super::StorageError::Io {
+            what: format!("listing {}", directory.display()),
+            source,
+        })?;
+        for entry in entries {
+            let entry = entry.map_err(|source| super::StorageError::Io {
+                what: format!("listing {}", directory.display()),
+                source,
+            })?;
+            let path = entry.path();
+            let kind = entry
+                .file_type()
+                .map_err(|source| super::StorageError::Io {
+                    what: format!("reading {}", path.display()),
+                    source,
+                })?;
+            if kind.is_symlink() {
+                inspection.found(
+                    Breach::Link,
+                    path,
+                    "a link: the library never follows one".to_owned(),
+                );
+                continue;
+            }
+            if kind.is_dir() {
+                inspection.directories += 1;
+                judge_access(&mut inspection, &path)?;
+                pending.push(path);
+            } else if kind.is_file() {
+                inspection.files += 1;
+                judge_access(&mut inspection, &path)?;
+            } else {
+                inspection.found(
+                    Breach::Kind,
+                    path,
+                    "neither a directory nor a regular file".to_owned(),
+                );
+            }
+        }
+    }
+    Ok(inspection)
+}
+
+/// Judges one entry by its access list (BUG-0324).
+#[cfg(not(unix))]
+fn judge_access(inspection: &mut Inspection, path: &Path) -> Result<()> {
+    let beyond = permguard_owner_only::access_beyond_owner(path).map_err(|source| {
+        super::StorageError::Io {
+            what: format!("reading the access list of {}", path.display()),
+            source,
+        }
+    })?;
+    if !beyond.is_empty() {
+        inspection.found(
+            Breach::Mode,
+            path.to_path_buf(),
+            format!(
+                "its access list grants {}: it must be owner-only (`icacls <volume> \
+                 /inheritance:r /grant:r \"%USERNAME%:(OI)(CI)F\"`)",
+                beyond.join(", ")
+            ),
+        );
+    }
+    Ok(())
 }
 
 /// The mode bits of `stat`: `mode_t` is a `u16` on macOS and already a `u32` on Linux.
@@ -615,5 +714,45 @@ mod tests {
         std::fs::write(dir.join("nested/file"), b"x").expect("writes");
         let inspection = inspect(volume.path()).expect("inspects");
         assert!(inspection.is_private(), "{:?}", inspection.findings);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::storage::volume::Volume;
+    use permguard_core::assurance::AssuranceProfile;
+
+    /// BUG-0324: a volume this process creates is its owner's alone on Windows, what is written
+    /// below it inheriting; a file whose access list grants `Users` is named `storage_mode`.
+    #[test]
+    fn a_volume_created_on_windows_is_its_owners_alone() {
+        let root = std::env::temp_dir().join(format!(
+            "pg-host-private-windows-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        std::fs::create_dir_all(root.join("data/nested")).expect("creates");
+        let file = root.join("data/nested/file");
+        std::fs::write(&file, b"x").expect("writes");
+        let inspection = inspect(&root).expect("inspects");
+        assert!(inspection.is_private(), "{:?}", inspection.findings);
+
+        let granted = std::process::Command::new("icacls")
+            .arg(&file)
+            .args(["/grant", "*S-1-5-32-545:R"])
+            .output()
+            .expect("icacls runs");
+        assert!(granted.status.success(), "{granted:?}");
+        let inspection = inspect(&root).expect("inspects");
+        assert_eq!(inspection.findings.len(), 1, "{:?}", inspection.findings);
+        assert_eq!(inspection.findings[0].breach, Breach::Mode);
+        assert_eq!(inspection.findings[0].path, file);
+        assert!(inspection.findings[0].detail.contains("S-1-5-32-545"));
+        drop(volume);
     }
 }

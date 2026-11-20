@@ -18,7 +18,8 @@ const TOKEN_FILE_MAX: u64 = 64 * 1024;
 ///
 /// A file written on Windows is read as it comes: its CRLF is trimmed, a UTF-8 byte order mark is
 /// dropped, and UTF-16, what Windows PowerShell 5 writes with `>`, is refused with how to save it.
-/// On Windows the owner check is not made: an ACL check is a known gap (6-command-line § 1).
+/// On Windows a file whose access list grants anybody else is refused, as a mode open to the group
+/// or to others is on Unix (BUG-0325).
 pub fn read(path: &Path) -> Result<Credential, String> {
     use std::io::Read as _;
 
@@ -54,6 +55,9 @@ pub fn read(path: &Path) -> Result<Credential, String> {
             ));
         }
     }
+    if let Some(why) = crate::owner_only::open_to_others(path) {
+        return Err(refused(&why));
+    }
     let mut bytes = Vec::new();
     file.take(TOKEN_FILE_MAX + 1)
         .read_to_end(&mut bytes)
@@ -86,8 +90,8 @@ fn decode(bytes: &[u8]) -> Result<&str, &'static str> {
 
 /// Writes `token` to `path` for its owner alone, as [`read`] requires: written beside it, then
 /// renamed over it, so a reader finds the old token or the new one, never half of one. On Unix
-/// the file is created `0600` and its folder `0700` when it makes one; on Windows the file lands
-/// in the user's profile, the folder only its owner reads there (6-command-line § 1).
+/// the file is created `0600` and its folder `0700` when it makes one; on Windows both are
+/// restricted to their owner by a protected access list (BUG-0325).
 pub fn write(path: &Path, token: &str) -> Result<(), String> {
     use std::io::Write as _;
     let parent = path
@@ -105,6 +109,7 @@ pub fn write(path: &Path, token: &str) -> Result<(), String> {
         builder
             .create(parent)
             .map_err(|error| format!("creating {}: {error}", parent.display()))?;
+        crate::owner_only::restrict(parent)?;
     }
     let aside = parent.join(format!(
         ".{}.{}.part",
@@ -122,6 +127,10 @@ pub fn write(path: &Path, token: &str) -> Result<(), String> {
     }
     let written = options
         .open(&aside)
+        .and_then(|file| {
+            crate::owner_only::restrict(&aside).map_err(std::io::Error::other)?;
+            Ok(file)
+        })
         .and_then(|mut file| {
             file.write_all(token.as_bytes())?;
             file.write_all(b"\n")?;
@@ -206,5 +215,36 @@ mod tests {
         let dir = written("folder", "x", 0o600);
         let refused = read(dir.parent().expect("a folder")).expect_err("refused");
         assert!(refused.contains("not a regular file"), "{refused}");
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// BUG-0325: a token written on Windows is its owner's alone and reads back; granted to
+    /// `Users`, it is refused, naming who else may read it and how to restrict it.
+    #[test]
+    fn a_token_file_open_to_others_is_refused_on_windows() {
+        let dir =
+            std::env::temp_dir().join(format!("permguard-token-windows-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("session").join("token");
+        write(&path, "op-token").expect("written");
+        assert_eq!(read(&path).expect("read").expose(), b"op-token");
+
+        let granted = std::process::Command::new("icacls")
+            .arg(&path)
+            .args(["/grant", "*S-1-5-32-545:R"])
+            .output()
+            .expect("icacls runs");
+        assert!(granted.status.success(), "{granted:?}");
+        let refused = read(&path).err().expect("refused");
+        assert!(
+            refused.contains("S-1-5-32-545") && refused.contains("icacls"),
+            "{refused}"
+        );
     }
 }

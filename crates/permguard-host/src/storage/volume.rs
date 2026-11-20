@@ -95,7 +95,14 @@ impl Volume {
         // Whatever this process creates on the volume from here on is its owner's alone, a store
         // writing through the standard library included (TS-5).
         super::private::restrict_creation_mask();
-        let host = Dir::create_root(root)?.subdir(HOST, true)?;
+        let fresh = std::fs::symlink_metadata(root).is_err();
+        let created = Dir::create_root(root)?;
+        // A volume this process creates is its owner's alone from the start, on Windows by an
+        // access list everything below it inherits (BUG-0324).
+        if fresh {
+            super::private::restrict_root(root)?;
+        }
+        let host = created.subdir(HOST, true)?;
         let lock = open_lock(&host)?;
         match lock.try_lock() {
             Ok(()) => {}

@@ -340,6 +340,10 @@ fn read_checked(path: &Path, what: &str, allowed: Refusal) -> Result<Credential,
         if linked {
             return Err(refused("is a link: name the file itself".to_owned()));
         }
+        // An access list granting anybody else, as a mode open to others is on Unix (BUG-0325).
+        if let Some(why) = crate::owner_only::open_to_others(path) {
+            return Err(refused(why));
+        }
     }
     if !opened.is_file() || opened.len() > FILE_MAX {
         return Err(refused("is not a file of at most 64 KiB".to_owned()));
@@ -377,7 +381,7 @@ fn private_directory(directory: &Path) -> bool {
     }
     #[cfg(not(unix))]
     {
-        true
+        crate::owner_only::open_to_others(directory).is_none()
     }
 }
 
@@ -418,7 +422,11 @@ fn write_cached(path: &Path, issued: &Issued) {
         use std::os::unix::fs::DirBuilderExt as _;
         builder.mode(0o700);
     }
-    if builder.create(directory).is_err() || !private_directory(directory) {
+    let created = !directory.is_dir();
+    if builder.create(directory).is_err()
+        || (created && crate::owner_only::restrict(directory).is_err())
+        || !private_directory(directory)
+    {
         return;
     }
     let Ok(token) = std::str::from_utf8(issued.token.expose()) else {
@@ -445,6 +453,10 @@ fn write_cached(path: &Path, issued: &Issued) {
     }
     let written = options
         .open(&aside)
+        .and_then(|file| {
+            crate::owner_only::restrict(&aside).map_err(std::io::Error::other)?;
+            Ok(file)
+        })
         .and_then(|mut file| file.write_all(body.as_bytes()))
         .and_then(|()| std::fs::rename(&aside, path));
     if written.is_err() {

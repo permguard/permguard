@@ -556,7 +556,12 @@ fn create_private_directory(path: &Path) -> io::Result<()> {
 
 #[cfg(not(unix))]
 fn create_private_directory(path: &Path) -> io::Result<()> {
-    fs::create_dir_all(path)
+    if path.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(path)?;
+    // Its owner's alone, as `0700` makes it on Unix (BUG-0325).
+    crate::owner_only::restrict(path).map_err(io::Error::other)
 }
 
 /// Where the configuration file is, given what the operator asked for.
