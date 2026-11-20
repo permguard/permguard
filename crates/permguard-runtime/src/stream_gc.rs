@@ -263,6 +263,7 @@ mod tests {
             issued_at: 1,
             not_after: 2,
             status: Status::Active,
+            restore: None,
             member_record: permguard_host::membership::record::MemberRecord {
                 member_id: [
                     0x01, 0x9a, 0, 0, 0, 0, 0x70, 0, 0x80, 0, 0, 0, 0, 0, 0, 0x6d,

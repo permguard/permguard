@@ -154,6 +154,12 @@ pub const AUDIT_REVOKE_PLANNED: &str = "host.membership.revoke_planned";
 pub const AUDIT_REVOKED: &str = "host.membership.revoked";
 pub const AUDIT_JOINED: &str = "host.membership.joined";
 pub const AUDIT_SYNCED: &str = "host.membership.synced";
+/// The member adopted a restored coordinator's re-anchoring manifest (BUG-0199): a break in the
+/// chain it held, recorded as such.
+pub const AUDIT_REANCHORED: &str = "host.membership.reanchored";
+/// How far a re-anchoring manifest's epoch leaps past the one it revises: above any epoch a member
+/// may have reached after the snapshot the coordinator was restored from (BUG-0199).
+pub const REANCHOR_EPOCHS: u64 = 1 << 20;
 pub const AUDIT_VERIFIED: &str = "host.membership.verified";
 pub const AUDIT_ORPHANED: &str = "host.membership.orphaned";
 pub const AUDIT_APPRAISED: &str = "host.membership.appraised";
@@ -508,6 +514,9 @@ pub struct Store {
     /// The version of the coordinator root this Host delivers zone keys at, `0` without a root:
     /// what a member's receipt is compared with to say it is behind (BUG-0097).
     root_version: std::sync::atomic::AtomicU64,
+    /// The `dr` restore of this volume, when it was restored: what a coordinator's first revision
+    /// of a membership it held before re-anchors the chain on (BUG-0199).
+    restored: Option<record::RestoreAnchor>,
 }
 
 impl fmt::Debug for Store {
@@ -1131,8 +1140,16 @@ pub fn succession(
             "epoch {} below the {epoch} held: rollback",
             manifest.epoch
         ))),
+        // A restored coordinator's re-anchor (BUG-0199): its chain lost what the member holds, so
+        // it names the restore and leaps past any epoch the member may hold; its signature was
+        // verified under the coordinator's pinned identity like any other.
+        Some((epoch, _)) if manifest.restore.is_some() && manifest.epoch > epoch => {
+            Ok(Succession::Successor)
+        }
         Some((epoch, _)) => Err(MembershipError::NotSuccessor(format!(
-            "epoch {} does not succeed the {epoch} held",
+            "epoch {} does not succeed the {epoch} held: the coordinator's chain diverged from \
+             this member's, as a coordinator restored from an older snapshot does; its next \
+             revision re-anchors the chain once it runs this build, or revoke and join again",
             manifest.epoch
         ))),
     }
@@ -1206,6 +1223,15 @@ impl Store {
                 "the journal is beyond its bound".to_owned(),
             ));
         }
+        // A coordinator restored for disaster recovery re-anchors each membership's chain at its
+        // first revision since (BUG-0199).
+        let restored = crate::restore::marked(volume)?
+            .filter(|marker| marker.mode == crate::restore::Mode::Dr)
+            .map(|marker| record::RestoreAnchor {
+                plan_id: marker.plan_id,
+                previous_boot_id: marker.previous_boot_id,
+                at: marker.at,
+            });
         let mut state = State::default();
         for item in journal.items {
             let bytes =
@@ -1223,6 +1249,7 @@ impl Store {
             keeping: Mutex::new(()),
             windows: Mutex::new(BTreeMap::new()),
             root_version: std::sync::atomic::AtomicU64::new(0),
+            restored,
         }))
     }
 
@@ -2221,6 +2248,7 @@ impl Store {
                 not_after: now + MANIFEST_LIFETIME_SECONDS,
                 status: Status::Active,
                 member_record,
+                restore: None,
             },
             statements,
             outcome.approvals,
@@ -2371,9 +2399,11 @@ impl Store {
             });
         }
         // Held for review: the manifests the member holds past this coordinator's are lost here,
-        // so only a revocation ends it (owner decision of 2026-10-10).
+        // so only a revocation ends it (owner decision of 2026-10-10) — or, on a coordinator
+        // restored `dr` since, the re-anchor that leaps past them (BUG-0199).
         if let Some(seen) = held.held_epoch
             && to != Status::Revoked
+            && !self.reanchors(&held)
         {
             return Err(MembershipError::Held(format!(
                 "a peer named epoch {seen}, which this coordinator never issued: revoke it and \
@@ -2415,6 +2445,7 @@ impl Store {
                     not_after: now + MANIFEST_LIFETIME_SECONDS,
                     status: to,
                     // A refused enrollment never makes a live member: its record is provisional.
+                    restore: None,
                     member_record: record::MemberRecord {
                         member_id: fresh_id(now)?,
                         name: held
@@ -2430,6 +2461,18 @@ impl Store {
                 self.next_manifest(coordinator, &held, manifest, digest, to, now)
             }
         }
+    }
+
+    /// Whether this coordinator's next revision of `held` re-anchors its chain: the volume was
+    /// restored `dr` after the manifest in force was issued, and that manifest does not already
+    /// carry the restore (BUG-0199).
+    fn reanchors(&self, held: &Held) -> bool {
+        let (Some(restored), Some((manifest, ..))) = (&self.restored, &held.manifest) else {
+            return false;
+        };
+        held.role == Role::Coordinator
+            && manifest.issued_at < restored.at
+            && manifest.restore.as_ref() != Some(restored)
     }
 
     /// The successor of `manifest`, its `status` `to`: one more epoch, the coordinator's pins
@@ -2448,6 +2491,17 @@ impl Store {
                 let mut next = manifest.clone();
                 next.epoch += 1;
                 next.previous = Some(digest.clone());
+                next.restore = None;
+                // The first revision since a `dr` restore of a manifest issued before it: the
+                // member may hold a later epoch of the chain the snapshot lost, so this one
+                // leaps past it and names the restore, which the member accepts in place of
+                // the exact successor (BUG-0199).
+                if self.reanchors(held)
+                    && let Some(restored) = &self.restored
+                {
+                    next.epoch = manifest.epoch.saturating_add(REANCHOR_EPOCHS);
+                    next.restore = Some(restored.clone());
+                }
                 next.issued_at = now;
                 next.not_after = now + MANIFEST_LIFETIME_SECONDS;
                 next.status = to;
@@ -2561,15 +2615,24 @@ impl Store {
     ) -> Result<(Vec<u8>, Digest), MembershipError> {
         let writing = self.begin();
         let held = self.held(&manifest.membership_id)?;
-        if !held.status.allows(manifest.status) || held.epoch() + 1 != manifest.epoch {
+        // A re-anchor leaps its epoch past the chain the snapshot lost (BUG-0199).
+        let reanchor = manifest.restore.is_some()
+            && manifest.restore.as_ref() == self.restored.as_ref()
+            && self.reanchors(&held);
+        let step = if reanchor { REANCHOR_EPOCHS } else { 1 };
+        if !held.status.allows(manifest.status)
+            || held.epoch().saturating_add(step) != manifest.epoch
+        {
             return Err(MembershipError::Transition {
                 from: held.status,
                 to: manifest.status,
             });
         }
-        // Rechecked under the lock: a hold committed since the check lets only a revocation by.
+        // Rechecked under the lock: a hold committed since the check lets only a revocation by,
+        // or the re-anchor of a restored coordinator.
         if let Some(seen) = held.held_epoch
             && manifest.status != Status::Revoked
+            && !reanchor
         {
             return Err(MembershipError::Held(format!(
                 "a peer named epoch {seen}, which this coordinator never issued: revoke it and \
@@ -2668,18 +2731,33 @@ impl Store {
             ));
         }
         let from = held_epoch.unwrap_or(0);
+        // By the epoch each manifest names, not its position: a re-anchor leaps the epochs
+        // (BUG-0199).
         let manifests: Vec<Vec<u8>> = state
             .history
             .get(id)
             .into_iter()
             .flatten()
-            .skip(usize::try_from(from).unwrap_or(usize::MAX))
+            .filter(|envelope| {
+                Sign1::decode(envelope)
+                    .ok()
+                    .and_then(|sign1| Manifest::decode(sign1.payload_unverified()).ok())
+                    .is_none_or(|manifest| manifest.epoch > from)
+            })
             .cloned()
             .collect();
         // The statements each manifest answered was signed against, once each.
         let mut statements: Vec<RingStatement> = Vec::new();
-        for epoch in (from + 1)..=held.epoch() {
-            for statement in state.statements.get(&(*id, epoch)).into_iter().flatten() {
+        let newer = (from < held.epoch())
+            .then(|| {
+                state
+                    .statements
+                    .range((*id, from.saturating_add(1))..=(*id, held.epoch()))
+            })
+            .into_iter()
+            .flatten();
+        for (_, held_statements) in newer {
+            for statement in held_statements {
                 if !statements
                     .iter()
                     .any(|held| held.ring == statement.ring && held.epoch == statement.epoch)
@@ -3061,6 +3139,10 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                 state.active_since.insert(entry.subject, entry.at);
             }
             held.status = manifest.status;
+            // A re-anchor past the epoch a peer named ends its hold for review (BUG-0199).
+            if held.held_epoch.is_some_and(|seen| manifest.epoch > seen) {
+                held.held_epoch = None;
+            }
             held.manifest = Some((manifest, envelope.to_vec(), digest));
             held.revision += 1;
             held.updated_at = entry.at;

@@ -85,7 +85,16 @@
         { "label": 13, "name": "issued_at", "type": "uint", "occurs": "required" },
         { "label": 14, "name": "not_after", "type": "uint", "occurs": "required" },
         { "label": 15, "name": "status", "type": "text", "occurs": "required", "note": "active, suspended, revoked, rejected or expired" },
-        { "label": 16, "name": "member_record", "type": "map:member_record", "occurs": "required", "note": "the member this membership belongs to, as the coordinator approved it: shared by every membership of one member Host" }
+        { "label": 16, "name": "member_record", "type": "map:member_record", "occurs": "required", "note": "the member this membership belongs to, as the coordinator approved it: shared by every membership of one member Host" },
+        { "label": 17, "name": "restore", "type": "map:restore_anchor", "occurs": "optional", "note": "a restored coordinator's first revision of a membership it held before a `dr` restore (BUG-0199): names the restore, and the epoch leaps 2^20 past the one revised; a member accepts it in place of the exact successor" }
+      ]
+    },
+    "restore_anchor": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "plan_id", "type": "bytes", "occurs": "required", "note": "16 bytes, the restore plan the run consumed" },
+        { "label": 2, "name": "previous_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes, the boot id the snapshot's BOOT recorded" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "when the restore ran, seconds" }
       ]
     },
     "member_record": {

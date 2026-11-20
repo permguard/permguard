@@ -197,6 +197,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         issued_at: AT + epoch,
         not_after: AT + 365 * 86_400,
         status,
+        restore: None,
         member_record: member_record(&v),
     };
     let genesis = manifest(1, Status::Active, None);

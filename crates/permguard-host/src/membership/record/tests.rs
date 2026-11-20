@@ -76,6 +76,7 @@ fn manifest(epoch: u64) -> Manifest {
         issued_at: 10,
         not_after: 20,
         status: Status::Active,
+        restore: None,
         member_record: crate::membership::record::MemberRecord::test(),
     }
 }

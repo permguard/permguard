@@ -1079,6 +1079,126 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
     ));
 }
 
+/// BUG-0199: a coordinator restored for disaster recovery from a snapshot older than a revision
+/// its member holds re-anchors the chain at its first revision since: the manifest names the
+/// restore and leaps past any epoch the member may hold, the member adopts it in place of the
+/// exact successor, and the coordinator's later revisions are ordinary successors again.
+#[test]
+fn a_coordinator_restored_from_an_older_snapshot_re_anchors_the_chain_its_member_adopts() {
+    let (c, m) = (Host::new("reanchor-c"), Host::new("reanchor-m"));
+    let id = enroll(&c, &m).membership_id;
+    let now = permguard_core::time::unix_now();
+    let (manifest, _, _) = c
+        .store
+        .check_approve(
+            &c.coordinator(),
+            &capabilities(),
+            &id,
+            None,
+            None,
+            &offered_nothing(),
+            None,
+            now,
+        )
+        .expect("approvable");
+    c.store
+        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now)
+        .expect("approved");
+    assert_eq!(sync(&c, &m, &id), Status::Active);
+    let snapshot = c.copy("reanchor-snapshot");
+
+    // Past the snapshot, the coordinator moves the membership to epoch 2, which the member holds.
+    let next = c
+        .store
+        .check_successor(&c.coordinator(), &id, Status::Suspended, None, now)
+        .expect("a successor");
+    c.store
+        .transition(&Applying::for_tests(5), &c.coordinator(), &next, now)
+        .expect("issued");
+    assert_eq!(sync(&c, &m, &id), Status::Suspended);
+    assert_eq!(m.store.membership(&id).expect("held").epoch(), 2);
+
+    // The coordinator is lost and restored `dr` from the snapshot.
+    let marker = crate::restore::Marker {
+        mode: crate::restore::Mode::Dr,
+        at: now + 1,
+        generation: 2,
+        previous_boot_id: [0xB0; 16],
+        plan_id: [0xA1; 16],
+    };
+    crate::storage::write::replace_view(
+        snapshot.volume().host(),
+        crate::restore::MARKER,
+        crate::storage::format::VIEW,
+        &marker.encode().expect("encodes"),
+    )
+    .expect("marked");
+    let restored = snapshot.copy("reanchor-restored");
+    let later = now + 5;
+    let reanchor = restored
+        .store
+        .check_successor(&restored.coordinator(), &id, Status::Suspended, None, later)
+        .expect("a successor");
+    assert_eq!(reanchor.epoch, 1 + REANCHOR_EPOCHS);
+    let anchor = reanchor.restore.clone().expect("it names the restore");
+    assert_eq!(anchor.plan_id, marker.plan_id);
+    restored
+        .store
+        .transition(
+            &Applying::for_tests(6),
+            &restored.coordinator(),
+            &reanchor,
+            later,
+        )
+        .expect("issued");
+
+    // The member, holding epoch 2 of the chain the snapshot lost, adopts the re-anchor.
+    assert_eq!(sync(&restored, &m, &id), Status::Suspended);
+    assert_eq!(
+        m.store.membership(&id).expect("held").epoch(),
+        1 + REANCHOR_EPOCHS
+    );
+
+    // The restored coordinator's next revision is an ordinary successor, adopted as one.
+    let ordinary = restored
+        .store
+        .check_successor(
+            &restored.coordinator(),
+            &id,
+            Status::Active,
+            None,
+            later + 1,
+        )
+        .expect("a successor");
+    assert_eq!(ordinary.epoch, 2 + REANCHOR_EPOCHS);
+    assert!(ordinary.restore.is_none());
+    restored
+        .store
+        .transition(
+            &Applying::for_tests(7),
+            &restored.coordinator(),
+            &ordinary,
+            later + 1,
+        )
+        .expect("issued");
+    assert_eq!(sync(&restored, &m, &id), Status::Active);
+
+    // A coordinator's diverged chain without a re-anchor is refused, naming what happened.
+    let diverged = Manifest {
+        epoch: 5 + REANCHOR_EPOCHS,
+        previous: Some(Digest::compute(b"elsewhere")),
+        restore: None,
+        ..ordinary.clone()
+    };
+    let error = super::succession(
+        Some((2 + REANCHOR_EPOCHS, &Digest::compute(b"held"))),
+        &diverged,
+        &Digest::compute(b"diverged"),
+    )
+    .expect_err("not the successor");
+    assert!(error.to_string().contains("diverged"), "{error}");
+}
+
 #[test]
 fn a_tampered_journal_does_not_open() {
     let (c, m) = (Host::new("tamper-c"), Host::new("tamper-m"));

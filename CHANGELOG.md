@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A coordinator restored from an older snapshot re-anchors its members' chains.**
+  After a `dr` restore, the coordinator's first revision of each membership it held (a `host members fence`, a suspension, a re-pin) names the restore in a new manifest field (`restore`) and leaps its epoch 2^20 past the one it revises; the member accepts it in place of the exact successor once it verifies under the coordinator's pinned identity, records `host.membership.reanchored` in its `security` trail, and its paused subscriptions resume.
+  A hold for review of an epoch the snapshot lost ends with the re-anchor, and a chain that diverged without one is refused naming the divergence rather than `not the successor` alone (BUG-0199).
 - **A write past the Host's storage quota is refused, whichever crate writes it.**
   The composition installs the volume's quota in a gate of the storage write primitives: every immutable file, view and journal frame written below the volume reserves its bytes and files first, and a write past `storage.quotas.host` is refused `QuotaExceeded`, one below the emergency floor `BelowFloor`, writing nothing; writes below `host/audit/` are charged as maintenance, and the minute remeasure corrects what `std::fs` writers add.
   `storage.quotas.planes` is now refused at start: a Plane keeps no directory of its own on the volume, so its quota could be neither measured nor enforced (BUG-0062).

@@ -28,8 +28,8 @@ use super::record::{
     TaskAnswer, TaskMessage, TaskProgress, WatchEvent, WatchRequest, channel_binding,
 };
 use super::{
-    AUDIT_JOINED, AUDIT_SYNCED, Capabilities, DOMAIN, Held, JOIN, MembershipError, SYNC, Store,
-    rings_needed, statement_of, token_proof,
+    AUDIT_JOINED, AUDIT_REANCHORED, AUDIT_SYNCED, Capabilities, DOMAIN, Held, JOIN,
+    MembershipError, SYNC, Store, rings_needed, statement_of, token_proof,
 };
 use crate::identity::record::uuid_text;
 use crate::identity::{Identity, Verified};
@@ -581,13 +581,30 @@ impl Member<'_> {
         let now = self.time.now_secs();
         let accepted = self.store.check_sync(id, &exchanged.peer, &answer, now)?;
         for (manifest, envelope, digest) in accepted {
+            // A restored coordinator's re-anchor is a break in the chain this Host held: said at
+            // WARN and recorded as such (BUG-0199).
+            let reanchored = manifest.restore.is_some();
+            if reanchored {
+                tracing::warn!(
+                    event.name = "host.membership.reanchored",
+                    component = "host",
+                    membership_id = %uuid_text(id),
+                    epoch = manifest.epoch,
+                    "the coordinator was restored from a snapshot and re-anchored this \
+                     membership's chain: this Host adopts its manifest in place of the one it held"
+                );
+            }
             let outcome = self
                 .mutations
                 .run(
                     Begin {
                         domain: DOMAIN,
                         operation: SYNC,
-                        action: AUDIT_SYNCED,
+                        action: if reanchored {
+                            AUDIT_REANCHORED
+                        } else {
+                            AUDIT_SYNCED
+                        },
                         initiator: initiator.clone(),
                         request: None,
                         target: Some(uuid_text(id)),

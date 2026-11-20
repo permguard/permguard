@@ -312,6 +312,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation_with_reason("host.membership.revoked", HOST),
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
+    // A restored coordinator's re-anchoring manifest adopted (BUG-0199).
+    mutation("host.membership.reanchored", HOST),
     mutation("host.membership.verified", HOST),
     mutation("host.membership.orphaned", HOST),
     // Task sessions (WP-4.3): every lease issued, every epoch refused, every clone alarm, each

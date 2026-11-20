@@ -912,6 +912,36 @@ fn bounded(bytes: &[u8], what: &str) -> Result<(), RecordError> {
     Ok(())
 }
 
+/// The restore a coordinator's re-anchoring manifest names (BUG-0199): a `dr` restore of its
+/// volume, by the plan it consumed, the boot id the snapshot recorded and when it ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreAnchor {
+    pub plan_id: [u8; 16],
+    pub previous_boot_id: [u8; 16],
+    pub at: u64,
+}
+
+impl RestoreAnchor {
+    fn value(&self) -> Result<Value, RecordError> {
+        Ok(Value::Map(vec![
+            (Value::Int(1), Value::Bytes(self.plan_id.to_vec())),
+            (Value::Int(2), Value::Bytes(self.previous_boot_id.to_vec())),
+            (Value::Int(3), uint(self.at)?),
+        ]))
+    }
+
+    fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "a restore anchor")?;
+        let anchor = Self {
+            plan_id: map.id(1)?,
+            previous_boot_id: map.id(2)?,
+            at: map.uint(3)?,
+        };
+        map.finish()?;
+        Ok(anchor)
+    }
+}
+
 /// What a membership manifest signs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
@@ -934,6 +964,10 @@ pub struct Manifest {
     pub status: Status,
     /// The member this membership belongs to, as the coordinator approved it.
     pub member_record: MemberRecord,
+    /// The restore this manifest re-anchors the chain after (BUG-0199): set on a restored
+    /// coordinator's first revision of a membership, whose epoch then leaps past any its member
+    /// may hold; absent otherwise.
+    pub restore: Option<RestoreAnchor>,
 }
 
 impl Manifest {
@@ -973,6 +1007,9 @@ impl Manifest {
         pairs.push((Value::Int(14), uint(self.not_after)?));
         pairs.push((Value::Int(15), Value::Text(self.status.as_str().to_owned())));
         pairs.push((Value::Int(16), self.member_record.value()?));
+        if let Some(restore) = &self.restore {
+            pairs.push((Value::Int(17), restore.value()?));
+        }
         encode(pairs)
     }
 
@@ -1016,6 +1053,10 @@ impl Manifest {
                 status => status,
             },
             member_record: MemberRecord::read(map.value(16)?)?,
+            restore: map
+                .optional_value(17)?
+                .map(RestoreAnchor::read)
+                .transpose()?,
         };
         map.finish()?;
         if !is_uuid_v7(&manifest.membership_id) || manifest.epoch == 0 {

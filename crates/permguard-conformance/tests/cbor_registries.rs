@@ -1281,6 +1281,11 @@ fn membership_samples() -> Vec<Sample> {
         issued_at: 1_800_000_000,
         not_after: 1_831_536_000,
         status: Status::Active,
+        restore: (epoch > 1).then_some(permguard_host::membership::record::RestoreAnchor {
+            plan_id: [0xA1; 16],
+            previous_boot_id: [0xB0; 16],
+            at: 1_799_999_000,
+        }),
         member_record: member_record(),
     };
     let lease = |optional: bool| Lease {
@@ -1369,6 +1374,7 @@ fn membership_samples() -> Vec<Sample> {
                 "manifest.min_assurance",
                 "manifest.previous",
                 "manifest.assurance_binding",
+                "manifest.restore",
                 "claim.record",
                 "ring_pin.retiring",
             ],
