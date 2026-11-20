@@ -116,7 +116,8 @@ services:
     command: ["serve", "permguard-all-in-one", "/opt/permguard/lab/all-in-one.yml"]
     environment: { LAB_HOST: all-in-one }
     volumes: [*lab-volume-ro, *lab-scripts, "all-in-one-state:/var/lib/permguard"]
-    ports: ["127.0.0.1::5443", "127.0.0.1::6443", "127.0.0.1::7443"]
+    # The Authority Plane's 8443 too: a client on the host takes its tokens there (BUG-0341).
+    ports: ["127.0.0.1::5443", "127.0.0.1::6443", "127.0.0.1::7443", "127.0.0.1::8443"]
     healthcheck: *healthcheck
     depends_on: *after-pki
 
@@ -126,7 +127,8 @@ services:
     command: ["serve", "permguard-control-plane", "/opt/permguard/lab/control-plane.yml"]
     environment: { LAB_HOST: control-plane }
     volumes: [*lab-volume-ro, *lab-scripts, "control-plane-state:/var/lib/permguard"]
-    ports: ["127.0.0.1::5443", "127.0.0.1::6443"]
+    # The Authority Plane's 8443 too: a client on the host takes its tokens there (BUG-0341).
+    ports: ["127.0.0.1::5443", "127.0.0.1::6443", "127.0.0.1::8443"]
     healthcheck: *healthcheck
     depends_on: *after-pki
 

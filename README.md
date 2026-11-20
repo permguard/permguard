@@ -850,6 +850,20 @@ task lab:where                    # or: make lab-where
 Every Host is reached by its service name inside the lab's network.
 The ports published on the host's loopback are ephemeral, and the certificates name the service, so a client on the host passes `--tls-server-name <service>` with the lab's authority.
 
+A client on the host acts as the Authority Plane's `admin`, whose key the coordinator's first start writes on its volume: copy the authority, the operator's certificate and that key out, then name the published Control Plane and Authority Plane ports `task lab:where` prints.
+
+```sh
+lab="docker compose -f docker-compose.lab.yml"
+$lab cp lab-pki:/lab/pki/ca.crt . && $lab cp lab-pki:/lab/pki/operator.crt . && $lab cp lab-pki:/lab/pki/operator.key .
+$lab cp control-plane:/var/lib/permguard/volume/planes/authority/admin.key .   # all-in-one: the all-in-one service
+permguard --control-endpoint "https://$($lab port control-plane 6443)" \
+  --authority-endpoint "https://$($lab port control-plane 8443)" \
+  --tls-ca-file ca.crt --tls-cert-file operator.crt --tls-key-file operator.key \
+  --tls-server-name control-plane \
+  --access-key "$(sed -n 's/^access_key: //p' admin.key)" --secret-key-file admin.key \
+  zones list
+```
+
 Run the gate — every profile on fresh volumes, or one:
 
 ```sh

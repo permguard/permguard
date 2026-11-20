@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **The Compose lab can be driven from the host again.**
+  Since a certificate grants nothing on its own, a client on the host needs a token of the lab's Authority Plane, whose 8443 no profile published.
+  The coordinators publish 8443 on the host's loopback, `task lab:where` prints the Authority Plane's address and how to copy `admin`'s key, and the README's Compose lab section gives the working command line (BUG-0341).
 - **A coordinator's copies of its members' audit checkpoints can be read back and verified.**
   WP-5.9 kept each member's sealed checkpoints on the coordinator, and nothing read them back; the kept file was a storage view named `.cose`, which `audit verify --checkpoint` refused until its header was stripped by hand.
   `GET /host/v1/audit/{class}/checkpoints` takes `membership`, and gRPC `ListAuditCheckpoints` its `membership` field, to answer the checkpoints the coordinator keeps of that member's trail, under `audit.read` on the trail's resource; `permguard host audit checkpoints --membership <id> --out <dir>` writes each as the envelope `audit verify --checkpoint` reads, and a coordinator now keeps the envelope itself (BUG-0155).

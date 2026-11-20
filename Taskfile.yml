@@ -450,6 +450,12 @@ tasks:
         docker compose -f docker-compose.lab.yml --profile '*' ps
         printf '\nThe certificates name the service: pass --tls-server-name <service> with the lab authority,\n'
         printf 'docker compose -f docker-compose.lab.yml cp lab-pki:/lab/pki/ca.crt .\n'
+        for coordinator in all-in-one control-plane; do
+          if authority="$(docker compose -f docker-compose.lab.yml port "${coordinator}" 8443 2>/dev/null)" && [ -n "${authority}" ]; then
+            printf '\nThe Authority Plane  https://%s  (service %s): tokens for a client on the host, with\n' "${authority}" "${coordinator}"
+            printf "admin's key: docker compose -f docker-compose.lab.yml cp %s:/var/lib/permguard/volume/planes/authority/admin.key .\n" "${coordinator}"
+          fi
+        done
 
   test:
     desc: Run tests.
