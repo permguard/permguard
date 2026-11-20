@@ -560,6 +560,45 @@ deny if input.subject.id == "bob"
         assert!(verdict, "decided through the whole chain");
     }
 
+    /// BUG-0236: the chain measure itself never follows a chain into an overflow: fifteen thousand
+    /// links are measured and refused on a thread with a small stack; and a chain written through
+    /// computed names, `data.chain[k]`, is measured too, a package read by a computed name reading
+    /// every rule under it.
+    #[test]
+    fn a_long_or_computed_rule_chain_is_measured_without_overflow_and_refused() {
+        use permguard_language_core::role::Language as _;
+
+        let long = chain(15_000);
+        let refused = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || Rego.validate_set(&[("long", long.as_bytes())], None))
+            .expect("a thread")
+            .join()
+            .expect("no overflow");
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.contains("more than the 64")),
+            "{refused:?}"
+        );
+
+        let mut computed = String::from("package chain\n\nimport rego.v1\n\nallow if r0\n\n");
+        for at in 0..200 {
+            computed.push_str(&format!(
+                "r{at} if {{\n    k := \"r{}\"\n    data.chain[k]\n}}\n",
+                at + 1
+            ));
+        }
+        computed.push_str("r200 if input.subject.id == \"alice\"\n");
+        let refused = Rego
+            .validate_policy(computed.as_bytes())
+            .expect_err("a computed chain past the bound");
+        assert!(
+            refused.contains("by a computed name") && refused.contains("more than the 64"),
+            "{refused}"
+        );
+    }
+
     /// BUG-0016: a set-valued or function `deny` or `allow` is refused at validation and at load,
     /// naming the rule; a boolean one is accepted and decides as before.
     #[test]

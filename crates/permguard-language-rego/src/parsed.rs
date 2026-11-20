@@ -411,10 +411,10 @@ pub fn check_set(modules: &[(&str, &Parsed)]) -> Result<(), String> {
         }
     }
 
-    // Every rule by its full path, and the rules each one reads.
-    let mut edges: std::collections::BTreeMap<String, BTreeSet<String>> =
-        std::collections::BTreeMap::new();
-    let all: Vec<String> = modules
+    // Every rule by its full path, and the rules each one reads. A reference names a rule, a
+    // value inside one (`data.p.r.x` reads `data.p.r`), or a package (`data.p[k]`, a computed name,
+    // reads as `data.p`), which may read any rule under it (BUG-0236): every one counts.
+    let all: BTreeSet<String> = modules
         .iter()
         .flat_map(|(_, module)| {
             module
@@ -423,6 +423,8 @@ pub fn check_set(modules: &[(&str, &Parsed)]) -> Result<(), String> {
                 .map(move |rule| format!("{}.{rule}", module.package))
         })
         .collect();
+    let mut edges: std::collections::BTreeMap<String, BTreeSet<String>> =
+        std::collections::BTreeMap::new();
     for (_, module) in modules {
         for (rule, named) in &module.references {
             let from = format!("{}.{rule}", module.package);
@@ -433,20 +435,60 @@ pub fn check_set(modules: &[(&str, &Parsed)]) -> Result<(), String> {
                 } else {
                     format!("{}.{reference}", module.package)
                 };
-                for target in &all {
-                    if *target != from
-                        && (full == *target || full.starts_with(&format!("{target}.")))
-                    {
-                        to.insert(target.clone());
+                // The rule it names, or the rule a value inside it belongs to.
+                let mut at = full.len();
+                loop {
+                    let prefix = &full[..at];
+                    if all.contains(prefix) {
+                        to.insert(prefix.to_owned());
+                    }
+                    match prefix.rfind('.') {
+                        Some(dot) => at = dot,
+                        None => break,
                     }
                 }
+                // Every rule under the package it names, through one node standing for them all,
+                // which counts no link itself: the edges stay one per reference, however many
+                // rules read the same package by a computed name.
+                let below = format!("{full}.");
+                let under: BTreeSet<String> = all
+                    .range(below.clone()..)
+                    .take_while(|target| target.starts_with(&below))
+                    .cloned()
+                    .collect();
+                if !under.is_empty() {
+                    let package = format!("{PACKAGE_NODE}{full}");
+                    edges.entry(package.clone()).or_insert(under);
+                    to.insert(package);
+                }
             }
+            to.remove(&from);
             edges.entry(from).or_default().extend(to);
+        }
+    }
+    // Rules that read their own package by a computed name can read each other in any order, a
+    // chain the static graph cannot follow: as many of them as read it, at most, so that many is
+    // the bound's measure (BUG-0236).
+    for (node, under) in edges
+        .iter()
+        .filter(|(node, _)| node.starts_with(PACKAGE_NODE))
+    {
+        let reading = under
+            .iter()
+            .filter(|rule| edges.get(*rule).is_some_and(|reads| reads.contains(node)))
+            .count();
+        if reading > MAX_RULE_DEPTH {
+            return Err(format!(
+                "rego: {reading} rules read `{}` by a computed name and can read each other in a \
+                 chain, more than the {MAX_RULE_DEPTH} a partition may: the evaluator recurses \
+                 once per link",
+                &node[PACKAGE_NODE.len()..]
+            ));
         }
     }
     let mut memo: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for start in &all {
-        let deepest = depth_of(start, &edges, &mut memo, &mut BTreeSet::new());
+        let deepest = depth_of(start, &edges, &mut memo);
         if deepest > MAX_RULE_DEPTH {
             return Err(format!(
                 "rego: the rule `{start}` reads a chain of {deepest} rules depending on each other, \
@@ -458,31 +500,55 @@ pub fn check_set(modules: &[(&str, &Parsed)]) -> Result<(), String> {
     Ok(())
 }
 
+/// How a node standing for every rule under a package is named in the dependency graph: a prefix
+/// no rule path can take.
+const PACKAGE_NODE: &str = "\u{0}";
+
 /// The longest chain of rules from `rule`, itself included; a rule already on the path ends it,
-/// so a cycle, which the engine refuses itself, is counted once.
+/// so a cycle, which the engine refuses itself, is counted once. Walked with a stack of its own,
+/// never the caller's: a chain of any length is measured, never followed into an overflow
+/// (BUG-0236).
 fn depth_of(
     rule: &str,
     edges: &std::collections::BTreeMap<String, BTreeSet<String>>,
     memo: &mut std::collections::BTreeMap<String, usize>,
-    path: &mut BTreeSet<String>,
 ) -> usize {
     if let Some(known) = memo.get(rule) {
         return *known;
     }
-    if !path.insert(rule.to_owned()) {
-        return 0;
+    let children = |of: &str| -> Vec<String> {
+        edges
+            .get(of)
+            .map(|next| next.iter().cloned().collect())
+            .unwrap_or_default()
+    };
+    // (rule, the rules it reads, the next to visit, the deepest chain below it so far)
+    let mut stack: Vec<(String, Vec<String>, usize, usize)> =
+        vec![(rule.to_owned(), children(rule), 0, 0)];
+    let mut path: BTreeSet<String> = BTreeSet::from([rule.to_owned()]);
+    while let Some(top) = stack.last_mut() {
+        if top.2 < top.1.len() {
+            let next = top.1[top.2].clone();
+            top.2 += 1;
+            if let Some(known) = memo.get(&next) {
+                top.3 = top.3.max(*known);
+            } else if !path.contains(&next) {
+                path.insert(next.clone());
+                let below = children(&next);
+                stack.push((next, below, 0, 0));
+            }
+            continue;
+        }
+        let (done, _, _, deepest) = stack.pop().unwrap_or_default();
+        // A package node stands for the rules under it and is no link of its own.
+        let depth = deepest + usize::from(!done.starts_with(PACKAGE_NODE));
+        path.remove(&done);
+        memo.insert(done, depth);
+        if let Some(parent) = stack.last_mut() {
+            parent.3 = parent.3.max(depth);
+        }
     }
-    let deepest = edges
-        .get(rule)
-        .into_iter()
-        .flatten()
-        .map(|next| depth_of(next, edges, memo, path))
-        .max()
-        .unwrap_or(0)
-        + 1;
-    path.remove(rule);
-    memo.insert(rule.to_owned(), deepest);
-    deepest
+    memo.get(rule).copied().unwrap_or(1)
 }
 
 /// Refuses a module that calls a built-in outside [`ALLOWED_BUILTINS`].

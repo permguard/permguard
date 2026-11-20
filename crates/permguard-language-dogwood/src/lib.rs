@@ -321,14 +321,48 @@ pub const MAX_NESTING: usize = 32;
 
 /// Refuses a Dogwood text that nests deeper than [`MAX_NESTING`].
 pub(crate) fn check_nesting(text: &str) -> Result<(), String> {
-    let deepest = permguard_language_core::nesting::depth(
+    check_nesting_of(
         text,
         permguard_language_core::nesting::Grammar::Policy,
-    );
+        "a Dogwood policy",
+    )
+}
+
+/// Refuses a text of `grammar` that nests deeper than [`MAX_NESTING`], naming it `what`: the
+/// partition's artifacts are read by the same recursive parsers as its policies, so they are held
+/// to the same bound before any of them runs (BUG-0237).
+pub(crate) fn check_nesting_of(
+    text: &str,
+    grammar: permguard_language_core::nesting::Grammar,
+    what: &str,
+) -> Result<(), String> {
+    let deepest = permguard_language_core::nesting::depth(text, grammar);
     if deepest > MAX_NESTING {
         return Err(format!(
-            "nests {deepest} levels deep, beyond the {MAX_NESTING} a Dogwood policy may"
+            "nests {deepest} levels deep, beyond the {MAX_NESTING} {what} may"
         ));
+    }
+    Ok(())
+}
+
+/// Holds each artifact a partition carries to the nesting bound, as its policies are (BUG-0237).
+pub(crate) fn check_artifact_nesting(
+    artifacts: &permguard_language_core::artifact::Artifacts,
+) -> Result<(), String> {
+    use permguard_language_core::nesting::Grammar;
+    for (name, grammar, what) in [
+        (
+            artifacts::ACTION_SCHEMA,
+            Grammar::Schema,
+            "an action schema",
+        ),
+        (artifacts::EVENT_SCHEMA, Grammar::Schema, "an event schema"),
+        (artifacts::MACROS, Grammar::Policy, "a macro library"),
+    ] {
+        if let Some(bytes) = artifacts.bytes(name) {
+            check_nesting_of(source_of(bytes, what)?, grammar, what)
+                .map_err(|error| format!("dogwood: {error}"))?;
+        }
     }
     Ok(())
 }
@@ -413,6 +447,49 @@ when temporal {
             .join()
             .expect("no overflow")
             .expect("within the bound");
+    }
+
+    /// BUG-0237: a partition's artifacts are read by the same recursive parsers as its policies,
+    /// so a macro library, an action schema or an event schema nested past the bound is refused at
+    /// once by its own check, naming the bound, never parsed, on a thread with a small stack too.
+    #[test]
+    fn an_artifact_nested_past_the_bound_is_refused_at_once() {
+        let deep_macros = format!(
+            "macro deep() = {}true{};\n",
+            "(".repeat(5000),
+            ")".repeat(5000)
+        );
+        let deep_schema = format!(
+            "namespace N {{ type T = {}String{}; }}\n",
+            "Set<".repeat(5000),
+            ">".repeat(5000)
+        );
+        for (name, bytes, what) in [
+            (artifacts::MACROS, deep_macros, "a macro library"),
+            (
+                artifacts::ACTION_SCHEMA,
+                deep_schema.clone(),
+                "an action schema",
+            ),
+            (artifacts::EVENT_SCHEMA, deep_schema, "an event schema"),
+        ] {
+            let held = artifacts::all()
+                .iter()
+                .copied()
+                .find(|artifact| artifact.name() == name)
+                .expect("registered");
+            let refused = std::thread::Builder::new()
+                .stack_size(256 * 1024)
+                .spawn(move || held.validate(bytes.as_bytes()))
+                .expect("a thread")
+                .join()
+                .expect("no overflow")
+                .expect_err("past the bound");
+            assert!(
+                refused.contains(&format!("beyond the 32 {what} may")),
+                "{name}: {refused}"
+            );
+        }
     }
 
     #[test]

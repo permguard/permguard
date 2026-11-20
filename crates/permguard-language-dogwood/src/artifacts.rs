@@ -96,13 +96,22 @@ impl ArtifactType for ActionSchema {
     /// well-formed schema passes.
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
         let source = super::source_of(bytes, "an action schema")?;
-        let schema = dogwood_language::PolicySchema::from_cedarschema_str(source)
-            .map_err(|error| format!("dogwood: the action schema is not usable: {error}"))?;
-        let service = dogwood_language::ServiceSchema::defaults();
+        // The bound first, then the parser on a segment sized for it (BUG-0237).
+        super::check_nesting_of(
+            source,
+            permguard_language_core::nesting::Grammar::Schema,
+            "an action schema",
+        )
+        .map_err(|error| format!("dogwood: {error}"))?;
+        permguard_language_core::headroom::ample(|| {
+            let schema = dogwood_language::PolicySchema::from_cedarschema_str(source)
+                .map_err(|error| format!("dogwood: the action schema is not usable: {error}"))?;
+            let service = dogwood_language::ServiceSchema::defaults();
 
-        dogwood_language::LoweredPolicySet::from_str("", &service, &schema)
-            .map(|_| ())
-            .map_err(|error| format!("dogwood: the action schema does not parse: {error}"))
+            dogwood_language::LoweredPolicySet::from_str("", &service, &schema)
+                .map(|_| ())
+                .map_err(|error| format!("dogwood: the action schema does not parse: {error}"))
+        })
     }
 }
 
@@ -144,14 +153,22 @@ impl ArtifactType for EventSchema {
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
         let source = super::source_of(bytes, "an event schema")?;
+        super::check_nesting_of(
+            source,
+            permguard_language_core::nesting::Grammar::Schema,
+            "an event schema",
+        )
+        .map_err(|error| format!("dogwood: {error}"))?;
 
         // Built through the service-schema builder, which is the only thing that can say whether
         // the DSL is well formed: an event schema is not a document that stands on its own.
-        dogwood_language::ServiceSchema::builder()
-            .event_schema_str(source)
-            .build()
-            .map(|_| ())
-            .map_err(|error| format!("dogwood: the event schema does not build: {error}"))
+        permguard_language_core::headroom::ample(|| {
+            dogwood_language::ServiceSchema::builder()
+                .event_schema_str(source)
+                .build()
+                .map(|_| ())
+                .map_err(|error| format!("dogwood: the event schema does not build: {error}"))
+        })
     }
 }
 
@@ -195,12 +212,20 @@ impl ArtifactType for Macros {
 
     fn validate(&self, bytes: &[u8]) -> Result<(), String> {
         let source = super::source_of(bytes, "a macro library")?;
+        super::check_nesting_of(
+            source,
+            permguard_language_core::nesting::Grammar::Policy,
+            "a macro library",
+        )
+        .map_err(|error| format!("dogwood: {error}"))?;
 
-        dogwood_language::ServiceSchema::builder()
-            .macros_str(source)
-            .build()
-            .map(|_| ())
-            .map_err(|error| format!("dogwood: the macro library does not build: {error}"))
+        permguard_language_core::headroom::ample(|| {
+            dogwood_language::ServiceSchema::builder()
+                .macros_str(source)
+                .build()
+                .map(|_| ())
+                .map_err(|error| format!("dogwood: the macro library does not build: {error}"))
+        })
     }
 }
 

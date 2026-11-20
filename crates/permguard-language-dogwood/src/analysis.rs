@@ -61,6 +61,7 @@ pub(crate) fn analyze(
         super::check_nesting(text)
             .map_err(|error| format!("dogwood: policy {}: {error}", stored.id))?;
     }
+    super::check_artifact_nesting(artifacts)?;
     permguard_language_core::headroom::ample(|| analyze_bounded(policies, artifacts))
 }
 
@@ -637,12 +638,16 @@ impl Inputs {
     /// A fresh authorizer, lowered again from these inputs.
     #[cfg_attr(not(feature = "evaluate"), allow(dead_code))]
     pub(crate) fn rebuild(&self) -> Result<Authorizer, String> {
-        let schema = PolicySchema::from_cedarschema_str(&self.action_schema)
-            .map_err(|error| format!("dogwood: the action schema is not usable: {error}"))?;
-        let service = service_schema(&self.artifacts)?;
-        let lowered = LoweredPolicySet::from_str(&self.source, &service, &schema)
-            .map_err(|error| format!("dogwood: the partition does not lower: {error}"))?;
+        // On a segment sized for the bound the inputs were held to at load, whatever thread asks
+        // (BUG-0237).
+        permguard_language_core::headroom::ample(|| {
+            let schema = PolicySchema::from_cedarschema_str(&self.action_schema)
+                .map_err(|error| format!("dogwood: the action schema is not usable: {error}"))?;
+            let service = service_schema(&self.artifacts)?;
+            let lowered = LoweredPolicySet::from_str(&self.source, &service, &schema)
+                .map_err(|error| format!("dogwood: the partition does not lower: {error}"))?;
 
-        self.authorizer(lowered)
+            self.authorizer(lowered)
+        })
     }
 }
