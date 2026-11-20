@@ -1053,3 +1053,54 @@ async fn test_a_request_says_whether_its_listener_can_authenticate_a_caller() {
             .expect("the surface stops");
     }
 }
+
+/// BUG-0060, with the limits a deployment gets by saying nothing: one address holding the whole
+/// request budget, each request's body withheld, is still under its own connection bound, so its
+/// next connection is answered: the probe `200`, any other request the coded `503`, never closed
+/// unanswered.
+#[tokio::test]
+async fn test_one_address_holding_the_whole_budget_still_reaches_the_probes_by_default() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let router = router().route("/health", get(|| async { "alive\n" }));
+    let limits = Limits::default();
+    let budget = limits.concurrent_requests() as usize;
+    let surface = Surface::listener("test", "127.0.0.1:0", router)
+        .limits(limits)
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+
+    let mut held = Vec::with_capacity(budget);
+    for _ in 0..budget {
+        let mut stream = tokio::net::TcpStream::connect(address)
+            .await
+            .expect("connects");
+        stream
+            .write_all(
+                b"POST /echo HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: 100\r\n\r\nx",
+            )
+            .await
+            .expect("the head is sent");
+        held.push(stream);
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let probe = exchange(
+        address,
+        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(status(&probe).contains("200"), "the probe answers: {probe}");
+    let other = exchange(
+        address,
+        b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(
+        status(&other).contains("503"),
+        "the budget is held, and said so: {other}"
+    );
+    drop(held);
+}

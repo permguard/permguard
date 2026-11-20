@@ -412,6 +412,11 @@ async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
         ("operations/streams/seg-x.pgj", segment(b"record-1")),
         ("host/state/CLOCK", b"1800000000".to_vec()),
         (
+            "host/authority/lists/0a1b.jwt",
+            b"list-signed-at-1".to_vec(),
+        ),
+        ("planes/authority/lists-signed.json", b"{\"at\":1}".to_vec()),
+        (
             "planes/authority/accounts/journal/seg-0.pgj",
             segment(b"account-1"),
         ),
@@ -444,7 +449,10 @@ async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
         .iter()
         .find(|root| root.name == "planes")
         .expect("the planes are a root");
-    assert_eq!(planes.files, 3, "the accounts, the tokens and the key");
+    assert_eq!(
+        planes.files, 4,
+        "the accounts, the tokens, the key and the lists' signing marks"
+    );
     let (bundle_manifest, items, pin) = bundle(&api);
     let verify = |at: &std::path::Path| {
         backup::verify(at, &manifest, &bundle_manifest, &items, &pin).expect("labelled")
@@ -465,6 +473,18 @@ async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
         b"token-2",
     );
     std::fs::write(fine.join("host/state/CLOCK"), b"1800000060").expect("refreshed");
+    // The Authority Plane signs its status lists again on its cadence, under the barrier too
+    // (BUG-0206): the same revocations, newer bytes.
+    std::fs::write(
+        fine.join("host/authority/lists/0a1b.jwt"),
+        b"list-signed-at-31-longer",
+    )
+    .expect("re-signed");
+    std::fs::write(
+        fine.join("planes/authority/lists-signed.json"),
+        b"{\"at\":31}",
+    )
+    .expect("re-marked");
     let verdict = verify(&fine);
     assert_eq!(verdict.consistency, Consistency::ApplicationConsistent);
     assert!(
@@ -472,7 +492,16 @@ async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
             .grown
             .contains(&"operations/streams/seg-x.pgj".to_owned())
     );
-    assert_eq!(verdict.refreshed, vec!["host/state/CLOCK".to_owned()]);
+    let mut refreshed = verdict.refreshed.clone();
+    refreshed.sort();
+    assert_eq!(
+        refreshed,
+        vec![
+            "host/authority/lists/0a1b.jwt".to_owned(),
+            "host/state/CLOCK".to_owned(),
+            "planes/authority/lists-signed.json".to_owned(),
+        ]
+    );
 
     // An audit trail opened past the prepare, its index entry, metadata and day, and a stream's
     // new segment: started outside the barrier, application-consistent.

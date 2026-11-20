@@ -366,7 +366,7 @@ host:
 # to move them, not to enable them.
 # limits:
 #   connections: "1024"             # sockets one surface holds at once
-#   connections_per_peer: "256"     # sockets one address may hold; "0" disables the per-address bound
+#   connections_per_peer: "512"     # sockets one address may hold, above concurrent_requests so it still reaches the probes; "0" disables it
 #   peer_exempt:                    # addresses exempt from the per-address bound (never from the pool)
 #     - 10.0.0.0/8                  #   e.g. the load balancer, the health checker
 #   concurrent_requests: "256"      # requests in flight at once; beyond it, 503 rather than a queue

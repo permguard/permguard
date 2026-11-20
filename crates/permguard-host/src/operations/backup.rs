@@ -105,8 +105,14 @@ const HELD_BY_THE_BARRIER: [&str; 7] = [
 ];
 
 /// Views a writer outside the barrier replaces with a later value, never another state: the
-/// clock's high-water mark (BUG-0206). One that changed is information, never a difference.
-const REFRESHED: [&str; 1] = ["host/state/CLOCK"];
+/// clock's high-water mark, and the Authority Plane's status lists and their signing marks, which
+/// it signs again on a cadence for the same revocations (BUG-0206). One that changed is
+/// information, never a difference.
+fn refreshes(path: &str) -> bool {
+    path == "host/state/CLOCK"
+        || path == "planes/authority/lists-signed.json"
+        || (path.starts_with("host/authority/lists/") && path.ends_with(".jwt"))
+}
 
 /// The stores of a writer the barrier does not pause that may start a file past the prepare: the
 /// audit, whose writer opens a trail, its index entry and its day on a resource's first record.
@@ -1705,7 +1711,7 @@ pub fn verify(
             differences.push(format!("{}: not a regular file", entry.path));
             continue;
         }
-        let refreshes = REFRESHED.contains(&entry.path.as_str());
+        let refreshes = refreshes(&entry.path);
         // Whatever the inventory marked, a store the barrier holds never grows: an inventory
         // made before that rule is read under it (BUG-0184).
         let append = entry.append && grows_outside_the_barrier(&entry.path);

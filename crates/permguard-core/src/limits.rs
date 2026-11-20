@@ -53,14 +53,16 @@ pub const OVERLOADED: &str = "the surface is serving as many requests as it is a
 ///
 /// The pool limit alone has a failure mode the pool cannot see: one client opening `connections`
 /// sockets and sitting on them takes the surface away from everybody else while every global number
-/// still reads as healthy. A quarter of the pool is room enough for any legitimate client — including
-/// a NAT with hundreds of users behind it — while leaving three quarters that one address cannot
-/// touch.
+/// still reads as healthy. Half the pool is room enough for any legitimate client — including a NAT
+/// with hundreds of users behind it — while leaving half that one address cannot touch. It sits
+/// above the request budget on purpose: an address holding every request in flight still has
+/// sockets left to reach the health probes and to be told the coded `503` for the rest, rather than
+/// have its next connection closed unanswered (BUG-0060).
 ///
 /// Zero disables it. Behind a load balancer the address seen here is the balancer's, so the cap
 /// becomes a de-facto global one: there, either exempt the balancer with `peer_exempt` or disable
 /// this and let the ingress do the counting.
-const DEFAULT_CONNECTIONS_PER_PEER: u32 = 256;
+const DEFAULT_CONNECTIONS_PER_PEER: u32 = 512;
 
 /// How long a write may sit without moving a byte before the client is given up on.
 ///
@@ -471,6 +473,15 @@ mod tests {
         let limits = Limits::new();
 
         assert!(limits.connections_per_peer() < limits.connections());
+    }
+
+    #[test]
+    fn test_one_peer_holding_every_request_in_flight_still_has_sockets_left_by_default() {
+        // BUG-0060: an address that holds the whole request budget is still under its own bound,
+        // so its next connection reaches the probes, or the coded `503`, instead of being closed.
+        let limits = Limits::new();
+
+        assert!(limits.connections_per_peer() > limits.concurrent_requests());
     }
 
     #[test]
