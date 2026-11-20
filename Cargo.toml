@@ -157,6 +157,9 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 tonic = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
+# The data plane's allocator on Linux, which returns idle memory to the system (BUG-0056).
+tikv-jemalloc-ctl = "0.6"
+tikv-jemallocator = "0.6"
 tower = "0.5"
 tower-http = { version = "0.7", default-features = false, features = ["catch-panic", "limit", "timeout"] }
 tower-layer = "0.3"

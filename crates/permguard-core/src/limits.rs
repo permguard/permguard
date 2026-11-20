@@ -15,6 +15,7 @@
 //! | `request_timeout` | time spent serving one request | a handler, or a body, that never ends |
 //! | `concurrent_requests` | requests in flight | arriving faster than they can be served |
 //! | `body_bytes` | bytes read from one body | announcing a megabyte and sending a gigabyte |
+//! | `inflight_body_bytes` | body bytes of every request in flight | many near-cap bodies at once, each parsed into many times its size |
 //! | `connections_per_peer` | sockets held by one address | one client occupying the whole pool |
 //! | `header_bytes` | bytes of one request head | a header stuffed until memory notices |
 //! | `header_fields` | fields of one request head | a head of many small fields, each a parse and an allocation |
@@ -106,6 +107,15 @@ const DEFAULT_HEADER_FIELDS: u32 = 100;
 /// take no body at all, and an administrative RPC carries a few hundred bytes.
 const DEFAULT_BODY_BYTES: usize = 1024 * 1024;
 
+/// How many body bytes one surface holds in flight at once (BUG-0056, owner decision of
+/// 2026-11-20).
+///
+/// `body_bytes` times `concurrent_requests` is a quarter of a gigabyte on the wire, and a parsed
+/// request costs many times its bytes: the reproduction measured some ninety. Sixteen megabytes
+/// keeps the parse of what is in flight near a gigabyte and a half at that amplification, while
+/// decision requests of a few kilobytes still run by the thousand. Never less than one body.
+const DEFAULT_INFLIGHT_BODY_BYTES: usize = 16 * 1024 * 1024;
+
 /// The bounds every surface serves within.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Limits {
@@ -119,6 +129,7 @@ pub struct Limits {
     header_bytes: usize,
     header_fields: u32,
     body_bytes: usize,
+    inflight_body_bytes: usize,
     connection_lifetime: Option<Duration>,
     write_stall_timeout: Duration,
 }
@@ -136,6 +147,7 @@ impl Default for Limits {
             header_bytes: DEFAULT_HEADER_BYTES,
             header_fields: DEFAULT_HEADER_FIELDS,
             body_bytes: DEFAULT_BODY_BYTES,
+            inflight_body_bytes: DEFAULT_INFLIGHT_BODY_BYTES,
             // None, and deliberately: a gRPC channel that legitimately lives for days is normal, and
             // a default that beheads it would be this library deciding a policy the deployment did
             // not ask for. The per-peer cap is what bounds hoarding; this exists for deployments that
@@ -231,6 +243,11 @@ impl Limits {
     }
 
     /// Bounds how many bytes one request body may carry.
+    pub fn with_inflight_body_bytes(mut self, bytes: usize) -> Self {
+        self.inflight_body_bytes = bytes;
+        self
+    }
+
     pub fn with_body_bytes(mut self, bytes: usize) -> Self {
         self.body_bytes = bytes;
 
@@ -300,6 +317,11 @@ impl Limits {
     /// Returns how many bytes one request body may carry.
     pub fn body_bytes(&self) -> usize {
         self.body_bytes
+    }
+
+    /// How many body bytes the surface holds in flight at once: never less than one body.
+    pub fn inflight_body_bytes(&self) -> usize {
+        self.inflight_body_bytes.max(self.body_bytes)
     }
 }
 

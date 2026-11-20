@@ -276,6 +276,17 @@ impl<'a> Listener<'a> {
                 PROBE_PATHS.iter().map(|path| (*path).to_owned()).collect(),
             );
             let body_streaming = streaming.clone();
+            // The request bytes in flight (BUG-0056), outside of which are the probes and the
+            // streaming routes, as they are outside the request budget.
+            let budget = crate::inflight::Budget::new(
+                limits.inflight_body_bytes(),
+                limits.body_bytes(),
+                streaming
+                    .iter()
+                    .cloned()
+                    .chain(PROBE_PATHS.iter().map(|path| (*path).to_owned()))
+                    .collect(),
+            );
             let ending = drain::EndOnDrainLayer::new(streaming.clone(), drained);
             let header_fields = limits.header_fields();
             let body_bytes = limits.body_bytes();
@@ -327,6 +338,10 @@ impl<'a> Listener<'a> {
                     StatusCode::REQUEST_TIMEOUT,
                     limits.request_timeout(),
                 ))
+                // Inside the request budget: a request shed for the count spends no bytes.
+                .layer(axum::middleware::from_fn(move |request, next| {
+                    crate::inflight::charge(std::sync::Arc::clone(&budget), request, next)
+                }))
                 .layer(overload)
                 // A head of more fields than `limits.header_fields` (BUG-0329): HTTP/2 carries
                 // it as one list hyper bounds only in bytes, so it is refused here, with the

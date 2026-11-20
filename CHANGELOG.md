@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A surface bounds the request bytes it holds in flight, and the data plane returns a burst's memory.**
+  `limits.inflight_body_bytes` (`PERMGUARD_LIMITS_INFLIGHT_BODY_BYTES`, default 16 MiB, never less than one `body_bytes`) bounds the body bytes of every request in flight together: a request declaring its length is charged it before its body is read and refused `overloaded` past the budget, one that does not (gRPC) is charged frame by frame, and both release it with their answer; the probes and the streaming routes are exempt.
+  On Linux `permguard-data-plane` and the all-in-one allocate with jemalloc and start its background threads, so RSS falls back after a burst instead of staying at its high-water mark (BUG-0056).
 - **A decision run's marker names its keys by fingerprint, not by a version label alone.**
   `commitments.key_fingerprint` and a new `pseudonyms {alg, key_version, key_fingerprint}` name the commitment key and the zone's pseudonym key: hex of the first 16 bytes of HMAC-SHA256 under the key of `permguard.key-fingerprint.v1\n`, which reveals nothing of it.
   `decisions list`, `export` and `get` print both beside each decision, in the terminal and in JSON; two pseudonyms compare exactly when their runs name the same fingerprint, and a marker written before carries neither and still verifies (BUG-0344).

@@ -267,6 +267,8 @@ pub const SETTING_LIMITS_HANDSHAKE_TIMEOUT: &str = "PERMGUARD_LIMITS_HANDSHAKE_T
 pub const SETTING_LIMITS_HEADER_TIMEOUT: &str = "PERMGUARD_LIMITS_HEADER_TIMEOUT";
 /// How many bytes one request body may carry.
 pub const SETTING_LIMITS_BODY_BYTES: &str = "PERMGUARD_LIMITS_BODY_BYTES";
+/// How many body bytes one surface holds in flight at once (BUG-0056).
+pub const SETTING_LIMITS_INFLIGHT_BODY_BYTES: &str = "PERMGUARD_LIMITS_INFLIGHT_BODY_BYTES";
 
 /// Runtime setting key for how much the build says.
 pub const SETTING_LOG_LEVEL: &str = "PERMGUARD_LOG_LEVEL";
@@ -4889,6 +4891,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_HANDSHAKE_TIMEOUT => d(self.limits.handshake_timeout()),
             SETTING_LIMITS_HEADER_TIMEOUT => d(self.limits.header_timeout()),
             SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
+            SETTING_LIMITS_INFLIGHT_BODY_BYTES => n(self.limits.inflight_body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
             SETTING_SHUTDOWN_DEREGISTER_DELAY => d(self.shutdown_deregister_delay),
@@ -5548,6 +5551,14 @@ produce: use `EdDSA` or `ES256`"
             self.limits = self.limits.clone().with_body_bytes(
                 parse_bytes(value)
                     .with_context(|| format!("reading {SETTING_LIMITS_BODY_BYTES}"))?
+                    as usize,
+            );
+        }
+
+        if let Some(value) = settings.get(SETTING_LIMITS_INFLIGHT_BODY_BYTES) {
+            self.limits = self.limits.clone().with_inflight_body_bytes(
+                parse_bytes(value)
+                    .with_context(|| format!("reading {SETTING_LIMITS_INFLIGHT_BODY_BYTES}"))?
                     as usize,
             );
         }
@@ -7043,6 +7054,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_KEYS_RETAIN,
     SETTING_KEYS_ROTATE_EVERY,
     SETTING_LIMITS_BODY_BYTES,
+    SETTING_LIMITS_INFLIGHT_BODY_BYTES,
     SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER,

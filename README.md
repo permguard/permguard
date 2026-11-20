@@ -394,6 +394,10 @@ Both arrive at the same endpoints.
 Below discovery sit two more layers, in the ledger rather than on the wire: a **profile** names which partitions answer a request, and each **partition** declares the input contract a request may hand it.
 The examples are about those.
 
+A plane parses a request into many times its bytes, so the memory to provision follows the request bytes it holds in flight, not the requests alone.
+`limits.body_bytes` (1 MiB) bounds one body, `limits.concurrent_requests` (256) how many are served at once, and `limits.inflight_body_bytes` (16 MiB, never less than one body) how many body bytes every request in flight holds together: past it a request declaring its length is refused `overloaded`, and the frames of one that does not wait for room.
+Provision for `inflight_body_bytes` times the parse amplification `scripts/sec/stress-payload.sh` measures, some ninety for JSON; on Linux the data plane's binaries allocate with jemalloc, whose background threads return the memory of a burst to the system once the plane is idle.
+
 ## Five minutes
 
 ### 1. A workspace is a directory
