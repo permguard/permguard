@@ -72,7 +72,6 @@ tracing.workspace = true
 # The allocator that returns idle memory to the system after a burst (BUG-0056).
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemallocator.workspace = true
-tikv-jemalloc-ctl.workspace = true
 
 [dev-dependencies]
 # The client a test drives the served interfaces with, and the mirror it provisions.

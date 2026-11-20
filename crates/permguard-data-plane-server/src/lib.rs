@@ -40,15 +40,4 @@ pub mod temporal {
 use permguard_data_plane::{COMPONENT, PLANE, evaluation, handles};
 
 pub use permguard_data_plane::{report_panics_without_their_words, serve_if_worker};
-
-/// Starts the allocator's background threads, which return to the system the memory a burst of
-/// requests grew once the process goes idle, rather than keeping it resident at its high-water
-/// mark (BUG-0056). On Linux, where the data plane's binaries allocate with jemalloc; elsewhere,
-/// and should jemalloc refuse, the process runs as before.
-pub fn return_idle_memory() {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = tikv_jemalloc_ctl::background_thread::write(true);
-    }
-}
 pub use service::{DataPlaneModule, module};

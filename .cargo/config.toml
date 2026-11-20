@@ -4,3 +4,7 @@
 [env]
 PERMGUARD_COPYRIGHT_YEAR = "2022"
 PERMGUARD_COPYRIGHT_HOLDER = "Nitro Agility S.r.l."
+# The data plane's jemalloc on Linux returns idle memory to the system (BUG-0056): its background
+# threads purge the pages a burst left dirty after a few seconds, even when no request comes.
+# Embedded at build time, so no code sets it and nothing reads the environment at run time.
+JEMALLOC_SYS_WITH_MALLOC_CONF = "background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000"

@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-465 packages.
+463 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -256,7 +256,6 @@ says so and its repository is the authority.
 | `parking_lot` | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `parking_lot_core` | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `password-hash` | 0.6.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
-| `paste` | 1.0.15 | MIT OR Apache-2.0 | https://github.com/dtolnay/paste |
 | `pem` | 4.0.0 | MIT | https://github.com/jcreekmore/pem-rs.git |
 | `percent-encoding` | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | `pest` | 2.9.2 | MIT OR Apache-2.0 | https://github.com/pest-parser/pest |
@@ -378,7 +377,6 @@ says so and its repository is the authority.
 | `thiserror-impl` | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | `thiserror-impl` | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | `thread_local` | 1.1.10 | MIT OR Apache-2.0 | https://github.com/Amanieu/thread_local-rs |
-| `tikv-jemalloc-ctl` | 0.6.1 | MIT/Apache-2.0 | https://github.com/tikv/jemallocator |
 | `tikv-jemalloc-sys` | 0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7 | MIT/Apache-2.0 | https://github.com/tikv/jemallocator |
 | `tikv-jemallocator` | 0.6.1 | MIT/Apache-2.0 | https://github.com/tikv/jemallocator |
 | `time` | 0.3.55 | MIT OR Apache-2.0 | https://github.com/time-rs/time |

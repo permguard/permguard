@@ -15,7 +15,6 @@ fn main() -> ExitCode {
     // runtime starts a thread per core it would never use, each charged to its address-space limit.
     permguard_data_plane_server::serve_if_worker();
     permguard_data_plane_server::report_panics_without_their_words();
-    permguard_data_plane_server::return_idle_memory();
 
     serve()
 }
