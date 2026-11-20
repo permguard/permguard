@@ -474,6 +474,53 @@ async fn a_snapshot_binds_the_barrier_held_stores_and_the_planes_exactly() {
     );
     assert_eq!(verdict.refreshed, vec!["host/state/CLOCK".to_owned()]);
 
+    // An audit trail opened past the prepare, its index entry, metadata and day, and a stream's
+    // new segment: started outside the barrier, application-consistent.
+    let opened = scratch("backup-held-opened");
+    copy(&inside, &opened);
+    let started = [
+        "host/audit/index/access-feed.cbor",
+        "host/audit/trails/access-feed/META.cbor",
+        "host/audit/trails/access-feed/2026-11-20.cborseq",
+        "operations/streams/seg-y.pgj",
+    ];
+    for path in started {
+        let path = opened.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("dirs");
+        std::fs::write(path, segment(b"record")).expect("started");
+    }
+    let verdict = verify(&opened);
+    assert_eq!(verdict.consistency, Consistency::ApplicationConsistent);
+    let mut expected: Vec<String> = started.iter().map(|path| (*path).to_owned()).collect();
+    expected.sort();
+    let mut reported = verdict.started.clone();
+    reported.sort();
+    assert_eq!(reported, expected);
+
+    // A file started in a store the barrier holds, or a view past the prepare outside the audit:
+    // differences, each named.
+    for path in [
+        "host/authz/journal/seg-y.pgj",
+        "planes/authority/accounts/journal/seg-1.pgj",
+        "host/state/OTHER",
+    ] {
+        let added = scratch("backup-held-added");
+        copy(&inside, &added);
+        let at = added.join(path);
+        std::fs::create_dir_all(at.parent().expect("a parent")).expect("dirs");
+        std::fs::write(at, b"late").expect("added");
+        let verdict = verify(&added);
+        let Consistency::CrashConsistent(differences) = verdict.consistency else {
+            panic!("{path}: a file past the barrier is not application-consistent");
+        };
+        assert_eq!(
+            differences,
+            vec![format!("{path}: not in the manifest")],
+            "{path}"
+        );
+        assert!(verdict.started.is_empty(), "{path}");
+    }
+
     // One grant frame past the inventory: a difference, naming the journal (BUG-0184).
     let granted = scratch("backup-held-grant");
     copy(&inside, &granted);

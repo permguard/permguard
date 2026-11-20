@@ -1633,8 +1633,9 @@ fn the_backup_commands_drive_a_snapshot_over_both_transports() {
         let verified = verify(&snapshot);
         assert!(
             verified.status.success(),
-            "{scheme}: {}",
-            String::from_utf8_lossy(&verified.stderr)
+            "{scheme}: {} {}",
+            String::from_utf8_lossy(&verified.stderr),
+            String::from_utf8_lossy(&verified.stdout)
         );
         let verdict: Value = serde_json::from_slice(&verified.stdout).expect("JSON");
         assert_eq!(verdict["consistency"], "application_consistent", "{scheme}");

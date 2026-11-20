@@ -108,6 +108,10 @@ const HELD_BY_THE_BARRIER: [&str; 7] = [
 /// clock's high-water mark (BUG-0206). One that changed is information, never a difference.
 const REFRESHED: [&str; 1] = ["host/state/CLOCK"];
 
+/// The stores of a writer the barrier does not pause that may start a file past the prepare: the
+/// audit, whose writer opens a trail, its index entry and its day on a resource's first record.
+const STARTED_OUTSIDE_THE_BARRIER: [&str; 1] = ["host/audit/"];
+
 /// Whether the file at `path` below the volume may grow past its inventory in a snapshot: an
 /// append-only file of a writer the barrier does not pause.
 fn grows_outside_the_barrier(path: &str) -> bool {
@@ -470,6 +474,17 @@ fn appends(below: &str, path: &Path, name: &str) -> bool {
     std::fs::File::open(path)
         .and_then(|mut file| file.read_exact(&mut head))
         .is_ok_and(|()| head == *magic::JOURNAL_SEGMENT.as_bytes())
+}
+
+/// Whether the file at `path`, named `name`, at `below` under the volume, which the inventory does
+/// not bind, was started past the prepare by a writer the barrier does not pause: an append-only
+/// file, or a file of the audit's store.
+fn started(below: &str, path: &Path, name: &str) -> bool {
+    appends(below, path, name)
+        || (grows_outside_the_barrier(below)
+            && STARTED_OUTSIDE_THE_BARRIER
+                .iter()
+                .any(|store| below.starts_with(store)))
 }
 
 /// Every regular file below the roots of the volume at `root`, as `(path below the volume, where
@@ -1525,6 +1540,10 @@ pub struct Verdict {
     /// The append-only files the snapshot holds longer than the inventory: grown past the
     /// prepare, the prefix it bound intact. Information, never a difference.
     pub grown: Vec<String>,
+    /// The files the snapshot holds and the inventory does not, started past the prepare by a
+    /// writer the barrier does not pause: a journal, a CBOR sequence, an audit trail's files.
+    /// Information, never a difference.
+    pub started: Vec<String>,
     /// The views a writer outside the barrier replaced with a later value: the clock's high-water
     /// mark (BUG-0206). Information, never a difference.
     pub refreshed: Vec<String>,
@@ -1661,11 +1680,18 @@ pub fn verify(
     let mut differences = Vec::new();
     let mut grown = Vec::new();
     let mut refreshed = Vec::new();
-    // A file the snapshot holds and the inventory does not is state past the barrier.
+    let mut started_past = Vec::new();
+    // A file the snapshot holds and the inventory does not is state past the barrier: a
+    // difference, unless a writer the barrier does not pause started it.
     let bound: std::collections::BTreeSet<&str> =
         entries.iter().map(|entry| entry.path.as_str()).collect();
-    for (path, _, _) in files_below(volume, &names)? {
-        if !bound.contains(path.as_str()) {
+    for (path, at, name) in files_below(volume, &names)? {
+        if bound.contains(path.as_str()) {
+            continue;
+        }
+        if started(&path, &at, &name) {
+            started_past.push(path);
+        } else {
             differences.push(format!("{path}: not in the manifest"));
         }
     }
@@ -1712,6 +1738,7 @@ pub fn verify(
     differences.sort();
     Ok(Verdict {
         grown,
+        started: started_past,
         refreshed,
         manifest,
         consistency: if differences.is_empty() {

@@ -56,6 +56,10 @@ struct BackupVerified {
     differences: Vec<String>,
     /// Append-only files grown past the prepare, their bound prefix intact.
     grown: Vec<String>,
+    /// Files a writer the barrier does not pause started past the prepare: a journal, a CBOR
+    /// sequence, an audit trail's files.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    started: Vec<String>,
     /// Views replaced with a later value, the clock's high-water mark (BUG-0206).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     refreshed: Vec<String>,
@@ -73,6 +77,9 @@ impl Report for BackupVerified {
         }
         for grown in &self.grown {
             writeln!(out, "grown        {grown}")?;
+        }
+        for started in &self.started {
+            writeln!(out, "started      {started}")?;
         }
         for refreshed in &self.refreshed {
             writeln!(out, "refreshed    {refreshed}")?;
@@ -146,6 +153,7 @@ pub fn backup_command(
         ),
         differences,
         grown: verdict.grown,
+        started: verdict.started,
         refreshed: verdict.refreshed,
     };
     render(&report, globals.output, trace)?;
