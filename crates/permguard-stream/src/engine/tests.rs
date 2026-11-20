@@ -7113,6 +7113,8 @@ fn an_origins_batches_import_into_its_own_run_under_its_pins() {
             reason: RETENTION.to_owned(),
             detected_at: 1_800_000_001,
             revision: [5; 32],
+            accepted_at: None,
+            accepted_by: None,
         }],
     };
     consumer
@@ -8432,4 +8434,58 @@ fn a_stream_a_retired_identity_left_is_stated_and_listed() {
         "{view:?}"
     );
     assert!(moved.join("STATE").exists(), "left as it was");
+}
+
+/// BUG-0128: a run whose prefix the coordinator deleted is started past its beginning, where its
+/// checkpoint names the rest chains from: the first batch still held is admitted against that
+/// head, the start survives a reopening, and the run names the same head as its prefix's.
+#[test]
+fn a_run_started_past_its_beginning_admits_the_batch_that_chains_from_its_anchor() {
+    use permguard_host::composition::{
+        ImportOrigin, Imported, StreamConsumerReads, StreamImport as _,
+    };
+
+    let origin = Host::new("start-origin");
+    let importer = Host::new("start-member");
+    let consumer = consumer_on(&importer);
+    let (_producer, run, batches) = shipped(&origin, 3, 2);
+    assert_eq!(batches.len(), 2);
+    let (envelope, _) = open_batch(&batches[1], &origin.attest_keys());
+    assert_eq!(envelope.first_seq, 3);
+    let pins = vec![pin_of(&origin)];
+    let from = ImportOrigin {
+        membership_id: MEMBERSHIP,
+        epoch: 1,
+        host_id: origin.identity.host_id(),
+        pins: &pins,
+    };
+    let host_id = origin.identity.host_id();
+
+    consumer
+        .start_run(&ledger(1), &host_id, &run, 3, &envelope.previous_head)
+        .expect("started");
+    assert_eq!(consumer.held(&ledger(1), &host_id, &run).expect("read"), 2);
+    assert_eq!(
+        consumer
+            .import(&ledger(1), &from, &ship_of(&origin, &batches[1]))
+            .expect("imported"),
+        Imported::Admitted { acked: 3 }
+    );
+    assert_eq!(
+        consumer
+            .prefix_head(&ledger(1), &host_id, &run)
+            .expect("read"),
+        Some(envelope.previous_head.clone())
+    );
+
+    // Reopened, the run still starts at 3 and holds through 3.
+    drop(consumer);
+    let reopened = consumer_on(&importer);
+    assert_eq!(reopened.held(&ledger(1), &host_id, &run).expect("read"), 3);
+    assert_eq!(
+        reopened
+            .prefix_head(&ledger(1), &host_id, &run)
+            .expect("read"),
+        Some(envelope.previous_head)
+    );
 }

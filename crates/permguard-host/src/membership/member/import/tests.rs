@@ -201,6 +201,20 @@ impl StreamImport for Engine {
         *self.state.lock().expect("lock") = Some(state.clone());
         Ok(())
     }
+
+    fn start_run(
+        &self,
+        _: &Resource,
+        _: &[u8; 16],
+        run: &[u8; 16],
+        first_seq: u64,
+        previous_head: &str,
+    ) -> Result<(), String> {
+        assert_eq!(*run, RUN);
+        assert!(previous_head.starts_with("sha256:"));
+        *self.held.lock().expect("lock") = first_seq - 1;
+        Ok(())
+    }
 }
 
 /// A coordinator serving `served`, an origin shipping events to it, and a member importing.
@@ -266,6 +280,7 @@ async fn world_of(tag: &str) -> World {
             acked: 3,
             oldest_retained: 1,
             admitted_at: Some(1),
+            anchor: None,
         }];
     }
     World {
@@ -339,6 +354,29 @@ async fn a_pass_verifies_the_checkpoint_and_imports_each_batch_past_what_is_held
     assert_eq!(served.checkpoints, 2, "a checkpoint on every pass");
     let after = engine.state.lock().expect("lock").clone().expect("kept");
     assert!(after.verified_at >= state.verified_at);
+}
+
+/// BUG-0128: a run whose prefix the coordinator deleted before this Host imported anything of it
+/// is started where the coordinator's signed checkpoint says the rest chains from, and imported
+/// from there with no gap; without the anchor, the gap is kept as before.
+#[tokio::test]
+async fn a_run_pruned_before_its_first_import_starts_at_the_checkpoints_anchor() {
+    let world = world_of("import-anchor").await;
+    {
+        let mut served = world.served.lock().expect("lock");
+        served.runs[0].oldest_retained = 3;
+        served.runs[0].anchor = Some(format!("sha256:{}", "ab".repeat(32)));
+    }
+    let engine = Arc::new(Engine::default());
+    assert_eq!(
+        world.pass(&engine).await,
+        1,
+        "only the batch the coordinator holds"
+    );
+    assert_eq!(world.served.lock().expect("lock").asked, vec![3]);
+    let state = engine.state.lock().expect("lock").clone().expect("kept");
+    assert!(state.gaps.is_empty(), "{:?}", state.gaps);
+    assert_eq!(*engine.held.lock().expect("lock"), 3);
 }
 
 #[tokio::test]
@@ -654,6 +692,8 @@ async fn a_ledger_two_memberships_import_or_full_of_gaps_is_not_imported() {
                 reason: RETENTION.to_owned(),
                 detected_at: 1,
                 revision: [0; 32],
+                accepted_at: None,
+                accepted_by: None,
             })
             .collect(),
     });

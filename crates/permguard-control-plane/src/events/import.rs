@@ -98,6 +98,15 @@ impl Import {
                         .consumer
                         .admitted_at(resource, &run.producer, &run.run)
                         .map_err(unavailable)?,
+                    // Where the records still held chain from, below a deleted prefix: a member
+                    // holding nothing of the run starts it there (BUG-0128).
+                    anchor: if run.oldest_retained > 1 {
+                        self.consumer
+                            .prefix_head(resource, &run.producer, &run.run)
+                            .map_err(unavailable)?
+                    } else {
+                        None
+                    },
                 });
             }
             runs.sort_by_key(|run| run.run);

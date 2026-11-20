@@ -215,6 +215,9 @@ const SHAPED: &[&str] = &[
     "CheckpointAuditResponse",
     // A member's audit trail refused as a fork, in its member view (BUG-0154).
     "AuditFork",
+    // An operator's acceptance of a gap in imported history (BUG-0128).
+    "AcceptImportGapsRequest",
+    "AcceptImportGapsResponse",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

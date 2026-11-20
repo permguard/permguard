@@ -135,6 +135,11 @@ pub trait Host: Operations {
         membership_id: &str,
         request: &ChangeMemberRecord,
     ) -> Result<MemberChanged, Failure>;
+    /// `POST /host/v1/imports/gaps/accept`, `MembershipService.AcceptImportGaps` (BUG-0128).
+    fn accept_import_gaps(
+        &self,
+        request: &permguard_host::api::imports::AcceptImportGaps,
+    ) -> Result<permguard_host::api::imports::ImportGapsAccepted, Failure>;
     /// `POST /host/v1/members/{id}/revoke/plan`, `MembershipService.PlanMemberRevoke`.
     fn plan_member_revoke(
         &self,
@@ -383,6 +388,13 @@ impl Host for RestHost {
             &format!("/host/v1/members/{}/record", segment(membership_id)?),
             &json(request)?,
         )
+    }
+
+    fn accept_import_gaps(
+        &self,
+        request: &permguard_host::api::imports::AcceptImportGaps,
+    ) -> Result<permguard_host::api::imports::ImportGapsAccepted, Failure> {
+        self.post("/host/v1/imports/gaps/accept", &json(request)?)
     }
 
     fn plan_member_revoke(
@@ -994,6 +1006,30 @@ impl Host for GrpcHost {
             answer.epoch,
             &answer.manifest,
         ))
+    }
+
+    fn accept_import_gaps(
+        &self,
+        request: &permguard_host::api::imports::AcceptImportGaps,
+    ) -> Result<permguard_host::api::imports::ImportGapsAccepted, Failure> {
+        let answer = self
+            .0
+            .run(
+                "AcceptImportGaps",
+                self.members_client()
+                    .accept_import_gaps(proto::AcceptImportGapsRequest {
+                        request_id: request.request_id.clone(),
+                        resource: request.resource.clone(),
+                        origin: request.origin.clone(),
+                        run: request.run.clone(),
+                        reason: request.reason.clone(),
+                    }),
+            )
+            .map_err(crate::grpc::failure_of)?;
+        Ok(permguard_host::api::imports::ImportGapsAccepted {
+            receipt: map::receipt(answer.receipt),
+            accepted: answer.accepted,
+        })
     }
 
     fn plan_member_revoke(

@@ -364,6 +364,39 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         Ok(())
     }
 
+    fn prefix_head(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<String>, String> {
+        let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
+        Ok(self
+            .with_held(&key, *run, false, |held| {
+                if held.oldest_retained <= 1 {
+                    return Ok(None);
+                }
+                // What deleted the prefix keeps its last record's digest: the anchor of the
+                // records this Host deleted, or the start of a run it imported past its beginning.
+                if let Some(anchor) = super::super::anchor::anchor_in(&held.dir)?
+                    && anchor.low_watermark == held.oldest_retained
+                {
+                    return Ok(Some(anchor.terminal_head));
+                }
+                Ok(permguard_host::storage::write::read_view(
+                    &held.dir,
+                    super::START,
+                    permguard_host::storage::format::VIEW,
+                )?
+                .map(|bytes| super::decode_start(&bytes))
+                .transpose()?
+                .filter(|(first_seq, _)| *first_seq == held.oldest_retained)
+                .map(|(_, head)| head))
+            })
+            .map_err(wrap)?
+            .flatten())
+    }
+
     fn admitted_at(
         &self,
         resource: &Resource,

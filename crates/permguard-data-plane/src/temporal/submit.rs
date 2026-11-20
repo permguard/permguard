@@ -2252,7 +2252,14 @@ impl Submitter {
                 );
             }
         }
-        let host_gaps = shared.state.as_ref().map_or(0, |state| state.gaps.len());
+        // A gap an operator accepted no longer withholds a decision (BUG-0128).
+        let host_gaps = shared.state.as_ref().map_or(0, |state| {
+            state
+                .gaps
+                .iter()
+                .filter(|gap| gap.accepted_at.is_none())
+                .count()
+        });
         let legacy_gaps = legacy.as_ref().map_or(0, |state| {
             state.gaps.iter().filter(|gap| !gap.resolved).count()
         });
@@ -2267,10 +2274,11 @@ impl Submitter {
             return refuse(
                 permguard_core::codes::pdp_temporal::HISTORY_INCOMPLETE,
                 format!(
-                    "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s), and \
+                    "the shared history of `{zone}/{ledger}` has {gaps} open gap(s), and \
                      `shared-bounded` decides only on a history it holds whole. The event is \
-                     recorded; the decision is withheld while a gap is open: the run is not \
-                     imported past it, and waiting does not close it"
+                     recorded; the decision is withheld while a gap is open: waiting does not \
+                     close it, and an operator who knows what is missing accepts it with \
+                     `permguard host imports gaps accept`"
                 ),
             );
         }

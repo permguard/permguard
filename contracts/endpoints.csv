@@ -79,6 +79,7 @@ host,keys,POST,/host/v1/keys/{ring}/revoke/plan,access token,keys.admin,host
 host,keys,POST,/host/v1/keys/{ring}/revoke/run,access token,keys.admin,host
 host,keys,POST,/host/v1/keys/{ring}/rotate,access token,keys.admin,host
 host,lifecycle,GET,/host/v1/status,access token,lifecycle.read,host
+host,membership,POST,/host/v1/imports/gaps/accept,access token,membership.admin,host
 host,membership,GET,/host/v1/members,access token,membership.read,host
 host,membership,GET,/host/v1/members/invites,access token,membership.read,host
 host,membership,POST,/host/v1/members/invites,access token,membership.admin,host

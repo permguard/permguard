@@ -23,7 +23,8 @@
 //! | import_origins     | {1 checkpoint, 2 origins}: each {1 host_id, 2 membership_id, 3 manifest}  |
 //! | import_checkpoint  | {1 coordinator, 2 resource, 3 revision, 4 origins, 5 issued_at, 6 channel_binding, 7 ring_epoch, 8 key_set_digest}: each origin {1 host_id, 2 runs, 3 pins}, each run {1 run, 2 acked, 3 oldest_retained, 4? admitted_at} |
 //! | import_state       | {1 membership_id, 2 revision, 3 checkpoint, 4 verified_at, 5 gaps}: what the member's Host keeps per ledger (WP-6.2c2a) |
-//! | import_gap         | {1 origin, 2 run, 3 from, 4? through, 5 reason, 6 detected_at, 7 revision} |
+//! | import_gap         | {1 origin, 2 run, 3 from, 4? through, 5 reason, 6 detected_at, 7 revision, |
+//! |                    |  8? accepted_at, 9? accepted_by}                                           |
 //!
 //! The required origins are the coordinator's active members whose `events.ship` task covers the
 //! resource (owner decision of 2026-10-19); their revision is the digest of each one's `host_id`
@@ -234,6 +235,10 @@ pub struct CheckpointRun {
     pub oldest_retained: u64,
     /// The coordinator's own time it admitted the run's last batch, in seconds.
     pub admitted_at: Option<u64>,
+    /// The digest of the record at `oldest_retained - 1`, as a batch envelope spells it, when the
+    /// coordinator deleted a prefix: what the first batch it still holds chains from, so a member
+    /// holding nothing of the run starts it there (BUG-0128).
+    pub anchor: Option<String>,
 }
 
 /// One required origin's runs, and the `data.attest` pins its batches verify under.
@@ -278,6 +283,9 @@ impl Checkpoint {
                 ];
                 if let Some(at) = run.admitted_at {
                     fields.push((Value::Int(4), uint(at)?));
+                }
+                if let Some(anchor) = &run.anchor {
+                    fields.push((Value::Int(5), Value::Text(anchor.clone())));
                 }
                 runs.push(Value::Map(fields));
             }
@@ -350,8 +358,22 @@ impl Checkpoint {
                     acked: run.uint(2)?,
                     oldest_retained: run.uint(3)?,
                     admitted_at: run.optional_uint(4)?,
+                    anchor: run.optional_text(5)?,
                 };
                 run.finish()?;
+                if let Some(anchor) = &read.anchor
+                    && !(anchor.len() == 71
+                        && anchor.strip_prefix("sha256:").is_some_and(|hex| {
+                            hex.bytes()
+                                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+                        })
+                        && read.oldest_retained > 1)
+                {
+                    return Err(RecordError(
+                        "a checkpoint run's anchor is a record digest, below a deleted prefix"
+                            .to_owned(),
+                    ));
+                }
                 if read.oldest_retained == 0 || read.oldest_retained > read.acked + 1 {
                     return Err(RecordError(
                         "a checkpoint run holds from sequence 1 to past what it acknowledged"
@@ -482,6 +504,10 @@ pub struct Gap {
     pub detected_at: u64,
     /// The origin set's revision it was found under.
     pub revision: [u8; 32],
+    /// When an operator accepted it, by the member's clock, and who: an accepted gap no longer
+    /// withholds `shared-bounded` decisions, and stays on the record (BUG-0128).
+    pub accepted_at: Option<u64>,
+    pub accepted_by: Option<String>,
 }
 
 /// What the member's Host keeps of one ledger's import (owner decision of 2026-10-19): the last
@@ -516,6 +542,10 @@ impl State {
                 (Value::Int(6), uint(gap.detected_at)?),
                 (Value::Int(7), Value::Bytes(gap.revision.to_vec())),
             ]);
+            if let (Some(at), Some(by)) = (gap.accepted_at, &gap.accepted_by) {
+                fields.push((Value::Int(8), uint(at)?));
+                fields.push((Value::Int(9), Value::Text(by.clone())));
+            }
             gaps.push(Value::Map(fields));
         }
         let bytes = encode(vec![
@@ -562,8 +592,20 @@ impl State {
                 reason: held.text(5)?,
                 detected_at: held.uint(6)?,
                 revision: held.fixed(7)?,
+                accepted_at: held.optional_uint(8)?,
+                accepted_by: held.optional_text(9)?,
             };
             held.finish()?;
+            if gap.accepted_at.is_some() != gap.accepted_by.is_some()
+                || gap
+                    .accepted_by
+                    .as_ref()
+                    .is_some_and(|by| by.is_empty() || by.len() > 512)
+            {
+                return Err(RecordError(
+                    "an accepted import gap names when and by whom".to_owned(),
+                ));
+            }
             if gap.from == 0
                 || gap.through.is_some_and(|through| through < gap.from)
                 || ![RETENTION, UNVERIFIABLE, FORK].contains(&gap.reason.as_str())
@@ -590,6 +632,28 @@ impl State {
             verified_at,
             gaps,
         })
+    }
+
+    /// How many gaps of `origin`'s run `run` are open: kept and not accepted.
+    pub fn open_gaps(&self, origin: &[u8; 16], run: &[u8; 16]) -> u64 {
+        self.gaps
+            .iter()
+            .filter(|gap| gap.origin == *origin && gap.run == *run && gap.accepted_at.is_none())
+            .count() as u64
+    }
+
+    /// Accepts every open gap of `origin`'s run `run`, at `at` by `by` (BUG-0128): answers how
+    /// many. They stay kept, marked.
+    pub fn accept_gaps(&mut self, origin: &[u8; 16], run: &[u8; 16], at: u64, by: &str) -> u64 {
+        let mut accepted = 0;
+        for gap in &mut self.gaps {
+            if gap.origin == *origin && gap.run == *run && gap.accepted_at.is_none() {
+                gap.accepted_at = Some(at);
+                gap.accepted_by = Some(by.to_owned());
+                accepted += 1;
+            }
+        }
+        accepted
     }
 
     /// Keeps `gap` unless one of the same run already starts at or before it: a gap is never

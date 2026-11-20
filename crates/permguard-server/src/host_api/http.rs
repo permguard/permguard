@@ -81,6 +81,7 @@ fn host_routes() -> Router<Served> {
         .route("/host/v1/members/{id}/suspend", post(suspend_member))
         .route("/host/v1/members/{id}/resume", post(resume_member))
         .route("/host/v1/members/{id}/fence", post(fence_member))
+        .route("/host/v1/imports/gaps/accept", post(accept_import_gaps))
         .route("/host/v1/members/{id}/record", post(change_member_record))
         .route("/host/v1/members/{id}/appraise", post(appraise_member))
         .route("/host/v1/members/{id}/sessions", get(member_sessions))
@@ -841,6 +842,18 @@ async fn fence_member(
         &served,
         StatusCode::OK,
         served.api.fence_member(&actor, &id, change).await,
+    )
+}
+
+async fn accept_import_gaps(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(accept): Closed<permguard_host::api::imports::AcceptImportGaps>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.accept_import_gaps(&actor, accept).await,
     )
 }
 

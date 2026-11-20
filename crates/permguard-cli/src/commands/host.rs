@@ -68,6 +68,7 @@ pub fn host_command(
         HostAction::Status => super::host_ops::status(globals, trace),
         HostAction::Plans { action } => super::host_ops::plans(globals, action, trace),
         HostAction::Backup { action } => super::host_ops::backup(globals, action, trace),
+        HostAction::Imports { action } => super::host_ops::imports(globals, action, trace),
     }
 }
 

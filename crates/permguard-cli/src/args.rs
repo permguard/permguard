@@ -2004,6 +2004,48 @@ Examples:\n  permguard host status\n  permguard --host-endpoint grpcs://host.exa
         #[command(subcommand)]
         action: HostBackupAction,
     },
+    /// The history this Host imports from its coordinator for `shared` consistency.
+    Imports {
+        #[command(subcommand)]
+        action: HostImportsAction,
+    },
+}
+
+/// `permguard host imports …` (BUG-0128).
+#[derive(Debug, Subcommand)]
+pub enum HostImportsAction {
+    /// The gaps of the imported history: what `shared-bounded` withholds its decisions for.
+    Gaps {
+        #[command(subcommand)]
+        action: HostImportGapsAction,
+    },
+}
+
+/// `permguard host imports gaps …` (BUG-0128).
+#[derive(Debug, Subcommand)]
+pub enum HostImportGapsAction {
+    /// Accept the open gaps of one origin's run over one ledger.
+    #[command(
+        after_help = "`shared-bounded` then decides again without the missing history. The gaps stay on the record, marked when and by whom, and the acceptance is audited \
+`host.imports.gap_accepted`; the run is still not imported past them. The origin, the run and \
+the ledger are as `host.membership.import_gap` logs them.
+
+Examples:\n  permguard host imports gaps accept --resource plane/data/zone/01a0…/ledger/01a1… --origin 0198… --run fb70… --reason \"history before 2026-11 is not needed\"\n  permguard host imports gaps accept --resource plane/data/zone/01a0…/ledger/01a1… --origin 0198… --run fb70… --reason \"origin decommissioned\" -o json"
+    )]
+    Accept {
+        /// The ledger: `plane/data/zone/<zone id>/ledger/<ledger id>`.
+        #[arg(long)]
+        resource: String,
+        /// The origin Host, 32 hex digits.
+        #[arg(long)]
+        origin: String,
+        /// The origin's run, 32 hex digits.
+        #[arg(long)]
+        run: String,
+        /// Why the missing history may be decided without, recorded in the audit trail.
+        #[arg(long)]
+        reason: String,
+    },
 }
 
 /// `permguard host keys …` (TC-2).

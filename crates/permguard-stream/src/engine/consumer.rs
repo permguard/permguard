@@ -57,6 +57,9 @@ mod prune;
 const ADMITTED: u16 = 4;
 const FORKED: &str = "FORKED";
 const STATE: &str = "STATE";
+/// A run imported from past its beginning (BUG-0128): its first sequence and the digest it chains
+/// from, as the coordinator's checkpoint named them.
+pub(crate) const START: &str = "START";
 const SIGNERS: &str = "signers.cbor";
 const STATEMENTS: &str = "statements";
 const BATCHES: &str = "batches";
@@ -74,6 +77,32 @@ pub struct ConsumerState {
     /// When the consumer first admitted the run, microseconds since the epoch: the order the runs
     /// of one producer opened, which the public reads follow (WP-6.1b, after the review).
     pub opened: Option<u64>,
+}
+
+/// A START view: `{1 first_seq, 2 previous_head}`.
+pub(crate) fn encode_start(first_seq: u64, previous_head: &str) -> Result<Vec<u8>, StreamError> {
+    encode(vec![
+        (1, uint(first_seq)?),
+        (2, Value::Text(previous_head.to_owned())),
+    ])
+}
+
+pub(crate) fn decode_start(bytes: &[u8]) -> Result<(u64, String), StreamError> {
+    if bytes.len() > MAX_VIEW_BYTES {
+        return Err(StreamError::Invalid(
+            "a run's start is out of its bound".to_owned(),
+        ));
+    }
+    let mut map = Map::read(bytes, "a run's start")?;
+    let first_seq = map.uint(1)?;
+    let head = map.text(2)?;
+    map.finish()?;
+    if first_seq < 2 {
+        return Err(StreamError::Invalid(
+            "a run starts past its beginning, from sequence 2".to_owned(),
+        ));
+    }
+    Ok((first_seq, head))
 }
 
 impl ConsumerState {
@@ -396,6 +425,16 @@ impl<C: RecordCodec> Consumer<C> {
         let frames = journal.frames()?;
         // Once a prefix went (WP-5.6b): the first RECORDS frame left says where the records held
         // start; with none left, every record went, through the anchor's `through`.
+        // A run started past its beginning holds nothing below its start (BUG-0128).
+        let start = read_view(&dir, START, format::VIEW)?
+            .map(|bytes| decode_start(&bytes))
+            .transpose()?;
+        if journal.first_index() == 0
+            && let Some((first_seq, head)) = &start
+        {
+            acked = first_seq - 1;
+            last = head.clone();
+        }
         if journal.first_index() > 0 {
             match frames.iter().find(|frame| frame.kind == RECORDS) {
                 Some(frame) => acked = decode_group(&frame.payload)?.0 - 1,

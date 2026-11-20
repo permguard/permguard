@@ -23,12 +23,14 @@ fn checkpoint() -> Checkpoint {
                         acked: 9,
                         oldest_retained: 1,
                         admitted_at: Some(1_700_000_000),
+                        anchor: None,
                     },
                     CheckpointRun {
                         run: [5; 16],
                         acked: 0,
                         oldest_retained: 1,
                         admitted_at: None,
+                        anchor: None,
                     },
                 ],
                 pins: vec![data_pin(1)],
@@ -286,6 +288,7 @@ fn a_checkpoint_out_of_its_bounds_does_not_read() {
         acked: 1,
         oldest_retained: 1,
         admitted_at: None,
+        anchor: None,
     };
     let mut runs = checkpoint();
     runs.origins = vec![
@@ -327,6 +330,8 @@ fn gap(origin: u8, run: u8, from: u64) -> Gap {
         reason: RETENTION.to_owned(),
         detected_at: 1_800_000_001,
         revision: [2; 32],
+        accepted_at: None,
+        accepted_by: None,
     }
 }
 

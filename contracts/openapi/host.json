@@ -832,6 +832,121 @@
         }
       }
     },
+    "/host/v1/imports/gaps/accept": {
+      "post": {
+        "operationId": "acceptImportGaps",
+        "summary": "Accept the open gaps of an imported run",
+        "description": "Under `membership.admin` on the Host (BUG-0128). Marks every open gap of one origin's run over one ledger accepted, when and by whom: `shared-bounded` decides again without the missing history, the gaps stay on the record, and the run is still not imported past them. Audited `host.imports.gap_accepted` with the reason.",
+        "requestBody": {
+          "required": true,
+          "description": "The ledger, the origin, the run and why.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptImportGapsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and how many gaps it accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportGapsAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape, the resource is not a Data Plane ledger, an id is not 32 hex digits, or the reason is empty, malformed or looks like a secret (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This Host keeps no import of that ledger, or no open gap of that origin's run (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host imports no history, the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound. The same request id is in flight: retry once it has answered (`request_in_flight`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/AcceptImportGaps",
+        "x-permguard-endpoint": {
+          "plane": "host",
+          "category": "membership",
+          "credential": "access token",
+          "operation": "membership.admin",
+          "target": "host"
+        }
+      }
+    },
     "/host/v1/ring-bindings": {
       "get": {
         "operationId": "listRingBindings",
@@ -11327,6 +11442,77 @@
         "additionalProperties": false,
         "description": "What an on-demand checkpoint answers.",
         "x-grpc-message": "permguard.host.v1.CheckpointAuditResponse"
+      },
+      "AcceptImportGapsBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt.",
+            "x-grpc-field": "request_id"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The ledger: `plane/data/zone/<zone id>/ledger/<ledger id>`.",
+            "x-grpc-field": "resource"
+          },
+          "origin": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32,
+            "description": "The origin Host, 32 hex digits.",
+            "x-grpc-field": "origin"
+          },
+          "run": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32,
+            "description": "The origin's run, 32 hex digits.",
+            "x-grpc-field": "run"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Why the missing history may be decided without, printable, at most 256 bytes.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "resource",
+          "origin",
+          "run",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/imports/gaps/accept` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.AcceptImportGapsRequest"
+      },
+      "ImportGapsAccepted": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many open gaps of the run it accepted.",
+            "x-grpc-field": "accepted"
+          }
+        },
+        "required": [
+          "receipt",
+          "accepted"
+        ],
+        "additionalProperties": false,
+        "description": "What an acceptance of gaps answers.",
+        "x-grpc-message": "permguard.host.v1.AcceptImportGapsResponse"
       }
     }
   },

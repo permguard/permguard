@@ -244,6 +244,33 @@ impl Member<'_> {
                         .held(ledger, &origin.host_id, &run.run)
                         .map_err(storage)?;
                     let mut next = held + 1;
+                    // Nothing held of a run whose prefix the coordinator deleted: started where
+                    // its signed checkpoint says the rest chains from (BUG-0128).
+                    if held == 0
+                        && run.oldest_retained > 1
+                        && let Some(anchor) = &run.anchor
+                    {
+                        importing
+                            .engine
+                            .start_run(
+                                ledger,
+                                &origin.host_id,
+                                &run.run,
+                                run.oldest_retained,
+                                anchor,
+                            )
+                            .map_err(storage)?;
+                        tracing::info!(
+                            event.name = "host.membership.import_started",
+                            component = "host",
+                            origin = %uuid_text(&origin.host_id),
+                            run = %hex(&run.run),
+                            from = run.oldest_retained,
+                            "the coordinator deleted the run's prefix before this Host imported it: \
+                             it is imported from the first sequence the coordinator holds"
+                        );
+                        next = run.oldest_retained;
+                    }
                     if next < run.oldest_retained {
                         // The coordinator's retention passed what this Host holds.
                         self.gap(
@@ -407,6 +434,8 @@ impl Member<'_> {
             reason: reason.to_owned(),
             detected_at: self.time.now_secs(),
             revision,
+            accepted_at: None,
+            accepted_by: None,
         });
         if kept {
             tracing::warn!(
@@ -416,7 +445,9 @@ impl Member<'_> {
                 run = %hex(&run),
                 from,
                 reason,
-                "a gap in the imported history: it stays open, and the run is not imported past it"
+                "a gap in the imported history: the run is not imported past it, and \
+                 `shared-bounded` withholds its decisions until an operator accepts it with \
+                 `permguard host imports gaps accept`"
             );
         }
     }

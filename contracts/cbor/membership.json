@@ -521,7 +521,8 @@
         { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "the run's 16 bytes" },
         { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the last sequence the coordinator admitted" },
         { "label": 3, "name": "oldest_retained", "type": "uint", "occurs": "required", "note": "the first sequence it still holds, from 1 to acked + 1" },
-        { "label": 4, "name": "admitted_at", "type": "uint", "occurs": "optional", "note": "the coordinator's clock when it admitted the run's last batch" }
+        { "label": 4, "name": "admitted_at", "type": "uint", "occurs": "optional", "note": "the coordinator's clock when it admitted the run's last batch" },
+        { "label": 5, "name": "anchor", "type": "text", "occurs": "optional", "note": "`sha256:` and the hex digest of the record at oldest_retained - 1, when the coordinator deleted a prefix (oldest_retained above 1): what the first batch it holds chains from, where a member holding nothing of the run starts it (BUG-0128)" }
       ]
     },
     "import_state": {
@@ -543,7 +544,9 @@
         { "label": 4, "name": "through", "type": "uint", "occurs": "optional", "note": "the last sequence missing, when known" },
         { "label": 5, "name": "reason", "type": "text", "occurs": "required", "note": "`retention`, `unverifiable` or `fork`" },
         { "label": 6, "name": "detected_at", "type": "uint", "occurs": "required", "note": "the member's clock when it was first found" },
-        { "label": 7, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision it was found under" }
+        { "label": 7, "name": "revision", "type": "bytes", "occurs": "required", "note": "32 bytes: the origin set's revision it was found under" },
+        { "label": 8, "name": "accepted_at", "type": "uint", "occurs": "optional", "note": "the member's clock when an operator accepted the gap (BUG-0128); with `accepted_by`, or neither" },
+        { "label": 9, "name": "accepted_by", "type": "text", "occurs": "optional", "note": "the principal who accepted it, 1 to 512 bytes; with `accepted_at`, or neither" }
       ]
     }
   },

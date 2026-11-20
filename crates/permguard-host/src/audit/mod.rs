@@ -314,6 +314,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.synced", HOST),
     // A restored coordinator's re-anchoring manifest adopted (BUG-0199).
     mutation("host.membership.reanchored", HOST),
+    // An operator's acceptance of a gap in imported history (BUG-0128).
+    mutation_with_reason("host.imports.gap_accepted", HOST),
     mutation("host.membership.verified", HOST),
     mutation("host.membership.orphaned", HOST),
     // Task sessions (WP-4.3): every lease issued, every epoch refused, every clone alarm, each

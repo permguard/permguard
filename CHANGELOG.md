@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A member that joins after the coordinator pruned an origin's run imports it from what is held, and a gap can be accepted.**
+  The coordinator's signed import checkpoint names, for a run whose prefix it deleted, the digest its first retained batch chains from (`checkpoint_run.anchor`), and a member holding nothing of the run starts it there instead of recording a gap that never closed; `shared-bounded` decides on it.
+  An operator holding `membership.admin` accepts the open gaps of one origin's run over one ledger with `permguard host imports gaps accept` (`POST /host/v1/imports/gaps/accept`, `MembershipService/AcceptImportGaps`) and a reason: the gaps stay on the record marked when and by whom, the acceptance is audited `host.imports.gap_accepted`, and `shared-bounded` decides again; its refusal now names that command (BUG-0128).
 - **A coordinator restored from an older snapshot re-anchors its members' chains.**
   After a `dr` restore, the coordinator's first revision of each membership it held (a `host members fence`, a suspension, a re-pin) names the restore in a new manifest field (`restore`) and leaps its epoch 2^20 past the one it revises; the member accepts it in place of the exact successor once it verifies under the coordinator's pinned identity, records `host.membership.reanchored` in its `security` trail, and its paused subscriptions resume.
   A hold for review of an epoch the snapshot lost ends with the re-anchor, and a chain that diverged without one is refused naming the divergence rather than `not the successor` alone (BUG-0199).

@@ -2459,6 +2459,13 @@ impl Composition {
                 Some(reads) => api.with_streams(reads),
                 None => api,
             };
+            // The gaps of the history this Host imports, which an operator accepts (BUG-0128).
+            let api = match ingests.as_ref() {
+                Some((_, events)) => api.with_imports(
+                    Arc::clone(events) as Arc<dyn permguard_host::composition::StreamImport>
+                ),
+                None => api,
+            };
             // The volume a drain receipt names (TD-2).
             let api = api.with_volume(volume.id(), volume.generation());
             // An approval stands for its ttl, and while the approver's token is valid (BUG-0099).

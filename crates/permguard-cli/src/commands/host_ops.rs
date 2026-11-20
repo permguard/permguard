@@ -450,6 +450,38 @@ pub(super) fn plans(
     Ok(ExitCode::SUCCESS)
 }
 
+/// `permguard host imports …` (BUG-0128).
+pub(super) fn imports(
+    globals: &Globals,
+    action: crate::args::HostImportsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    let host = online_host(globals, trace, false)?;
+    match action {
+        crate::args::HostImportsAction::Gaps {
+            action:
+                crate::args::HostImportGapsAction::Accept {
+                    resource,
+                    origin,
+                    run,
+                    reason,
+                },
+        } => {
+            let accepted = host
+                .accept_import_gaps(&permguard_host::api::imports::AcceptImportGaps {
+                    request_id: request_id(),
+                    resource,
+                    origin,
+                    run,
+                    reason,
+                })
+                .map_err(failed)?;
+            render_json(&accepted, globals, trace)?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 /// What `host backup prepare` prints: the answer without the token, which went to its file.
 #[derive(Debug, Serialize)]
 struct BackupPreparedOut {

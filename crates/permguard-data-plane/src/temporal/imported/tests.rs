@@ -304,6 +304,7 @@ fn the_shared_view_names_what_is_behind_the_verified_checkpoint() {
                     acked: 5,
                     oldest_retained: 1,
                     admitted_at: None,
+                    anchor: None,
                 }],
                 pins: Vec::new(),
             },
@@ -315,6 +316,7 @@ fn the_shared_view_names_what_is_behind_the_verified_checkpoint() {
                     acked: 9,
                     oldest_retained: 1,
                     admitted_at: None,
+                    anchor: None,
                 }],
                 pins: Vec::new(),
             },
@@ -347,6 +349,8 @@ fn the_shared_view_names_what_is_behind_the_verified_checkpoint() {
             reason: permguard_host::membership::import::RETENTION.to_owned(),
             detected_at: 1,
             revision: [3; 32],
+            accepted_at: None,
+            accepted_by: None,
         }],
     });
     let shared = imported.shared(ZONE, LEDGER).expect("read");
@@ -409,6 +413,7 @@ fn an_origin_the_checkpoint_no_longer_names_leaves_shared_decisions() {
                 acked: 2,
                 oldest_retained: 1,
                 admitted_at: None,
+                anchor: None,
             }],
             pins: Vec::new(),
         }],

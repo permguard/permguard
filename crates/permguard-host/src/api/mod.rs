@@ -29,6 +29,7 @@ pub mod drain;
 pub mod gc;
 pub mod host_input;
 pub mod identity;
+pub mod imports;
 pub mod keys;
 pub mod members;
 pub mod plans;
@@ -282,6 +283,8 @@ pub struct HostApi {
     /// Where an approver's access token stands now; without it an approval made with a token
     /// does not stand (BUG-0099).
     token_standing: Option<Arc<dyn crate::authz::access_tokens::TokenStanding>>,
+    /// The member's imported history, whose gaps an operator accepts (BUG-0128).
+    imports: Option<Arc<dyn crate::composition::StreamImport>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -326,7 +329,14 @@ impl HostApi {
             rings_moved: std::sync::OnceLock::new(),
             approval_ttl: plans::DEFAULT_APPROVAL_TTL,
             token_standing: None,
+            imports: None,
         }
+    }
+
+    /// This facade accepting the gaps of the history `imports` holds (BUG-0128).
+    pub fn with_imports(mut self, imports: Arc<dyn crate::composition::StreamImport>) -> Self {
+        self.imports = Some(imports);
+        self
     }
 
     /// This facade judging approvals of plans (BUG-0099): each stands for `ttl` and, when made

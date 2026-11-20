@@ -1161,7 +1161,7 @@ pub fn retryable(refusal: &Refusal) -> bool {
 }
 
 /// A reason is recorded in the audit trail, which takes nothing shaped like a secret (BUG-0153).
-const REASON_SECRET: &str =
+pub(super) const REASON_SECRET: &str =
     "`reason` is shaped like a token, a key or a proof: it is recorded in the audit trail";
 
 /// Whether a coordinator's refusal, or this Host's of it, says the coordinator at the pinned

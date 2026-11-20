@@ -93,6 +93,42 @@ impl<C: RecordCodec> StreamImport for Consumer<C> {
             .transpose()
     }
 
+    fn start_run(
+        &self,
+        resource: &Resource,
+        origin: &[u8; 16],
+        run: &[u8; 16],
+        first_seq: u64,
+        previous_head: &str,
+    ) -> Result<(), String> {
+        let key = self.descriptor.key(resource, *origin).map_err(wrap)?;
+        self.with_held(&key, *run, true, |held| {
+            if held.acked > 0 {
+                return Ok(());
+            }
+            let start = super::encode_start(first_seq, previous_head)?;
+            super::decode_start(&start)?;
+            replace_view(&held.dir, super::START, format::VIEW, &start)?;
+            replace_view(
+                &held.dir,
+                super::STATE,
+                format::VIEW,
+                &super::ConsumerState {
+                    acked: first_seq - 1,
+                    oldest_retained: first_seq,
+                    opened: held.opened,
+                }
+                .encode()?,
+            )?;
+            held.acked = first_seq - 1;
+            held.last = previous_head.to_owned();
+            held.oldest_retained = first_seq;
+            Ok(())
+        })
+        .map_err(wrap)?;
+        Ok(())
+    }
+
     fn keep_import_state(&self, resource: &Resource, state: &State) -> Result<(), String> {
         let component = self
             .descriptor

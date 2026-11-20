@@ -1520,14 +1520,16 @@ fn membership_samples() -> Vec<Sample> {
                         permguard_host::membership::import::CheckpointRun {
                             run: [4; 16],
                             acked: 9,
-                            oldest_retained: 1,
+                            oldest_retained: 4,
                             admitted_at: Some(1_800_000_000),
+                            anchor: Some(format!("sha256:{}", "c4".repeat(32))),
                         },
                         permguard_host::membership::import::CheckpointRun {
                             run: [5; 16],
                             acked: 0,
                             oldest_retained: 1,
                             admitted_at: None,
+                            anchor: None,
                         },
                     ],
                     pins: vec![permguard_host::membership::record::RingPin {
@@ -1546,7 +1548,7 @@ fn membership_samples() -> Vec<Sample> {
             }
             .encode()
             .expect("encodes"),
-            &["checkpoint_run.admitted_at"],
+            &["checkpoint_run.admitted_at", "checkpoint_run.anchor"],
             decoder(|bytes| {
                 verdict(permguard_host::membership::import::Checkpoint::decode(
                     bytes,
@@ -1569,6 +1571,8 @@ fn membership_samples() -> Vec<Sample> {
                         reason: permguard_host::membership::import::RETENTION.to_owned(),
                         detected_at: 1_800_000_300,
                         revision: [2; 32],
+                        accepted_at: Some(1_800_000_400),
+                        accepted_by: Some("sa:operator".to_owned()),
                     },
                     permguard_host::membership::import::Gap {
                         origin: SCOPE_ID,
@@ -1578,12 +1582,18 @@ fn membership_samples() -> Vec<Sample> {
                         reason: permguard_host::membership::import::UNVERIFIABLE.to_owned(),
                         detected_at: 1_800_000_300,
                         revision: [2; 32],
+                        accepted_at: None,
+                        accepted_by: None,
                     },
                 ],
             }
             .encode()
             .expect("encodes"),
-            &["import_gap.through"],
+            &[
+                "import_gap.through",
+                "import_gap.accepted_at",
+                "import_gap.accepted_by",
+            ],
             decoder(|bytes| verdict(permguard_host::membership::import::State::decode(bytes))),
         ),
         sample(

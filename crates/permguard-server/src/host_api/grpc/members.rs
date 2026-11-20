@@ -553,6 +553,32 @@ impl MembershipService for Served {
         }))
     }
 
+    async fn accept_import_gaps(
+        &self,
+        request: Request<v1::AcceptImportGapsRequest>,
+    ) -> Answer<v1::AcceptImportGapsResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let answer = self
+            .api
+            .accept_import_gaps(
+                &actor,
+                permguard_host::api::imports::AcceptImportGaps {
+                    request_id: asked.request_id,
+                    resource: asked.resource,
+                    origin: asked.origin,
+                    run: asked.run,
+                    reason: asked.reason,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::AcceptImportGapsResponse {
+            receipt: Some(receipt(answer.receipt)),
+            accepted: answer.accepted,
+        }))
+    }
+
     async fn change_member_record(
         &self,
         request: Request<v1::ChangeMemberRecordRequest>,

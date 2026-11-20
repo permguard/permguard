@@ -3861,6 +3861,7 @@ fn verified_import(
                 acked: through,
                 oldest_retained: through + 1,
                 admitted_at: None,
+                anchor: None,
             }],
             pins: Vec::new(),
         }],
@@ -3896,6 +3897,8 @@ fn verified_import(
                 reason: permguard_host::membership::import::RETENTION.to_owned(),
                 detected_at: 1,
                 revision: [3; 32],
+                accepted_at: None,
+                accepted_by: None,
             })
             .collect(),
     }
@@ -4538,6 +4541,20 @@ async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vo
     let (status, refused) = post(&router, submit()).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
     assert_eq!(refused["code"], "history_incomplete", "{refused}");
+
+    // The same gap, accepted by an operator: it decides again without it (BUG-0128).
+    let mut accepted = verified_import(1, 3, 1);
+    for gap in &mut accepted.gaps {
+        gap.accepted_at = Some(1);
+        gap.accepted_by = Some("sa:operator".to_owned());
+    }
+    *consumer.state.lock().expect("lock") = Some(accepted);
+    let (status, answered) = post(&router, submit()).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "an accepted gap withholds nothing: {answered}"
+    );
 
     // Fresh, whole and caught up: it decides, and says how fresh.
     *consumer.state.lock().expect("lock") = Some(verified_import(1, 3, 0));

@@ -2427,6 +2427,21 @@ pub trait StreamImport: Send + Sync {
         resource: &Resource,
         state: &crate::membership::import::State,
     ) -> Result<(), String>;
+
+    /// Starts `origin`'s run `run`, of which nothing is held, at `first_seq`, its first batch
+    /// chaining from `previous_head`: the coordinator deleted the prefix before, and its signed
+    /// checkpoint names where the rest chains from (BUG-0128).
+    fn start_run(
+        &self,
+        resource: &Resource,
+        origin: &[u8; 16],
+        run: &[u8; 16],
+        first_seq: u64,
+        previous_head: &str,
+    ) -> Result<(), String> {
+        let _ = (resource, origin, run, first_seq, previous_head);
+        Err("this consumer starts no run past its beginning".to_owned())
+    }
 }
 
 /// What a Plane reads of a stream the Host consumes (WP-6.1, owner decision of 2026-10-18): the
@@ -2474,6 +2489,18 @@ pub trait StreamConsumerReads: Send + Sync {
         kid: &str,
     ) -> Result<Option<Vec<u8>>, String> {
         let _ = (resource, producer, run, kid);
+        Ok(None)
+    }
+
+    /// The digest the first record still held of `producer`'s run `run` chains from, when a
+    /// prefix of it is not held (BUG-0128): what a checkpoint names as the run's anchor.
+    fn prefix_head(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<String>, String> {
+        let _ = (resource, producer, run);
         Ok(None)
     }
 
@@ -2568,6 +2595,16 @@ impl StreamConsumer {
     /// Every resource the consumer holds a run of.
     pub fn resources(&self) -> Result<Vec<Resource>, String> {
         self.reads.resources()
+    }
+
+    /// What the first record still held of a run chains from, below a deleted prefix (BUG-0128).
+    pub fn prefix_head(
+        &self,
+        resource: &Resource,
+        producer: &[u8; 16],
+        run: &[u8; 16],
+    ) -> Result<Option<String>, String> {
+        self.reads.prefix_head(resource, producer, run)
     }
 
     /// When the consumer admitted a run's last batch (WP-6.2c1).

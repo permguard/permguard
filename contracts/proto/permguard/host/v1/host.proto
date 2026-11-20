@@ -64,6 +64,9 @@ service MembershipService {
   rpc ResumeMember(ResumeMemberRequest) returns (ResumeMemberResponse);
   // `POST /host/v1/members/{id}/fence`.
   rpc FenceMember(FenceMemberRequest) returns (FenceMemberResponse);
+  // `POST /host/v1/imports/gaps/accept` (BUG-0128), under `membership.admin`: the open gaps of one
+  // origin's run over one ledger accepted, so `shared-bounded` decides again without them.
+  rpc AcceptImportGaps(AcceptImportGapsRequest) returns (AcceptImportGapsResponse);
   // `POST /host/v1/members/{id}/record`: the member renamed or regrouped (WP-10.3).
   rpc ChangeMemberRecord(ChangeMemberRecordRequest) returns (ChangeMemberRecordResponse);
   // `POST /host/v1/members/{id}/appraise`: the assurance binding renewed or revoked (WP-4.2).
@@ -632,6 +635,21 @@ message FenceMemberResponse {
   string status = 2;
   uint64 epoch = 3;
   bytes manifest = 4;
+}
+// `POST /host/v1/imports/gaps/accept` (BUG-0128).
+message AcceptImportGapsRequest {
+  string request_id = 1;
+  // `plane/data/zone/<zone id>/ledger/<ledger id>`.
+  string resource = 2;
+  // The origin Host, 32 hex digits.
+  string origin = 3;
+  // The origin's run, 32 hex digits.
+  string run = 4;
+  string reason = 5;
+}
+message AcceptImportGapsResponse {
+  Receipt receipt = 1;
+  uint64 accepted = 2;
 }
 // `POST /host/v1/members/{id}/record` (WP-10.3), under `membership.admin`: every live
 // membership of the member's Host revised in place.

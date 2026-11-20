@@ -533,7 +533,8 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                 | HostAction::Config { .. }
                 | HostAction::Status
                 | HostAction::Plans { .. }
-                | HostAction::Backup { .. } => Class::Host,
+                | HostAction::Backup { .. }
+                | HostAction::Imports { .. } => Class::Host,
             };
             ("host", class)
         }
