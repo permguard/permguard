@@ -323,8 +323,15 @@ pub fn apply(
         args.extend(rest.iter().map(|arg| (*arg).to_owned()));
         args
     };
+    // An example ships its manifest, which `init` adopts as it is: a name or languages beside it
+    // that contradict it are refused. Named only for an example without one.
+    let init = if workspace.join("manifest.yml").is_file() {
+        w(&["init"])
+    } else {
+        w(&["init", LEDGER, "--language", languages])
+    };
     for args in [
-        w(&["init", LEDGER, "--language", languages]),
+        init,
         w(&["remote", "add", "origin", &endpoint]),
         w(&["checkout", &format!("origin/{ZONE}/{LEDGER}")]),
         w(&["apply", "-m", "the benchmark's dataset"]),

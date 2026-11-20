@@ -362,7 +362,8 @@ partitions:
 profiles:
   default: { type: permguard.api.pdp.native.v1, partitions: [cedar] }
 MANIFEST
-    pg -w "${workspace}" init main --language cedar >/dev/null
+    # The manifest written above is adopted as it is: `init` refuses a name that contradicts it.
+    pg -w "${workspace}" init >/dev/null
     pg -w "${workspace}" remote add origin "${control}" >/dev/null
     pg -w "${workspace}" checkout "origin/${name}/main" >/dev/null
     pg -w "${workspace}" apply -m "the e2e's basics policies" >/dev/null

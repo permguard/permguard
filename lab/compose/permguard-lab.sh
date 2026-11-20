@@ -335,7 +335,13 @@ ledger_with() {
     workspace="$(mktemp -d)"
     cp -R "${examples}/${example}/." "${workspace}"
     rm -rf "${workspace}/.permguard"
-    pg -w "${workspace}" init "${ledger}" --language "${languages}" >/dev/null
+    # An example ships its manifest, which `init` adopts as it is: a name or languages beside it
+    # that contradict it are refused. Named only for an example without one.
+    if [ -f "${workspace}/manifest.yml" ]; then
+        pg -w "${workspace}" init >/dev/null
+    else
+        pg -w "${workspace}" init "${ledger}" --language "${languages}" >/dev/null
+    fi
     pg -w "${workspace}" remote add origin "${endpoint}" >/dev/null
     pg -w "${workspace}" checkout "origin/${zone}/${ledger}" >/dev/null
     pg -w "${workspace}" apply -m "the lab's ${example} policies" >/dev/null
