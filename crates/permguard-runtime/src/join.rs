@@ -209,6 +209,16 @@ fn trust_hint(detail: &str) -> Option<&'static str> {
              add it to the coordinator's admin.tls.client_ca",
         );
     }
+    // The coordinator closed the session's connection under it, which is how a refused client
+    // certificate often reaches this side: no alert to read, only a channel that cannot come
+    // back.
+    if detail.contains("the peer channel never reconnects") || detail.contains("broken pipe") {
+        return Some(
+            "the coordinator closed the connection during the join, as it does when it does not \
+             trust the authority that issued this Host's certificate: check the coordinator's \
+             admin.tls.client_ca",
+        );
+    }
     None
 }
 
@@ -226,6 +236,10 @@ mod trust {
         );
         assert!(
             trust_hint("received fatal alert: DecryptError")
+                .is_some_and(|hint| hint.contains("the coordinator's admin.tls.client_ca"))
+        );
+        assert!(
+            trust_hint("the peer channel never reconnects")
                 .is_some_and(|hint| hint.contains("the coordinator's admin.tls.client_ca"))
         );
         assert_eq!(trust_hint("connection refused"), None);
