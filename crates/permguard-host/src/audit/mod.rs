@@ -385,6 +385,19 @@ pub const REGISTRY: &[ActionSchema] = &[
         phases: false,
     },
     ActionSchema {
+        action: "host.audit_checkpoint_forked",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("trail", FactType::Text(256)),
+            ("kept", FactType::Text(71)),
+            ("offered", FactType::Text(71)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
         action: "host.stream.forked",
         class: Class::Security,
         root: HOST,

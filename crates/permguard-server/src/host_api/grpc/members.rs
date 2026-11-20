@@ -163,6 +163,16 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
         member_id: view.member_id,
         name: view.name,
         groups: view.groups,
+        audit_forks: view
+            .audit_forks
+            .into_iter()
+            .map(|fork| v1::AuditFork {
+                trail: fork.trail,
+                kept_checkpoint: fork.kept_checkpoint,
+                offered_checkpoint: fork.offered_checkpoint,
+                detected_at: fork.detected_at,
+            })
+            .collect(),
         task_progress: view
             .task_progress
             .into_iter()
@@ -826,6 +836,7 @@ mod tests {
         let nonce = [0xA7_u8; 32];
         let view = MemberView {
             task_progress: Vec::new(),
+            audit_forks: Vec::new(),
             member_id: None,
             name: None,
             groups: Vec::new(),

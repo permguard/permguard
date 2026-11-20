@@ -439,6 +439,10 @@ pub struct MemberView {
     /// labelled member-reported (WP-4.4); empty on a member.
     #[serde(default)]
     pub task_progress: Vec<TaskObservedView>,
+    /// The member's audit trails whose last checkpoint the coordinator refused as a fork of the
+    /// trail it keeps: a sealed day rewritten (BUG-0154); empty on a member and when none.
+    #[serde(default)]
+    pub audit_forks: Vec<AuditForkView>,
     /// The member record the manifest signs (WP-10.1); `null` while pending.
     #[serde(default)]
     pub member_id: Option<String>,
@@ -721,6 +725,19 @@ impl AssuranceView {
     }
 }
 
+/// One audit trail of a member whose checkpoint the coordinator refused as a fork (BUG-0154).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditForkView {
+    /// The trail: its class and resource.
+    pub trail: String,
+    /// `sha256:` hex of the last checkpoint the coordinator keeps of it.
+    pub kept_checkpoint: String,
+    /// `sha256:` hex of the checkpoint refused.
+    pub offered_checkpoint: String,
+    /// When the coordinator refused it, RFC 3339.
+    pub detected_at: String,
+}
+
 impl MemberView {
     fn of(held: &Held, viewing: &Viewing<'_>) -> Self {
         let (selector, tasks) = match &held.manifest {
@@ -800,6 +817,32 @@ impl MemberView {
             .iter()
             .filter_map(|task| task.last_session_at.clone())
             .max();
+        // The forks of its audit trails the coordinator found: a store that cannot be read shows
+        // nothing rather than a guess.
+        let audit_forks: Vec<AuditForkView> = match held.role {
+            Role::Coordinator => viewing
+                .store
+                .audit_forks(&held.request.membership_id)
+                .map(|forks| {
+                    forks
+                        .into_iter()
+                        .map(|fork| AuditForkView {
+                            trail: fork.trail,
+                            kept_checkpoint: format!(
+                                "sha256:{}",
+                                permguard_core::encoding::hex(&fork.kept)
+                            ),
+                            offered_checkpoint: format!(
+                                "sha256:{}",
+                                permguard_core::encoding::hex(&fork.offered)
+                            ),
+                            detected_at: rfc3339(fork.detected_at),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            Role::Member => Vec::new(),
+        };
         Self {
             membership_id: uuid_text(&held.request.membership_id),
             role: held.role.as_str().to_owned(),
@@ -825,6 +868,7 @@ impl MemberView {
             appraisal,
             held_epoch: held.held_epoch,
             task_progress,
+            audit_forks,
             member_id: held
                 .manifest
                 .as_ref()

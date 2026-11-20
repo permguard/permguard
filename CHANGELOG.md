@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A member's rewritten audit trail is recorded in the coordinator's `security` trail and shown in its member view.**
+  A checkpoint that does not continue the trail the coordinator keeps was refused `fork` with one ERROR line and nothing else.
+  The coordinator now records `host.audit_checkpoint_forked` in its `security` trail, naming the membership, the task, the trail and both digests, and `host members get` shows it under `audit_forks` (REST and gRPC) (BUG-0154).
 - **A stream's seal passes over an ended run with no record.**
   Once a run was sealed through its end, the seal moved to the next run even when that run had ended empty, as a `dr` restore followed by `host members fence` leaves one, and stopped there: nothing answered afterwards was sealed or shipped until a restart. The seal now moves to the first run with a record to seal (BUG-0191).
 - **A stream the coordinator refuses is logged when its subscription stops.**

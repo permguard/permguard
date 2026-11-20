@@ -418,6 +418,18 @@ message Member {
   // The manifest's member name, or while pending the one requested.
   optional string name = 20;
   repeated string groups = 21;
+  // The member's audit trails whose checkpoint the coordinator refused as a fork (BUG-0154).
+  repeated AuditFork audit_forks = 22;
+}
+// One audit trail of a member whose checkpoint the coordinator refused as a fork (BUG-0154).
+message AuditFork {
+  string trail = 1;
+  // `sha256:` hex of the last checkpoint the coordinator keeps of it.
+  string kept_checkpoint = 2;
+  // `sha256:` hex of the checkpoint refused.
+  string offered_checkpoint = 3;
+  // RFC 3339.
+  string detected_at = 4;
 }
 // What a coordinator observed of one task (WP-4.4).
 message TaskObserved {

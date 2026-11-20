@@ -7732,6 +7732,14 @@
             "description": "Per task, what the coordinator observed: its last session and the member's last report, labelled member-reported (WP-4.4); empty on a member.",
             "x-grpc-field": "task_progress"
           },
+          "audit_forks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditFork"
+            },
+            "description": "The member's audit trails whose last checkpoint the coordinator refused as a fork of the trail it keeps, a sealed day rewritten (BUG-0154); empty on a member and when none.",
+            "x-grpc-field": "audit_forks"
+          },
           "member_id": {
             "type": [
               "string",
@@ -7941,6 +7949,41 @@
         "additionalProperties": false,
         "description": "What a coordinator observed of one task (WP-4.4).",
         "x-grpc-message": "permguard.host.v1.TaskObserved"
+      },
+      "AuditFork": {
+        "type": "object",
+        "properties": {
+          "trail": {
+            "type": "string",
+            "description": "The trail: its class and resource.",
+            "x-grpc-field": "trail"
+          },
+          "kept_checkpoint": {
+            "type": "string",
+            "description": "`sha256:` hex of the last checkpoint the coordinator keeps of the trail.",
+            "x-grpc-field": "kept_checkpoint"
+          },
+          "offered_checkpoint": {
+            "type": "string",
+            "description": "`sha256:` hex of the checkpoint refused.",
+            "x-grpc-field": "offered_checkpoint"
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the coordinator refused it.",
+            "x-grpc-field": "detected_at"
+          }
+        },
+        "required": [
+          "trail",
+          "kept_checkpoint",
+          "offered_checkpoint",
+          "detected_at"
+        ],
+        "additionalProperties": false,
+        "description": "One audit trail of a member whose checkpoint the coordinator refused as a fork (BUG-0154).",
+        "x-grpc-message": "permguard.host.v1.AuditFork"
       },
       "Members": {
         "type": "object",

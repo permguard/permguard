@@ -76,6 +76,8 @@ const EGRESS: &str = "egress";
 const META: &str = "META";
 const LAST: &str = "LAST";
 const ANCHOR: &str = "ANCHOR";
+/// The last fork found of a trail: the digest kept, the one offered, when (BUG-0154).
+const FORKED: &str = "FORKED";
 
 fn bounded(bytes: &[u8], what: &str) -> Result<(), RecordError> {
     if bytes.len() > MAX_RECORD_BYTES {
@@ -333,6 +335,15 @@ impl AuditCheckpoints {
 
 impl TaskHandler for AuditCheckpoints {
     fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal> {
+        self.handle_with(context, body, &Unreported)
+    }
+
+    fn handle_with(
+        &self,
+        context: &TaskContext,
+        body: &[u8],
+        incidents: &dyn super::task::Incidents,
+    ) -> Result<Vec<u8>, Refusal> {
         let ship = Ship::decode(body).map_err(|error| invalid(error.0))?;
         let class = Class::parse(&ship.class)
             .ok_or_else(|| invalid(format!("`{}` is not an audit class", ship.class)))?;
@@ -369,6 +380,36 @@ impl TaskHandler for AuditCheckpoints {
                         trail = %trail,
                         "a member's checkpoint does not continue the trail kept: refused"
                     );
+                    // Recorded in the `security` trail and kept for the member view (BUG-0154);
+                    // either failing is logged, and the refusal stands.
+                    let kept = self
+                        .store
+                        .last_kept(&context.membership_id, &trail)
+                        .ok()
+                        .flatten()
+                        .unwrap_or([0; 32]);
+                    if let Err(error) = incidents.audit_forked(&trail, kept, digest) {
+                        tracing::error!(
+                            event.name = "host.audit_checkpoint_fork_unrecorded",
+                            component = "host",
+                            error = %error,
+                            "the forked checkpoint could not be recorded in the security trail"
+                        );
+                    }
+                    if let Err(error) = self.store.keep_fork(
+                        &context.membership_id,
+                        &trail,
+                        kept,
+                        digest,
+                        self.time.now_secs(),
+                    ) {
+                        tracing::error!(
+                            event.name = "host.audit_checkpoint_fork_unrecorded",
+                            component = "host",
+                            error = %error,
+                            "the forked checkpoint could not be kept for the member view"
+                        );
+                    }
                     refusal(codes::stream::FORK, reason)
                 }
                 other => unavailable(other.to_string()),
@@ -381,6 +422,25 @@ impl TaskHandler for AuditCheckpoints {
         .encode()
         .map_err(|error| unavailable(error.0))
     }
+}
+
+/// The incidents of a handler called without a session: none recorded.
+struct Unreported;
+
+impl super::task::Incidents for Unreported {
+    fn stream_forked(&self, _stream: &str, _at_seq: u64) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// A member's checkpoint the coordinator refused as a fork of the trail it keeps (BUG-0154): the
+/// trail, the digest it keeps last, the one offered, and when.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditFork {
+    pub trail: String,
+    pub kept: [u8; 32],
+    pub offered: [u8; 32],
+    pub detected_at: u64,
 }
 
 /// The last checkpoint a coordinator kept of a trail: how many it keeps, and its digest.
@@ -488,6 +548,103 @@ impl Store {
         }
         replace_view(&dir, LAST, format::VIEW, &Kept { count, digest }.encode()?)?;
         Ok(())
+    }
+
+    /// The digest of the last checkpoint kept of `membership_id`'s `trail`, when one is.
+    pub fn last_kept(
+        &self,
+        membership_id: &[u8; 16],
+        trail: &str,
+    ) -> Result<Option<[u8; 32]>, MembershipError> {
+        let Some(dir) = self.trail_dir(membership_id, trail)? else {
+            return Ok(None);
+        };
+        Ok(read_view(&dir, LAST, format::VIEW)?
+            .map(|bytes| last_of(&bytes))
+            .transpose()?
+            .map(|(_, digest)| digest))
+    }
+
+    /// Keeps the last fork found of `membership_id`'s `trail`, for the member view (BUG-0154).
+    pub fn keep_fork(
+        &self,
+        membership_id: &[u8; 16],
+        trail: &str,
+        kept: [u8; 32],
+        offered: [u8; 32],
+        at: u64,
+    ) -> Result<(), MembershipError> {
+        let dir = self
+            .dir
+            .subdir(AUDIT, true)?
+            .subdir(&hex(membership_id), true)?
+            .subdir(&hex(&Sha256::digest(trail.as_bytes())), true)?;
+        if read_view(&dir, META, format::VIEW)?.is_none() {
+            replace_view(&dir, META, format::VIEW, trail.as_bytes())?;
+        }
+        let mut bytes = Vec::with_capacity(72);
+        bytes.extend_from_slice(&kept);
+        bytes.extend_from_slice(&offered);
+        bytes.extend_from_slice(&at.to_be_bytes());
+        replace_view(&dir, FORKED, format::VIEW, &bytes)?;
+        Ok(())
+    }
+
+    /// The forks found of every trail of `membership_id`, by trail (BUG-0154).
+    pub fn audit_forks(&self, membership_id: &[u8; 16]) -> Result<Vec<AuditFork>, MembershipError> {
+        let audit = self.dir.subdir(AUDIT, true)?;
+        let member = hex(membership_id);
+        if !audit.subdirs()?.contains(&member) {
+            return Ok(Vec::new());
+        }
+        let member = audit.subdir(&member, false)?;
+        let mut forks = Vec::new();
+        for name in member.subdirs()? {
+            let dir = member.subdir(&name, false)?;
+            let Some(bytes) = read_view(&dir, FORKED, format::VIEW)? else {
+                continue;
+            };
+            let trail = read_view(&dir, META, format::VIEW)?
+                .map(|trail| String::from_utf8_lossy(&trail).into_owned())
+                .unwrap_or_default();
+            if bytes.len() != 72 {
+                return Err(MembershipError::Storage(format!(
+                    "the fork kept of `{trail}` does not read"
+                )));
+            }
+            let mut kept = [0; 32];
+            kept.copy_from_slice(&bytes[..32]);
+            let mut offered = [0; 32];
+            offered.copy_from_slice(&bytes[32..64]);
+            let mut at = [0; 8];
+            at.copy_from_slice(&bytes[64..]);
+            forks.push(AuditFork {
+                trail,
+                kept,
+                offered,
+                detected_at: u64::from_be_bytes(at),
+            });
+        }
+        forks.sort_by(|left, right| left.trail.cmp(&right.trail));
+        Ok(forks)
+    }
+
+    fn trail_dir(
+        &self,
+        membership_id: &[u8; 16],
+        trail: &str,
+    ) -> Result<Option<crate::storage::Dir>, MembershipError> {
+        let audit = self.dir.subdir(AUDIT, true)?;
+        let member = hex(membership_id);
+        if !audit.subdirs()?.contains(&member) {
+            return Ok(None);
+        }
+        let member = audit.subdir(&member, false)?;
+        let digest = hex(&Sha256::digest(trail.as_bytes()));
+        if !member.subdirs()?.contains(&digest) {
+            return Ok(None);
+        }
+        Ok(Some(member.subdir(&digest, false)?))
     }
 
     /// The checkpoints a coordinator keeps of `membership_id`'s `trail`, in the order kept.
@@ -888,6 +1045,22 @@ mod tests {
             store.kept_checkpoints(&member, trail).expect("kept"),
             vec![first, second]
         );
+        // BUG-0154: the fork is kept for the member view, by trail, with both digests.
+        assert_eq!(store.last_kept(&member, trail).expect("read"), Some(two));
+        assert!(store.audit_forks(&member).expect("read").is_empty());
+        store
+            .keep_fork(&member, trail, two, envelope_digest(&forked), 1_800_000_000)
+            .expect("kept");
+        assert_eq!(
+            store.audit_forks(&member).expect("read"),
+            vec![AuditFork {
+                trail: trail.to_owned(),
+                kept: two,
+                offered: envelope_digest(&forked),
+                detected_at: 1_800_000_000,
+            }]
+        );
+        assert!(store.audit_forks(&[8; 16]).expect("read").is_empty());
         assert!(
             store
                 .kept_checkpoints(&[8; 16], trail)

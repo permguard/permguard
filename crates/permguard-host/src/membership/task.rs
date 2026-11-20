@@ -59,6 +59,9 @@ pub const AUDIT_CLONE_ALARM: &str = "host.membership.clone_alarm";
 /// A stream the coordinator ingests found forked: the incident, the membership suspended
 /// (WP-5.3, owner decision).
 pub const AUDIT_STREAM_FORKED: &str = "host.stream.forked";
+/// A member's audit checkpoint that does not continue the trail the coordinator keeps: a sealed
+/// day rewritten (`security`, BUG-0154).
+pub const AUDIT_CHECKPOINT_FORKED: &str = "host.audit_checkpoint_forked";
 /// A membership held for review, a mutation of the store.
 pub const AUDIT_HELD: &str = "host.membership.held";
 /// A re-pin presenting a set below the pin (`security`, WP-4.5).
@@ -251,6 +254,14 @@ pub trait Incidents {
     /// Records the stream at `stream` found forked at `at_seq` in the `security` trail, then
     /// suspends the membership: a `suspended` manifest, a new epoch.
     fn stream_forked(&self, stream: &str, at_seq: u64) -> Result<(), String>;
+
+    /// Records in the `security` trail that the member's checkpoint of `trail`, `offered`, does
+    /// not continue the one the coordinator keeps, `kept` (BUG-0154). A double that records
+    /// nothing answers `Ok`.
+    fn audit_forked(&self, trail: &str, kept: [u8; 32], offered: [u8; 32]) -> Result<(), String> {
+        let _ = (trail, kept, offered);
+        Ok(())
+    }
 }
 
 /// The incidents of one task session, against its membership.
@@ -263,6 +274,25 @@ struct SessionIncidents<'a> {
 }
 
 impl Incidents for SessionIncidents<'_> {
+    fn audit_forked(&self, trail: &str, kept: [u8; 32], offered: [u8; 32]) -> Result<(), String> {
+        let (kept, offered) = (
+            format!("sha256:{}", hex(&kept)),
+            format!("sha256:{}", hex(&offered)),
+        );
+        self.coordinating.observe(
+            AUDIT_CHECKPOINT_FORKED,
+            self.peer,
+            &uuid_text(&self.membership_id),
+            &[
+                ("task", Fact::Text(self.task_id)),
+                ("trail", Fact::Text(trail)),
+                ("kept", Fact::Text(&kept)),
+                ("offered", Fact::Text(&offered)),
+            ],
+        );
+        Ok(())
+    }
+
     fn stream_forked(&self, stream: &str, at_seq: u64) -> Result<(), String> {
         // Reported again on every delivery until the membership is suspended, once: a
         // suspension that failed is retried, a done one neither recorded nor tried twice (after

@@ -183,6 +183,16 @@ pub(crate) fn member_in(member: proto::Member) -> MemberView {
         member_id: member.member_id,
         name: member.name,
         groups: member.groups,
+        audit_forks: member
+            .audit_forks
+            .into_iter()
+            .map(|fork| permguard_host::api::members::AuditForkView {
+                trail: fork.trail,
+                kept_checkpoint: fork.kept_checkpoint,
+                offered_checkpoint: fork.offered_checkpoint,
+                detected_at: fork.detected_at,
+            })
+            .collect(),
         task_progress: member
             .task_progress
             .into_iter()
