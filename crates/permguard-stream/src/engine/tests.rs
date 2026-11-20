@@ -6442,14 +6442,19 @@ fn the_offline_check_finds_each_alteration() {
     for entry in std::fs::read_dir(altered.join("records")).expect("records") {
         let path = entry.expect("entry").path();
         let bytes = std::fs::read(&path).expect("a segment");
-        let Some(at) = bytes.windows(2).position(|pair| pair == b"r3") else {
+        // header (48) | length u32 | kind u16 | claim u64 | payload | checksum (32)
+        if bytes.len() < 62 + 32 {
+            continue;
+        }
+        let mut payload = bytes[62..bytes.len() - 32].to_vec();
+        // Searched in the payload only: the header and the checksum are binary, and may hold the
+        // same two bytes by chance.
+        let Some(at) = payload.windows(2).position(|pair| pair == b"r3") else {
             continue;
         };
-        // header (48) | length u32 | kind u16 | claim u64 | payload | checksum (32)
         let kind = u16::from_be_bytes([bytes[52], bytes[53]]);
         let claim = u64::from_be_bytes(bytes[54..62].try_into().expect("eight bytes"));
-        let mut payload = bytes[62..bytes.len() - 32].to_vec();
-        payload[at - 62 + 1] = b'9';
+        payload[at + 1] = b'9';
         let mut segment = bytes[..48].to_vec();
         segment.extend(
             permguard_host::storage::journal::encode_frame(kind, claim, &payload).expect("a frame"),
