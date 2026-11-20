@@ -1623,6 +1623,9 @@ impl Composition {
                     config.working_dir().display()
                 )
             })?;
+        // Every write of this volume through the storage primitives is charged to it from here
+        // on, whichever crate writes (BUG-0062).
+        permguard_host::storage::gate::install(volume.root(), host_quota.clone());
 
         // No subsystem is served while a migration is between two sides, and no layout this build
         // does not read is served at all (WP-1.9): an interrupted migration is landed by its

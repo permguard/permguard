@@ -50,7 +50,23 @@ pub enum Published {
 /// checks their digest — and a temporary that does not verify is never published. `same` decides
 /// whether an existing file under `name` holds this content: for a compressed object, after
 /// decompression.
+///
+/// Charged to the quota of the volume that holds `dir`, when one is installed (BUG-0062): the
+/// content's bytes and one file are reserved before anything is written.
 pub fn publish_immutable(
+    dir: &Dir,
+    name: &str,
+    content: &[u8],
+    verify: &dyn Fn(&[u8]) -> bool,
+    same: &dyn Fn(&[u8]) -> bool,
+) -> Result<Published> {
+    match super::gate::scope_for(dir.path()) {
+        Some(scope) => publish_immutable_in(&scope, dir, name, content, verify, same),
+        None => publish_unmetered(dir, name, content, verify, same),
+    }
+}
+
+fn publish_unmetered(
     dir: &Dir,
     name: &str,
     content: &[u8],
@@ -144,8 +160,38 @@ fn judge(
 }
 
 /// Replaces the view `name` below `dir` with `body`, atomically, as a whole file of `format`.
+/// Charged to the quota of the volume that holds `dir`, when one is installed (BUG-0062).
 pub fn replace_view(dir: &Dir, name: &str, format: Format, body: &[u8]) -> Result<()> {
-    replace_through(dir, name, format::encode_file(format, 0, body))
+    replace_charged(dir, name, format::encode_file(format, 0, body))
+}
+
+/// [`replace_through`], charged to the scope the gate gives `dir`: the whole new file and its
+/// temporary's inode reserved before anything is written; once it lands, the file it replaced is
+/// freed.
+fn replace_charged(dir: &Dir, name: &str, bytes: Vec<u8>) -> Result<()> {
+    let Some(scope) = super::gate::scope_for(dir.path()) else {
+        return replace_through(dir, name, bytes);
+    };
+    replace_in(&scope, dir, name, bytes)
+}
+
+fn replace_in(
+    scope: &crate::storage::quota::Scope,
+    dir: &Dir,
+    name: &str,
+    bytes: Vec<u8>,
+) -> Result<()> {
+    let length = bytes.len() as u64;
+    let old = std::fs::symlink_metadata(dir.child_path(name))
+        .ok()
+        .map(|metadata| metadata.len());
+    let reservation = scope.reserve(length, 1)?;
+    replace_through(dir, name, bytes)?;
+    reservation.land(length, u64::from(old.is_none()));
+    if let Some(old) = old {
+        scope.freed(old, 0)?;
+    }
+    Ok(())
 }
 
 /// Replaces the file `name` below `dir` with exactly `bytes`, atomically, with no header of this
@@ -153,7 +199,7 @@ pub fn replace_view(dir: &Dir, name: &str, format: Format, body: &[u8]) -> Resul
 /// bytes on disk are fixed by a layout older than the library (WP-1.11). A reader sees the old
 /// file or the new one, never a mixture.
 pub fn replace_bytes(dir: &Dir, name: &str, bytes: &[u8]) -> Result<()> {
-    replace_through(dir, name, bytes.to_vec())
+    replace_charged(dir, name, bytes.to_vec())
 }
 
 fn replace_through(dir: &Dir, name: &str, bytes: Vec<u8>) -> Result<()> {
@@ -217,7 +263,7 @@ pub fn publish_immutable_in(
     same: &dyn Fn(&[u8]) -> bool,
 ) -> Result<Published> {
     let reservation = scope.reserve(content.len() as u64, 1)?;
-    let published = publish_immutable(dir, name, content, verify, same)?;
+    let published = publish_unmetered(dir, name, content, verify, same)?;
     if published == Published::Written {
         reservation.land(content.len() as u64, 1);
     }
@@ -234,18 +280,7 @@ pub fn replace_view_in(
     format: Format,
     body: &[u8],
 ) -> Result<()> {
-    let length = format::encode_file(format, 0, body).len() as u64;
-    let old = std::fs::symlink_metadata(dir.child_path(name))
-        .ok()
-        .map(|metadata| metadata.len());
-    let reservation = scope.reserve(length, 1)?;
-    replace_view(dir, name, format, body)?;
-    reservation.land(length, u64::from(old.is_none()));
-    if let Some(old) = old {
-        scope.freed(old, 0)?;
-    }
-
-    Ok(())
+    replace_in(scope, dir, name, format::encode_file(format, 0, body))
 }
 
 /// The body of the view `name` below `dir`, or `None` when there is none.

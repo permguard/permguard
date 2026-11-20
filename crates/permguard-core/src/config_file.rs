@@ -1951,20 +1951,19 @@ impl ConfigFile {
                 .transpose()?;
             Ok(Limit { bytes, inodes })
         };
-        let mut quotas = Quotas {
+        let quotas = Quotas {
             host: limit(&section.quotas.host, "host")?,
             ..Quotas::default()
         };
-        for (plane, section) in &section.quotas.planes {
-            if crate::planes::discovery::PlaneId::parse(plane).is_none() {
-                bail!(
-                    "storage.quotas.planes.{plane}: there is no Plane `{plane}`; the Planes are \
-                     `authority`, `control` and `data`"
-                );
-            }
-            quotas
-                .planes
-                .insert(plane.clone(), limit(section, &format!("planes.{plane}"))?);
+        // A Plane keeps no directory of its own on the volume, so a quota of its own could be
+        // neither measured nor enforced: refused rather than accepted and ignored (BUG-0062,
+        // owner decision of 2026-11-20). The Host's quota bounds every Plane it serves.
+        if let Some(plane) = section.quotas.planes.keys().next() {
+            bail!(
+                "storage.quotas.planes.{plane}: a Plane keeps no directory of its own on the \
+                 volume, so its quota can be neither measured nor enforced; bound the volume with \
+                 storage.quotas.host"
+            );
         }
         Ok(VolumeConfig {
             storage_class: declared(&section.volume.storage_class, "storage_class")?,
@@ -2720,7 +2719,7 @@ mod tests {
     #[test]
     fn test_the_storage_section_reads_the_maintenance_reserve_and_the_quotas() {
         let file = ConfigFile::parse(
-            "storage:\n  floors:\n    free_bytes: 1G\n    maintenance_bytes: 32M\n    maintenance_inodes: \"200\"\n  quotas:\n    host:\n      bytes: 100G\n    planes:\n      control:\n        bytes: 40G\n        inodes: \"1000000\"\n",
+            "storage:\n  floors:\n    free_bytes: 1G\n    maintenance_bytes: 32M\n    maintenance_inodes: \"200\"\n  quotas:\n    host:\n      bytes: 100G\n",
         )
         .expect("the file parses");
         let volume = file.volume().expect("the section is valid");
@@ -2728,9 +2727,7 @@ mod tests {
         assert_eq!(volume.floors.maintenance_inodes, 200);
         assert_eq!(volume.quotas.host.bytes, Some(100 * 1024 * 1024 * 1024));
         assert_eq!(volume.quotas.host.inodes, None, "absent is unlimited");
-        let control = volume.quotas.planes["control"];
-        assert_eq!(control.bytes, Some(40 * 1024 * 1024 * 1024));
-        assert_eq!(control.inodes, Some(1_000_000));
+        assert!(volume.quotas.planes.is_empty());
     }
 
     #[test]
@@ -2795,6 +2792,10 @@ mod tests {
             (
                 "storage:\n  quotas:\n    planes:\n      ghostplane:\n        bytes: 512M\n".to_owned(),
                 "a quota for a Plane that does not exist",
+            ),
+            (
+                "storage:\n  quotas:\n    planes:\n      control:\n        bytes: 40G\n".to_owned(),
+                "a Plane's quota, which no directory of its own measures (BUG-0062)",
             ),
             ("storage:\n  volume:\n    driver: \" \"\n".to_owned(), "an empty driver"),
         ] {

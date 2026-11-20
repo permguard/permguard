@@ -836,8 +836,14 @@ impl Journal {
         let bytes = encode_frame(kind, self.options.claim, payload)?;
         let rolls = self.current_len >= self.options.segment_bytes
             && self.current_len > SEGMENT_HEAD as u64;
-        // Reserved before anything is written: a refusal leaves the journal exactly as it was.
-        let reservation = match &self.scope {
+        // Reserved before anything is written: a refusal leaves the journal exactly as it was. A
+        // journal not charged to a scope of its own is charged to the volume that holds it, when
+        // its quota is installed (BUG-0062).
+        let gated = match &self.scope {
+            Some(_) => None,
+            None => super::gate::scope_for(self.dir.path()),
+        };
+        let reservation = match self.scope.as_ref().or(gated.as_ref()) {
             Some(scope) => Some(scope.reserve(
                 bytes.len() as u64 + if rolls { SEGMENT_HEAD as u64 } else { 0 },
                 u64::from(rolls),

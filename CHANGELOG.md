@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A write past the Host's storage quota is refused, whichever crate writes it.**
+  The composition installs the volume's quota in a gate of the storage write primitives: every immutable file, view and journal frame written below the volume reserves its bytes and files first, and a write past `storage.quotas.host` is refused `QuotaExceeded`, one below the emergency floor `BelowFloor`, writing nothing; writes below `host/audit/` are charged as maintenance, and the minute remeasure corrects what `std::fs` writers add.
+  `storage.quotas.planes` is now refused at start: a Plane keeps no directory of its own on the volume, so its quota could be neither measured nor enforced (BUG-0062).
 - **On Windows the volume and the command line's secret files are their owner's alone.**
   A volume the Host creates gets a protected access list granting the current user alone, inherited by everything below it, and `volume verify` and the start's inspection report `storage_mode` for any entry whose list grants anybody but its owner, `SYSTEM` and the Administrators (BUG-0324).
   The command line restricts its token, secret, cache and `--out` files the same way when it writes them, and refuses to read a token or a secret file granted to others, naming who and the `icacls` line that restricts it (BUG-0325).

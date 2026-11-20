@@ -236,3 +236,80 @@ fn a_quota_refuses_the_write_that_would_pass_it_and_nothing_is_written() {
         "the refused reservation was released"
     );
 }
+
+/// BUG-0062: once a volume's quota is installed in the gate, every write the storage primitives
+/// make below it is charged, whichever crate makes it and without a scope of its own: an
+/// immutable file, a view and a journal frame past `storage.quotas.host` are refused
+/// `QuotaExceeded` and write nothing; what a replacement frees is given back.
+#[test]
+fn every_primitive_writing_below_an_installed_volume_is_held_to_its_quota() {
+    use permguard_host::storage::gate;
+    use permguard_host::storage::write::{publish_immutable, replace_view};
+
+    let root = volume("gate");
+    let dir = Dir::open(&root).expect("opens");
+    let quota = Quota::open(
+        Dir::open(&root).expect("opens"),
+        Floors {
+            free_bytes: 0,
+            free_inodes: 0,
+            maintenance_bytes: 0,
+            maintenance_inodes: 0,
+        },
+        Limit {
+            bytes: Some(16 * 1024),
+            inodes: None,
+        },
+    )
+    .expect("the quota");
+    gate::install(&root, quota.clone());
+
+    let any = |_: &[u8]| true;
+    assert_eq!(
+        publish_immutable(&dir, "first", &[1u8; 6 * 1024], &any, &any).expect("within"),
+        Published::Written
+    );
+    let refused = publish_immutable(&dir, "second", &[2u8; 12 * 1024], &any, &any)
+        .expect_err("past the quota");
+    assert!(
+        matches!(refused, StorageError::QuotaExceeded(_)),
+        "{refused}"
+    );
+    assert!(!root.join("second").exists(), "nothing was written");
+
+    replace_view(&dir, "view", format::VIEW, &[3u8; 4 * 1024]).expect("within");
+    let refused =
+        replace_view(&dir, "big", format::VIEW, &[4u8; 8 * 1024]).expect_err("past the quota");
+    assert!(
+        matches!(refused, StorageError::QuotaExceeded(_)),
+        "{refused}"
+    );
+    // Replacing the view with a smaller one gives its bytes back.
+    replace_view(&dir, "view", format::VIEW, &[3u8; 512]).expect("smaller");
+
+    let plane = dir.subdir("data", true).expect("a directory");
+    let (mut journal, _) = Journal::open(
+        plane,
+        Options {
+            max_frame: 8 * 1024,
+            ..Options::default()
+        },
+    )
+    .expect("opens");
+    journal
+        .append(1, &[5u8; 4 * 1024])
+        .expect("within the quota");
+    let frames = journal.next_index();
+    let refused = journal
+        .append(1, &[5u8; 8 * 1024])
+        .expect_err("past the quota");
+    assert!(
+        matches!(refused, StorageError::QuotaExceeded(_)),
+        "{refused}"
+    );
+    assert_eq!(journal.next_index(), frames, "nothing was appended");
+
+    gate::uninstall(&root);
+    publish_immutable(&dir, "after", &[6u8; 12 * 1024], &any, &any)
+        .expect("uninstalled: nothing is charged");
+}

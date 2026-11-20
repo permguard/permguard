@@ -33,6 +33,7 @@ pub mod authority;
 pub mod crash;
 pub mod dir;
 pub mod format;
+pub mod gate;
 pub mod journal;
 pub mod migrate;
 pub mod private;
