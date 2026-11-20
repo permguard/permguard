@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.34] - 2026-11-20
+
 ### Changed
 
 - **A Data Plane's refusals are remembered per engine build and authority, and its quarantine is configurable and audited.**
