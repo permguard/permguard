@@ -151,6 +151,7 @@ async fn join_one(
                 // task or an assurance the coordinator refused, is final.
                 Some(error) if permguard_host::api::members::retryable(&refusal) => {
                     unanswered = true;
+                    let detail = error.internal_detail().unwrap_or_default();
                     tracing::warn!(
                         event.name = "host.join_retry",
                         component = "host",
@@ -158,7 +159,10 @@ async fn join_one(
                         reason = %error,
                         // What the transport or the coordinator said: the operator's to diagnose
                         // with, never a token or a secret.
-                        detail = error.internal_detail().unwrap_or_default(),
+                        detail = detail,
+                        // Which side does not trust the other's authority, and what to change
+                        // (BUG-0337); empty for any other failure.
+                        hint = trust_hint(detail).unwrap_or_default(),
                         after_seconds = backoff.as_secs(),
                         "the coordinator did not take the join: trying again"
                     );
@@ -179,6 +183,52 @@ async fn join_one(
                 None => return Err(refuse("refused by this Host's authorization".to_owned())),
             },
         }
+    }
+}
+
+/// What to change when the join failed on the two Hosts' trust of each other (BUG-0337): this
+/// Host checks the coordinator's certificate under its own `admin.tls.client_ca`, and the
+/// coordinator checks this Host's under its own; `None` for any other failure.
+fn trust_hint(detail: &str) -> Option<&'static str> {
+    if detail.contains("invalid peer certificate") {
+        return Some(
+            "this Host does not trust the authority that issued the coordinator's certificate: add \
+             it to this Host's admin.tls.client_ca, or its name is not the one the certificate \
+             names",
+        );
+    }
+    let refused_ours = [
+        "received fatal alert: DecryptError",
+        "received fatal alert: BadCertificate",
+        "received fatal alert: UnknownCA",
+        "received fatal alert: CertificateUnknown",
+    ];
+    if refused_ours.iter().any(|alert| detail.contains(alert)) {
+        return Some(
+            "the coordinator does not trust the authority that issued this Host's certificate: \
+             add it to the coordinator's admin.tls.client_ca",
+        );
+    }
+    None
+}
+
+#[cfg(test)]
+mod trust {
+    use super::trust_hint;
+
+    /// BUG-0337: a join refused on the Hosts' trust of each other says which side and which
+    /// setting; any other failure says nothing more.
+    #[test]
+    fn a_trust_failure_names_the_side_and_the_setting() {
+        assert!(
+            trust_hint("unavailable: invalid peer certificate: BadSignature")
+                .is_some_and(|hint| hint.contains("this Host's admin.tls.client_ca"))
+        );
+        assert!(
+            trust_hint("received fatal alert: DecryptError")
+                .is_some_and(|hint| hint.contains("the coordinator's admin.tls.client_ca"))
+        );
+        assert_eq!(trust_hint("connection refused"), None);
     }
 }
 
