@@ -17,9 +17,15 @@ WORKDIR /src
 # `.proto` files in the -dev package, not with `protoc`. Without it a build from a clean clone —
 # or a clean BuildKit cache — fails in `permguard-client`'s `build.rs` before any Rust
 # source is compiled.
+# `make` for jemalloc, the allocator the Linux servers link (BUG-0056): its build script runs the
+# library's own makefile, and the image carries a C compiler but no `make`.
 RUN apt-get update \
- && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev musl-tools \
+ && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev musl-tools make \
  && rm -rf /var/lib/apt/lists/*
+
+# jemalloc's C sources for arm64: `musl-gcc` links no libgcc, where GCC's out-of-line atomics live,
+# so its configure finds no atomics at all unless they are compiled inline.
+ENV CFLAGS_aarch64_unknown_linux_musl=-mno-outline-atomics
 
 ARG TARGETARCH
 RUN case "${TARGETARCH}" in \

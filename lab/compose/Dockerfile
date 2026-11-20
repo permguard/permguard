@@ -22,8 +22,10 @@ FROM rust:1.97-slim-trixie AS builder
 
 # `libprotobuf-dev` beside the compiler: the Data Plane's protocol imports the well-known types,
 # which Debian ships in the -dev package (see the repository's `Dockerfile`).
+# `make` for jemalloc, the allocator the Linux servers link (BUG-0056): its build script runs the
+# library's own makefile, and the image carries a C compiler but no `make`.
 RUN apt-get update \
- && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev \
+ && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev make \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
