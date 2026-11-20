@@ -1172,7 +1172,7 @@ fn serving_member_of(member: proto::ServingMember) -> crate::catalog::ServingMem
     }
 }
 
-#[cfg(feature = "catalog")]
+#[cfg(any(feature = "catalog", feature = "notp"))]
 /// A re-homed ledger's provenance as the wire carries it (WP-7.10).
 fn provenance_of(provenance: proto::LedgerProvenance) -> permguard_core::Provenance {
     permguard_core::Provenance {

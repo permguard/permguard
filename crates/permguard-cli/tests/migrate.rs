@@ -413,7 +413,9 @@ fn a_legacy_location_that_does_not_exist_is_refused_at_plan() {
             "{args:?}: {}",
             stderr(&refused)
         );
-        assert!(stderr(&refused).contains(missing), "{}", stderr(&refused));
+        // The refusal is JSON, where a Windows path's separators are escaped.
+        let named = stderr(&refused).replace("\\\\", "\\");
+        assert!(named.contains(missing), "{}", stderr(&refused));
         assert!(!plan.exists(), "{args:?}");
     }
 
