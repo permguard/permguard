@@ -1764,6 +1764,30 @@ fn a_failed_clone_leaves_its_destination_as_it_found_it() {
     clone(&target, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
     assert!(!target.exists(), "the folder it created is removed");
 
+    // A nested destination creates its parents, and a failure removes them all; a parent that
+    // was there stays.
+    let nested = root.join("n1").join("a").join("b");
+    clone(&nested, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
+    assert!(
+        !root.join("n1").exists(),
+        "every folder it created is removed"
+    );
+    assert!(root.is_dir(), "and what was there stays");
+    std::fs::create_dir_all(root.join("n2")).unwrap();
+    clone(
+        &root.join("n2").join("a").join("b"),
+        "test://",
+        "delivery",
+        "main-ledger",
+        &Unreachable,
+    )
+    .unwrap_err();
+    assert!(root.join("n2").is_dir(), "a parent that was there stays");
+    assert!(
+        !root.join("n2").join("a").exists(),
+        "only what it made goes"
+    );
+
     // An empty folder that was there stays, empty.
     std::fs::create_dir_all(&target).unwrap();
     clone(&target, "test://", "delivery", "main-ledger", &Unreachable).unwrap_err();
@@ -2181,4 +2205,48 @@ fn a_retried_apply_after_a_lost_answer_is_the_same_request() {
         engine.get_ref("main").unwrap().map(|held| held.head)
     );
     assert!(ws.plan().unwrap().1.is_empty());
+}
+
+/// BUG-0111: a checkout refused because the head holds a partition this workspace's manifest does
+/// not declare leaves `.permguard/config` and `HEAD` as they were: no binding is saved.
+#[test]
+fn a_refused_checkout_saves_no_binding() {
+    let remote = EngineRemote::new("checkout-refused");
+
+    // The ledger holds Cedar and Rego.
+    let dir_a = scratch("checkout-refused-a");
+    let store_a = FsStore::new(&dir_a);
+    let ws_a = Workspace::open(&store_a);
+    ws_a.init("acme-authz", &["cedar", "rego"]).unwrap();
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .expect("an empty ledger is bound");
+    ws_a.apply(&remote, "a", "both languages").unwrap();
+
+    // A Cedar-only workspace cannot take it: refused, and nothing of the binding is kept.
+    let dir_b = scratch("checkout-refused-b");
+    let store_b = FsStore::new(&dir_b);
+    let ws_b = Workspace::open(&store_b);
+    ws_b.init("cedar-only", &["cedar"]).unwrap();
+    let config_before = std::fs::read(dir_b.join(".permguard/config")).unwrap();
+    let head_before = std::fs::read(dir_b.join(".permguard/HEAD")).ok();
+    let refused = ws_b
+        .checkout(&remote, "okr", "delivery", "main-ledger", "main")
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("`rego`"), "{refused}");
+    assert_eq!(
+        std::fs::read(dir_b.join(".permguard/config")).unwrap(),
+        config_before,
+        "the configuration is unchanged"
+    );
+    assert_eq!(
+        std::fs::read(dir_b.join(".permguard/HEAD")).ok(),
+        head_before,
+        "and so is the ref"
+    );
+    assert!(ws_b.config().unwrap().ledger.is_none(), "nothing is bound");
 }

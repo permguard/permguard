@@ -525,9 +525,25 @@ impl Report for InspectObjectReport {
                     style::id(predecessor)
                 )?;
             }
-            writeln!(out, "{} {}", style::dim("author:     "), commit.author)?;
+            writeln!(
+                out,
+                "{} {}",
+                style::dim("author:     "),
+                printable(&commit.author)
+            )?;
             writeln!(out, "{} {}", style::dim("authored at:"), commit.author_at)?;
-            writeln!(out, "{} {}", style::dim("message:    "), commit.message)?;
+            // Every line of the message stays inside its field, escaped as `history` shows it:
+            // no line of it starts at column 0 and reads as a record (BUG-0014).
+            let mut lines = commit.message.split('\n');
+            writeln!(
+                out,
+                "{} {}",
+                style::dim("message:    "),
+                printable(lines.next().unwrap_or_default())
+            )?;
+            for line in lines {
+                writeln!(out, "             {}", printable(line))?;
+            }
         }
         for entry in &self.entries {
             writeln!(
@@ -1103,6 +1119,47 @@ mod tests {
             "every body line is indented: {body:?}"
         );
         assert_eq!(body.len(), 5, "{body:?}");
+    }
+
+    /// BUG-0014: `objects cat --inspect` keeps a multi-line message inside its field, escaped: no
+    /// line of it starts at column 0, and no control character is printed raw.
+    #[test]
+    fn an_inspected_commit_keeps_its_message_inside_its_field() {
+        let forged = "innocent looking change\ncommit sha256:0000\nAuthor: mallory\nDate:   now\n\x1b[2J\r    hidden";
+        let report = InspectObjectReport {
+            digest: "sha256:1111".to_owned(),
+            kind: "commit",
+            stored_size: 1,
+            media_type: None,
+            content_size: None,
+            entries: Vec::new(),
+            commit: Some(InspectCommit {
+                tree: "sha256:2222".to_owned(),
+                manifest: "sha256:3333".to_owned(),
+                predecessors: Vec::new(),
+                author: "alice\nAuthor: mallory".to_owned(),
+                author_at: "2026-11-19T00:00:00Z".to_owned(),
+                message: forged.to_owned(),
+            }),
+        };
+        let text = terminal(&report);
+        assert!(!text.contains('\r') && !text.contains('\x1b'), "{text:?}");
+        let message_at = text
+            .lines()
+            .position(|line| line.starts_with("message:"))
+            .expect("the message field");
+        let after: Vec<&str> = text.lines().skip(message_at + 1).collect();
+        assert_eq!(after.len(), 4, "{after:?}");
+        assert!(
+            after.iter().all(|line| line.starts_with("             ")),
+            "every continuation line is inside the field: {after:?}"
+        );
+        assert!(
+            !text
+                .lines()
+                .any(|line| line.starts_with("commit ") || line.starts_with("Author:")),
+            "{text}"
+        );
     }
 
     fn line(op: &'static str) -> PlanLine {

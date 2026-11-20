@@ -209,6 +209,9 @@ fn init_validate_plan_and_status_work_offline() {
     assert!(status.status.success(), "{}", stderr(&status));
     let text = stdout(&status);
     assert!(text.contains("pending_create: 2"), "{text}");
+    // The manifest `plan` lists is counted by `status` too: it never says Clean while `plan` has
+    // a manifest or a schema change (BUG-0009, BUG-0017).
+    assert!(text.contains("pending_update: 1"), "{text}");
     assert!(text.contains("workspace: cli-test"), "{text}");
 }
 
@@ -2745,27 +2748,8 @@ fn an_ambiguous_request_is_refused_by_check_and_test() {
     assert!(!tested.status.success(), "{}", stdout(&tested));
     let said = format!("{}{}", stdout(&tested), stderr(&tested));
     assert!(said.contains("subject.properties.role"), "{said}");
-
-    let whole = r#"{"subject":{"type":"u","id":"a"},"action":{"name":"read"},
-        "resource":{"type":"d","id":"b"}}"#;
-    std::fs::write(dir.join("requests/whole.json"), whole).expect("written");
-    for profile in ["", "  "] {
-        let checked = run(
-            &dir,
-            &["check", "-f", "requests/whole.json", "--profile", profile],
-        );
-        assert_eq!(
-            checked.status.code(),
-            Some(64),
-            "{profile:?}: {}",
-            stderr(&checked)
-        );
-        assert!(
-            stderr(&checked).contains("profile is empty"),
-            "{}",
-            stderr(&checked)
-        );
-    }
+    // An empty profile is the plane's to refuse, naming its profiles: `transports.rs`
+    // (BUG-0012).
 }
 
 /// DEC-0002 (BUG-0015, BUG-0030, BUG-0048, BUG-0205): a policy is never hidden in silence — not
@@ -3584,10 +3568,34 @@ fn a_history_event_of_another_store_is_refused_by_its_file() {
     let said = report.to_string();
     assert!(said.contains("events/1-login-request.json"), "{said}");
     assert!(said.contains("ledger_not_served"), "{said}");
+    // The refusal is the event's, never blamed on the request (BUG-0232, AC2).
+    assert!(said.contains("a history event was refused"), "{said}");
+    assert!(
+        !said.contains("the request could not be evaluated"),
+        "{said}"
+    );
     assert_ne!(
         output.status.code(),
         Some(0),
         "a case built on that event does not pass"
+    );
+
+    // An event the partition refuses, an action it does not declare, is that event's refusal too.
+    let dir = dogwood_example("test-event-refused");
+    let events = dir.join("events");
+    let response = std::fs::read_to_string(events.join("2-login-response.json")).expect("read");
+    std::fs::write(
+        events.join("2-login-response.json"),
+        response.replace("Drupe::Action::Login", "Drupe::Action::Nosuch"),
+    )
+    .expect("written");
+    let output = run(&dir, &["test", "-o", "json"]);
+    let said = stdout(&output);
+    assert!(said.contains("a history event was refused"), "{said}");
+    assert!(said.contains("events/2-login-response.json"), "{said}");
+    assert!(
+        !said.contains("the request could not be evaluated"),
+        "{said}"
     );
 }
 

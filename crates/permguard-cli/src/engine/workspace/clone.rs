@@ -49,21 +49,35 @@ pub fn clone(
         )));
     }
     let existed = target.exists();
+    // The outermost folder this clone creates: a nested destination creates its missing parents
+    // too, and a failure removes them all, not the last one alone (BUG-0068).
+    let created = outermost_missing(target);
     let cloned = clone_into(target, base, zone, ledger, remote);
     if cloned.is_err() {
-        undo(target, existed);
+        undo(target, existed, created.as_deref());
     }
     cloned
+}
+
+/// The outermost ancestor of `target`, `target` included, that does not exist yet: what creating
+/// `target` creates first. `None` when `target` exists.
+fn outermost_missing(target: &Path) -> Option<std::path::PathBuf> {
+    target
+        .ancestors()
+        .take_while(|ancestor| !ancestor.as_os_str().is_empty() && !ancestor.exists())
+        .last()
+        .map(Path::to_path_buf)
 }
 
 /// The entries a clone writes at the top of its destination.
 const WRITTEN: &[&str] = &[".permguard", IGNORE_FILE, "manifest.yml"];
 
-/// Undoes a clone that failed: the folder removed when the clone created it; otherwise only the
-/// entries a clone writes, so nothing the folder held besides is touched.
-fn undo(target: &Path, existed: bool) {
+/// Undoes a clone that failed: the folders removed when the clone created them, its missing
+/// parents included; otherwise only the entries a clone writes, so nothing the folder held besides
+/// is touched.
+fn undo(target: &Path, existed: bool, created: Option<&Path>) {
     if !existed {
-        let _ = std::fs::remove_dir_all(target);
+        let _ = std::fs::remove_dir_all(created.unwrap_or(target));
         return;
     }
     for name in WRITTEN {

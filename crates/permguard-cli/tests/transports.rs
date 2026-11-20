@@ -309,9 +309,7 @@ fn rest() -> Router {
         .route("/health", get(json(r#"{"live":true,"ready":true}"#.to_owned())))
         .route(
             "/access/v1/evaluation",
-            post(json(
-                r#"{"decision":true,"context":{"id":"01","policies":["readers"]}}"#.to_owned(),
-            )),
+            post(|body: axum::body::Bytes| async move { evaluation(&body) }),
         )
         .route(
             "/decisions/v1/zones/acme/ledgers/main-ledger/records",
@@ -668,6 +666,42 @@ fn exported() -> proto::ExportResponse {
     }
 }
 
+/// The refusal the plane gives a stated empty profile (BUG-0012), the same on both transports.
+const NO_SUCH_PROFILE: &str = "this ledger declares no profile `` (it declares: default, gateway)";
+
+/// Whether a stated profile is empty: stated, and blank.
+fn empty_profile(profile: Option<&str>) -> bool {
+    profile.is_some_and(|profile| profile.trim().is_empty())
+}
+
+/// The fake's REST evaluation: a permit, or the plane's refusal of an empty profile.
+fn evaluation(
+    body: &[u8],
+) -> (
+    axum::http::StatusCode,
+    [(&'static str, &'static str); 1],
+    String,
+) {
+    let asked: Value = serde_json::from_slice(body).unwrap_or_default();
+    if empty_profile(asked.get("profile").and_then(Value::as_str)) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            [("content-type", "application/json")],
+            serde_json::json!({
+                "class": "validation",
+                "code": "profile_unknown",
+                "message": NO_SUCH_PROFILE,
+            })
+            .to_string(),
+        );
+    }
+    (
+        axum::http::StatusCode::OK,
+        [("content-type", "application/json")],
+        r#"{"decision":true,"context":{"id":"01","policies":["readers"]}}"#.to_owned(),
+    )
+}
+
 /// The archive bytes the fake answers.
 const ARCHIVE: &[u8] = &[0xa2, 0x01, 0x40, 0x02, 0x40, 0xff];
 
@@ -675,8 +709,20 @@ const ARCHIVE: &[u8] = &[0xa2, 0x01, 0x40, 0x02, 0x40, 0xff];
 impl PolicyDecisionPoint for Plane {
     async fn evaluate(
         &self,
-        _request: Request<pdp::EvaluateRequest>,
+        request: Request<pdp::EvaluateRequest>,
     ) -> Result<Response<pdp::EvaluateResponse>, Status> {
+        if empty_profile(request.get_ref().profile.as_deref()) {
+            let mut status = Status::invalid_argument(NO_SUCH_PROFILE);
+            status.metadata_mut().insert(
+                permguard_core::GRPC_ERROR_CLASS,
+                "validation".parse().expect("ascii"),
+            );
+            status.metadata_mut().insert(
+                permguard_core::GRPC_ERROR_CODE,
+                "profile_unknown".parse().expect("ascii"),
+            );
+            return Err(status);
+        }
         Ok(Response::new(pdp::EvaluateResponse {
             decision: true,
             context: Some(pdp::DecisionContext {
@@ -1131,6 +1177,149 @@ fn a_ledger_import_hands_the_archive_and_the_bundle_on_both_transports() {
     );
     let refused = run("https", "copy");
     assert_eq!(refused.status.code(), Some(64), "{refused:?}");
+}
+
+/// BUG-0012: `check` sends a stated empty profile on both transports, as stated, and the plane's
+/// refusal reaches the operator with the profiles the ledger declares, exit 64; an absent profile
+/// is still asked as `default`.
+#[test]
+fn an_empty_profile_reaches_the_plane_and_its_refusal_names_the_profiles() {
+    let dir = scratch("empty-profile");
+    let pki = pki(&dir);
+    let address = serve(rest().merge(grpc()), &pki, Seen::default());
+    std::fs::write(
+        dir.join("whole.json"),
+        r#"{"subject":{"type":"u","id":"a"},"action":{"name":"read"},"resource":{"type":"d","id":"b"}}"#,
+    )
+    .expect("written");
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let ask = |profile: Option<&str>| {
+            let mut args = vec![
+                "--tls-ca-file".to_owned(),
+                pki.authority.display().to_string(),
+                "check".to_owned(),
+                "--file".to_owned(),
+                "whole.json".to_owned(),
+                "--zone".to_owned(),
+                "acme".to_owned(),
+                "--ledger".to_owned(),
+                "main-ledger".to_owned(),
+                "--data-endpoint".to_owned(),
+                endpoint.clone(),
+            ];
+            if let Some(profile) = profile {
+                args.extend(["--profile".to_owned(), profile.to_owned()]);
+            }
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            cli(&dir, &args)
+        };
+        for empty in ["", "  "] {
+            let refused = ask(Some(empty));
+            let said = String::from_utf8_lossy(&refused.stderr).into_owned();
+            assert_eq!(
+                refused.status.code(),
+                Some(64),
+                "{scheme} {empty:?}: {said}"
+            );
+            assert!(
+                said.contains("profile_unknown"),
+                "{scheme} {empty:?}: {said}"
+            );
+            assert!(
+                said.contains("it declares: default, gateway"),
+                "{scheme} {empty:?}: {said}"
+            );
+        }
+        let answered = ask(None);
+        assert!(answered.status.success(), "{scheme}: {answered:?}");
+    }
+}
+
+/// A data plane alone, over both transports: its discovery names it, and nothing of the control
+/// plane is served.
+struct DataOnly;
+
+const DATA_DISCOVERY: &str = r#"{"plane":"data-plane","transports":{"http":true,"grpc":true}}"#;
+
+#[tonic::async_trait]
+impl pdp::data_plane_server::DataPlane for DataOnly {
+    async fn get_info(
+        &self,
+        _request: Request<pdp::GetInfoRequest>,
+    ) -> Result<Response<pdp::GetInfoResponse>, Status> {
+        unserved()
+    }
+
+    async fn get_health(
+        &self,
+        _request: Request<pdp::GetHealthRequest>,
+    ) -> Result<Response<pdp::GetHealthResponse>, Status> {
+        unserved()
+    }
+
+    async fn get_server_configuration(
+        &self,
+        _request: Request<pdp::GetServerConfigurationRequest>,
+    ) -> Result<Response<pdp::GetServerConfigurationResponse>, Status> {
+        Ok(Response::new(pdp::GetServerConfigurationResponse {
+            document_json: DATA_DISCOVERY.into(),
+        }))
+    }
+
+    async fn get_keys(
+        &self,
+        _request: Request<pdp::GetKeysRequest>,
+    ) -> Result<Response<pdp::GetKeysResponse>, Status> {
+        unserved()
+    }
+
+    async fn get_streams(
+        &self,
+        _request: Request<pdp::GetStreamsRequest>,
+    ) -> Result<Response<pdp::GetStreamsResponse>, Status> {
+        unserved()
+    }
+}
+
+/// BUG-0022: `remote add` of a data plane is refused by name on both transports, the same usage
+/// error, exit 64; over gRPC the plane is found by its own discovery, never an internal failure.
+#[test]
+fn a_remote_that_is_a_data_plane_is_refused_by_name_on_both_transports() {
+    let dir = scratch("remote-data-plane");
+    let pki = pki(&dir);
+    let mut routes = tonic::service::RoutesBuilder::default();
+    routes.add_service(pdp::data_plane_server::DataPlaneServer::new(DataOnly));
+    let router = routes.routes().into_axum_router().route(
+        "/.well-known/server-configuration",
+        get(|| async { ([("content-type", "application/json")], DATA_DISCOVERY) }),
+    );
+    let address = serve(router, &pki, Seen::default());
+    let remote = dir.join("ws");
+    std::fs::create_dir_all(&remote).expect("created");
+    workspace(&remote);
+    for scheme in ["https", "grpcs"] {
+        let endpoint = format!("{scheme}://localhost:{}", address.port());
+        let output = cli(
+            &remote,
+            &[
+                "--tls-ca-file",
+                &pki.authority.display().to_string(),
+                "remote",
+                "add",
+                "origin",
+                &endpoint,
+            ],
+        );
+        let said = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert_eq!(output.status.code(), Some(64), "{scheme}: {said}");
+        assert!(said.contains("`data-plane`"), "{scheme}: {said}");
+        let listed = cli(&remote, &["remote", "list"]);
+        assert!(
+            !String::from_utf8_lossy(&listed.stdout).contains("origin"),
+            "{scheme}: nothing is remembered"
+        );
+    }
 }
 
 #[test]

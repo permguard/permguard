@@ -28,7 +28,7 @@ fn request() -> EvaluateRequest {
     EvaluateRequest {
         zone: "z".to_owned(),
         ledger: "l".to_owned(),
-        profile: "p".to_owned(),
+        profile: Some("p".to_owned()),
         subject: entity("user", "alice"),
         resource: entity("doc", "1"),
         action: Some(Action {

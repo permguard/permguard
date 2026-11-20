@@ -43,7 +43,9 @@ pub fn request_from_proto(request: EvaluateRequest) -> Result<CheckRequest, Malf
     Ok(CheckRequest {
         zone: some(request.zone),
         ledger: some(request.ledger),
-        profile: some(request.profile),
+        // Present means stated, even empty: the plane refuses an empty profile naming the
+        // ledger's, as over HTTP, rather than deciding under `default` (BUG-0012).
+        profile: request.profile,
         subject: request.subject.map(entity_from_proto).transpose()?,
         resource: request.resource.map(entity_from_proto).transpose()?,
         action: request.action.map(action_from_proto).transpose()?,
@@ -401,7 +403,7 @@ mod tests {
         let proto = EvaluateRequest {
             zone: "acme".to_owned(),
             ledger: "main-ledger".to_owned(),
-            profile: String::new(),
+            profile: None,
             subject: Some(ProtoEntity {
                 r#type: "user".to_owned(),
                 id: "alice".to_owned(),
@@ -617,7 +619,7 @@ mod tests {
             let payload = request_from_proto(EvaluateRequest {
                 zone: zone.to_owned(),
                 ledger: ledger.to_owned(),
-                profile: profile.to_owned(),
+                profile: (!profile.is_empty()).then(|| profile.to_owned()),
                 ..EvaluateRequest::default()
             })
             .expect("it converts");
@@ -627,6 +629,25 @@ mod tests {
                 "{zone:?} {ledger:?} {profile:?}"
             );
         }
+    }
+
+    /// BUG-0012: a stated profile crosses gRPC as stated, even empty, so the plane refuses it
+    /// naming the ledger's profiles as it does over HTTP; only an absent one is `default`.
+    #[test]
+    fn a_stated_empty_proto_profile_is_not_the_default() {
+        let stated = |profile: Option<&str>| {
+            request_from_proto(EvaluateRequest {
+                zone: "acme".to_owned(),
+                ledger: "basics".to_owned(),
+                profile: profile.map(str::to_owned),
+                ..EvaluateRequest::default()
+            })
+            .expect("it converts")
+            .profile
+        };
+        assert_eq!(stated(Some("")), Some(String::new()), "stated empty");
+        assert_eq!(stated(Some("gateway")), Some("gateway".to_owned()));
+        assert_eq!(stated(None), None, "absent is `default`, later");
     }
 
     #[test]

@@ -1064,7 +1064,10 @@ pub fn workspace_command(
                             })
                             .count()
                     };
-                    (count("create"), count("update"), count("delete"))
+                    // The manifest and the schemas are counted as `plan` lists them, each an
+                    // update: `status` never says Clean while `plan` has one (BUG-0009, BUG-0017).
+                    let shape = shape_lines(plan).len();
+                    (count("create"), count("update") + shape, count("delete"))
                 })
                 .unwrap_or((0, 0, 0));
             // The URL the next `apply` would actually use, and whether the workspace named it.

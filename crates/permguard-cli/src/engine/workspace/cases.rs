@@ -32,6 +32,10 @@ use super::{Result, err};
 use crate::engine::workspace::build::Snapshot;
 use permguard_client::Store;
 
+/// How every refusal of a history event begins, followed by the event's path and a backtick: what
+/// tells a refused event from a refused request when a case is judged (BUG-0232).
+const HISTORY_EVENT: &str = "the history event `";
+
 /// The directory a workspace keeps its cases in, when none is named.
 pub const DEFAULT_DIRECTORY: &str = "tests";
 
@@ -870,7 +874,13 @@ pub fn judge(
             )),
         }
     } else if let Some(found) = &error {
-        problems.push(format!("the request could not be evaluated: {found}"));
+        // A refused history event is the event's, named by its file: never blamed on the request
+        // (BUG-0232).
+        if found.contains(HISTORY_EVENT) {
+            problems.push(format!("a history event was refused: {found}"));
+        } else {
+            problems.push(format!("the request could not be evaluated: {found}"));
+        }
     }
 
     if let Some(wanted) = &expect.decision {
@@ -1118,8 +1128,8 @@ fn run_temporal(
             )
         };
         return refused(format!(
-            "{code}: the history event `{path}` names {what}: the plane never decides this \
-             request with it"
+            "{code}: {HISTORY_EVENT}{path}` names {what}: the plane never decides this request \
+             with it"
         ));
     }
     // Whatever refuses an event names it: the request's own refusals are the request's.
@@ -1127,7 +1137,7 @@ fn run_temporal(
         if path == located.request {
             detail
         } else {
-            format!("the history event `{path}`: {detail}")
+            format!("{HISTORY_EVENT}{path}`: {detail}")
         }
     };
 

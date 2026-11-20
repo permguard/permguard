@@ -116,8 +116,10 @@ message EvaluateRequest {
   // can debug.
   string zone = 1;
   string ledger = 2;
-  // Which of the ledger's profiles. `default` when empty.
-  string profile = 3;
+  // Which of the ledger's profiles. `default` when absent. A stated profile
+  // names one, even when empty: an empty one is refused `profile_unknown`,
+  // naming the ledger's profiles, as over HTTP (BUG-0012).
+  optional string profile = 3;
 
   // The defaults every evaluation inherits.
   Entity subject = 4;

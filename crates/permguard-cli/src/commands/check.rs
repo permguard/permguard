@@ -62,18 +62,8 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
     if let Some(profile) = &args.profile {
         payload["profile"] = Value::String(profile.clone());
     }
-    // A stated profile names one: an empty one is refused here, the same over HTTP and gRPC,
-    // where gRPC would carry it as no profile and decide under `default` (BUG-0012, DEC-0004).
-    if payload
-        .get("profile")
-        .and_then(Value::as_str)
-        .is_some_and(|profile| profile.trim().is_empty())
-    {
-        return Err(Failure::usage(
-            "the profile is empty: name one of the ledger's profiles, or leave it out for \
-             `default`",
-        ));
-    }
+    // A stated profile names one, even empty: it is sent as stated on both transports, and the
+    // plane refuses it `profile_unknown` naming the ledger's profiles (BUG-0012, DEC-0004).
     let store = open_store(globals, &trace)?;
     let asked = Asked {
         zone: args.zone.clone(),

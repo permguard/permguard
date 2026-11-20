@@ -505,6 +505,40 @@ impl GrpcChannel {
         )
         .map(|answer| answer.document_json)
     }
+
+    /// The discovery document of whichever other Permguard plane answers here, when the control
+    /// plane's is not served: the data plane's, then the Authority Plane's. Over REST every plane
+    /// answers one path and names itself; over gRPC each answers under its own service, so the
+    /// plane is found by asking each (BUG-0022).
+    fn other_plane_document(&self) -> Option<String> {
+        let mut data = pdp::data_plane_client::DataPlaneClient::new(self.channel.clone());
+        if let Ok(answer) = self.call(
+            "GetServerConfiguration",
+            data.get_server_configuration(pdp::GetServerConfigurationRequest {}),
+        ) {
+            return Some(answer.document_json);
+        }
+        #[cfg(any(
+            feature = "authority",
+            feature = "documents",
+            feature = "authority-refresh"
+        ))]
+        {
+            let mut authority =
+                crate::authority_v1::authority_plane_client::AuthorityPlaneClient::new(
+                    self.channel.clone(),
+                );
+            if let Ok(answer) = self.call(
+                "GetServerConfiguration",
+                authority.get_server_configuration(
+                    crate::authority_v1::GetServerConfigurationRequest {},
+                ),
+            ) {
+                return Some(answer.document_json);
+            }
+        }
+        None
+    }
 }
 
 /// Whether `document` is a Permguard plane's discovery document.
@@ -1215,13 +1249,19 @@ impl GrpcRemote {
     /// The discovery check `remote add` runs before remembering the remote.
     pub fn verify_discovery(&self) -> Result<(), String> {
         let document = self.channel.discovery().map_err(|status| {
-            // Another plane serves no control-plane discovery at all: said as what it means, never
-            // as the empty message the status carries (BUG-0022).
+            // Another plane serves no control-plane discovery at all: it is found by its own
+            // discovery and refused by name, the usage error HTTP gives, never as the empty
+            // message the status carries nor as an internal failure (BUG-0022).
             if status.code() == tonic::Code::Unimplemented {
-                let _ = self.refused(status);
-                return "this endpoint serves no control plane: a remote is the control plane, \
-                        which clones and applies ledgers — name its endpoint"
-                    .to_owned();
+                return self
+                    .channel
+                    .other_plane_document()
+                    .and_then(|document| plane_document(&document).err())
+                    .unwrap_or_else(|| {
+                        "this endpoint serves no control plane: a remote is the control plane, \
+                         which clones and applies ledgers — name its endpoint"
+                            .to_owned()
+                    });
             }
             let said = self.refused(status);
             if said.is_empty() {
@@ -1720,7 +1760,8 @@ fn to_proto(
     Ok(pdp::EvaluateRequest {
         zone: text(&request.zone),
         ledger: text(&request.ledger),
-        profile: text(&request.profile),
+        // Sent as stated, even empty, for the plane to refuse naming the ledger's (BUG-0012).
+        profile: request.profile.clone(),
         subject: entity_of(request.subject.as_ref())?,
         resource: entity_of(request.resource.as_ref())?,
         action: action_of(request.action.as_ref())?,

@@ -6060,3 +6060,74 @@ async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
         "outside the token's selector"
     );
 }
+
+/// BUG-0012: over gRPC a stated profile is a stated profile, even empty: it is refused
+/// `profile_unknown` naming the ledger's profiles, as over HTTP, and only an absent one is
+/// `default`.
+#[tokio::test]
+async fn an_empty_profile_over_grpc_is_refused_naming_the_ledgers_profiles() {
+    use permguard_data_plane_server::authz::grpc::PdpApi;
+    use permguard_data_plane_server::v1::policy_decision_point_server::PolicyDecisionPoint as _;
+
+    let root = scratch("grpc-empty-profile").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let api = PdpApi {
+        authorization: permissive(),
+        decider: decider(&root),
+        disclosure: Disclosure::Full,
+        base_url: "http://127.0.0.1:7443".to_owned(),
+        describer: permguard_core::stages::Describer::detached("data-plane"),
+    };
+    let asked = |profile: Option<&str>| permguard_data_plane_server::v1::EvaluateRequest {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+        profile: profile.map(str::to_owned),
+        subject: Some(permguard_data_plane_server::v1::Entity {
+            r#type: "user".to_owned(),
+            id: "alice".to_owned(),
+            properties: None,
+        }),
+        resource: Some(permguard_data_plane_server::v1::Entity {
+            r#type: "document".to_owned(),
+            id: "budget".to_owned(),
+            properties: None,
+        }),
+        action: Some(permguard_data_plane_server::v1::Action {
+            name: "read".to_owned(),
+            properties: None,
+        }),
+        ..Default::default()
+    };
+
+    for empty in ["", "  "] {
+        let refused = api
+            .evaluate(anonymous_request(asked(Some(empty))))
+            .await
+            .expect_err("a stated empty profile is refused");
+        let code = refused
+            .metadata()
+            .get(permguard_core::GRPC_ERROR_CODE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        assert_eq!(code, "profile_unknown", "{empty:?}: {}", refused.message());
+        assert!(
+            refused.message().contains("it declares: default"),
+            "{empty:?}: {}",
+            refused.message()
+        );
+    }
+    let answered = api
+        .evaluate(anonymous_request(asked(None)))
+        .await
+        .expect("an absent profile is `default`")
+        .into_inner();
+    assert!(answered.decision, "and `default` permits reading");
+}

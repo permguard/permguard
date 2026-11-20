@@ -415,8 +415,12 @@ impl Workspace<'_> {
     ) -> Result<PullOutcome> {
         let (zone_id, ledger_id) = remote.resolve(zone, ledger).map_err(err)?;
         let mut config = self.config()?;
-        let current_ref = config::read_head(self.store)
-            .map_err(err)?
+        // What a checkout that fails without switching puts back: the binding and the ref it
+        // found, so a refused checkout leaves `.permguard/config` as it was (BUG-0111).
+        let config_before = config.clone();
+        let head_before = config::read_head(self.store).map_err(err)?;
+        let current_ref = head_before
+            .clone()
             .unwrap_or_else(|| super::DEFAULT_REF.to_owned());
         // The checkpoint is kept per ref, and every ledger's default ref is `main`, so two
         // ledgers checked out in turn would share one checkpoint file. Left standing, the old
@@ -525,6 +529,22 @@ impl Workspace<'_> {
 
             return Ok(outcome);
         }
+        // Nothing was removed, so a checkout that fails from here puts the binding and the ref
+        // back as they were, and the workspace is as the author left it (BUG-0111).
+        let bound = self.bind_and_pull(remote, r#ref);
+        if bound.is_err() {
+            let _ = self.save_config(&config_before);
+            let _ = match &head_before {
+                Some(head) => config::write_head(self.store, head),
+                None => self.store.remove(config::HEAD_PATH),
+            };
+        }
+        bound
+    }
+
+    /// The pull of a checkout that switched nothing: towards a ledger with no ref yet, an empty
+    /// outcome; otherwise the ledger's head, pulled.
+    fn bind_and_pull(&self, remote: &dyn Remote, r#ref: &str) -> Result<PullOutcome> {
         // A ledger with no ref yet is not an error to bind to: the first apply will create it. The
         // binding stays; there is nothing to pull. Asked of the remote, as a switch asks it, rather
         // than read from the wording of a failed pull, which every server words its own way.
