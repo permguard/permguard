@@ -289,6 +289,7 @@ fn test_a_ledger_listing_is_sorted_bounded_and_says_whether_it_is_complete() {
         let answer = ListLedgersAnswer {
             ledgers: vec![ledger("a", "1"), ledger("a", "2"), ledger("b", "1")],
             complete,
+            deleted: None,
         };
         assert_eq!(
             ListLedgersAnswer::decode(&answer.encode().expect("encodes")).expect("decodes"),
@@ -305,7 +306,80 @@ fn test_a_ledger_listing_is_sorted_bounded_and_says_whether_it_is_complete() {
         let answer = ListLedgersAnswer {
             ledgers,
             complete: true,
+            deleted: None,
         };
         assert!(ListLedgersAnswer::decode(&answer.encode().expect("encodes")).is_err());
     }
+}
+
+/// BUG-0192: a listing may name the ledgers a member mirrors, and its answer those of them the
+/// coordinator deleted; an answer to an empty body carries no `deleted`, so a member that
+/// predates it reads it; the ids are sorted, each once, bounded.
+#[test]
+fn a_listing_names_the_mirrored_ledgers_and_its_answer_the_deleted_ones() {
+    use permguard_notp::{
+        LedgerIds, ListLedgersAnswer, ListLedgersRequest, MAX_LISTED_LEDGERS, MirrorOperation,
+        MirrorRequest,
+    };
+
+    let ids = |zone: &str, ledger: &str| LedgerIds {
+        zone_id: zone.to_owned(),
+        ledger_id: ledger.to_owned(),
+    };
+    let request = ListLedgersRequest {
+        held: vec![ids("a", "1"), ids("a", "2")],
+    };
+    let body = request.encode().expect("encodes");
+    assert_eq!(ListLedgersRequest::decode(&body).expect("decodes"), request);
+    let message = MirrorRequest {
+        operation: MirrorOperation::ListLedgers,
+        zone: String::new(),
+        ledger: String::new(),
+        body: body.clone(),
+    };
+    assert_eq!(
+        MirrorRequest::decode(&message.encode().expect("encodes")).expect("a listing with a body"),
+        message
+    );
+    let garbage = MirrorRequest {
+        body: b"not cbor".to_vec(),
+        ..message.clone()
+    };
+    assert!(MirrorRequest::decode(&garbage.encode().expect("encodes")).is_err());
+    let named = MirrorRequest {
+        zone: "a".to_owned(),
+        ..message
+    };
+    assert!(MirrorRequest::decode(&named.encode().expect("encodes")).is_err());
+    for held in [
+        vec![ids("a", "2"), ids("a", "1")],
+        vec![ids("a", "1"), ids("a", "1")],
+        (0..=MAX_LISTED_LEDGERS)
+            .map(|at| ids("a", &format!("{at:06}")))
+            .collect(),
+    ] {
+        let request = ListLedgersRequest { held };
+        assert!(ListLedgersRequest::decode(&request.encode().expect("encodes")).is_err());
+    }
+
+    let answer = ListLedgersAnswer {
+        ledgers: Vec::new(),
+        complete: true,
+        deleted: Some(vec![ids("a", "1")]),
+    };
+    assert_eq!(
+        ListLedgersAnswer::decode(&answer.encode().expect("encodes")).expect("decodes"),
+        answer
+    );
+    let without = ListLedgersAnswer {
+        deleted: None,
+        ..answer
+    };
+    let encoded = without.encode().expect("encodes");
+    assert_eq!(
+        ListLedgersAnswer::decode(&encoded)
+            .expect("decodes")
+            .deleted,
+        None
+    );
 }

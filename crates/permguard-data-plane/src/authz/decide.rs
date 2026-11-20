@@ -106,7 +106,7 @@ impl Loading {
                 mirrors = contested.join(", ").as_str(),
                 "two mirrors answer to the ledger a request named: neither is served"
             );
-            return Err(contested_ledger(zone, ledger));
+            return Err(contested_ledger(root, zone, ledger));
         }
         let mirror = store::find(root, zone, ledger).ok_or_else(|| {
             self.metrics.count(
@@ -1956,17 +1956,29 @@ fn native_question(
     })
 }
 
-/// The refusal of a ledger two mirrors answer to (WP-7.2a): two authorities claim one name, and no
-/// list order chooses whose policy decides.
-pub(crate) fn contested_ledger(zone: &str, ledger: &str) -> ApiError {
-    ApiError::new(
-        ErrorClass::Unavailable,
-        permguard_core::codes::common::UNAVAILABLE,
+/// The refusal of a ledger two mirrors answer to (WP-7.2a): no list order chooses whose policy
+/// decides. The remedy named is one that settles it (BUG-0192): two authorities are told apart by
+/// an alias; two mirrors of one authority, a ledger deleted or replaced under the same names, are
+/// settled when the next round removes the one its coordinator deleted or replaced.
+pub(crate) fn contested_ledger(root: &std::path::Path, zone: &str, ledger: &str) -> ApiError {
+    let message = if store::contested_within_one_authority(root, zone, ledger) {
+        format!(
+            "more than one mirror of one authority answers to `{zone}/{ledger}`, a ledger deleted \
+             or replaced under the same names: neither is served until the next mirror round \
+             removes the one its coordinator deleted or replaced, or one of them is no longer \
+             followed"
+        )
+    } else {
         format!(
             "more than one mirror answers to `{zone}/{ledger}`: neither is served until one of \
              them is no longer followed, or an alias in `mirrors.aliases` names the authority it \
              means"
-        ),
+        )
+    };
+    ApiError::new(
+        ErrorClass::Unavailable,
+        permguard_core::codes::common::UNAVAILABLE,
+        message,
     )
 }
 

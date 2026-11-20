@@ -254,6 +254,14 @@ async fn a_ledger_two_coordinators_list_is_served_from_neither_by_its_names() {
         2,
         "and the refusal can say why"
     );
+    assert!(
+        !permguard_data_plane::authz::store::contested_within_one_authority(
+            &root,
+            "acme",
+            "main-ledger"
+        ),
+        "two authorities: the refusal names an alias, which settles it (BUG-0192)"
+    );
 }
 
 /// WP-7.2a: with two coordinators, one that does not answer costs none of its mirrors, and the
@@ -1180,4 +1188,69 @@ async fn a_recreated_ledger_replaces_its_deleted_namesake_at_once() {
     let after =
         permguard_data_plane::authz::store::identity_of(&held[0].path(&root)).expect("an identity");
     assert_ne!(after.ledger_id, before.ledger_id, "the new one is served");
+}
+
+/// BUG-0192: a ledger its coordinator deleted is no longer served once the member learns of the
+/// deletion, whatever `reap_grace`: the next round's listing names it deleted, and its mirror is
+/// removed at once rather than tombstoned for the grace.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_deleted_ledger_is_not_served_past_the_round_that_learns_of_it() {
+    let volume = scratch("deleted");
+    let plane = plane::start(&volume).await;
+    let url = plane.url.clone();
+    provision(&url, "acme", &["main-ledger", "staging"]);
+    let root = volume.join("mirrors");
+    let task = || vec![tasks::task([0x11; 16], 1, "mirror", true)];
+    let context = || {
+        over_tasks_with_grace(
+            &root,
+            held_by(&url, task(), Vec::new(), false),
+            Duration::from_secs(3600),
+        )
+    };
+    round::run(context()).await;
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 2, "{held:?}");
+    let identities: Vec<_> = held
+        .iter()
+        .map(|mirror| {
+            permguard_data_plane::authz::store::identity_of(&mirror.path(&root))
+                .expect("an identity")
+        })
+        .collect();
+    let deleted = identities
+        .iter()
+        .find(|identity| identity.ledger_name == "main-ledger")
+        .expect("main-ledger is mirrored");
+
+    let catalog = permguard_client::catalog::client(
+        &url,
+        &permguard_client::TlsOptions::default(),
+        Box::new(permguard_client::narrate::Silent),
+    )
+    .expect("the catalog client connects");
+    let revision = catalog
+        .list_ledgers(&deleted.zone_id, None, None)
+        .expect("listed")
+        .into_iter()
+        .find(|ledger| ledger.id == deleted.ledger_id)
+        .expect("the ledger")
+        .revision;
+    catalog
+        .delete_ledger(&deleted.zone_id, &deleted.ledger_id, revision)
+        .expect("deleted");
+
+    let outcome = round::run(context()).await;
+    assert_eq!(outcome.reaped, 1, "{outcome:?}");
+    let held = layout::on_disk(&root).expect("lists");
+    assert_eq!(held.len(), 1, "only staging stays: {held:?}");
+    assert!(
+        permguard_data_plane::authz::store::find(&root, "acme", "main-ledger").is_none(),
+        "the deleted ledger is served by name no more"
+    );
+    assert!(
+        permguard_data_plane::authz::store::find(&root, &deleted.zone_id, &deleted.ledger_id)
+            .is_none(),
+        "nor by id"
+    );
 }

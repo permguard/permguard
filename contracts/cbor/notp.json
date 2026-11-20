@@ -557,28 +557,120 @@
           "name": "operation",
           "type": "uint",
           "occurs": "required",
-          "note": "1 get_ref, 2 negotiate_pull, 3 fetch_objects, 4 key_ring"
+          "note": "1 get_ref, 2 negotiate_pull, 3 fetch_objects, 4 key_ring, 5 list_ledgers"
         },
         {
           "label": 2,
           "name": "zone",
           "type": "text",
           "occurs": "required",
-          "note": "the zone id"
+          "note": "the zone id; empty for list_ledgers"
         },
         {
           "label": 3,
           "name": "ledger",
           "type": "text",
           "occurs": "required",
-          "note": "the ledger id"
+          "note": "the ledger id; empty for list_ledgers"
         },
         {
           "label": 4,
           "name": "body",
           "type": "bytes",
           "occurs": "required",
-          "note": "the operation's own NOTP message; empty for the key ring"
+          "note": "the operation's own NOTP message; empty for the key ring; for list_ledgers empty or a `list_ledgers_request` (BUG-0192)"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
+    },
+    "ledger_ids": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "zone_id",
+          "type": "text",
+          "occurs": "required"
+        },
+        {
+          "label": 2,
+          "name": "ledger_id",
+          "type": "text",
+          "occurs": "required"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
+    },
+    "listed_ledger": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "zone_id",
+          "type": "text",
+          "occurs": "required"
+        },
+        {
+          "label": 2,
+          "name": "zone_name",
+          "type": "text",
+          "occurs": "required"
+        },
+        {
+          "label": 3,
+          "name": "ledger_id",
+          "type": "text",
+          "occurs": "required"
+        },
+        {
+          "label": 4,
+          "name": "ledger_name",
+          "type": "text",
+          "occurs": "required"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
+    },
+    "list_ledgers_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "held",
+          "type": "array<map:ledger_ids>",
+          "occurs": "required",
+          "note": "the ledgers the member mirrors under the task, sorted by zone and ledger id, each once, at most 4096 (BUG-0192)"
+        }
+      ],
+      "grpc_message": null,
+      "grpc_note": "a `policy.mirror` Host task message (WP-7.12): never on the public gRPC surface"
+    },
+    "list_ledgers_answer": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ledgers",
+          "type": "array<map:listed_ledger>",
+          "occurs": "required",
+          "note": "every ledger under the session's resource, sorted by zone and ledger id, each once, at most 4096 (WP-7.2a)"
+        },
+        {
+          "label": 2,
+          "name": "complete",
+          "type": "bool",
+          "occurs": "required",
+          "note": "whether nothing was left out: an incomplete listing proves nothing absent"
+        },
+        {
+          "label": 3,
+          "name": "deleted",
+          "type": "array<map:ledger_ids>",
+          "occurs": "optional",
+          "note": "the ledgers the request named that the coordinator deleted, under the session's resource only; present exactly when the request carried a `list_ledgers_request` (BUG-0192)"
         }
       ],
       "grpc_message": null,
@@ -600,6 +692,8 @@
     "fetch_objects_request",
     "fetch_objects_response",
     "get_ref_request",
-    "mirror_request"
+    "mirror_request",
+    "list_ledgers_request",
+    "list_ledgers_answer"
   ]
 }

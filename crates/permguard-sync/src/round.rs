@@ -189,6 +189,8 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     // (BUG-0190, BUG-0193).
     let mut held_tasks: Vec<permguard_host::composition::MirrorTask> = Vec::new();
     let mut ended: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // The mirrored ledgers their coordinator says it deleted (BUG-0192).
+    let mut deleted: Vec<Mirror> = Vec::new();
 
     // The coordinators of this Host's `policy.mirror` tasks (WP-7.2a): each its own source, its
     // ledgers under its authority.
@@ -228,15 +230,20 @@ pub async fn run(context: Arc<Context>) -> Outcome {
                     .follows_task(&task.membership_id, &task.task_id)
             })
             .collect();
+        // What each task already mirrors here, which its listing asks the coordinator about: a
+        // ledger it deleted ends at once (BUG-0192).
+        let mirrored = mirrored_by_task(&context.root);
         for coordinator in by_coordinator(followed) {
             let key = coordinator.key();
-            match listed(tasks.as_ref(), &coordinator, &context.selections).await {
+            match listed(tasks.as_ref(), &coordinator, &context.selections, &mirrored).await {
                 Ok(Listed {
                     found,
                     complete,
                     whole,
                     sessions: opened,
+                    deleted: gone,
                 }) => {
+                    deleted.extend(gone);
                     listed_whole.extend(whole);
                     sessions.extend(opened);
                     debug!(
@@ -315,6 +322,7 @@ pub async fn run(context: Arc<Context>) -> Outcome {
         held: &held_tasks,
         ended: &ended,
         served: &served,
+        deleted: &deleted,
     };
     let (reaped, candidacy) = reap(&context, &wanted, &answered, &listed_whole, &known);
     outcome.reaped = reaped;
@@ -329,9 +337,16 @@ pub async fn run(context: Arc<Context>) -> Outcome {
             zone = zone.as_str(),
             ledger = ledger.as_str(),
             mirrors = claimants.join(", ").as_str(),
+            one_authority = permguard_mirror::held::contested_within_one_authority(
+                &context.root,
+                &zone,
+                &ledger
+            ),
             "more than one mirror answers to this ledger's names: neither is served until one of \
-             them is no longer followed (`mirrors.tasks`, `mirrors.local`), or an alias in \
-             `mirrors.aliases` names the authority it means"
+             them is no longer followed (`mirrors.tasks`, `mirrors.local`); mirrors of two \
+             authorities are told apart by an alias in `mirrors.aliases`, and two of one \
+             authority, a ledger deleted or replaced under the same names, by the round that \
+             removes the one its coordinator deleted or replaced"
         );
     }
     outcome.stale = staleness(&context, &required);
@@ -520,8 +535,10 @@ async fn listed(
     tasks: &dyn permguard_host::composition::MirrorTasks,
     coordinator: &Coordinator,
     selections: &super::source::TaskSelections,
+    mirrored: &std::collections::BTreeMap<String, Vec<permguard_notp::LedgerIds>>,
 ) -> Result<Listed, String> {
     let mut found = Vec::new();
+    let mut deleted = Vec::new();
     let mut complete = true;
     let mut whole = Vec::new();
     let mut sessions = Vec::new();
@@ -548,9 +565,21 @@ async fn listed(
         };
         let session: super::task::Shared = Arc::new(tokio::sync::Mutex::new(session));
         sessions.push((task.clone(), Arc::clone(&session)));
-        let listing = super::task::list(&session, task).await?;
-        complete &= listing.complete;
         let label = task_label(task);
+        let held = mirrored.get(&label).map_or(&[][..], Vec::as_slice);
+        let listing = super::task::list(&session, task, held).await?;
+        complete &= listing.complete;
+        deleted.extend(
+            listing
+                .deleted
+                .unwrap_or_default()
+                .into_iter()
+                .map(|ids| Mirror {
+                    authority: Some(coordinator.authority.clone()),
+                    zone_id: ids.zone_id,
+                    ledger_id: ids.ledger_id,
+                }),
+        );
         if listing.complete {
             whole.push((label.clone(), task.revision));
         }
@@ -594,6 +623,7 @@ async fn listed(
         complete,
         whole,
         sessions,
+        deleted,
     })
 }
 
@@ -604,6 +634,35 @@ struct Listed {
     complete: bool,
     whole: Vec<(String, u64)>,
     sessions: Vec<(permguard_host::composition::MirrorTask, super::task::Shared)>,
+    /// The mirrored ledgers the coordinator said it deleted (BUG-0192).
+    deleted: Vec<Mirror>,
+}
+
+/// The ledgers each task mirrors on this Host, by the task's label, from the mirrors' identity
+/// files: what a listing asks its coordinator about (BUG-0192). A mirror that cannot be read is
+/// left out: it is asked about once it reads.
+fn mirrored_by_task(
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<String, Vec<permguard_notp::LedgerIds>> {
+    let mut by_task: std::collections::BTreeMap<String, Vec<permguard_notp::LedgerIds>> =
+        std::collections::BTreeMap::new();
+    for mirror in layout::on_disk(root).unwrap_or_default() {
+        if mirror.authority.is_none() {
+            continue;
+        }
+        if let Some(task) = permguard_mirror::held::identity_of(&mirror.path(root))
+            .and_then(|identity| identity.task)
+        {
+            by_task
+                .entry(task)
+                .or_default()
+                .push(permguard_notp::LedgerIds {
+                    zone_id: mirror.zone_id,
+                    ledger_id: mirror.ledger_id,
+                });
+        }
+    }
+    by_task
 }
 
 /// How a task names the mirrors it listed: `<membership-id>/<task-id>`.
@@ -918,12 +977,15 @@ struct Known<'a> {
     ended: &'a std::collections::BTreeSet<String>,
     /// What the coordinators listed this round.
     served: &'a [Served],
+    /// The mirrored ledgers their coordinator deleted (BUG-0192).
+    deleted: &'a [Mirror],
 }
 
 /// Why a task mirror is no longer served on a decision this Host already holds, rather than on a
 /// coordinator's absence, which the grace protects against: its membership ended (BUG-0190), the
-/// configuration no longer follows its task or its ledger (BUG-0193), or its coordinator lists a
-/// ledger of the same zone and name under another id, the one that replaced it (BUG-0192).
+/// configuration no longer follows its task or its ledger (BUG-0193), its coordinator deleted its
+/// ledger, or its coordinator lists a ledger of the same zone and name under another id, the one
+/// that replaced it (BUG-0192).
 fn ended_by(context: &Context, known: &Known<'_>, identity: &Identity) -> Option<&'static str> {
     let task = identity.task.as_deref()?;
     let membership = task.split('/').next().unwrap_or_default();
@@ -939,6 +1001,13 @@ fn ended_by(context: &Context, known: &Known<'_>, identity: &Identity) -> Option
         )
     {
         return Some("not_followed");
+    }
+    if known.deleted.iter().any(|gone| {
+        gone.authority == identity.authority
+            && gone.zone_id == identity.zone_id
+            && gone.ledger_id == identity.ledger_id
+    }) {
+        return Some("deleted");
     }
     let replaced = known.served.iter().any(|served| {
         served.identity.authority == identity.authority
@@ -1013,8 +1082,8 @@ fn reap(
                 ledger = mirror.label().as_str(),
                 reason,
                 "this Host knows the mirror is no longer served — its membership ended, its \
-                 configuration no longer follows it, or its ledger was replaced — so it is \
-                 removed now rather than after the grace"
+                 configuration no longer follows it, or its ledger was deleted or replaced — so \
+                 it is removed now rather than after the grace"
             );
             candidacy.push(("mirror.tombstoned", mirror.label()));
             removed += remove_reaped(context, &mirror, reason, &mut candidacy);

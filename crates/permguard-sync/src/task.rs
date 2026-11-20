@@ -19,32 +19,68 @@ use permguard_host::composition::{MirrorSession, MirrorTask};
 use permguard_mirror::remote::{RefAnswer, Remote};
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
-    GetRefRequest, GetRefResponse, ListLedgersAnswer, MirrorOperation, MirrorRequest,
-    NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
-    UploadObjectsRequest, UploadObjectsResponse,
+    GetRefRequest, GetRefResponse, LedgerIds, ListLedgersAnswer, ListLedgersRequest,
+    MAX_LISTED_LEDGERS, MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse, UploadObjectsRequest,
+    UploadObjectsResponse,
 };
 
 /// One open session, shared by the ledgers a round mirrors over it: one message, one answer, in
 /// order.
 pub type Shared = Arc<tokio::sync::Mutex<Box<dyn MirrorSession>>>;
 
-/// The ledgers `task`'s resource covers, as the coordinator lists them over `session`.
-pub async fn list(session: &Shared, task: &MirrorTask) -> Result<ListLedgersAnswer, String> {
-    let message = MirrorRequest {
-        operation: MirrorOperation::ListLedgers,
-        zone: String::new(),
-        ledger: String::new(),
-        body: Vec::new(),
+/// The ledgers `task`'s resource covers, as the coordinator lists them over `session`, and,
+/// when the member names the ledgers it `held` under the task, those among them the coordinator
+/// deleted (BUG-0192). A coordinator that predates the question refuses its body: it is asked
+/// again without one, and its answer names no deletion.
+pub async fn list(
+    session: &Shared,
+    task: &MirrorTask,
+    held: &[LedgerIds],
+) -> Result<ListLedgersAnswer, String> {
+    let ask = |body: Vec<u8>| async move {
+        let message = MirrorRequest {
+            operation: MirrorOperation::ListLedgers,
+            zone: String::new(),
+            ledger: String::new(),
+            body,
+        }
+        .encode()
+        .map_err(|error| format!("encoding the listing: {error}"))?;
+        let answer = session
+            .lock()
+            .await
+            .call(message)
+            .await
+            .map_err(|refusal| {
+                format!("listing the ledgers of task `{}`: {refusal}", task.task_id)
+            })?;
+        ListLedgersAnswer::decode(&answer).map_err(|error| format!("the listing: {error}"))
+    };
+    if held.is_empty() {
+        return ask(Vec::new()).await;
     }
-    .encode()
-    .map_err(|error| format!("encoding the listing: {error}"))?;
-    let answer = session
-        .lock()
-        .await
-        .call(message)
-        .await
-        .map_err(|refusal| format!("listing the ledgers of task `{}`: {refusal}", task.task_id))?;
-    ListLedgersAnswer::decode(&answer).map_err(|error| format!("the listing: {error}"))
+    let mut asked = held.to_vec();
+    asked.sort();
+    asked.dedup();
+    asked.truncate(MAX_LISTED_LEDGERS);
+    let body = ListLedgersRequest { held: asked }
+        .encode()
+        .map_err(|error| format!("encoding the listing: {error}"))?;
+    match ask(body).await {
+        Ok(answer) => Ok(answer),
+        Err(error) => {
+            tracing::debug!(
+                event.name = "sync.listing_without_deletions",
+                component = "sync",
+                task = task.task_id.as_str(),
+                error = error.as_str(),
+                "the coordinator refused a listing that names the mirrored ledgers: asked again \
+                 without them, its deletions are not known this round"
+            );
+            ask(Vec::new()).await
+        }
+    }
 }
 
 pub use super::state::RING_BINDING;
@@ -424,6 +460,7 @@ mod tests {
             MirrorOperation::ListLedgers => ListLedgersAnswer {
                 ledgers: Vec::new(),
                 complete: true,
+                deleted: None,
             }
             .encode(),
         };
@@ -769,6 +806,7 @@ mod tests {
                         ledger_name: "main-ledger".into(),
                     }],
                     complete: true,
+                    deleted: None,
                 }
                 .encode()
                 .expect("it encodes"))
@@ -929,5 +967,94 @@ mod tests {
         .expect("reads")
         .items;
         assert_eq!(items.len(), 1, "the same head again appends nothing");
+    }
+
+    /// BUG-0192: a listing names the ledgers the member mirrors and reads back those the
+    /// coordinator deleted; a coordinator that predates it refuses the body, and the listing is
+    /// asked again without one, naming no deletion.
+    #[test]
+    fn a_listing_asks_which_mirrored_ledgers_were_deleted_and_falls_back_without() {
+        let held = vec![
+            LedgerIds {
+                zone_id: "z".into(),
+                ledger_id: "2".into(),
+            },
+            LedgerIds {
+                zone_id: "z".into(),
+                ledger_id: "1".into(),
+            },
+        ];
+        let task = MirrorTask {
+            membership_id: [1; 16],
+            task_id: "mirror".into(),
+            coordinator: [2; 16],
+            revision: 1,
+            resource: "plane/control".into(),
+            required: true,
+            max_body_bytes: 1 << 20,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        for predates in [false, true] {
+            let carried = Arc::new(Mutex::new(Vec::new()));
+            let answer: Answer = Box::new(move |request: &MirrorRequest| {
+                if request.body.is_empty() {
+                    return Ok(ListLedgersAnswer {
+                        ledgers: Vec::new(),
+                        complete: true,
+                        deleted: None,
+                    }
+                    .encode()
+                    .expect("it encodes"));
+                }
+                if predates {
+                    return Err(MirrorRefusal {
+                        code: "body_rejected".into(),
+                        reason: "the ledgers are listed with an empty zone, ledger and body".into(),
+                    });
+                }
+                let asked = ListLedgersRequest::decode(&request.body).expect("a listing body");
+                Ok(ListLedgersAnswer {
+                    ledgers: Vec::new(),
+                    complete: true,
+                    deleted: Some(asked.held.into_iter().take(1).collect()),
+                }
+                .encode()
+                .expect("it encodes"))
+            });
+            let session: Shared = Arc::new(tokio::sync::Mutex::new(Box::new(Scripted {
+                carried: Arc::clone(&carried),
+                answer,
+            })));
+            let listing = runtime
+                .block_on(list(&session, &task, &held))
+                .expect("listed");
+            let carried = carried.lock().expect("the log");
+            let first = ListLedgersRequest::decode(&carried[0].body).expect("asked with a body");
+            assert_eq!(
+                first
+                    .held
+                    .iter()
+                    .map(|ids| ids.ledger_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["1", "2"],
+                "sorted"
+            );
+            if predates {
+                assert_eq!(carried.len(), 2, "asked again");
+                assert!(carried[1].body.is_empty());
+                assert_eq!(listing.deleted, None);
+            } else {
+                assert_eq!(carried.len(), 1);
+                assert_eq!(
+                    listing.deleted,
+                    Some(vec![LedgerIds {
+                        zone_id: "z".into(),
+                        ledger_id: "1".into(),
+                    }])
+                );
+            }
+        }
     }
 }

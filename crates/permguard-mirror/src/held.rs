@@ -261,6 +261,17 @@ pub fn contested(root: &Path, zone: &str, ledger: &str) -> Vec<String> {
     }
 }
 
+/// Whether the mirrors that contest `zone`/`ledger` all come from one authority (BUG-0192): a
+/// ledger deleted or replaced under the same names, which an alias cannot settle, since an alias
+/// names an authority and both share it.
+pub fn contested_within_one_authority(root: &Path, zone: &str, ledger: &str) -> bool {
+    let answering = answering(root, zone, ledger);
+    answering.len() > 1
+        && answering
+            .windows(2)
+            .all(|pair| pair[0].identity.authority == pair[1].identity.authority)
+}
+
 /// Every pair of names more than one mirror answers to (WP-7.2a): `(zone, ledger)` by name, with
 /// the mirrors that claim it. What a round reports, so a contest is seen before a request is
 /// refused over it.
@@ -336,6 +347,38 @@ mod tests {
         record(&path, &identity(zone, ledger)).expect("the identity is recorded");
 
         path
+    }
+
+    /// BUG-0192: a contest within one authority, a ledger deleted or replaced under the same
+    /// names, is told apart from one between two authorities, which an alias settles.
+    #[test]
+    fn a_contest_within_one_authority_is_told_apart_from_one_between_two() {
+        let root = scratch("one-authority");
+        provision(&root, "acme", "main-ledger");
+        let mut replaced = identity("acme", "main-ledger");
+        replaced.ledger_id = "main-ledger-id-2".to_owned();
+        let path = root
+            .join(AUTHORITY)
+            .join("acme-id")
+            .join("main-ledger-id-2");
+        std::fs::create_dir_all(&path).expect("the mirror directory is created");
+        record(&path, &replaced).expect("the identity is recorded");
+        assert_eq!(contested(&root, "acme", "main-ledger").len(), 2);
+        assert!(contested_within_one_authority(&root, "acme", "main-ledger"));
+
+        let other = "22222222222222222222222222222222";
+        let mut elsewhere = identity("acme", "main-ledger");
+        elsewhere.authority = Some(other.to_owned());
+        elsewhere.server = format!("host:{other}");
+        let path = root.join(other).join("acme-id").join("main-ledger-id");
+        std::fs::create_dir_all(&path).expect("the mirror directory is created");
+        record(&path, &elsewhere).expect("the identity is recorded");
+        assert!(!contested_within_one_authority(
+            &root,
+            "acme",
+            "main-ledger"
+        ));
+        assert!(!contested_within_one_authority(&root, "acme", "other"));
     }
 
     #[test]

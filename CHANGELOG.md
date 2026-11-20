@@ -235,6 +235,10 @@ is cut.
 
 ### Fixed
 
+- **A ledger its Control Plane deleted is no longer served for `mirrors.reap_grace`.**
+  A member's `list_ledgers` now names the ledgers it mirrors under the task, and the coordinator answers, beside the listing, those it deleted, from their tombstones and under the session's resource only; their mirrors are removed in that round, by name and by id, whatever the grace, which stays for a coordinator that merely left a ledger out.
+  Either side may predate the change: a coordinator that refuses the new body is asked again without it, and a member that sends none gets the listing alone.
+  A contest between two mirrors of one authority no longer suggests `mirrors.aliases`, which cannot settle it (BUG-0192).
 - **A dual-control approval stops counting once it lapses.**
   An approval stands for `operations.dual_control.approval_ttl` (`PERMGUARD_DUAL_CONTROL_APPROVAL_TTL`, default 1h, at most the plan's day) and, when it was made with an access token, while that token is `VALID` in its status list; a list the Host does not hold reads as not standing.
   A run whose approvals lapsed is refused `plan_approvals_missing` naming the lapse, `host plans list` shows the plan `pending` and each approval `lapsed` (REST and gRPC), and the approver may approve again; offline commands bound an approval by the ttl alone (BUG-0099).

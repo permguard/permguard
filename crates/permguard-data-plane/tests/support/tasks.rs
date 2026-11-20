@@ -17,8 +17,8 @@ use permguard_mirror::remote::Remote as _;
 /// Every progress report a session carried, by task id (WP-7.2d).
 pub type Reported = Arc<Mutex<Vec<(String, Vec<ProgressResource>)>>>;
 use permguard_notp::{
-    FetchObjectsRequest, GetRefRequest, GetRefResponse, ListLedgersAnswer, ListedLedger,
-    MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    FetchObjectsRequest, GetRefRequest, GetRefResponse, ListLedgersAnswer, ListLedgersRequest,
+    ListedLedger, MirrorOperation, MirrorRequest, NegotiatePullRequest,
 };
 
 /// The tasks a Host holds, the URL that answers each coordinator, and what was asked.
@@ -184,6 +184,9 @@ fn answer(
         )
         .map_err(failed)?;
         let mut ledgers = Vec::new();
+        // Every ledger the catalog holds, by ids, whatever the cut: a mirrored ledger it no
+        // longer holds was deleted (BUG-0192).
+        let mut existing = std::collections::BTreeSet::new();
         for zone in catalog
             .list_zones(None, None)
             .map_err(|f| failed(f.detail))?
@@ -192,6 +195,7 @@ fn answer(
                 .list_ledgers(&zone.id, None, None)
                 .map_err(|f| failed(f.detail))?
             {
+                existing.insert((zone.id.clone(), ledger.id.clone()));
                 if only.is_some_and(|names| !names.contains(&ledger.name)) {
                     continue;
                 }
@@ -206,9 +210,21 @@ fn answer(
         ledgers.sort_by(|left, right| {
             (&left.zone_id, &left.ledger_id).cmp(&(&right.zone_id, &right.ledger_id))
         });
+        let deleted = (!request.body.is_empty())
+            .then(|| ListLedgersRequest::decode(&request.body))
+            .transpose()
+            .map_err(|error| refused("body_rejected", error.to_string()))?
+            .map(|asked| {
+                asked
+                    .held
+                    .into_iter()
+                    .filter(|ids| !existing.contains(&(ids.zone_id.clone(), ids.ledger_id.clone())))
+                    .collect()
+            });
         return ListLedgersAnswer {
             ledgers,
             complete: !incomplete,
+            deleted,
         }
         .encode()
         .map_err(|error| failed(error.to_string()));

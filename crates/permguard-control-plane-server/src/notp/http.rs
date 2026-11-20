@@ -673,6 +673,51 @@ mod tests {
                 .code,
             permguard_core::codes::notp::BODY_REJECTED
         );
+        // BUG-0192: a listing that names the ledgers the member mirrors is answered with those
+        // among them deleted, under the session's resource only.
+        let asking = |held: Vec<permguard_notp::LedgerIds>| {
+            MirrorRequest {
+                operation: MirrorOperation::ListLedgers,
+                zone: String::new(),
+                ledger: String::new(),
+                body: permguard_notp::ListLedgersRequest { held }
+                    .encode()
+                    .expect("it encodes"),
+            }
+            .encode()
+            .expect("it encodes")
+        };
+        let held = vec![permguard_notp::LedgerIds {
+            zone_id: zone_id.clone(),
+            ledger_id: ledger_id.clone(),
+        }];
+        let deleted_of = |context: &permguard_host::membership::task::TaskContext| {
+            permguard_notp::ListLedgersAnswer::decode(
+                &mirror
+                    .handle(context, &asking(held.clone()))
+                    .expect("the ledgers list"),
+            )
+            .expect("a listing")
+            .deleted
+        };
+        assert_eq!(deleted_of(&session), Some(Vec::new()), "none deleted yet");
+        assert_eq!(
+            listed.deleted, None,
+            "an empty body asks nothing of deletions"
+        );
+        facade
+            .catalog
+            .delete_ledger(
+                &permguard_core::catalog::Selector::Id(zone_id.clone()),
+                &permguard_core::catalog::Selector::Id(ledger_id.clone()),
+            )
+            .expect("deleted");
+        assert_eq!(deleted_of(&session), Some(held.clone()));
+        assert_eq!(
+            deleted_of(&elsewhere),
+            Some(Vec::new()),
+            "nothing of a ledger outside the session's resource"
+        );
         // A message that is not one is refused as such.
         assert_eq!(
             mirror

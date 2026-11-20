@@ -16,8 +16,8 @@ use permguard_core::{ApiError, codes};
 use permguard_host::membership::task::{TaskContext, TaskHandler};
 use permguard_host::session::Refusal;
 use permguard_notp::{
-    FetchObjectsRequest, GetRefRequest, ListLedgersAnswer, ListedLedger, MAX_LISTED_LEDGERS,
-    MirrorOperation, MirrorRequest, NegotiatePullRequest,
+    FetchObjectsRequest, GetRefRequest, LedgerIds, ListLedgersAnswer, ListLedgersRequest,
+    ListedLedger, MAX_LISTED_LEDGERS, MirrorOperation, MirrorRequest, NegotiatePullRequest,
 };
 
 use super::NotpFacade;
@@ -62,7 +62,16 @@ impl TaskHandler for Mirror {
         };
         // The listing (WP-7.2a): every ledger the session reads, by id, and nothing beside it.
         if request.operation == MirrorOperation::ListLedgers {
-            return self.listed(&reading).and_then(|answer| {
+            let held = if request.body.is_empty() {
+                None
+            } else {
+                Some(
+                    ListLedgersRequest::decode(&request.body)
+                        .map_err(|error| rejected(format!("a listing: {error}")))?
+                        .held,
+                )
+            };
+            return self.listed(&reading, held.as_deref()).and_then(|answer| {
                 answer.encode().map_err(|error| Refusal {
                     code: codes::notp::NOTP_FAILED,
                     reason: format!("encoding the listing: {error}"),
@@ -141,8 +150,14 @@ impl TaskHandler for Mirror {
 
 impl Mirror {
     /// Every ledger `under` covers, sorted by `(zone_id, ledger_id)`; past the bound, the first
-    /// ones and `complete` false.
-    fn listed(&self, under: &Selector) -> Result<ListLedgersAnswer, Refusal> {
+    /// ones and `complete` false. When the member named the ledgers it `held`, the answer names
+    /// those among them this Control Plane deleted, from their tombstones or their zone's, and
+    /// only under `under`: a member learns nothing of a ledger outside its task (BUG-0192).
+    fn listed(
+        &self,
+        under: &Selector,
+        held: Option<&[LedgerIds]>,
+    ) -> Result<ListLedgersAnswer, Refusal> {
         let catalog = &self.facade.catalog;
         let mut ledgers = Vec::new();
         for zone in catalog
@@ -163,7 +178,32 @@ impl Mirror {
                 }
             }
         }
-        Ok(bounded(ledgers))
+        let mut answer = bounded(ledgers);
+        if let Some(held) = held {
+            let mut deleted = Vec::new();
+            for ids in held {
+                if !under.contains(&Resource::ledger(
+                    crate::PLANE,
+                    &ids.zone_id,
+                    &ids.ledger_id,
+                )) {
+                    continue;
+                }
+                let gone = catalog
+                    .ledger_tombstone(&ids.zone_id, &ids.ledger_id)
+                    .map_err(|error| refused(crate::catalog::api_error(error)))?
+                    .is_some()
+                    || catalog
+                        .zone_tombstone(&ids.zone_id)
+                        .map_err(|error| refused(crate::catalog::api_error(error)))?
+                        .is_some();
+                if gone {
+                    deleted.push(ids.clone());
+                }
+            }
+            answer.deleted = Some(deleted);
+        }
+        Ok(answer)
     }
 }
 
@@ -175,7 +215,11 @@ fn bounded(mut ledgers: Vec<ListedLedger>) -> ListLedgersAnswer {
     });
     let complete = ledgers.len() <= MAX_LISTED_LEDGERS;
     ledgers.truncate(MAX_LISTED_LEDGERS);
-    ListLedgersAnswer { ledgers, complete }
+    ListLedgersAnswer {
+        ledgers,
+        complete,
+        deleted: None,
+    }
 }
 
 #[cfg(test)]

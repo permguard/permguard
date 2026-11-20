@@ -2889,6 +2889,57 @@ fn notp_samples() -> Vec<Sample> {
             })),
         ),
         sample(
+            "list_ledgers_request",
+            permguard_notp::ListLedgersRequest {
+                held: vec![permguard_notp::LedgerIds {
+                    zone_id: "0198f2aa-0000-7000-8000-000000000001".into(),
+                    ledger_id: "0198f3bb-0000-7000-8000-000000000002".into(),
+                }],
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_notp::ListLedgersRequest::decode(bytes))
+            })),
+        ),
+        sample(
+            "list_ledgers_answer",
+            permguard_notp::ListLedgersAnswer {
+                ledgers: vec![permguard_notp::ListedLedger {
+                    zone_id: "0198f2aa-0000-7000-8000-000000000001".into(),
+                    zone_name: "acme".into(),
+                    ledger_id: "0198f3bb-0000-7000-8000-000000000002".into(),
+                    ledger_name: "main".into(),
+                }],
+                complete: true,
+                deleted: Some(vec![permguard_notp::LedgerIds {
+                    zone_id: "0198f2aa-0000-7000-8000-000000000001".into(),
+                    ledger_id: "0198f3bb-0000-7000-8000-000000000003".into(),
+                }]),
+            }
+            .encode()
+            .expect("it encodes"),
+            &["list_ledgers_answer.deleted"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_notp::ListLedgersAnswer::decode(bytes))
+            })),
+        ),
+        sample(
+            "list_ledgers_answer",
+            permguard_notp::ListLedgersAnswer {
+                ledgers: Vec::new(),
+                complete: false,
+                deleted: None,
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_notp::ListLedgersAnswer::decode(bytes))
+            })),
+        ),
+        sample(
             "negotiate_push_request",
             NegotiatePushRequest {
                 r#ref: "main".into(),
