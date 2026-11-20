@@ -3,6 +3,8 @@
 
 #![allow(clippy::expect_used)]
 
+use std::sync::Arc;
+
 use super::*;
 use crate::api::keys::{PlanKeyRevoke, RunKeyRevoke};
 use crate::api::status::Assurance;
@@ -511,7 +513,148 @@ async fn an_offline_plan_under_dual_control_is_not_completed_by_one_approver() {
     )
     .await
     .expect("one approval");
-    let refused = held_plan(&api.replay, &offline_planner, &offline.envelope, now)
-        .expect_err("one approver does not complete dual control alone");
+    let refused = held_plan(
+        &api.replay,
+        &offline_planner,
+        &offline.envelope,
+        now,
+        &Standing::offline(),
+    )
+    .expect_err("one approver does not complete dual control alone");
     assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
+}
+
+/// The standing of every token the tests' bearers present, which a test revokes at will.
+#[derive(Default)]
+struct Tokens {
+    revoked: std::sync::atomic::AtomicBool,
+    not_held: std::sync::atomic::AtomicBool,
+}
+
+impl TokenStanding for Tokens {
+    fn standing(&self, _uri: &str, _index: u64, _now: u64) -> Option<bool> {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.not_held.load(SeqCst) {
+            return None;
+        }
+        Some(!self.revoked.load(SeqCst))
+    }
+}
+
+/// BUG-0099: an approval stands while it is younger than the approval ttl and, made with an
+/// access token, while the token is `VALID`; a list not held reads as not standing; offline the
+/// ttl alone bounds it.
+#[test]
+fn an_approval_stands_for_its_ttl_and_while_its_token_is_valid() {
+    let approval = |approved_at: u64, token: bool| PlanApproval {
+        principal: SECOND.to_owned(),
+        approved_at,
+        envelope: String::new(),
+        operation_id: String::new(),
+        token: token.then(|| TokenEntry {
+            uri: "https://authority.test/l".to_owned(),
+            index: 7,
+        }),
+    };
+    let tokens = Tokens::default();
+    let standing = Standing {
+        ttl: std::time::Duration::from_secs(3_600),
+        tokens: Some(&tokens),
+    };
+    assert!(standing.stands(&approval(1_000, true), 1_000 + 3_599));
+    assert!(
+        !standing.stands(&approval(1_000, true), 1_000 + 3_600),
+        "aged out"
+    );
+    assert!(
+        standing.stands(&approval(1_000, false), 1_000 + 3_599),
+        "by certificate"
+    );
+    assert!(!standing.stands(&approval(1_000, false), 1_000 + 3_600));
+    tokens
+        .revoked
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(!standing.stands(&approval(1_000, true), 1_001), "revoked");
+    assert!(standing.stands(&approval(1_000, false), 1_001));
+    tokens
+        .revoked
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    tokens
+        .not_held
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        !standing.stands(&approval(1_000, true), 1_001),
+        "no list held"
+    );
+    let offline = Standing::offline();
+    assert!(offline.stands(&approval(1_000, true), 1_000 + 3_599));
+    assert!(!offline.stands(&approval(1_000, true), 1_000 + 3_600));
+    // Two approvals of one principal count once.
+    let plan = Plan {
+        approvals: vec![approval(1_000, false), approval(1_001, false)],
+        ..Plan::default()
+    };
+    assert_eq!(standing.count(&plan, 1_002), 1);
+}
+
+/// BUG-0099: an approval whose approver's token was revoked no longer counts: the run is refused
+/// `plan_approvals_missing`, naming the lapse, the plan is listed `pending` with the approval
+/// `lapsed`, and a fresh approval with the same revoked token does not stand either.
+#[tokio::test]
+async fn an_approval_lapses_when_its_approvers_token_is_revoked() {
+    let tokens = Arc::new(Tokens::default());
+    let api = regulated(facade_with(
+        "plans-lapsed",
+        vec![HOST_OPERATIONS, DATA_ATTEST],
+    ))
+    .with_approvals(
+        DEFAULT_APPROVAL_TTL,
+        Arc::clone(&tokens) as Arc<dyn TokenStanding>,
+    );
+    let planned = plan_key(&api, DATA_ATTEST, "k").await.expect("planned");
+    grant(SECOND, &[operations::KEYS_ADMIN]);
+    let approve = |request_id: &str| ApprovePlan {
+        request_id: request_id.to_owned(),
+    };
+    let approved = api
+        .approve_plan(&actor(SECOND), &planned.plan_id, approve("a1"))
+        .await
+        .expect("approved");
+    assert_eq!(approved.plan.status, "ready");
+    assert!(!approved.plan.approvals[0].lapsed);
+
+    tokens
+        .revoked
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let refused = run_key(&api, &admin(), DATA_ATTEST, "r1", &planned.receipt)
+        .await
+        .expect_err("the approval lapsed");
+    assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
+    assert!(
+        format!("{refused:?}").contains("lapsed"),
+        "the refusal names the lapse: {refused:?}"
+    );
+    let listed = api.plans(&admin(), None).expect("listed");
+    let plan = listed
+        .plans
+        .iter()
+        .find(|plan| plan.plan_id == planned.plan_id)
+        .expect("listed");
+    assert_eq!(plan.status, "pending");
+    assert!(plan.approvals[0].lapsed, "{plan:?}");
+
+    // The approver may approve again; with the token still revoked, it does not stand.
+    let again = api
+        .approve_plan(&actor(SECOND), &planned.plan_id, approve("a2"))
+        .await
+        .expect("a lapsed approval can be given again");
+    assert_eq!(again.plan.status, "pending");
+
+    // Once the token stands again, so do its approvals, and the run proceeds.
+    tokens
+        .revoked
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    run_key(&api, &admin(), DATA_ATTEST, "r2", &planned.receipt)
+        .await
+        .expect("approved and run");
 }

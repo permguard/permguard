@@ -292,6 +292,14 @@ impl AuthorityTrust {
     }
 }
 
+impl super::access_tokens::TokenStanding for AuthorityTrust {
+    fn standing(&self, uri: &str, index: u64, now: u64) -> Option<bool> {
+        let issuer = self.issuer()?;
+        let list = self.lists.get(&issuer, uri);
+        super::access_tokens::standing_in(list.as_deref(), index, now)
+    }
+}
+
 impl Trust for AuthorityTrust {
     fn anchor(&self) -> Option<Anchor> {
         let issuer = self.issuer()?;

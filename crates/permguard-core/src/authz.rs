@@ -558,6 +558,9 @@ pub struct TokenGrant {
     pub list_uri: String,
     pub list_iat: u64,
     pub list_digest: [u8; 32],
+    /// The token's index in that list, `status.status_list.idx`: what an approval records to
+    /// read the token's standing again when the plan runs (BUG-0099).
+    pub list_index: u64,
 }
 
 /// The most scopes a service account holds, and a token carries.
@@ -1431,6 +1434,7 @@ mod tests {
             list_uri: "u".to_owned(),
             list_iat: 1,
             list_digest: [0; 32],
+            list_index: 0,
         };
         let ledger = Resource::ledger("data", "z", "l");
         let other = Resource::ledger("data", "y", "l");

@@ -4466,6 +4466,7 @@ fn the_transport_hands_on_the_authorized_principal_as_the_actor_and_never_the_as
                 list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                 list_iat: 7,
                 list_digest: [0xab; 32],
+                list_index: 0,
             },
         ));
         let handed = asker(&tokened, request, None).expect("handed on");
@@ -5999,6 +6000,7 @@ async fn a_token_caller_evaluates_within_its_scope_and_targets_alone() {
                 list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                 list_iat: 1,
                 list_digest: [0; 32],
+                list_index: 0,
             },
         )))
     };

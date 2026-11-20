@@ -57,6 +57,27 @@ impl StatusLists for HeldLists {
     }
 }
 
+/// Where a token's standing is read again after it was verified: what an approval of a plan is
+/// judged by when the plan runs (BUG-0099).
+pub trait TokenStanding: Send + Sync {
+    /// Whether the token at `index` of the list `uri` is still `VALID` at `now`: `Some(false)`
+    /// once revoked or suspended, `None` while the list is not held or has expired, which a
+    /// caller must read as not standing.
+    fn standing(&self, uri: &str, index: u64, now: u64) -> Option<bool>;
+}
+
+/// The standing of the token at `index` of `list`, held for `issuer`, at `now`.
+pub fn standing_in(list: Option<&HeldList>, index: u64, now: u64) -> Option<bool> {
+    let list = list?;
+    if list.exp <= now {
+        return None;
+    }
+    let entry = usize::try_from(index)
+        .ok()
+        .and_then(|index| list.list.get(index).ok())?;
+    Some(entry == VALID)
+}
+
 /// Why a token was refused: always `401 invalid_token` to the caller, which learns nothing more;
 /// the step is for the log and the metric.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -307,6 +328,7 @@ pub fn verify(
             list_uri: uri.to_owned(),
             list_iat: list.iat,
             list_digest: list.digest,
+            list_index: index,
         },
     })
 }

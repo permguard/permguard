@@ -482,17 +482,22 @@ fn run(
     // volume and its claim as it bound them.
     let replay = open_plans(&held, &mutations, now)?;
     let planner = planner()?;
-    let plan = permguard_host::api::plans::held_plan(&replay, &planner, &receipt, now).map_err(
-        |refusal| {
-            Failure::usage(format!(
-                "--confirm-file {}: {}",
-                confirm_file
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
-                refusal_text(&refusal)
-            ))
-        },
-    )?;
+    let plan = permguard_host::api::plans::held_plan(
+        &replay,
+        &planner,
+        &receipt,
+        now,
+        &permguard_host::api::plans::Standing::offline(),
+    )
+    .map_err(|refusal| {
+        Failure::usage(format!(
+            "--confirm-file {}: {}",
+            confirm_file
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            refusal_text(&refusal)
+        ))
+    })?;
     if plan.kind != RESTORE || plan.operation != RESTORE {
         return Err(Failure::usage("--confirm-file is not a restore's receipt"));
     }

@@ -266,6 +266,7 @@ mod tests {
                 list_uri: String::new(),
                 list_iat: 0,
                 list_digest: [0; 32],
+                list_index: 0,
             },
         ))
     }
@@ -476,6 +477,7 @@ mod tests {
                 list_uri: String::new(),
                 list_iat: 0,
                 list_digest: [0; 32],
+                list_index: 0,
             },
         ));
         assert_eq!(

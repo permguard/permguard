@@ -360,6 +360,7 @@ fn plan_in(plan: proto::OperationPlan) -> PlanView {
                 principal: approval.principal,
                 approved_at: approval.approved_at,
                 approval: map::b64(&approval.approval),
+                lapsed: approval.lapsed,
             })
             .collect(),
         status: plan.status,

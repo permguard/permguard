@@ -468,6 +468,7 @@ mod tests {
                 list_uri: "u".to_owned(),
                 list_iat: 1,
                 list_digest: [0; 32],
+                list_index: 0,
             },
         )))
     }

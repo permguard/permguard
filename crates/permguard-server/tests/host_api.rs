@@ -128,6 +128,7 @@ fn admin_grant() -> permguard_core::authz::TokenGrant {
         list_uri: "https://authority.test/authority/v1/status-lists/l".to_owned(),
         list_iat: 1,
         list_digest: [0; 32],
+        list_index: 0,
     }
 }
 
@@ -3577,6 +3578,7 @@ impl Authenticator for TokenBearers {
                     list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                     list_iat: 1,
                     list_digest: [0; 32],
+                    list_index: 0,
                 },
             ))),
             None => Bearers.authenticate(peer, bearer),

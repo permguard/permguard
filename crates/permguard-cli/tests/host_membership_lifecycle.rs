@@ -127,6 +127,7 @@ impl permguard_core::authz::Authenticator for MutualTlsAdmin {
                     list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
                     list_iat: 1,
                     list_digest: [0; 32],
+                    list_index: 0,
                 },
             )),
             None => Actor::Anonymous,

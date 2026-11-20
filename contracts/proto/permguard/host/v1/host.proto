@@ -1440,6 +1440,9 @@ message OperationPlanApproval {
   string approved_at = 2;
   // COSE_Sign1 `permguard.operation.approval.v1`.
   bytes approval = 3;
+  // Whether the approval no longer stands: older than `operations.dual_control.approval_ttl`, or
+  // the approver's access token revoked, suspended or of a status list not held now (BUG-0099).
+  bool lapsed = 4;
 }
 // `POST /host/v1/plans/{id}/approve` (WP-3.9), under the plan's operation grant.
 message ApprovePlanRequest {

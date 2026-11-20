@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A dual-control approval stops counting once it lapses.**
+  An approval stands for `operations.dual_control.approval_ttl` (`PERMGUARD_DUAL_CONTROL_APPROVAL_TTL`, default 1h, at most the plan's day) and, when it was made with an access token, while that token is `VALID` in its status list; a list the Host does not hold reads as not standing.
+  A run whose approvals lapsed is refused `plan_approvals_missing` naming the lapse, `host plans list` shows the plan `pending` and each approval `lapsed` (REST and gRPC), and the approver may approve again; offline commands bound an approval by the ttl alone (BUG-0099).
 - **A snapshot taken inside the barrier is no longer reported crash-consistent because the audit opened a trail.**
   The access audit is written asynchronously, so a resource's first record after the prepare could open a trail, its index entry and its day before the storage driver copied the volume, and `host backup verify` named them `not in the manifest`.
   A file the inventory does not bind is now reported as `started` when a writer the barrier does not pause started it: a journal segment, a CBOR sequence or an audit trail's files, outside the stores the barrier holds; any other is still a difference.

@@ -277,6 +277,11 @@ pub struct HostApi {
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
     /// Called when an operator's revocation committed (BUG-0223).
     rings_moved: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
+    /// How long an approval of a plan stands (BUG-0099).
+    approval_ttl: std::time::Duration,
+    /// Where an approver's access token stands now; without it an approval made with a token
+    /// does not stand (BUG-0099).
+    token_standing: Option<Arc<dyn crate::authz::access_tokens::TokenStanding>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -319,7 +324,21 @@ impl HostApi {
             volume: None,
             local_shipping: None,
             rings_moved: std::sync::OnceLock::new(),
+            approval_ttl: plans::DEFAULT_APPROVAL_TTL,
+            token_standing: None,
         }
+    }
+
+    /// This facade judging approvals of plans (BUG-0099): each stands for `ttl` and, when made
+    /// with an access token, while `tokens` reads that token `VALID`.
+    pub fn with_approvals(
+        mut self,
+        ttl: std::time::Duration,
+        tokens: Arc<dyn crate::authz::access_tokens::TokenStanding>,
+    ) -> Self {
+        self.approval_ttl = ttl;
+        self.token_standing = Some(tokens);
+        self
     }
 
     /// Calls `hook` whenever an operator's revocation committed (BUG-0223): a revoked active key
@@ -862,6 +881,7 @@ pub(crate) mod testing {
                 list_uri: "https://authority.test/authority/v1/status-lists/l".to_owned(),
                 list_iat: 1,
                 list_digest: [0; 32],
+                list_index: 0,
             },
         ))
     }

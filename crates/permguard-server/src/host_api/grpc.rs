@@ -115,6 +115,7 @@ fn plan_out(plan: api::plans::PlanView) -> Result<v1::OperationPlan, Status> {
                     principal: approval.principal,
                     approved_at: approval.approved_at,
                     approval: raw(&approval.approval)?,
+                    lapsed: approval.lapsed,
                 })
             })
             .collect::<Result<_, Status>>()?,

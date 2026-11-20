@@ -367,6 +367,9 @@ pub const SETTING_AUDIT_CHECKPOINTS_MAX_LAG: &str = "PERMGUARD_AUDIT_CHECKPOINTS
 /// Runtime setting key for how long a read cursor is valid after it is issued (WP-5.5, owner
 /// decision of 2026-10-16).
 pub const SETTING_STREAM_CURSOR_TTL: &str = "PERMGUARD_STREAM_CURSOR_TTL";
+/// Runtime setting key for how long an approval of a plan under `operations.dual_control` stands
+/// (BUG-0099, owner decision of 2026-11-20).
+pub const SETTING_DUAL_CONTROL_APPROVAL_TTL: &str = "PERMGUARD_DUAL_CONTROL_APPROVAL_TTL";
 /// Runtime setting key for how long a producer keeps a batch after every required coordinator
 /// acknowledged it (WP-7.9b): the coordinators' snapshot interval plus their recovery time, so a
 /// coordinator restored from a snapshot is resent what it lost. `0s` deletes at once.
@@ -1045,6 +1048,10 @@ const DEFAULT_STREAM_CURSOR_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// The longest a read cursor may be valid: a year, so its expiry stays an interoperable JSON
 /// integer (WP-5.5).
 const MAXIMUM_STREAM_CURSOR_TTL: Duration = Duration::from_secs(365 * 24 * 60 * 60);
+/// How long an approval of a plan stands: an hour (BUG-0099, owner decision of 2026-11-20).
+const DEFAULT_DUAL_CONTROL_APPROVAL_TTL: Duration = Duration::from_secs(60 * 60);
+/// The longest an approval may stand: a plan that requires approvals lives a day.
+const MAXIMUM_DUAL_CONTROL_APPROVAL_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// NOTP transfer bounds: a batch comfortably above the 5 MB object ceiling, deltas sized for
 /// policy ledgers (hundreds of small objects), and a ledger quota an order above that.
@@ -1594,6 +1601,7 @@ pub struct Config {
     audit_checkpoints_max_lag: Duration,
     stream_cursor_ttl: Duration,
     stream_acknowledged_retention: Duration,
+    dual_control_approval_ttl: Duration,
     backup_recovery_key_id: Option<String>,
     backup_encryption_profile: Option<String>,
     backup_recovery_key: Option<SecretRef>,
@@ -1809,6 +1817,7 @@ impl Default for Config {
             audit_retention_security: None,
             audit_checkpoints_max_lag: DEFAULT_AUDIT_CHECKPOINTS_MAX_LAG,
             stream_cursor_ttl: DEFAULT_STREAM_CURSOR_TTL,
+            dual_control_approval_ttl: DEFAULT_DUAL_CONTROL_APPROVAL_TTL,
             stream_acknowledged_retention: Duration::ZERO,
             backup_recovery_key_id: None,
             backup_encryption_profile: None,
@@ -3771,6 +3780,11 @@ produce: use `EdDSA` or `ES256`"
         self.stream_cursor_ttl
     }
 
+    /// Returns how long an approval of a plan stands under `operations.dual_control` (BUG-0099).
+    pub fn dual_control_approval_ttl(&self) -> Duration {
+        self.dual_control_approval_ttl
+    }
+
     /// Returns how long a producer keeps a batch after every required coordinator acknowledged
     /// it (WP-7.9b); zero deletes at once.
     pub fn stream_acknowledged_retention(&self) -> Duration {
@@ -4910,6 +4924,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
             SETTING_AUDIT_CHECKPOINTS_MAX_LAG => d(self.audit_checkpoints_max_lag),
             SETTING_STREAM_CURSOR_TTL => d(self.stream_cursor_ttl),
+            SETTING_DUAL_CONTROL_APPROVAL_TTL => d(self.dual_control_approval_ttl),
             SETTING_STREAM_ACKNOWLEDGED_RETENTION => d(self.stream_acknowledged_retention),
             SETTING_BACKUP_RECOVERY_KEY_ID => self.backup_recovery_key_id.clone(),
             SETTING_BACKUP_ENCRYPTION_PROFILE => self.backup_encryption_profile.clone(),
@@ -6426,6 +6441,24 @@ produce: use `EdDSA` or `ES256`"
             self.backup_retention = Some(retention);
         }
 
+        if let Some(value) = settings.get(SETTING_DUAL_CONTROL_APPROVAL_TTL) {
+            let ttl = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_DUAL_CONTROL_APPROVAL_TTL}"))?;
+            if ttl.is_zero() {
+                bail!(
+                    "reading {SETTING_DUAL_CONTROL_APPROVAL_TTL}: an approval stands for some time"
+                );
+            }
+            if ttl > MAXIMUM_DUAL_CONTROL_APPROVAL_TTL {
+                bail!(
+                    "reading {SETTING_DUAL_CONTROL_APPROVAL_TTL}: `{value}` is longer than {}s, \
+                     the longest a plan that requires approvals lives",
+                    MAXIMUM_DUAL_CONTROL_APPROVAL_TTL.as_secs()
+                );
+            }
+            self.dual_control_approval_ttl = ttl;
+        }
+
         if let Some(value) = settings.get(SETTING_STREAM_CURSOR_TTL) {
             self.stream_cursor_ttl = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_STREAM_CURSOR_TTL}"))?;
@@ -6934,6 +6967,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_CHECKPOINTS_MAX_LAG,
     SETTING_STREAM_CURSOR_TTL,
     SETTING_STREAM_ACKNOWLEDGED_RETENTION,
+    SETTING_DUAL_CONTROL_APPROVAL_TTL,
     SETTING_BACKUP_RECOVERY_KEY_ID,
     SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_BACKUP_RECOVERY_KEY,

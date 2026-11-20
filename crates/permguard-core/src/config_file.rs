@@ -31,8 +31,8 @@ use crate::config::{
     SETTING_AUDIT_RETENTION, SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK,
     SETTING_AUTOGENERATE, SETTING_BACKUP_DESTRUCTION, SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_BACKUP_RECOVERY_KEY, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_BACKUP_RETENTION,
-    SETTING_DEVELOPMENT_MODE, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
-    SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
+    SETTING_DEVELOPMENT_MODE, SETTING_DUAL_CONTROL_APPROVAL_TTL, SETTING_HOST_IDENTITY_SUITE,
+    SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_JOIN_INVITATION_FILE, SETTING_HOST_JOIN_NAME, SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY,
     SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER,
@@ -704,6 +704,18 @@ struct OperationsSection {
     /// What every snapshot manifest binds of the deployment's backups (WP-7.8).
     #[serde(default)]
     backup: BackupSection,
+    /// The two-person rule on the Host's plans (BUG-0099).
+    #[serde(default)]
+    dual_control: DualControlSection,
+}
+
+/// The two-person rule on the Host's plans (BUG-0099).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DualControlSection {
+    /// How long an approval stands before the run needs a fresh one.
+    #[serde(default)]
+    approval_ttl: Option<String>,
 }
 
 /// What every snapshot manifest binds of the deployment's backups (WP-7.8): non-secret labels.
@@ -1457,6 +1469,10 @@ impl ConfigFile {
             (
                 SETTING_STREAM_CURSOR_TTL,
                 self.operations.streams.cursor_ttl.as_ref(),
+            ),
+            (
+                SETTING_DUAL_CONTROL_APPROVAL_TTL,
+                self.operations.dual_control.approval_ttl.as_ref(),
             ),
             (
                 SETTING_STREAM_ACKNOWLEDGED_RETENTION,

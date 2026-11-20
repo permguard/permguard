@@ -1817,18 +1817,24 @@ fn reset(
             let replay = open_plans(&held, &mutations, now)?;
             let planner = Principal::new(INITIATOR)
                 .map_err(|error| Failure::internal(format!("the planner: {error}")))?;
-            let plan = permguard_host::api::plans::held_plan(&replay, &planner, &receipt, now)
-                .map_err(|refusal| {
-                    Failure::usage(format!(
-                        "--confirm-file {}: {}",
-                        confirm_file
-                            .as_deref()
-                            .map(Path::display)
-                            .map(|shown| shown.to_string())
-                            .unwrap_or_default(),
-                        refusal_text(&refusal)
-                    ))
-                })?;
+            let plan = permguard_host::api::plans::held_plan(
+                &replay,
+                &planner,
+                &receipt,
+                now,
+                &permguard_host::api::plans::Standing::offline(),
+            )
+            .map_err(|refusal| {
+                Failure::usage(format!(
+                    "--confirm-file {}: {}",
+                    confirm_file
+                        .as_deref()
+                        .map(Path::display)
+                        .map(|shown| shown.to_string())
+                        .unwrap_or_default(),
+                    refusal_text(&refusal)
+                ))
+            })?;
             let bound = plan
                 .target
                 .strip_prefix(RESET_MODE)

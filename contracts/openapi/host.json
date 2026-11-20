@@ -10721,12 +10721,18 @@
             "type": "string",
             "description": "The Host's attestation, COSE_Sign1 `permguard.operation.approval.v1` under `host.operations` over the plan digest, the principal, the time and the Host, base64url without padding.",
             "x-grpc-field": "approval"
+          },
+          "lapsed": {
+            "type": "boolean",
+            "description": "Whether the approval no longer stands: older than `operations.dual_control.approval_ttl`, or the approver's access token revoked, suspended or of a status list not held now (BUG-0099). A lapsed approval does not count, and its principal may approve again.",
+            "x-grpc-field": "lapsed"
           }
         },
         "required": [
           "principal",
           "approved_at",
-          "approval"
+          "approval",
+          "lapsed"
         ],
         "additionalProperties": false,
         "description": "One approval of a plan (WP-3.9).",

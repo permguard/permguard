@@ -169,6 +169,19 @@ pub struct PlanApproval {
     /// The operation that recorded it, which recovery looks for.
     #[serde(default)]
     pub operation_id: String,
+    /// Where the approver's access token stands, read again when the plan runs: none for an
+    /// approval made by certificate, or before approvals recorded it (BUG-0099).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<TokenEntry>,
+}
+
+/// An access token's entry in its issuer's status list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenEntry {
+    /// The list's `uri`.
+    pub uri: String,
+    /// The token's index in it.
+    pub index: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1012,6 +1025,7 @@ mod tests {
             approved_at: 1_100,
             envelope: "e".to_owned(),
             operation_id: approving.operation_id().to_string(),
+            token: None,
         };
         replay
             .approve(&approving, "alice", "p1", approval.clone())

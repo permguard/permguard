@@ -2458,6 +2458,11 @@ impl Composition {
             };
             // The volume a drain receipt names (TD-2).
             let api = api.with_volume(volume.id(), volume.generation());
+            // An approval stands for its ttl, and while the approver's token is valid (BUG-0099).
+            let api = api.with_approvals(
+                config.dual_control_approval_ttl(),
+                Arc::clone(&trust) as Arc<dyn permguard_host::authz::access_tokens::TokenStanding>,
+            );
             // The application-consistent snapshot's barrier (WP-7.8).
             let api = api.with_backups(
                 Arc::clone(&backups),

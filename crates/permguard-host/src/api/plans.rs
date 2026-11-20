@@ -29,9 +29,10 @@ use crate::operations::plan::{
     self, Approval, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt, PlanSigner,
 };
 
-use super::replay::{self, Plan, PlanApproval, Replay, mint_id};
+use super::replay::{self, Plan, PlanApproval, Replay, TokenEntry, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use super::{rfc3339, unreachable_reconciliation};
+use crate::authz::access_tokens::TokenStanding;
 
 /// The action an approval is recorded under, in the `security` trail.
 pub const AUDIT_APPROVED: &str = "host.plan.approved";
@@ -47,6 +48,9 @@ pub struct ApprovalView {
     pub approved_at: String,
     /// COSE_Sign1 `permguard.operation.approval.v1`, base64url.
     pub approval: String,
+    /// Whether the approval no longer stands, and so does not count (BUG-0099).
+    #[serde(default)]
+    pub lapsed: bool,
 }
 
 /// One plan as the plans store shows it.
@@ -119,6 +123,66 @@ pub struct Issue<'a> {
     pub principal: &'a Principal,
 }
 
+/// How long an approval stands unless `operations.dual_control.approval_ttl` says otherwise: an
+/// hour (BUG-0099, owner decision of 2026-11-20).
+pub const DEFAULT_APPROVAL_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// What an approval is judged by when a plan is listed, approved again or run (BUG-0099): it
+/// stands while it is younger than `ttl` and, when it was made with an access token and `tokens`
+/// reads the lists, while that token is still `VALID` in its status list; a list not held now
+/// reads as not standing. Without `tokens`, the offline commands' case, the ttl alone bounds it.
+#[derive(Clone, Copy)]
+pub struct Standing<'a> {
+    pub ttl: std::time::Duration,
+    pub tokens: Option<&'a dyn TokenStanding>,
+}
+
+impl Standing<'_> {
+    /// The rule of a stopped Host's offline commands, which hold no current status list: the
+    /// default ttl alone.
+    pub fn offline() -> Self {
+        Self {
+            ttl: DEFAULT_APPROVAL_TTL,
+            tokens: None,
+        }
+    }
+
+    /// Whether `approval` stands at `now`.
+    pub fn stands(&self, approval: &PlanApproval, now: u64) -> bool {
+        if approval.approved_at.saturating_add(self.ttl.as_secs()) <= now {
+            return false;
+        }
+        match (&approval.token, self.tokens) {
+            (Some(entry), Some(tokens)) => tokens
+                .standing(&entry.uri, entry.index, now)
+                .unwrap_or(false),
+            _ => true,
+        }
+    }
+
+    /// How many distinct principals hold an approval of `plan` that stands at `now`.
+    pub fn count(&self, plan: &Plan, now: u64) -> u64 {
+        let standing: std::collections::BTreeSet<&str> = plan
+            .approvals
+            .iter()
+            .filter(|approval| self.stands(approval, now))
+            .map(|approval| approval.principal.as_str())
+            .collect();
+        standing.len() as u64
+    }
+}
+
+/// The entry of `actor`'s access token in its status list, when it acted by one.
+fn token_entry(actor: &Actor) -> Option<TokenEntry> {
+    match actor {
+        Actor::Authenticated(context) => context.token().map(|token| TokenEntry {
+            uri: token.list_uri.clone(),
+            index: token.list_index,
+        }),
+        _ => None,
+    }
+}
+
 /// The grant an operation needs, which its approvers need too.
 fn grant_of(kind: &str) -> Option<&'static str> {
     match kind {
@@ -140,12 +204,12 @@ fn approval_of(kind: &str) -> Option<&'static str> {
     }
 }
 
-fn status_of(plan: &Plan, consumed: bool, now: u64) -> &'static str {
+fn status_of(plan: &Plan, consumed: bool, now: u64, standing: &Standing<'_>) -> &'static str {
     if consumed {
         "consumed"
     } else if plan.expires <= now {
         "expired"
-    } else if (plan.approvals.len() as u64) < plan.approvals_required {
+    } else if standing.count(plan, now) < plan.approvals_required {
         "pending"
     } else {
         "ready"
@@ -153,7 +217,7 @@ fn status_of(plan: &Plan, consumed: bool, now: u64) -> &'static str {
 }
 
 /// `plan` as `viewer` sees it: the receipt is the planner's capability, shown to the planner alone.
-fn view(plan: &Plan, consumed: bool, now: u64, viewer: &str) -> PlanView {
+fn view(plan: &Plan, consumed: bool, now: u64, viewer: &str, standing: &Standing<'_>) -> PlanView {
     let receipt = URL_SAFE_NO_PAD
         .decode(&plan.receipt)
         .ok()
@@ -176,9 +240,10 @@ fn view(plan: &Plan, consumed: bool, now: u64, viewer: &str) -> PlanView {
                 principal: approval.principal.clone(),
                 approved_at: rfc3339(approval.approved_at),
                 approval: approval.envelope.clone(),
+                lapsed: !standing.stands(approval, now),
             })
             .collect(),
-        status: status_of(plan, consumed, now).to_owned(),
+        status: status_of(plan, consumed, now, standing).to_owned(),
         receipt: if viewer == plan.principal {
             plan.receipt.clone()
         } else {
@@ -279,12 +344,14 @@ pub fn sign_plan(
 
 /// The plan the receipt `bytes` names, when `replay` holds it for `principal`, it was neither run
 /// nor expired at `now`, the bytes are the receipt the plan step answered, and it holds the
-/// approvals it requires: what every run step reads before it changes anything.
+/// approvals it requires, each still standing under `standing` (BUG-0099): what every run step
+/// reads before it changes anything.
 pub fn held_plan(
     replay: &Replay,
     principal: &Principal,
     bytes: &[u8],
     now: u64,
+    standing: &Standing<'_>,
 ) -> Result<Plan, Refusal> {
     let receipt = plan::read_receipt(bytes).map_err(|error| {
         Refusal::new(
@@ -307,15 +374,25 @@ pub fn held_plan(
             "the receipt presented is not the one the plan step answered",
         ));
     }
-    if (plan.approvals.len() as u64) < plan.approvals_required {
+    let standing_now = standing.count(&plan, now);
+    if standing_now < plan.approvals_required {
+        let lapsed = plan.approvals.len() as u64 - standing_now.min(plan.approvals.len() as u64);
         return Err(Refusal::new(
             ErrorClass::Conflict,
             codes::host::PLAN_APPROVALS_MISSING,
-            format!(
-                "the plan requires {} approval(s) and holds {}",
-                plan.approvals_required,
-                plan.approvals.len()
-            ),
+            if lapsed > 0 {
+                format!(
+                    "the plan requires {} approval(s) and holds {standing_now} that still stand: \
+                     {lapsed} lapsed, older than the approval ttl or made with an access token \
+                     no longer valid; ask for a fresh approval",
+                    plan.approvals_required
+                )
+            } else {
+                format!(
+                    "the plan requires {} approval(s) and holds {standing_now}",
+                    plan.approvals_required
+                )
+            },
         ));
     }
     Ok(plan)
@@ -374,6 +451,14 @@ impl HostApi {
                 .any(|added| added == control.name())
     }
 
+    /// What this Host judges an approval by (BUG-0099).
+    pub(super) fn standing(&self) -> Standing<'_> {
+        Standing {
+            ttl: self.approval_ttl,
+            tokens: self.token_standing.as_deref(),
+        }
+    }
+
     /// Mints a plan inside the plan step's operation: its id, nonce and digest, its receipt
     /// signed under `host.operations`, the plan kept for its run and its approvals.
     /// The Host a receipt or an approval names: one without an identity signs neither.
@@ -424,7 +509,7 @@ impl HostApi {
                 "`receipt` is the plan receipt the plan step answered, base64url",
             )
         })?;
-        held_plan(&self.replay, principal, &bytes, now)
+        held_plan(&self.replay, principal, &bytes, now, &self.standing())
     }
 
     /// `GET /host/v1/plans?status`: the plans whose operation the caller may do on the Host.
@@ -467,7 +552,9 @@ impl HostApi {
                         .is_ok()
                 })
             })
-            .map(|(plan, consumed)| view(&plan, consumed, now, principal.as_str()))
+            .map(|(plan, consumed)| {
+                view(&plan, consumed, now, principal.as_str(), &self.standing())
+            })
             .filter(|view| status.is_none_or(|status| view.status == status))
             .collect();
         plans.sort_by(|a, b| a.plan_id.cmp(&b.plan_id));
@@ -538,10 +625,12 @@ impl HostApi {
                     "the planner cannot approve its own plan",
                 ));
             }
+            // An approval that lapsed counts for nothing: its principal may approve again.
+            let standing = self.standing();
             if plan
                 .approvals
                 .iter()
-                .any(|held| held.principal == principal.as_str())
+                .any(|held| held.principal == principal.as_str() && standing.stands(held, now))
             {
                 return Err(Refusal::new(
                     ErrorClass::Conflict,
@@ -549,7 +638,7 @@ impl HostApi {
                     "this principal approved the plan already",
                 ));
             }
-            if (plan.approvals.len() as u64) >= plan.approvals_required {
+            if standing.count(&plan, now) >= plan.approvals_required {
                 return Err(Refusal::new(
                     ErrorClass::Conflict,
                     codes::host::PLAN_APPROVAL_REFUSED,
@@ -588,6 +677,7 @@ impl HostApi {
                     approved_at: now,
                     envelope: URL_SAFE_NO_PAD.encode(envelope),
                     operation_id: applying.operation_id().to_string(),
+                    token: token_entry(actor),
                 };
                 self.replay
                     .approve(applying, &plan.principal, &plan.plan_id, held.clone())
@@ -598,7 +688,13 @@ impl HostApi {
                     target: Some(plan.plan_id.clone()),
                     value: PlanApproved {
                         receipt: self.receipt(applying.operation_id(), plan.revision),
-                        plan: view(&plan, false, now, admitted.principal.as_str()),
+                        plan: view(
+                            &plan,
+                            false,
+                            now,
+                            admitted.principal.as_str(),
+                            &self.standing(),
+                        ),
                     },
                 })
             },
@@ -607,7 +703,13 @@ impl HostApi {
                 let (plan, consumed) = self.replay.find(plan_id).ok_or_else(unknown)?;
                 Ok(PlanApproved {
                     receipt: self.receipt(operation_id, revision),
-                    plan: view(&plan, consumed, now, admitted.principal.as_str()),
+                    plan: view(
+                        &plan,
+                        consumed,
+                        now,
+                        admitted.principal.as_str(),
+                        &self.standing(),
+                    ),
                 })
             },
         )

@@ -623,6 +623,7 @@ fn admin() -> permguard_core::authz::Actor {
             list_uri: "https://authority.example/authority/v1/status-lists/l".to_owned(),
             list_iat: 1,
             list_digest: [0; 32],
+            list_index: 0,
         },
     ))
 }
