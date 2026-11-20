@@ -1071,6 +1071,71 @@ impl<C: RecordCodec> Producer<C> {
 }
 
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn held(&self, subscribed: &Subscribed<'_>) -> Result<Vec<String>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        if !self.ships(subscribed) {
+            return Ok(Vec::new());
+        }
+        // A stream holds the task's subscription only once the task shipped on it: that is the
+        // coverage, as `due` reads it.
+        let mut held = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            if subscription_of(
+                &physical.writer().dir,
+                &subscribed.membership_id,
+                subscribed.task_id,
+            )
+            .map_err(wrap)?
+            .is_some()
+            {
+                held.push(physical.key.resource.clone());
+            }
+        }
+        Ok(held)
+    }
+
+    fn acked_elsewhere(&self, subscribed: &Subscribed<'_>) -> Result<Vec<String>, String> {
+        let wrap = |error: StreamError| error.to_string();
+        let Some(boot) = subscribed.coordinator_boot_id else {
+            return Ok(Vec::new());
+        };
+        if !self.ships(subscribed) {
+            return Ok(Vec::new());
+        }
+        let signer = self.signer_ring().map_err(wrap)?;
+        let mut found = Vec::new();
+        for physical in self.every().map_err(wrap)? {
+            let runs = match physical.runs(signer, &self.descriptor) {
+                Err(StreamError::Forked { .. }) => continue,
+                runs => runs.map_err(wrap)?,
+            };
+            let Some(subscription) = subscription_of(
+                &physical.writer().dir,
+                &subscribed.membership_id,
+                subscribed.task_id,
+            )
+            .map_err(wrap)?
+            else {
+                continue;
+            };
+            if subscription.state != SubscriptionState::Active {
+                continue;
+            }
+            let elsewhere = runs
+                .iter()
+                .filter(|(_, fence, ..)| reads_run(subscribed.membership_id, *fence))
+                .any(|(run, _, last, _)| {
+                    subscription.acked(run) >= *last
+                        && *last > 0
+                        && subscription.boot(run).is_some_and(|before| before != boot)
+                });
+            if elsewhere {
+                found.push(physical.key.resource.clone());
+            }
+        }
+        Ok(found)
+    }
+
     fn retired(&self) -> Result<Vec<composition::Retired>, String> {
         self.retired_streams().map_err(|error| error.to_string())
     }

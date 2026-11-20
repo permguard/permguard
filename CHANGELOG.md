@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **An idle member resends to a coordinator restored from a snapshot.**
+  A member learned of a restored coordinator only on a ship session, and opened one only for a stream with unacknowledged records, so a stream the old incarnation had acknowledged in full was never resent.
+  A ship task with nothing due now opens one session per pass, and every stream acknowledged under another coordinator incarnation is probed with its last retained batch and resent, logged as `host.stream.coordinator_restored` (BUG-0186).
 - **A stream whose ended run lost its batches is found offline and never sealed again.**
   Removing an ended run's batch files passed `streams verify`, and the producer sealed the run again over altered records; a current run's lost batches moved its STATE watermark back.
   `streams verify` now reports a run the seal passed whose batches do not reach its last record, exit 2, and the seal refuses such a range, or a current run whose batches fall short of STATE, as corruption rather than sealing it again (BUG-0116).

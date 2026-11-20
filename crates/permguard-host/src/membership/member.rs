@@ -1099,6 +1099,14 @@ impl Member<'_> {
                         continue;
                     }
                 };
+                // An idle task still learns of a coordinator restored from a snapshot
+                // (BUG-0186): one session's lease names its incarnation, and every stream
+                // acknowledged under another is shipped, probed with its last retained batch.
+                let resources = if resources.is_empty() {
+                    self.restored_since(&initiator, &subscription, engine).await
+                } else {
+                    resources
+                };
                 for resource in resources {
                     match self
                         .ship_stream(&initiator, &subscription, &resource, engine)
@@ -1118,6 +1126,55 @@ impl Member<'_> {
             }
         }
         shipped
+    }
+
+    /// The streams of `subscription`'s task a coordinator incarnation other than the one now
+    /// serving acknowledged whole, learned by one session on a stream it holds (BUG-0186); none
+    /// when it holds no stream or the session does not open, which the next pass asks again.
+    async fn restored_since(
+        &self,
+        initiator: &Initiator,
+        subscription: &crate::composition::Subscribed<'_>,
+        engine: &dyn crate::composition::StreamShipping,
+    ) -> Vec<String> {
+        let Some(resource) = engine
+            .held(subscription)
+            .ok()
+            .and_then(|held| held.into_iter().next())
+        else {
+            return Vec::new();
+        };
+        let Ok(session) = self
+            .open_task(
+                initiator.clone(),
+                &subscription.membership_id,
+                subscription.task_id,
+                &resource,
+                Vec::new(),
+            )
+            .await
+        else {
+            return Vec::new();
+        };
+        let probed = crate::composition::Subscribed {
+            epoch: session.lease.epoch,
+            coordinator_boot_id: Some(session.lease.coordinator_boot_id),
+            ..*subscription
+        };
+        drop(session);
+        let elsewhere = engine.acked_elsewhere(&probed).unwrap_or_default();
+        if !elsewhere.is_empty() {
+            tracing::warn!(
+                event.name = "host.stream.coordinator_restored",
+                component = "host",
+                membership_id = %uuid_text(&subscription.membership_id),
+                task = %subscription.task_id,
+                streams = elsewhere.len(),
+                "the coordinator answers under another incarnation: the streams it acknowledged \
+                 before are probed and resent"
+            );
+        }
+        elsewhere
     }
 
     /// Ships `resource`'s stream on one session of `subscription`'s task.

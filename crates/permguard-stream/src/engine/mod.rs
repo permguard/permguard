@@ -682,6 +682,28 @@ impl permguard_host::composition::StreamShipping for Served {
         Ok(due)
     }
 
+    fn held(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        let mut held = Vec::new();
+        for producer in &self.shipping {
+            held.extend(producer.held(subscription)?);
+        }
+        Ok(held)
+    }
+
+    fn acked_elsewhere(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        let mut found = Vec::new();
+        for producer in &self.shipping {
+            found.extend(producer.acked_elsewhere(subscription)?);
+        }
+        Ok(found)
+    }
+
     fn next(
         &self,
         subscription: &permguard_host::composition::Subscribed<'_>,

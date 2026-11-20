@@ -7439,6 +7439,71 @@ fn a_coordinator_restored_at_the_deleted_edge_is_resent() {
     );
 }
 
+/// BUG-0186: a member idle since its coordinator acknowledged everything has nothing due, yet
+/// the stream it acknowledged under another incarnation is named once a lease says the
+/// coordinator restarted from a snapshot, and probing it resends what the snapshot lost.
+#[test]
+fn a_fully_acknowledged_stream_is_named_for_a_restored_coordinator() {
+    use permguard_host::composition::StreamShipping as _;
+    let host = Host::new("drill-idle");
+    let (producer, run, snapshot, live) = drilled(&host, false);
+    let resource = ledger(1).to_string();
+    assert!(producer.due(&under(1)).expect("due").is_empty(), "idle");
+    assert_eq!(
+        producer.held(&under(1)).expect("held"),
+        vec![resource.clone()]
+    );
+    assert!(
+        producer
+            .acked_elsewhere(&under(1))
+            .expect("read")
+            .is_empty(),
+        "the same incarnation"
+    );
+    assert_eq!(
+        producer.acked_elsewhere(&under(2)).expect("read"),
+        vec![resource.clone()],
+        "another incarnation"
+    );
+    let consumer = restore_consumer(&host, &snapshot, &live);
+    let restored = under(2);
+    let mut outcomes = Vec::new();
+    while let Some(shipment) = producer
+        .next(&restored, &resource, 448 * 1024)
+        .expect("next")
+    {
+        let (answer, _) =
+            ingest_at(&consumer, &host, &shipment.body, 1, vec![pin_of(&host)]).expect("ingested");
+        outcomes.push(answer.outcome);
+        if !producer
+            .answered(
+                &restored,
+                &resource,
+                &shipment,
+                &answer.encode().expect("encodes"),
+            )
+            .expect("answered")
+        {
+            break;
+        }
+    }
+    assert!(!outcomes.is_empty(), "probed");
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        6,
+        "resent whole: {outcomes:?}"
+    );
+    assert!(
+        producer
+            .acked_elsewhere(&under(2))
+            .expect("read")
+            .is_empty(),
+        "nothing more under that incarnation"
+    );
+}
+
 /// WP-7.9b, after the review: a coordinator restored before a run it had acknowledged whole is
 /// probed for that run in the first session of its new incarnation; what it lost of the earlier
 /// run and of the later one is resent, and both runs end acknowledged by the restored consumer.

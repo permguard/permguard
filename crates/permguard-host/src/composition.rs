@@ -2181,6 +2181,24 @@ pub trait StreamShipping: Send + Sync {
     /// moved resumes; one backing off or stopped is not due.
     fn due(&self, subscription: &Subscribed<'_>) -> Result<Vec<String>, String>;
 
+    /// The resources of the streams `subscription`'s task holds a subscription on, active or not:
+    /// where an idle pass opens the one session that tells it the coordinator's incarnation
+    /// (BUG-0186). Empty for an engine that keeps none.
+    fn held(&self, subscription: &Subscribed<'_>) -> Result<Vec<String>, String> {
+        let _ = subscription;
+        Ok(Vec::new())
+    }
+
+    /// The resources of the active streams `subscription` ships that a coordinator incarnation
+    /// other than its `coordinator_boot_id` acknowledged whole (BUG-0186): what a coordinator
+    /// restored from a snapshot may have lost though nothing new is due, each probed by
+    /// [`StreamShipping::next`] with its last retained batch. Empty for an engine that keeps no
+    /// incarnation, or without one named.
+    fn acked_elsewhere(&self, subscription: &Subscribed<'_>) -> Result<Vec<String>, String> {
+        let _ = subscription;
+        Ok(Vec::new())
+    }
+
     /// The next message to ship on `resource`, within `max_bytes`; `None` when nothing is due.
     fn next(
         &self,
