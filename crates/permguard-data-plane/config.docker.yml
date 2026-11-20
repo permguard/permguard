@@ -153,7 +153,7 @@ dataPlane:
   #   #                    `max_staleness` — the mode for "decide only on history I can vouch for"
   #   pull:
   #     mode: local
-  #     max_staleness: "10s"         # required in practice by shared-bounded
+  #     max_staleness: "10s"         # shared-bounded: the Host imports every half of it, 2s to 60s
   #     ledgers:
   #       - zone: <zone id>              # the ledger's ids, as `permguard ledgers get` shows them:
   #         ledger: <ledger id>          # a name imports nothing, and is refused

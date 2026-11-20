@@ -4428,7 +4428,22 @@ async fn a_conflict_only_the_window_shows_still_refuses_a_bounded_decision() {
 /// through what the checkpoint names, and no gap is open.
 #[tokio::test]
 async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vouches_for_them() {
-    let plane = plane("bounded-imports");
+    use permguard_core::metrics::Recorder as _;
+
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    let plane = plane_measured(
+        "bounded-imports",
+        &manifest(),
+        blocking(),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn permguard_core::metrics::Recorder>),
+    );
+    let staleness = || {
+        registry
+            .snapshot()
+            .into_iter()
+            .find(|sample| sample.metric.name() == "permguard_temporal_import_staleness_seconds")
+            .map(|sample| sample.reading)
+    };
     let root = plane
         .events
         .parent()
@@ -4472,10 +4487,16 @@ async fn a_bounded_plane_decides_on_imports_only_when_the_verified_checkpoint_vo
         )
     };
 
-    // Never verified: withheld, recorded.
+    // Never verified: withheld, recorded, and the gauge says stale, never `0` (BUG-0196): at
+    // least past the 60 s bound it refuses on.
     let (status, refused) = post(&router, submit()).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
     assert_eq!(refused["code"], "history_stale", "{refused}");
+    let reading = staleness();
+    assert!(
+        matches!(reading, Some(permguard_core::metrics::Reading::Value(held)) if held > 60.0),
+        "{reading:?}"
+    );
 
     // Verified long ago: withheld.
     *consumer.state.lock().expect("lock") = Some(verified_import(600, 3, 0));

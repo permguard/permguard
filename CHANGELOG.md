@@ -235,6 +235,10 @@ is cut.
 
 ### Fixed
 
+- **A `shared-bounded` member imports as often as its staleness bound needs, and the staleness gauge never reads fresh before the first verification.**
+  The Host verified a coordinator's checkpoint only on its one-minute membership pass, so the default `events.pull.max_staleness` of 10 seconds refused about fifty seconds of every minute with `history_stale`, with nothing behind.
+  A `shared-bounded` member now imports on its own pass, every half of its bound within 2 seconds and a minute, and a bound below 4 seconds is warned at start (`host.import_bound_unmet`) (BUG-0130).
+  `permguard_temporal_import_staleness_seconds` read `0` while the plane had never verified a checkpoint and refused every decision; it now reads the plane's age, at least past the bound it refuses on (BUG-0196).
 - **`permguard pull` refuses an un-aliased policy both sides edited, instead of writing the remote's version beside it.**
   An un-aliased policy is named by its text, so an edit here and an edit on the remote left two ids for one policy: the pull wrote the remote's version beside the author's file, exited 0, and the next `apply` held both.
   The pull now refuses, naming the file as changed here and on the remote, and writes nothing; `pull --resolved` writes the remote's version beside it to fold the change into, or the policy can be given an `@alias` (BUG-0233).

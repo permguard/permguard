@@ -92,6 +92,8 @@ pub struct Submitter {
     imported: Option<Arc<super::imported::Imported>>,
     /// How stale imported history may be before `shared-bounded` fails decisions closed.
     max_staleness: std::time::Duration,
+    /// When this plane began: the age of history it never read or verified (BUG-0196).
+    started: std::time::Instant,
     /// The imported watermark each `(zone, ledger, history, partition)` has been rebuilt to.
     ///
     /// So a rebuild is paid once per watermark rather than once per submission: replaying even a
@@ -214,6 +216,7 @@ impl Submitter {
             imports: None,
             imported: None,
             max_staleness: permguard_core::config::DEFAULT_EVENTS_PULL_MAX_STALENESS,
+            started: std::time::Instant::now(),
             applied: std::sync::Mutex::new(std::collections::BTreeMap::new()),
             warm: permguard_languages::warm::Budget::new(
                 permguard_languages::warm::Limits::default(),
@@ -1982,6 +1985,15 @@ impl Submitter {
         }
     }
 
+    /// The staleness reported for history never read or verified: as old as this plane, and past
+    /// the bound a `shared-bounded` plane refuses on, never `0`, which reads as fresh (BUG-0196).
+    fn unread_staleness(&self) -> u64 {
+        self.started
+            .elapsed()
+            .as_secs()
+            .max(self.max_staleness.as_secs().saturating_add(1))
+    }
+
     /// Which history this decision ranges over, and how fresh it is.
     ///
     /// Reported for every mode, including `local`: an auditor reproducing a decision needs to know
@@ -2024,7 +2036,7 @@ impl Submitter {
             &measure::IMPORT_STALENESS,
             permguard_core::Aggregate::Max,
             &format!("{zone}/{ledger}"),
-            staleness.unwrap_or_default() as f64,
+            staleness.unwrap_or_else(|| self.unread_staleness()) as f64,
         );
 
         // `shared-bounded` is the mode that says "decide only on history I can vouch is recent".
@@ -2175,7 +2187,7 @@ impl Submitter {
             &measure::IMPORT_STALENESS,
             permguard_core::Aggregate::Max,
             &format!("{zone}/{ledger}"),
-            staleness.unwrap_or_default() as f64,
+            staleness.unwrap_or_else(|| self.unread_staleness()) as f64,
         );
         let bounded = matches!(
             self.consistency,

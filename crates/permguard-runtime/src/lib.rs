@@ -32,6 +32,7 @@ pub mod checkpoints;
 pub mod composition;
 pub mod dormancy;
 pub mod host;
+pub mod imports;
 pub mod join;
 pub mod objectives;
 pub mod planes;

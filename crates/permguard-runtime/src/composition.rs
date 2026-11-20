@@ -2661,6 +2661,14 @@ impl Composition {
         // The local ship tasks run on their own short pass: the Control Plane reads what this
         // Host decided within seconds, not at the next re-pin pass.
         let _local_shipping = local_shipper.map(crate::shipping::drive_local);
+        // A `shared-bounded` member imports on a pass its bound can meet, every half of it, and
+        // the re-pin pass leaves the import to it (BUG-0130).
+        let shared_bounded =
+            config.events_pull_mode() == permguard_core::config::Consistency::SharedBounded;
+        let _importing = serving
+            .as_ref()
+            .filter(|_| shared_bounded)
+            .map(|api| crate::imports::drive(Arc::clone(api), config.events_pull_max_staleness()));
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
             (Some(coordinating), Some(api)) => Some(crate::repin::drive(
                 coordinating,
@@ -2671,6 +2679,7 @@ impl Composition {
                         .requires(permguard_core::assurance::Control::AuditExternalCheckpoints),
                     max_lag: config.audit_checkpoints_max_lag(),
                 },
+                !shared_bounded,
             )),
             _ => None,
         };

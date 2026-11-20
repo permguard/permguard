@@ -73,8 +73,13 @@ async fn revise(coordinating: &Arc<Coordinating>) {
 }
 
 /// Runs the pass now and every [`PASS`] until the handle is dropped; the memberships also as soon
-/// as a revocation commits.
-pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress) -> Repinning {
+/// as a revocation commits. With `imports`, the pass also imports the origins' history.
+pub fn drive(
+    coordinating: Arc<Coordinating>,
+    api: Arc<HostApi>,
+    egress: Egress,
+    imports: bool,
+) -> Repinning {
     let moved = Arc::new(tokio::sync::Notify::new());
     let waking = Arc::clone(&moved);
     if let Err(error) = api.on_rings_moved(Arc::new(move || waking.notify_one())) {
@@ -103,8 +108,9 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>, egress: Egress)
             let _ = api.sync_due().await;
             let repinned = api.repin_due().await + api.cutover_due().await;
             let shipped = api.ship_due().await;
-            // The origins' history this Host imports, after what it ships (WP-6.2c2a).
-            let imported = api.import_due().await;
+            // The origins' history this Host imports, after what it ships (WP-6.2c2a), unless a
+            // `shared-bounded` member's own pass imports it (BUG-0130).
+            let imported = if imports { api.import_due().await } else { 0 };
             if imported > 0 {
                 tracing::debug!(
                     event.name = "host.membership.imported",
