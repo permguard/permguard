@@ -441,11 +441,40 @@ fn an_ended_runs_missing_batches_are_found_and_never_sealed_again() {
 
     // A fresh handle surveys, and refuses to seal the ended run again.
     producer.append(&ledger(1), &"d".to_owned()).expect("d");
+    let fresh = host.sealer();
     assert!(matches!(
-        host.sealer().seal(&ledger(1), 10),
+        fresh.seal(&ledger(1), 10),
         Err(StreamError::Corruption(_))
     ));
     assert_eq!(batches_of(&first.run_id), 0, "not sealed again");
+    // And says so where the Host's health reads it, not only in a log (AC2).
+    {
+        let refused = fresh.refused().expect("read");
+        assert!(
+            refused
+                .iter()
+                .any(|refusal| refusal.resource == ledger(1).to_string()
+                    && refusal.state.starts_with("corrupt")),
+            "{refused:?}"
+        );
+    }
+    // What `host streams runs` reads: the ended run stays sealed through its end, as the later
+    // run's batches prove, not read back as never sealed (AC3).
+    {
+        use permguard_host::api::streams::StreamReads as _;
+        let reads = super::reads::Reads::default()
+            .with(Arc::new(host.sealer()) as Arc<dyn super::reads::Inspect>);
+        let frontier = reads
+            .frontier("data", "decisions", &ledger(1).to_string())
+            .expect("read")
+            .expect("served");
+        let ended = frontier
+            .producer
+            .iter()
+            .find(|run| run.run == hex(&first.run_id))
+            .expect("listed");
+        assert_eq!((ended.sealed, ended.last_seq), (2, 2), "{ended:?}");
+    }
 
     // The current run's batches removed: STATE's watermark does not move back.
     let host = Host::new("current-batches");
@@ -8570,4 +8599,227 @@ fn records_before_the_first_membership_are_carried_into_its_run_and_ship() {
         .expect("read")
         .expect("held");
     assert_eq!(subscription.acked(&fenced), 3, "two carried and one after");
+}
+
+/// [`pump`], each shipment ingested under `subscription`'s own membership, as its coordinator
+/// would: what a test of two memberships of one stream needs.
+fn pump_as(
+    producer: &Producer<Text>,
+    consumer: &Consumer<Text>,
+    member: &Host,
+    subscription: &Subscribed<'_>,
+) -> Vec<Outcome> {
+    let mut outcomes = Vec::new();
+    let resource = ledger(1).to_string();
+    let due = producer.due(subscription).expect("due");
+    if !due.contains(&resource) {
+        return outcomes;
+    }
+    let pins = vec![pin_of(member)];
+    let pinned = move |_: &str, _: u64| pins.clone();
+    while let Some(shipment) = producer
+        .next(subscription, &resource, 448 * 1024)
+        .expect("next")
+    {
+        let (answer, _) = consumer
+            .ingest(
+                &Shipping {
+                    membership_id: subscription.membership_id,
+                    epoch: subscription.epoch,
+                    member: member.identity.host_id(),
+                    resource: &resource,
+                    pins: &pinned,
+                },
+                &shipment.body,
+            )
+            .expect("ingested");
+        outcomes.push(answer.outcome);
+        if !producer
+            .answered(
+                subscription,
+                &resource,
+                &shipment,
+                &answer.encode().expect("encodes"),
+            )
+            .expect("answered")
+        {
+            break;
+        }
+    }
+    outcomes
+}
+
+/// BUG-0198, BUG-0164: the records written into a run whose membership then ended, past what its
+/// coordinator acknowledged, are carried into the run the next live membership fences and ship
+/// with it; what the ended one acknowledged is not carried again, and the run is not stated lost.
+#[test]
+fn what_an_ended_membership_never_acknowledged_is_carried_to_the_next_one() {
+    use permguard_host::composition::StreamAppender as _;
+
+    const ENDED: [u8; 16] = [6; 16];
+    let host = Host::new("ended-carry");
+    let coordinator = Host::new("ended-carry-c");
+    let consumer = consumer_on(&coordinator);
+    let producer = host.sealer();
+    producer.carry_with(Arc::new(|bytes: &[u8], _| Ok(bytes.to_vec())));
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let old = subscribed_by(ENDED, &covering, 1);
+    let new = subscribed_by(MEMBERSHIP, &covering, 1);
+    producer.due(&old).expect("due");
+    let held = producer
+        .append(&ledger(1), &"shipped".to_owned())
+        .expect("appended")
+        .run_id;
+    assert_eq!(
+        pump_as(&producer, &consumer, &host, &old),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &ENDED, "decisions")
+            .expect("read")
+            .expect("held")
+            .acked(&held),
+        1
+    );
+    // Answered while the membership was ending: in its run, never acknowledged.
+    for decision in ["late-1", "late-2"] {
+        assert_eq!(
+            producer
+                .append(&ledger(1), &decision.to_owned())
+                .expect("appended")
+                .run_id,
+            held
+        );
+    }
+
+    // It ended: until a live membership takes them, the two are said to wait, on health.
+    producer.retain(&ENDED, &[]).expect("dropped");
+    let waiting = |producer: &Producer<Text>| {
+        producer
+            .refused()
+            .expect("read")
+            .into_iter()
+            .filter(|refusal| refusal.state.contains("wait for a live membership"))
+            .count()
+    };
+    assert_eq!(waiting(&producer), 1, "the stream is named while they wait");
+    // The next membership's pass rolls the run over and carries the two.
+    assert_eq!(
+        pump_as(&producer, &consumer, &host, &new),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(waiting(&producer), 0, "nothing named once carried");
+    let successor = producer
+        .produced_runs(&ledger(1))
+        .expect("read")
+        .into_iter()
+        .map(|run| run.run)
+        .find(|run| *run != held)
+        .expect("a successor");
+    let carried: Vec<Vec<u8>> = producer
+        .produced_records(&ledger(1), &successor, 1, 10)
+        .expect("read")
+        .records
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
+    let original: Vec<Vec<u8>> = producer
+        .produced_records(&ledger(1), &held, 1, 10)
+        .expect("read")
+        .records
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
+    assert_eq!(
+        carried,
+        original[1..],
+        "the two never acknowledged, and only them"
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+            .expect("read")
+            .expect("held")
+            .acked(&successor),
+        2,
+        "shipped to the live membership"
+    );
+    assert!(
+        !producer.stated.lock().expect("lock").contains(&held),
+        "a carried run is not stated as unshipped"
+    );
+}
+
+/// BUG-0164: the run holding what the ended membership never acknowledged was ended by a restart
+/// before the membership ended, and another opened under the same fence: what it holds is carried
+/// all the same, into the run the next live membership fences, and ships.
+#[test]
+fn an_ended_run_of_an_ended_membership_is_carried_too() {
+    use permguard_host::composition::StreamAppender as _;
+
+    const ENDED: [u8; 16] = [6; 16];
+    let host = Host::new("ended-run-carry");
+    let coordinator = Host::new("ended-run-carry-c");
+    let consumer = consumer_on(&coordinator);
+    let producer = host.sealer();
+    producer.carry_with(Arc::new(|bytes: &[u8], _| Ok(bytes.to_vec())));
+    let covering = permguard_core::authz::Selector::exactly(ledger(1));
+    let old = subscribed_by(ENDED, &covering, 1);
+    let new = subscribed_by(MEMBERSHIP, &covering, 1);
+    producer.due(&old).expect("due");
+    let held = producer
+        .append(&ledger(1), &"shipped".to_owned())
+        .expect("appended")
+        .run_id;
+    assert_eq!(
+        pump_as(&producer, &consumer, &host, &old),
+        vec![Outcome::Ok]
+    );
+    producer
+        .append(&ledger(1), &"after-the-reset".to_owned())
+        .expect("appended");
+    // A restart: the run ends, its successor opens under the same fence, empty.
+    let restarted = producer
+        .rollover(
+            &ledger(1),
+            Some(Fence {
+                membership_id: ENDED,
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+            }),
+        )
+        .expect("opened")
+        .run_id;
+    assert_ne!(restarted, held);
+
+    producer.retain(&ENDED, &[]).expect("dropped");
+    assert_eq!(
+        pump_as(&producer, &consumer, &host, &new),
+        vec![Outcome::Ok]
+    );
+    let successor = producer
+        .produced_runs(&ledger(1))
+        .expect("read")
+        .into_iter()
+        .map(|run| run.run)
+        .find(|run| *run != held && *run != restarted)
+        .expect("a successor under the live fence");
+    let carried: Vec<Vec<u8>> = producer
+        .produced_records(&ledger(1), &successor, 1, 10)
+        .expect("read")
+        .records
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
+    assert_eq!(carried, vec![b"after-the-reset".to_vec()], "{carried:?}");
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+            .expect("read")
+            .expect("held")
+            .acked(&successor),
+        1,
+        "shipped"
+    );
 }

@@ -127,6 +127,9 @@ pub struct Producer<C> {
     /// The runs whose records no live membership ships, already stated at WARN by this process
     /// (BUG-0105): each said once.
     pub(crate) stated: Mutex<std::collections::BTreeSet<[u8; 16]>>,
+    /// The streams whose seal or garbage collection found them corrupt, by resource, with why:
+    /// named on health until a seal of the stream succeeds again (BUG-0116).
+    pub(crate) corrupt: Mutex<BTreeMap<String, String>>,
     /// Closed to appends by an identity reset (BUG-0163).
     pub(crate) closed: std::sync::atomic::AtomicBool,
     /// How long a batch is kept after every required subscription acknowledged it (WP-7.9b):
@@ -161,6 +164,7 @@ impl<C: RecordCodec> Producer<C> {
             fences: Mutex::new(Vec::new()),
             held_by: Mutex::new(BTreeMap::new()),
             stated: Mutex::new(std::collections::BTreeSet::new()),
+            corrupt: Mutex::new(BTreeMap::new()),
             closed: std::sync::atomic::AtomicBool::new(false),
             acknowledged_retention: None,
             carrier: std::sync::RwLock::new(None),
@@ -237,13 +241,30 @@ impl<C: RecordCodec> Producer<C> {
             ));
         };
         let bound = max_records.min(u64::from(self.descriptor.max_batch_records));
-        self.physical(resource)?.seal(
+        let sealed = self.physical(resource)?.seal(
             &self.context,
             &self.descriptor,
             signer,
             bound,
             max_record_bytes,
-        )
+        );
+        self.note_corruption(&resource.to_string(), sealed.as_ref().err());
+        sealed
+    }
+
+    /// Keeps, or clears, what a seal found of the stream of `resource`: a corruption is named on
+    /// health until a seal succeeds again (BUG-0116).
+    pub(crate) fn note_corruption(&self, resource: &str, error: Option<&StreamError>) {
+        let mut corrupt = self.corrupt.lock().unwrap_or_else(PoisonError::into_inner);
+        match error {
+            Some(StreamError::Corruption(why)) => {
+                corrupt.insert(resource.to_owned(), why.clone());
+            }
+            Some(_) => {}
+            None => {
+                corrupt.remove(resource);
+            }
+        }
     }
 
     /// The signer spans of the stream of `resource`.
@@ -1756,13 +1777,18 @@ impl<C: RecordCodec> super::retention::Prunable for Producer<C> {
         for physical in self.every()? {
             match self.prune_stream(&physical, Some(audit)) {
                 Ok(done) => pruned.extend(done),
-                Err(error) => tracing::error!(
-                    event.name = "host.stream.prune_failed",
-                    component = "host",
-                    stream = %Self::pruned_name(&physical),
-                    error = %error,
-                    "a stream's garbage collection pass failed; the others go on"
-                ),
+                Err(error) => {
+                    if matches!(error, StreamError::Corruption(_)) {
+                        self.note_corruption(&physical.key.resource, Some(&error));
+                    }
+                    tracing::error!(
+                        event.name = "host.stream.prune_failed",
+                        component = "host",
+                        stream = %Self::pruned_name(&physical),
+                        error = %error,
+                        "a stream's garbage collection pass failed; the others go on"
+                    );
+                }
             }
         }
         Ok(Some(pruned))

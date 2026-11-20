@@ -198,18 +198,39 @@ impl<C: RecordCodec> Inspect for Producer<C> {
         // Read from the journal and the batch files alone: never through the sealer's survey,
         // which writes, and which refuses a forked stream (after the review).
         let subscriptions = subscriptions_held(&physical.writer().dir)?;
+        let signed = physical
+            .writer()
+            .state
+            .as_ref()
+            .map(|state| (state.run_id, state.signed_seq));
+        let mut runs = Vec::new();
         for (run, fence, last_seq, ended) in Self::journal_runs(&physical)? {
             let low_watermark =
                 Self::anchor_of(&physical, &run)?.map_or(1, |anchor| anchor.low_watermark);
-            into.producer.push(ProducerRun {
+            // What STATE counted never moves back, whatever batch files remain (BUG-0116).
+            let counted = signed
+                .filter(|(held, _)| *held == run)
+                .map_or(0, |(_, seq)| seq);
+            runs.push(ProducerRun {
                 run: hex(&run),
                 ended,
                 last_seq,
-                sealed: Self::sealed_of(&physical, &run)?,
+                sealed: Self::sealed_of(&physical, &run)?.max(counted),
                 acknowledged: truncate_safe_of(&subscriptions, &run, fence),
                 low_watermark,
             });
         }
+        // The seal moves to a run only once every run before it is sealed through its end: a run
+        // a later sealed run follows was sealed through its last record, even with its batches
+        // gone since, and is said so rather than read back as never sealed (BUG-0116).
+        let mut later_sealed = false;
+        for run in runs.iter_mut().rev() {
+            if later_sealed {
+                run.sealed = run.sealed.max(run.last_seq);
+            }
+            later_sealed |= run.sealed > 0;
+        }
+        into.producer.extend(runs);
         Ok(())
     }
 

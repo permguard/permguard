@@ -766,7 +766,7 @@ impl<C: RecordCodec> Producer<C> {
             resource = %physical.key.resource,
             run = %hex(&run),
             records = done,
-            "the records of a run no membership fenced were carried into the run the first one \
+            "the records of a run no live membership fences were carried into the run a live one \
              fences: its coordinator receives them"
         );
         Ok(())
@@ -807,8 +807,16 @@ impl<C: RecordCodec> Producer<C> {
             return Ok(());
         }
         let carried = carried_runs(&physical.writer().dir)?;
+        // A run whose carry is pending is on its way to a coordinator, not lost.
+        let carrying = read_view(&physical.writer().dir, CARRY, format::VIEW)?
+            .map(|marker| decode_carry(&marker).map(|(run, _, _)| run))
+            .transpose()?;
         for (run, fence, last, _) in runs {
-            if *last == 0 || *fence == Some(subscribed.membership_id) || carried.contains(run) {
+            if *last == 0
+                || *fence == Some(subscribed.membership_id)
+                || carried.contains(run)
+                || carrying == Some(*run)
+            {
                 continue;
             }
             let reason = match fence {
@@ -1349,6 +1357,50 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
                 });
             }
         }
+        // A stream found corrupt, its sealed range's batches gone: it is not sealed again, so
+        // nothing past it ships, and it is said so on health rather than only logged (BUG-0116).
+        for (resource, why) in self
+            .corrupt
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            found.push(composition::RefusedShipping {
+                membership_id: [0; 16],
+                stream: self.stream_name(),
+                resource: resource.clone(),
+                task_id: String::new(),
+                state: format!("corrupt, not sealed again: {why}"),
+            });
+        }
+        // Records a membership that ended never had acknowledged, waiting for a live one to carry
+        // them to its coordinator: not shipped until then, and said so (BUG-0198, BUG-0164).
+        for physical in self.every().map_err(wrap)? {
+            let writer = physical.writer();
+            let Some(marker) =
+                read_view(&writer.dir, CARRY, format::VIEW).map_err(|error| error.to_string())?
+            else {
+                continue;
+            };
+            let (run, through, done) = decode_carry(&marker).map_err(wrap)?;
+            let fence = writer
+                .run
+                .as_ref()
+                .filter(|held| held.statement.run_id == run)
+                .and_then(|held| held.statement.fence.clone());
+            found.push(composition::RefusedShipping {
+                membership_id: fence.as_ref().map_or([0; 16], |fence| fence.membership_id),
+                stream: self.stream_name(),
+                resource: physical.key.resource.clone(),
+                task_id: fence.map(|fence| fence.task_id).unwrap_or_default(),
+                state: format!(
+                    "{} record(s) of run {} wait for a live membership covering the stream to \
+                     carry them to its coordinator",
+                    through.saturating_sub(done),
+                    hex(&run)
+                ),
+            });
+        }
         // A live subscription whose stream another live membership's run holds ships nothing,
         // and says so (BUG-0198, BUG-0229).
         for ((resource, membership_id, task_id), holder) in self
@@ -1797,14 +1849,72 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .retain(|(_, held, task), _| held != membership_id || task_ids.contains(task));
+        let carrier = self.carrier().is_some();
         for physical in self.every().map_err(wrap)? {
+            // A membership that ended leaves every run it fenced, the ones a restart ended too:
+            // read before the writer is held, as reading them holds it.
+            let views = match (task_ids.is_empty(), self.signer.as_deref()) {
+                (true, Some(signer)) => physical.runs(signer, &self.descriptor).map_err(wrap)?,
+                _ => Vec::new(),
+            };
             let writer = physical.writer();
             let dir = subscriptions_dir(&writer.dir).map_err(wrap)?;
             let mut dropped = false;
-            for subscription in subscriptions_of(&writer.dir).map_err(wrap)? {
+            let held = subscriptions_of(&writer.dir).map_err(wrap)?;
+            let local = held
+                .iter()
+                .any(|subscription| subscription.membership_id == LOCAL_MEMBERSHIP);
+            for subscription in held {
                 if subscription.membership_id == *membership_id
                     && !task_ids.contains(&subscription.task_id)
                 {
+                    // The open run this subscription fences outlives it: what its coordinator
+                    // never acknowledged is carried into the run a live membership fences next,
+                    // as for a run no membership fenced, so decisions answered while it ended
+                    // still reach a coordinator (BUG-0198, BUG-0164). Marked now, while what it
+                    // acknowledged is still known.
+                    let open = writer
+                        .run
+                        .as_ref()
+                        .filter(|run| {
+                            !run.ended
+                                && run.last_seq > 0
+                                && run.statement.fence.as_ref().is_some_and(|fence| {
+                                    fence.membership_id == subscription.membership_id
+                                        && fence.task_id == subscription.task_id
+                                })
+                        })
+                        .map(|run| (run.statement.run_id, run.last_seq));
+                    // The latest run the ended membership fenced, open or ended, with records its
+                    // coordinator never acknowledged.
+                    let fenced = open.or_else(|| {
+                        views
+                            .iter()
+                            .rev()
+                            .find(|(run, fence, last, _)| {
+                                *fence == Some(subscription.membership_id)
+                                    && *last > subscription.acked(run)
+                            })
+                            .map(|(run, _, last, _)| (*run, *last))
+                    });
+                    if let Some((run_id, last_seq)) = fenced
+                        && carrier
+                        && !local
+                        && read_view(&writer.dir, CARRY, format::VIEW)
+                            .map_err(|error| error.to_string())?
+                            .is_none()
+                    {
+                        let acked = subscription.acked(&run_id);
+                        if acked < last_seq {
+                            replace_view(
+                                &writer.dir,
+                                CARRY,
+                                format::VIEW,
+                                &encode_carry(&run_id, last_seq, acked).map_err(wrap)?,
+                            )
+                            .map_err(|error| error.to_string())?;
+                        }
+                    }
                     dir.unlink(
                         &file_name(&subscription.membership_id, &subscription.task_id)
                             .map_err(wrap)?,
