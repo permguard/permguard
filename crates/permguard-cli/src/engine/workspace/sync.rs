@@ -917,11 +917,29 @@ impl Workspace<'_> {
         }
 
         // Policies the incoming head dropped.
-        for (id, (digest, _)) in &base.policies {
+        for (id, (digest, canonical)) in &base.policies {
             if incoming.policies.contains_key(id) {
                 continue;
             }
             let Some(held) = local.get(id) else {
+                // An un-aliased policy is named by its text: edited here, the file the base held
+                // it in now holds a policy neither side had. Dropped there, the remote replaced or
+                // removed it: both sides changed it, and the remote's version is never written
+                // beside this one unasked (BUG-0233).
+                if let Some(edited) = local.values().find(|held| {
+                    &held.source == canonical
+                        && !base.policies.contains_key(&held.id)
+                        && !incoming.policies.contains_key(&held.id)
+                }) && !plan
+                    .conflicts
+                    .iter()
+                    .any(|conflict| conflict.path == edited.source)
+                {
+                    plan.conflicts.push(Conflict {
+                        path: edited.source.clone(),
+                        reason: Reason::ReplacedBoth,
+                    });
+                }
                 continue;
             };
             if &held.digest == digest {
@@ -1176,6 +1194,13 @@ impl Materialization {
                     "\n  - {path}: changed here and on the remote — read the remote's version \
                      with `permguard objects cat {incoming}`"
                 )),
+                Reason::ReplacedBoth => message.push_str(&format!(
+                    "\n  - {path}: changed here and on the remote, which replaced the policy this \
+                     file held — an un-aliased policy is named by its text, so the two versions \
+                     cannot be paired: `permguard pull --resolved` writes the remote's version \
+                     beside this file; fold your change into it and delete this file, or give the \
+                     policy an `@alias`"
+                )),
                 Reason::DroppedThere => message.push_str(&format!(
                     "\n  - {path}: the remote dropped it and this workspace changed it — delete \
                      the file to accept the removal, or apply it back"
@@ -1213,6 +1238,9 @@ enum Reason {
     BothChanged { incoming: Digest },
     /// The remote dropped it, and this workspace changed it.
     DroppedThere,
+    /// An un-aliased policy this workspace edited, which the remote replaced or removed: its id is
+    /// its text, so the two sides hold different ids for what was one policy (BUG-0233).
+    ReplacedBoth,
     /// This workspace deleted it, and the remote changed it.
     DeletedHere { incoming: Digest },
     /// The remote adds a policy whose file name this workspace already uses

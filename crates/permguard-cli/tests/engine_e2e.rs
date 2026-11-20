@@ -691,6 +691,131 @@ fn a_pull_does_not_advance_over_a_conflict() {
     );
 }
 
+/// An un-aliased policy: its id is its text.
+const UNALIASED: &str = "permit (\n    principal == User::\"alice\",\n    action == Action::\"read\",\n    resource\n);\n";
+
+/// The Cedar policy files of `store`, by name.
+fn cedar_files(store: &FsStore) -> Vec<String> {
+    store
+        .list("cedar")
+        .unwrap()
+        .into_iter()
+        .filter(|(name, is_dir)| !is_dir && name.ends_with(".cedar"))
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// BUG-0233: two authors edit one un-aliased policy in place. The second's pull refuses, naming
+/// its file, and writes nothing, rather than writing the first's version beside it so the next
+/// apply holds both; folded into the remote's version, one policy remains. A remote edit of a
+/// policy this workspace did not touch still lands.
+#[test]
+fn an_unaliased_policy_changed_on_both_sides_is_a_conflict() {
+    let remote = EngineRemote::new("unaliased");
+
+    let store_a = FsStore::new(scratch("unaliased-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/alice.cedar", UNALIASED.as_bytes())
+        .unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    let store_b = FsStore::new(scratch("unaliased-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    let files = cedar_files(&store_b);
+    assert_eq!(files.len(), 1, "{files:?}");
+    let held = format!("cedar/{}", files[0]);
+
+    // Both edit it in place; author one applies first.
+    store_a
+        .write(
+            "cedar/alice.cedar",
+            UNALIASED.replace("\"read\"", "\"write\"").as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "write").unwrap().counter,
+        2
+    );
+    store_b
+        .write(&held, UNALIASED.replace("\"read\"", "\"list\"").as_bytes())
+        .unwrap();
+    assert!(ws_b.apply(&remote, "b@acme.com", "list").is_err());
+
+    let refused = ws_b.pull(&remote, false).unwrap_err().to_string();
+    assert!(
+        refused.contains(&held) && refused.contains("changed here and on the remote"),
+        "{refused}"
+    );
+    assert_eq!(cedar_files(&store_b), files, "no file was written");
+    assert_eq!(ws_b.status().unwrap().checkpoint.unwrap().counter, 1);
+
+    // Reconciled as the refusal says: the remote's version written beside, the change folded
+    // into it, this file deleted. The ledger then holds one policy for alice.
+    ws_b.pull(&remote, true).unwrap();
+    let written: Vec<String> = cedar_files(&store_b)
+        .into_iter()
+        .filter(|name| format!("cedar/{name}") != held)
+        .collect();
+    assert_eq!(
+        written.len(),
+        1,
+        "the remote's version, beside: {written:?}"
+    );
+    store_b.remove(&held).unwrap();
+    store_b
+        .write(
+            &format!("cedar/{}", written[0]),
+            UNALIASED.replace("\"read\"", "\"list\"").as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "list").unwrap().counter,
+        3
+    );
+    let store_c = FsStore::new(scratch("unaliased-c"));
+    let ws_c = bind(&store_c);
+    std::fs::remove_file(store_c.root().join("manifest.yml")).unwrap();
+    ws_c.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    assert_eq!(cedar_files(&store_c).len(), 1, "one policy for alice");
+
+    // A remote edit of a policy this workspace left alone lands without a conflict.
+    store_a.remove("cedar/alice.cedar").unwrap();
+    ws_a.pull(&remote, false).unwrap();
+    let ours = cedar_files(&store_a);
+    assert_eq!(ours.len(), 1, "{ours:?}");
+    store_a
+        .write(
+            &format!("cedar/{}", ours[0]),
+            UNALIASED.replace("\"read\"", "\"delete\"").as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "delete").unwrap().counter,
+        4
+    );
+    ws_c.pull(&remote, false)
+        .expect("an untouched policy the remote edited lands");
+    let landed = cedar_files(&store_c);
+    assert_eq!(landed.len(), 1, "{landed:?}");
+    let text = String::from_utf8(
+        store_c
+            .read(&format!("cedar/{}", landed[0]))
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(text.contains("\"delete\""), "{text}");
+}
+
 /// One Cedar file, two policies.
 const DOCUMENTS: &str = r#"// Who may do what on documents.
 

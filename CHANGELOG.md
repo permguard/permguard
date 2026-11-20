@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **`permguard pull` refuses an un-aliased policy both sides edited, instead of writing the remote's version beside it.**
+  An un-aliased policy is named by its text, so an edit here and an edit on the remote left two ids for one policy: the pull wrote the remote's version beside the author's file, exited 0, and the next `apply` held both.
+  The pull now refuses, naming the file as changed here and on the remote, and writes nothing; `pull --resolved` writes the remote's version beside it to fold the change into, or the policy can be given an `@alias` (BUG-0233).
 - **The client certificate an mTLS development profile generates acts, and a certificate that maps to nobody is told what would map it.**
   Since certificates stopped granting anything on their own, the `client.pem` a `*-mtls` profile writes was refused `401` on every closed route.
   A development volume the server provisions (`autogenerate: true`, the `development` profile) now commits that certificate as its bootstrap principal when the volume commits none, logged as `authz.bootstrap_development`; above `development` the bootstrap stays an operator's, `permguard host grants bootstrap`.
