@@ -377,6 +377,90 @@ fn the_shared_view_names_what_is_behind_the_verified_checkpoint() {
     );
 }
 
+/// BUG-0137: an origin the verified checkpoint no longer names, as after the coordinator suspends
+/// it, leaves the frontier a shared decision reads and an unbound window: its imported runs are
+/// not read, while the origins named still are.
+#[test]
+fn an_origin_the_checkpoint_no_longer_names_leaves_shared_decisions() {
+    const SUSPENDED: [u8; 16] = [4; 16];
+    const ITS_RUN: [u8; 16] = [5; 16];
+    let consumer = Arc::new(Consumer::default());
+    consumer.runs.lock().unwrap().extend([
+        held(ORIGIN, RUN, &[100, 200]),
+        held(SUSPENDED, ITS_RUN, &[150, 250]),
+    ]);
+    let imported = imported("left-out", &consumer);
+    // Before any checkpoint is verified, nothing tells the origins apart.
+    assert_eq!(
+        ids(&imported
+            .window(ZONE, LEDGER, &query(0, 300), None)
+            .expect("read")),
+        ["e-1-1", "e-1-2", "e-4-1", "e-4-2"]
+    );
+
+    let checkpoint = Checkpoint {
+        coordinator: [2; 16],
+        resource: Resource::ledger("data", ZONE, LEDGER).to_string(),
+        revision: [3; 32],
+        origins: vec![CheckpointOrigin {
+            host_id: ORIGIN,
+            runs: vec![CheckpointRun {
+                run: RUN,
+                acked: 2,
+                oldest_retained: 1,
+                admitted_at: None,
+            }],
+            pins: Vec::new(),
+        }],
+        issued_at: 1,
+        channel_binding: [4; 32],
+        ring_epoch: 1,
+        key_set_digest: [5; 32],
+    };
+    let signed = permguard_objects::cose::Sign1::sign_with(
+        permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+        permguard_core::domains::protected::EVENT_IMPORT_CHECKPOINT,
+        b"k",
+        checkpoint.encode().expect("encodes"),
+        |_| Ok(vec![0; 64]),
+    )
+    .expect("an envelope")
+    .encode()
+    .expect("encodes");
+    *consumer.state.lock().unwrap() = Some(State {
+        membership_id: [6; 16],
+        revision: [3; 32],
+        checkpoint: signed,
+        verified_at: 1_800_000_000,
+        gaps: Vec::new(),
+    });
+
+    let shared = imported.shared(ZONE, LEDGER).expect("read");
+    let origins: Vec<&str> = shared
+        .frontier
+        .iter()
+        .map(|run| run.origin.as_str())
+        .collect();
+    assert_eq!(
+        origins,
+        [hex(&ORIGIN)],
+        "the suspended origin left the frontier"
+    );
+    assert_eq!(
+        ids(&imported
+            .window(ZONE, LEDGER, &query(0, 300), Some(&shared.frontier))
+            .expect("read")),
+        ["e-1-1", "e-1-2"]
+    );
+    assert_eq!(
+        ids(&imported
+            .window(ZONE, LEDGER, &query(0, 300), None)
+            .expect("read")),
+        ["e-1-1", "e-1-2"],
+        "an unbound window reads only the origins vouched for too"
+    );
+}
+
 #[test]
 fn one_logical_occurrence_applies_once_and_a_conflicting_one_is_quarantined() {
     let a = record(ORIGIN, RUN, 1, 100, "dup");

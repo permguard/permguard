@@ -135,6 +135,8 @@ pub struct Imported {
     ledgers: Mutex<BTreeMap<(String, String), OpenLedger>>,
     /// This plane's own journal, for the local half of the logical index.
     local: Option<Arc<dyn Local>>,
+    /// The origins already said to be left out of shared decisions, per resource (BUG-0137).
+    left_out: Mutex<std::collections::BTreeSet<(String, [u8; 16])>>,
 }
 
 impl Imported {
@@ -161,6 +163,7 @@ impl Imported {
             floors,
             ledgers: Mutex::new(BTreeMap::new()),
             local: None,
+            left_out: Mutex::new(std::collections::BTreeSet::new()),
         })
     }
 
@@ -424,8 +427,20 @@ impl Imported {
         let held = self.ledger(zone, ledger);
         let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
         self.catch_up(&mut held)?;
+        // Unbound, the origins the verified checkpoint names, as a bound frontier names them
+        // (BUG-0137): an origin the coordinator stopped vouching for is not read.
+        let vouched = match bound {
+            None => self.vouched(&held.resource)?,
+            Some(_) => None,
+        };
         let mut found = Vec::new();
         for ((origin, run), indexed) in &held.runs {
+            if vouched
+                .as_ref()
+                .is_some_and(|vouched| !vouched.contains(origin))
+            {
+                continue;
+            }
             let through = match bound {
                 None => u64::MAX,
                 Some(bound) => match bound
@@ -492,6 +507,48 @@ impl Imported {
         Ok(found)
     }
 
+    /// The origins the checkpoint the Host last verified names, when it verified one: the only
+    /// origins a shared decision reads (BUG-0137). `None` before any checkpoint is verified.
+    fn vouched(
+        &self,
+        resource: &Resource,
+    ) -> Result<Option<std::collections::BTreeSet<[u8; 16]>>, JournalError> {
+        let Some(state) = self.consumer.import_state(resource).map_err(io)? else {
+            return Ok(None);
+        };
+        let checkpoint = permguard_objects::cose::Sign1::decode(&state.checkpoint)
+            .ok()
+            .and_then(|sign1| Checkpoint::decode(sign1.payload_unverified()).ok())
+            .ok_or_else(|| {
+                JournalError::Corrupt(
+                    "the Host's import state holds a checkpoint that does not read".to_owned(),
+                )
+            })?;
+        Ok(Some(
+            checkpoint
+                .origins
+                .iter()
+                .map(|origin| origin.host_id)
+                .collect(),
+        ))
+    }
+
+    /// Says once per resource and origin that an origin the verified checkpoint no longer names,
+    /// suspended, revoked or forked, is left out of shared decisions (BUG-0137).
+    fn leave_out(&self, resource: &Resource, origin: &[u8; 16]) {
+        let mut said = self.left_out.lock().unwrap_or_else(PoisonError::into_inner);
+        if said.insert((resource.to_string(), *origin)) {
+            tracing::info!(
+                event.name = "temporal.origin_left_out",
+                component = "data-plane",
+                resource = %resource,
+                origin = %hex(origin),
+                "an origin the coordinator's verified checkpoint no longer names is left out of \
+                 shared decisions"
+            );
+        }
+    }
+
     /// What a shared decision knows of the ledger's imported history now.
     pub fn shared(&self, zone: &str, ledger: &str) -> Result<Shared, JournalError> {
         let held = self.ledger(zone, ledger);
@@ -555,6 +612,23 @@ impl Imported {
             for gap in state.gaps.iter().filter(|gap| gap.origin != self.host_id) {
                 named.entry((gap.origin, gap.run)).or_insert((0, 0));
             }
+        }
+        // Only the origins the verified checkpoint names: one the coordinator suspended, revoked
+        // or found forking is no longer vouched for, and its runs leave the frontier a shared
+        // decision reads (BUG-0137).
+        if let Some(checkpoint) = &checkpoint {
+            let vouched: std::collections::BTreeSet<[u8; 16]> = checkpoint
+                .origins
+                .iter()
+                .map(|origin| origin.host_id)
+                .collect();
+            named.retain(|(origin, _), _| {
+                let kept = vouched.contains(origin);
+                if !kept {
+                    self.leave_out(&held.resource, origin);
+                }
+                kept
+            });
         }
         let frontier: Vec<permguard_core::frontier::FrontierRun> = named
             .into_iter()

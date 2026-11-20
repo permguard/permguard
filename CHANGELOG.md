@@ -235,6 +235,9 @@ is cut.
 
 ### Fixed
 
+- **A shared temporal decision reads only the origins the coordinator's verified checkpoint names.**
+  After a coordinator suspended a member, or found it forking, the other members verified a checkpoint that no longer named it and still decided on the history they had imported from it.
+  A shared decision's frontier and window now leave out every origin the last verified checkpoint does not name, and the Data Plane logs `temporal.origin_left_out` once per origin (BUG-0137).
 - **A `shared-bounded` member imports as often as its staleness bound needs, and the staleness gauge never reads fresh before the first verification.**
   The Host verified a coordinator's checkpoint only on its one-minute membership pass, so the default `events.pull.max_staleness` of 10 seconds refused about fifty seconds of every minute with `history_stale`, with nothing behind.
   A `shared-bounded` member now imports on its own pass, every half of its bound within 2 seconds and a minute, and a bound below 4 seconds is warned at start (`host.import_bound_unmet`) (BUG-0130).
