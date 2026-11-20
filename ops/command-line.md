@@ -180,16 +180,17 @@ A secret key is written once to a new file only its owner reads, and never print
 
 ## Streams
 
-| Command                      | Grant          | State   | Why                                                           |
-| ---------------------------- | -------------- | ------- | ------------------------------------------------------------- |
-| `host streams list`          | `streams.read` | present |                                                               |
-| `host streams frontier`      | `streams.read` | present |                                                               |
-| `host streams signers`       | `streams.read` | present |                                                               |
-| `host streams runs`          | `streams.read` | present |                                                               |
-| `host streams subscriptions` | `streams.read` | present |                                                               |
-| `host streams gaps`          | `streams.read` | present |                                                               |
-| `host streams anchors`       | `streams.read` | present |                                                               |
-| `streams verify`             | offline        | blocked | no package of this plan schedules the offline stream verifier |
+| Command                      | Grant              | State   | Why                                                           |
+| ---------------------------- | ------------------ | ------- | ------------------------------------------------------------- |
+| `host streams list`          | `streams.read`     | present |                                                               |
+| `host streams frontier`      | `streams.read`     | present |                                                               |
+| `host streams signers`       | `streams.read`     | present |                                                               |
+| `host streams runs`          | `streams.read`     | present |                                                               |
+| `host streams subscriptions` | `streams.read`     | present |                                                               |
+| `host streams gaps`          | `streams.read`     | present |                                                               |
+| `host streams anchors`       | `streams.read`     | present |                                                               |
+| `host imports gaps accept`   | `membership.admin` | present |                                                               |
+| `streams verify`             | offline            | blocked | no package of this plan schedules the offline stream verifier |
 
 ## Configuration and discovery
 
