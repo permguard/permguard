@@ -3902,3 +3902,67 @@ fn decision_signers_for_a_ledger_say_how_to_name_a_run() {
         "{said}"
     );
 }
+
+/// BUG-0112: an event export as a coordinator serves it, Host batches (`host-batch-v1`) naming
+/// their producer as UUID text over records naming it as 32 hex digits, verifies offline under the
+/// data plane's keys: every record included, exit 0. The export is bound by the ledger's ids,
+/// which its records carry; bound to another ledger, or with a record altered, it does not verify.
+/// The fixture is a real export of `examples/dogwood-session-access` from an all-in-one.
+#[test]
+fn a_real_event_export_of_host_batches_verifies_offline() {
+    let dir = scratch("event-export-host-batches");
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let archive: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixtures.join("event-export-host-batches.json")).expect("the export"),
+    )
+    .expect("JSON");
+    std::fs::copy(
+        fixtures.join("event-export-host-batches.keys.json"),
+        dir.join("keys.json"),
+    )
+    .expect("the keys");
+    let verify = |archive: &serde_json::Value| {
+        std::fs::write(
+            dir.join("archive.json"),
+            serde_json::to_vec(archive).expect("JSON"),
+        )
+        .expect("written");
+        run(
+            &dir,
+            &[
+                "-o",
+                "json",
+                "events",
+                "verify",
+                "--file",
+                "archive.json",
+                "--keys",
+                "keys.json",
+            ],
+        )
+    };
+
+    let verified = verify(&archive);
+    assert_eq!(verified.status.code(), Some(0), "{}", stderr(&verified));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&verified)).expect("JSON");
+    let records = archive["records"].as_array().expect("records").len();
+    assert!(records > 1, "{records}");
+    let said = report.to_string();
+    assert!(
+        said.contains(&format!("\"included\":{records}")) && said.contains("\"not_included\":0"),
+        "{said}"
+    );
+
+    let mut elsewhere = archive.clone();
+    elsewhere["scope_binding"]["ledger"] =
+        serde_json::json!("01a1fa06-278c-7e43-9e51-000000000000");
+    assert_eq!(
+        verify(&elsewhere).status.code(),
+        Some(2),
+        "bound to another ledger"
+    );
+
+    let mut altered = archive.clone();
+    altered["records"][1]["observed_at"] = serde_json::json!("2001-01-01T00:00:00Z");
+    assert_eq!(verify(&altered).status.code(), Some(2), "a record altered");
+}

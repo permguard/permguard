@@ -57,6 +57,10 @@ impl Sign for Key {
     }
 }
 
+/// The zone and ledger every batch [`sealed`] makes signs, by their ids.
+pub const ZONE_ID: &str = "00000000-0000-4000-8000-0000000000a1";
+pub const LEDGER_ID: &str = "00000000-0000-4000-8000-0000000000b1";
+
 /// The `host-batch-v1` entry of `records` (their canonical bytes), the run `run` of the Host
 /// `producer` from `first_seq`, signed under `key` as `typ`, leaves digested under `domain`.
 pub fn sealed(
@@ -78,7 +82,7 @@ pub fn sealed(
         stream_key: KeyView {
             plane: "data".to_owned(),
             stream_type: "events".to_owned(),
-            resource: "plane/data/zone/z/ledger/l".to_owned(),
+            resource: format!("plane/data/zone/{ZONE_ID}/ledger/{LEDGER_ID}"),
             producer_host_id: producer.to_owned(),
         },
         run: run.to_owned(),

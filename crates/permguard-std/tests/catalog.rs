@@ -656,3 +656,78 @@ fn a_revision_read_from_a_deleted_record_never_matches_its_successor() {
         "{refused:?}"
     );
 }
+
+/// BUG-0146, through the zone: a ledger created in a zone that was deleted and recreated, or that
+/// took the name of a zone renamed away, starts above every revision a ledger reached under the
+/// same `<zone>/<ledger>` path, so a change read from the old ledger is a conflict there too; on a
+/// reopened catalog as well.
+#[test]
+fn a_revision_read_through_a_recreated_zone_never_matches_its_successor() {
+    use permguard_core::catalog::Write;
+
+    let root = scratch("successor-through-zone");
+    let catalog = FileCatalog::new(&root);
+    let stale = |revision| Write {
+        expected_revision: Some(revision),
+        operation: None,
+        provenance: None,
+    };
+    let refused_stale = |catalog: &FileCatalog, zone: &str, ledger: &str, revision: u64| {
+        let refused = catalog
+            .delete_ledger_with(
+                &Selector::Name(zone.to_owned()),
+                &Selector::Name(ledger.to_owned()),
+                &stale(revision),
+            )
+            .err();
+        assert!(
+            matches!(
+                refused,
+                Some(CatalogError::RevisionConflict { kind: "ledger", .. })
+            ),
+            "{zone}/{ledger} at {revision}: {refused:?}"
+        );
+    };
+
+    // A zone deleted with its ledger, and both recreated under the same names.
+    let zone = catalog.create_zone("acme").expect("a zone");
+    let zone_id = Selector::Id(zone.id.clone());
+    let first = catalog
+        .create_ledger(&zone_id, "payments")
+        .expect("a ledger");
+    catalog
+        .delete_ledger_with(
+            &zone_id,
+            &Selector::Id(first.id.clone()),
+            &stale(first.revision),
+        )
+        .expect("the ledger deleted");
+    catalog
+        .delete_zone_with(&zone_id, &stale(zone.revision))
+        .expect("the zone deleted");
+    let catalog = FileCatalog::new(&root);
+    let zone = catalog.create_zone("acme").expect("the zone recreated");
+    let second = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "payments")
+        .expect("the ledger recreated");
+    assert!(second.revision > first.revision, "{second:?}");
+    refused_stale(&catalog, "acme", "payments", first.revision);
+
+    // A zone renamed away with its ledger, and a new zone taking its name.
+    let moved = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "billing")
+        .expect("a ledger");
+    catalog
+        .rename_zone_with(
+            &Selector::Id(zone.id.clone()),
+            "acme-old",
+            &stale(zone.revision),
+        )
+        .expect("the zone renamed away");
+    let taken = catalog.create_zone("acme").expect("the name reused");
+    let successor = catalog
+        .create_ledger(&Selector::Id(taken.id.clone()), "billing")
+        .expect("a ledger under the old path");
+    assert!(successor.revision > moved.revision, "{successor:?}");
+    refused_stale(&catalog, "acme", "billing", moved.revision);
+}

@@ -463,6 +463,21 @@ fn bound(
                      names the ledger they belong to"
                 ));
             }
+            // A binding by name is tied to the ledger the batches sign through the decisions,
+            // which carry the names: markers carry no tenant. An archive of markers alone, bound
+            // by a name, whose batches sign a ledger, has nothing that ties that ledger to the
+            // name, so it is not taken as that ledger's (BUG-0142); bound by ids, the batches
+            // answer it above.
+            let decides = records
+                .iter()
+                .any(|record| text(record, &["kind"]).as_deref() == Some("decision"));
+            if (!is_id(zone) || !is_id(ledger)) && !decides && !ledgers.is_empty() {
+                return Err(format!(
+                    "the archive is bound to {binding} by name, and it holds no decision to tie \
+                     that name to the ledger its batches sign: a marker carries no tenant. Export \
+                     it bound by the ledger's ids to verify its markers"
+                ));
+            }
             // The decisions: the binding's names, where it names names.
             match records.iter().find(|record| {
                 text(record, &["kind"]).as_deref() == Some("decision")
@@ -1363,9 +1378,11 @@ mod archive_verify {
                 pdp: "01".repeat(16),
                 instance: "07".repeat(16),
             },
+            // A tenant view of markers, which carry no tenant, is bound by the ids its batches
+            // sign (BUG-0142).
             DecisionArchiveScope::Tenant {
-                zone: "acme".to_owned(),
-                ledger: "main".to_owned(),
+                zone: super::super::host_proof::testing::ZONE_ID.to_owned(),
+                ledger: super::super::host_proof::testing::LEDGER_ID.to_owned(),
             },
         ]
     }
@@ -1674,6 +1691,31 @@ mod archive_verify {
         // A marker carries no tenant: it is bound through the batch that proved it.
         let marker = [serde_json::json!({"kind": "marker"})];
         assert!(bound(&tenant(zone, ledger), &marker, &signed(zone, other)).is_err());
+        assert!(bound(&tenant(zone, ledger), &marker, &signed(zone, ledger)).is_ok());
+        // Bound by name, markers alone: nothing ties the name to the ledger their batch signs
+        // (BUG-0142), whichever ledger it is.
+        for signing in [signed(zone, other), signed(zone, ledger)] {
+            let refused = bound(&tenant("acme", "main-ledger"), &marker, &signing)
+                .expect_err("markers alone under a name");
+            assert!(refused.contains("by name"), "{refused}");
+        }
+        assert!(
+            bound(&tenant("acme", ledger), &marker, &signed(zone, ledger)).is_err(),
+            "a mix of name and id names a name too"
+        );
+        // A decision of the named ledger beside the marker ties them: one ledger signed.
+        let mixed = [
+            decision("acme", "main-ledger"),
+            serde_json::json!({"kind": "marker"}),
+        ];
+        assert!(
+            bound(
+                &tenant("acme", "main-ledger"),
+                &mixed,
+                &signed(zone, ledger)
+            )
+            .is_ok()
+        );
     }
 
     /// After the review: a stream archive holds whole batches, so a record removed from either

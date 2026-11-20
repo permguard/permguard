@@ -74,6 +74,12 @@ const LEDGERS_FILE: &str = "ledgers.json";
 /// (BUG-0146): the zones' names at the catalog's root, a zone's ledgers' names in its directory.
 const NAMES_FILE: &str = "names.json";
 
+/// The highest revision a ledger reached under each full path, `<zone name>/<ledger name>`, kept
+/// at the root: a zone deleted and recreated, or renamed away and its name reused, starts with
+/// no marks of its own, and a ledger created there under an old path must still start above
+/// every revision a change addressed to that path could carry (BUG-0146).
+const LEDGER_PATHS_FILE: &str = "ledger-paths.json";
+
 /// Where a ledger's own contents will live, under its zone.
 const LEDGERS_DIRECTORY: &str = "ledgers";
 
@@ -199,6 +205,16 @@ impl FileCatalog {
     /// Where a zone's ledgers' name marks are kept.
     fn ledger_names_path(&self, zone_id: &str) -> PathBuf {
         self.zone_directory(zone_id).join(NAMES_FILE)
+    }
+
+    /// Where the ledgers' full-path marks are kept, across zones (BUG-0146).
+    fn ledger_paths_path(&self) -> PathBuf {
+        self.root.join(LEDGER_PATHS_FILE)
+    }
+
+    /// The full path a ledger is addressed by, the key of its path mark.
+    fn ledger_path_key(zone_name: &str, ledger_name: &str) -> String {
+        format!("{zone_name}/{ledger_name}")
     }
 
     /// The revision a record created under `name` starts at: one above the highest any record
@@ -505,6 +521,22 @@ impl Catalog for FileCatalog {
             return Ok(found.clone());
         }
         self.mark_name(&self.zone_names_path(), &found.name, found.revision)?;
+        // Its ledgers leave their paths under the old name with it: a zone that takes that name
+        // later creates its ledgers above them (BUG-0146).
+        {
+            let ledger_lock = self.ledger_lock(&found.id)?;
+            let _ledgers = ledger_lock
+                .lock()
+                .map_err(|_| CatalogError::backend("the ledger lock is poisoned"))?;
+            let ledgers: LedgerIndex = self.read_index(&self.ledgers_path(&found.id))?;
+            for ledger in &ledgers.ledgers {
+                self.mark_name(
+                    &self.ledger_paths_path(),
+                    &Self::ledger_path_key(&found.name, &ledger.name),
+                    ledger.revision,
+                )?;
+            }
+        }
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
         found.revision = found.revision.max(
@@ -605,7 +637,12 @@ impl Catalog for FileCatalog {
         let id = fresh(guid, |id| {
             Ok(Self::read_tombstone(self.ledger_tombstone_path(&owner.id, id))?.is_some())
         })?;
-        let revision = self.first_revision_for(&self.ledger_names_path(&owner.id), name)?;
+        let revision = self
+            .first_revision_for(&self.ledger_names_path(&owner.id), name)?
+            .max(self.first_revision_for(
+                &self.ledger_paths_path(),
+                &Self::ledger_path_key(&owner.name, name),
+            )?);
         let ledger = Ledger {
             id,
             zone_id: owner.id.clone(),
@@ -707,11 +744,23 @@ impl Catalog for FileCatalog {
         }
         let marks = self.ledger_names_path(&owner.id);
         self.mark_name(&marks, &found.name, found.revision)?;
+        self.mark_name(
+            &self.ledger_paths_path(),
+            &Self::ledger_path_key(&owner.name, &found.name),
+            found.revision,
+        )?;
         found.name = name.to_owned();
         found.updated_at = permguard_core::time::unix_now();
         found.revision = found
             .revision
             .max(self.first_revision_for(&marks, name)?.saturating_sub(1))
+            .max(
+                self.first_revision_for(
+                    &self.ledger_paths_path(),
+                    &Self::ledger_path_key(&owner.name, name),
+                )?
+                .saturating_sub(1),
+            )
             + 1;
         found.operation = write.operation.map(str::to_owned);
 
@@ -754,6 +803,11 @@ impl Catalog for FileCatalog {
         self.mark_name(
             &self.ledger_names_path(&owner.id),
             &found.name,
+            found.revision,
+        )?;
+        self.mark_name(
+            &self.ledger_paths_path(),
+            &Self::ledger_path_key(&owner.name, &found.name),
             found.revision,
         )?;
         let tombstone = Tombstone {

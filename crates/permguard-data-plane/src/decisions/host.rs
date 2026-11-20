@@ -175,9 +175,9 @@ impl HostLog {
         );
         let decision_body = decision_body(&self.epoch, &self.commitment, decided);
         let mut marked_now = false;
-        // The bytes appended, which the next pressure check adds to its measure (BUG-0119).
-        let records_len = std::sync::atomic::AtomicU64::new(0);
-        let receipt = self.producer.append_with(&resource, &mut |position| {
+        // Set when the bound refuses the record under the engine's lock (BUG-0119).
+        let mut full = false;
+        let appended = self.producer.append_with(&resource, &mut |position| {
             let mut marked = lock(&self.marked);
             let marker = marked.get(&key) != Some(&position.run_id);
             let instance = hex(&position.run_id);
@@ -211,21 +211,37 @@ impl HostLog {
                 at: decided.at.clone(),
                 body: decision_body.clone(),
             })?);
+            // The bound, checked and charged here, under the engine's lock: appends to one
+            // stream pass through it one at a time, so concurrent decisions each see what the
+            // ones before them appended, and the first refusal comes at most one record past the
+            // bound however many ask at once (BUG-0119).
+            let length: u64 = records.iter().map(|record| record.len() as u64).sum();
+            if let Some(held) = lock(&self.pressure).get_mut(&key) {
+                if held.unacknowledged.is_some_and(|bytes| {
+                    bytes.saturating_add(held.appended) >= self.bounds.max_bytes
+                }) {
+                    full = true;
+                    return Err(permguard_core::codes::stream::SPOOL_FULL.to_owned());
+                }
+                held.written = true;
+                held.appended = held.appended.saturating_add(length);
+            }
             // Taken only once every record is built and checked: past this point the engine
             // gives them their sequences, or stops the stream.
             marked.insert(key.clone(), position.run_id);
             marked_now = marker;
-            records_len.store(
-                records.iter().map(|record| record.len() as u64).sum(),
-                std::sync::atomic::Ordering::Relaxed,
-            );
             Ok(records)
-        })?;
-        let appended: u64 = records_len.load(std::sync::atomic::Ordering::Relaxed);
-        if let Some(held) = lock(&self.pressure).get_mut(&key) {
-            held.written = true;
-            held.appended = held.appended.saturating_add(appended);
-        }
+        });
+        let receipt = match appended {
+            Ok(receipt) => receipt,
+            Err(_) if full => {
+                return Ok((
+                    Written::Refused(permguard_core::codes::stream::SPOOL_FULL.to_owned()),
+                    None,
+                ));
+            }
+            Err(error) => return Err(error),
+        };
         if marked_now {
             self.metrics
                 .count(&measure::WRITTEN, &[(labels::KIND, "marker")]);

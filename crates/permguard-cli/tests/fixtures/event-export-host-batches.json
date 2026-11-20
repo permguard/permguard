@@ -1,0 +1,520 @@
+{
+  "format": "permguard.events.export.v1alpha1",
+  "scope_binding": {
+    "kind": "tenant",
+    "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad",
+    "ledger": "01a1fa06-278c-7e43-9e51-874177451b07"
+  },
+  "summary": {
+    "scope": "acme/agent-governance",
+    "events": [
+      {
+        "seq": 1,
+        "event_id": "s112b-login-request",
+        "event_type": "permguard.dogwood.event.v1",
+        "kind": "request",
+        "occurred_at": "2026-11-20T17:38:03Z",
+        "observed_at": "2026-11-20T17:38:03Z",
+        "profile": "temporal",
+        "policy_partitions": [
+          "governance"
+        ],
+        "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+        "producer": "01a1fa061cb871d99991e7ea3fbfb1ca",
+        "instance": "8e8aeef8b3c3f3b992c34c3894af7e03",
+        "member": "",
+        "member_name": "",
+        "history": {
+          "pins": [
+            "callerPrincipal"
+          ],
+          "values": [
+            "e:16:Drupe::OAuthUser5:alice"
+          ],
+          "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68"
+        }
+      },
+      {
+        "seq": 2,
+        "event_id": "s112b-login-response",
+        "event_type": "permguard.dogwood.event.v1",
+        "kind": "response",
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "observed_at": "2026-11-20T17:38:08Z",
+        "profile": "temporal",
+        "policy_partitions": [
+          "governance"
+        ],
+        "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+        "producer": "01a1fa061cb871d99991e7ea3fbfb1ca",
+        "instance": "8e8aeef8b3c3f3b992c34c3894af7e03",
+        "member": "",
+        "member_name": "",
+        "history": {
+          "pins": [
+            "callerPrincipal"
+          ],
+          "values": [
+            "e:16:Drupe::OAuthUser5:alice"
+          ],
+          "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68"
+        }
+      },
+      {
+        "seq": 3,
+        "event_id": "s112b-read-before-login",
+        "event_type": "permguard.dogwood.event.v1",
+        "kind": "request",
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "observed_at": "2026-11-20T17:38:08Z",
+        "profile": "temporal",
+        "policy_partitions": [
+          "governance"
+        ],
+        "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+        "producer": "01a1fa061cb871d99991e7ea3fbfb1ca",
+        "instance": "8e8aeef8b3c3f3b992c34c3894af7e03",
+        "member": "",
+        "member_name": "",
+        "history": {
+          "pins": [
+            "callerPrincipal"
+          ],
+          "values": [
+            "e:16:Drupe::OAuthUser5:alice"
+          ],
+          "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68"
+        }
+      },
+      {
+        "seq": 4,
+        "event_id": "s112b-read-inside-window",
+        "event_type": "permguard.dogwood.event.v1",
+        "kind": "request",
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "observed_at": "2026-11-20T17:38:08Z",
+        "profile": "temporal",
+        "policy_partitions": [
+          "governance"
+        ],
+        "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+        "producer": "01a1fa061cb871d99991e7ea3fbfb1ca",
+        "instance": "8e8aeef8b3c3f3b992c34c3894af7e03",
+        "member": "",
+        "member_name": "",
+        "history": {
+          "pins": [
+            "callerPrincipal"
+          ],
+          "values": [
+            "e:16:Drupe::OAuthUser5:alice"
+          ],
+          "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68"
+        }
+      },
+      {
+        "seq": 5,
+        "event_id": "s112b-logout-response",
+        "event_type": "permguard.dogwood.event.v1",
+        "kind": "response",
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "observed_at": "2026-11-20T17:38:08Z",
+        "profile": "temporal",
+        "policy_partitions": [
+          "governance"
+        ],
+        "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+        "producer": "01a1fa061cb871d99991e7ea3fbfb1ca",
+        "instance": "8e8aeef8b3c3f3b992c34c3894af7e03",
+        "member": "",
+        "member_name": "",
+        "history": {
+          "pins": [
+            "callerPrincipal"
+          ],
+          "values": [
+            "e:16:Drupe::OAuthUser5:alice"
+          ],
+          "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68"
+        }
+      }
+    ],
+    "next": "v2.eyJhcGkiOiJwZXJtZ3VhcmQuYXBpLmV2ZW50cy5uYXRpdmUudjFhbHBoYTEiLCJjb25jcmV0ZV9yZXNvdXJjZSI6InRlbmFudDowMWExZmEwNi0yNzY3LTdkNzMtOWUyZS04OTAzOGUyMWI2YWQ6MDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3IiwiZXhwaXJlc19hdCI6MTc5NTI4Mjg0MywiZmlsdGVyX2RpZ2VzdCI6InNoYTI1Njo1NjYzMGI3N2RmNDU4OTA3NjE4ZmVkMDA0YTU5ZWYzYTUwNDQxZDgyM2Y3ZTJiYTZkMjlmOWIxOTFjNDkzYjkwIiwiZnJvbnRpZXIiOnsiY292ZXJlZCI6eyJob3N0OjAxYTFmYTA2MWNiODcxZDk5OTkxZTdlYTNmYmZiMWNhOjhlOGFlZWY4YjNjM2YzYjk5MmMzNGMzODk0YWY3ZTAzIjo2LCJ0ZW5hbnQ6MDFhMWZhMDYtMjc2Ny03ZDczLTllMmUtODkwMzhlMjFiNmFkOjAxYTFmYTA2LTI3OGMtN2U0My05ZTUxLTg3NDE3NzQ1MWIwNyI6MH0sInYiOjF9LCJpc3N1ZWRfa2V5X2lkIjoiMmY1ZTg5M2NmYmEzMzE4OCIsInBvc2l0aW9ucyI6eyJob3N0OjAxYTFmYTA2MWNiODcxZDk5OTkxZTdlYTNmYmZiMWNhOjhlOGFlZWY4YjNjM2YzYjk5MmMzNGMzODk0YWY3ZTAzIjp7Im9mZnNldCI6MCwic2VnbWVudCI6Nn0sInRlbmFudDowMWExZmEwNi0yNzY3LTdkNzMtOWUyZS04OTAzOGUyMWI2YWQ6MDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3Ijp7Im9mZnNldCI6MCwic2VnbWVudCI6MX19LCJ2ZXJzaW9uIjoyfQ.RS5sZ3mqzSvqkJqy6n9T7KQk3Qb_g1OBRslnexrywmc",
+    "oldest_available": "v2.eyJhcGkiOiJwZXJtZ3VhcmQuYXBpLmV2ZW50cy5uYXRpdmUudjFhbHBoYTEiLCJjb25jcmV0ZV9yZXNvdXJjZSI6InRlbmFudDowMWExZmEwNi0yNzY3LTdkNzMtOWUyZS04OTAzOGUyMWI2YWQ6MDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3IiwiZXhwaXJlc19hdCI6MTc5NTI4Mjg0MywiZmlsdGVyX2RpZ2VzdCI6InNoYTI1Njo1NjYzMGI3N2RmNDU4OTA3NjE4ZmVkMDA0YTU5ZWYzYTUwNDQxZDgyM2Y3ZTJiYTZkMjlmOWIxOTFjNDkzYjkwIiwiZnJvbnRpZXIiOnsiY292ZXJlZCI6e30sInYiOjF9LCJpc3N1ZWRfa2V5X2lkIjoiMmY1ZTg5M2NmYmEzMzE4OCIsInBvc2l0aW9ucyI6eyJ0ZW5hbnQ6MDFhMWZhMDYtMjc2Ny03ZDczLTllMmUtODkwMzhlMjFiNmFkOjAxYTFmYTA2LTI3OGMtN2U0My05ZTUxLTg3NDE3NzQ1MWIwNyI6eyJvZmZzZXQiOjAsInNlZ21lbnQiOjB9fSwidmVyc2lvbiI6Mn0.Xf59Wh_F-RbYcuS-ekuKCkU11ggXD8Cw8CvzsTh2rLM",
+    "high_watermark": "eyJ2IjoxLCJjb3ZlcmVkIjp7Imhvc3Q6MDFhMWZhMDYxY2I4NzFkOTk5OTFlN2VhM2ZiZmIxY2E6OGU4YWVlZjhiM2MzZjNiOTkyYzM0YzM4OTRhZjdlMDMiOjYsInRlbmFudDowMWExZmEwNi0yNzY3LTdkNzMtOWUyZS04OTAzOGUyMWI2YWQ6MDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3IjowfX0",
+    "more": false,
+    "coverage": {
+      "contiguous": false,
+      "examined": 5,
+      "scan_bounded": false
+    }
+  },
+  "records": [
+    {
+      "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+      "event": {
+        "action": "Drupe::Action::Login",
+        "event_id": "s112b-login-request",
+        "kind": "request",
+        "logged": {
+          "input": {
+            "server": "s1",
+            "user": "alice"
+          }
+        },
+        "occurred_at": "2026-11-20T17:38:03Z",
+        "principal": "Drupe::OAuthUser::\"alice\"",
+        "request_context": {
+          "input": {
+            "server": "s1",
+            "user": "alice"
+          }
+        },
+        "resource": "Drupe::Gateway::\"gw1\""
+      },
+      "event_id": "s112b-login-request",
+      "event_type": "permguard.dogwood.event.v1",
+      "history_key": {
+        "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68",
+        "pins": [
+          "callerPrincipal"
+        ],
+        "values": [
+          "e:16:Drupe::OAuthUser5:alice"
+        ]
+      },
+      "kind": "request",
+      "observed_at": "2026-11-20T17:38:03Z",
+      "occurred_at": "2026-11-20T17:38:03Z",
+      "occurrence_digest": "sha256:e24be150c8c5f2ff6026cbe36a889eca729d03d2169fce931800eb87bb259b2c",
+      "policy_partitions": [
+        "governance"
+      ],
+      "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "profile": "temporal",
+      "record_type": "permguard.event.record.v1",
+      "seq": 1,
+      "source": "anonymous",
+      "stream": {
+        "ledger": "01a1fa06-278c-7e43-9e51-874177451b07",
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "01a1fa061cb871d99991e7ea3fbfb1ca",
+          "instance": "8e8aeef8b3c3f3b992c34c3894af7e03"
+        },
+        "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad"
+      },
+      "v": 1
+    },
+    {
+      "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+      "event": {
+        "action": "Drupe::Action::Login",
+        "event_id": "s112b-login-response",
+        "kind": "response",
+        "logged": {
+          "input": {
+            "server": "s1",
+            "user": "alice"
+          },
+          "output": {}
+        },
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "principal": "Drupe::OAuthUser::\"alice\"",
+        "request_context": {
+          "input": {
+            "server": "s1",
+            "user": "alice"
+          }
+        },
+        "resource": "Drupe::Gateway::\"gw1\""
+      },
+      "event_id": "s112b-login-response",
+      "event_type": "permguard.dogwood.event.v1",
+      "history_key": {
+        "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68",
+        "pins": [
+          "callerPrincipal"
+        ],
+        "values": [
+          "e:16:Drupe::OAuthUser5:alice"
+        ]
+      },
+      "kind": "response",
+      "observed_at": "2026-11-20T17:38:08Z",
+      "occurred_at": "2026-11-20T17:38:08Z",
+      "occurrence_digest": "sha256:6788d9827f6c7c69eddf8fd2b909aefdfd4e120e68d054bd277b787f74830c06",
+      "policy_partitions": [
+        "governance"
+      ],
+      "prev": "sha256:510a0f179ecd8a85438fbabffef02a664f15ddfa4b01fd9b799fe3a82aca2f81",
+      "profile": "temporal",
+      "record_type": "permguard.event.record.v1",
+      "seq": 2,
+      "source": "anonymous",
+      "stream": {
+        "ledger": "01a1fa06-278c-7e43-9e51-874177451b07",
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "01a1fa061cb871d99991e7ea3fbfb1ca",
+          "instance": "8e8aeef8b3c3f3b992c34c3894af7e03"
+        },
+        "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad"
+      },
+      "v": 1
+    },
+    {
+      "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+      "event": {
+        "action": "Drupe::Action::Read",
+        "event_id": "s112b-read-before-login",
+        "kind": "request",
+        "logged": {
+          "input": {
+            "document": "doc1",
+            "user": "alice"
+          }
+        },
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "principal": "Drupe::OAuthUser::\"alice\"",
+        "request_context": {
+          "input": {
+            "document": "doc1",
+            "user": "alice"
+          }
+        },
+        "resource": "Drupe::Gateway::\"gw1\""
+      },
+      "event_id": "s112b-read-before-login",
+      "event_type": "permguard.dogwood.event.v1",
+      "history_key": {
+        "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68",
+        "pins": [
+          "callerPrincipal"
+        ],
+        "values": [
+          "e:16:Drupe::OAuthUser5:alice"
+        ]
+      },
+      "kind": "request",
+      "observed_at": "2026-11-20T17:38:08Z",
+      "occurred_at": "2026-11-20T17:38:08Z",
+      "occurrence_digest": "sha256:2999a98b5ce9b1db220fa9e335f000b69eaed6abe77d86338122b7b11222c02b",
+      "policy_partitions": [
+        "governance"
+      ],
+      "prev": "sha256:22948a2754518b0a9ccd73555e9e487739ed425aa9f65fc07a30682a8493b30d",
+      "profile": "temporal",
+      "record_type": "permguard.event.record.v1",
+      "seq": 3,
+      "source": "anonymous",
+      "stream": {
+        "ledger": "01a1fa06-278c-7e43-9e51-874177451b07",
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "01a1fa061cb871d99991e7ea3fbfb1ca",
+          "instance": "8e8aeef8b3c3f3b992c34c3894af7e03"
+        },
+        "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad"
+      },
+      "v": 1
+    },
+    {
+      "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+      "event": {
+        "action": "Drupe::Action::Read",
+        "event_id": "s112b-read-inside-window",
+        "kind": "request",
+        "logged": {
+          "input": {
+            "document": "doc1",
+            "user": "alice"
+          }
+        },
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "principal": "Drupe::OAuthUser::\"alice\"",
+        "request_context": {
+          "input": {
+            "document": "doc1",
+            "user": "alice"
+          }
+        },
+        "resource": "Drupe::Gateway::\"gw1\""
+      },
+      "event_id": "s112b-read-inside-window",
+      "event_type": "permguard.dogwood.event.v1",
+      "history_key": {
+        "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68",
+        "pins": [
+          "callerPrincipal"
+        ],
+        "values": [
+          "e:16:Drupe::OAuthUser5:alice"
+        ]
+      },
+      "kind": "request",
+      "observed_at": "2026-11-20T17:38:08Z",
+      "occurred_at": "2026-11-20T17:38:08Z",
+      "occurrence_digest": "sha256:427691a6da379e4975d98ab1cd8556ca0ef6bb792679e7c15aed16081d5dd266",
+      "policy_partitions": [
+        "governance"
+      ],
+      "prev": "sha256:e7952fade8dd8ad9e09dd3f7501121ae933f21162c4acd4690cb699940df64ab",
+      "profile": "temporal",
+      "record_type": "permguard.event.record.v1",
+      "seq": 4,
+      "source": "anonymous",
+      "stream": {
+        "ledger": "01a1fa06-278c-7e43-9e51-874177451b07",
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "01a1fa061cb871d99991e7ea3fbfb1ca",
+          "instance": "8e8aeef8b3c3f3b992c34c3894af7e03"
+        },
+        "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad"
+      },
+      "v": 1
+    },
+    {
+      "commit": "sha256:bb71f6546c3765935dc1a4f2a1aa579e90e59811532638b1ff3d7133f41b263f",
+      "event": {
+        "action": "Drupe::Action::Logout",
+        "event_id": "s112b-logout-response",
+        "kind": "response",
+        "logged": {
+          "input": {
+            "user": "alice"
+          },
+          "output": {}
+        },
+        "occurred_at": "2026-11-20T17:38:08Z",
+        "principal": "Drupe::OAuthUser::\"alice\"",
+        "request_context": {
+          "input": {
+            "user": "alice"
+          }
+        },
+        "resource": "Drupe::Gateway::\"gw1\""
+      },
+      "event_id": "s112b-logout-response",
+      "event_type": "permguard.dogwood.event.v1",
+      "history_key": {
+        "digest": "sha256:ef7ca2f6ad50efbd7f59985d20e35e40cab63cd1fc022d0feccd3ca1d3125f68",
+        "pins": [
+          "callerPrincipal"
+        ],
+        "values": [
+          "e:16:Drupe::OAuthUser5:alice"
+        ]
+      },
+      "kind": "response",
+      "observed_at": "2026-11-20T17:38:08Z",
+      "occurred_at": "2026-11-20T17:38:08Z",
+      "occurrence_digest": "sha256:da6cea1a47008d05bc2aa01c0194a9e9a0d4920cc929eb05684e4ad063e72bb2",
+      "policy_partitions": [
+        "governance"
+      ],
+      "prev": "sha256:c22fac01f1a072c80502eded021459e187aae1665f6fc78a79b319554eb87dc4",
+      "profile": "temporal",
+      "record_type": "permguard.event.record.v1",
+      "seq": 5,
+      "source": "anonymous",
+      "stream": {
+        "ledger": "01a1fa06-278c-7e43-9e51-874177451b07",
+        "producer": {
+          "class": "permguard.event.producer.data-plane.v1",
+          "id": "01a1fa061cb871d99991e7ea3fbfb1ca",
+          "instance": "8e8aeef8b3c3f3b992c34c3894af7e03"
+        },
+        "zone": "01a1fa06-2767-7d73-9e2e-89038e21b6ad"
+      },
+      "v": 1
+    }
+  ],
+  "envelopes": [
+    {
+      "format": "host-batch-v1",
+      "signature": {
+        "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRhdGEuYXR0ZXN0OmVod3pKbjlCVE9jZGF6emJqTXFpNzNkVGlIM2dVc2J2dmdoNU5FLTlQUGMiLCJ0eXAiOiJwZXJtZ3VhcmQuZXZlbnQuYmF0Y2gudjEifQ",
+        "payload": "eyJiYXRjaF9pZCI6IjhlOGFlZWY4YjNjM2YzYjk5MmMzNGMzODk0YWY3ZTAzLTEiLCJjb3VudCI6MSwiY3JlYXRlZF9hdCI6IjIwMjYtMTEtMjBUMTc6Mzg6MDVaIiwiZGVzY3JpcHRvcl92ZXJzaW9uIjoxLCJlcG9jaCI6MSwiZmlyc3Rfc2VxIjoxLCJoZWFkIjoic2hhMjU2OjUxMGEwZjE3OWVjZDhhODU0MzhmYmFiZmZlZjAyYTY2NGYxNWRkZmE0YjAxZmQ5Yjc5OWZlM2E4MmFjYTJmODEiLCJrZXlfc2V0X2Vwb2NoIjoxLCJsYXN0X3NlcSI6MSwibWVtYmVyc2hpcF9pZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIm1lcmtsZV9yb290Ijoic2hhMjU2OjU2NWZiZWVmMDc5ZTc4NjAyZjJkZWUyMWNkNTg2YzgwOGFhYzcwZTUwMGJkZWU1NzA3MWU1YjBhMTkwZDk2MDYiLCJwcmV2aW91c19oZWFkIjoic2hhMjU2OjAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAiLCJydW4iOiI4ZThhZWVmOGIzYzNmM2I5OTJjMzRjMzg5NGFmN2UwMyIsInN0cmVhbV9rZXkiOnsicGxhbmUiOiJkYXRhIiwicHJvZHVjZXJfaG9zdF9pZCI6IjAxYTFmYTA2LTFjYjgtNzFkOS05OTkxLWU3ZWEzZmJmYjFjYSIsInJlc291cmNlIjoicGxhbmUvZGF0YS96b25lLzAxYTFmYTA2LTI3NjctN2Q3My05ZTJlLTg5MDM4ZTIxYjZhZC9sZWRnZXIvMDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3IiwidHlwZSI6ImV2ZW50cyJ9fQ",
+        "signature": "WxMJuhI8YcnAp5URY-1yElUfNuu2TLRaWprAQcRHX5DsvsIqugNRbPcn61sI2ycwOlVGQTLnHSNoKxpVkgHNBg"
+      }
+    },
+    {
+      "format": "host-batch-v1",
+      "signature": {
+        "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRhdGEuYXR0ZXN0OmVod3pKbjlCVE9jZGF6emJqTXFpNzNkVGlIM2dVc2J2dmdoNU5FLTlQUGMiLCJ0eXAiOiJwZXJtZ3VhcmQuZXZlbnQuYmF0Y2gudjEifQ",
+        "payload": "eyJiYXRjaF9pZCI6IjhlOGFlZWY4YjNjM2YzYjk5MmMzNGMzODk0YWY3ZTAzLTIiLCJjb3VudCI6NCwiY3JlYXRlZF9hdCI6IjIwMjYtMTEtMjBUMTc6Mzg6MDlaIiwiZGVzY3JpcHRvcl92ZXJzaW9uIjoxLCJlcG9jaCI6MSwiZmlyc3Rfc2VxIjoyLCJoZWFkIjoic2hhMjU2OmQ3YTA1Mzk5MTZmYzdkZDBiNWE0ZGYwYzBiZTVmN2E1MThiOTYxZGMzMjVkZjU1NWZlNjk3MDJmZDZmNzM2YWMiLCJrZXlfc2V0X2Vwb2NoIjoxLCJsYXN0X3NlcSI6NSwibWVtYmVyc2hpcF9pZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIm1lcmtsZV9yb290Ijoic2hhMjU2Ojg0MTVjMjNjYmE3NmVmYTdkOTcxZGQ0NjZmZjI4MWNhOGQzYjM2YzgxNjJjNzAxOWQ1ODQyZDg0NTM3MjhlYWUiLCJwcmV2aW91c19oZWFkIjoic2hhMjU2OjUxMGEwZjE3OWVjZDhhODU0MzhmYmFiZmZlZjAyYTY2NGYxNWRkZmE0YjAxZmQ5Yjc5OWZlM2E4MmFjYTJmODEiLCJydW4iOiI4ZThhZWVmOGIzYzNmM2I5OTJjMzRjMzg5NGFmN2UwMyIsInN0cmVhbV9rZXkiOnsicGxhbmUiOiJkYXRhIiwicHJvZHVjZXJfaG9zdF9pZCI6IjAxYTFmYTA2LTFjYjgtNzFkOS05OTkxLWU3ZWEzZmJmYjFjYSIsInJlc291cmNlIjoicGxhbmUvZGF0YS96b25lLzAxYTFmYTA2LTI3NjctN2Q3My05ZTJlLTg5MDM4ZTIxYjZhZC9sZWRnZXIvMDFhMWZhMDYtMjc4Yy03ZTQzLTllNTEtODc0MTc3NDUxYjA3IiwidHlwZSI6ImV2ZW50cyJ9fQ",
+        "signature": "X24mK4M8XLaZSniJn4_SMj3cnpxljXDFxrkUjHIItRA5QWxWIUNiMCwEc-SGvrmgeo4VyYYjpdYJq0s3ucxzDg"
+      }
+    }
+  ],
+  "inclusion": [
+    {
+      "seq": 1,
+      "leaf": "sha256:510a0f179ecd8a85438fbabffef02a664f15ddfa4b01fd9b799fe3a82aca2f81",
+      "root": "sha256:565fbeef079e78602f2dee21cd586c808aac70e500bdee57071e5b0a190d9606",
+      "path": []
+    },
+    {
+      "seq": 2,
+      "leaf": "sha256:22948a2754518b0a9ccd73555e9e487739ed425aa9f65fc07a30682a8493b30d",
+      "root": "sha256:8415c23cba76efa7d971dd466ff281ca8d3b36c8162c7019d5842d8453728eae",
+      "path": [
+        {
+          "sibling": "sha256:7c5f25e60957811158ceb1b4f656c54b4e82db776e6d59db97ce7f8c232dfca9",
+          "left": false
+        },
+        {
+          "sibling": "sha256:8435d8fcad3b6e5a99178127eac0d49bb017f610a9a1c221c6ffb39fa27db9da",
+          "left": false
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "leaf": "sha256:e7952fade8dd8ad9e09dd3f7501121ae933f21162c4acd4690cb699940df64ab",
+      "root": "sha256:8415c23cba76efa7d971dd466ff281ca8d3b36c8162c7019d5842d8453728eae",
+      "path": [
+        {
+          "sibling": "sha256:009e7ab3b37437029b5e409872cae9071bef94c7d77efe26e8a8d031a2c355a2",
+          "left": true
+        },
+        {
+          "sibling": "sha256:8435d8fcad3b6e5a99178127eac0d49bb017f610a9a1c221c6ffb39fa27db9da",
+          "left": false
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "leaf": "sha256:c22fac01f1a072c80502eded021459e187aae1665f6fc78a79b319554eb87dc4",
+      "root": "sha256:8415c23cba76efa7d971dd466ff281ca8d3b36c8162c7019d5842d8453728eae",
+      "path": [
+        {
+          "sibling": "sha256:f2ae65211f8053f50c3533d2de35ae45c15d5159f760a3076adb67ef7dda8107",
+          "left": false
+        },
+        {
+          "sibling": "sha256:199d3d956ab641804db924691cfac6c92c64bfc979846ca1c538045170bb2cfb",
+          "left": true
+        }
+      ]
+    },
+    {
+      "seq": 5,
+      "leaf": "sha256:d7a0539916fc7dd0b5a4df0c0be5f7a518b961dc325df555fe69702fd6f736ac",
+      "root": "sha256:8415c23cba76efa7d971dd466ff281ca8d3b36c8162c7019d5842d8453728eae",
+      "path": [
+        {
+          "sibling": "sha256:8313a057257dd52fad15f9a7253937d22d45db080bfc48c04f3f70fa15e3912a",
+          "left": true
+        },
+        {
+          "sibling": "sha256:199d3d956ab641804db924691cfac6c92c64bfc979846ca1c538045170bb2cfb",
+          "left": true
+        }
+      ]
+    }
+  ]
+}

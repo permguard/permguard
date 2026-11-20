@@ -1,0 +1,17 @@
+{
+  "ring": "data.attest",
+  "epoch": 1,
+  "digest": "d793164b3df1055c959260e2de2dfbb74f0e0d73f8d0ea98a15df025bad084bb",
+  "keys": [
+    {
+      "kid": "data.attest:ehwzJn9BTOcdazzbjMqi73dTiH3gUsbvvgh5NE-9PPc",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "PLdwOsPJ6yEsyBW_RNOixT-g7FumHm8W0-cJNBGk9OY",
+      "alg": "EdDSA",
+      "use": "sig"
+    }
+  ],
+  "retained": [],
+  "revoked": []
+}

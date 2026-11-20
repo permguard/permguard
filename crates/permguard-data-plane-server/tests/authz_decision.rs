@@ -3800,6 +3800,8 @@ mod host_log {
     #[derive(Default)]
     struct Unacknowledged {
         appended: std::sync::Mutex<(u64, u64)>,
+        /// The most bytes one append wrote.
+        largest: std::sync::atomic::AtomicU64,
     }
 
     impl permguard_host::composition::StreamAppender for Unacknowledged {
@@ -3822,11 +3824,14 @@ mod host_log {
                 seq: held.1 + 1,
                 prev: [0; 32],
             })?;
-            held.0 += records
+            let length = records
                 .iter()
                 .map(|record| record.len() as u64)
                 .sum::<u64>();
+            held.0 += length;
             held.1 += records.len() as u64;
+            self.largest
+                .fetch_max(length, std::sync::atomic::Ordering::SeqCst);
             Ok(permguard_host::composition::StreamReceipt {
                 run_id: [9; 16],
                 seq: held.1,
@@ -3927,6 +3932,75 @@ mod host_log {
         assert!(
             owed <= bound + largest,
             "{owed} bytes owed against a {bound}-byte bound, one record being {largest}"
+        );
+    }
+
+    /// BUG-0119, under concurrency: sixteen threads deciding at once against the same small bound,
+    /// nothing acknowledged, are refused from the moment the bound is reached, so at most one
+    /// append lies past it, not one per thread that asked at once.
+    #[test]
+    fn concurrent_decisions_hold_a_small_spool_bound_to_one_record() {
+        let stream = Arc::new(Unacknowledged::default());
+        let registration = Host::builder()
+            .streams(Arc::new(Owing(Arc::clone(&stream))))
+            .build()
+            .register(Declaration::new("data").produces_stream(STREAM))
+            .expect("registers");
+        let bound = 8 * 1024;
+        let log = Arc::new(HostLog::new(
+            registration
+                .stream_producer(STREAM)
+                .expect("declared")
+                .expect("composed"),
+            [1; 16],
+            permguard_data_plane::decisions::Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: std::collections::BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            Bounds {
+                max_bytes: bound,
+                max_age_secs: 3600,
+            },
+            Metrics::none(),
+        ));
+        let threads: Vec<_> = (0..16)
+            .map(|thread| {
+                let log = Arc::clone(&log);
+                std::thread::spawn(move || {
+                    let mut recorded = 0;
+                    loop {
+                        match log
+                            .record(&decided(&format!("t{thread}-d{recorded}"), false))
+                            .expect("answered")
+                        {
+                            Written::Recorded { .. } => {
+                                recorded += 1;
+                                assert!(recorded < 1000, "never refused");
+                            }
+                            refused => break (recorded, refused),
+                        }
+                    }
+                })
+            })
+            .collect();
+        let mut total = 0;
+        for thread in threads {
+            let (recorded, refused) = thread.join().expect("the thread ends");
+            assert_eq!(
+                refused,
+                Written::Refused(permguard_core::codes::stream::SPOOL_FULL.to_owned())
+            );
+            total += recorded;
+        }
+        let owed = stream.appended.lock().expect("held").0;
+        let largest = stream.largest.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(total > 1, "decisions were recorded before the bound");
+        assert!(
+            owed <= bound + largest,
+            "{owed} bytes owed against a {bound}-byte bound, one append being {largest}"
         );
     }
 

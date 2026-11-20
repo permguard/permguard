@@ -248,6 +248,8 @@ pub(crate) async fn import_with(
     let _importing = exports.importing.lock().await;
     let imported = match request.mode {
         Mode::Archive => {
+            // One request id names one import, whichever mode used it first (BUG-0187).
+            refuse_if_rehomed(facade, actor, request).await?;
             let (record, replayed) = keep(exports.zones_root(), &zone, request, &verified)?;
             // A retry answered with the archive it kept records nothing again.
             if !replayed {
@@ -579,6 +581,46 @@ fn keep(
     Ok((record, false))
 }
 
+/// The refusal of an `archive` import whose `request_id` a re-home already used: a re-home journals
+/// its id per ledger, `{id}#{index}`, and the journal refuses that id asked for anything else, so
+/// asking it for `{id}#0` with this archive's request finds the re-home (BUG-0187).
+async fn refuse_if_rehomed(
+    facade: &CatalogFacade,
+    actor: &Actor,
+    request: &Request<'_>,
+) -> Result<(), Refusal> {
+    let first = format!("{}#0", request.request_id);
+    let probe = super::Change {
+        request_id: &first,
+        request: serde_json::json!({ "archive": request.request_id }),
+        name: None,
+    };
+    match facade
+        .replayed::<Ledger>(actor, super::LEDGER_CREATE, &probe)
+        .await
+    {
+        Ok(None) => Ok(()),
+        Ok(Some(ledger)) => Err(reused_by_rehome(request.request_id, &ledger.name)),
+        Err(Refusal::Api(error)) if error.code() == codes::host::REQUEST_ID_REUSED => {
+            Err(reused_by_rehome(request.request_id, "another ledger"))
+        }
+        Err(other) => Err(other),
+    }
+}
+
+/// `409 request_id_reused`: the id already named a re-home.
+fn reused_by_rehome(request_id: &str, what: &str) -> Refusal {
+    ApiError::new(
+        ErrorClass::Conflict,
+        codes::host::REQUEST_ID_REUSED,
+        format!(
+            "the request `{request_id}` already re-homed `{what}`: a new import names a new \
+             `request_id`"
+        ),
+    )
+    .into()
+}
+
 /// Creates a ledger per source ledger, its provenance recorded, and lands its objects.
 async fn rehome(
     facade: &CatalogFacade,
@@ -589,6 +631,19 @@ async fn rehome(
     verified: &Verified,
 ) -> Result<Vec<Ledger>, Refusal> {
     let manifest = &verified.manifest;
+    // One request id names one import, whichever mode used it first (BUG-0187).
+    if let Some((record, _)) = kept_by(zones_root, zone, request.request_id)? {
+        return Err(ApiError::new(
+            ErrorClass::Conflict,
+            codes::host::REQUEST_ID_REUSED,
+            format!(
+                "the request `{}` already kept the archive `{}`: a new import names a new \
+                 `request_id`",
+                request.request_id, record.name
+            ),
+        )
+        .into());
+    }
     if request.name.is_some() && manifest.ledgers.len() != 1 {
         return Err(invalid(
             "a name re-homes a one-ledger archive: the ledgers of a zone keep their names",
@@ -1006,6 +1061,76 @@ mod tests {
         }
         let held = archived(&fixture.root.join("zones"), &fixture.zone).expect("listed");
         assert_eq!(held.len(), 1, "one archive kept: {held:?}");
+    }
+
+    /// BUG-0187: one `request_id` names one import, whichever mode used it first: an id a re-home
+    /// used is `409 request_id_reused` to an archive import, keeping nothing, and an id an archive
+    /// used is the same to a re-home, creating no ledger.
+    #[tokio::test]
+    async fn an_import_id_is_never_reused_across_modes() {
+        let fixture = fixture("import-id-across-modes");
+        let check = under(&fixture.ring);
+        import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::ReHome, Some("rehomed"), "shared-1"),
+            &check,
+        )
+        .await
+        .expect("re-homed");
+        let refused = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, Some("kept"), "shared-1"),
+            &check,
+        )
+        .await
+        .expect_err("the id named a re-home");
+        assert_eq!(status(refused), 409);
+        assert!(
+            archived(&fixture.root.join("zones"), &fixture.zone)
+                .expect("listed")
+                .is_empty(),
+            "no archive kept"
+        );
+
+        import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::Archive, Some("kept"), "shared-2"),
+            &check,
+        )
+        .await
+        .expect("kept");
+        let ledgers_before = fixture
+            .target
+            .catalog
+            .list_ledgers(&Selector::Id(fixture.zone.id.clone()))
+            .expect("listed")
+            .len();
+        let refused = import_with(
+            &fixture.target,
+            &actor(),
+            &fixture.zone.id,
+            &request(&fixture, Mode::ReHome, Some("rehomed-two"), "shared-2"),
+            &check,
+        )
+        .await
+        .expect_err("the id named an archive");
+        assert_eq!(status(refused), 409);
+        assert_eq!(
+            fixture
+                .target
+                .catalog
+                .list_ledgers(&Selector::Id(fixture.zone.id.clone()))
+                .expect("listed")
+                .len(),
+            ledgers_before,
+            "no ledger created"
+        );
     }
 
     /// WP-7.10: a `re-home` import creates a new ledger under this Host, its provenance in its

@@ -41,6 +41,24 @@ fn commit_message(text: &str) -> Result<String, String> {
 ///
 /// Zero used to pass and mean something else downstream — the server's default page size, in the
 /// case of `--limit` — which is a surprise, not a page of zero.
+/// A producer or instance id as the event store names it: a UUID, the spelling a Host batch uses,
+/// taken as the 32 lowercase hex digits a record carries, so either spelling reads the same stream
+/// (BUG-0112). Anything else is passed as written, for the store to answer.
+fn stream_id(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let hyphenated = bytes.len() == 36
+        && [8, 13, 18, 23].iter().all(|&at| bytes[at] == b'-')
+        && value.chars().filter(|&character| character != '-').count() == 32
+        && value
+            .chars()
+            .all(|character| character == '-' || character.is_ascii_hexdigit());
+    Ok(if hyphenated {
+        value.replace('-', "").to_ascii_lowercase()
+    } else {
+        value.to_owned()
+    })
+}
+
 fn positive_count(text: &str) -> Result<usize, String> {
     match text.trim().parse::<usize>() {
         Ok(0) => Err("must be at least 1".to_owned()),
@@ -796,12 +814,12 @@ pub struct EventsQuery {
     /// Read one producer's whole stream instead of one tenant's records.
     ///
     /// The most powerful read in the system — every tenant's events — and the only one from which
-    /// a producer chain can be verified end to end.
-    #[arg(long, value_name = "PRODUCER", requires = "instance")]
+    /// a producer chain can be verified end to end. Written as 32 hex digits or as a UUID.
+    #[arg(long, value_name = "PRODUCER", requires = "instance", value_parser = stream_id)]
     pub producer: Option<String>,
 
-    /// Which incarnation of that producer.
-    #[arg(long, value_name = "INSTANCE", requires = "producer")]
+    /// Which incarnation of that producer, as 32 hex digits or as a UUID.
+    #[arg(long, value_name = "INSTANCE", requires = "producer", value_parser = stream_id)]
     pub instance: Option<String>,
 
     /// The registered producer class, when reading a stream. Defaults to the data plane's.
@@ -1365,6 +1383,26 @@ pub struct CheckArgs {
 
 #[cfg(test)]
 mod tests {
+
+    /// BUG-0112: a producer or instance written as a UUID, the spelling a Host batch uses, reads the
+    /// stream its records name in 32 hex digits; any other text is passed as written.
+    #[test]
+    fn a_stream_id_is_read_in_either_spelling() {
+        assert_eq!(
+            super::stream_id("01A1FA06-1CB8-71D9-9991-E7EA3FBFB1CA").as_deref(),
+            Ok("01a1fa061cb871d99991e7ea3fbfb1ca")
+        );
+        assert_eq!(
+            super::stream_id("01a1fa061cb871d99991e7ea3fbfb1ca").as_deref(),
+            Ok("01a1fa061cb871d99991e7ea3fbfb1ca")
+        );
+        assert_eq!(super::stream_id("peer-1").as_deref(), Ok("peer-1"));
+        assert_eq!(
+            super::stream_id("01a1fa06-1cb8-71d9-9991-e7ea3fbfb1cz").as_deref(),
+            Ok("01a1fa06-1cb8-71d9-9991-e7ea3fbfb1cz"),
+            "not hex: passed as written"
+        );
+    }
     use super::*;
 
     /// BUG-0292: every command's description, as its parent's `Commands:` list prints it, is one

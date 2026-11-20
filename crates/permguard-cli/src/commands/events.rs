@@ -96,10 +96,18 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
     answer.truncated = truncated;
     let unverified = unverified(&answer);
     if let Some((records, envelopes, inclusion)) = evidence {
+        // Bound by the ids the records carry, whether or not this export verified itself: an
+        // archive is verified later, offline, where a name resolves to nothing, so a binding by
+        // name would leave every record outside it (BUG-0112). Unresolved, it stays as typed.
+        let binding = if checked == scope {
+            by_ids(globals, query, &scope, &trace)
+        } else {
+            checked.clone()
+        };
         render(
             &EventArchive {
                 format: permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1.to_owned(),
-                scope_binding: archive_scope(&scope),
+                scope_binding: archive_scope(&binding),
                 summary: answer,
                 records,
                 envelopes,
