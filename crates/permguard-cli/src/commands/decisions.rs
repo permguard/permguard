@@ -306,6 +306,69 @@ fn verify_file(globals: &Globals, file: &str, keys: &[String]) -> Result<ExitCod
 /// Whether every record belongs to the scope the archive binds them to, and if not, the binding
 /// and the first record or batch outside it (after the review; BUG-0142).
 ///
+/// The only instance of `pdp_id` the Host listener's decision consumer holds, or a usage
+/// refusal naming the instances it holds, or why none can be listed (BUG-0040).
+fn only_instance(globals: &Globals, pdp_id: &str, trace: &Trace) -> Result<String, Failure> {
+    use permguard_client::host::StreamName;
+
+    let unnamed = |why: String| {
+        Failure::usage(format!(
+            "--pdp {pdp_id} names a producer and not which of its instances: {why}; name one \
+             with --instance"
+        ))
+    };
+    let host = super::host::online_host(globals, trace, false).map_err(|_| {
+        unnamed(
+            "no Host listener is reached to list them (--host-endpoint), and `permguard host \
+             streams runs data decisions --resource <ledger>` lists them there"
+                .to_owned(),
+        )
+    })?;
+    let failed = |failure: permguard_client::catalog::Failure| Failure::from_client(&failure);
+    let mut runs = Vec::new();
+    for stream in host
+        .streams()
+        .map_err(failed)?
+        .streams
+        .iter()
+        .filter(|stream| {
+            stream.plane == "data" && stream.stream_type == "decisions" && stream.role == "consumer"
+        })
+    {
+        for resource in &stream.resources {
+            let frontier = host
+                .stream_frontier(&StreamName {
+                    plane: &stream.plane,
+                    stream_type: &stream.stream_type,
+                    resource: &resource.resource,
+                })
+                .map_err(failed)?;
+            runs.extend(frontier.consumer);
+        }
+    }
+    pick_instance(pdp_id, &runs).map_err(unnamed)
+}
+
+/// The only run `pdp_id` produced among `runs`, or why there is not one: none, or several, named.
+fn pick_instance(
+    pdp_id: &str,
+    runs: &[permguard_host::api::streams::ConsumerRun],
+) -> Result<String, String> {
+    let instances: std::collections::BTreeSet<&str> = runs
+        .iter()
+        .filter(|run| run.producer.eq_ignore_ascii_case(pdp_id))
+        .map(|run| run.run.as_str())
+        .collect();
+    match instances.len() {
+        0 => Err("the Host holds no run of it".to_owned()),
+        1 => Ok(instances.into_iter().next().unwrap_or_default().to_owned()),
+        _ => Err(format!(
+            "it has several, {}",
+            instances.into_iter().collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
 /// A stream's records name its producer and instance. A tenant is one ledger: the Host batches
 /// that proved the records sign one resource, whose zone and ledger ids are the binding's where it
 /// names an id; the decisions carry the zone and ledger names, which are the binding's where it
@@ -718,9 +781,15 @@ fn connect(
 ) -> Result<(Box<dyn DecisionLog>, ReadScope), Failure> {
     let store = open_store(globals, trace)?;
 
+    // A producer named alone (BUG-0040): the only instance the Host listener lists of it is
+    // read; with several, or none, the refusal names what there is.
+    let instance = match (&query.pdp, &query.instance) {
+        (Some(pdp_id), None) => Some(only_instance(globals, pdp_id, trace)?),
+        (_, instance) => instance.clone(),
+    };
     // A producer stream is named outright; anything else is one tenant's
     // records, resolved the way every other command resolves a store.
-    if let (Some(pdp_id), Some(instance)) = (&query.pdp, &query.instance) {
+    if let (Some(pdp_id), Some(instance)) = (&query.pdp, &instance) {
         let target = target::resolve(
             "control-plane.endpoint",
             globals.control_endpoint.as_deref(),
@@ -1824,5 +1893,34 @@ mod archive_verify {
             "the bound not reached"
         );
         assert!(!export_truncated(false, MAX_PAGES, true), "not an export");
+    }
+}
+
+#[cfg(test)]
+mod instances {
+    //! BUG-0040: a producer named alone reads its only instance; with several, or none, the
+    //! refusal says which, case aside.
+
+    use super::*;
+
+    #[test]
+    fn a_producer_named_alone_reads_its_only_instance_or_names_them() {
+        let run = |producer: &str, run: &str| permguard_host::api::streams::ConsumerRun {
+            producer: producer.to_owned(),
+            run: run.to_owned(),
+            acked: 1,
+            oldest_retained: 1,
+        };
+        let one = [run("aa", "01"), run("aa", "01"), run("bb", "02")];
+        assert_eq!(pick_instance("AA", &one).as_deref(), Ok("01"));
+        let several = [run("aa", "01"), run("aa", "03"), run("bb", "02")];
+        assert_eq!(
+            pick_instance("aa", &several),
+            Err("it has several, 01, 03".to_owned())
+        );
+        assert_eq!(
+            pick_instance("cc", &several),
+            Err("the Host holds no run of it".to_owned())
+        );
     }
 }

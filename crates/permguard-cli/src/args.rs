@@ -911,8 +911,9 @@ pub struct DecisionsQuery {
     /// Read one producer's whole stream instead of one tenant's records.
     ///
     /// The most powerful read in the system — every tenant's decisions, which is who accessed
-    /// what — and the only one from which a producer chain can be verified end to end.
-    #[arg(long, value_name = "PDP_ID", requires = "instance")]
+    /// what — and the only one from which a producer chain can be verified end to end. Named
+    /// alone, its only instance the Host listener lists is read.
+    #[arg(long, value_name = "PDP_ID")]
     pub pdp: Option<String>,
 
     /// Which incarnation of that producer.

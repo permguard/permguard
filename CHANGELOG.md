@@ -235,6 +235,8 @@ is cut.
 
 ### Fixed
 
+- **`permguard decisions` reads a producer's only instance when `--pdp` is named alone.**
+  `--pdp` without `--instance` exited 64; it now reads the producer's only instance the Host listener's decision consumer holds, and with several, or none, the refusal names them, or says how to list them when no Host listener is reached (BUG-0040).
 - **A re-homed ledger keeps the history it imported: the object sweep no longer removes it.**
   A `re-home` import landed the source ledger's objects and copied no ref, so once `storage.gc.grace` passed the object sweep removed them all, or all but what a later push shared by content.
   The import now keeps the source's heads as roots of the ledger, under `roots/`, and the sweep keeps everything a root reaches while the ledger exists (BUG-0185).
