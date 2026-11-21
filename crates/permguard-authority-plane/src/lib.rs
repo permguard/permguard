@@ -19,6 +19,7 @@ pub mod accounts;
 pub mod admin;
 pub mod authority;
 pub mod cbor;
+pub mod completion;
 mod handles;
 pub mod marks;
 pub mod plane;

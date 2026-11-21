@@ -355,7 +355,7 @@ impl AccountStore for FileAccounts {
         Ok(self.read().operations.get(operation_id).cloned())
     }
 
-    fn put(
+    fn create(
         &self,
         applying: Option<&Applying<'_>>,
         account: Account,
@@ -365,43 +365,18 @@ impl AccountStore for FileAccounts {
         validate(&account, now)?;
         let mut journal = self.journal.lock().unwrap_or_else(PoisonError::into_inner);
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
-        let held = state.accounts.get(&account.name);
-        if held.is_none() && state.accounts.len() >= MAX_ACCOUNTS {
+        if state.accounts.contains_key(&account.name) {
+            return Err(AccountsError::Conflict(format!(
+                "the service account `{}` exists",
+                account.name
+            )));
+        }
+        if state.accounts.len() >= MAX_ACCOUNTS {
             return Err(AccountsError::Conflict(format!(
                 "the Authority Plane holds at most {MAX_ACCOUNTS} service accounts"
             )));
         }
-        // An access key names one key of one account, ever.
-        for key in &account.keys {
-            if state
-                .accounts
-                .values()
-                .any(|other| other.name != account.name && other.key(&key.access_key).is_some())
-            {
-                return Err(AccountsError::Conflict(format!(
-                    "the access key {} belongs to another account",
-                    key.access_key
-                )));
-            }
-        }
-        // A change is made from the revision it read (P3, optimistic concurrency).
-        match held {
-            None if account.revision != 0 => {
-                return Err(AccountsError::Conflict(format!(
-                    "the service account `{}` is no longer held: the change was made from \
-                     revision {}",
-                    account.name, account.revision
-                )));
-            }
-            Some(held) if held.revision != account.revision => {
-                return Err(AccountsError::Conflict(format!(
-                    "the service account `{}` is at revision {}: the change was made from \
-                     revision {}",
-                    account.name, held.revision, account.revision
-                )));
-            }
-            _ => {}
-        }
+        key_of_another(&state, &account)?;
         let name = account.name.clone();
         let written = Self::write(
             &mut journal,
@@ -415,10 +390,46 @@ impl AccountStore for FileAccounts {
         written.ok_or(AccountsError::NotFound(name))
     }
 
+    fn update(
+        &self,
+        applying: Option<&Applying<'_>>,
+        name: &str,
+        change: &dyn Fn(&Account) -> Result<Account, AccountsError>,
+        by: &str,
+        now: u64,
+    ) -> Result<Account, AccountsError> {
+        // Both locks are held from the read to the write: the account `change` is given is the
+        // one its answer replaces.
+        let mut journal = self.journal.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        let held = state
+            .accounts
+            .get(name)
+            .ok_or_else(|| AccountsError::NotFound(format!("no service account `{name}`")))?;
+        let changed = Account {
+            name: held.name.clone(),
+            created_at: held.created_at,
+            ..change(held)?
+        };
+        validate(&changed, now)?;
+        key_of_another(&state, &changed)?;
+        let written = Self::write(
+            &mut journal,
+            &mut state,
+            applying,
+            name,
+            Some(changed),
+            by,
+            now,
+        )?;
+        written.ok_or_else(|| AccountsError::NotFound(name.to_owned()))
+    }
+
     fn delete(
         &self,
         applying: Option<&Applying<'_>>,
         name: &str,
+        allow: &dyn Fn(&Account) -> Result<(), AccountsError>,
         by: &str,
         now: u64,
     ) -> Result<(), AccountsError> {
@@ -435,8 +446,27 @@ impl AccountStore for FileAccounts {
                     .to_owned(),
             ));
         }
+        allow(account)?;
         Self::write(&mut journal, &mut state, applying, name, None, by, now).map(|_| ())
     }
+}
+
+/// Refuses an access key of `account` that another account holds: a key names one key of one
+/// account.
+fn key_of_another(state: &State, account: &Account) -> Result<(), AccountsError> {
+    for key in &account.keys {
+        if state
+            .accounts
+            .values()
+            .any(|other| other.name != account.name && other.key(&key.access_key).is_some())
+        {
+            return Err(AccountsError::Conflict(format!(
+                "the access key {} belongs to another account",
+                key.access_key
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -484,16 +514,28 @@ mod tests {
             vec![scope(&[operations::DECISION_EVALUATE], "plane/data/*")],
             10,
         );
-        let written = accounts.put(None, billing, "test", 10).expect("written");
+        let written = accounts.create(None, billing, "test", 10).expect("written");
         assert_eq!(written.revision, 1);
-        let mut changed = written.clone();
-        changed.status = Status::Suspended;
-        changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
-        accounts.put(None, changed, "test", 20).expect("changed");
         accounts
-            .put(None, Account::new("gone", "", Vec::new(), 30), "test", 30)
+            .update(
+                None,
+                "billing",
+                &|held| {
+                    let mut changed = held.clone();
+                    changed.status = Status::Suspended;
+                    changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
+                    Ok(changed)
+                },
+                "test",
+                20,
+            )
+            .expect("changed");
+        accounts
+            .create(None, Account::new("gone", "", Vec::new(), 30), "test", 30)
             .expect("written");
-        accounts.delete(None, "gone", "test", 40).expect("deleted");
+        accounts
+            .delete(None, "gone", &|_| Ok(()), "test", 40)
+            .expect("deleted");
         drop(accounts);
         let (reopened, _) = FileAccounts::open(&dir, Options::default()).expect("reopens");
         assert_eq!(reopened.revision().expect("read"), 4);
@@ -521,7 +563,7 @@ mod tests {
         for bad in ["", "Upper", "-dash", &"a".repeat(64), "sp ace"] {
             assert!(
                 accounts
-                    .put(None, Account::new(bad, "", Vec::new(), 1), "t", 1)
+                    .create(None, Account::new(bad, "", Vec::new(), 1), "t", 1)
                     .is_err(),
                 "{bad:?}"
             );
@@ -534,7 +576,7 @@ mod tests {
         ] {
             assert!(
                 accounts
-                    .put(None, Account::new("a", "", scopes, 1), "t", 1)
+                    .create(None, Account::new("a", "", scopes, 1), "t", 1)
                     .is_err()
             );
         }
@@ -545,23 +587,23 @@ mod tests {
             key("pgak_CCCCCCCCCCCCCCCCCCCC"),
         ];
         assert!(matches!(
-            accounts.put(None, three, "t", 1),
+            accounts.create(None, three, "t", 1),
             Err(AccountsError::Conflict(_))
         ));
         let mut one = Account::new("one", "", Vec::new(), 1);
         one.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
-        accounts.put(None, one, "t", 1).expect("written");
+        accounts.create(None, one, "t", 1).expect("written");
         let mut other = Account::new("other", "", Vec::new(), 1);
         other.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
         assert!(matches!(
-            accounts.put(None, other, "t", 1),
+            accounts.create(None, other, "t", 1),
             Err(AccountsError::Conflict(_))
         ));
         accounts
-            .put(None, Account::new(ADMIN, "", admin_scopes(), 1), "t", 1)
+            .create(None, Account::new(ADMIN, "", admin_scopes(), 1), "t", 1)
             .expect("the administrator");
         assert!(matches!(
-            accounts.delete(None, ADMIN, "t", 2),
+            accounts.delete(None, ADMIN, &|_| Ok(()), "t", 2),
             Err(AccountsError::Conflict(_))
         ));
     }
@@ -578,33 +620,57 @@ mod tests {
         });
     }
 
-    /// A change the journal refuses leaves the state as the journal holds it.
+    /// Two changes decided from one read of the account are both in the journal, in order.
     #[test]
-    fn a_change_made_from_a_stale_revision_writes_no_frame() {
-        let dir = scratch("stale");
+    fn two_changes_of_one_account_are_both_kept_across_a_reopen() {
+        let dir = scratch("both");
         let (accounts, _) = FileAccounts::open(&dir, Options::default()).expect("opens");
-        let first = accounts
-            .put(None, Account::new("billing", "", Vec::new(), 1), "t", 1)
+        accounts
+            .create(None, Account::new("billing", "", Vec::new(), 1), "t", 1)
             .expect("written");
-        let mut later = first.clone();
-        later.description = "changed".to_owned();
-        accounts.put(None, later, "t", 2).expect("changed");
-        let mut stale = first;
-        stale.description = "lost".to_owned();
-        assert!(matches!(
-            accounts.put(None, stale, "t", 3),
-            Err(AccountsError::Conflict(_))
-        ));
+        accounts
+            .update(
+                None,
+                "billing",
+                &|held| {
+                    let mut changed = held.clone();
+                    changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
+                    Ok(changed)
+                },
+                "t",
+                2,
+            )
+            .expect("a key added");
+        accounts
+            .update(
+                None,
+                "billing",
+                &|held| {
+                    let mut changed = held.clone();
+                    changed.description = "described".to_owned();
+                    Ok(changed)
+                },
+                "t",
+                3,
+            )
+            .expect("described");
+        // A change that is refused appends no frame.
+        assert!(
+            accounts
+                .update(
+                    None,
+                    "billing",
+                    &|_| Err(AccountsError::Conflict("refused".to_owned())),
+                    "t",
+                    4
+                )
+                .is_err()
+        );
         drop(accounts);
         let (reopened, _) = FileAccounts::open(&dir, Options::default()).expect("reopens");
-        assert_eq!(reopened.revision().expect("read"), 2);
-        assert_eq!(
-            reopened
-                .get("billing")
-                .expect("read")
-                .expect("held")
-                .description,
-            "changed"
-        );
+        assert_eq!(reopened.revision().expect("read"), 3);
+        let held = reopened.get("billing").expect("read").expect("held");
+        assert_eq!(held.keys.len(), 1);
+        assert_eq!(held.description, "described");
     }
 }

@@ -19,9 +19,14 @@ is cut.
 
 ### Changed
 
-- **A change of a service account made from a revision that is no longer the account's is refused.**
-  Two changes of one account that arrive together no longer overwrite each other: the second is answered `conflict` and applies nothing, where it used to be written over the first, which could bring back a key the first had deleted.
-  A client that sends `expected_revision` sees no difference; one that does not retries from the account as it now stands.
+- **Two changes of one service account that arrive together are both applied.**
+  Each change is applied to the account as it stands at that moment, where the second used to be written over the first from an older copy of the account, which could bring back a key the first had deleted.
+  `expected_revision` is judged against the account as it stands when the change is applied, so a change that names a revision another change has moved past is answered `conflict`; a change that names none is never refused for a revision.
+  Every refusal of a change, `admin`'s last live key and the limit of live keys among them, is decided on the account as it stands then.
+- **A change of an account reaches its tokens even when the Authority Plane stops in the middle of it.**
+  A suspension, a resumption, a deletion, a narrowing of scopes and a deleted key write the account first and its tokens second; a process that died between the two left the tokens valid.
+  The Authority Plane now completes the tokens from the accounts at every start, before it serves, and logs `authority.tokens_completed` with what it changed; it does not serve when it cannot.
+  The same pass ends the tokens of a key that `authority admin-key` removed to make room for a new one, which used to stay valid until they expired.
 
 ## [0.1.34] - 2026-11-20
 

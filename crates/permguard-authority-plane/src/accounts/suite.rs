@@ -15,8 +15,9 @@
 //! | `the_revision_counts_changes`| it rises by one with every change, and never otherwise        |
 //! | `the_invalid_is_refused`     | [`validate`](super::validate) first, and nothing written      |
 //! | `a_key_names_one_account`    | an access key of one account is refused to another            |
-//! | `a_change_follows_its_read`  | a change from a revision that is not the account's conflicts  |
+//! | `a_change_reads_its_account` | a change is given the account as it stands, and replaces that |
 //! | `the_administrator_stays`    | `admin` is never deleted; what is not held is not found       |
+//! | `a_deletion_asks_first`      | a deletion its guard refuses deletes nothing                  |
 //! | `a_deletion_takes_the_keys`  | a deleted account's keys name nothing                         |
 
 #![allow(clippy::expect_used, clippy::panic)]
@@ -50,6 +51,11 @@ fn revision<S: AccountStore + ?Sized>(store: &S) -> u64 {
     store.revision().expect("the revision reads")
 }
 
+/// A guard that lets every deletion go.
+fn allowed(_: &Account) -> Result<(), AccountsError> {
+    Ok(())
+}
+
 fn held<S: AccountStore + ?Sized>(store: &S, name: &str) -> Option<Account> {
     store.get(name).expect("the account reads")
 }
@@ -61,8 +67,9 @@ pub fn run<S: AccountStore + ?Sized>(make: &dyn Fn() -> Arc<S>) {
     the_revision_counts_changes(&*make());
     the_invalid_is_refused(&*make());
     a_key_names_one_account(&*make());
-    a_change_follows_its_read(&*make());
+    a_change_reads_its_account(&*make());
     the_administrator_stays(&*make());
+    a_deletion_asks_first(&*make());
     a_deletion_takes_the_keys(&*make());
 }
 
@@ -92,16 +99,26 @@ fn what_is_written_is_read<S: AccountStore + ?Sized>(store: &S) {
         vec![scope(&[operations::DECISION_EVALUATE], "plane/data/*")],
         10,
     );
-    let written = store.put(None, billing, "test", 10).expect("written");
+    let written = store.create(None, billing, "test", 10).expect("written");
     assert_eq!(written.revision, 1);
     assert_eq!(written.created_at, 10);
     assert_eq!(written.updated_at, 10);
     assert_eq!(held(store, "billing").as_ref(), Some(&written));
 
-    let mut changed = written.clone();
-    changed.status = Status::Suspended;
-    changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
-    let changed = store.put(None, changed, "test", 20).expect("changed");
+    let changed = store
+        .update(
+            None,
+            "billing",
+            &|held| {
+                let mut changed = held.clone();
+                changed.status = Status::Suspended;
+                changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
+                Ok(changed)
+            },
+            "test",
+            20,
+        )
+        .expect("changed");
     assert_eq!(changed.revision, 2);
     assert_eq!(changed.created_at, 10, "a change keeps when it was made");
     assert_eq!(changed.updated_at, 20);
@@ -122,18 +139,20 @@ fn what_is_written_is_read<S: AccountStore + ?Sized>(store: &S) {
 fn the_revision_counts_changes<S: AccountStore + ?Sized>(store: &S) {
     for (at, name) in ["one", "two", "three"].into_iter().enumerate() {
         let written = store
-            .put(None, Account::new(name, "", Vec::new(), 1), "test", 1)
+            .create(None, Account::new(name, "", Vec::new(), 1), "test", 1)
             .expect("written");
         assert_eq!(written.revision, at as u64 + 1);
         assert_eq!(revision(store), at as u64 + 1);
     }
-    store.delete(None, "two", "test", 2).expect("deleted");
+    store
+        .delete(None, "two", &allowed, "test", 2)
+        .expect("deleted");
     assert_eq!(revision(store), 4);
     // A refusal changes nothing, the revision included.
-    assert!(store.delete(None, "two", "test", 3).is_err());
+    assert!(store.delete(None, "two", &allowed, "test", 3).is_err());
     assert!(
         store
-            .put(None, Account::new("Upper", "", Vec::new(), 3), "test", 3)
+            .create(None, Account::new("Upper", "", Vec::new(), 3), "test", 3)
             .is_err()
     );
     assert_eq!(revision(store), 4);
@@ -151,14 +170,14 @@ fn the_invalid_is_refused<S: AccountStore + ?Sized>(store: &S) {
     for bad in ["", "Upper", "-dash", long.as_str(), "sp ace"] {
         assert!(
             matches!(
-                store.put(None, Account::new(bad, "", Vec::new(), 1), "t", 1),
+                store.create(None, Account::new(bad, "", Vec::new(), 1), "t", 1),
                 Err(AccountsError::Invalid(_))
             ),
             "the name {bad:?}"
         );
     }
     assert!(matches!(
-        store.put(
+        store.create(
             None,
             Account::new("a", &"d".repeat(1_025), Vec::new(), 1),
             "t",
@@ -173,7 +192,7 @@ fn the_invalid_is_refused<S: AccountStore + ?Sized>(store: &S) {
         vec![scope(&[], "plane/data/*")],
     ] {
         assert!(matches!(
-            store.put(None, Account::new("a", "", scopes, 1), "t", 1),
+            store.create(None, Account::new("a", "", scopes, 1), "t", 1),
             Err(AccountsError::Invalid(_))
         ));
     }
@@ -182,7 +201,7 @@ fn the_invalid_is_refused<S: AccountStore + ?Sized>(store: &S) {
         .map(|at| key(&format!("pgak_{}", ["A", "B", "C", "D"][at % 4].repeat(20))))
         .collect();
     assert!(matches!(
-        store.put(None, crowded, "t", 1),
+        store.create(None, crowded, "t", 1),
         Err(AccountsError::Conflict(_))
     ));
     assert_eq!(revision(store), 0, "a refusal writes nothing");
@@ -192,75 +211,189 @@ fn the_invalid_is_refused<S: AccountStore + ?Sized>(store: &S) {
 fn a_key_names_one_account<S: AccountStore + ?Sized>(store: &S) {
     let mut one = Account::new("one", "", Vec::new(), 1);
     one.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
-    let one = store.put(None, one, "t", 1).expect("written");
+    store.create(None, one, "t", 1).expect("written");
     let mut other = Account::new("other", "", Vec::new(), 1);
     other.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
     assert!(matches!(
-        store.put(None, other, "t", 1),
+        store.create(None, other, "t", 1),
         Err(AccountsError::Conflict(_))
     ));
     assert!(held(store, "other").is_none());
-    // The account that holds the key keeps it through its own changes.
-    let mut again = one;
-    again.description = "still its key".to_owned();
+    // Nor by a change of an account that is held.
     store
-        .put(None, again, "t", 2)
+        .create(None, Account::new("other", "", Vec::new(), 2), "t", 2)
+        .expect("written");
+    assert!(matches!(
+        store.update(
+            None,
+            "other",
+            &|held| {
+                let mut changed = held.clone();
+                changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
+                Ok(changed)
+            },
+            "t",
+            3
+        ),
+        Err(AccountsError::Conflict(_))
+    ));
+    assert!(
+        held(store, "other").expect("held").keys.is_empty(),
+        "a refused change writes nothing"
+    );
+    // The account that holds the key keeps it through its own changes.
+    store
+        .update(
+            None,
+            "one",
+            &|held| {
+                let mut changed = held.clone();
+                changed.description = "still its key".to_owned();
+                Ok(changed)
+            },
+            "t",
+            4,
+        )
         .expect("its own key is no conflict");
 }
 
-fn a_change_follows_its_read<S: AccountStore + ?Sized>(store: &S) {
+fn a_change_reads_its_account<S: AccountStore + ?Sized>(store: &S) {
     let first = store
-        .put(None, Account::new("billing", "", Vec::new(), 1), "t", 1)
+        .create(None, Account::new("billing", "", Vec::new(), 1), "t", 1)
         .expect("written");
-    let mut later = first.clone();
-    later.description = "changed".to_owned();
-    let later = store.put(None, later, "t", 2).expect("changed");
+    // Two changes decided from one read of the account: each is given the account as it
+    // stands when it is applied, so the second does not undo the first.
+    let add_key = |held: &Account| {
+        let mut changed = held.clone();
+        changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
+        Ok(changed)
+    };
+    let describe = |held: &Account| {
+        let mut changed = held.clone();
+        changed.description = "described".to_owned();
+        Ok(changed)
+    };
+    let keyed = store
+        .update(None, "billing", &add_key, "t", 2)
+        .expect("a key added");
+    assert_eq!(keyed.revision, first.revision + 1);
+    let described = store
+        .update(None, "billing", &describe, "t", 3)
+        .expect("described");
+    assert_eq!(described.keys.len(), 1, "the key added before is kept");
+    assert_eq!(described.description, "described");
+    assert_eq!(described.revision, first.revision + 2);
+    assert_eq!(described.updated_at, 3);
+    assert_eq!(held(store, "billing"), Some(described.clone()));
 
-    // Made from the revision before the last change: the change it did not see would be lost.
-    let mut stale = first;
-    stale.description = "lost".to_owned();
+    // What a change refuses is refused of the account as it is, and nothing is written.
+    let seen = std::cell::Cell::new(0);
+    let refused = store.update(
+        None,
+        "billing",
+        &|held| {
+            seen.set(held.revision);
+            Err(AccountsError::Conflict("not this time".to_owned()))
+        },
+        "t",
+        4,
+    );
+    assert!(matches!(refused, Err(AccountsError::Conflict(detail)) if detail == "not this time"));
+    assert_eq!(seen.get(), described.revision, "the account as it stands");
+    assert_eq!(revision(store), described.revision);
+
+    // An account keeps its name and when it was made, whatever a change answers.
+    let renamed = store
+        .update(
+            None,
+            "billing",
+            &|held| {
+                let mut changed = held.clone();
+                changed.name = "payroll".to_owned();
+                changed.created_at = 99;
+                Ok(changed)
+            },
+            "t",
+            5,
+        )
+        .expect("changed");
+    assert_eq!(renamed.name, "billing");
+    assert_eq!(renamed.created_at, 1);
+    assert!(held(store, "payroll").is_none());
+
+    // What a change answers is valid, or it is not written.
     assert!(matches!(
-        store.put(None, stale, "t", 3),
+        store.update(
+            None,
+            "billing",
+            &|held| {
+                let mut changed = held.clone();
+                changed.description = "d".repeat(1_025);
+                Ok(changed)
+            },
+            "t",
+            6
+        ),
+        Err(AccountsError::Invalid(_))
+    ));
+    assert_eq!(held(store, "billing"), Some(renamed.clone()));
+
+    // An account that is not held is not changed, and one that is held is not made again.
+    assert!(matches!(
+        store.update(None, "nobody", &describe, "t", 7),
+        Err(AccountsError::NotFound(_))
+    ));
+    assert!(matches!(
+        store.create(None, Account::new("billing", "", Vec::new(), 7), "t", 7),
         Err(AccountsError::Conflict(_))
     ));
-    // A new account of a name that is held.
-    assert!(matches!(
-        store.put(None, Account::new("billing", "", Vec::new(), 3), "t", 3),
-        Err(AccountsError::Conflict(_))
-    ));
-    // A change of an account that is not held.
-    let mut gone = Account::new("gone", "", Vec::new(), 3);
-    gone.revision = 9;
-    assert!(matches!(
-        store.put(None, gone, "t", 3),
-        Err(AccountsError::Conflict(_))
-    ));
-    assert_eq!(held(store, "billing"), Some(later));
-    assert_eq!(revision(store), 2);
-    assert!(held(store, "gone").is_none());
+    assert_eq!(revision(store), renamed.revision);
 }
 
 fn the_administrator_stays<S: AccountStore + ?Sized>(store: &S) {
     store
-        .put(None, Account::new(ADMIN, "", admin_scopes(), 1), "t", 1)
+        .create(None, Account::new(ADMIN, "", admin_scopes(), 1), "t", 1)
         .expect("the administrator");
     assert!(matches!(
-        store.delete(None, ADMIN, "t", 2),
+        store.delete(None, ADMIN, &allowed, "t", 2),
         Err(AccountsError::Conflict(_))
     ));
     assert!(held(store, ADMIN).is_some());
     assert!(matches!(
-        store.delete(None, "nobody", "t", 2),
+        store.delete(None, "nobody", &allowed, "t", 2),
         Err(AccountsError::NotFound(_))
     ));
+    assert_eq!(revision(store), 1);
+}
+
+fn a_deletion_asks_first<S: AccountStore + ?Sized>(store: &S) {
+    let written = store
+        .create(None, Account::new("billing", "", Vec::new(), 1), "t", 1)
+        .expect("written");
+    let seen = std::cell::Cell::new(0);
+    let refused = store.delete(
+        None,
+        "billing",
+        &|held| {
+            seen.set(held.revision);
+            Err(AccountsError::Conflict("not this one".to_owned()))
+        },
+        "t",
+        2,
+    );
+    assert!(matches!(refused, Err(AccountsError::Conflict(detail)) if detail == "not this one"));
+    assert_eq!(seen.get(), written.revision, "the account as it stands");
+    assert_eq!(held(store, "billing"), Some(written));
     assert_eq!(revision(store), 1);
 }
 
 fn a_deletion_takes_the_keys<S: AccountStore + ?Sized>(store: &S) {
     let mut one = Account::new("one", "", Vec::new(), 1);
     one.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
-    store.put(None, one, "t", 1).expect("written");
-    store.delete(None, "one", "t", 2).expect("deleted");
+    store.create(None, one, "t", 1).expect("written");
+    store
+        .delete(None, "one", &allowed, "t", 2)
+        .expect("deleted");
     assert!(held(store, "one").is_none());
     assert!(
         store
@@ -270,7 +403,7 @@ fn a_deletion_takes_the_keys<S: AccountStore + ?Sized>(store: &S) {
     );
     // The name is free again, and the account made under it is a new one.
     let again = store
-        .put(None, Account::new("one", "", Vec::new(), 3), "t", 3)
+        .create(None, Account::new("one", "", Vec::new(), 3), "t", 3)
         .expect("written again");
     assert_eq!(again.revision, 3);
     assert_eq!(again.created_at, 3);

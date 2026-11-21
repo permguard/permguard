@@ -14,12 +14,12 @@
 //!
 //! | Rule of the contract                         | Where                                              |
 //! | -------------------------------------------- | -------------------------------------------------- |
-//! | an account is valid, or it is not written    | [`AccountStore::put`], through [`validate`]        |
-//! | an access key names one key of one account   | [`AccountStore::put`]                              |
-//! | at most [`MAX_ACCOUNTS`] accounts            | [`AccountStore::put`]                              |
-//! | a change is made from the revision it read   | [`AccountStore::put`]: a lost race is a conflict   |
+//! | an account is valid, or it is not written    | [`AccountStore::create`], [`AccountStore::update`] |
+//! | an access key names one key of one account   | [`AccountStore::create`], [`AccountStore::update`] |
+//! | at most [`MAX_ACCOUNTS`] accounts            | [`AccountStore::create`]                           |
+//! | a change reads the account it replaces       | [`AccountStore::update`], [`AccountStore::delete`] |
 //! | `admin` is never deleted                     | [`AccountStore::delete`]                           |
-//! | an operation changes the accounts once       | [`AccountStore::put`], [`AccountStore::delete`]    |
+//! | an operation changes the accounts once       | every change                                       |
 //! | the revision rises by one with every change  | [`AccountStore::revision`]                         |
 
 use permguard_core::authz::{
@@ -249,7 +249,7 @@ impl std::error::Error for AccountsError {}
 
 /// Refuses what no store writes, in the order the refusals are answered: the name, the
 /// description, the scopes, then more than [`MAX_LIVE_KEYS`] keys live at `now`. Every backend
-/// calls it first in [`AccountStore::put`].
+/// calls it on what it is about to write.
 pub fn validate(account: &Account, now: u64) -> Result<(), AccountsError> {
     check_name(&account.name).map_err(AccountsError::Invalid)?;
     check_description(&account.description).map_err(AccountsError::Invalid)?;
@@ -267,8 +267,8 @@ pub fn validate(account: &Account, now: u64) -> Result<(), AccountsError> {
 /// A call holds one complete rule: what it checks and what it writes are never two calls a
 /// caller could interleave. A read answers accounts whose change was committed.
 pub trait AccountStore: Send + Sync + std::fmt::Debug {
-    /// The number of changes applied: it rises by one with every [`AccountStore::put`] and
-    /// [`AccountStore::delete`] that succeeds, and never otherwise.
+    /// The number of changes applied: it rises by one with every change that succeeds, and
+    /// never otherwise.
     fn revision(&self) -> Result<u64, AccountsError>;
 
     /// The account `name`, while held.
@@ -291,14 +291,10 @@ pub trait AccountStore: Send + Sync + std::fmt::Debug {
     fn operation(&self, operation_id: &OperationId)
     -> Result<Option<(u64, String)>, AccountsError>;
 
-    /// Writes `account` as it stands at `now`, inside the operation `applying` names when one
-    /// does; the offline commands and the first start write with none.
-    ///
-    /// The account is new when its `revision` is 0, and then no account of its name is held; it
-    /// is a change otherwise, and then the account held is at that `revision`. Anything else is
-    /// a [`AccountsError::Conflict`]: the change was made from a state that is no longer the
-    /// account's. Answers the account as written, at its new revision.
-    fn put(
+    /// Writes the new account `account` at `now`, inside the operation `applying` names when
+    /// one does; the offline commands and the first start write with none. No account of its
+    /// name is held, or it is a [`AccountsError::Conflict`]. Answers the account as written.
+    fn create(
         &self,
         applying: Option<&Applying<'_>>,
         account: Account,
@@ -306,11 +302,27 @@ pub trait AccountStore: Send + Sync + std::fmt::Debug {
         now: u64,
     ) -> Result<Account, AccountsError>;
 
-    /// Deletes the account `name`, its keys with it; `admin` is never deleted.
+    /// Changes the account `name` at `now`: `change` is given the account as it stands and
+    /// answers it as it shall be, or why not. The account `change` reads is the one its answer
+    /// replaces: nothing changes the account between the two, so a change never undoes one it
+    /// did not see, and what `change` refuses is refused of the account as it is. The name and
+    /// the time it was made are the account's and are kept. Answers the account as written.
+    fn update(
+        &self,
+        applying: Option<&Applying<'_>>,
+        name: &str,
+        change: &dyn Fn(&Account) -> Result<Account, AccountsError>,
+        by: &str,
+        now: u64,
+    ) -> Result<Account, AccountsError>;
+
+    /// Deletes the account `name`, its keys with it, once `allow` has seen it as it stands and
+    /// let it go; `admin` is never deleted.
     fn delete(
         &self,
         applying: Option<&Applying<'_>>,
         name: &str,
+        allow: &dyn Fn(&Account) -> Result<(), AccountsError>,
         by: &str,
         now: u64,
     ) -> Result<(), AccountsError>;

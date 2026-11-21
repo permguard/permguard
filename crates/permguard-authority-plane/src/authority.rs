@@ -245,7 +245,7 @@ fn invalid(message: impl Into<String>) -> Refusal {
 
 /// The bearer's principal, when `jti` names the very token it presents.
 /// Whether every operation `held` grants, where it grants it, is granted by `scopes` too.
-fn granted_within(held: &[TokenScope], scopes: &[TokenScope]) -> bool {
+pub(crate) fn granted_within(held: &[TokenScope], scopes: &[TokenScope]) -> bool {
     held.iter().all(|scope| {
         scope.operations.iter().all(|operation| {
             scopes.iter().any(|granted| {
@@ -1361,7 +1361,7 @@ impl Authority {
             |applying| {
                 let written = self
                     .accounts
-                    .put(Some(applying), account, &principal, now)
+                    .create(Some(applying), account, &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1396,6 +1396,14 @@ impl Authority {
         let principal = self.admit(actor, operations::ACCOUNTS_WRITE)?;
         let held = self.held(name)?;
         let now = self.now();
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            Self::expect_revision(current, update.expected_revision)?;
+            Ok(Account {
+                description: update.description.clone(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1404,19 +1412,11 @@ impl Authority {
             &update.request_id,
             &update,
             name,
-            || Self::expect_revision(&held, update.expected_revision),
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            description: update.description.clone(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1461,6 +1461,21 @@ impl Authority {
                 status::INVALID,
             )
         };
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            if current.is_admin() {
+                return Err(AccountsError::Conflict(
+                    "`admin` is never suspended: there is always one account that can repair \
+                     the others"
+                        .to_owned(),
+                ));
+            }
+            Self::expect_revision(current, change.expected_revision)?;
+            Ok(Account {
+                status: wanted,
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1469,28 +1484,11 @@ impl Authority {
             &change.request_id,
             &change,
             name,
-            || {
-                if held.is_admin() {
-                    return Err(AccountsError::Conflict(
-                        "`admin` is never suspended: there is always one account that can repair \
-                         the others"
-                            .to_owned(),
-                    ));
-                }
-                Self::expect_revision(&held, change.expected_revision)
-            },
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            status: wanted,
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 self.registry
                     .set_status(
@@ -1545,8 +1543,15 @@ impl Authority {
                 Self::expect_revision(held, change.expected_revision)
             },
             |applying| {
+                // The revision the caller expects is the account's when it is deleted.
                 self.accounts
-                    .delete(Some(applying), name, &principal, now)
+                    .delete(
+                        Some(applying),
+                        name,
+                        &|current| Self::expect_revision(current, change.expected_revision),
+                        &principal,
+                        now,
+                    )
                     .map_err(failure)?;
                 let revoked = self
                     .registry
@@ -1593,6 +1598,21 @@ impl Authority {
             .map(ScopeView::read)
             .collect::<Result<Vec<_>, _>>()?;
         let now = self.now();
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            if current.is_admin() {
+                return Err(AccountsError::Conflict(
+                    "`admin`'s scopes are every operation on every resource, and never change"
+                        .to_owned(),
+                ));
+            }
+            accounts::check_scopes(&scopes).map_err(AccountsError::Invalid)?;
+            Self::expect_revision(current, set.expected_revision)?;
+            Ok(Account {
+                scopes: scopes.clone(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1601,28 +1621,11 @@ impl Authority {
             &set.request_id,
             &set,
             name,
-            || {
-                if held.is_admin() {
-                    return Err(AccountsError::Conflict(
-                        "`admin`'s scopes are every operation on every resource, and never change"
-                            .to_owned(),
-                    ));
-                }
-                accounts::check_scopes(&scopes).map_err(AccountsError::Invalid)?;
-                Self::expect_revision(&held, set.expected_revision)
-            },
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            scopes: scopes.clone(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 // A narrowing holds at once: a live token holding anything the new scopes do not
                 // grant is revoked, and with `revoke_tokens` every live token of the account is
@@ -1684,6 +1687,22 @@ impl Authority {
             created_at: now,
             expires_at,
         };
+        // Decided again on the account as it stands when the key is added: the keys it holds
+        // then are the ones the new key joins.
+        let with_key = |current: &Account| {
+            if current.live_keys(now).count() >= accounts::MAX_LIVE_KEYS {
+                return Err(AccountsError::Conflict(format!(
+                    "`{name}` holds {} live access keys already: delete one first",
+                    accounts::MAX_LIVE_KEYS
+                )));
+            }
+            let mut keys = current.keys.clone();
+            keys.push(key.clone());
+            Ok(Account {
+                keys,
+                ..current.clone()
+            })
+        };
         let (view, applied) = self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1692,29 +1711,11 @@ impl Authority {
             &create.request_id,
             &create,
             name,
-            || {
-                if held.live_keys(now).count() >= accounts::MAX_LIVE_KEYS {
-                    return Err(AccountsError::Conflict(format!(
-                        "`{name}` holds {} live access keys already: delete one first",
-                        accounts::MAX_LIVE_KEYS
-                    )));
-                }
-                Ok(())
-            },
+            || with_key(&held).map(|_| ()),
             |applying| {
-                let mut keys = held.keys.clone();
-                keys.push(key.clone());
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            keys,
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &with_key, &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1751,6 +1752,34 @@ impl Authority {
         let principal = self.admit(actor, operations::ACCOUNTS_WRITE)?;
         let held = self.held(name)?;
         let now = self.now();
+        // Decided again on the account as it stands when the key is removed: `admin`'s last
+        // live key is judged among the keys it holds then.
+        let without_key = |current: &Account| {
+            if current.key(access_key).is_none() {
+                return Err(AccountsError::NotFound(format!(
+                    "`{name}` holds no access key {access_key}"
+                )));
+            }
+            if current.is_admin()
+                && current
+                    .live_keys(now)
+                    .all(|key| key.access_key == access_key)
+            {
+                return Err(AccountsError::Conflict(
+                    "`admin`'s last live access key is never deleted: make another first"
+                        .to_owned(),
+                ));
+            }
+            Ok(Account {
+                keys: current
+                    .keys
+                    .iter()
+                    .filter(|key| key.access_key != access_key)
+                    .cloned()
+                    .collect(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1759,37 +1788,11 @@ impl Authority {
             &change.request_id,
             &(access_key, &change),
             name,
-            || {
-                if held.key(access_key).is_none() {
-                    return Err(AccountsError::NotFound(format!(
-                        "`{name}` holds no access key {access_key}"
-                    )));
-                }
-                if held.is_admin() && held.live_keys(now).all(|key| key.access_key == access_key) {
-                    return Err(AccountsError::Conflict(
-                        "`admin`'s last live access key is never deleted: make another first"
-                            .to_owned(),
-                    ));
-                }
-                Ok(())
-            },
+            || without_key(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            keys: held
-                                .keys
-                                .iter()
-                                .filter(|key| key.access_key != access_key)
-                                .cloned()
-                                .collect(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &without_key, &principal, now)
                     .map_err(failure)?;
                 let revoked = self
                     .registry
@@ -1951,6 +1954,25 @@ mod tests {
         TokenScope {
             operations: operations.iter().map(|op| (*op).to_owned()).collect(),
             selector: Selector::parse(selector).unwrap_or_else(|_| unreachable!("a selector")),
+        }
+    }
+
+    /// What a token is issued with is within its account's scopes, whatever was asked: a start
+    /// ends the tokens that hold more than their account grants, and must end none of these.
+    #[test]
+    fn what_a_token_is_issued_with_is_within_its_accounts_scopes() {
+        let held = vec![
+            scope(&["decision.evaluate", "event.submit"], "plane/data/*"),
+            scope(&["catalog.read"], "plane/control/*"),
+        ];
+        for asked in [
+            None,
+            Some("decision.evaluate"),
+            Some("event.submit catalog.read"),
+            Some("catalog.read"),
+        ] {
+            let issued = narrowed(&held, asked).unwrap_or_else(|_| unreachable!("granted"));
+            assert!(granted_within(&issued, &held), "{asked:?}: {issued:?}");
         }
     }
 

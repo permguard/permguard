@@ -52,35 +52,49 @@ pub fn write_owner_only(path: &Path, text: &str) -> std::io::Result<()> {
     fill(create_owner_only(path)?, text)
 }
 
-/// Makes a key for `account` and writes it to `path`. The file is claimed first, so a path that
+/// Makes a key for `admin` and writes it to `path`. The file is claimed first, so a path that
 /// is taken changes nothing; then the account is written, so a crash leaves a key nobody holds
-/// rather than a file naming a key that does not exist.
-fn new_key(
-    accounts: &dyn AccountStore,
-    account: Account,
-    path: &Path,
-    by: &str,
-    now: u64,
-) -> Result<String, String> {
+/// rather than a file naming a key that does not exist. The key joins the keys `admin` holds
+/// when it is written; an `admin` that is not held is made with it.
+fn new_key(accounts: &dyn AccountStore, path: &Path, by: &str, now: u64) -> Result<String, String> {
     let file = create_owner_only(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let made = (|| {
         let access_key = access_keys::draw_access_key()?;
         let secret = access_keys::draw_secret_key()?;
         let secret_hash = access_keys::hash(&secret)?;
-        let mut keys: Vec<AccessKey> = account.keys.clone();
-        // Room for the new key: the oldest live keys of a full account go, as the operator asked.
-        while keys.iter().filter(|key| key.is_live(now)).count() >= accounts::MAX_LIVE_KEYS {
-            keys.remove(0);
-        }
-        keys.push(AccessKey {
-            access_key: access_key.clone(),
-            secret_hash,
-            created_at: now,
-            expires_at: None,
-        });
-        accounts
-            .put(None, Account { keys, ..account }, by, now)
+        let with_key = |account: &Account| {
+            let mut keys: Vec<AccessKey> = account.keys.clone();
+            // Room for the new key: the oldest live keys of a full account go, as the operator
+            // asked.
+            while keys.iter().filter(|key| key.is_live(now)).count() >= accounts::MAX_LIVE_KEYS {
+                keys.remove(0);
+            }
+            keys.push(AccessKey {
+                access_key: access_key.clone(),
+                secret_hash: secret_hash.clone(),
+                created_at: now,
+                expires_at: None,
+            });
+            Ok(Account {
+                keys,
+                ..account.clone()
+            })
+        };
+        let held = accounts
+            .get(accounts::ADMIN)
             .map_err(|error| error.to_string())?;
+        let written = if held.is_some() {
+            accounts.update(None, accounts::ADMIN, &with_key, by, now)
+        } else {
+            let admin = Account::new(
+                accounts::ADMIN,
+                "The Authority Plane's administrator",
+                accounts::admin_scopes(),
+                now,
+            );
+            with_key(&admin).and_then(|admin| accounts.create(None, admin, by, now))
+        };
+        written.map_err(|error| error.to_string())?;
         Ok::<_, String>((access_key, secret))
     })();
     let (access_key, secret) = match made {
@@ -122,13 +136,7 @@ pub fn ensure(
             path.display()
         ));
     }
-    let admin = Account::new(
-        accounts::ADMIN,
-        "The Authority Plane's administrator",
-        accounts::admin_scopes(),
-        now,
-    );
-    new_key(accounts, admin, &path, "authority", now).map(Some)
+    new_key(accounts, &path, "authority", now).map(Some)
 }
 
 /// A new key for `admin`, made offline with the server stopped: the way in when every key is lost.
@@ -139,18 +147,7 @@ pub fn offline_key(
     secret_out: &Path,
     now: u64,
 ) -> Result<String, String> {
-    let held = accounts
-        .get(accounts::ADMIN)
-        .map_err(|error| error.to_string())?;
-    let admin = held.unwrap_or_else(|| {
-        Account::new(
-            accounts::ADMIN,
-            "The Authority Plane's administrator",
-            accounts::admin_scopes(),
-            now,
-        )
-    });
-    let access_key = new_key(accounts, admin, secret_out, "offline", now)?;
+    let access_key = new_key(accounts, secret_out, "offline", now)?;
     let mark = plane_dir.join(OFFLINE_MARK);
     std::fs::write(&mark, format!("{access_key}\n"))
         .map_err(|error| format!("writing {}: {error}", mark.display()))?;

@@ -146,6 +146,24 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let time = Arc::new(permguard_host::time::TimeGuard::system(
         config.time_max_clock_skew(),
     ));
+    // What a change of an account left to do of its tokens is done before anything is served.
+    match crate::completion::complete_tokens(&*accounts, &*registry, time.now_secs()) {
+        Ok(completed) if completed.is_empty() => {}
+        Ok(completed) => tracing::warn!(
+            event.name = "authority.tokens_completed",
+            component = crate::COMPONENT,
+            invalidated = completed.invalidated,
+            suspended = completed.suspended,
+            "tokens a change of their account had left as they were now are as it says"
+        ),
+        Err(error) => {
+            fail(
+                "the tokens a change of their account left to revoke are not completed",
+                &error,
+            );
+            return None;
+        }
+    }
     match admin::ensure(&*accounts, dir.path(), time.now_secs()) {
         Ok(Some(access_key)) => tracing::warn!(
             event.name = "authority.admin_created",
