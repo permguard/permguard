@@ -483,6 +483,7 @@
     "storage.OBJECTIVES_INCOMPLETE": "objectives_incomplete",
     "storage.OBJECTIVES_INCONSISTENT": "objectives_inconsistent",
     "storage.OBJECTIVE_MARGIN": "objective_margin",
+    "storage.BACKEND_UNSUPPORTED": "storage_backend_unsupported",
     "stream.ACK_AHEAD": "ack_ahead",
     "stream.ACK_BEHIND": "ack_behind",
     "stream.AGE_EXPIRY": "age_expiry",

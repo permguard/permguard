@@ -123,6 +123,7 @@ tasks:
       - task: check:notices
       - task: check:boundaries
       - task: check:durability
+      - task: check:dal
       - task: check:mutations
       - task: test
 
@@ -163,6 +164,11 @@ tasks:
     desc: Check that every durability primitive lives in the storage library or is allow-listed.
     cmds:
       - cargo test -p permguard-conformance --test durability --locked
+
+  check:dal:
+    desc: Check that a source reaches durable state through a store contract, a listed backend, or a package that moves it.
+    cmds:
+      - cargo test -p permguard-conformance --test dal --locked
 
   check:mutations:
     desc: Check that security state and the catalog are written only through the mutation engine.

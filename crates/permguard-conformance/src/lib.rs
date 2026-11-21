@@ -11,6 +11,7 @@
 //! | [`contracts`]              | the checked-in schemas, CBOR registries and code ownership match the code                                                |
 //! | [`schema`]                 | a REST wire type and its OpenAPI schema agree both ways                                                                  |
 //! | [`boundaries`]             | every untrusted decoder is registered, bounded and fuzzed, and nothing registered is dangling                            |
+//! | [`dal`]                    | a source reaches durable state through a store contract, a listed backend, or a listed package                           |
 //! | [`catalog_writers`]        | only the catalog facade, inside the WP-3.6 transaction, calls the catalog's writing methods                              |
 //! | `tests/crash.rs`           | a spool and a journal killed with `SIGKILL` at random points reopen to a valid chain and `STATE`                         |
 //! | `tests/log_fields.rs`      | no log field carries a payload, credential, principal or tenant name (P10 classification)                                |
@@ -23,6 +24,7 @@ pub mod bench;
 pub mod boundaries;
 pub mod catalog_writers;
 pub mod contracts;
+pub mod dal;
 pub mod durability;
 pub mod fault;
 pub mod mutations;
