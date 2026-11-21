@@ -18,7 +18,7 @@ use permguard_core::assurance::{AssuranceProfile, Control, EvidenceClass};
 use permguard_core::authz::{Principal, Resource, Selector, operations};
 use permguard_core::{Disclosure, Health, PeerSessionsReport, TlsSettings};
 use permguard_host::api::sessions::PeerSessions;
-use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+use permguard_host::api::{Assurance, Composition, Effective, HostApi};
 use permguard_host::authz::Authorization;
 use permguard_host::identity::{Identity, Suite, directories};
 use permguard_host::keys::FileKeyProvider;
@@ -241,8 +241,12 @@ fn launch_host(
                 )
                 .expect("the mutation journal opens"),
             );
-            let (replay, _) =
-                Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay opens");
+            let (replay, _) = permguard_host::api::replay::files::FileReplay::open(
+                &volume,
+                permguard_core::time::unix_now(),
+            )
+            .expect("the replay opens");
+            let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
             let open_ring = |id: &'static str| {
                 let ring = Arc::new(
                     Ring::open(

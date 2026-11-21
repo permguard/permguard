@@ -12,7 +12,7 @@
       "state": "the bootstrap commitment, the recovery principal's"
     },
     {
-      "source": "crates/permguard-host/src/api/replay.rs",
+      "source": "crates/permguard-host/src/api/replay/files.rs",
       "calls": [
         "append"
       ],
@@ -94,7 +94,7 @@
       "state": "the identity reset: the retired identity's evidence, the RESETTING marker and the next identity (WP-4.1)"
     },
     {
-      "source": "crates/permguard-host/src/holds.rs",
+      "source": "crates/permguard-host/src/holds/files.rs",
       "calls": [
         "replace_bytes",
         "unlink"

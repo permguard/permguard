@@ -1488,8 +1488,8 @@
       "reason": "the recovery principal's commitment on the Host's volume, one file this process or the offline bootstrap wrote under the volume's lock"
     },
     {
-      "source": "crates/permguard-host/src/api/replay.rs",
-      "item": "Replay::open",
+      "source": "crates/permguard-host/src/api/replay/files.rs",
+      "item": "FileReplay::open",
       "reason": "the replay journal's own directory on the Host's volume, written by this process; every frame is JSON this process encoded, read back through the storage library's journal, which checks the frames"
     },
     {
@@ -1678,14 +1678,9 @@
       "reason": "reads a batch `SealedBatch::decode` already bounded and parsed, registered and fuzzed; its header and envelope parse only through `jcs::decode_canonical`, registered and fuzzed"
     },
     {
-      "source": "crates/permguard-host/src/holds.rs",
-      "item": "HoldStore::open",
-      "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; a hold that does not read is refused, never skipped"
-    },
-    {
-      "source": "crates/permguard-host/src/holds.rs",
-      "item": "HoldStore::verify",
-      "reason": "the same hold files and their index, read under the volume's lock and bounded as `list` reads them (`MAX_HOLD_BYTES`, `MAX_INDEX_BYTES`); a file that does not read is a finding, never trusted"
+      "source": "crates/permguard-host/src/holds/files.rs",
+      "item": "FileHolds::open",
+      "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; every read of the contract (`list`, `get`, `verify`) is bounded (`MAX_HOLD_BYTES`, `MAX_INDEX_BYTES`), and a hold that does not read is refused or a finding, never skipped or trusted"
     },
     {
       "source": "crates/permguard-host/src/operations/backup.rs",

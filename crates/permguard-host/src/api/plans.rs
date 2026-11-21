@@ -24,12 +24,14 @@ use permguard_core::{ErrorClass, codes};
 
 use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{Applied, Applying, Begin, Failure, Mutations, Outcome};
+use crate::operations::mutation::{
+    Applied, Applying, Begin, Failure, MutationError, Mutations, Outcome,
+};
 use crate::operations::plan::{
     self, Approval, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt, PlanSigner,
 };
 
-use super::replay::{self, Plan, PlanApproval, Replay, TokenEntry, mint_id};
+use super::replay::{self, Plan, PlanApproval, Replay, ReplayError, TokenEntry, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use super::{rfc3339, unreachable_reconciliation};
 use crate::authz::access_tokens::TokenStanding;
@@ -400,13 +402,15 @@ pub fn held_plan(
 
 /// Consumes `plan` of `principal` in an operation of its own, before the change it plans runs:
 /// what the offline reset does, whose change is several operations and completes without its
-/// plan once interrupted. Whatever happens after, the receipt is spent: plan again.
+/// plan once interrupted. Whatever happens after, the receipt is spent: plan again. The store
+/// spends a plan once: a second consumption, from this process or another, is refused with
+/// [`ReplayError::PlanConsumed`] and nothing is written.
 pub fn consume_plan(
     mutations: &Mutations,
     replay: &Replay,
     principal: &Principal,
     plan: &Plan,
-) -> Result<(), String> {
+) -> Result<(), MutationError<ReplayError>> {
     let target = Some(format!("consume:{}", plan.plan_id));
     let outcome = mutations.run(
         Begin {
@@ -420,18 +424,19 @@ pub fn consume_plan(
         |applying| {
             replay
                 .consume(applying, principal, &plan.plan_id)
-                .map_err(|error| Failure::Refused(error.to_string()))?;
+                .map_err(Failure::Refused)?;
             Ok(Applied {
                 revision: plan.revision,
                 target,
                 value: (),
             })
         },
-    );
+    )?;
     match outcome {
-        Ok(Outcome::Applied(())) => Ok(()),
-        Ok(_) => Err("the plan's consumption was answered from another operation".to_owned()),
-        Err(error) => Err(error.to_string()),
+        Outcome::Applied(()) => Ok(()),
+        _ => Err(MutationError::Unavailable(
+            "the plan's consumption was answered from another operation".to_owned(),
+        )),
     }
 }
 
@@ -543,7 +548,7 @@ impl HostApi {
         let now = self.time.now_secs();
         let mut plans: Vec<PlanView> = self
             .replay
-            .plans()
+            .plans()?
             .into_iter()
             .filter(|(plan, _)| {
                 grant_of(&plan.kind).is_some_and(|grant| {
@@ -570,7 +575,7 @@ impl HostApi {
         approve: ApprovePlan,
     ) -> Result<PlanApproved, Refusal> {
         let principal = actor.principal()?;
-        let Some((held, _)) = self.replay.find(plan_id) else {
+        let Some((held, _)) = self.replay.find(plan_id)? else {
             // Nothing to approve: a caller holding none of the operations' grants learns nothing.
             let any = plan::OPERATIONS
                 .iter()
@@ -602,8 +607,9 @@ impl HostApi {
         };
         let now = self.time.now_secs();
         let target = (plan_id, &approve);
-        let current = || -> Result<Plan, Refusal> {
-            let (plan, consumed) = self.replay.find(plan_id).ok_or_else(unknown)?;
+        // Whether `principal` may approve `plan` as it stands: what the check reads before the
+        // intent, and what the store reads again in the step that records the approval.
+        let judge = |plan: &Plan, consumed: bool| -> Result<(), Refusal> {
             if consumed {
                 return Err(Refusal::new(
                     ErrorClass::Conflict,
@@ -638,14 +644,14 @@ impl HostApi {
                     "this principal approved the plan already",
                 ));
             }
-            if standing.count(&plan, now) >= plan.approvals_required {
+            if standing.count(plan, now) >= plan.approvals_required {
                 return Err(Refusal::new(
                     ErrorClass::Conflict,
                     codes::host::PLAN_APPROVAL_REFUSED,
                     "the plan holds every approval it requires",
                 ));
             }
-            Ok(plan)
+            Ok(())
         };
         self.transact(
             replay::DOMAIN,
@@ -655,34 +661,42 @@ impl HostApi {
             &mutation,
             &target,
             Some(plan_id.to_owned()),
-            || current().map(|_| ()),
+            || {
+                let (plan, consumed) = self.replay.find(plan_id)?.ok_or_else(unknown)?;
+                judge(&plan, consumed)
+            },
             |applying| {
-                let mut plan = current().map_err(Failure::Refused)?;
-                let approval = Approval {
-                    plan_digest: permguard_objects::digest::Digest::parse(&plan.digest)
-                        .map_err(|_| Failure::Refused(unreachable_reconciliation(operation)))?,
-                    principal: admitted.principal.as_str().to_owned(),
-                    approved_at: now,
-                    host_id: self.receipt_host_id().map_err(Failure::Refused)?,
+                // Judged and attested by the store in the step that records it: the plan the
+                // approval joins is the plan it was decided for.
+                let attest = |plan: &Plan, consumed: bool| -> Result<PlanApproval, Refusal> {
+                    judge(plan, consumed)?;
+                    let approval = Approval {
+                        plan_digest: permguard_objects::digest::Digest::parse(&plan.digest)
+                            .map_err(|_| unreachable_reconciliation(operation))?,
+                        principal: admitted.principal.as_str().to_owned(),
+                        approved_at: now,
+                        host_id: self.receipt_host_id()?,
+                    };
+                    let envelope = signer.sign_approval(&approval).map_err(|error| {
+                        Refusal::new(
+                            ErrorClass::Unavailable,
+                            codes::common::UNAVAILABLE,
+                            format!("the approval could not be attested: {error}"),
+                        )
+                    })?;
+                    Ok(PlanApproval {
+                        principal: approval.principal,
+                        approved_at: now,
+                        envelope: URL_SAFE_NO_PAD.encode(envelope),
+                        operation_id: applying.operation_id().to_string(),
+                        token: token_entry(actor),
+                    })
                 };
-                let envelope = signer.sign_approval(&approval).map_err(|error| {
-                    Failure::Refused(Refusal::new(
-                        ErrorClass::Unavailable,
-                        codes::common::UNAVAILABLE,
-                        format!("the approval could not be attested: {error}"),
-                    ))
-                })?;
-                let held = PlanApproval {
-                    principal: approval.principal.clone(),
-                    approved_at: now,
-                    envelope: URL_SAFE_NO_PAD.encode(envelope),
-                    operation_id: applying.operation_id().to_string(),
-                    token: token_entry(actor),
-                };
-                self.replay
-                    .approve(applying, &plan.principal, &plan.plan_id, held.clone())
-                    .map_err(|error| Failure::Refused(error.into()))?;
-                plan.approvals.push(held);
+                let plan = self
+                    .replay
+                    .approve(applying, plan_id, &attest)
+                    .map_err(Failure::Refused)?
+                    .ok_or_else(|| Failure::Refused(unknown()))?;
                 Ok(Applied {
                     revision: plan.revision,
                     target: Some(plan.plan_id.clone()),
@@ -700,7 +714,7 @@ impl HostApi {
             },
             // Recovery commits an approval whose frame is durable: its retry answers the plan.
             |operation_id, revision, _| {
-                let (plan, consumed) = self.replay.find(plan_id).ok_or_else(unknown)?;
+                let (plan, consumed) = self.replay.find(plan_id)?.ok_or_else(unknown)?;
                 Ok(PlanApproved {
                     receipt: self.receipt(operation_id, revision),
                     plan: view(

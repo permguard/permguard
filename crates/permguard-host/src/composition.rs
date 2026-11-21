@@ -377,7 +377,7 @@ pub struct Host {
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -409,7 +409,7 @@ pub struct HostBuilder {
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -528,7 +528,7 @@ impl HostBuilder {
     }
 
     /// The volume's holds (WP-7.3c): handed to a Plane that declared it reads them.
-    pub fn holds(mut self, holds: Arc<crate::holds::HoldStore>) -> Self {
+    pub fn holds(mut self, holds: Arc<dyn crate::holds::HoldStore>) -> Self {
         self.holds = Some(holds);
         self
     }
@@ -886,7 +886,7 @@ pub struct Registration {
     time: Arc<TimeGuard>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     declared_gc_jobs: Vec<&'static str>,
     authority_trust: Option<Arc<crate::authz::AuthorityTrust>>,
@@ -1263,7 +1263,7 @@ impl Registration {
 
     /// The Host's holds (WP-7.3c): `None` for a Plane that did not declare it reads them, or a
     /// Host that composes none.
-    pub fn holds(&self) -> Option<Arc<crate::holds::HoldStore>> {
+    pub fn holds(&self) -> Option<Arc<dyn crate::holds::HoldStore>> {
         self.holds.clone()
     }
 

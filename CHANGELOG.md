@@ -19,6 +19,15 @@ is cut.
 
 ### Changed
 
+- **A plan is run once, and an approval is decided on the plan as it stands.**
+  Approvals of one plan that arrived together were each checked against the plan before any of them was recorded, so all were recorded, more than the plan requires and more than one from a principal; the count of approving principals was not inflated by it.
+  Two runs of one receipt could both spend it.
+  The plan's store now decides an approval in the step that records it and refuses a plan already spent, whichever process asks: the second run of a garbage-collection receipt is answered `plan_expired` and sweeps nothing.
+- **An audit trail that never held a record is no longer reported lost.**
+  A trail was named in `host/audit/index` before its directory existed. A Host that stopped between the two, or that could not create the directory and was restarted, found at its next start a trail the index named and the volume lacked: it recorded `host.audit.trail_lost`, and `audit verify` failed on that trail for good.
+  The directory is now created first, named second, and written to third; a start that stops midway leaves nothing to report.
+- **Two releases of one hold end it once.**
+  The second is answered that the hold is not held, and no index entry is rewritten from a read another release has made stale.
 - **A start stops when a domain cannot say whether it applied an operation a crash left open.**
   Recovery asks each domain about every such operation. A domain whose state did not read, a file, a directory or a record the operating system refused, was taken as showing no trace of the operation, which was then recorded as failed although it may have been applied, and a retry applied it again.
   The operation now stays open, nothing is recorded of it, the log says `host.mutations_recovery_stopped` with the domain and the reason, and the server does not serve that domain; the next start asks again.

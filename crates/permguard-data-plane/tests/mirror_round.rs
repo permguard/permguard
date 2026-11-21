@@ -885,6 +885,7 @@ async fn a_task_whose_membership_pins_no_ring_is_not_mirrored() {
 /// handed no hold store reaps nothing, since what a hold keeps is never guessed.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_held_ledger_keeps_its_mirror() {
+    use permguard_host::holds::files::FileHolds;
     use permguard_host::holds::{Deadline, HoldStore, NewHold};
     use permguard_host::operations::journal::Initiator;
 
@@ -910,7 +911,7 @@ async fn a_held_ledger_keeps_its_mirror() {
         permguard_core::assurance::AssuranceProfile::Development,
     )
     .expect("the Host's volume");
-    let store = Arc::new(HoldStore::open(&claimed).expect("the holds"));
+    let store: Arc<dyn HoldStore> = Arc::new(FileHolds::open(&claimed).expect("the holds"));
     let mutations = permguard_host::operations::mutation::Mutations::open_offline(&claimed, "test")
         .expect("the transaction");
     let now = std::time::SystemTime::now()
@@ -919,7 +920,7 @@ async fn a_held_ledger_keeps_its_mirror() {
         .as_secs();
     let hold = permguard_host::holds::add(
         &mutations,
-        &store,
+        &*store,
         Initiator::System("test".to_owned()),
         NewHold {
             resource: format!(
@@ -951,7 +952,7 @@ async fn a_held_ledger_keeps_its_mirror() {
     assert_eq!(outcome.reaped, 0, "no hold store, nothing removed");
     permguard_host::holds::release(
         &mutations,
-        &store,
+        &*store,
         Initiator::System("test".to_owned()),
         &hold.id,
     )

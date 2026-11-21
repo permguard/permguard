@@ -275,7 +275,7 @@ struct Sweep {
     recorder: Option<crate::handles::Audit>,
     /// The Host's holds (WP-7.3c): `Ok(None)` without a Host; an error when a Host registered the
     /// plane and handed it none, which sweeps nothing (after the review).
-    holds: std::result::Result<Option<Arc<permguard_host::holds::HoldStore>>, ()>,
+    holds: std::result::Result<Option<Arc<dyn permguard_host::holds::HoldStore>>, ()>,
     /// The most objects one pass removes (WP-7.11).
     max_removals: usize,
     /// The ledger, `<zone>/<ledger>`, the last pass stopped in at its bound: where the next starts.
@@ -1095,6 +1095,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::holds::files::FileHolds;
     use permguard_host::holds::{Deadline, HoldStore, NewHold};
     use permguard_host::operations::journal::Initiator;
     use permguard_host::operations::mutation::Mutations;
@@ -1107,7 +1108,7 @@ mod tests {
     /// Two ledgers of one zone, each holding one orphan old enough to go, and the volume's holds.
     struct Fixture {
         sweep: Sweep,
-        holds: Arc<HoldStore>,
+        holds: Arc<FileHolds>,
         mutations: Mutations,
         zone: String,
         ledgers: Vec<(String, FileObjectStore, permguard_objects::Digest)>,
@@ -1152,7 +1153,7 @@ mod tests {
         }
         let volume =
             Volume::claim(&root.join("volume"), AssuranceProfile::Development).expect("a volume");
-        let holds = Arc::new(HoldStore::open(&volume).expect("the holds"));
+        let holds = Arc::new(FileHolds::open(&volume).expect("the holds"));
         let mutations = Mutations::open_offline(&volume, "test").expect("the transaction");
         Fixture {
             sweep: Sweep {
@@ -1161,7 +1162,7 @@ mod tests {
                 grace: Duration::from_secs(60),
                 metrics: Metrics::none(),
                 recorder: None,
-                holds: Ok(Some(Arc::clone(&holds))),
+                holds: Ok(Some(Arc::clone(&holds) as Arc<dyn HoldStore>)),
                 max_removals: usize::MAX,
                 cursor: Arc::new(Mutex::new(None)),
                 serial: Arc::new(Mutex::new(())),
@@ -1176,7 +1177,7 @@ mod tests {
     fn hold(fixture: &Fixture, resource: String) -> String {
         permguard_host::holds::add(
             &fixture.mutations,
-            &fixture.holds,
+            &*fixture.holds,
             Initiator::System("test".to_owned()),
             NewHold {
                 resource,
@@ -1239,7 +1240,7 @@ mod tests {
 
         permguard_host::holds::release(
             &fixture.mutations,
-            &fixture.holds,
+            &*fixture.holds,
             Initiator::System("test".to_owned()),
             &id,
         )

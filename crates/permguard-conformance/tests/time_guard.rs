@@ -61,7 +61,7 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     (
         "permguard-host/src/api/replay.rs",
         1,
-        "the default guard of `Replay::open`, which a server replaces with `with_time`",
+        "the default guard of `Replay::new`, which a server replaces with `with_time`",
     ),
     (
         "permguard-host/src/composition.rs",

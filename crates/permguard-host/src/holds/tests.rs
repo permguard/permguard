@@ -9,8 +9,10 @@ use std::time::Duration;
 use permguard_core::AuditEvent;
 use permguard_core::assurance::AssuranceProfile;
 
+use super::files::{FileHolds, INDEX};
 use super::*;
 use crate::operations::mutation::Projection;
+use crate::storage::volume::Volume;
 use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
 
 const NOW: u64 = 1_800_000_000;
@@ -48,10 +50,10 @@ impl Projection for Trail {
     }
 }
 
-fn open(tag: &str) -> (Volume, HoldStore, Mutations, Arc<Trail>) {
+fn open(tag: &str) -> (Volume, FileHolds, Mutations, Arc<Trail>) {
     let volume =
         Volume::claim(&scratch(tag), AssuranceProfile::Development).expect("a test volume");
-    let store = HoldStore::open(&volume).expect("the holds open");
+    let store = FileHolds::open(&volume).expect("the holds open");
     let trail = Arc::new(Trail::default());
     let time = Arc::new(TimeGuard::new(
         Arc::new(ManualClock::at(NOW as i64)),
@@ -526,7 +528,56 @@ fn a_file_the_index_lacks_keeps_and_a_missing_index_is_refused() {
     std::fs::remove_file(holds.join(INDEX)).expect("removed");
     assert!(matches!(store.list(), Err(HoldError::Record(_))));
     assert!(!store.verify().expect("verified").is_empty());
-    let reopened = HoldStore::open(&volume).expect("a writable open indexes them");
+    let reopened = FileHolds::open(&volume).expect("a writable open indexes them");
     assert_eq!(reopened.list().expect("indexed").len(), 2);
     assert!(reopened.verify().expect("verified").is_empty());
+}
+
+/// The file backend passes the contract's suite, each case on holds of its own and every change
+/// inside an operation the engine built.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let engine_volume =
+        Volume::claim(&scratch("suite-engine"), AssuranceProfile::Development).expect("a volume");
+    let mutations = Mutations::open_offline(&engine_volume, "suite").expect("the engine opens");
+    let next = std::sync::atomic::AtomicU64::new(1);
+    // The volumes stay claimed while their stores are used.
+    let volumes = Mutex::new(Vec::new());
+    suite::run(
+        &|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let volume = Volume::claim(
+                &scratch(&format!("suite-{case}")),
+                AssuranceProfile::Development,
+            )
+            .expect("a volume");
+            let store = Arc::new(FileHolds::open(&volume).expect("the holds open"));
+            volumes.lock().expect("lock").push(volume);
+            store
+        },
+        &|work| {
+            let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            mutations
+                .run(
+                    Begin {
+                        domain: DOMAIN,
+                        operation: "suite.operation",
+                        action: AUDIT_ADDED,
+                        initiator: Initiator::System("suite".to_owned()),
+                        request: None,
+                        target: Some(format!("suite-{at}")),
+                    },
+                    |applying| {
+                        work(applying);
+                        Ok::<_, Failure<String>>(Applied {
+                            revision: at,
+                            target: None,
+                            value: (),
+                        })
+                    },
+                )
+                .expect("the operation runs");
+        },
+    );
 }

@@ -596,6 +596,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "volume.",
         "migrate.",
         "mutation.",
+        "audit.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -1053,5 +1054,398 @@ mod mutating {
         assert!(matches!(retried, Outcome::Replayed(_)), "{retried:?}");
         assert_eq!(store.records().len(), 1);
         let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The audit trail (iteration 03, WP-26.2): a trail's directory and its name in the index.
+
+mod auditing {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_core::AuditEvent;
+    use permguard_host::audit::{self, Class, Engine, HOST, Stamp, index, trail};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::Digest;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn engine(volume: &volume::Volume) -> Engine {
+        Engine::open(
+            volume,
+            Stamp {
+                host_id: [1; 16],
+                boot_id: [2; 16],
+                build: "9.9.9".to_owned(),
+                config_revision: Digest::compute(b"settings"),
+            },
+            Arc::new(TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
+            None,
+        )
+        .expect("the engine opens")
+    }
+
+    /// One record of `security:host`, the first of which makes its trail.
+    fn record(engine: &Engine) {
+        engine
+            .append(
+                &AuditEvent::system(audit::AUDIT_TRAIL_LOST, "permguard").on("security:none"),
+                None,
+            )
+            .expect("recorded");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_first_record() {
+        let volume = claim_volume(&root());
+        record(&engine(&volume));
+    }
+
+    /// A Host that stops after a trail's directory exists and before the index names it has
+    /// lost nothing: no record was written, the next start finds no trail lost, and the trail
+    /// goes on from its first record.
+    #[test]
+    fn a_crash_between_a_trails_directory_and_its_name_loses_no_trail() {
+        let point = "audit.trail_created";
+        let path = scratch(point);
+        assert!(
+            crash("auditing::child_first_record", point, &path),
+            "{point}: the child died of the abort there"
+        );
+        let volume = claim_volume(&path);
+        let restarted = engine(&volume);
+        let audit_dir = volume
+            .host()
+            .subdir(audit::DIRECTORY, false)
+            .expect("the audit directory");
+        let index_dir = audit_dir
+            .subdir(index::DIRECTORY, false)
+            .expect("the index");
+        let entries = index::entries(&index_dir).expect("the index reads");
+        assert!(
+            entries.iter().all(|entry| entry.lost.is_none()),
+            "a trail that never held a record was recorded lost: {entries:?}"
+        );
+        record(&restarted);
+        let trails = audit_dir.subdir(audit::TRAILS, false).expect("the trails");
+        let dir = trail::directory(&trails, Class::Security, HOST, false).expect("security:host");
+        assert_eq!(
+            trail::verify(&dir).expect("the trail verifies"),
+            1,
+            "the record of this start is the trail's first"
+        );
+        let entries = index::entries(&index_dir).expect("the index reads");
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert!(entries[0].lost.is_none());
+        drop(restarted);
+        drop(volume);
+        let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Store contracts (iteration 03, WP-26.2, E30): an operation of a store killed before and after
+// its domain write.
+
+mod stores {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_core::authz::Principal;
+    use permguard_host::api::Replay;
+    use permguard_host::api::plans::{AUDIT_APPROVED, consume_plan};
+    use permguard_host::api::replay::files::FileReplay;
+    use permguard_host::api::replay::{self, Plan, PlanApproval};
+    use permguard_host::holds::files::FileHolds;
+    use permguard_host::holds::{self, Deadline, HoldStore as _, Holds, NewHold};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+    use permguard_host::storage::volume::Volume;
+
+    const ZONE: &str = "01a00000-0000-7000-8000-00000000000a";
+    const LEDGER: &str = "01a00000-0000-7000-8000-00000000000b";
+    const PLAN: &str = "p1";
+
+    /// The two points that tell an operation killed before its domain write from one killed
+    /// after it, before its commit.
+    const POINTS_OF_A_WRITE: [&str; 2] = ["mutation.intent_audited", "mutation.applied"];
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn now() -> u64 {
+        permguard_core::time::unix_now()
+    }
+
+    fn open_holds(path: &Path) -> (Volume, FileHolds, Mutations) {
+        let volume = claim_volume(path);
+        let store = FileHolds::open(&volume).expect("the holds open");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, store, mutations)
+    }
+
+    fn add_hold(store: &FileHolds, mutations: &Mutations) -> holds::Hold {
+        holds::add(
+            mutations,
+            store,
+            Initiator::System("test".to_owned()),
+            NewHold {
+                resource: format!("plane/control/zone/{ZONE}/ledger/{LEDGER}"),
+                owner: "legal@acme".to_owned(),
+                reason: "litigation 2026-17".to_owned(),
+                deadline: Deadline::Review(now() + 86_400),
+            },
+            now(),
+        )
+        .expect("added")
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_hold_add() {
+        let (_volume, store, mutations) = open_holds(&root());
+        add_hold(&store, &mutations);
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_hold_release() {
+        let (_volume, store, mutations) = open_holds(&root());
+        let held = store.list().expect("the holds read");
+        holds::release(
+            &mutations,
+            &store,
+            Initiator::System("test".to_owned()),
+            &held[0].id,
+        )
+        .expect("released");
+    }
+
+    /// An add killed before its write leaves no hold and a failed operation; killed after it,
+    /// the hold with its record and an operation recovery commits.
+    #[test]
+    fn a_hold_add_killed_midway_is_whole_or_absent() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("hold-add-{point}"));
+            assert!(
+                crash("stores::child_hold_add", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, mutations) = open_holds(&path);
+            let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.list().expect("the holds read");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert_eq!(held.len(), 1, "{point}: the hold is held");
+                assert!(store.keeps(ZONE, LEDGER, now()).expect("read"), "{point}");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(held.is_empty(), "{point}: nothing was written");
+            }
+            assert!(
+                store.verify().expect("the holds read").is_empty(),
+                "{point}: every hold has its record"
+            );
+            drop((mutations, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A release killed before its write leaves the hold keeping; killed after it, no hold and
+    /// an operation recovery commits.
+    #[test]
+    fn a_hold_release_killed_midway_keeps_or_ends_the_hold() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("hold-release-{point}"));
+            {
+                let (_volume, store, mutations) = open_holds(&path);
+                add_hold(&store, &mutations);
+            }
+            assert!(
+                crash("stores::child_hold_release", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, mutations) = open_holds(&path);
+            let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.list().expect("the holds read");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert!(held.is_empty(), "{point}: the hold is released");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert_eq!(held.len(), 1, "{point}: the hold still keeps");
+                assert!(store.keeps(ZONE, LEDGER, now()).expect("read"), "{point}");
+            }
+            assert!(
+                store.verify().expect("the holds read").is_empty(),
+                "{point}"
+            );
+            drop((mutations, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    fn open_plans(path: &Path) -> (Volume, Arc<FileReplay>, Replay, Mutations) {
+        let volume = claim_volume(path);
+        let (store, _) = FileReplay::open(&volume, now()).expect("the replay opens");
+        let store = Arc::new(store);
+        let replay = Replay::new(Arc::clone(&store) as Arc<dyn replay::ReplayStore>);
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, store, replay, mutations)
+    }
+
+    fn plan() -> Plan {
+        Plan {
+            plan_id: PLAN.to_owned(),
+            operation: "host.keys.revoke".to_owned(),
+            target: "host.operations/kid-1".to_owned(),
+            revision: 7,
+            digest: "sha256:00".to_owned(),
+            expires: now() + 600,
+            principal: "sa:alice".to_owned(),
+            kind: "keys.revoke".to_owned(),
+            receipt: "cmVjZWlwdA".to_owned(),
+            approvals_required: 1,
+            approvals: Vec::new(),
+            created_at: now(),
+        }
+    }
+
+    /// One operation of the plans' domain on `target`, as the Host API begins it.
+    fn begin(operation: &'static str, target: &str) -> Begin {
+        Begin {
+            domain: replay::DOMAIN,
+            operation,
+            action: AUDIT_APPROVED,
+            initiator: Initiator::System("test".to_owned()),
+            request: None,
+            target: Some(target.to_owned()),
+        }
+    }
+
+    fn seed_plan(path: &Path) {
+        let (_volume, _store, replay, mutations) = open_plans(path);
+        mutations
+            .run(begin("plan.make", "seed"), |applying| {
+                replay
+                    .plan(applying, plan())
+                    .map_err(|_| Failure::Refused("the plan could not be written".to_owned()))?;
+                Ok::<_, Failure<String>>(Applied {
+                    revision: 7,
+                    target: None,
+                    value: (),
+                })
+            })
+            .expect("planned");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_plan_approve() {
+        let (_volume, _store, replay, mutations) = open_plans(&root());
+        mutations
+            .run(begin("plan.approve", PLAN), |applying| {
+                replay
+                    .approve(applying, PLAN, &|_, _| {
+                        Ok(PlanApproval {
+                            principal: "sa:bob".to_owned(),
+                            approved_at: now(),
+                            envelope: "ZW52ZWxvcGU".to_owned(),
+                            operation_id: applying.operation_id().to_string(),
+                            token: None,
+                        })
+                    })
+                    .map_err(|_| Failure::Refused("the approval was refused".to_owned()))?;
+                Ok::<_, Failure<String>>(Applied {
+                    revision: 7,
+                    target: Some(PLAN.to_owned()),
+                    value: (),
+                })
+            })
+            .expect("approved");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_plan_consume() {
+        let (_volume, _store, replay, mutations) = open_plans(&root());
+        let planner = Principal::new("sa:alice").expect("a principal");
+        consume_plan(&mutations, &replay, &planner, &plan()).expect("consumed");
+    }
+
+    /// An approval killed before its write leaves the plan without it; killed after it, the
+    /// approval on the plan and an operation recovery commits.
+    #[test]
+    fn a_plan_approval_killed_midway_is_recorded_or_absent() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("plan-approve-{point}"));
+            seed_plan(&path);
+            assert!(
+                crash("stores::child_plan_approve", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, replay, mutations) = open_plans(&path);
+            let recovered = mutations.recover(&replay).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let (held, consumed) = replay
+                .find(PLAN)
+                .expect("the plan reads")
+                .expect("the plan is held");
+            assert!(!consumed, "{point}");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert_eq!(held.approvals.len(), 1, "{point}: the approval is held");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(held.approvals.is_empty(), "{point}: nothing was written");
+            }
+            drop((mutations, replay, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A consumption killed before its write leaves the plan to run; killed after it, the plan
+    /// spent, an operation recovery commits, and a second consumption refused.
+    #[test]
+    fn a_plan_consumption_killed_midway_spends_the_plan_once_or_not_at_all() {
+        let planner = Principal::new("sa:alice").expect("a principal");
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("plan-consume-{point}"));
+            seed_plan(&path);
+            assert!(
+                crash("stores::child_plan_consume", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, replay, mutations) = open_plans(&path);
+            let recovered = mutations.recover(&replay).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let (held, consumed) = replay
+                .find(PLAN)
+                .expect("the plan reads")
+                .expect("the plan is held");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert!(consumed, "{point}: the plan is spent");
+                assert!(
+                    consume_plan(&mutations, &replay, &planner, &held).is_err(),
+                    "{point}: a plan is spent once"
+                );
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(!consumed, "{point}: the plan was not spent");
+                consume_plan(&mutations, &replay, &planner, &held).expect("spent now");
+            }
+            drop((mutations, replay, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
     }
 }

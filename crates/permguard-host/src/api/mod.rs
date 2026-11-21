@@ -269,8 +269,6 @@ pub struct HostApi {
     backup_labels: (Option<String>, Option<String>),
     /// The garbage-collection jobs the Planes provide (WP-7.11b), filled as they register.
     gc: Arc<crate::gc::Jobs>,
-    /// Held while a gc run checks and spends its plan (WP-7.11b).
-    gc_spending: std::sync::Mutex<()>,
     /// The volume this process claimed and the claim generation it holds, which a drain receipt
     /// names (TD-2).
     volume: Option<([u8; 16], u64)>,
@@ -323,7 +321,6 @@ impl HostApi {
             backups: None,
             backup_labels: (None, None),
             gc: Arc::default(),
-            gc_spending: std::sync::Mutex::new(()),
             volume: None,
             local_shipping: None,
             rings_moved: std::sync::OnceLock::new(),
@@ -1077,8 +1074,10 @@ pub(crate) mod testing {
         mutations
             .recover(&crate::membership::Memberships(&memberships))
             .expect("the membership mutations recover");
-        let (replay, _) = Replay::open(&volume, permguard_core::time::unix_now())
-            .expect("the replay journal opens");
+        let (replay, _) =
+            replay::files::FileReplay::open(&volume, permguard_core::time::unix_now())
+                .expect("the replay journal opens");
+        let replay = Replay::new(std::sync::Arc::new(replay));
         mutations
             .recover(&replay)
             .expect("the plans' mutations recover");

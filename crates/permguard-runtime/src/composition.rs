@@ -2215,14 +2215,17 @@ impl Composition {
         let dials_out =
             config.is_embedded() && config.admin_tls().is_some_and(|tls| tls.is_mutual());
         if config.admin_addr().is_some() || dials_out {
-            use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+            use permguard_host::api::{Assurance, Composition, Effective, HostApi};
 
-            let (replay, recovery) = Replay::open(&volume, time.now_secs()).with_context(|| {
-                format!(
-                    "opening the replay journal on {}",
-                    volume.host().path().display()
-                )
-            })?;
+            let (replay, recovery) =
+                permguard_host::api::replay::files::FileReplay::open(&volume, time.now_secs())
+                    .with_context(|| {
+                        format!(
+                            "opening the replay journal on {}",
+                            volume.host().path().display()
+                        )
+                    })?;
+            let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
             let replay = replay.with_time(Arc::clone(&time));
             // An approval a crash left open is committed when its frame is durable (WP-3.9).
             mutations
@@ -2231,7 +2234,7 @@ impl Composition {
             tracing::info!(
                 event.name = "host_api.replay_opened",
                 component = "server",
-                held = replay.held(),
+                held = replay.held().context("reading the replay window")?,
                 recovered_truncated_bytes = recovery.truncated_bytes,
                 "the replay journal is open"
             );
@@ -2739,7 +2742,8 @@ impl Composition {
             .mutations(Arc::clone(&mutations))
             // What the Control Plane's garbage collection keeps (WP-7.3c).
             .holds(Arc::new(
-                permguard_host::holds::HoldStore::open(&volume).context("opening the holds")?,
+                permguard_host::holds::files::FileHolds::open(&volume)
+                    .context("opening the holds")?,
             ))
             .task_slot(
                 permguard_host::membership::record::TaskType::PolicyMirror,

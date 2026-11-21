@@ -27,6 +27,26 @@
       "reason": "the file implementation of `tokens::TokenStore`"
     },
     {
+      "path": "crates/permguard-host/src/api/replay/files.rs",
+      "reason": "the file implementation of `api::replay::ReplayStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/index.rs",
+      "reason": "the index of the trails a volume ever held: the audit engine's file backend, reached through `audit::Engine` alone"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/query.rs",
+      "reason": "a page of a trail and its checkpoints read from the day files: the audit engine's file backend, reached through `audit::Engine` alone"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/trail.rs",
+      "reason": "one trail's day files, checkpoints and anchor: the audit engine's file backend, reached through `audit::Engine` alone"
+    },
+    {
+      "path": "crates/permguard-host/src/holds/files.rs",
+      "reason": "the file implementation of `holds::HoldStore`"
+    },
+    {
       "path": "crates/permguard-host/src/storage/",
       "reason": "the storage library: the primitives of the file backend"
     },
@@ -123,32 +143,16 @@
       "until": "WP-26.7"
     },
     {
-      "source": "crates/permguard-host/src/api/replay.rs",
-      "until": "WP-26.2"
-    },
-    {
-      "source": "crates/permguard-host/src/audit/index.rs",
-      "until": "WP-26.2"
-    },
-    {
       "source": "crates/permguard-host/src/audit/jsonl.rs",
-      "until": "WP-26.2"
+      "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-host/src/audit/mod.rs",
-      "until": "WP-26.2"
-    },
-    {
-      "source": "crates/permguard-host/src/audit/query.rs",
-      "until": "WP-26.2"
-    },
-    {
-      "source": "crates/permguard-host/src/audit/trail.rs",
-      "until": "WP-26.2"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-host/src/audit/verify.rs",
-      "until": "WP-26.2"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-host/src/authz/authority.rs",
@@ -169,10 +173,6 @@
     {
       "source": "crates/permguard-host/src/hardening.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-host/src/holds.rs",
-      "until": "WP-26.2"
     },
     {
       "source": "crates/permguard-host/src/identity/mod.rs",
@@ -236,7 +236,7 @@
     },
     {
       "source": "crates/permguard-host/src/operations/mutation.rs",
-      "until": "WP-26.2"
+      "until": "WP-27.2"
     },
     {
       "source": "crates/permguard-host/src/restore.rs",
@@ -284,7 +284,7 @@
     },
     {
       "source": "crates/permguard-runtime/src/checkpoints.rs",
-      "until": "WP-26.2"
+      "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-runtime/src/composition.rs",

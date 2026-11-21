@@ -760,6 +760,34 @@ sections:
       - crates/permguard-host/src/operations/mutation/tests.rs::a_retry_learns_the_answer_inside_the_window_and_another_request_is_refused
       - crates/permguard-host/src/operations/mutation/tests.rs::an_audit_outage_refuses_new_mutations_degrades_the_host_and_heals_once_written
       - crates/permguard-host/src/operations/mutation/tests.rs::an_uncertain_domain_write_leaves_the_intent_for_the_next_start
+  "1-architecture/5-architecture-server-host-audit.md#stores":
+    paths:
+      - crates/permguard-host/src/holds.rs
+      - crates/permguard-host/src/holds/files.rs
+      - crates/permguard-host/src/holds/suite.rs
+      - crates/permguard-host/src/api/replay.rs
+      - crates/permguard-host/src/api/replay/files.rs
+      - crates/permguard-host/src/api/replay/suite.rs
+      - crates/permguard-host/src/api/gc.rs
+      - crates/permguard-host/src/audit/mod.rs
+      - crates/permguard-host/src/audit/index.rs
+    tests:
+      - crates/permguard-host/src/holds/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/holds/tests.rs::a_hold_removed_or_edited_outside_an_operation_is_detected
+      - crates/permguard-host/src/holds/tests.rs::a_file_the_index_lacks_keeps_and_a_missing_index_is_refused
+      - crates/permguard-host/src/holds/tests.rs::a_hold_that_does_not_read_is_an_error_never_skipped
+      - crates/permguard-host/src/api/replay/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/api/replay/tests.rs::a_plan_is_consumed_once_and_expires
+      - crates/permguard-host/src/api/replay/tests.rs::an_approval_survives_a_restart_and_recovery_finds_it_by_its_operation
+      - crates/permguard-host/tests/crash_points.rs::a_hold_add_killed_midway_is_whole_or_absent
+      - crates/permguard-host/tests/crash_points.rs::a_hold_release_killed_midway_keeps_or_ends_the_hold
+      - crates/permguard-host/tests/crash_points.rs::a_plan_approval_killed_midway_is_recorded_or_absent
+      - crates/permguard-host/tests/crash_points.rs::a_plan_consumption_killed_midway_spends_the_plan_once_or_not_at_all
+      - crates/permguard-host/tests/crash_points.rs::a_crash_between_a_trails_directory_and_its_name_loses_no_trail
+    gaps:
+      - "open (test): the suites run on the file backend alone until WP-27.2 adds the PostgreSQL one"
+      - "open (design): the mutation engine and the audit engine are their own file backends until WP-27.2 and WP-27.4 put a second implementation behind their interfaces (E33)"
+      - "open (test): two runs of one garbage-collection receipt from two instances are proven by the store's suite, not by a test of two Host APIs on one store, until WP-28.1"
   "1-architecture/5-architecture-server-host-audit.md#attribution-resource-and-privacy":
     paths:
       - crates/permguard-host/src/audit/pseudonym.rs
@@ -1440,7 +1468,7 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::concurrent_appenders_never_share_a_sequence
       - crates/permguard-stream/src/engine/tests.rs::a_failed_group_flush_answers_every_waiting_appender_with_an_error
       - crates/permguard-host/src/operations/mutation/tests.rs::an_operation_runs_every_step_under_one_operation_id
-      - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
+      - crates/permguard-host/src/api/replay/tests.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
       - crates/permguard-data-plane/src/blocking.rs::work_beyond_the_bound_is_refused_and_not_queued
   "1-architecture/9-architecture-patterns.md#p4-durability-and-recovery":
     paths:
@@ -1520,7 +1548,7 @@ sections:
     tests:
       - crates/permguard-host/src/api/plans/tests.rs::the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per_principal
       - crates/permguard-host/src/api/plans/tests.rs::under_regulated_reset_and_key_revocation_are_refused_below_the_approval_count
-      - crates/permguard-host/src/api/replay.rs::a_plan_is_consumed_once_and_expires
+      - crates/permguard-host/src/api/replay/tests.rs::a_plan_is_consumed_once_and_expires
       - crates/permguard-host/tests/plan_vectors.rs::a_receipt_is_not_an_approval_and_an_altered_one_does_not_verify
       - crates/permguard-cli/tests/restore.rs::a_dr_restore_keeps_the_host_under_a_new_boot_id_once_per_fence
       - crates/permguard-host/src/api/gc/tests.rs::a_plan_changes_nothing_and_its_run_spends_it_once
@@ -4162,7 +4190,7 @@ sections:
       - crates/permguard-host/src/api/bounds.rs
       - crates/permguard-server/src/host_api/http.rs
     tests:
-      - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
+      - crates/permguard-host/src/api/replay/tests.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
       - crates/permguard-host/src/api/plans/tests.rs::a_run_consumes_the_receipt_once
       - crates/permguard-host/src/api/plans/tests.rs::under_regulated_reset_and_key_revocation_are_refused_below_the_approval_count
       - crates/permguard-host/src/api/bounds.rs::concurrency_is_bounded_per_principal_and_released_on_drop

@@ -168,15 +168,16 @@ fn holds(
     action: HoldsAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    use permguard_host::holds::{self, Deadline, HoldStore, NewHold};
+    use permguard_host::holds::files::FileHolds;
+    use permguard_host::holds::{self, Deadline, HoldStore as _, NewHold};
 
     let volume = volume_of(globals)?;
     let now = permguard_core::time::unix_now();
     // What a change of the holds writes through: the volume claimed with the forensic refusal, the
     // holds opened, created when absent.
-    let writable = || -> Result<(Volume, HoldStore), Failure> {
+    let writable = || -> Result<(Volume, FileHolds), Failure> {
         let held = claim(&volume, trace)?;
-        let store = HoldStore::open(&held)
+        let store = FileHolds::open(&held)
             .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
         Ok((held, store))
     };
@@ -186,7 +187,7 @@ fn holds(
         // (BUG-0188).
         HoldsAction::List => {
             let held = hold(&volume, trace)?;
-            let listed = match HoldStore::open_to_read(&held)
+            let listed = match FileHolds::open_to_read(&held)
                 .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
             {
                 Some(store) => store.list().map_err(hold_refused)?,
@@ -203,7 +204,7 @@ fn holds(
         }
         HoldsAction::Verify => {
             let held = hold(&volume, trace)?;
-            let findings = match HoldStore::open_to_read(&held)
+            let findings = match FileHolds::open_to_read(&held)
                 .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
             {
                 Some(store) => store.verify().map_err(hold_refused)?,
@@ -334,7 +335,7 @@ fn held_in_catalog(volume: &Path, resource: &str) -> Result<(), Failure> {
 /// The offline transaction, the hold operations a crash left open resolved first.
 fn offline_holds(
     held: &Volume,
-    store: &permguard_host::holds::HoldStore,
+    store: &dyn permguard_host::holds::HoldStore,
     server_config: Option<&Path>,
     trace: &Trace,
 ) -> Result<Mutations, Failure> {
@@ -356,7 +357,7 @@ fn hold_refused(error: permguard_host::holds::HoldError) -> Failure {
     use permguard_host::holds::HoldError;
     match error {
         HoldError::Invalid(_) | HoldError::NotFound(_) => Failure::usage(error.to_string()),
-        HoldError::Storage(_) => Failure::unavailable(error.to_string()),
+        HoldError::Unavailable(_) => Failure::unavailable(error.to_string()),
         // A hold file, or the index beside the files, that is not what the operations wrote:
         // damaged at rest, exit 65, named (BUG-0172).
         HoldError::Record(_) => Failure::corrupt(error.to_string()),
@@ -1963,8 +1964,9 @@ pub(super) fn open_plans(
     mutations: &Mutations,
     now: u64,
 ) -> Result<permguard_host::api::Replay, Failure> {
-    let (replay, _) = permguard_host::api::Replay::open(held, now)
+    let (replay, _) = permguard_host::api::replay::files::FileReplay::open(held, now)
         .map_err(|error| Failure::unavailable(format!("opening the plans: {error}")))?;
+    let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
     mutations
         .recover(&replay)
         .map_err(|error| Failure::unavailable(format!("recovering the plans: {error}")))?;

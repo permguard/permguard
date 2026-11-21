@@ -323,6 +323,11 @@
       "heading": "Security mutation transaction"
     },
     {
+      "id": "1-architecture/5-architecture-server-host-audit.md#stores",
+      "level": 3,
+      "heading": "Stores"
+    },
+    {
       "id": "1-architecture/5-architecture-server-host-audit.md#attribution-resource-and-privacy",
       "level": 2,
       "heading": "Attribution, resource and privacy"

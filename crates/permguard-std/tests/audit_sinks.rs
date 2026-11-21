@@ -10,8 +10,18 @@ use std::sync::{Arc, Mutex};
 use permguard_core::{AuditEvent, AuditOutcome, AuditPhase, AuditSink, Pseudonymizer};
 use permguard_std::audit::{RecordingAuditSink, TracingAuditSink};
 
+/// Held by every test of this file while it records: one at a time.
+///
+/// `tracing` caches, per call site and for the whole process, whether any subscriber wants it.
+/// A test that records with no subscriber while another installs or drops one can leave the
+/// call site cached as wanted by none, and the lines of the test that captures them are then
+/// never written. One test at a time, the cache is rebuilt when the capturing subscriber is
+/// installed and nothing races it.
+static RECORDING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn test_the_tracing_sink_accepts_events_and_names_itself() {
+    let _recording = RECORDING.lock().await;
     let sink = TracingAuditSink::new("demo-x", "9.9.9");
 
     sink.record(&AuditEvent::system("server.start", "permguard"), None)
@@ -23,6 +33,7 @@ async fn test_the_tracing_sink_accepts_events_and_names_itself() {
 
 #[tokio::test]
 async fn test_the_recording_sink_keeps_events_in_order() {
+    let _recording = RECORDING.lock().await;
     let sink = RecordingAuditSink::new();
 
     sink.record(&AuditEvent::system("first", "a"), None)
@@ -43,6 +54,7 @@ async fn test_the_recording_sink_keeps_events_in_order() {
 
 #[tokio::test]
 async fn test_a_new_recording_sink_has_recorded_nothing() {
+    let _recording = RECORDING.lock().await;
     assert!(
         RecordingAuditSink::new()
             .events()
@@ -53,6 +65,7 @@ async fn test_a_new_recording_sink_has_recorded_nothing() {
 
 #[tokio::test]
 async fn test_a_principal_reaches_neither_sink_in_the_clear() {
+    let _recording = RECORDING.lock().await;
     let sink = RecordingAuditSink::new();
 
     sink.record(
@@ -83,6 +96,7 @@ impl Pseudonymizer for StubPolicy {
 
 #[tokio::test]
 async fn test_with_a_policy_a_principal_is_recorded_as_a_stable_token() {
+    let _recording = RECORDING.lock().await;
     let sink = RecordingAuditSink::new();
 
     sink.record(
@@ -107,6 +121,7 @@ async fn test_with_a_policy_a_principal_is_recorded_as_a_stable_token() {
 
 #[tokio::test]
 async fn test_both_implementations_are_usable_through_the_trait_object() {
+    let _recording = RECORDING.lock().await;
     let sinks: Vec<Box<dyn AuditSink>> = vec![
         Box::new(TracingAuditSink::new("demo-x", "9.9.9")),
         Box::new(RecordingAuditSink::new()),
@@ -139,6 +154,7 @@ impl Write for Captured {
 
 /// The `audit` lines `events` produce through the tracing sink, as JSON.
 fn logged(events: &[AuditEvent<'_>]) -> Vec<serde_json::Value> {
+    let _recording = RECORDING.blocking_lock();
     let logs = Captured::default();
     let writer = logs.clone();
     let subscriber = tracing_subscriber::fmt()

@@ -5,12 +5,15 @@
 //!
 //! A trail's directory holds its records, its checkpoints and its `META.cbor`: removing it removed
 //! every trace that the trail existed, and `audit verify`, which walks the directories present,
-//! reported the rest of the volume sound. The index names every trail before its directory is
-//! created, so a trail deleted whole is a trail the index names and the volume lacks.
+//! reported the rest of the volume sound. The index names every trail before its first record is
+//! written, so a trail deleted whole is a trail the index names and the volume lacks. The
+//! directory is created first and named second: a Host that stops between the two leaves a
+//! directory that holds no record, which the next start names, and never a name without its
+//! directory, which would be recorded lost for good though nothing was ever in it.
 //!
 //! | File                    | Written                                     | Says                     |
 //! | ----------------------- | ------------------------------------------- | ------------------------ |
-//! | `<class>-<digest>.cbor` | before the trail's directory, once          | the trail's `META.cbor`  |
+//! | `<class>-<digest>.cbor` | before the trail's first record, once       | the trail's `META.cbor`  |
 //! | `<class>-<digest>.lost` | when a Host starts and finds the trail gone | the day it was found     |
 //!
 //! Both are immutable. A `.lost` entry stays: the trail the Host recreates at seq 0 afterwards

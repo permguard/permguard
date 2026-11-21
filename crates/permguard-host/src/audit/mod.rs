@@ -930,8 +930,9 @@ impl Engine {
         self.inner.dropped.load(Ordering::SeqCst)
     }
 
-    /// The trail of `(class, resource)`, opened for reading: what a verifier walks.
-    pub fn trail_dir(&self, class: Class, resource: &str) -> Result<Dir, Refused> {
+    /// The trail of `(class, resource)`, opened for reading. Inside this crate alone: a trail's
+    /// directory is the file backend's, and nothing outside the audit engine walks it.
+    pub(crate) fn trail_dir(&self, class: Class, resource: &str) -> Result<Dir, Refused> {
         trail::directory(&self.inner.trails, class, resource, false)
             .map_err(|error| Refused::Storage(error.to_string()))
     }
@@ -1482,11 +1483,15 @@ impl Inner {
                 Class::Security => self.retention_security.get().copied(),
                 Class::Operations | Class::Access => self.retention.get().copied(),
             };
-            // Named in the index before its directory exists, so no moment holds a trail the
-            // index does not know (BUG-0156).
-            index::record(&self.index, class, resource).map_err(|error| error.to_string())?;
+            // Its directory, then its name in the index, then, by the caller, its first record:
+            // no moment holds a record in a trail the index does not know (BUG-0156), and a
+            // start that stopped between the two steps leaves a directory without a record,
+            // which the next start names, never a name without its directory, which would be
+            // read as a trail deleted whole and stay recorded lost for good.
             let trail = Trail::open(&self.trails, class, resource, retention)
                 .map_err(|error| error.to_string())?;
+            crate::storage::crash::point("audit.trail_created");
+            index::record(&self.index, class, resource).map_err(|error| error.to_string())?;
             open.insert(key.clone(), trail);
         }
         open.get_mut(&key)

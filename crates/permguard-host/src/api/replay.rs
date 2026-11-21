@@ -1,24 +1,19 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The request-id replay window and the server-held plans: `host/state/replay/` on the volume
-//! (owner decision, 2026-10-06).
+//! The request-id replay window and the server-held plans: the contract their store keeps
+//! ([`ReplayStore`], `1-architecture/8` Store contracts) and what the Host API does with it
+//! ([`Replay`]).
 //!
-//! ```text
-//! host/state/
-//! ├── replay/           the journal: results, plans and consumed plans, segmented
-//! └── replay.new/       a compaction in progress; swept at open
-//! ```
+//! Every mutation applied before WP-3.6 was recorded as `{principal, request_id, operation,
+//! digest, result}`, so a retry inside the window, from the same principal with the same
+//! request, is answered with the stored result, across a restart. The window is [`WINDOW`] long
+//! and holds at most [`PER_PRINCIPAL`] results per principal. Since WP-3.6 the answers a retry
+//! learns are the mutation journal's commits; the results a store holds from before answer until
+//! their window ends, and no new one is written.
 //!
-//! Every applied mutation is recorded as `{principal, request_id, operation, digest, result}`,
-//! so a retry inside the window, from the same principal with the same request, is answered
-//! with the stored result, across a restart. The window is [`WINDOW`] long and holds at most
-//! [`PER_PRINCIPAL`] results per principal; what is past the window is dropped from memory as it
-//! is met and from the disk when the journal is opened again, by rewriting the live entries into
-//! a fresh journal and swapping the directories.
-//!
-//! A plan of a two-step mutation (`revoke/plan`, then `revoke/run`) lives in the same journal:
-//! the plan step writes `{plan_id, operation, target, revision, digest, expires, principal}`, the
+//! A plan of a two-step mutation (`revoke/plan`, then `revoke/run`) lives in the same store: the
+//! plan step writes `{plan_id, operation, target, revision, digest, expires, principal}`, the
 //! run step consumes it once, each inside its operation of the security-mutation transaction
 //! (WP-3.6). Since WP-3.9 a plan also keeps the receipt the plan step answered, which the run
 //! must present byte for byte, how many approvals it requires and each approval the Host attested;
@@ -27,18 +22,14 @@
 //! it `expired` for that long before it goes.
 //!
 //! An approval, and a plan the offline reset consumes ahead of its change, are operations of the
-//! [`DOMAIN`] domain, which this journal is: each writes its operation id beside what it records,
-//! so recovery commits an operation whose frame is durable and fails one whose frame is not.
+//! [`DOMAIN`] domain, which this store is: each writes its operation id beside what it records,
+//! so recovery commits an operation whose record is durable and fails one whose record is not.
 //!
-//! Since WP-3.6 the answers a retry learns are the mutation journal's commits; the results this
-//! journal holds from before answer until their window ends, and no new one is written.
-//!
-//! The payloads are JSON: the stored result is the answer the transports render, and nothing
-//! outside this process ever reads these frames. The journal frames themselves are the storage
-//! library's format, claim generation included.
+//! What a store does not hold is the request in flight: a `(principal, request_id)` pair is
+//! taken in this process for the time of one mutation ([`Replay::begin`]).
 
 use permguard_core::encoding::hex;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -51,24 +42,15 @@ use permguard_core::{ErrorClass, codes};
 use super::Refusal;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Domain, Observed};
-use crate::storage::StorageError;
-use crate::storage::dir::Dir;
-use crate::storage::journal::{Journal, Options, Recovery};
-use crate::storage::volume::Volume;
+
+pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
+pub use files::{DIRECTORY, JOURNAL};
 
 /// The mutation domain of approvals and of plans consumed ahead of their change (WP-3.9).
 pub const DOMAIN: &str = "plans";
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "state";
-/// The journal directory below [`DIRECTORY`].
-pub const JOURNAL: &str = "replay";
-/// Where a compaction writes before it swaps.
-const COMPACTING: &str = "replay.new";
-/// Where the superseded journal waits to be removed.
-const SUPERSEDED: &str = "replay.old";
-/// Where a journal handle lives for the instant of a swap, so the lock never holds a handle
-/// into a directory that is being renamed.
-const PLACEHOLDER: &str = "replay.swap";
 
 /// How long a stored result answers a retry.
 pub const WINDOW: Duration = Duration::from_secs(10 * 60);
@@ -77,62 +59,64 @@ pub const PER_PRINCIPAL: usize = 4096;
 /// How long a plan may be run after it was made.
 pub const PLAN_LIFETIME: Duration = Duration::from_secs(10 * 60);
 
-/// A stored result.
-const FRAME_RESULT: u16 = 1;
-/// A plan made.
-const FRAME_PLAN: u16 = 2;
-/// A plan consumed by its run step.
-const FRAME_PLAN_CONSUMED: u16 = 3;
-/// An approval of a plan (WP-3.9).
-const FRAME_PLAN_APPROVED: u16 = 4;
-
-/// What the journal refuses with.
+/// What the store refuses with.
 #[derive(Debug)]
 pub enum ReplayError {
-    /// The journal could not be read or written.
-    Storage(StorageError),
-    /// A frame does not decode, or a result does not deserialize as its operation's answer.
+    /// The store did not answer, or could not be written: nothing is known of the change. It
+    /// carries what the store said, as the store said it.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
+    /// A record does not decode, or a result does not deserialize as its operation's answer.
     Malformed(String),
+    /// The plan to consume is not held for its principal.
+    PlanUnknown,
+    /// The plan to consume was consumed already: a plan is run once.
+    PlanConsumed,
 }
 
 impl std::fmt::Display for ReplayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Storage(error) => write!(f, "{error}"),
+            Self::Unavailable(error) => write!(f, "{error}"),
             Self::Malformed(detail) => f.write_str(detail),
+            Self::PlanUnknown => f.write_str("no plan of that id is held for this principal"),
+            Self::PlanConsumed => f.write_str("this plan was already run"),
         }
     }
 }
 
 impl std::error::Error for ReplayError {}
 
-impl From<StorageError> for ReplayError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
-
 impl From<ReplayError> for Refusal {
     fn from(error: ReplayError) -> Self {
-        Refusal::Api(
-            permguard_core::ApiError::new(
-                ErrorClass::Unavailable,
-                codes::host::REPLAY_UNAVAILABLE,
-                "the replay journal is unavailable before the mutation: nothing was applied",
-            )
-            .with_internal(error.to_string()),
-        )
+        match error {
+            ReplayError::PlanUnknown => Refusal::new(
+                ErrorClass::NotFound,
+                codes::host::PLAN_UNKNOWN,
+                error.to_string(),
+            ),
+            ReplayError::PlanConsumed => Refusal::new(
+                ErrorClass::Conflict,
+                codes::host::PLAN_EXPIRED,
+                error.to_string(),
+            ),
+            ReplayError::Unavailable(_) | ReplayError::Malformed(_) => Refusal::Api(
+                permguard_core::ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::host::REPLAY_UNAVAILABLE,
+                    "the replay journal is unavailable before the mutation: nothing was applied",
+                )
+                .with_internal(error.to_string()),
+            ),
+        }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredResult {
-    principal: String,
-    request_id: String,
-    operation: String,
-    digest: String,
-    result: serde_json::Value,
-    recorded_at: u64,
+/// A result a store holds from before WP-3.6: what a retry of its request is answered with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stored {
+    pub operation: String,
+    pub digest: String,
+    pub result: serde_json::Value,
 }
 
 /// A server-held plan: what `revoke/plan` wrote and `revoke/run` presents.
@@ -184,36 +168,75 @@ pub struct TokenEntry {
     pub index: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Approved {
-    plan_id: String,
-    /// The planner, whose plan it is.
-    principal: String,
-    approval: PlanApproval,
+/// What an approval is decided by: the plan as it stands and whether it was run, read by the
+/// store in the step that records the approval the decision answers.
+pub type Decide<'a> = &'a dyn Fn(&Plan, bool) -> Result<PlanApproval, Refusal>;
+
+/// The replay window and the plans of one Host: the only way its code reads and changes them
+/// (`1-architecture/8` Store contracts).
+///
+/// A call holds one complete rule: the read that decides an approval or a consumption and the
+/// record it writes are one step for every other change of the store.
+pub trait ReplayStore: Send + Sync {
+    /// The result held of `(principal, request_id)`, when one is inside the window at `now`.
+    fn result(
+        &self,
+        principal: &str,
+        request_id: &str,
+        now: u64,
+    ) -> Result<Option<Stored>, ReplayError>;
+
+    /// How many results are held.
+    fn held(&self) -> Result<usize, ReplayError>;
+
+    /// Keeps `plan`, inside the operation `applying`.
+    fn write_plan(&self, applying: &Applying<'_>, plan: &Plan) -> Result<(), ReplayError>;
+
+    /// The plan `plan_id` of `principal`, and whether it was run.
+    fn plan(&self, principal: &str, plan_id: &str) -> Result<Option<(Plan, bool)>, ReplayError>;
+
+    /// The plan `plan_id`, whoever made it, and whether it was run.
+    fn find(&self, plan_id: &str) -> Result<Option<(Plan, bool)>, ReplayError>;
+
+    /// Every plan held, and whether it was run.
+    fn plans(&self) -> Result<Vec<(Plan, bool)>, ReplayError>;
+
+    /// Records the approval `decide` answers for the plan `plan_id`, inside the operation
+    /// `applying`, and answers the plan with it; `None`, and nothing decided, when no plan of
+    /// that id is held. `decide` is given the plan as it stands in the step that records its
+    /// answer: no approval is recorded for a plan another change has moved since it was judged.
+    /// A refusal of `decide` records nothing.
+    fn approve(
+        &self,
+        applying: &Applying<'_>,
+        plan_id: &str,
+        decide: Decide<'_>,
+    ) -> Result<Option<Plan>, Refusal>;
+
+    /// Consumes the plan `plan_id` of `principal`, inside the operation `applying`: once. A plan
+    /// consumed already is [`ReplayError::PlanConsumed`], one that is not held
+    /// [`ReplayError::PlanUnknown`], and neither writes anything.
+    fn consume(
+        &self,
+        applying: &Applying<'_>,
+        principal: &str,
+        plan_id: &str,
+    ) -> Result<(), ReplayError>;
+
+    /// What the operation `operation_id` on `target` left, for recovery: an approval shows as
+    /// the plan `target` holding one recorded by the operation; a plan consumed ahead of its
+    /// change, `consume:<plan_id>`, as that plan consumed.
+    fn operation(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, ReplayError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Consumed {
-    plan_id: String,
-    principal: String,
-    /// When the consumed plan would have expired: the marker is kept exactly as long as the
-    /// plan would have been, so a second run inside that time is `plan_expired`, not unknown.
-    expires: u64,
-}
-
-#[derive(Default)]
-struct State {
-    results: BTreeMap<(String, String), StoredResult>,
-    /// Request ids per principal, oldest first, so the cap drops the oldest.
-    held: BTreeMap<String, VecDeque<String>>,
-    plans: BTreeMap<(String, String), Plan>,
-    consumed: BTreeMap<(String, String), u64>,
-}
-
-/// The replay journal of one volume.
+/// The replay window as the Host API uses it: a store, the requests in flight in this process
+/// and the clock the window is measured by.
 pub struct Replay {
-    journal: Mutex<Journal>,
-    state: Mutex<State>,
+    store: Arc<dyn ReplayStore>,
     /// The `(principal, request_id)` pairs with a mutation in flight: a second arrival with the
     /// same pair while the first is between its lookup and its record is refused, so two
     /// simultaneous retries cannot both apply.
@@ -246,90 +269,15 @@ impl std::fmt::Debug for Replay {
 }
 
 impl Replay {
-    /// Opens the journal of `volume`, replays it, drops what is past the window at `now` and,
-    /// when anything was dropped, rewrites the live entries into a fresh journal.
-    pub fn open(volume: &Volume, now: u64) -> Result<(Self, Recovery), ReplayError> {
-        let state_dir = volume.host().subdir(DIRECTORY, true)?;
-        sweep(&state_dir)?;
-        let options = volume.journal_options(Options::default());
-        let (journal, recovery) = Journal::open(state_dir.subdir(JOURNAL, true)?, options)?;
-        let mut state = State::default();
-        let mut dead = 0usize;
-        for frame in journal.frames()? {
-            if !apply(&mut state, frame.kind, &frame.payload, now)? {
-                dead += 1;
-            }
-        }
-        let replay = Self {
-            journal: Mutex::new(journal),
-            state: Mutex::new(state),
+    /// The replay window over `store`, measured by the system clock until [`Self::with_time`].
+    pub fn new(store: Arc<dyn ReplayStore>) -> Self {
+        Self {
+            store,
             in_flight: Mutex::new(BTreeSet::new()),
             time: Arc::new(crate::time::TimeGuard::system(
                 permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
             )),
-        };
-        if dead > 0 {
-            replay.compact(&state_dir, options, now)?;
-            tracing::info!(
-                event.name = "host.replay.compacted",
-                component = super::COMPONENT,
-                dropped = dead,
-                "the replay journal was rewritten without its expired entries"
-            );
         }
-        Ok((replay, recovery))
-    }
-
-    /// Rewrites the live entries into [`COMPACTING`], then swaps it in: the superseded journal is
-    /// renamed aside, the fresh one renamed into place, and the superseded one removed. A crash
-    /// between the renames leaves [`SUPERSEDED`] beside a missing [`JOURNAL`], which [`sweep`]
-    /// puts back; a crash before them leaves [`COMPACTING`], which it removes.
-    fn compact(&self, state_dir: &Dir, options: Options, now: u64) -> Result<(), ReplayError> {
-        let mut journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        remove_tree(state_dir, COMPACTING)?;
-        let (mut fresh, _) = Journal::open(state_dir.subdir(COMPACTING, true)?, options)?;
-        for result in state.results.values() {
-            fresh.append(FRAME_RESULT, &encode(result)?)?;
-        }
-        for plan in state.plans.values() {
-            if kept(plan.expires, now) {
-                fresh.append(FRAME_PLAN, &encode(plan)?)?;
-            }
-        }
-        for ((principal, plan_id), expires) in &state.consumed {
-            if kept(*expires, now) {
-                fresh.append(
-                    FRAME_PLAN_CONSUMED,
-                    &encode(&Consumed {
-                        plan_id: plan_id.clone(),
-                        principal: principal.clone(),
-                        expires: *expires,
-                    })?,
-                )?;
-            }
-        }
-        // Both handles are released before the directories move: a journal keeps its current
-        // segment open and names its directory by path on the platforms without directory
-        // handles, so the fresh journal is opened again where it now lives.
-        drop(fresh);
-        let superseded = std::mem::replace(&mut *journal, placeholder(state_dir, options)?);
-        drop(superseded);
-        state_dir.rename(JOURNAL, SUPERSEDED)?;
-        state_dir.rename(COMPACTING, JOURNAL)?;
-        state_dir.sync()?;
-        remove_tree(state_dir, SUPERSEDED)?;
-        let (reopened, _) = Journal::open(state_dir.subdir(JOURNAL, false)?, options)?;
-        let placeholder = std::mem::replace(&mut *journal, reopened);
-        drop(placeholder);
-        remove_tree(state_dir, PLACEHOLDER)?;
-        Ok(())
     }
 
     /// Takes the `(principal, request_id)` pair for the duration of one mutation, or refuses a
@@ -369,13 +317,7 @@ impl Replay {
         digest: &str,
     ) -> Result<Option<T>, Refusal> {
         let now = self.time.now_secs();
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        prune(&mut state, now);
-        let key = (principal.as_str().to_owned(), request_id.to_owned());
-        let Some(stored) = state.results.get(&key) else {
+        let Some(stored) = self.store.result(principal.as_str(), request_id, now)? else {
             return Ok(None);
         };
         if stored.operation != operation || stored.digest != digest {
@@ -385,7 +327,7 @@ impl Replay {
                 "this request id was already used for a different mutation inside the replay window",
             ));
         }
-        let result = serde_json::from_value(stored.result.clone()).map_err(|error| {
+        let result = serde_json::from_value(stored.result).map_err(|error| {
             ReplayError::Malformed(format!(
                 "a stored result of `{operation}` does not read as its answer: {error}"
             ))
@@ -393,90 +335,20 @@ impl Replay {
         Ok(Some(result))
     }
 
-    /// Records the `result` of `(principal, request_id)`, durably: what the Host API did before
-    /// WP-3.6, whose answers now live in the mutation journal's commits. Kept for the tests of
-    /// the results such a journal still holds, which answer until their window ends.
-    #[cfg(test)]
-    pub(crate) fn record<T: Serialize>(
-        &self,
-        principal: &Principal,
-        request_id: &str,
-        operation: &str,
-        digest: &str,
-        result: &T,
-    ) -> Result<(), ReplayError> {
-        let now = self.time.now_secs();
-        let stored = StoredResult {
-            principal: principal.as_str().to_owned(),
-            request_id: request_id.to_owned(),
-            operation: operation.to_owned(),
-            digest: digest.to_owned(),
-            result: serde_json::to_value(result).map_err(|error| {
-                ReplayError::Malformed(format!(
-                    "a result of `{operation}` does not serialize: {error}"
-                ))
-            })?,
-            recorded_at: now,
-        };
-        let bytes = encode(&stored)?;
-        let mut journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        journal.append(FRAME_RESULT, &bytes)?;
-        drop(journal);
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        prune(&mut state, now);
-        remember(&mut state, stored);
-        Ok(())
-    }
-
     /// Writes a plan, durably, inside the operation `applying` names (WP-3.6).
-    pub fn plan(&self, _applying: &Applying<'_>, plan: Plan) -> Result<(), Refusal> {
-        let bytes = encode(&plan)?;
-        let mut journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        journal
-            .append(FRAME_PLAN, &bytes)
-            .map_err(ReplayError::from)?;
-        drop(journal);
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state
-            .plans
-            .insert((plan.principal.clone(), plan.plan_id.clone()), plan);
-        Ok(())
+    pub fn plan(&self, applying: &Applying<'_>, plan: Plan) -> Result<(), Refusal> {
+        Ok(self.store.write_plan(applying, &plan)?)
     }
 
     /// The plan `plan_id` of `principal`, when it is held, not yet consumed and not expired at
     /// `now`: `plan_unknown` otherwise, `plan_expired` when it was run or has aged out.
     pub fn plan_of(&self, principal: &Principal, plan_id: &str, now: u64) -> Result<Plan, Refusal> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let key = (principal.as_str().to_owned(), plan_id.to_owned());
-        if state.consumed.contains_key(&key) {
-            return Err(Refusal::new(
-                ErrorClass::Conflict,
-                codes::host::PLAN_EXPIRED,
-                "this plan was already run",
-            ));
-        }
-        let Some(plan) = state.plans.get(&key) else {
-            return Err(Refusal::new(
-                ErrorClass::NotFound,
-                codes::host::PLAN_UNKNOWN,
-                "no plan of that id is held for this principal",
-            ));
+        let Some((plan, consumed)) = self.store.plan(principal.as_str(), plan_id)? else {
+            return Err(ReplayError::PlanUnknown.into());
         };
+        if consumed {
+            return Err(ReplayError::PlanConsumed.into());
+        }
         if plan.expires <= now {
             return Err(Refusal::new(
                 ErrorClass::Conflict,
@@ -484,208 +356,54 @@ impl Replay {
                 "this plan has expired; plan again",
             ));
         }
-        Ok(plan.clone())
+        Ok(plan)
     }
 
-    /// Consumes `plan_id` of `principal`, durably, inside the run's operation: a second run finds
-    /// it `plan_expired`. The caller decides what a failure here means: the plan's mutation is
-    /// already applied.
+    /// Consumes `plan_id` of `principal`, durably, inside the run's operation, once: a second
+    /// consumption is refused, and a second run finds the plan `plan_expired`. The caller decides
+    /// what a failure here means when the plan's mutation is already applied.
     pub fn consume(
         &self,
-        _applying: &Applying<'_>,
+        applying: &Applying<'_>,
         principal: &Principal,
         plan_id: &str,
     ) -> Result<(), ReplayError> {
-        let key = (principal.as_str().to_owned(), plan_id.to_owned());
-        let expires = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .plans
-            .get(&key)
-            .map_or(0, |plan| plan.expires);
-        let consumed = Consumed {
-            plan_id: plan_id.to_owned(),
-            principal: principal.as_str().to_owned(),
-            expires,
-        };
-        let bytes = encode(&consumed)?;
-        let mut journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        journal.append(FRAME_PLAN_CONSUMED, &bytes)?;
-        drop(journal);
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.consumed.insert(key, expires);
-        Ok(())
+        self.store.consume(applying, principal.as_str(), plan_id)
     }
 
-    /// Records `approval` of the plan `plan_id` of `planner`, durably, inside the approval's
-    /// operation (WP-3.9).
+    /// Records the approval `decide` answers for the plan `plan_id`, durably, inside the
+    /// approval's operation (WP-3.9), and answers the plan with it; `None` when no plan of that
+    /// id is held. `decide` judges the plan in the step that records its answer.
     pub fn approve(
         &self,
-        _applying: &Applying<'_>,
-        planner: &str,
+        applying: &Applying<'_>,
         plan_id: &str,
-        approval: PlanApproval,
-    ) -> Result<(), ReplayError> {
-        let approved = Approved {
-            plan_id: plan_id.to_owned(),
-            principal: planner.to_owned(),
-            approval: approval.clone(),
-        };
-        let bytes = encode(&approved)?;
-        let mut journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        journal.append(FRAME_PLAN_APPROVED, &bytes)?;
-        drop(journal);
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(plan) = state
-            .plans
-            .get_mut(&(planner.to_owned(), plan_id.to_owned()))
-        {
-            plan.approvals.push(approval);
-        }
-        Ok(())
+        decide: Decide<'_>,
+    ) -> Result<Option<Plan>, Refusal> {
+        self.store.approve(applying, plan_id, decide)
     }
 
     /// The plan `plan_id`, whoever made it, and whether it was run: what an approval reads.
-    pub fn find(&self, plan_id: &str) -> Option<(Plan, bool)> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state
-            .plans
-            .iter()
-            .find(|((_, held), _)| held == plan_id)
-            .map(|(key, plan)| (plan.clone(), state.consumed.contains_key(key)))
+    pub fn find(&self, plan_id: &str) -> Result<Option<(Plan, bool)>, ReplayError> {
+        self.store.find(plan_id)
     }
 
     /// Every plan held, made since WP-3.9, and whether it was run: what the plans store lists.
-    pub fn plans(&self) -> Vec<(Plan, bool)> {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state
-            .plans
-            .iter()
-            .filter(|(_, plan)| !plan.kind.is_empty())
-            .map(|(key, plan)| (plan.clone(), state.consumed.contains_key(key)))
-            .collect()
+    pub fn plans(&self) -> Result<Vec<(Plan, bool)>, ReplayError> {
+        let mut plans = self.store.plans()?;
+        plans.retain(|(plan, _)| !plan.kind.is_empty());
+        Ok(plans)
     }
 
     /// How many results are held, for the tests and the start-up record.
-    pub fn held(&self) -> usize {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .results
-            .len()
+    pub fn held(&self) -> Result<usize, ReplayError> {
+        self.store.held()
     }
-}
-
-/// Applies one frame to `state`; `false` when the frame is past its window at `now` and was
-/// dropped rather than applied.
-fn apply(state: &mut State, kind: u16, payload: &[u8], now: u64) -> Result<bool, ReplayError> {
-    match kind {
-        FRAME_RESULT => {
-            let stored: StoredResult = decode(payload)?;
-            if stored.recorded_at.saturating_add(WINDOW.as_secs()) <= now {
-                return Ok(false);
-            }
-            remember(state, stored);
-            Ok(true)
-        }
-        FRAME_PLAN => {
-            let plan: Plan = decode(payload)?;
-            if !kept(plan.expires, now) {
-                return Ok(false);
-            }
-            state
-                .plans
-                .insert((plan.principal.clone(), plan.plan_id.clone()), plan);
-            Ok(true)
-        }
-        FRAME_PLAN_CONSUMED => {
-            let consumed: Consumed = decode(payload)?;
-            let key = (consumed.principal, consumed.plan_id);
-            if !kept(consumed.expires, now) {
-                state.plans.remove(&key);
-                return Ok(false);
-            }
-            state.consumed.insert(key, consumed.expires);
-            Ok(true)
-        }
-        FRAME_PLAN_APPROVED => {
-            let approved: Approved = decode(payload)?;
-            let key = (approved.principal, approved.plan_id);
-            match state.plans.get_mut(&key) {
-                Some(plan) => {
-                    plan.approvals.push(approved.approval);
-                    Ok(true)
-                }
-                // The plan went with its window: the approval goes too.
-                None => Ok(false),
-            }
-        }
-        other => Err(ReplayError::Malformed(format!(
-            "the replay journal holds a frame of unknown kind {other}"
-        ))),
-    }
-}
-
-/// Holds `stored`, dropping the principal's oldest result past [`PER_PRINCIPAL`].
-fn remember(state: &mut State, stored: StoredResult) {
-    let held = state.held.entry(stored.principal.clone()).or_default();
-    if !state
-        .results
-        .contains_key(&(stored.principal.clone(), stored.request_id.clone()))
-    {
-        held.push_back(stored.request_id.clone());
-    }
-    while held.len() > PER_PRINCIPAL {
-        if let Some(oldest) = held.pop_front() {
-            state.results.remove(&(stored.principal.clone(), oldest));
-        }
-    }
-    state.results.insert(
-        (stored.principal.clone(), stored.request_id.clone()),
-        stored,
-    );
-}
-
-/// Drops from memory what is past the window at `now`.
-fn prune(state: &mut State, now: u64) {
-    let expired: Vec<(String, String)> = state
-        .results
-        .iter()
-        .filter(|(_, stored)| stored.recorded_at.saturating_add(WINDOW.as_secs()) <= now)
-        .map(|(key, _)| key.clone())
-        .collect();
-    for key in expired {
-        state.results.remove(&key);
-        if let Some(held) = state.held.get_mut(&key.0) {
-            held.retain(|request_id| *request_id != key.1);
-        }
-    }
-    state.plans.retain(|_, plan| kept(plan.expires, now));
-    state.consumed.retain(|_, expires| kept(*expires, now));
 }
 
 /// Whether a plan expiring at `expires`, or its consumed marker, is still kept at `now`: one
 /// [`WINDOW`] past its expiry, listed `expired` meanwhile.
-fn kept(expires: u64, now: u64) -> bool {
+pub(crate) fn kept(expires: u64, now: u64) -> bool {
     expires.saturating_add(WINDOW.as_secs()) > now
 }
 
@@ -694,106 +412,16 @@ impl Domain for Replay {
         DOMAIN
     }
 
-    /// An approval shows as the plan `target` holding one recorded by `operation_id`; a plan
-    /// consumed ahead of its change, `consume:<plan_id>`, as that plan consumed.
     fn observe(
         &self,
         operation_id: &OperationId,
         target: Option<&str>,
     ) -> Result<Option<Observed>, String> {
-        // The window is held in memory, read whole when it was opened: it always answers.
-        Ok(self.shown(operation_id, target))
+        // A store that does not answer is not an operation that is not there: it stops recovery.
+        self.store
+            .operation(operation_id, target)
+            .map_err(|error| error.to_string())
     }
-}
-
-impl Replay {
-    fn shown(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        let target = target?;
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(plan_id) = target.strip_prefix("consume:") {
-            let (key, _) = state
-                .consumed
-                .iter()
-                .find(|((_, held), _)| held == plan_id)?;
-            let revision = state.plans.get(key).map_or(0, |plan| plan.revision);
-            return Some(Observed {
-                revision,
-                target: Some(target.to_owned()),
-            });
-        }
-        let recorded = operation_id.to_string();
-        state
-            .plans
-            .iter()
-            .find(|((_, held), plan)| {
-                held == target
-                    && plan
-                        .approvals
-                        .iter()
-                        .any(|approval| approval.operation_id == recorded)
-            })
-            .map(|(_, plan)| Observed {
-                revision: plan.revision,
-                target: Some(target.to_owned()),
-            })
-    }
-}
-
-/// An empty journal under [`PLACEHOLDER`], held for the instant of a swap.
-fn placeholder(state_dir: &Dir, options: Options) -> Result<Journal, ReplayError> {
-    remove_tree(state_dir, PLACEHOLDER)?;
-    let (journal, _) = Journal::open(state_dir.subdir(PLACEHOLDER, true)?, options)?;
-    Ok(journal)
-}
-
-/// Removes what a compaction that did not finish left behind, and puts back a journal that was
-/// renamed aside but not replaced.
-fn sweep(state_dir: &Dir) -> Result<(), ReplayError> {
-    let subdirs = state_dir.subdirs()?;
-    let has = |name: &str| subdirs.iter().any(|held| held == name);
-    if has(COMPACTING) {
-        remove_tree(state_dir, COMPACTING)?;
-    }
-    if has(PLACEHOLDER) {
-        remove_tree(state_dir, PLACEHOLDER)?;
-    }
-    if has(SUPERSEDED) {
-        if has(JOURNAL) {
-            remove_tree(state_dir, SUPERSEDED)?;
-        } else {
-            state_dir.rename(SUPERSEDED, JOURNAL)?;
-            state_dir.sync()?;
-        }
-    }
-    Ok(())
-}
-
-/// Removes the subdirectory `name` and the files in it; nothing when it is already gone.
-fn remove_tree(state_dir: &Dir, name: &str) -> Result<(), ReplayError> {
-    if !state_dir.subdirs()?.iter().any(|held| held == name) {
-        return Ok(());
-    }
-    let dir = state_dir.subdir(name, false)?;
-    for file in dir.names()? {
-        dir.unlink(&file)?;
-    }
-    drop(dir);
-    state_dir.remove_subdir(name)?;
-    state_dir.sync()?;
-    Ok(())
-}
-
-fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, ReplayError> {
-    serde_json::to_vec(value)
-        .map_err(|error| ReplayError::Malformed(format!("a replay frame does not encode: {error}")))
-}
-
-fn decode<T: DeserializeOwned>(payload: &[u8]) -> Result<T, ReplayError> {
-    serde_json::from_slice(payload)
-        .map_err(|error| ReplayError::Malformed(format!("a replay frame does not decode: {error}")))
 }
 
 /// The digest a mutation's request is remembered by: SHA-256 over its JSON, hex.
@@ -828,411 +456,4 @@ pub fn mint_id() -> Result<String, Refusal> {
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(clippy::expect_used)]
-
-    use super::*;
-    use crate::api::testing::scratch;
-    use permguard_core::assurance::AssuranceProfile;
-
-    fn principal(name: &str) -> Principal {
-        Principal::new(name).expect("a principal")
-    }
-
-    #[test]
-    fn a_result_is_replayed_for_the_same_request_and_refused_for_another() {
-        let root = scratch("replay-same");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-        let alice = principal("alice");
-        assert!(
-            replay
-                .lookup::<u64>(&alice, "r1", "op", "d1")
-                .expect("looked up")
-                .is_none()
-        );
-        replay
-            .record(&alice, "r1", "op", "d1", &42u64)
-            .expect("recorded");
-        assert_eq!(
-            replay.lookup::<u64>(&alice, "r1", "op", "d1").expect("ok"),
-            Some(42)
-        );
-        let reused = replay
-            .lookup::<u64>(&alice, "r1", "op", "d2")
-            .expect_err("another request under the same id");
-        assert_eq!(
-            reused.error().expect("refusal").code(),
-            codes::host::REQUEST_ID_REUSED
-        );
-        let other_op = replay
-            .lookup::<u64>(&alice, "r1", "other", "d1")
-            .expect_err("another operation under the same id");
-        assert_eq!(
-            other_op.error().expect("refusal").code(),
-            codes::host::REQUEST_ID_REUSED
-        );
-        // Another principal's namespace is its own.
-        assert!(
-            replay
-                .lookup::<u64>(&principal("bob"), "r1", "op", "d1")
-                .expect("ok")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn a_result_survives_a_restart_and_an_expired_one_is_compacted_away() {
-        let root = scratch("replay-restart");
-        let alice = principal("alice");
-        {
-            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-            replay
-                .record(&alice, "r1", "op", "d1", &"first")
-                .expect("recorded");
-        }
-        {
-            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let now = permguard_core::time::unix_now();
-            let (replay, _) = Replay::open(&volume, now).expect("reopens");
-            assert_eq!(replay.held(), 1, "the result is read back from the journal");
-            assert_eq!(
-                replay
-                    .lookup::<String>(&alice, "r1", "op", "d1")
-                    .expect("ok"),
-                Some("first".to_owned())
-            );
-        }
-        {
-            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let far = permguard_core::time::unix_now() + WINDOW.as_secs() + 1;
-            let (replay, _) = Replay::open(&volume, far).expect("reopens past the window");
-            assert_eq!(replay.held(), 0, "past the window nothing is held");
-            let state_dir = volume.host().subdir(DIRECTORY, false).expect("state");
-            let names = state_dir.subdirs().expect("listed");
-            assert_eq!(
-                names,
-                vec![JOURNAL.to_owned()],
-                "the swap left only the journal"
-            );
-            // And the rewritten journal holds no result frame.
-            let journal_dir = state_dir.subdir(JOURNAL, false).expect("journal");
-            let (journal, _) =
-                Journal::open(journal_dir, volume.journal_options(Options::default()))
-                    .expect("the rewritten journal opens");
-            assert!(journal.frames().expect("frames").is_empty());
-        }
-    }
-
-    #[test]
-    fn the_per_principal_cap_drops_the_oldest() {
-        let mut state = State::default();
-        for index in 0..=PER_PRINCIPAL {
-            remember(
-                &mut state,
-                StoredResult {
-                    principal: "alice".to_owned(),
-                    request_id: format!("r{index}"),
-                    operation: "op".to_owned(),
-                    digest: "d".to_owned(),
-                    result: serde_json::Value::Null,
-                    recorded_at: 0,
-                },
-            );
-        }
-        assert_eq!(state.results.len(), PER_PRINCIPAL);
-        assert!(
-            !state
-                .results
-                .contains_key(&("alice".to_owned(), "r0".to_owned())),
-            "the oldest went"
-        );
-        assert!(
-            state
-                .results
-                .contains_key(&("alice".to_owned(), format!("r{PER_PRINCIPAL}")))
-        );
-    }
-
-    #[test]
-    fn a_plan_is_consumed_once_and_expires() {
-        let root = scratch("replay-plan");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-        let alice = principal("alice");
-        let plan = Plan {
-            plan_id: "p1".to_owned(),
-            operation: "grants.revoke".to_owned(),
-            target: "g1".to_owned(),
-            revision: 3,
-            digest: "abc".to_owned(),
-            expires: 2_000,
-            principal: "alice".to_owned(),
-            ..Plan::default()
-        };
-        replay
-            .plan(&Applying::for_tests(1), plan.clone())
-            .expect("planned");
-        assert_eq!(replay.plan_of(&alice, "p1", 1_500).expect("held"), plan);
-        let expired = replay.plan_of(&alice, "p1", 2_000).expect_err("expired");
-        assert_eq!(
-            expired.error().expect("refusal").code(),
-            codes::host::PLAN_EXPIRED
-        );
-        let unknown = replay
-            .plan_of(&principal("bob"), "p1", 1_500)
-            .expect_err("not bob's");
-        assert_eq!(
-            unknown.error().expect("refusal").code(),
-            codes::host::PLAN_UNKNOWN
-        );
-        replay
-            .consume(&Applying::for_tests(2), &alice, "p1")
-            .expect("consumed");
-        let again = replay.plan_of(&alice, "p1", 1_500).expect_err("consumed");
-        assert_eq!(
-            again.error().expect("refusal").code(),
-            codes::host::PLAN_EXPIRED
-        );
-        drop(replay);
-        // Consumption survives a restart.
-        let (replay, _) = Replay::open(&volume, 1_500).expect("reopens");
-        let again = replay
-            .plan_of(&alice, "p1", 1_500)
-            .expect_err("still consumed");
-        assert_eq!(
-            again.error().expect("refusal").code(),
-            codes::host::PLAN_EXPIRED
-        );
-    }
-
-    /// An approval and a consumption ahead of the change are operations of the plans domain:
-    /// recovery finds each by what it wrote (WP-3.9), and an approval survives a restart.
-    #[test]
-    fn an_approval_survives_a_restart_and_recovery_finds_it_by_its_operation() {
-        let root = scratch("replay-approval");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-        let alice = principal("alice");
-        let plan = Plan {
-            plan_id: "p1".to_owned(),
-            operation: "identity.reset".to_owned(),
-            target: "t".to_owned(),
-            revision: 3,
-            digest: "abc".to_owned(),
-            expires: 2_000,
-            principal: "alice".to_owned(),
-            kind: "identity.reset".to_owned(),
-            approvals_required: 1,
-            ..Plan::default()
-        };
-        replay
-            .plan(&Applying::for_tests(1), plan.clone())
-            .expect("planned");
-        let approving = Applying::for_tests(2);
-        let approval = PlanApproval {
-            principal: "bob".to_owned(),
-            approved_at: 1_100,
-            envelope: "e".to_owned(),
-            operation_id: approving.operation_id().to_string(),
-            token: None,
-        };
-        replay
-            .approve(&approving, "alice", "p1", approval.clone())
-            .expect("approved");
-        drop(replay);
-
-        let (replay, _) = Replay::open(&volume, 1_200).expect("reopens");
-        assert_eq!(
-            replay.plan_of(&alice, "p1", 1_200).expect("held").approvals,
-            vec![approval]
-        );
-        assert_eq!(replay.name(), DOMAIN);
-        let found = replay
-            .observe(&approving.operation_id(), Some("p1"))
-            .expect("the domain answers")
-            .expect("the approval is found");
-        assert_eq!(found.revision, 3);
-        assert!(
-            replay
-                .observe(&Applying::for_tests(3).operation_id(), Some("p1"))
-                .expect("the domain answers")
-                .is_none(),
-            "an operation that wrote nothing is not found"
-        );
-        assert!(
-            replay
-                .observe(&approving.operation_id(), None)
-                .expect("the domain answers")
-                .is_none()
-        );
-        assert!(
-            replay
-                .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
-                .expect("the domain answers")
-                .is_none(),
-            "not consumed yet"
-        );
-        replay
-            .consume(&Applying::for_tests(4), &alice, "p1")
-            .expect("consumed");
-        assert!(
-            replay
-                .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
-                .expect("the domain answers")
-                .is_some()
-        );
-    }
-
-    /// An expired plan is kept one window past its expiry, so the plans store lists it, then goes.
-    #[test]
-    fn an_expired_plan_is_listed_for_one_window_then_dropped() {
-        let root = scratch("replay-expired");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-        let plan = Plan {
-            plan_id: "p1".to_owned(),
-            operation: "grants.revoke".to_owned(),
-            target: "g1".to_owned(),
-            expires: 2_000,
-            principal: "alice".to_owned(),
-            kind: "grant.revoke".to_owned(),
-            ..Plan::default()
-        };
-        replay.plan(&Applying::for_tests(1), plan).expect("planned");
-        drop(replay);
-        let within = 2_000 + WINDOW.as_secs() - 1;
-        let (replay, _) = Replay::open(&volume, within).expect("reopens");
-        assert_eq!(replay.plans().len(), 1, "listed while expired");
-        assert!(replay.plan_of(&principal("alice"), "p1", within).is_err());
-        drop(replay);
-        let (replay, _) =
-            Replay::open(&volume, 2_000 + WINDOW.as_secs()).expect("reopens past the window");
-        assert!(replay.plans().is_empty());
-    }
-
-    #[test]
-    fn a_consumed_plan_stays_consumed_across_a_compaction() {
-        let root = scratch("replay-consumed-compact");
-        let alice = principal("alice");
-        let plan = Plan {
-            plan_id: "p1".to_owned(),
-            operation: "grants.revoke".to_owned(),
-            target: "g1".to_owned(),
-            revision: 1,
-            digest: "d".to_owned(),
-            expires: permguard_core::time::unix_now() + 3_600,
-            principal: "alice".to_owned(),
-            ..Plan::default()
-        };
-        {
-            let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-            let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-            replay.plan(&Applying::for_tests(1), plan).expect("planned");
-            replay
-                .consume(&Applying::for_tests(2), &alice, "p1")
-                .expect("consumed");
-            // An expired result, so the next open compacts.
-            replay
-                .record(&alice, "old", "op", "d", &1u8)
-                .expect("recorded");
-        }
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let far = permguard_core::time::unix_now() + WINDOW.as_secs() + 1;
-        let (replay, _) = Replay::open(&volume, far).expect("reopens and compacts");
-        assert_eq!(replay.held(), 0);
-        let again = replay
-            .plan_of(&alice, "p1", far)
-            .expect_err("consumed, and still said so");
-        assert_eq!(
-            again.error().expect("refusal").code(),
-            codes::host::PLAN_EXPIRED
-        );
-        // The journal reopened where it lives: a write after the swap lands and is durable.
-        replay
-            .record(&alice, "new", "op", "d", &2u8)
-            .expect("the compacted journal takes a write");
-        drop(replay);
-        let (replay, _) =
-            Replay::open(&volume, permguard_core::time::unix_now()).expect("reopens at the clock");
-        assert_eq!(
-            replay.held(),
-            1,
-            "the write after the compaction is durable"
-        );
-        let state_dir = volume.host().subdir(DIRECTORY, false).expect("state");
-        assert_eq!(
-            state_dir.subdirs().expect("listed"),
-            vec![JOURNAL.to_owned()],
-            "no swap directory is left behind"
-        );
-    }
-
-    #[test]
-    fn a_second_arrival_of_a_request_in_flight_is_refused_until_the_first_answers() {
-        let root = scratch("replay-in-flight");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-        let alice = principal("alice");
-        let first = replay.begin(&alice, "r1").expect("the first is in flight");
-        let second = replay
-            .begin(&alice, "r1")
-            .expect_err("the same pair, while in flight");
-        assert_eq!(
-            second.error().expect("refusal").code(),
-            codes::host::REQUEST_IN_FLIGHT
-        );
-        assert!(
-            replay.begin(&principal("bob"), "r1").is_ok(),
-            "another principal's pair"
-        );
-        drop(first);
-        drop(replay.begin(&alice, "r1").expect("free again"));
-    }
-
-    #[test]
-    fn a_half_finished_compaction_is_swept_at_open() {
-        let root = scratch("replay-sweep");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let alice = principal("alice");
-        {
-            let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-            replay
-                .record(&alice, "r1", "op", "d1", &1u8)
-                .expect("recorded");
-        }
-        let state_dir = volume.host().subdir(DIRECTORY, false).expect("state");
-        // A crash after the first rename: the journal is aside, nothing replaced it.
-        state_dir
-            .rename(JOURNAL, SUPERSEDED)
-            .expect("renamed aside");
-        state_dir
-            .subdir(COMPACTING, true)
-            .expect("a compaction had begun");
-        let (replay, _) = Replay::open(&volume, 1_000).expect("reopens");
-        assert_eq!(replay.held(), 1, "the journal renamed aside was put back");
-        assert_eq!(
-            state_dir.subdirs().expect("listed"),
-            vec![JOURNAL.to_owned()]
-        );
-    }
-
-    #[test]
-    fn the_digest_follows_the_request_and_ids_are_distinct() {
-        #[derive(Serialize)]
-        struct Body {
-            a: u8,
-        }
-        assert_eq!(
-            digest_of(&Body { a: 1 }).expect("digest"),
-            digest_of(&Body { a: 1 }).expect("digest")
-        );
-        assert_ne!(
-            digest_of(&Body { a: 1 }).expect("digest"),
-            digest_of(&Body { a: 2 }).expect("digest")
-        );
-        assert_ne!(mint_id().expect("minted"), mint_id().expect("minted"));
-        assert_eq!(mint_id().expect("minted").len(), 32);
-    }
-}
+mod tests;
