@@ -1242,6 +1242,7 @@ impl Registration {
         Ok(self.mutations.as_ref().map(|engine| MutationHandle {
             engine: Arc::clone(engine),
             domain,
+            subsystem: None,
         }))
     }
 
@@ -1827,6 +1828,8 @@ impl Hints {
 pub struct MutationHandle {
     engine: Arc<crate::operations::mutation::Mutations>,
     domain: &'static str,
+    /// The subsystem whose gate every operation of this handle holds while it applies.
+    subsystem: Option<crate::operations::mutation::Subsystem>,
 }
 
 impl std::fmt::Debug for MutationHandle {
@@ -1839,7 +1842,42 @@ impl MutationHandle {
     /// A handle over `engine` for `domain`, for a test or a composition that holds the engine
     /// itself.
     pub fn new(engine: Arc<crate::operations::mutation::Mutations>, domain: &'static str) -> Self {
-        Self { engine, domain }
+        Self {
+            engine,
+            domain,
+            subsystem: None,
+        }
+    }
+
+    /// This handle, its operations applied under the gate of the subsystem `name` (iteration
+    /// 03, decision E26): the domain write of each, every store it changes, is one step for
+    /// every other operation of the subsystem and for every read made through
+    /// [`MutationHandle::consistent`].
+    #[must_use]
+    pub fn in_subsystem(mut self, name: &str) -> Self {
+        self.subsystem = Some(self.engine.subsystem(name));
+        self
+    }
+
+    /// A handle for another domain of the same Plane, in the same subsystem: a Plane that
+    /// declared two domains runs the second on it.
+    #[must_use]
+    pub fn for_domain(&self, domain: &'static str) -> Self {
+        Self {
+            engine: Arc::clone(&self.engine),
+            domain,
+            subsystem: self.subsystem.clone(),
+        }
+    }
+
+    /// Runs `read` while no operation of this handle's subsystem applies: what it reads of the
+    /// subsystem's stores is as one operation left them, never between two of its writes. A
+    /// handle in no subsystem runs it as it is.
+    pub fn consistent<R>(&self, read: impl FnOnce() -> R) -> R {
+        match &self.subsystem {
+            Some(subsystem) => subsystem.hold(read),
+            None => read(),
+        }
     }
 
     /// The domain it applies.
@@ -1880,7 +1918,12 @@ impl MutationHandle {
                 ),
             ));
         }
-        self.engine.run_checked(begin, check, apply)
+        match &self.subsystem {
+            Some(subsystem) => self
+                .engine
+                .run_checked(begin, check, |applying| subsystem.hold(|| apply(applying))),
+            None => self.engine.run_checked(begin, check, apply),
+        }
     }
 
     /// [`crate::operations::mutation::Mutations::replayed`], for a request of this domain: the

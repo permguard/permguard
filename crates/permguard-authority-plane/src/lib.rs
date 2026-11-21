@@ -18,6 +18,8 @@ pub mod access_keys;
 pub mod accounts;
 pub mod admin;
 pub mod authority;
+#[cfg(test)]
+mod bench;
 pub mod cbor;
 pub mod completion;
 mod handles;

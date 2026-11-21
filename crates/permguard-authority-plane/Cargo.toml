@@ -39,3 +39,5 @@ zeroize.workspace = true
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
+# A ring that signs, for the whole Authority the tests compose.
+permguard-std = { workspace = true, features = ["keys"] }

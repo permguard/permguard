@@ -23,6 +23,9 @@ is cut.
   Recovery asks each domain about every such operation. A domain whose state did not read, a file, a directory or a record the operating system refused, was taken as showing no trace of the operation, which was then recorded as failed although it may have been applied, and a retry applied it again.
   The operation now stays open, nothing is recorded of it, the log says `host.mutations_recovery_stopped` with the domain and the reason, and the server does not serve that domain; the next start asks again.
   This holds for the catalog, the refs of a ledger, the holds, the backups, a restore, an identity reset and a membership verification.
+- **A change of an account and the tokens it ends are one step, and a token is issued inside it.**
+  A token issued just as its account was suspended, its key deleted or its scopes narrowed could be recorded valid after the change had already ended the account's tokens, and a suspension and a resumption that crossed could leave the tokens in the order opposite to the account's; either lasted until the next start.
+  The Authority Plane's stores are now one subsystem: a token's account is read again and the token recorded while no change of that account is between its two writes, and changes reach the tokens in the order they reached the account.
 - **Two changes of one service account that arrive together are both applied.**
   Each change is applied to the account as it stands at that moment, where the second used to be written over the first from an older copy of the account, which could bring back a key the first had deleted.
   `expected_revision` is judged against the account as it stands when the change is applied, so a change that names a revision another change has moved past is answered `conflict`; a change that names none is never refused for a revision.

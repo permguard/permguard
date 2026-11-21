@@ -489,6 +489,35 @@ pub struct Recovered {
     pub failed: Vec<OperationId>,
 }
 
+/// The gate of one subsystem (iteration 03, decision E26): the stores of a subsystem change
+/// together under it, and what must be read as they stand together is read under it.
+///
+/// An operation whose domain write spans two stores of one subsystem, an account and its
+/// tokens, holds the gate from the first write to the last, so no other operation of the
+/// subsystem and no gated read falls between the two. It is the file backend's unit of work
+/// over those stores; a backend with transactions has one instead.
+///
+/// The gate is taken before any lock of a store and never while one is held, and never by the
+/// code it already holds: an operation's domain write does not start another gated operation.
+#[derive(Clone, Default)]
+pub struct Subsystem {
+    gate: Arc<Mutex<()>>,
+}
+
+impl std::fmt::Debug for Subsystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Subsystem")
+    }
+}
+
+impl Subsystem {
+    /// Runs `work` while nothing else of the subsystem changes or reads under the gate.
+    pub fn hold<R>(&self, work: impl FnOnce() -> R) -> R {
+        let _held = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        work()
+    }
+}
+
 /// The mutation engine of one volume.
 pub struct Mutations {
     dir: Dir,
@@ -512,6 +541,8 @@ pub struct Mutations {
     intents: Mutex<RecentIntents>,
     /// Signalled whenever an operation leaves, so a barrier waiting for them wakes.
     drained: Condvar,
+    /// The gate of each subsystem that asked for one, by name.
+    subsystems: Mutex<BTreeMap<String, Subsystem>>,
 }
 
 /// The backup barrier (WP-7.8, application-consistent snapshot): while it is held, every new
@@ -669,6 +700,7 @@ impl Mutations {
             gate: Mutex::new(Gate::default()),
             intents: Mutex::new(RecentIntents::default()),
             drained: Condvar::new(),
+            subsystems: Mutex::new(BTreeMap::new()),
         };
         {
             let mut state = engine.state.lock().unwrap_or_else(PoisonError::into_inner);
@@ -707,6 +739,17 @@ impl Mutations {
         let audit = crate::audit::Engine::open(volume, stamp, Arc::clone(&time), None)
             .map_err(|error| error.to_string())?;
         Self::open(volume, Arc::new(audit), time).map_err(|error| error.to_string())
+    }
+
+    /// The gate of the subsystem `name`: one per name for the life of the engine, so every
+    /// handle of a subsystem holds the same one.
+    pub fn subsystem(&self, name: &str) -> Subsystem {
+        self.subsystems
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(name.to_owned())
+            .or_default()
+            .clone()
     }
 
     /// Reports pending outcome records on `health`'s Host component, from now on.

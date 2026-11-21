@@ -106,8 +106,17 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
             return None;
         }
     };
-    let accounts_mutations = registration.mutations(accounts::DOMAIN).ok().flatten();
-    let token_mutations = registration.mutations(tokens::DOMAIN).ok().flatten();
+    // One subsystem: an account's change and the tokens it ends are one step (decision E26).
+    let accounts_mutations = registration
+        .mutations(accounts::DOMAIN)
+        .ok()
+        .flatten()
+        .map(|handle| handle.in_subsystem(crate::PLANE));
+    let token_mutations = registration
+        .mutations(tokens::DOMAIN)
+        .ok()
+        .flatten()
+        .map(|handle| handle.in_subsystem(crate::PLANE));
     let accounts: Arc<dyn accounts::AccountStore> =
         match accounts::files::FileAccounts::open(&dir, options) {
             Ok((opened, _)) => opened,

@@ -441,10 +441,18 @@ fn test_the_capture_is_the_baselines() {
 /// did.
 #[test]
 fn test_a_start_that_loses_a_port_to_another_process_is_tried_again_over_others() {
-    let upgrade = Upgrade::new("lost-port");
-    let lost = upgrade.data();
-    // Another process took the Data Plane's port after it was found free.
-    let taken = std::net::TcpListener::bind(("127.0.0.1", lost)).expect("the port is free");
+    // Another process takes the Data Plane's port after it was found free: this test, which
+    // must be the one holding it for the whole start. A port a third process took in between
+    // is no port this test holds, so the volume is laid out again over other ports (E32).
+    let (upgrade, lost, taken) = (0..8)
+        .find_map(|attempt| {
+            let upgrade = Upgrade::new(&format!("lost-port-{attempt}"));
+            let lost = upgrade.data();
+            std::net::TcpListener::bind(("127.0.0.1", lost))
+                .ok()
+                .map(|taken| (upgrade, lost, taken))
+        })
+        .expect("a port this test holds, in eight tries");
 
     let server = upgrade.start().expect("the server starts over other ports");
     assert_ne!(upgrade.data(), lost, "the port another process holds");

@@ -2407,6 +2407,7 @@ dependencies = [
  "permguard-core",
  "permguard-host",
  "permguard-objects",
+ "permguard-std",
  "ring",
  "serde",
  "serde_json",

@@ -959,7 +959,9 @@ impl Authority {
         if account.status != Status::Active || !key.is_live(now) {
             return Err(TokenRefusal::InvalidClient);
         }
-        let scopes = narrowed(&account.scopes, request.scope.as_deref())?;
+        // Refused here from the account as it was read: what a caller is told first is the same
+        // whatever else arrives. What the token carries is decided again below, under the gate.
+        narrowed(&account.scopes, request.scope.as_deref())?;
         let lifetime = match request.requested_lifetime {
             None => DEFAULT_LIFETIME,
             Some(0) => {
@@ -976,10 +978,6 @@ impl Authority {
             }
             Some(asked) => asked,
         };
-        let lifetime = match key.expires_at {
-            Some(expires) => lifetime.min(expires.saturating_sub(now)),
-            None => lifetime,
-        };
         let signer = self
             .tokens
             .as_ref()
@@ -987,18 +985,45 @@ impl Authority {
         signer
             .ready()
             .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
-        let issued = self
-            .registry
-            .issue(
-                TokenDraft {
-                    account: account.name.clone(),
-                    access_key: key.access_key.clone(),
-                    scopes: scopes.clone(),
-                    expires_at: now.saturating_add(lifetime),
-                },
-                now,
-            )
-            .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
+        // The account is read again and the token recorded as one step with any change of the
+        // account (decision E26): a token is never issued for an account, a key or a scope that
+        // a change which has already ended its tokens took away.
+        let record = || {
+            let current = self
+                .accounts
+                .get(&account.name)
+                .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?
+                .ok_or(TokenRefusal::InvalidClient)?;
+            let key = current
+                .key(&key.access_key)
+                .ok_or(TokenRefusal::InvalidClient)?;
+            if current.status != Status::Active || !key.is_live(now) {
+                return Err(TokenRefusal::InvalidClient);
+            }
+            let scopes = narrowed(&current.scopes, request.scope.as_deref())?;
+            let lifetime = match key.expires_at {
+                Some(expires) => lifetime.min(expires.saturating_sub(now)),
+                None => lifetime,
+            };
+            let issued = self
+                .registry
+                .issue(
+                    TokenDraft {
+                        account: current.name.clone(),
+                        access_key: key.access_key.clone(),
+                        scopes: scopes.clone(),
+                        expires_at: now.saturating_add(lifetime),
+                    },
+                    now,
+                )
+                .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
+            Ok((issued, scopes))
+        };
+        let (issued, scopes) = match &self.mutations {
+            Some(mutations) => mutations.consistent(record),
+            // No change of an account is made on a process with no mutation journal.
+            None => record(),
+        }?;
         let scope = scope_words(&scopes);
         let claims = serde_json::json!({
             "iss": self.issuer,
@@ -1296,7 +1321,7 @@ impl Authority {
         let handle = if domain == mutations.domain() {
             mutations.clone()
         } else {
-            MutationHandle::new(mutations.engine(), domain)
+            mutations.for_domain(domain)
         };
         let outcome = handle
             .run_checked(
