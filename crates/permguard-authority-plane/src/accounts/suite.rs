@@ -20,6 +20,7 @@
 //! | `the_administrator_stays`    | `admin` is never deleted; what is not held is not found       |
 //! | `a_deletion_asks_first`      | a deletion its guard refuses deletes nothing                  |
 //! | `a_deletion_takes_the_keys`  | a deleted account's keys name nothing                         |
+//! | `an_operation_changes_once`  | a change made in an operation is found by it, and is its only one |
 
 #![allow(clippy::expect_used, clippy::panic)]
 
@@ -27,6 +28,7 @@ use std::sync::Arc;
 
 use permguard_core::authz::{Selector, TokenScope, operations};
 use permguard_host::operations::journal::OperationId;
+use permguard_host::operations::mutation::Applying;
 
 use super::{
     ADMIN, AccessKey, Account, AccountStore, AccountsError, MAX_LIVE_KEYS, Status, admin_scopes,
@@ -61,8 +63,14 @@ fn held<S: AccountStore + ?Sized>(store: &S, name: &str) -> Option<Account> {
     store.get(name).expect("the account reads")
 }
 
-/// Runs every case, each on a store `make` has just made empty.
-pub fn run<S: AccountStore + ?Sized>(make: &dyn Fn() -> Arc<S>) {
+/// How a suite runs something inside one operation of the mutation engine: the token it is
+/// given is one the engine built, a new operation at every call.
+pub type Operate<'a> = &'a dyn Fn(&mut dyn FnMut(&Applying<'_>));
+
+/// Runs every case, each on a store `make` has just made empty; `operate` runs what it is given
+/// inside one operation of the accounts' domain.
+pub fn run<S: AccountStore + ?Sized>(make: &dyn Fn() -> Arc<S>, operate: Operate<'_>) {
+    an_operation_changes_once(&*make(), operate);
     an_empty_store(&*make());
     what_is_written_is_read(&*make());
     the_revision_counts_changes(&*make());
@@ -448,4 +456,84 @@ fn a_deletion_takes_the_keys<S: AccountStore + ?Sized>(store: &S) {
         .expect("written again");
     assert_eq!(again.revision, 3);
     assert_eq!(again.created_at, 3);
+}
+
+fn an_operation_changes_once<S: AccountStore + ?Sized>(store: &S, operate: Operate<'_>) {
+    // Outside an operation, nothing is recorded of one.
+    store
+        .create(None, Account::new("plain", "", Vec::new(), 1), "t", 1)
+        .expect("written");
+    let describe = |held: &Account| {
+        let mut changed = held.clone();
+        changed.description = "changed".to_owned();
+        Ok(changed)
+    };
+    let mut seen = None;
+    operate(&mut |applying| {
+        let written = store
+            .create(
+                Some(applying),
+                Account::new("made", "", Vec::new(), 2),
+                "t",
+                2,
+            )
+            .expect("written in the operation");
+        // The operation is found, with the revision it produced and the account it named.
+        assert_eq!(
+            store
+                .operation(&applying.operation_id())
+                .expect("the operation reads"),
+            Some((written.revision, "made".to_owned()))
+        );
+        // An operation changes the accounts once: a second change in it is refused, whatever
+        // it is, and writes nothing.
+        let before = revision(store);
+        assert!(matches!(
+            store.update(Some(applying), "made", &describe, "t", 3),
+            Err(AccountsError::Conflict(_))
+        ));
+        assert!(matches!(
+            store.update(Some(applying), "plain", &describe, "t", 3),
+            Err(AccountsError::Conflict(_))
+        ));
+        assert!(matches!(
+            store.delete(Some(applying), "plain", &allowed, "t", 3),
+            Err(AccountsError::Conflict(_))
+        ));
+        assert!(matches!(
+            store.create(
+                Some(applying),
+                Account::new("other", "", Vec::new(), 3),
+                "t",
+                3
+            ),
+            Err(AccountsError::Conflict(_))
+        ));
+        assert_eq!(revision(store), before);
+        seen = Some((applying.operation_id(), written.revision));
+    });
+    let (operation, made_at) = seen.expect("the operation ran");
+    // It is still found once the operation has ended: what recovery reads.
+    assert_eq!(
+        store.operation(&operation).expect("the operation reads"),
+        Some((made_at, "made".to_owned()))
+    );
+    assert_eq!(held(store, "plain").expect("held").description, "");
+    assert!(held(store, "other").is_none());
+
+    // Another operation is another change, and a deletion is found as the name it removed.
+    let mut deleted = None;
+    operate(&mut |applying| {
+        store
+            .delete(Some(applying), "made", &allowed, "t", 4)
+            .expect("deleted in its own operation");
+        deleted = Some(applying.operation_id());
+    });
+    let deleted = deleted.expect("the operation ran");
+    assert_ne!(deleted, operation);
+    assert_eq!(
+        store.operation(&deleted).expect("the operation reads"),
+        Some((revision(store), "made".to_owned()))
+    );
+    assert!(held(store, "made").is_none());
 }

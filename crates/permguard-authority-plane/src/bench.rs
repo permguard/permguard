@@ -9,7 +9,7 @@
 
 #![allow(clippy::expect_used)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use permguard_core::assurance::AssuranceProfile;
@@ -18,7 +18,8 @@ use permguard_core::keys::PublicSet;
 use permguard_host::authz::Authorization;
 use permguard_host::composition::MutationHandle;
 use permguard_host::composition::{AUTHORITY_TOKENS, AccessTokenV1, Declaration, Host};
-use permguard_host::operations::mutation::Mutations;
+use permguard_host::operations::journal::Initiator;
+use permguard_host::operations::mutation::{Applied, Applying, Begin, Failure, Mutations};
 use permguard_host::storage::Dir;
 use permguard_host::storage::journal::Options;
 use permguard_host::storage::volume::Volume;
@@ -196,6 +197,64 @@ impl AccountStore for Pausing {
         now: u64,
     ) -> Result<(), accounts::AccountsError> {
         self.inner.delete(applying, name, allow, by, now)
+    }
+}
+
+/// One operation of a real mutation engine on a scratch volume, for a suite: each call runs
+/// what it is given inside an operation of its own, with the token the engine builds. A suite
+/// proves with it what a store does of an operation, without a token made outside the engine.
+pub(crate) struct Operating {
+    engine: Arc<Mutations>,
+    root: std::path::PathBuf,
+    next: AtomicUsize,
+}
+
+impl Operating {
+    pub(crate) fn new(tag: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "pg-authority-operating-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let volume =
+            Volume::claim(&root, AssuranceProfile::Development).expect("the volume is claimed");
+        Self {
+            engine: Arc::new(Mutations::open_offline(&volume, "suite").expect("the engine opens")),
+            root,
+            next: AtomicUsize::new(0),
+        }
+    }
+
+    /// Runs `work` inside one operation of `domain`, which the engine commits.
+    pub(crate) fn run(&self, domain: &'static str, work: &mut dyn FnMut(&Applying<'_>)) {
+        let at = self.next.fetch_add(1, Ordering::Relaxed);
+        self.engine
+            .run(
+                Begin {
+                    domain,
+                    operation: "suite.operation",
+                    action: crate::authority::actions::UPDATED,
+                    initiator: Initiator::System("suite".to_owned()),
+                    request: None,
+                    target: Some(format!("suite-{at}")),
+                },
+                |applying| {
+                    work(applying);
+                    Ok::<_, Failure<String>>(Applied {
+                        revision: at as u64,
+                        target: None,
+                        value: (),
+                    })
+                },
+            )
+            .expect("the operation runs");
+    }
+}
+
+impl Drop for Operating {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 

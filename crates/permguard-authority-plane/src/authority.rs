@@ -52,6 +52,7 @@ impl AuditSchema for AuthorityAudit {
         permguard_host::audit::AUDIT_TOKEN_ISSUED,
         permguard_host::audit::AUDIT_TOKEN_REFUSED,
         permguard_host::audit::AUDIT_ADMIN_KEY_OFFLINE,
+        permguard_host::audit::AUDIT_TOKENS_COMPLETED,
     ];
 }
 

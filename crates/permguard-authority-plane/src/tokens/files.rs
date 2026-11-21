@@ -744,11 +744,15 @@ mod tests {
     #[test]
     fn the_file_backend_keeps_the_contract() {
         let made = std::sync::atomic::AtomicUsize::new(0);
-        super::super::suite::run(&|| {
-            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let dir = scratch(&format!("suite-{case}"));
-            let (tokens, _) = FileTokens::open(&dir, Options::default()).expect("opens");
-            tokens
-        });
+        let operating = crate::bench::Operating::new("tokens");
+        super::super::suite::run(
+            &|| {
+                let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let dir = scratch(&format!("suite-{case}"));
+                let (tokens, _) = FileTokens::open(&dir, Options::default()).expect("opens");
+                tokens
+            },
+            &|work| operating.run(super::super::DOMAIN, work),
+        );
     }
 }

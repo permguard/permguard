@@ -1117,3 +1117,109 @@ fn the_intent_record_of_an_operation_is_remembered_where_the_trail_wrote_it() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Decision E26: the operations of one subsystem apply one at a time, a read made consistent
+/// with them waits for the one applying, and an operation of no subsystem waits for none.
+#[test]
+fn the_operations_of_a_subsystem_apply_one_at_a_time_and_a_consistent_read_waits() {
+    use crate::composition::MutationHandle;
+    use std::sync::mpsc;
+
+    let root = scratch("subsystem");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let engine = Arc::new(open(&volume, &trail, &time));
+    let ledger = Ledger::default();
+    let first = MutationHandle::new(Arc::clone(&engine), "ledger").in_subsystem("books");
+    // A second domain of the same Plane: another handle, the same gate.
+    let second = first.for_domain("ledger");
+    let outside = MutationHandle::new(Arc::clone(&engine), "ledger");
+    let order: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+    let note = |what: &'static str| order.lock().expect("lock").push(what);
+    let (entered, has_entered) = mpsc::channel::<()>();
+    let (release, released) = mpsc::channel::<()>();
+
+    let while_held = std::thread::scope(|scope| {
+        let (ledger, note) = (&ledger, &note);
+        scope.spawn(move || {
+            first
+                .run_checked(
+                    begin(Some("r1"), "d"),
+                    || Ok::<_, String>(()),
+                    |applying| {
+                        note("first applies");
+                        entered.send(()).expect("sent");
+                        // Held here: its two writes, with everything a test places between.
+                        released.recv().expect("released");
+                        note("first ends");
+                        Ok(ledger.apply(applying, "z1"))
+                    },
+                )
+                .expect("applied");
+        });
+        has_entered.recv().expect("the first operation applies");
+
+        let waiting_operation = scope.spawn(|| {
+            second
+                .run_checked(
+                    begin(Some("r2"), "d"),
+                    || Ok::<_, String>(()),
+                    |applying| {
+                        note("second applies");
+                        Ok(ledger.apply(applying, "z2"))
+                    },
+                )
+                .expect("applied");
+        });
+        let reading = second.clone();
+        let waiting_read = scope.spawn(move || reading.consistent(|| note("read")));
+
+        // An operation of no subsystem is not the gate's: it applies while the first holds it.
+        outside
+            .run_checked(
+                begin(Some("r3"), "d"),
+                || Ok::<_, String>(()),
+                |applying| {
+                    note("outside applies");
+                    Ok(ledger.apply(applying, "z3"))
+                },
+            )
+            .expect("applied");
+        // The two of the subsystem had every chance to run. What happened is read here and
+        // judged once the first operation is let go, so a failure is reported and never waits
+        // on a thread that is still held.
+        std::thread::sleep(Duration::from_millis(150));
+        let while_held = (
+            order.lock().expect("lock").clone(),
+            waiting_operation.is_finished(),
+            waiting_read.is_finished(),
+        );
+        release.send(()).expect("sent");
+        while_held
+    });
+    let (seen, operation_ran, read_ran) = while_held;
+    assert_eq!(
+        seen,
+        vec!["first applies", "outside applies"],
+        "nothing of the subsystem ran while its first operation applied"
+    );
+    assert!(
+        !operation_ran,
+        "an operation of the subsystem applied beside another"
+    );
+    assert!(
+        !read_ran,
+        "a consistent read ran while an operation applied"
+    );
+
+    let order = order.into_inner().expect("lock");
+    assert_eq!(
+        order[..3],
+        ["first applies", "outside applies", "first ends"]
+    );
+    let mut after: Vec<&str> = order[3..].to_vec();
+    after.sort_unstable();
+    assert_eq!(after, vec!["read", "second applies"]);
+    let _ = std::fs::remove_dir_all(root);
+}

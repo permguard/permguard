@@ -612,12 +612,16 @@ mod tests {
     #[test]
     fn the_file_backend_keeps_the_contract() {
         let made = std::sync::atomic::AtomicUsize::new(0);
-        super::super::suite::run(&|| {
-            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let dir = scratch(&format!("suite-{case}"));
-            let (accounts, _) = FileAccounts::open(&dir, Options::default()).expect("opens");
-            accounts
-        });
+        let operating = crate::bench::Operating::new("accounts");
+        super::super::suite::run(
+            &|| {
+                let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let dir = scratch(&format!("suite-{case}"));
+                let (accounts, _) = FileAccounts::open(&dir, Options::default()).expect("opens");
+                accounts
+            },
+            &|work| operating.run(super::super::DOMAIN, work),
+        );
     }
 
     /// Two changes decided from one read of the account are both in the journal, in order.

@@ -168,6 +168,9 @@ pub const AUDIT_TOKEN_ISSUED: &str = "authority.token.issued";
 pub const AUDIT_TOKEN_REFUSED: &str = "authority.token.refused";
 /// A key made offline for `admin`, recorded at the next start.
 pub const AUDIT_ADMIN_KEY_OFFLINE: &str = "authority.admin_key.offline";
+/// The tokens a start made what their accounts say (`2-security/8` Stores): what a change of an
+/// account had left to do of its tokens when the process stopped.
+pub const AUDIT_TOKENS_COMPLETED: &str = "authority.tokens.completed";
 /// The bootstrap principal acting on a joined member (WP-12.4).
 pub const AUDIT_AUTHZ_BOOTSTRAP: &str = "host.authz.bootstrap";
 
@@ -227,6 +230,17 @@ pub const REGISTRY: &[ActionSchema] = &[
         phases: false,
     },
     action(AUDIT_ADMIN_KEY_OFFLINE, Class::Security, AUTHORITY),
+    ActionSchema {
+        action: AUDIT_TOKENS_COMPLETED,
+        class: Class::Security,
+        root: AUTHORITY,
+        facts: &[
+            ("invalidated", FactType::Uint),
+            ("suspended", FactType::Uint),
+        ],
+        max_bytes: 4 * 1024,
+        phases: false,
+    },
     // The bootstrap principal acting on a joined member (WP-12.4): every use, a break-glass.
     ActionSchema {
         action: AUDIT_AUTHZ_BOOTSTRAP,

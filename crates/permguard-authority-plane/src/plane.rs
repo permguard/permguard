@@ -156,23 +156,27 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         config.time_max_clock_skew(),
     ));
     // What a change of an account left to do of its tokens is done before anything is served.
-    match crate::completion::complete_tokens(&*accounts, &*registry, time.now_secs()) {
-        Ok(completed) if completed.is_empty() => {}
-        Ok(completed) => tracing::warn!(
-            event.name = "authority.tokens_completed",
-            component = crate::COMPONENT,
-            invalidated = completed.invalidated,
-            suspended = completed.suspended,
-            "tokens a change of their account had left as they were now are as it says"
-        ),
-        Err(error) => {
-            fail(
-                "the tokens a change of their account left to revoke are not completed",
-                &error,
-            );
-            return None;
-        }
-    }
+    let completed =
+        match crate::completion::complete_tokens(&*accounts, &*registry, time.now_secs()) {
+            Ok(completed) if completed.is_empty() => None,
+            Ok(completed) => {
+                tracing::warn!(
+                    event.name = "authority.tokens_completed",
+                    component = crate::COMPONENT,
+                    invalidated = completed.invalidated,
+                    suspended = completed.suspended,
+                    "tokens a change of their account had left as they were now are as it says"
+                );
+                Some(completed)
+            }
+            Err(error) => {
+                fail(
+                    "the tokens a change of their account left to revoke are not completed",
+                    &error,
+                );
+                return None;
+            }
+        };
     match admin::ensure(&*accounts, dir.path(), time.now_secs()) {
         Ok(Some(access_key)) => tracing::warn!(
             event.name = "authority.admin_created",
@@ -234,6 +238,28 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         }
     };
     authority.feed_trust();
+    // What the start changed of the tokens is in the trail, beside the log line.
+    if let (Some(completed), Some(audit)) = (completed, audit.clone()) {
+        tokio::spawn(async move {
+            let facts = [
+                (
+                    "invalidated",
+                    permguard_core::Fact::Uint(completed.invalidated as u64),
+                ),
+                (
+                    "suspended",
+                    permguard_core::Fact::Uint(completed.suspended as u64),
+                ),
+            ];
+            let event = permguard_core::AuditEvent::new(
+                permguard_host::audit::AUDIT_TOKENS_COMPLETED,
+                permguard_core::Subject::System(crate::completion::BY),
+            )
+            .on("tokens")
+            .with_facts(&facts);
+            let _ = audit.record_event(&event).await;
+        });
+    }
     if let (Some(access_key), Some(audit)) = (offline, audit) {
         tokio::spawn(async move {
             let facts = [("access_key", permguard_core::Fact::Text(&access_key))];

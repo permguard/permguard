@@ -17,6 +17,7 @@
 //! | `an_expired_token_is_left`      | past a clock skew after its expiry a token is not changed  |
 //! | `the_open_list_never_retires`   | whatever expired in it                                     |
 //! | `the_newest_token_reads_first`  | live tokens newest first; a key's last use                 |
+//! | `an_operation_is_found`         | a status changed in an operation is found by it            |
 //!
 //! The suite does not retire a closed list: closing one takes [`OPEN_UNTIL`](super::OPEN_UNTIL)
 //! issues.
@@ -27,7 +28,9 @@ use std::sync::Arc;
 
 use permguard_core::authz::{Selector, TokenScope};
 use permguard_host::authz::access_tokens::CLOCK_SKEW;
+use permguard_host::identity::record::uuid_text;
 use permguard_host::operations::journal::OperationId;
+use permguard_host::operations::mutation::Applying;
 use permguard_objects::status_list::ENTRIES;
 
 use super::{IssuedToken, TokenDraft, TokenError, TokenStore, status};
@@ -73,8 +76,14 @@ fn of<'a>(account: &'a str) -> impl Fn(&IssuedToken) -> bool + 'a {
     move |token| token.account == account
 }
 
-/// Runs every case, each on a store `make` has just made empty.
-pub fn run<S: TokenStore + ?Sized>(make: &dyn Fn() -> Arc<S>) {
+/// How a suite runs something inside one operation of the mutation engine: the token it is
+/// given is one the engine built, a new operation at every call.
+pub type Operate<'a> = &'a dyn Fn(&mut dyn FnMut(&Applying<'_>));
+
+/// Runs every case, each on a store `make` has just made empty; `operate` runs what it is given
+/// inside one operation of the tokens' domain.
+pub fn run<S: TokenStore + ?Sized>(make: &dyn Fn() -> Arc<S>, operate: Operate<'_>) {
+    an_operation_is_found(&*make(), operate);
     an_empty_store(&*make());
     a_token_draws_an_entry(&*make());
     the_invalid_is_refused(&*make());
@@ -273,4 +282,47 @@ fn the_newest_token_reads_first<S: TokenStore + ?Sized>(store: &S) {
         .expect("the tokens read");
     assert_eq!(live.len(), 1);
     assert_eq!(live[0].jti, second.jti);
+}
+
+fn an_operation_is_found<S: TokenStore + ?Sized>(store: &S, operate: Operate<'_>) {
+    let billing = store.issue(draft("billing"), NOW).expect("issued");
+    let payroll = store.issue(draft("payroll"), NOW).expect("issued");
+    let mut seen = None;
+    operate(&mut |applying| {
+        assert_eq!(
+            store
+                .set_status(Some(applying), &of("billing"), status::INVALID, "t", NOW)
+                .expect("set in the operation"),
+            1
+        );
+        seen = Some(applying.operation_id());
+    });
+    let operation = seen.expect("the operation ran");
+    // Found with the revision it produced and the token it named: what recovery reads.
+    let (at, named) = store
+        .operation(&operation)
+        .expect("the operation reads")
+        .expect("the operation is held");
+    assert_eq!(named, uuid_text(&billing.jti));
+    assert!(at > 0 && at <= revision(store));
+    assert_eq!(held(store, &billing).status, status::INVALID);
+    assert_eq!(held(store, &payroll).status, status::VALID);
+
+    // An operation that changes no token leaves nothing to find.
+    let mut idle = None;
+    operate(&mut |applying| {
+        assert_eq!(
+            store
+                .set_status(Some(applying), &of("nobody"), status::INVALID, "t", NOW)
+                .expect("nothing"),
+            0
+        );
+        idle = Some(applying.operation_id());
+    });
+    assert!(
+        store
+            .operation(&idle.expect("the operation ran"))
+            .expect("the operation reads")
+            .is_none()
+    );
 }

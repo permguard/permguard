@@ -32,7 +32,7 @@ is cut.
   Every refusal of a change, `admin`'s last live key and the limit of live keys among them, is decided on the account as it stands then.
 - **A change of an account reaches its tokens even when the Authority Plane stops in the middle of it.**
   A suspension, a resumption, a deletion, a narrowing of scopes and a deleted key write the account first and its tokens second; a process that died between the two left the tokens valid.
-  The Authority Plane now completes the tokens from the accounts at every start, before it serves, and logs `authority.tokens_completed` with what it changed; it does not serve when it cannot.
+  The Authority Plane now completes the tokens from the accounts at every start, before it serves, logs `authority.tokens_completed` and records `authority.tokens.completed` in the audit trail with how many it ended and how many it suspended; it does not serve when it cannot.
   The same pass ends the tokens of a key that `authority admin-key` removed to make room for a new one, which used to stay valid until they expired.
 
 ## [0.1.34] - 2026-11-20
