@@ -78,6 +78,8 @@ pub const POINTS: &[&str] = &[
     "mutation.projected",
     "mutation.snapshot_written",
     "audit.trail_created",
+    "holds.file_written",
+    "holds.entry_removed",
 ];
 
 /// The crash point `name`: aborts here when this process was told to, at the pass it was told.

@@ -359,18 +359,20 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                     }),
                 Err(error) => return Err(unread(error)),
             },
-            ["ledger-new", zone] => self
-                .catalog
-                .list_ledgers(&Selector::Id((*zone).to_owned()))
-                .map_err(unread)?
-                .into_iter()
-                .find_map(|ledger| {
-                    written(
-                        ledger.revision,
-                        ledger.operation.as_deref(),
-                        ledger.target(),
-                    )
-                }),
+            // A zone that is gone holds no ledger the operation created: an answer, as above.
+            ["ledger-new", zone] => {
+                match self.catalog.list_ledgers(&Selector::Id((*zone).to_owned())) {
+                    Ok(ledgers) => ledgers.into_iter().find_map(|ledger| {
+                        written(
+                            ledger.revision,
+                            ledger.operation.as_deref(),
+                            ledger.target(),
+                        )
+                    }),
+                    Err(CatalogError::NotFound { .. }) => None,
+                    Err(error) => return Err(unread(error)),
+                }
+            }
             _ => None,
         })
     }
@@ -856,5 +858,52 @@ pub(crate) fn api_error(error: CatalogError) -> ApiError {
             )
             .with_internal(detail.clone())
         }
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    #![allow(clippy::expect_used)]
+
+    use std::sync::Arc;
+
+    use permguard_core::{Catalog, Selector};
+    use permguard_host::operations::journal::OperationId;
+    use permguard_host::operations::mutation::Domain as _;
+    use permguard_std::catalog::FileCatalog;
+
+    use super::CatalogDomain;
+
+    /// A ledger's creation left open in a zone that was deleted since: the zone holds no trace of
+    /// it, which is an answer. Recovery records the creation failed and goes on; it does not stop
+    /// at every start for a zone that will never read.
+    #[test]
+    fn a_creation_left_open_in_a_zone_that_is_gone_is_answered_not_applied() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-catalog-recovery-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog: Arc<dyn Catalog> = Arc::new(FileCatalog::new(root.join("zones")));
+        let zone = catalog.create_zone("delivery").expect("a zone");
+        let domain = CatalogDomain {
+            catalog: Arc::clone(&catalog),
+        };
+        let operation = OperationId::from_bytes([7; 16]);
+        let target = format!("ledger-new/{}", zone.id);
+        assert_eq!(
+            domain.observe(&operation, Some(&target)),
+            Ok(None),
+            "a zone that holds no ledger of the operation"
+        );
+        catalog
+            .delete_zone(&Selector::Id(zone.id.clone()))
+            .expect("deleted");
+        assert_eq!(
+            domain.observe(&operation, Some(&target)),
+            Ok(None),
+            "a zone that is gone is an answer, never a catalog that does not read"
+        );
     }
 }

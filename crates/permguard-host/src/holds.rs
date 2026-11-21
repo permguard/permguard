@@ -25,9 +25,9 @@
 //!
 //! A hold's file is read whole or refused: at most [`MAX_HOLD_BYTES`], closed, its ids lowercase
 //! GUIDs of a Control Plane zone or ledger, exactly one deadline, times no later than the year
-//! 9999. Recovery reads an add whose file lacks its operation, and a release whose file does not
-//! read, as failed: the hold stays, and a store that does not read keeps the garbage collection
-//! from sweeping.
+//! 9999. Recovery reads an add whose file lacks its operation as failed, and stops at a hold that
+//! does not read: a hold that does not read is not a hold that is not there, and a store that
+//! does not read keeps the garbage collection from sweeping.
 //!
 //! Beside the files, `INDEX.json` records the SHA-256 of every hold's file, written by the same
 //! operation that writes or removes it (BUG-0172): an add writes its file and then the index, a

@@ -31,7 +31,9 @@ use crate::operations::plan::{
     self, Approval, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt, PlanSigner,
 };
 
-use super::replay::{self, Plan, PlanApproval, Replay, ReplayError, TokenEntry, mint_id};
+use super::replay::{
+    self, Plan, PlanApproval, Replay, ReplayError, TokenEntry, Unapproved, mint_id,
+};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use super::{rfc3339, unreachable_reconciliation};
 use crate::authz::access_tokens::TokenStanding;
@@ -422,9 +424,13 @@ pub fn consume_plan(
             target: target.clone(),
         },
         |applying| {
+            // A store that failed may hold the consumption all the same: recovery says.
             replay
                 .consume(applying, principal, &plan.plan_id)
-                .map_err(Failure::Refused)?;
+                .map_err(|error| match error {
+                    ReplayError::Unavailable(_) => Failure::Indeterminate(error),
+                    refused => Failure::Refused(refused),
+                })?;
             Ok(Applied {
                 revision: plan.revision,
                 target,
@@ -514,6 +520,17 @@ impl HostApi {
                 "`receipt` is the plan receipt the plan step answered, base64url",
             )
         })?;
+        // A receipt is its Host identity's: one made before an identity reset names the identity
+        // that was retired, and runs nothing on the one that took its place.
+        if let Ok(receipt) = plan::read_receipt(&bytes)
+            && receipt.host_id != self.receipt_host_id()?
+        {
+            return Err(Refusal::new(
+                ErrorClass::NotFound,
+                codes::host::PLAN_UNKNOWN,
+                "the receipt names another Host identity than this one: plan again",
+            ));
+        }
         held_plan(&self.replay, principal, &bytes, now, &self.standing())
     }
 
@@ -692,10 +709,17 @@ impl HostApi {
                         token: token_entry(actor),
                     })
                 };
+                // A store that failed may hold the approval all the same: recovery says.
                 let plan = self
                     .replay
                     .approve(applying, plan_id, &attest)
-                    .map_err(Failure::Refused)?
+                    .map_err(|unapproved| match unapproved {
+                        Unapproved::Refused(refusal) => Failure::Refused(refusal),
+                        Unapproved::Store(error @ ReplayError::Unavailable(_)) => {
+                            Failure::Indeterminate(Refusal::from(error))
+                        }
+                        Unapproved::Store(error) => Failure::Refused(Refusal::from(error)),
+                    })?
                     .ok_or_else(|| Failure::Refused(unknown()))?;
                 Ok(Applied {
                     revision: plan.revision,

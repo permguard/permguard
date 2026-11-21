@@ -172,6 +172,22 @@ pub struct TokenEntry {
 /// store in the step that records the approval the decision answers.
 pub type Decide<'a> = &'a dyn Fn(&Plan, bool) -> Result<PlanApproval, Refusal>;
 
+/// Why an approval was not recorded.
+#[derive(Debug)]
+pub enum Unapproved {
+    /// The decision refused it: nothing was written.
+    Refused(Refusal),
+    /// The store failed. When it is [`ReplayError::Unavailable`] the approval may be recorded all
+    /// the same, and the operation's recovery says whether it is.
+    Store(ReplayError),
+}
+
+impl From<ReplayError> for Unapproved {
+    fn from(error: ReplayError) -> Self {
+        Self::Store(error)
+    }
+}
+
 /// The replay window and the plans of one Host: the only way its code reads and changes them
 /// (`1-architecture/8` Store contracts).
 ///
@@ -205,13 +221,13 @@ pub trait ReplayStore: Send + Sync {
     /// `applying`, and answers the plan with it; `None`, and nothing decided, when no plan of
     /// that id is held. `decide` is given the plan as it stands in the step that records its
     /// answer: no approval is recorded for a plan another change has moved since it was judged.
-    /// A refusal of `decide` records nothing.
+    /// A refusal of `decide` records nothing, and is told apart from a store that failed.
     fn approve(
         &self,
         applying: &Applying<'_>,
         plan_id: &str,
         decide: Decide<'_>,
-    ) -> Result<Option<Plan>, Refusal>;
+    ) -> Result<Option<Plan>, Unapproved>;
 
     /// Consumes the plan `plan_id` of `principal`, inside the operation `applying`: once. A plan
     /// consumed already is [`ReplayError::PlanConsumed`], one that is not held
@@ -379,7 +395,7 @@ impl Replay {
         applying: &Applying<'_>,
         plan_id: &str,
         decide: Decide<'_>,
-    ) -> Result<Option<Plan>, Refusal> {
+    ) -> Result<Option<Plan>, Unapproved> {
         self.store.approve(applying, plan_id, decide)
     }
 

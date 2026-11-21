@@ -71,6 +71,8 @@ pub const JOURNAL: &str = "journal.cborseq";
 pub const SNAPSHOT: &str = "snapshot.cbor";
 /// The capability the Host reports degraded while an outcome record is pending.
 pub const CAPABILITY: &str = "security_mutations";
+/// What holds readiness while a recovery stopped on a domain that could not say.
+pub const RECOVERY_HOLD: &str = "security_mutations.recovery";
 /// How long a committed answer is kept for a retry.
 pub const WINDOW: Duration = Duration::from_secs(10 * 60);
 /// How many entries the journal takes before it is folded into the snapshot.
@@ -531,6 +533,9 @@ pub struct Mutations {
     running: Mutex<BTreeSet<OperationId>>,
     /// Why the journal stopped taking writes, after one failed.
     stopped: Mutex<Option<String>>,
+    /// The domains whose recovery stopped because they could not say, and what each said: the
+    /// process is not ready while one is here.
+    unanswered: Mutex<BTreeMap<String, String>>,
     projection: Arc<dyn Projection>,
     time: Arc<TimeGuard>,
     health: OnceLock<Health>,
@@ -693,6 +698,7 @@ impl Mutations {
             in_flight: Mutex::new(BTreeSet::new()),
             running: Mutex::new(BTreeSet::new()),
             stopped: Mutex::new(None),
+            unanswered: Mutex::new(BTreeMap::new()),
             projection,
             time,
             health: OnceLock::new(),
@@ -823,8 +829,25 @@ impl Mutations {
     ///
     /// A domain that cannot say stops the recovery: the operation it was asked about stays open,
     /// nothing is recorded of it, and the caller does not serve the domain. The operations met
-    /// before it keep the outcome they were given, and the next start asks again.
+    /// before it keep the outcome they were given, and the next start asks again. The process is
+    /// not ready from then until a recovery of that domain ends.
     pub fn recover(&self, domain: &dyn Domain) -> Result<Recovered, StorageError> {
+        let outcome = self.recover_open(domain);
+        {
+            let mut unanswered = self
+                .unanswered
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match &outcome {
+                Ok(_) => unanswered.remove(domain.name()),
+                Err(error) => unanswered.insert(domain.name().to_owned(), error.to_string()),
+            };
+        }
+        self.report();
+        outcome
+    }
+
+    fn recover_open(&self, domain: &dyn Domain) -> Result<Recovered, StorageError> {
         let open: Vec<(OperationId, Option<String>)> = self
             .state
             .lock()
@@ -1404,6 +1427,24 @@ impl Mutations {
         let Some(health) = self.health.get() else {
             return;
         };
+        // A recovery that stopped holds readiness: what the domain holds of an operation is not
+        // known, and nothing is served on a guess.
+        let unanswered = self
+            .unanswered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .next()
+            .cloned();
+        match unanswered {
+            Some(reason) => {
+                health
+                    .lifecycle()
+                    .hold_as(RECOVERY_HOLD, CAPABILITY, reason);
+                return;
+            }
+            None => health.lifecycle().release_as(RECOVERY_HOLD, CAPABILITY),
+        }
         let pending = self.pending();
         let stopped = self
             .stopped

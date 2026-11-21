@@ -707,10 +707,21 @@ fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
         intent.operation_id
     };
     let engine = open(&volume, &trail, &time);
+    let health = Health::new();
+    engine.observe(health.clone());
+    let held = |health: &Health| health.lifecycle().holds().get(RECOVERY_HOLD).cloned();
+    assert_eq!(held(&health), None);
     *ledger.unreadable.lock().expect("lock") = Some("the store did not answer".to_owned());
     let stopped = engine
         .recover(&ledger)
         .expect_err("a domain that cannot say stops the recovery");
+    // Not ready while it is not known what the domain holds of the operation.
+    assert!(
+        held(&health).is_some_and(|reason| reason.contains("the store did not answer")),
+        "{:?}",
+        held(&health)
+    );
+    assert!(!health.lifecycle().ready());
     let said = stopped.to_string();
     assert!(said.contains("could not say"), "{said}");
     assert!(said.contains("the store did not answer"), "{said}");
@@ -737,6 +748,11 @@ fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
     assert_eq!(recovered.reconciled, vec![applied]);
     assert!(recovered.failed.is_empty());
     assert_eq!(trail.phases(), vec!["reconciled"]);
+    assert_eq!(
+        held(&health),
+        None,
+        "the recovery ended: nothing holds readiness"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

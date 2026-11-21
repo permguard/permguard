@@ -28,9 +28,9 @@ use std::sync::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::{
-    Decide, PER_PRINCIPAL, Plan, PlanApproval, ReplayError, ReplayStore, Stored, WINDOW, kept,
+    Decide, PER_PRINCIPAL, Plan, PlanApproval, ReplayError, ReplayStore, Stored, Unapproved,
+    WINDOW, kept,
 };
-use crate::api::Refusal;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Observed};
 use crate::storage::StorageError;
@@ -302,7 +302,7 @@ impl ReplayStore for FileReplay {
         _applying: &Applying<'_>,
         plan_id: &str,
         decide: Decide<'_>,
-    ) -> Result<Option<Plan>, Refusal> {
+    ) -> Result<Option<Plan>, Unapproved> {
         // Held from the read of the plan to the frame of its approval: the plan `decide` judged
         // is the plan the approval joins.
         let mut journal = self
@@ -312,7 +312,7 @@ impl ReplayStore for FileReplay {
         let Some((plan, consumed)) = found(&self.state(), plan_id) else {
             return Ok(None);
         };
-        let approval = decide(&plan, consumed)?;
+        let approval = decide(&plan, consumed).map_err(Unapproved::Refused)?;
         let bytes = encode(&Approved {
             plan_id: plan.plan_id.clone(),
             principal: plan.principal.clone(),

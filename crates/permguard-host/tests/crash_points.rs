@@ -597,6 +597,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "migrate.",
         "mutation.",
         "audit.",
+        "holds.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -1292,6 +1293,78 @@ mod stores {
             drop((mutations, store, volume));
             let _ = std::fs::remove_dir_all(path);
         }
+    }
+
+    /// What `verify` names a hold by whose file the index does not record.
+    const UNRECORDED: &str = "has a file the index does not record";
+
+    /// An add killed between its file and its entry in the index: the hold is held and keeps,
+    /// recovery commits the operation its file names, the hold is named unrecorded, and the
+    /// next operation records it. The index never names a hold whose file is not there.
+    #[test]
+    fn a_hold_add_killed_between_its_file_and_its_entry_keeps_the_hold() {
+        let point = "holds.file_written";
+        let path = scratch("hold-add-between");
+        assert!(
+            crash("stores::child_hold_add", point, &path),
+            "the child died of the abort there"
+        );
+        let (volume, store, mutations) = open_holds(&path);
+        let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+        assert_eq!(
+            recovered.reconciled.len(),
+            1,
+            "its file names the operation"
+        );
+        assert!(mutations.open_intents().is_empty());
+        assert_eq!(store.list().expect("the holds read").len(), 1);
+        assert!(store.keeps(ZONE, LEDGER, now()).expect("read"));
+        let found = store.verify().expect("the holds read");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains(UNRECORDED), "{found:?}");
+        // An operation records it with its own hold.
+        add_hold(&store, &mutations);
+        assert_eq!(store.list().expect("the holds read").len(), 2);
+        assert!(store.verify().expect("the holds read").is_empty());
+        drop((mutations, store, volume));
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    /// A release killed between its entry and its file: the hold still keeps, the operation is
+    /// recorded failed, the hold is named unrecorded, and the release run again ends it.
+    #[test]
+    fn a_hold_release_killed_between_its_entry_and_its_file_keeps_the_hold() {
+        let point = "holds.entry_removed";
+        let path = scratch("hold-release-between");
+        let held = {
+            let (_volume, store, mutations) = open_holds(&path);
+            add_hold(&store, &mutations)
+        };
+        assert!(
+            crash("stores::child_hold_release", point, &path),
+            "the child died of the abort there"
+        );
+        let (volume, store, mutations) = open_holds(&path);
+        let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+        assert_eq!(recovered.failed.len(), 1, "the hold is still there");
+        assert!(mutations.open_intents().is_empty());
+        assert_eq!(store.list().expect("the holds read"), vec![held.clone()]);
+        assert!(store.keeps(ZONE, LEDGER, now()).expect("read"));
+        let found = store.verify().expect("the holds read");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains(UNRECORDED), "{found:?}");
+        holds::release(
+            &mutations,
+            &store,
+            Initiator::System("test".to_owned()),
+            &held.id,
+        )
+        .expect("released when run again");
+        assert!(store.list().expect("the holds read").is_empty());
+        assert!(!store.keeps(ZONE, LEDGER, now()).expect("read"));
+        assert!(store.verify().expect("the holds read").is_empty());
+        drop((mutations, store, volume));
+        let _ = std::fs::remove_dir_all(path);
     }
 
     fn open_plans(path: &Path) -> (Volume, Arc<FileReplay>, Replay, Mutations) {

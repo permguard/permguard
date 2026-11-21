@@ -26,7 +26,7 @@ use std::sync::{Arc, Barrier};
 
 use permguard_core::{ErrorClass, codes};
 
-use super::{Plan, PlanApproval, ReplayError, ReplayStore};
+use super::{Plan, PlanApproval, ReplayError, ReplayStore, Unapproved};
 use crate::api::Refusal;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::Applying;
@@ -214,9 +214,10 @@ fn an_approval_joins_its_plan<S: ReplayStore + ?Sized>(store: &S, operate: Opera
 
     // A refusal of the decision is the answer, and records nothing.
     operate(&mut |applying| {
-        let refused = store
-            .approve(applying, "p1", &|_, _| Err(full()))
-            .expect_err("refused");
+        let Err(Unapproved::Refused(refused)) = store.approve(applying, "p1", &|_, _| Err(full()))
+        else {
+            panic!("the decision's refusal is the answer, told apart from a store that failed");
+        };
         assert_eq!(
             refused.error().expect("a refusal").code(),
             codes::host::PLAN_APPROVAL_REFUSED
@@ -257,7 +258,7 @@ fn an_approval_joins_its_plan<S: ReplayStore + ?Sized>(store: &S, operate: Opera
             assert!(consumed, "the decision is told the plan was run");
             Err(full())
         });
-        assert!(refused.is_err());
+        assert!(matches!(refused, Err(Unapproved::Refused(_))));
     });
 }
 

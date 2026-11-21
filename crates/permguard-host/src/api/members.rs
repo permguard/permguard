@@ -2540,16 +2540,24 @@ impl HostApi {
                             )));
                         }
                     }
-                    if let Err(error) =
-                        self.replay
-                            .consume(applying, &admitted.principal, &plan.plan_id)
+                    match self
+                        .replay
+                        .consume(applying, &admitted.principal, &plan.plan_id)
                     {
-                        tracing::warn!(
+                        Ok(()) => {}
+                        // The coordinator's answer changed nothing inside this operation, so the
+                        // receipt is its only guard: one another run spent meanwhile runs once.
+                        Err(error @ super::replay::ReplayError::PlanConsumed)
+                            if matches!(asked, Some(Ok(_))) =>
+                        {
+                            return Err(Failure::Refused(Refusal::from(error)));
+                        }
+                        Err(error) => tracing::warn!(
                             event.name = "host.plan_unconsumed",
                             component = super::COMPONENT,
                             error = %error,
                             "a run plan could not be marked consumed; the membership is ended"
-                        );
+                        ),
                     }
                     let held = memberships
                         .store

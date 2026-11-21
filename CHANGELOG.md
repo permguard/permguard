@@ -26,6 +26,11 @@ is cut.
 - **An audit trail that never held a record is no longer reported lost.**
   A trail was named in `host/audit/index` before its directory existed. A Host that stopped between the two, or that could not create the directory and was restarted, found at its next start a trail the index named and the volume lacked: it recorded `host.audit.trail_lost`, and `audit verify` failed on that trail for good.
   The directory is now created first, named second, and written to third; a start that stops midway leaves nothing to report.
+- **A plan made before an identity reset runs nothing after it.**
+  A receipt names the Host identity it was made for. A run step now refuses, as a plan that is not held, a receipt that names another identity than the Host's: the plan of a reset whose consumption was lost can no longer reset the identity provisioned in its place.
+- **A Host whose recovery cannot finish answers not ready.**
+  When a store cannot say whether it applied an operation a crash left open, the recovery stops, as before, and the readiness probe now answers not ready, with what the store said, until a recovery ends. Before, a Plane refused changes and went on answering ready.
+  A ledger's creation left open in a zone deleted since no longer stops the Control Plane's recovery at every start: it is recorded failed.
 - **Two releases of one hold end it once.**
   The second is answered that the hold is not held, and no index entry is rewritten from a read another release has made stale.
 - **A start stops when a domain cannot say whether it applied an operation a crash left open.**

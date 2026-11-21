@@ -296,6 +296,12 @@ impl FileHolds {
 
 impl HoldStore for FileHolds {
     fn list(&self) -> Result<Vec<Hold>, HoldError> {
+        // The files and the index are read as one step for an add or a release: a listing never
+        // meets a file without its entry, or an entry without its file, that a change is making.
+        let _changing = self
+            .changing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let files = self.files()?;
         match self.read_index()? {
             Some(index) => {
@@ -339,6 +345,10 @@ impl HoldStore for FileHolds {
     }
 
     fn verify(&self) -> Result<Vec<String>, HoldError> {
+        let _changing = self
+            .changing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut findings = Vec::new();
         let mut files = Vec::new();
         for name in self.names()? {
@@ -406,6 +416,7 @@ impl HoldStore for FileHolds {
         // keeps what it names, never an entry without its file.
         let index = self.indexed(&hold.id, Some(digest(&bytes)))?;
         replace_bytes(&self.dir, &name, &bytes)?;
+        crate::storage::crash::point("holds.file_written");
         self.write_index(applying, &index)?;
         Ok(())
     }
@@ -424,6 +435,7 @@ impl HoldStore for FileHolds {
         // keeps what it names until the release is run again.
         let index = self.indexed(id, None)?;
         self.write_index(applying, &index)?;
+        crate::storage::crash::point("holds.entry_removed");
         self.dir.unlink(&name)?;
         self.dir.sync()?;
         Ok(hold)
