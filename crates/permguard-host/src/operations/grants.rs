@@ -31,11 +31,15 @@ impl Domain for Grants<'_> {
         DOMAIN
     }
 
-    fn observe(&self, _operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.0.bootstrap().map(|held| Observed {
+    fn observe(
+        &self,
+        _operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        Ok(self.0.bootstrap().map(|held| Observed {
             revision: 1,
             target: Some(held.principal.as_str().to_owned()),
-        })
+        }))
     }
 }
 

@@ -240,7 +240,11 @@ impl Domain for Registry {
         super::ring::DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
         Rings(&self.rings).observe(operation_id, target)
     }
 }

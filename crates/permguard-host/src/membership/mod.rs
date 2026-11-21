@@ -1613,16 +1613,30 @@ impl Store {
         Ok(Some(u64::from_be_bytes(bytes)))
     }
 
-    fn verification_observed(&self, id: &[u8; 16], operation_id: &OperationId) -> Option<Observed> {
-        let bytes = self.verification_record(operation_id).ok()??;
-        if bytes.len() < 24 || bytes.get(8..24)? != id {
-            return None;
-        }
-        let revision = u64::from_be_bytes(bytes.get(..8)?.try_into().ok()?);
-        Some(Observed {
-            revision,
-            target: Some(uuid_text(id)),
-        })
+    /// What a verification's kept answer shows of `operation_id`. No answer kept is an answer;
+    /// one that does not read stops the recovery that asked.
+    fn verification_observed(
+        &self,
+        id: &[u8; 16],
+        operation_id: &OperationId,
+    ) -> Result<Option<Observed>, String> {
+        let Some(bytes) = self
+            .verification_record(operation_id)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let shown = (|| {
+            if bytes.len() < 24 || bytes.get(8..24)? != id {
+                return None;
+            }
+            let revision = u64::from_be_bytes(bytes.get(..8)?.try_into().ok()?);
+            Some(Observed {
+                revision,
+                target: Some(uuid_text(id)),
+            })
+        })();
+        Ok(shown)
     }
 
     fn verification_record(
@@ -3277,11 +3291,18 @@ impl Domain for Memberships<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        self.0.observe(operation_id).or_else(|| {
-            let id = target.and_then(id_from_text)?;
-            self.0.verification_observed(&id, operation_id)
-        })
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        if let Some(observed) = self.0.observe(operation_id) {
+            return Ok(Some(observed));
+        }
+        let Some(id) = target.and_then(id_from_text) else {
+            return Ok(None);
+        };
+        self.0.verification_observed(&id, operation_id)
     }
 }
 

@@ -203,26 +203,21 @@ impl Domain for Recovering<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        match self.0.operation(operation_id) {
-            Ok(found) => found.map(|(revision, named)| Observed {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // A store that cannot be asked stops the recovery: the engine never records as failed an
+        // operation its domain may have applied (decision E17).
+        Ok(self
+            .0
+            .operation(operation_id)
+            .map_err(|error| error.to_string())?
+            .map(|(revision, named)| Observed {
                 revision,
                 target: Some(named),
-            }),
-            Err(error) => {
-                // The engine reads `None` as not applied and records the operation failed, so
-                // this answer is wrong for a store that could not be asked. No backend of this
-                // build can fail here; the engine learns to stop instead with decision E17
-                // (iteration 03, WP-26.2), before a backend that can fail exists.
-                tracing::error!(
-                    event.name = "authority.tokens.recovery_unreadable",
-                    component = crate::COMPONENT,
-                    reason = %error,
-                    "the tokens could not say whether an operation was applied"
-                );
-                None
-            }
-        }
+            }))
     }
 }
 

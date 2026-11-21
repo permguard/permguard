@@ -309,8 +309,10 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
         &self,
         operation_id: &permguard_host::operations::journal::OperationId,
         target: Option<&str>,
-    ) -> Option<permguard_host::operations::mutation::Observed> {
-        let target = target?;
+    ) -> Result<Option<permguard_host::operations::mutation::Observed>, String> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
         let operation = operation_id.to_string();
         let written = |revision: u64, by: Option<&str>, at: String| {
             (by == Some(operation.as_str())).then_some(
@@ -320,19 +322,25 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                 },
             )
         };
-        match target.split('/').collect::<Vec<_>>().as_slice() {
+        // A catalog that does not read is not a catalog that holds no trace of the operation:
+        // only `NotFound` is an answer, and any other error stops the recovery.
+        let unread = |error: CatalogError| error.to_string();
+        Ok(match target.split('/').collect::<Vec<_>>().as_slice() {
             ["zone", id] => match permguard_core::Zone::at(self.catalog.as_ref(), target) {
                 Ok(zone) => written(zone.revision, zone.operation.as_deref(), zone.target()),
-                Err(CatalogError::NotFound { .. }) => {
-                    let gone = self.catalog.zone_tombstone(id).ok()??;
-                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
-                }
-                Err(_) => None,
+                Err(CatalogError::NotFound { .. }) => self
+                    .catalog
+                    .zone_tombstone(id)
+                    .map_err(unread)?
+                    .and_then(|gone| {
+                        written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                    }),
+                Err(error) => return Err(unread(error)),
             },
             ["zone-new"] => self
                 .catalog
                 .list_zones()
-                .ok()?
+                .map_err(unread)?
                 .into_iter()
                 .find_map(|zone| written(zone.revision, zone.operation.as_deref(), zone.target())),
             ["ledger", zone, id] => match permguard_core::Ledger::at(self.catalog.as_ref(), target)
@@ -342,16 +350,19 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                     ledger.operation.as_deref(),
                     ledger.target(),
                 ),
-                Err(CatalogError::NotFound { .. }) => {
-                    let gone = self.catalog.ledger_tombstone(zone, id).ok()??;
-                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
-                }
-                Err(_) => None,
+                Err(CatalogError::NotFound { .. }) => self
+                    .catalog
+                    .ledger_tombstone(zone, id)
+                    .map_err(unread)?
+                    .and_then(|gone| {
+                        written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                    }),
+                Err(error) => return Err(unread(error)),
             },
             ["ledger-new", zone] => self
                 .catalog
                 .list_ledgers(&Selector::Id((*zone).to_owned()))
-                .ok()?
+                .map_err(unread)?
                 .into_iter()
                 .find_map(|ledger| {
                     written(
@@ -361,7 +372,7 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                     )
                 }),
             _ => None,
-        }
+        })
     }
 }
 

@@ -362,18 +362,25 @@ fn recovery_observes_a_rotation_by_the_epoch_it_produced() {
     let (_volume, identity) = provisioned(&root);
     let domain = Identities(&identity);
     let id = OperationId::from_bytes([1; 16]);
-    assert_eq!(domain.observe(&id, Some("epoch:2")), None);
+    assert_eq!(
+        domain
+            .observe(&id, Some("epoch:2"))
+            .expect("the domain answers"),
+        None
+    );
     identity
         .rotate(&Applying::for_tests(1), None, NOW + 1)
         .expect("rotated");
     assert_eq!(
-        domain.observe(&id, Some("epoch:2")),
+        domain
+            .observe(&id, Some("epoch:2"))
+            .expect("the domain answers"),
         Some(Observed {
             revision: 2,
             target: Some("epoch:2".to_owned())
         })
     );
-    assert_eq!(domain.observe(&id, None), None);
+    assert_eq!(domain.observe(&id, None).expect("the domain answers"), None);
     let _ = std::fs::remove_dir_all(root);
 }
 

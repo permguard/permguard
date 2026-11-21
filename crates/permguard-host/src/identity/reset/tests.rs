@@ -144,6 +144,7 @@ fn a_reset_retires_the_identity_keeps_its_public_evidence_and_provisions_another
             &applying.operation_id(),
             Some(&format!("reset:{}", record::uuid_text(&old))),
         )
+        .expect("the domain answers")
         .expect("observed");
     assert_eq!(
         observed.target,
@@ -155,6 +156,7 @@ fn a_reset_retires_the_identity_keeps_its_public_evidence_and_provisions_another
                 &Applying::for_tests(8).operation_id(),
                 Some(&format!("reset:{}", record::uuid_text(&old)))
             )
+            .expect("the domain answers")
             .is_none(),
         "another operation did not reset it"
     );

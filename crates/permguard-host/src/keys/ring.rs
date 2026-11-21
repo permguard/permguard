@@ -1806,8 +1806,13 @@ impl Domain for Rings<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.0.iter().find_map(|ring| ring.observe(operation_id))
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // A ring's operations are held in memory, read whole when it was opened.
+        Ok(self.0.iter().find_map(|ring| ring.observe(operation_id)))
     }
 }
 

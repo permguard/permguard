@@ -100,26 +100,47 @@ impl Domain for RefDomain {
         REFS_DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        let (zone, rest) = target?.split_once('/')?;
-        let (ledger, name) = rest.split_once('/')?;
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> std::result::Result<Option<Observed>, String> {
+        let Some((zone, ledger, name)) =
+            target
+                .and_then(|target| target.split_once('/'))
+                .and_then(|(zone, rest)| {
+                    rest.split_once('/')
+                        .map(|(ledger, name)| (zone, ledger, name))
+                })
+        else {
+            return Ok(None);
+        };
         // Ids from the catalog, never a path the target could climb out of.
         if [zone, ledger]
             .iter()
             .any(|id| id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.'))
         {
-            return None;
+            return Ok(None);
         }
         let store = FileObjectStore::new(self.zones_root.join(zone).join("ledgers").join(ledger));
-        let written = store.ref_operation(name).ok()??;
+        // A ref that does not read is not a ref that was never written: the first stops the
+        // recovery, the second fails the operation.
+        let Some(written) = store
+            .ref_operation(name)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
         if written != operation_id.to_string() {
-            return None;
+            return Ok(None);
         }
-        let state = store.read_ref(name).ok()??;
-        Some(Observed {
+        let Some(state) = store.read_ref(name).map_err(|error| error.to_string())? else {
+            return Ok(None);
+        };
+        Ok(Some(Observed {
             revision: state.counter,
             target: target.map(str::to_owned),
-        })
+        }))
     }
 }
 

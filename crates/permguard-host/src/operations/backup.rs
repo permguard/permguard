@@ -1295,17 +1295,29 @@ impl Domain for Backups {
     /// A prepare (no target) shows once its backup's state exists; a finalize or an abort (the
     /// backup as its target) only once that state is no longer `prepared`, so a crash before its
     /// write is failed, never reconciled as applied. The revision is unknown after a restart: 0.
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        let unread = |error: StorageError| error.to_string();
         let name = target.map_or_else(|| operation_id.to_string(), str::to_owned);
-        let operation = self.dir.subdir(&name, false).ok()?;
-        let state = read_state(&operation).ok()??;
-        if target.is_some() && state.state == PREPARED {
-            return None;
+        // No directory and no state are answers; a directory or a state that does not read
+        // stops the recovery.
+        if !self.dir.subdirs().map_err(unread)?.contains(&name) {
+            return Ok(None);
         }
-        Some(Observed {
+        let operation = self.dir.subdir(&name, false).map_err(unread)?;
+        let Some(state) = read_state(&operation).map_err(unread)? else {
+            return Ok(None);
+        };
+        if target.is_some() && state.state == PREPARED {
+            return Ok(None);
+        }
+        Ok(Some(Observed {
             revision: 0,
             target: Some(name),
-        })
+        }))
     }
 }
 
@@ -1959,11 +1971,13 @@ mod tests {
         assert!(
             backups
                 .observe(&OperationId::from_bytes([0xaa; 16]), None)
+                .expect("the domain answers")
                 .is_some()
         );
         assert!(
             backups
                 .observe(&OperationId::from_bytes([0xcc; 16]), None)
+                .expect("the domain answers")
                 .is_none()
         );
     }
@@ -2073,10 +2087,17 @@ mod tests {
             },
         )
         .expect("prepared");
-        assert!(backups.observe(&held, None).is_some(), "its prepare shows");
+        assert!(
+            backups
+                .observe(&held, None)
+                .expect("the domain answers")
+                .is_some(),
+            "its prepare shows"
+        );
         assert!(
             backups
                 .observe(&OperationId::from_bytes([1; 16]), Some(&name))
+                .expect("the domain answers")
                 .is_none(),
             "an ending does not show while the backup is prepared"
         );
@@ -2132,7 +2153,10 @@ mod tests {
             .expect("the expired one ends");
         assert_eq!(ended.backup, held);
         assert!(
-            backups.observe(&ended.operation_id, Some(&name)).is_some(),
+            backups
+                .observe(&ended.operation_id, Some(&name))
+                .expect("the domain answers")
+                .is_some(),
             "its ending shows once the state moved on"
         );
         assert_eq!(

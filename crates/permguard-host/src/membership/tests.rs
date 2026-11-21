@@ -509,7 +509,8 @@ fn verification_recovery_keeps_the_exact_result_after_consumption_and_a_later_sc
     );
     assert_eq!(
         Memberships(coordinator.store.as_ref())
-            .observe(&operation_id, Some(&uuid_text(&[0x55; 16]))),
+            .observe(&operation_id, Some(&uuid_text(&[0x55; 16])))
+            .expect("the domain answers"),
         None,
         "the immutable result belongs only to its original target"
     );
@@ -2171,6 +2172,7 @@ fn recovery_sees_the_operation_that_wrote_a_membership_and_no_other() {
     let written = Applying::for_tests(2).operation_id();
     let observed = Memberships(&c.store)
         .observe(&written, None)
+        .expect("the domain answers")
         .expect("the enrollment is observed");
     assert_eq!(
         observed.target,
@@ -2179,11 +2181,17 @@ fn recovery_sees_the_operation_that_wrote_a_membership_and_no_other() {
     assert!(
         Memberships(&c.store)
             .observe(&Applying::for_tests(42).operation_id(), None)
+            .expect("the domain answers")
             .is_none()
     );
     // After a reopen, from the journal alone.
     let reopened = Store::open(&c._volume).expect("reopens");
-    assert!(Memberships(&reopened).observe(&written, None).is_some());
+    assert!(
+        Memberships(&reopened)
+            .observe(&written, None)
+            .expect("the domain answers")
+            .is_some()
+    );
 }
 
 #[test]

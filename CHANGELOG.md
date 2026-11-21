@@ -19,6 +19,10 @@ is cut.
 
 ### Changed
 
+- **A start stops when a domain cannot say whether it applied an operation a crash left open.**
+  Recovery asks each domain about every such operation. A domain whose state did not read, a file, a directory or a record the operating system refused, was taken as showing no trace of the operation, which was then recorded as failed although it may have been applied, and a retry applied it again.
+  The operation now stays open, nothing is recorded of it, the log says `host.mutations_recovery_stopped` with the domain and the reason, and the server does not serve that domain; the next start asks again.
+  This holds for the catalog, the refs of a ledger, the holds, the backups, a restore, an identity reset and a membership verification.
 - **Two changes of one service account that arrive together are both applied.**
   Each change is applied to the account as it stands at that moment, where the second used to be written over the first from an older copy of the account, which could bring back a key the first had deleted.
   `expected_revision` is judged against the account as it stands when the change is applied, so a change that names a revision another change has moved past is answered `conflict`; a change that names none is never refused for a revision.

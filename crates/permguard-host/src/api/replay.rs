@@ -696,7 +696,18 @@ impl Domain for Replay {
 
     /// An approval shows as the plan `target` holding one recorded by `operation_id`; a plan
     /// consumed ahead of its change, `consume:<plan_id>`, as that plan consumed.
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // The window is held in memory, read whole when it was opened: it always answers.
+        Ok(self.shown(operation_id, target))
+    }
+}
+
+impl Replay {
+    fn shown(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
         let target = target?;
         let state = self
             .state
@@ -1040,18 +1051,26 @@ mod tests {
         assert_eq!(replay.name(), DOMAIN);
         let found = replay
             .observe(&approving.operation_id(), Some("p1"))
+            .expect("the domain answers")
             .expect("the approval is found");
         assert_eq!(found.revision, 3);
         assert!(
             replay
                 .observe(&Applying::for_tests(3).operation_id(), Some("p1"))
+                .expect("the domain answers")
                 .is_none(),
             "an operation that wrote nothing is not found"
         );
-        assert!(replay.observe(&approving.operation_id(), None).is_none());
+        assert!(
+            replay
+                .observe(&approving.operation_id(), None)
+                .expect("the domain answers")
+                .is_none()
+        );
         assert!(
             replay
                 .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
+                .expect("the domain answers")
                 .is_none(),
             "not consumed yet"
         );
@@ -1061,6 +1080,7 @@ mod tests {
         assert!(
             replay
                 .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
+                .expect("the domain answers")
                 .is_some()
         );
     }

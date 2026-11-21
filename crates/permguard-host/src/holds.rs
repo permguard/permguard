@@ -673,20 +673,30 @@ impl Domain for Holds<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        let target = target?;
-        let (verb, rest) = target.split_once('/')?;
-        let id = rest.split('/').next()?;
-        let held = self.0.get(id).ok()?;
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        let Some((target, verb, id)) = target.and_then(|target| {
+            let (verb, rest) = target.split_once('/')?;
+            Some((target, verb, rest.split('/').next()?))
+        }) else {
+            return Ok(None);
+        };
+        // A hold that does not read is not a hold that is not there: it stops the recovery.
+        let held = self.0.get(id).map_err(|error| error.to_string())?;
         let shown = match verb {
-            "hold" => held?.operation.as_deref() == Some(operation_id.to_string().as_str()),
+            "hold" => held.is_some_and(|held| {
+                held.operation.as_deref() == Some(operation_id.to_string().as_str())
+            }),
             "released" => held.is_none(),
             _ => false,
         };
-        shown.then(|| Observed {
+        Ok(shown.then(|| Observed {
             revision: 1,
             target: Some(target.to_owned()),
-        })
+        }))
     }
 }
 

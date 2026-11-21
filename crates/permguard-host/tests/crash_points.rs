@@ -888,13 +888,17 @@ mod mutating {
             DOMAIN
         }
 
-        fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
+        fn observe(
+            &self,
+            operation_id: &OperationId,
+            _target: Option<&str>,
+        ) -> Result<Option<Observed>, String> {
             let name = format!("note-{operation_id}");
             let held = self.records().contains(&name);
-            held.then_some(Observed {
+            Ok(held.then_some(Observed {
                 revision: 1,
                 target: Some(name),
-            })
+            }))
         }
     }
 

@@ -1030,17 +1030,29 @@ impl Domain for Identities<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
         // A reset's intent names the identity it retires: the identity open now shows it done
         // when another Host retired that one under this operation.
-        if target?.starts_with("reset:") {
+        if target.starts_with("reset:") {
             return reset::observe(self.0, operation_id);
         }
-        let epoch = target?.strip_prefix("epoch:")?.parse::<u64>().ok()?;
-        (self.0.epoch() >= epoch).then(|| Observed {
+        let Some(epoch) = target
+            .strip_prefix("epoch:")
+            .and_then(|epoch| epoch.parse::<u64>().ok())
+        else {
+            return Ok(None);
+        };
+        Ok((self.0.epoch() >= epoch).then(|| Observed {
             revision: epoch,
             target: Some(format!("epoch:{epoch}")),
-        })
+        }))
     }
 }
 

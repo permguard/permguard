@@ -384,16 +384,25 @@ fn recovery_reads_an_add_from_its_file_and_a_release_from_its_absence() {
     let domain = Holds(&store);
     let id = OperationId::from_bytes(operation);
     let target = format!("hold/{}/{}", added.id, ledger());
-    assert!(domain.observe(&id, Some(&target)).is_some());
+    assert!(
+        domain
+            .observe(&id, Some(&target))
+            .expect("the domain answers")
+            .is_some()
+    );
     assert!(
         domain
             .observe(&OperationId::from_bytes([0; 16]), Some(&target))
+            .expect("the domain answers")
             .is_none(),
         "another operation's hold"
     );
     let released = format!("released/{}/{}", added.id, ledger());
     assert!(
-        domain.observe(&id, Some(&released)).is_none(),
+        domain
+            .observe(&id, Some(&released))
+            .expect("the domain answers")
+            .is_none(),
         "still there"
     );
     release(
@@ -403,7 +412,12 @@ fn recovery_reads_an_add_from_its_file_and_a_release_from_its_absence() {
         &added.id,
     )
     .expect("released");
-    assert!(domain.observe(&id, Some(&released)).is_some());
+    assert!(
+        domain
+            .observe(&id, Some(&released))
+            .expect("the domain answers")
+            .is_some()
+    );
 }
 
 /// BUG-0172: a hold removed or edited on the volume, outside an operation, is never lost

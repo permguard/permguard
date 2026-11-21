@@ -76,6 +76,8 @@ impl Trail {
 #[derive(Default)]
 struct Ledger {
     applied: Mutex<BTreeMap<OperationId, Observed>>,
+    /// Why the ledger cannot be read, while it cannot: what a store that does not answer says.
+    unreadable: Mutex<Option<String>>,
 }
 
 impl Domain for Ledger {
@@ -83,12 +85,20 @@ impl Domain for Ledger {
         "ledger"
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.applied
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        if let Some(reason) = self.unreadable.lock().expect("lock").clone() {
+            return Err(reason);
+        }
+        Ok(self
+            .applied
             .lock()
             .expect("lock")
             .get(operation_id)
-            .cloned()
+            .cloned())
     }
 }
 
@@ -171,7 +181,13 @@ fn an_operation_runs_every_step_under_one_operation_id() {
         "the outcome names the target"
     );
     let id = OperationId::from_bytes(records[0].1);
-    assert!(ledger.observe(&id, None).is_some(), "the domain carries it");
+    assert!(
+        ledger
+            .observe(&id, None)
+            .expect("the domain answers")
+            .is_some(),
+        "the domain carries it"
+    );
     let journal = entries(&volume);
     assert!(matches!(
         &journal[..],
@@ -649,6 +665,78 @@ fn recovery_commits_what_the_domain_shows_and_fails_what_it_does_not() {
         })
         .expect("applied");
     assert_eq!(fresh, Outcome::Applied("z2@2".to_owned()));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Decision E17: a domain that cannot read its state is not a domain that does not show the
+/// operation. Recovery stops there: the operation stays open, nothing is recorded of it, and
+/// once the domain reads again it is resolved as what it was, here applied.
+#[test]
+fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
+    let root = scratch("recovery-unreadable");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let ledger = Ledger::default();
+    let applied = {
+        let engine = open(&volume, &trail, &time);
+        let intent = Intent {
+            operation_id: OperationId::mint().expect("random"),
+            at: 1,
+            domain: "ledger".to_owned(),
+            operation: "ledger.write".to_owned(),
+            action: "host.grant.issued".to_owned(),
+            initiator: Initiator::Principal("alice".to_owned()),
+            request: Some(RequestKey {
+                request_id: "r1".to_owned(),
+                digest: "d".to_owned(),
+            }),
+            target: None,
+        };
+        engine
+            .append(Entry::Intent(intent.clone()))
+            .expect("appended");
+        // The domain applied it, and the process died before the commit.
+        ledger.apply(
+            &Applying {
+                operation_id: intent.operation_id,
+                _engine: PhantomData,
+            },
+            "z1",
+        );
+        intent.operation_id
+    };
+    let engine = open(&volume, &trail, &time);
+    *ledger.unreadable.lock().expect("lock") = Some("the store did not answer".to_owned());
+    let stopped = engine
+        .recover(&ledger)
+        .expect_err("a domain that cannot say stops the recovery");
+    let said = stopped.to_string();
+    assert!(said.contains("could not say"), "{said}");
+    assert!(said.contains("the store did not answer"), "{said}");
+    assert_eq!(engine.open_intents(), vec![applied], "it stays open");
+    assert!(trail.phases().is_empty(), "nothing is recorded of it");
+    assert_eq!(
+        engine.pending(),
+        1,
+        "one operation waits, neither committed nor failed"
+    );
+    // A retry does not apply it again while it is unresolved.
+    let retried = engine.run(
+        begin(Some("r1"), "d"),
+        |_| -> Result<Applied<String>, Failure<String>> { panic!("never applied again") },
+    );
+    assert!(
+        matches!(retried, Err(MutationError::Unrecorded(_))),
+        "{retried:?}"
+    );
+
+    // The store answers again: the operation is what it was, applied.
+    *ledger.unreadable.lock().expect("lock") = None;
+    let recovered = engine.recover(&ledger).expect("recovers");
+    assert_eq!(recovered.reconciled, vec![applied]);
+    assert!(recovered.failed.is_empty());
+    assert_eq!(trail.phases(), vec!["reconciled"]);
     let _ = std::fs::remove_dir_all(root);
 }
 

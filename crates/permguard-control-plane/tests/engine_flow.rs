@@ -1638,17 +1638,20 @@ fn a_ref_update_names_its_operation_for_recovery() {
     let target = permguard_control_plane::store::RefDomain::target("zone-1", "ledger-1", "main");
     let observed = domain
         .observe(&OperationId::from_bytes(bytes), Some(&target))
+        .expect("the domain answers")
         .expect("the operation that wrote the ref is observed");
     assert_eq!(observed.revision, 1);
     assert!(
         domain
             .observe(&OperationId::from_bytes([0xee; 16]), Some(&target))
+            .expect("the domain answers")
             .is_none(),
         "another operation is not"
     );
     assert!(
         domain
             .observe(&OperationId::from_bytes(bytes), Some("../escape/main"))
+            .expect("the domain answers")
             .is_none(),
         "nor a target outside the zones"
     );

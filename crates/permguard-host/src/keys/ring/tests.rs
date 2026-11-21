@@ -726,12 +726,14 @@ fn an_operator_rotation_is_observed_by_its_operation_and_refused_while_one_waits
     let rings = [ring.clone()];
     let observed = Rings(&rings)
         .observe(&OperationId::from_bytes([2; 16]), None)
+        .expect("the domain answers")
         .expect("the journal shows it");
     assert_eq!(observed.revision, 2);
     assert_eq!(observed.target.as_deref(), Some("data.attest:epoch:2"));
     assert!(
         Rings(&rings)
             .observe(&OperationId::from_bytes([3; 16]), None)
+            .expect("the domain answers")
             .is_none()
     );
     // It takes over once `publish_ahead` has passed, like any successor.

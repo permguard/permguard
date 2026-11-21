@@ -205,7 +205,16 @@ pub trait Domain {
     fn name(&self) -> &'static str;
     /// What the domain shows of `operation_id`, when it applied it; `target` is what the intent
     /// named, for a domain whose state records the outcome rather than the operation id.
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed>;
+    ///
+    /// `Ok(None)` is an answer: the domain read its state and the operation is not in it. A
+    /// domain that could not read its state says so with `Err`, and never with `None`: recovery
+    /// records an operation the domain does not show as failed, and an operation the domain
+    /// applied and could not be asked about must not be (decision E17 of iteration 03).
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String>;
 }
 
 /// The proof that the engine is applying an operation: a domain mutator takes one, and only this
@@ -768,6 +777,10 @@ impl Mutations {
 
     /// Resolves the open intents of `domain`: committed when the domain shows the operation,
     /// failed when it does not; then writes every pending outcome record it can.
+    ///
+    /// A domain that cannot say stops the recovery: the operation it was asked about stays open,
+    /// nothing is recorded of it, and the caller does not serve the domain. The operations met
+    /// before it keep the outcome they were given, and the next start asks again.
     pub fn recover(&self, domain: &dyn Domain) -> Result<Recovered, StorageError> {
         let open: Vec<(OperationId, Option<String>)> = self
             .state
@@ -793,7 +806,24 @@ impl Mutations {
         let mut recovered = Recovered::default();
         for (operation_id, target) in open {
             let now = self.time.now_secs();
-            match domain.observe(&operation_id, target.as_deref()) {
+            let shown = domain
+                .observe(&operation_id, target.as_deref())
+                .map_err(|error| {
+                    tracing::error!(
+                        event.name = "host.mutations_recovery_stopped",
+                        component = "host",
+                        domain = domain.name(),
+                        operation_id = %operation_id,
+                        error = %error,
+                        "a domain could not say whether it applied an operation a crash left open"
+                    );
+                    StorageError::Refused(format!(
+                        "the domain `{}` could not say whether it applied the operation \
+                         {operation_id}, which stays open: {error}",
+                        domain.name()
+                    ))
+                })?;
+            match shown {
                 Some(observed) => {
                     self.append(Entry::Commit(Commit {
                         operation_id,

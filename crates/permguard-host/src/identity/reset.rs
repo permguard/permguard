@@ -465,16 +465,34 @@ fn reset_record(
 
 /// The reset the operation `operation_id` made, as recovery sees it from the identity it left:
 /// a retired identity whose `RESET` names the operation, the open identity another Host.
-pub(super) fn observe(identity: &Identity, operation_id: &OperationId) -> Option<Observed> {
-    let retired = identity.dir.subdir(RETIRED, false).ok()?;
-    for name in retired.subdirs().ok()? {
+///
+/// No retired identity is an answer; a directory or a record that does not read stops the
+/// recovery, since the reset it could not show may be the one asked about.
+pub(super) fn observe(
+    identity: &Identity,
+    operation_id: &OperationId,
+) -> Result<Option<Observed>, String> {
+    let unread = |error: crate::storage::StorageError| error.to_string();
+    if !identity
+        .dir
+        .subdirs()
+        .map_err(unread)?
+        .iter()
+        .any(|name| name == RETIRED)
+    {
+        return Ok(None);
+    }
+    let retired = identity.dir.subdir(RETIRED, false).map_err(unread)?;
+    for name in retired.subdirs().map_err(unread)? {
         let Some(bytes) = retired
             .subdir(&name, false)
-            .ok()
-            .and_then(|dir| dir.read(RESET).ok().flatten())
+            .map_err(unread)?
+            .read(RESET)
+            .map_err(unread)?
         else {
             continue;
         };
+        // A record that is not a reset's names no operation.
         let Ok(Value::Map(pairs)) = cbor::decode_canonical(&bytes) else {
             continue;
         };
@@ -482,13 +500,13 @@ pub(super) fn observe(identity: &Identity, operation_id: &OperationId) -> Option
             *key == Value::Int(3) && *value == Value::Bytes(operation_id.as_bytes().to_vec())
         });
         if named && name != identity.host_id_text() {
-            return Some(Observed {
+            return Ok(Some(Observed {
                 revision: 1,
                 target: Some(format!("host:{}", identity.host_id_text())),
-            });
+            }));
         }
     }
-    None
+    Ok(None)
 }
 
 #[cfg(test)]

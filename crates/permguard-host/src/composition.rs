@@ -2885,8 +2885,8 @@ mod tests {
                 &self,
                 _: &crate::operations::journal::OperationId,
                 _: Option<&str>,
-            ) -> Option<Observed> {
-                None
+            ) -> Result<Option<Observed>, String> {
+                Ok(None)
             }
         }
 
