@@ -551,6 +551,16 @@ sections:
       - crates/permguard-host/src/membership/zone/tests.rs::the_member_view_shows_receipts_never_keys
     gaps:
       - "open (code, deferred to WP-4.3 in status.md): a peer reading its membership's safe status through the Host API"
+  "1-architecture/3-architecture-server-host-membership.md#a-member-with-no-listener":
+    paths:
+      - crates/permguard-embedded/src/lib.rs
+      - crates/permguard-runtime/src/composition.rs
+      - crates/permguard-runtime/src/join.rs
+    tests:
+      - crates/permguard-server/tests/peer_session.rs::an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to
+      - crates/permguard-core/tests/refusals.rs::test_a_process_with_no_listener_is_refused_unless_a_composition_embeds_it
+    gaps:
+      - "open (trace): entered on 2026-11-21 from the tests that name the rule (iteration 03, WP-25.3); the rows of its table are not each traced to a test of their own"
   "1-architecture/3-architecture-server-host-membership.md#current-implementation-and-target":
     paths:
       - crates/permguard-host/src/membership/mod.rs
@@ -855,6 +865,18 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_forked_stream_opens_no_run_of_its_own
       - crates/permguard-stream/src/engine/tests.rs::a_restored_producer_rolls_every_run_over_and_appends_only_to_successors
       - crates/permguard-host/src/membership/task/tests.rs::a_handler_incident_suspends_the_membership
+  "1-architecture/6-architecture-server-host-streams.md#which-subscription-owns-a-run":
+    paths:
+      - crates/permguard-stream/src/engine/producer.rs
+      - crates/permguard-stream/src/engine/producer/ship.rs
+    tests:
+      - crates/permguard-stream/src/engine/tests.rs::a_run_shipped_under_a_membership_carries_its_fence
+      - crates/permguard-stream/src/engine/tests.rs::a_run_fenced_by_a_membership_that_ended_is_rolled_over_for_the_live_one
+      - crates/permguard-stream/src/engine/tests.rs::records_before_the_first_membership_are_carried_into_its_run_and_ship
+      - crates/permguard-stream/src/engine/tests.rs::what_an_ended_membership_never_acknowledged_is_carried_to_the_next_one
+      - crates/permguard-stream/src/engine/tests.rs::an_ended_run_of_an_ended_membership_is_carried_too
+    gaps:
+      - "open (trace): entered on 2026-11-21 from the tests that name the rule (iteration 03, WP-25.3); the rows of its table are not each traced to a test of their own"
   "1-architecture/6-architecture-server-host-streams.md#record-and-batch":
     paths:
       - crates/permguard-stream/src/engine/batch.rs
@@ -1141,6 +1163,30 @@ sections:
       - crates/permguard-host/src/storage/volume.rs::the_first_claim_creates_the_volume_and_later_claims_read_it
       - crates/permguard-host/src/storage/volume.rs::a_claim_only_moves_forward_and_never_beside_a_holder
       - crates/permguard-conformance/tests/durability.rs::test_no_durability_primitive_lives_outside_the_storage_library
+  "1-architecture/8-architecture-storage-operations.md#storage-backends":
+    paths:
+      - crates/permguard-host/src/storage/mod.rs
+      - crates/permguard-conformance/src/dal.rs
+    tests:
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+    gaps:
+      - "open (code): the PostgreSQL and S3 backend, the choice of a backend per process and everything of several instances are not built (iteration 03, WP-26.8, phases 27 and 28)"
+  "1-architecture/8-architecture-storage-operations.md#store-contracts":
+    paths:
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/tokens.rs
+      - crates/permguard-authority-plane/src/marks.rs
+      - crates/permguard-authority-plane/src/completion.rs
+      - crates/permguard-conformance/src/dal.rs
+    tests:
+      - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/accounts/files.rs::two_changes_of_one_account_are_both_kept_across_a_reopen
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_accounts_tokens_are_invalid
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-conformance/tests/dal.rs::test_a_seeded_reach_is_found_however_it_is_written
+    gaps:
+      - "open (code): only the Authority Plane's domains are behind a contract; the others are the direct entries of dal.json, each with the package that moves it (iteration 03, phase 26)"
   "1-architecture/8-architecture-storage-operations.md#required-filesystem-semantics":
     paths:
       - crates/permguard-host/src/storage/probe.rs
@@ -4380,6 +4426,27 @@ sections:
       - crates/permguard-client/src/authority_refresh.rs::a_list_id_names_no_path
     gaps:
       - "open (test): the fetch from authority.url over HTTPS, its schedule and its metrics are proven by the lab, not by a Rust test"
+  "2-security/8-security-authority.md#stores":
+    paths:
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/accounts/files.rs
+      - crates/permguard-authority-plane/src/tokens.rs
+      - crates/permguard-authority-plane/src/tokens/files.rs
+      - crates/permguard-authority-plane/src/marks.rs
+      - crates/permguard-authority-plane/src/marks/files.rs
+      - crates/permguard-authority-plane/src/completion.rs
+    tests:
+      - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/completion.rs::tokens_that_are_as_their_accounts_say_are_left
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_accounts_tokens_are_invalid
+      - crates/permguard-authority-plane/src/completion.rs::a_suspension_and_a_resumption_reach_the_tokens
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_keys_tokens_are_invalid_and_no_others
+      - crates/permguard-authority-plane/src/completion.rs::a_narrowing_ends_the_tokens_that_hold_more
+      - crates/permguard-authority-plane/src/authority.rs::what_a_token_is_issued_with_is_within_its_accounts_scopes
+      - crates/permguard-authority-plane/src/authority.rs::a_restarted_authority_signs_past_every_list_it_signed_before
+    gaps:
+      - "open (code): where the administrator's first key is handed over on a backend with no volume is not decided (iteration 03, WP-27.2)"
   "2-security/8-security-authority.md#profiles":
     paths:
       - crates/permguard-authority-plane/src/plane.rs
