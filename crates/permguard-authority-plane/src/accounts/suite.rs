@@ -16,6 +16,7 @@
 //! | `the_invalid_is_refused`     | [`validate`](super::validate) first, and nothing written      |
 //! | `a_key_names_one_account`    | an access key of one account is refused to another            |
 //! | `a_change_reads_its_account` | a change is given the account as it stands, and replaces that |
+//! | `changes_together_all_hold`  | changes of one account from several threads are all applied   |
 //! | `the_administrator_stays`    | `admin` is never deleted; what is not held is not found       |
 //! | `a_deletion_asks_first`      | a deletion its guard refuses deletes nothing                  |
 //! | `a_deletion_takes_the_keys`  | a deleted account's keys name nothing                         |
@@ -68,6 +69,7 @@ pub fn run<S: AccountStore + ?Sized>(make: &dyn Fn() -> Arc<S>) {
     the_invalid_is_refused(&*make());
     a_key_names_one_account(&*make());
     a_change_reads_its_account(&*make());
+    changes_together_all_hold(&*make());
     the_administrator_stays(&*make());
     a_deletion_asks_first(&*make());
     a_deletion_takes_the_keys(&*make());
@@ -348,6 +350,45 @@ fn a_change_reads_its_account<S: AccountStore + ?Sized>(store: &S) {
         Err(AccountsError::Conflict(_))
     ));
     assert_eq!(revision(store), renamed.revision);
+}
+
+/// Several threads change one account at once, each change counting one up from what it is
+/// given. A store that gave a change a copy read before another change landed would lose
+/// counts; one that reads and writes the account as one step loses none.
+fn changes_together_all_hold<S: AccountStore + ?Sized>(store: &S) {
+    const THREADS: u64 = 8;
+    const EACH: u64 = 25;
+    let made = store
+        .create(None, Account::new("counter", "0", Vec::new(), 1), "t", 1)
+        .expect("written");
+    let count_up = |held: &Account| {
+        let count: u64 = held
+            .description
+            .parse()
+            .map_err(|_| AccountsError::Invalid("the count does not read".to_owned()))?;
+        let mut changed = held.clone();
+        changed.description = (count + 1).to_string();
+        Ok(changed)
+    };
+    std::thread::scope(|scope| {
+        for _ in 0..THREADS {
+            scope.spawn(|| {
+                for _ in 0..EACH {
+                    store
+                        .update(None, "counter", &count_up, "t", 2)
+                        .expect("a change that arrives with others is applied");
+                }
+            });
+        }
+    });
+    let counted = held(store, "counter").expect("held");
+    assert_eq!(
+        counted.description,
+        (THREADS * EACH).to_string(),
+        "every change is applied to the account the one before it left"
+    );
+    assert_eq!(counted.revision, made.revision + THREADS * EACH);
+    assert_eq!(revision(store), made.revision + THREADS * EACH);
 }
 
 fn the_administrator_stays<S: AccountStore + ?Sized>(store: &S) {

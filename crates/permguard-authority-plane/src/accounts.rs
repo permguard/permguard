@@ -307,6 +307,9 @@ pub trait AccountStore: Send + Sync + std::fmt::Debug {
     /// replaces: nothing changes the account between the two, so a change never undoes one it
     /// did not see, and what `change` refuses is refused of the account as it is. The name and
     /// the time it was made are the account's and are kept. Answers the account as written.
+    ///
+    /// `change` runs inside the store, while it holds the account: it decides from the account
+    /// it is given and never calls the store, which would wait on itself.
     fn update(
         &self,
         applying: Option<&Applying<'_>>,
@@ -317,7 +320,8 @@ pub trait AccountStore: Send + Sync + std::fmt::Debug {
     ) -> Result<Account, AccountsError>;
 
     /// Deletes the account `name`, its keys with it, once `allow` has seen it as it stands and
-    /// let it go; `admin` is never deleted.
+    /// let it go; `admin` is never deleted. `allow` runs inside the store, as the change of
+    /// [`AccountStore::update`] does, and never calls it.
     fn delete(
         &self,
         applying: Option<&Applying<'_>>,
@@ -343,8 +347,10 @@ impl Domain for Recovering<'_> {
                 target: Some(name),
             }),
             Err(error) => {
-                // The engine's recovery reads a domain that answers. A store that cannot is
-                // reported, and recovery of the operation is the engine's to refuse (WP-26.2).
+                // The engine reads `None` as not applied and records the operation failed, so
+                // this answer is wrong for a store that could not be asked. No backend of this
+                // build can fail here; the engine learns to stop instead with decision E17
+                // (iteration 03, WP-26.2), before a backend that can fail exists.
                 tracing::error!(
                     event.name = "authority.accounts.recovery_unreadable",
                     component = crate::COMPONENT,

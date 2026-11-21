@@ -19,6 +19,14 @@
 //!
 //! Each row is what the change itself writes, so on tokens that are as their accounts say the
 //! pass changes nothing, and running it twice is running it once.
+//!
+//! One change reaches its tokens only here: `authority admin-key`, run with the server stopped,
+//! removes `admin`'s oldest key to make room and opens the accounts alone, so the tokens that
+//! key obtained end at the next start (decision E18 of iteration 03).
+//!
+//! The pass reads the accounts, then writes the tokens: it is right while nothing else changes
+//! either, which is so at a start, before the plane serves. It is not run while the plane
+//! serves, where an account made or a key added after its read would look gone to it.
 
 use std::collections::BTreeMap;
 
@@ -292,5 +300,59 @@ mod tests {
         );
         assert_eq!(status_of(&tokens, &first), status::INVALID);
         assert_eq!(status_of(&tokens, &second), status::VALID);
+    }
+
+    /// `authority admin-key` removed `admin`'s oldest key offline, the tokens untouched: the
+    /// next start ends the tokens that key obtained (decision E18).
+    #[test]
+    fn a_key_removed_offline_ends_its_tokens_at_the_next_start() {
+        let (accounts, tokens) = stores("offline");
+        let scopes = crate::accounts::admin_scopes();
+        let mut admin = Account::new(crate::accounts::ADMIN, "", scopes.clone(), NOW);
+        admin.keys = vec![key(FIRST), key(SECOND)];
+        accounts.create(None, admin, "t", NOW).expect("written");
+        let issue = |access_key: &str| {
+            tokens
+                .issue(
+                    TokenDraft {
+                        account: crate::accounts::ADMIN.to_owned(),
+                        access_key: access_key.to_owned(),
+                        scopes: scopes.clone(),
+                        expires_at: NOW + 3_600,
+                    },
+                    NOW,
+                )
+                .expect("issued")
+        };
+        let (oldest, kept) = (issue(FIRST), issue(SECOND));
+        let root = std::env::temp_dir().join(format!(
+            "pg-authority-completion-offline-out-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        crate::admin::offline_key(&*accounts, &root, &root.join("new.key"), NOW + 1)
+            .expect("a key made offline");
+        let held = accounts
+            .get(crate::accounts::ADMIN)
+            .expect("read")
+            .expect("held");
+        assert!(held.key(FIRST).is_none(), "the oldest key went");
+        assert_eq!(
+            status_of(&tokens, &oldest),
+            status::VALID,
+            "untouched offline"
+        );
+
+        let completed = complete_tokens(&*accounts, &*tokens, NOW + 2).expect("completed");
+        assert_eq!(
+            completed,
+            Completed {
+                invalidated: 1,
+                suspended: 0
+            }
+        );
+        assert_eq!(status_of(&tokens, &oldest), status::INVALID);
+        assert_eq!(status_of(&tokens, &kept), status::VALID);
     }
 }

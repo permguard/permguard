@@ -20,7 +20,7 @@
 //! | `INVALID` is terminal                                  | [`TokenStore::set_status`]           |
 //! | a token is revocable until a clock skew past its expiry | [`TokenStore::set_status`]          |
 //! | a list retires once every token it holds has expired, the open one never, and its tokens are forgotten with it | [`TokenStore::retire_expired`] |
-//! | the revision rises by one with every transition        | [`TokenStore::revision`]             |
+//! | the revision rises with every change, never otherwise  | [`TokenStore::revision`]             |
 
 use permguard_core::authz::TokenScope;
 use permguard_host::identity::record::uuid_text;
@@ -149,8 +149,8 @@ pub struct ListView {
 /// A call holds one complete rule: what it checks and what it writes are never two calls a
 /// caller could interleave. A read answers what a committed transition left.
 pub trait TokenStore: Send + Sync + std::fmt::Debug {
-    /// The number of transitions applied: a list opened or retired, a token issued, a status
-    /// changed, each one.
+    /// A number that rises with every change and never otherwise: a token issued, a status
+    /// changed, a list retired. How many it rises by is the backend's.
     fn revision(&self) -> Result<u64, TokenError>;
 
     /// Records a token for `draft`, issued at `now`: its `jti` and the list entry its status is
@@ -210,8 +210,10 @@ impl Domain for Recovering<'_> {
                 target: Some(named),
             }),
             Err(error) => {
-                // The engine's recovery reads a domain that answers. A store that cannot is
-                // reported, and recovery of the operation is the engine's to refuse (WP-26.2).
+                // The engine reads `None` as not applied and records the operation failed, so
+                // this answer is wrong for a store that could not be asked. No backend of this
+                // build can fail here; the engine learns to stop instead with decision E17
+                // (iteration 03, WP-26.2), before a backend that can fail exists.
                 tracing::error!(
                     event.name = "authority.tokens.recovery_unreadable",
                     component = crate::COMPONENT,
