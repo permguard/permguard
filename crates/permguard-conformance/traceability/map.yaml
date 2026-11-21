@@ -69,8 +69,8 @@ sections:
       - crates/permguard-host/src/authz/store.rs
     tests:
       - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
-      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/accounts/files.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/tests/crash_points.rs::every_crash_point_of_a_mutation_recovers_to_one_outcome
     gaps:
       - "open (code): the one-time-claim bootstrap of the recovery administrator is not built, only the offline fingerprint; the grant journal is a segmented directory (recorded interpretation)"
@@ -4313,8 +4313,8 @@ sections:
       - crates/permguard-authority-plane/src/accounts.rs
       - crates/permguard-authority-plane/src/authority.rs
     tests:
-      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
   "2-security/8-security-authority.md#access-keys":
     paths:
@@ -4339,7 +4339,7 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
     tests:
       - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/src/authz/access_tokens.rs::a_valid_token_verifies_into_its_scopes
   "2-security/8-security-authority.md#token-endpoint":
     paths:
@@ -4402,7 +4402,7 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
       - crates/permguard-objects/src/status_list.rs
     tests:
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
   "2-security/9-security-token-status.md#the-status-list-token":
     paths:
@@ -4464,7 +4464,7 @@ sections:
       - contracts/openapi/authority.json
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
   "2-security/5-security-management-api.md#access-keys":
     paths:
       - crates/permguard-authority-plane-server/src/http.rs
@@ -4487,7 +4487,7 @@ sections:
       - crates/permguard-authority-plane-server/src/grpc.rs
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
   "2-security/6-security-api-protection.md#every-route-behind-a-scope":
     paths:
       - crates/permguard-server/src/host_api/http.rs
@@ -4504,7 +4504,7 @@ sections:
     tests:
       - crates/permguard-core/src/authz.rs::a_grant_fits_only_where_its_operation_applies
       - crates/permguard-core/src/authz.rs::the_authority_operations_fit_the_authority_plane_alone
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
   "2-security/7-security-command-line.md#service-accounts":
     paths:
       - crates/permguard-cli/src/commands/authority.rs

@@ -15,6 +15,18 @@
   ],
   "backends": [
     {
+      "path": "crates/permguard-authority-plane/src/accounts/files.rs",
+      "reason": "the file implementation of `accounts::AccountStore`"
+    },
+    {
+      "path": "crates/permguard-authority-plane/src/marks/files.rs",
+      "reason": "the file implementation of `marks::MarkStore`"
+    },
+    {
+      "path": "crates/permguard-authority-plane/src/tokens/files.rs",
+      "reason": "the file implementation of `tokens::TokenStore`"
+    },
+    {
       "path": "crates/permguard-host/src/storage/",
       "reason": "the storage library: the primitives of the file backend"
     },
@@ -43,24 +55,12 @@
   ],
   "direct": [
     {
-      "source": "crates/permguard-authority-plane/src/accounts.rs",
-      "until": "WP-26.1"
-    },
-    {
       "source": "crates/permguard-authority-plane/src/admin.rs",
-      "until": "WP-26.1"
-    },
-    {
-      "source": "crates/permguard-authority-plane/src/authority.rs",
-      "until": "WP-26.1"
+      "until": "WP-27.2"
     },
     {
       "source": "crates/permguard-authority-plane/src/plane.rs",
-      "until": "WP-26.1"
-    },
-    {
-      "source": "crates/permguard-authority-plane/src/tokens.rs",
-      "until": "WP-26.1"
+      "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-control-plane/src/catalog/imports.rs",

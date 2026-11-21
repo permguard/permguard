@@ -631,8 +631,9 @@ fn head_statement_samples() -> Vec<Sample> {
 }
 
 fn authority_samples() -> Vec<Sample> {
-    use permguard_authority_plane::accounts::{AccessKey, Account, AccountRecord, Status};
-    use permguard_authority_plane::tokens::{TokenTransition, kinds};
+    use permguard_authority_plane::accounts::files::AccountRecord;
+    use permguard_authority_plane::accounts::{AccessKey, Account, Status};
+    use permguard_authority_plane::tokens::files::{TokenTransition, kinds};
     use permguard_core::authz::{Selector, TokenScope};
     use permguard_host::operations::journal::OperationId;
 

@@ -5,7 +5,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use permguard_authority_plane::accounts::AccountRecord;
+use permguard_authority_plane::accounts::files::AccountRecord;
 use permguard_authority_plane::cbor;
 
 fuzz_target!(|data: &[u8]| {

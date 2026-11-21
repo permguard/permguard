@@ -17,7 +17,11 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **A change of a service account made from a revision that is no longer the account's is refused.**
+  Two changes of one account that arrive together no longer overwrite each other: the second is answered `conflict` and applies nothing, where it used to be written over the first, which could bring back a key the first had deleted.
+  A client that sends `expected_revision` sees no difference; one that does not retries from the account as it now stands.
 
 ## [0.1.34] - 2026-11-20
 

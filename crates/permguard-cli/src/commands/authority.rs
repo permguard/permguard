@@ -442,7 +442,7 @@ fn token(
 
 /// `authority admin-key --volume <dir>`: a new key for `admin`, the server stopped.
 fn admin_key(globals: &Globals, secret_out: &Path, trace: &Trace) -> Result<ExitCode, Failure> {
-    use permguard_authority_plane::{accounts::Accounts, admin};
+    use permguard_authority_plane::{accounts::files::FileAccounts, admin};
     use permguard_host::storage::Dir;
 
     let volume = volume_of(globals)?;
@@ -459,11 +459,11 @@ fn admin_key(globals: &Globals, secret_out: &Path, trace: &Trace) -> Result<Exit
     let dir = Dir::open(&plane_dir)
         .map_err(|error| Failure::unavailable(format!("{}: {error}", plane_dir.display())))?;
     let options = held.journal_options(permguard_host::storage::journal::Options::default());
-    let (accounts, _) = Accounts::open(&dir, options)
+    let (accounts, _) = FileAccounts::open(&dir, options)
         .map_err(|error| Failure::unavailable(format!("opening the accounts: {error}")))?;
     let out = rooted_file(globals, secret_out);
     let access_key = admin::offline_key(
-        &accounts,
+        &*accounts,
         &plane_dir,
         &out,
         permguard_core::time::unix_now(),

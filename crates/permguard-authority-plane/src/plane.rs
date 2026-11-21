@@ -108,15 +108,17 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     };
     let accounts_mutations = registration.mutations(accounts::DOMAIN).ok().flatten();
     let token_mutations = registration.mutations(tokens::DOMAIN).ok().flatten();
-    let (accounts, _) = match accounts::Accounts::open(&dir, options) {
-        Ok(opened) => opened,
-        Err(error) => {
-            fail("its accounts do not open", &error);
-            return None;
-        }
-    };
-    let (registry, _) = match tokens::TokenRegistry::open(&dir, options) {
-        Ok(opened) => opened,
+    let accounts: Arc<dyn accounts::AccountStore> =
+        match accounts::files::FileAccounts::open(&dir, options) {
+            Ok((opened, _)) => opened,
+            Err(error) => {
+                fail("its accounts do not open", &error);
+                return None;
+            }
+        };
+    let registry: Arc<dyn tokens::TokenStore> = match tokens::files::FileTokens::open(&dir, options)
+    {
+        Ok((opened, _)) => opened,
         Err(error) => {
             fail("its tokens do not open", &error);
             return None;
@@ -124,7 +126,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     };
     // A change a crash left open is committed or failed before anything reads the state.
     if let Some(handle) = &accounts_mutations
-        && let Err(error) = handle.recover(&accounts::Recovering(&accounts))
+        && let Err(error) = handle.recover(&accounts::Recovering(&*accounts))
     {
         fail(
             "the account changes a crash left open do not resolve",
@@ -133,7 +135,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         return None;
     }
     if let Some(handle) = &token_mutations
-        && let Err(error) = handle.recover(&tokens::Recovering(&registry))
+        && let Err(error) = handle.recover(&tokens::Recovering(&*registry))
     {
         fail(
             "the token revocations a crash left open do not resolve",
@@ -144,7 +146,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let time = Arc::new(permguard_host::time::TimeGuard::system(
         config.time_max_clock_skew(),
     ));
-    match admin::ensure(&accounts, dir.path(), time.now_secs()) {
+    match admin::ensure(&*accounts, dir.path(), time.now_secs()) {
         Ok(Some(access_key)) => tracing::warn!(
             event.name = "authority.admin_created",
             component = crate::COMPONENT,
@@ -173,7 +175,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     }
     let list_signer = registration.signer::<StatusListTokenV1>().ok().flatten();
     let audit = registration.audit::<AuthorityAudit>().ok().flatten();
-    let authority = Arc::new(Authority::new(Parts {
+    let authority = match Authority::new(Parts {
         accounts,
         registry,
         tokens: token_signer,
@@ -191,8 +193,19 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         audit: audit.clone(),
         trust: registration.authority_trust(),
         time,
-        marks: permguard_host::storage::Dir::open(dir.path()).ok(),
-    }));
+        marks: permguard_host::storage::Dir::open(dir.path())
+            .ok()
+            .map(|dir| {
+                Arc::new(crate::marks::files::FileMarks::new(dir))
+                    as Arc<dyn crate::marks::MarkStore>
+            }),
+    }) {
+        Ok(authority) => Arc::new(authority),
+        Err(error) => {
+            fail("its status lists do not read", &error);
+            return None;
+        }
+    };
     authority.feed_trust();
     if let (Some(access_key), Some(audit)) = (offline, audit) {
         tokio::spawn(async move {
@@ -210,7 +223,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         event.name = "authority.serving",
         component = crate::COMPONENT,
         issuer = %issuer,
-        accounts = authority.accounts().len(),
+        accounts = authority.accounts().count().unwrap_or_default(),
         "the Authority Plane issues tokens"
     );
     Some(authority)

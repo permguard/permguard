@@ -1,6 +1,6 @@
 {
   "artifact": "The Authority Plane's journals: a service account as it stands after each change, and the token registry's transitions",
-  "authority": "2-security/8-security-authority.md#service-accounts, 2-security/9-security-token-status.md#the-list; crates/permguard-authority-plane/src/accounts.rs (AccountRecord), crates/permguard-authority-plane/src/tokens.rs (TokenTransition)",
+  "authority": "2-security/8-security-authority.md#service-accounts, 2-security/9-security-token-status.md#the-list; crates/permguard-authority-plane/src/accounts/files.rs (AccountRecord), crates/permguard-authority-plane/src/tokens/files.rs (TokenTransition)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "account_record": {

@@ -228,9 +228,10 @@ impl v1::token_service_server::TokenService for Served {
         &self,
         _request: Request<v1::ListStatusListsRequest>,
     ) -> Answer<v1::ListStatusListsResponse> {
-        Ok(Response::new(v1::ListStatusListsResponse {
-            lists: self.authority.list_ids(),
-        }))
+        self.authority
+            .list_ids()
+            .map(|lists| Response::new(v1::ListStatusListsResponse { lists }))
+            .map_err(|refusal| self.refuse(&refusal))
     }
 
     async fn get_status_list(

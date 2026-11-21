@@ -381,11 +381,10 @@ async fn keys(State(served): State<Served>) -> Response {
 }
 
 async fn status_lists(State(served): State<Served>) -> Response {
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({ "lists": served.authority.list_ids() })),
-    )
-        .into_response()
+    match served.authority.list_ids() {
+        Ok(lists) => (StatusCode::OK, Json(serde_json::json!({ "lists": lists }))).into_response(),
+        Err(refusal) => wire::http_refusal(&refusal, served.disclosure),
+    }
 }
 
 async fn status_list(State(served): State<Served>, Path(id): Path<String>) -> Response {

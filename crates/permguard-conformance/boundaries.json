@@ -1332,9 +1332,9 @@
     },
     {
       "crate": "permguard-authority-plane",
-      "source": "crates/permguard-authority-plane/src/accounts.rs",
+      "source": "crates/permguard-authority-plane/src/accounts/files.rs",
       "item": "AccountRecord::decode",
-      "entry": "permguard_authority_plane::accounts::AccountRecord::decode",
+      "entry": "permguard_authority_plane::accounts::files::AccountRecord::decode",
       "max_input_bytes": 262144,
       "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own accounts journal only",
       "enforced_at_decoder": true,
@@ -1342,9 +1342,9 @@
     },
     {
       "crate": "permguard-authority-plane",
-      "source": "crates/permguard-authority-plane/src/tokens.rs",
+      "source": "crates/permguard-authority-plane/src/tokens/files.rs",
       "item": "TokenTransition::decode",
-      "entry": "permguard_authority_plane::tokens::TokenTransition::decode",
+      "entry": "permguard_authority_plane::tokens::files::TokenTransition::decode",
       "max_input_bytes": 262144,
       "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own token journal only",
       "enforced_at_decoder": true,
@@ -1703,13 +1703,13 @@
       "reason": "a closed set of three names: the marker's own field, and a command-line value clap already restricts to them (WP-7.9)"
     },
     {
-      "source": "crates/permguard-authority-plane/src/accounts.rs",
-      "item": "Accounts::open",
+      "source": "crates/permguard-authority-plane/src/accounts/files.rs",
+      "item": "FileAccounts::open",
       "reason": "the accounts' own journal on the Authority Plane's volume, written by this process; every frame is decoded by `AccountRecord::decode`, the registered boundary"
     },
     {
-      "source": "crates/permguard-authority-plane/src/tokens.rs",
-      "item": "TokenRegistry::open",
+      "source": "crates/permguard-authority-plane/src/tokens/files.rs",
+      "item": "FileTokens::open",
       "reason": "the token registry's own journal on the Authority Plane's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
     },
     {

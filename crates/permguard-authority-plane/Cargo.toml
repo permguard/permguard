@@ -15,6 +15,10 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
+[features]
+# The conformance suites of the store contracts, for a backend kept in another crate.
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 # Secret keys kept as Argon2id hashes, never in the clear.

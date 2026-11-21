@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 use crate::access_keys;
-use crate::accounts::{self, AccessKey, Account, Accounts};
+use crate::accounts::{self, AccessKey, Account, AccountStore};
 
 /// The file the administrator's key is written to, below `planes/authority/`.
 pub const KEY_FILE: &str = "admin.key";
@@ -56,7 +56,7 @@ pub fn write_owner_only(path: &Path, text: &str) -> std::io::Result<()> {
 /// is taken changes nothing; then the account is written, so a crash leaves a key nobody holds
 /// rather than a file naming a key that does not exist.
 fn new_key(
-    accounts: &Accounts,
+    accounts: &dyn AccountStore,
     account: Account,
     path: &Path,
     by: &str,
@@ -98,8 +98,16 @@ fn new_key(
 
 /// Makes `admin` when the plane holds none: its scopes, a first key written to the key file.
 /// Answers the key made, `None` when `admin` existed.
-pub fn ensure(accounts: &Accounts, plane_dir: &Path, now: u64) -> Result<Option<String>, String> {
-    if accounts.get(accounts::ADMIN).is_some() {
+pub fn ensure(
+    accounts: &dyn AccountStore,
+    plane_dir: &Path,
+    now: u64,
+) -> Result<Option<String>, String> {
+    if accounts
+        .get(accounts::ADMIN)
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
         return Ok(None);
     }
     let path = plane_dir.join(KEY_FILE);
@@ -126,12 +134,15 @@ pub fn ensure(accounts: &Accounts, plane_dir: &Path, now: u64) -> Result<Option<
 /// A new key for `admin`, made offline with the server stopped: the way in when every key is lost.
 /// Written to `secret_out`, a new owner-only file; the next start records it.
 pub fn offline_key(
-    accounts: &Accounts,
+    accounts: &dyn AccountStore,
     plane_dir: &Path,
     secret_out: &Path,
     now: u64,
 ) -> Result<String, String> {
-    let admin = accounts.get(accounts::ADMIN).unwrap_or_else(|| {
+    let held = accounts
+        .get(accounts::ADMIN)
+        .map_err(|error| error.to_string())?;
+    let admin = held.unwrap_or_else(|| {
         Account::new(
             accounts::ADMIN,
             "The Authority Plane's administrator",
@@ -191,13 +202,16 @@ mod tests {
     #[test]
     fn the_first_start_makes_admin_once_and_writes_its_key_owner_only() {
         let root = scratch("first");
-        let (accounts, _) =
-            Accounts::open(&Dir::open(&root).expect("a dir"), Options::default()).expect("opens");
-        let key = ensure(&accounts, &root, 10).expect("made").expect("a key");
+        let (accounts, _) = crate::accounts::files::FileAccounts::open(
+            &Dir::open(&root).expect("a dir"),
+            Options::default(),
+        )
+        .expect("opens");
+        let key = ensure(&*accounts, &root, 10).expect("made").expect("a key");
         let text = std::fs::read_to_string(root.join(KEY_FILE)).expect("written");
         assert_eq!(access_key_of(&text).as_deref(), Some(key.as_str()));
         let secret = secret_of(&text).expect("a secret");
-        let admin = accounts.get(accounts::ADMIN).expect("admin");
+        let admin = accounts.get(accounts::ADMIN).expect("read").expect("admin");
         assert!(access_keys::verify(
             &secret,
             &admin.key(&key).expect("held").secret_hash
@@ -211,18 +225,18 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        assert_eq!(ensure(&accounts, &root, 11).expect("held"), None, "once");
+        assert_eq!(ensure(&*accounts, &root, 11).expect("held"), None, "once");
         // Offline, a new key beside the first; a third replaces the oldest.
         let out = root.join("lost.key");
-        let second = offline_key(&accounts, &root, &out, 20).expect("made");
+        let second = offline_key(&*accounts, &root, &out, 20).expect("made");
         assert_eq!(take_offline_mark(&root).as_deref(), Some(second.as_str()));
         assert_eq!(take_offline_mark(&root), None);
         assert!(
-            offline_key(&accounts, &root, &out, 30).is_err(),
+            offline_key(&*accounts, &root, &out, 30).is_err(),
             "never overwrites"
         );
-        let third = offline_key(&accounts, &root, &root.join("third.key"), 30).expect("made");
-        let admin = accounts.get(accounts::ADMIN).expect("admin");
+        let third = offline_key(&*accounts, &root, &root.join("third.key"), 30).expect("made");
+        let admin = accounts.get(accounts::ADMIN).expect("read").expect("admin");
         assert_eq!(admin.keys.len(), 2);
         assert!(admin.key(&key).is_none(), "the oldest went");
         assert!(admin.key(&third).is_some());
