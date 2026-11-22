@@ -105,21 +105,50 @@ impl FileRing {
         }
     }
 
-    fn sub(&self, name: &str) -> Result<Dir, StorageError> {
-        self.dir.subdir(name, true)
+    /// The directory `name` of the ring, made when absent: what a write goes to. A ring's
+    /// records opened to read take no write.
+    fn sub(&self, name: &str) -> Result<Dir, RingError> {
+        self.writable()?;
+        Ok(self.dir.subdir(name, true)?)
+    }
+
+    /// The directory `name` of the ring, when it exists: what a read looks in, creating nothing.
+    fn existing(&self, name: &str) -> Result<Option<Dir>, RingError> {
+        if !self.dir.subdirs()?.iter().any(|held| held == name) {
+            return Ok(None);
+        }
+        Ok(Some(self.dir.subdir(name, false)?))
+    }
+
+    fn writable(&self) -> Result<(), RingError> {
+        if self.held.is_none() {
+            return Err(RingError::Refused(
+                "a ring's records opened to read take no write".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }
 
 impl RingStore for FileRing {
     fn entries(&self) -> Result<Vec<Value>, RingError> {
-        Ok(sequence::read(&self.dir, JOURNAL, MAX_ENTRY_BYTES)?.items)
+        // Counted under the same hold as an entry is added: a ring that reads its entries again
+        // adds the next one after what it read.
+        let mut held = self
+            .held
+            .as_ref()
+            .map(|held| held.lock().unwrap_or_else(PoisonError::into_inner));
+        let items = sequence::read(&self.dir, JOURNAL, MAX_ENTRY_BYTES)?.items;
+        if let Some(held) = held.as_mut() {
+            **held = items.len() as u64;
+        }
+        Ok(items)
     }
 
     fn append(&self, seq: u64, entry: &[u8]) -> Result<(), RingError> {
+        self.writable()?;
         let Some(held) = &self.held else {
-            return Err(RingError::Refused(
-                "a ring's records opened to read take no entry".to_owned(),
-            ));
+            return Ok(());
         };
         let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
         if seq != held.saturating_add(1) {
@@ -139,6 +168,7 @@ impl RingStore for FileRing {
     }
 
     fn replace_view(&self, view: &[u8]) -> Result<(), RingError> {
+        self.writable()?;
         Ok(replace_view(&self.dir, VIEW, format::VIEW, view)?)
     }
 
@@ -147,6 +177,7 @@ impl RingStore for FileRing {
     }
 
     fn replace_binding(&self, envelope: &[u8]) -> Result<(), RingError> {
+        self.writable()?;
         Ok(replace_view(&self.dir, BINDING, format::VIEW, envelope)?)
     }
 
@@ -160,18 +191,21 @@ impl RingStore for FileRing {
     }
 
     fn kept_binding(&self, seq: u64) -> Result<Option<Vec<u8>>, RingError> {
-        Ok(read_view(
-            &self.sub(BINDINGS)?,
-            &format!("{seq}.cose"),
-            format::VIEW,
-        )?)
+        let Some(dir) = self.existing(BINDINGS)? else {
+            return Ok(None);
+        };
+        Ok(read_view(&dir, &format!("{seq}.cose"), format::VIEW)?)
     }
 
     fn kept_bindings(&self) -> Result<Vec<Vec<u8>>, RingError> {
-        let dir = self.sub(BINDINGS)?;
+        let Some(dir) = self.existing(BINDINGS)? else {
+            return Ok(Vec::new());
+        };
         let mut kept = Vec::new();
         for name in dir.names()? {
-            if let Some(bytes) = read_view(&dir, &name, format::VIEW)? {
+            // What does not read as a kept binding is none: a temporary file a write that
+            // stopped left, a file damaged at rest. It never makes the others unreadable.
+            if let Ok(Some(bytes)) = read_view(&dir, &name, format::VIEW) {
                 kept.push(bytes);
             }
         }
@@ -179,7 +213,10 @@ impl RingStore for FileRing {
     }
 
     fn public(&self, thumbprint: &str) -> Result<Option<Vec<u8>>, RingError> {
-        Ok(self.sub(PUBLIC)?.read(&format!("{thumbprint}.jwk"))?)
+        let Some(dir) = self.existing(PUBLIC)? else {
+            return Ok(None);
+        };
+        Ok(dir.read(&format!("{thumbprint}.jwk"))?)
     }
 
     fn publish_public(&self, thumbprint: &str, jwk: &[u8]) -> Result<(), RingError> {
@@ -191,13 +228,14 @@ impl RingStore for FileRing {
             &same,
             &same,
         )? {
-            Published::Written | Published::AlreadyThere => {}
+            Published::Written => crash::point("ring.public_published"),
+            Published::AlreadyThere => {}
         }
-        crash::point("ring.public_published");
         Ok(())
     }
 
     fn retire(&self, _applying: &Applying<'_>, old_host_id: &[u8; 16]) -> Result<(), RingError> {
+        self.writable()?;
         let keys = Dir::open(
             self.dir
                 .path()
@@ -226,6 +264,7 @@ impl RingStore for FileRing {
     }
 
     fn forget_entries(&self) -> Result<(), RingError> {
+        self.writable()?;
         // Held across the removal: an entry is not added to a journal that is going.
         let mut held = self
             .held
@@ -242,6 +281,7 @@ impl RingStore for FileRing {
     }
 
     fn clear(&self) -> Result<(), RingError> {
+        self.writable()?;
         for name in [VIEW, BINDING] {
             if self.dir.read(name)?.is_some() {
                 tombstone::delete(&self.dir, name)?;

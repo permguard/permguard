@@ -75,7 +75,10 @@ impl SlotStore for FileSlots {
                 crash::point("slots.filled");
                 Ok(())
             }
-            Ok(Published::AlreadyThere) | Err(StorageError::Corruption(_)) => {
+            Ok(Published::AlreadyThere) => Err(KeyError::Exists(slot.to_owned())),
+            // Refused because another key took the slot meanwhile; anything else, a write that
+            // did not read back among them, published nothing and is said as it is.
+            Err(StorageError::Corruption(_)) if self.dir.read(&name)?.is_some() => {
                 Err(KeyError::Exists(slot.to_owned()))
             }
             Err(error) => Err(error.into()),

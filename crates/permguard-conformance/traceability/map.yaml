@@ -799,6 +799,9 @@ sections:
       - crates/permguard-host/tests/crash_points.rs::a_hand_over_killed_between_its_writes_leaves_the_successor_signing
       - crates/permguard-host/tests/crash_points.rs::a_sealing_killed_between_its_entry_and_its_key_seals_at_the_next_start
       - crates/permguard-host/tests/crash_points.rs::a_retirement_killed_between_its_writes_opens_as_a_new_ring
+      - crates/permguard-host/tests/crash_points.rs::a_binding_killed_between_its_entry_and_its_file_is_issued_once_more_and_no_more
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_reads_the_kept_bindings_past_one_that_does_not_read
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_opened_to_read_writes_nothing
   "1-architecture/5-architecture-server-host-audit.md#audit-versus-evidence":
     paths:
       - crates/permguard-host/src/audit/mod.rs

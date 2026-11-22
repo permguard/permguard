@@ -53,8 +53,6 @@ impl fmt::Display for OpenError {
 
 impl std::error::Error for OpenError {}
 
-/// What opens a Host's rings: the volume, the clock, the identity that binds every set, the
-/// audit that records every transition, and the profile a migration's preflight runs under.
 /// What a ring is opened over: its records, and the slots of its private keys.
 pub struct Stores {
     pub ring: Arc<dyn RingStore>,
@@ -69,6 +67,8 @@ pub trait Home {
     fn stores(&self, ring: &'static str, legacy: Option<&Path>) -> Result<Stores, OpenError>;
 }
 
+/// What opens a Host's rings: where they are kept, the Host they are of, each ring's custody, the
+/// clock, the identity that binds every set and what records every transition.
 pub struct Opener<'a> {
     /// Where the rings are kept.
     pub home: Box<dyn Home + 'a>,

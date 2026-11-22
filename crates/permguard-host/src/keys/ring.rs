@@ -976,8 +976,9 @@ impl Ring {
         for (entry, bytes) in entries.iter().zip(&encoded) {
             match self.store.append(entry.seq, bytes) {
                 Ok(()) => {}
-                // The store holds an entry this ring has not read: nothing was added, and the
-                // ring is behind until it is opened again.
+                // Refused, the store holds an entry this ring has not read and nothing was added;
+                // otherwise what reached the store is not known. Either way the ring takes no
+                // transition until it is opened again and reads its entries back.
                 Err(error) => {
                     self.stopped.store(true, Ordering::SeqCst);
                     return Err(error);

@@ -1293,6 +1293,9 @@ fn the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_ho
     assert_eq!(store.entries().expect("reads").len(), 1);
 
     store.publish_public("thumb", b"jwk").expect("published");
+    store.replace_view(b"the view").expect("written");
+    store.replace_binding(b"the binding").expect("written");
+    store.keep_binding(1, b"bound at 1").expect("kept");
     store
         .retire(&Applying::for_tests(1), &[0x0a; 16])
         .expect("retired");
@@ -1306,5 +1309,71 @@ fn the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_ho
     assert_eq!(
         std::fs::read(kept.join(PUBLIC).join("thumb.jwk")).expect("the key"),
         b"jwk"
+    );
+    for name in [VIEW, BINDING] {
+        assert!(kept.join(name).is_file(), "{name} is kept");
+    }
+    assert!(
+        kept.join(BINDINGS).join("1.cose").is_file(),
+        "its bindings are kept"
+    );
+    // What is cleared is the ring's, never the evidence of the retired Host.
+    store.forget_entries().expect("forgotten");
+    store.clear().expect("cleared");
+    assert!(kept.join(JOURNAL).is_file());
+    assert!(kept.join(BINDINGS).join("1.cose").is_file());
+}
+
+/// What only the file backend can prove: a file in `bindings/` that does not read as a kept
+/// binding, a temporary a write that stopped left or one damaged at rest, is none, and the
+/// others are still read. Were they not, the ring would take its binding for one never kept and
+/// issue another at every maintenance.
+#[test]
+fn the_file_backend_reads_the_kept_bindings_past_one_that_does_not_read() {
+    let volume =
+        Volume::claim(&scratch("torn-binding"), AssuranceProfile::Development).expect("a volume");
+    let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+    let store =
+        files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST).expect("opens");
+    store.keep_binding(3, b"bound at 3").expect("kept");
+    let bindings = dir.path().join(BINDINGS);
+    std::fs::write(bindings.join(".tmp-4.cose-stopped"), b"").expect("a temporary left");
+    std::fs::write(bindings.join("5.cose"), b"not a view").expect("a damaged one");
+    assert_eq!(
+        store.kept_bindings().expect("reads"),
+        vec![b"bound at 3".to_vec()]
+    );
+    assert_eq!(
+        store.kept_binding(3).expect("reads").as_deref(),
+        Some(&b"bound at 3"[..])
+    );
+}
+
+/// What only the file backend can prove: a ring's records opened to read take no write and make
+/// no directory, whatever is asked of them.
+#[test]
+fn the_file_backend_opened_to_read_writes_nothing() {
+    let root = scratch("to-read");
+    std::fs::create_dir_all(&root).expect("a directory");
+    let store = files::FileRing::to_read(Dir::open(&root).expect("opens"));
+    assert!(store.entries().expect("reads").is_empty());
+    assert_eq!(store.public("thumb").expect("reads"), None);
+    assert_eq!(store.kept_binding(1).expect("reads"), None);
+    assert!(store.kept_bindings().expect("reads").is_empty());
+    let refused = |said: Result<(), RingError>| {
+        assert!(matches!(said, Err(RingError::Refused(_))));
+    };
+    refused(store.append(1, b"\x01"));
+    refused(store.replace_view(b"view"));
+    refused(store.replace_binding(b"binding"));
+    refused(store.keep_binding(1, b"bound"));
+    refused(store.publish_public("thumb", b"jwk"));
+    refused(store.retire(&Applying::for_tests(1), &[0x0a; 16]));
+    refused(store.forget_entries());
+    refused(store.clear());
+    assert_eq!(
+        std::fs::read_dir(&root).expect("lists").count(),
+        0,
+        "nothing was made in the directory"
     );
 }

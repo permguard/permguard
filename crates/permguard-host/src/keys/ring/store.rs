@@ -4,8 +4,8 @@
 //! The contract of the store that keeps a ring's records (`1-architecture/4` Stores).
 //!
 //! A ring is its entries: every lifecycle and epoch transition, added in order and never
-//! changed. The store keeps them, with what is built or signed from them, and no order: which
-//! entry may follow which, what a view holds and what a binding binds are
+//! changed. The store keeps them, with what is built or signed from them, and one order alone,
+//! their sequence: which entry may follow which, what a view holds and what a binding binds are
 //! [`Ring`](super::Ring)'s, the same on every backend. Nothing read here is trusted before it is
 //! replayed and checked.
 //!

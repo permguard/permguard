@@ -33,7 +33,18 @@ COMPOSITION_ROOTS=(
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='[^d]FileKeyProvider::new|Ring::open\(|files::stores\(|FileRing::to_read|VolumeHome \{|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open|Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+
+# The files of the Host's file backend that make a store, or hand one to a composition root, for
+# another of them, and what they may construct or call among themselves.
+FILE_BACKEND=(
+    "crates/permguard-host/src/identity/files.rs"
+    "crates/permguard-host/src/keys/migration.rs"
+    "crates/permguard-host/src/keys/ring/files.rs"
+    "crates/permguard-host/src/keys/slots/files.rs"
+    "crates/permguard-host/src/secrets/files.rs"
+)
+FILE_BACKEND_WAYS_IN='File[A-Za-z]+::|Ring::open\(|files::stores\(|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a
@@ -97,20 +108,32 @@ while IFS= read -r file; do
 
     # A file may construct the types it defines: a backend's file makes its own store for the
     # entry points it gives a composition root, and that is not a crate resolving a collaborator.
-    # A file backend is its `files.rs` files together: one of them may construct another's store
-    # (`File…`), as a ring's records are opened with the slots of its keys.
+    # The Host's file backend is the files `FILE_BACKEND` names, together: one of them may
+    # construct another's store or call another's way in, as a ring's records are opened with
+    # the slots of its keys. No other file is the file backend, whatever it is called.
+    in_file_backend=""
+    for backend in "${FILE_BACKEND[@]}"; do
+        if [ "${relative}" = "${backend}" ]; then
+            in_file_backend="yes"
+        fi
+    done
     found="$(
         awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" | while IFS= read -r line; do
             foreign=""
-            for constructor in $(printf '%s\n' "${line}" | grep -oE "${CONSTRUCTORS}"); do
+            # One constructor a line of `grep -o`: a pattern may hold a space, as a struct literal.
+            while IFS= read -r constructor; do
+                # A pattern that excludes a longer name by the character before it matches that
+                # character too.
+                constructor="${constructor#[^A-Za-z]}"
                 if grep -qE "^pub struct ${constructor%%::*}([ <{(;]|\$)" "${file}"; then
                     continue
                 fi
-                case "$(basename "${file}"):${constructor}" in
-                    (files.rs:File*) continue ;;
-                esac
+                if [ -n "${in_file_backend}" ] \
+                    && printf '%s\n' "${constructor}" | grep -qE "^(${FILE_BACKEND_WAYS_IN})"; then
+                    continue
+                fi
                 foreign="yes"
-            done
+            done < <(printf '%s\n' "${line}" | grep -oE "${CONSTRUCTORS}")
             if [ -n "${foreign}" ]; then
                 printf '%s\n' "${line}"
             fi

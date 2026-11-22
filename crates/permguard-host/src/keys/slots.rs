@@ -55,7 +55,8 @@ pub trait SlotStore: Send + Sync {
     fn fill(&self, kind: Kind, slot: &str, bytes: &[u8]) -> Result<(), KeyError>;
 
     /// Replaces what the slot holds of `kind`: what the custody that sealed a key does to seal
-    /// one found in the clear, or to wrap it again.
+    /// one found in the clear, or to wrap it again. A slot that holds nothing holds `bytes`
+    /// after it.
     fn replace(&self, kind: Kind, slot: &str, bytes: &[u8]) -> Result<(), KeyError>;
 
     /// The slots that hold anything of `kind`.

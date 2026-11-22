@@ -457,7 +457,10 @@ impl super::registry::Home for VolumeHome<'_> {
                 "a legacy key ring was migrated; `migrate finalize` removes its old directory"
             );
         }
-        super::ring::files::stores(self.volume, ring).map_err(layout)
+        // A ring whose journal does not read is the ring's refusal, as before it was opened
+        // through a store.
+        super::ring::files::stores(self.volume, ring)
+            .map_err(|error| OpenError::Ring(super::ring::RingError::from(error)))
     }
 }
 

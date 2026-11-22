@@ -185,6 +185,11 @@ fn a_retired_ring_loses_its_entries_first<S: RingStore + ?Sized>(store: &S, oper
         "the rest stays"
     );
     assert!(store.binding().expect("reads").is_some());
+    assert!(store.view().expect("reads").is_some());
+    assert_eq!(
+        store.kept_binding(2).expect("reads").as_deref(),
+        Some(&b"bound"[..])
+    );
 
     store.clear().expect("cleared");
     assert_eq!(store.view().expect("reads"), None);

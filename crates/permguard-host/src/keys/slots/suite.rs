@@ -132,6 +132,13 @@ fn what_fills_a_slot_is_replaced<S: SlotStore + ?Sized>(store: &S) {
         store.fill(Kind::Key, SLOT, b"a fill"),
         Err(KeyError::Exists(_))
     ));
+    // A slot that holds nothing holds what it is replaced with, and is filled from then on.
+    store.replace(Kind::Key, "2", b"kept").expect("replaced");
+    assert_eq!(held(store, Kind::Key, "2").as_deref(), Some(&b"kept"[..]));
+    assert!(matches!(
+        store.fill(Kind::Key, "2", b"a fill"),
+        Err(KeyError::Exists(_))
+    ));
 }
 
 fn a_slot_is_emptied<S: SlotStore + ?Sized>(store: &S) {

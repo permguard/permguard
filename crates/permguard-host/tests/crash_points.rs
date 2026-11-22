@@ -1889,7 +1889,9 @@ mod ringing {
 
     /// A prepublication killed after each of its writes: the ring opens again, and one
     /// maintenance leaves it with its active key and one successor, every slot a key an entry
-    /// names. A key generated and never recorded is removed, never published.
+    /// names. A key generated and never recorded is removed and never signs; its public key,
+    /// when it was published before the kill, stays among the public keys the ring keeps for
+    /// good, named by no entry and in no key set.
     #[test]
     fn a_prepublication_killed_between_its_writes_leaves_one_successor() {
         for point in ["slots.filled", "ring.public_published", "ring.entry_added"] {
@@ -1973,6 +1975,72 @@ mod ringing {
             ring.sign(b"after the crash").expect("signs");
             let _ = std::fs::remove_dir_all(path);
         }
+    }
+
+    /// The ring of `volume` at `at`, bound by the identity of the volume.
+    fn bound_ring(volume: &Volume, at: u64) -> Ring {
+        use permguard_host::identity::{self, Identity};
+        use permguard_host::keys::FileKeyProvider;
+
+        let (_, keys) = identity::directories(volume).expect("the identity's directories");
+        let provider = Arc::new(FileKeyProvider::new(keys));
+        let identity = if identity::is_provisioned(volume).expect("reads") {
+            Identity::open(volume, provider).expect("the identity opens")
+        } else {
+            Identity::provision(
+                volume,
+                provider,
+                Suite::Ed25519Sha256V1,
+                START,
+                START * 1000,
+            )
+            .expect("provisioned")
+        };
+        ring_at(volume, at).with_binder(Arc::new(identity))
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_bind() {
+        let volume = claim_volume(&root());
+        bound_ring(&volume, START + 1)
+            .maintain()
+            .expect("maintained");
+    }
+
+    /// A binding killed once its entry is added and before it replaces the current one: the
+    /// ring opens again, one maintenance leaves it bound, and the next adds nothing, even beside
+    /// a file among its kept bindings that does not read.
+    #[test]
+    fn a_binding_killed_between_its_entry_and_its_file_is_issued_once_more_and_no_more() {
+        let point = "ring.entry_added";
+        let path = scratch("ring-bind");
+        started(&path);
+        assert!(
+            crash("ringing::child_bind", point, &path),
+            "the child died of the abort there"
+        );
+        let volume = claim_volume(&path);
+        std::fs::write(
+            path.join("host/keys")
+                .join(DATA_ATTEST)
+                .join("bindings/.tmp-stopped"),
+            b"",
+        )
+        .expect("a temporary a write that stopped left");
+        let ring = bound_ring(&volume, START + 2);
+        ring.maintain().expect("maintained");
+        let statement = ring.statement().expect("the statement");
+        assert!(statement.binding.is_some(), "the ring is bound");
+        let frontier = ring.frontier().expect("the frontier");
+        ring.maintain().expect("and again");
+        ring.maintain().expect("and again");
+        assert_eq!(
+            ring.frontier().expect("the frontier"),
+            frontier,
+            "a ring that is bound is not bound again at every maintenance"
+        );
+        let _ = std::fs::remove_dir_all(path);
     }
 
     fn kek() -> Arc<dyn Wrap> {
