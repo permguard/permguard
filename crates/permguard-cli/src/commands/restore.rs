@@ -156,6 +156,9 @@ pub fn restore_command(
     action: RestoreAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
+    // Read before the volume is held: a deployment whose backend keeps no volume is refused
+    // with nothing touched (iteration 03, decision E5).
+    config_of(server_config)?;
     match action {
         RestoreAction::Plan { mode, reason, out } => {
             plan(globals, server_config, mode_of(&mode)?, reason, &out, trace)?;

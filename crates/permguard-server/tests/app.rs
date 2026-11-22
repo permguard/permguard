@@ -186,6 +186,54 @@ async fn output_of(app: &App, action: &Action) -> String {
     String::from_utf8(out).expect("the output is valid UTF-8")
 }
 
+/// Iteration 03, E7 and E19: the backend is the process's, from its configuration. This build
+/// serves from files alone, so the other backend is refused before a volume is touched; and a
+/// command that acts on a volume answers `storage_backend_unsupported` where the process keeps
+/// none, instead of running on the directory it names.
+#[tokio::test]
+async fn test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands() {
+    let path = config_file(
+        "no-volume",
+        &format!("{SERVABLE}storage:\n  backend: postgresql\n"),
+    );
+    let mut sink = Vec::new();
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut sink)
+        .await
+        .expect_err("this build has one backend");
+    assert!(
+        format!("{refused:#}").contains("serves from `files` alone"),
+        "{refused:#}"
+    );
+
+    let volume = path.with_file_name("no-volume-volume");
+    let migrate = Cli::try_parse_from([
+        "demo-x",
+        "migrate",
+        "events",
+        "--volume",
+        volume.to_str().expect("a UTF-8 path"),
+        "--backup",
+        "snapshot-1",
+        "--config",
+        path.to_str().expect("a UTF-8 path"),
+    ])
+    .expect("the command parses")
+    .action()
+    .expect("the invocation resolves to an action");
+    let refused = app()
+        .dispatch_to(&migrate, &mut sink)
+        .await
+        .expect_err("a migration acts on a volume");
+    let said = format!("{refused:#}");
+    assert!(
+        said.starts_with(permguard_core::codes::storage::BACKEND_UNSUPPORTED)
+            && said.contains("a migration"),
+        "{said}"
+    );
+    assert!(!volume.exists(), "nothing was claimed or created");
+}
+
 #[tokio::test]
 async fn test_volume_claim_moves_the_generation_forward_and_never_back() {
     let volume = env::temp_dir().join(format!(

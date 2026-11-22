@@ -5,6 +5,7 @@
 //!
 //! | Key                                 | Meaning                                                                                    |
 //! | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+//! | `storage.backend`                   | where the process keeps its state: `files`, the default, or `postgresql`                   |
 //! | `storage.volume.storage_class`      | the storage class the volume comes from, declared by the operator                          |
 //! | `storage.volume.driver`             | the driver or provider that attaches it, declared by the operator                          |
 //! | `storage.qualified`                 | the qualified tuples: the tuple, evidence, encryption mechanism, revision and `expires_at` |
@@ -18,6 +19,67 @@
 //!
 //! The filesystem and its version are never configured: the probe detects them. Configuration
 //! states only what the process cannot see, and the qualified tuples it is compared with.
+
+/// Where a process keeps its durable state (iteration 03, decisions E1 and E7): chosen per
+/// process, files when nothing is said. The Planes of one process share it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Backend {
+    /// The volume of this document: the file backend.
+    #[default]
+    Files,
+    /// PostgreSQL, with S3 for objects and evidence.
+    Postgresql,
+}
+
+impl Backend {
+    /// The name a configuration writes.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Files => "files",
+            Self::Postgresql => "postgresql",
+        }
+    }
+
+    /// Whether the process keeps a volume: what a claim, a probe, a quota measured from
+    /// directories, a backup, a restore and a migration act on.
+    pub fn has_volume(self) -> bool {
+        self == Self::Files
+    }
+}
+
+impl std::str::FromStr for Backend {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim() {
+            "files" => Ok(Self::Files),
+            "postgresql" => Ok(Self::Postgresql),
+            other => Err(format!(
+                "`{other}` is no storage backend: it is `files` or `postgresql`"
+            )),
+        }
+    }
+}
+
+/// Why an operation that acts on a volume is refused by a process whose backend keeps none
+/// (decisions E5 and E19), answered with [`crate::codes::storage::BACKEND_UNSUPPORTED`]: `what`
+/// names the operation, as `a backup`.
+pub fn unsupported(backend: Backend, what: &str) -> String {
+    format!(
+        "{what} acts on a volume, and this process keeps its state on the `{}` backend, which \
+         has none: the database's and the bucket's own mechanisms are the procedure",
+        backend.as_str()
+    )
+}
+
+/// [`unsupported`], as a command says it: the stable code first.
+pub fn unsupported_command(backend: Backend, what: &str) -> String {
+    format!(
+        "{}: {}",
+        crate::codes::storage::BACKEND_UNSUPPORTED,
+        unsupported(backend, what)
+    )
+}
 
 /// The free bytes below which a volume is unsupported, unless configuration says otherwise.
 pub const DEFAULT_FREE_BYTES: u64 = 64 * 1024 * 1024;

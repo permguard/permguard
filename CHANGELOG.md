@@ -17,6 +17,13 @@ is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **`storage.backend` names where a process keeps its state.**
+  `files` is the default and the one backend of this build; the setting is also read from `PERMGUARD_STORAGE_BACKEND`.
+  A configuration that names `postgresql` is refused at start, before anything is opened.
+  Where a process keeps no volume, a backup, a restore, `volume claim`, `volume verify` and `migrate` answer `storage_backend_unsupported` and change nothing.
+
 ### Changed
 
 - **A push to a ledger waits while that ledger is swept.**

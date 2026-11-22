@@ -1538,6 +1538,17 @@ impl Composition {
         config_file: &Path,
         out: &mut dyn Write,
     ) -> Result<()> {
+        // The backend is chosen here, per process (iteration 03, decision E7). This build serves
+        // from files alone: a configuration that names the other backend is refused before
+        // anything is opened, never served from a volume it did not ask for.
+        if !config.storage_backend().has_volume() {
+            anyhow::bail!(
+                "storage.backend is `{}`, and this build serves from `{}` alone",
+                config.storage_backend().as_str(),
+                permguard_core::volume::Backend::Files.as_str()
+            );
+        }
+
         // First, before anything that takes time. Preparing a volume generates keys and writes them
         // down, and a stop signal that arrives while that is happening is a stop signal the process
         // has to survive — the alternative is dying where it stands, halfway through writing the
@@ -2548,6 +2559,7 @@ impl Composition {
                 Arc::clone(&trust) as Arc<dyn permguard_host::authz::access_tokens::TokenStanding>,
             );
             // The application-consistent snapshot's barrier (WP-7.8).
+            let api = api.with_backend(config.storage_backend());
             let api = api.with_backups(
                 Arc::clone(&backups),
                 config.backup_recovery_key_id().map(str::to_owned),

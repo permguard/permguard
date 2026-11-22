@@ -157,6 +157,16 @@ impl App {
 
     /// Runs one action against a config that has already been built.
     async fn execute(&self, action: &Action, config: &Config, out: &mut dyn Write) -> Result<()> {
+        // A command that acts on a volume has nothing to act on where the process keeps none
+        // (iteration 03, decision E19): it is refused, never run on whatever directory it names.
+        if let Some(what) = acts_on_a_volume(action)
+            && !config.storage_backend().has_volume()
+        {
+            anyhow::bail!(permguard_core::volume::unsupported_command(
+                config.storage_backend(),
+                what
+            ));
+        }
         match action {
             Action::Serve(args) => {
                 self.composition
@@ -286,6 +296,21 @@ impl App {
         writeln!(out, "{}", config.version()).context("writing the version")?;
 
         Ok(())
+    }
+}
+
+/// What `action` is, when it is a command that acts on a volume: a claim, a verification, a
+/// migration. On a backend that keeps no volume these have nothing to act on (decision E19).
+fn acts_on_a_volume(action: &Action) -> Option<&'static str> {
+    match action {
+        Action::Named(Command::Volume {
+            what: VolumeCommand::Claim { .. },
+        }) => Some("a volume claim"),
+        Action::Named(Command::Volume {
+            what: VolumeCommand::Verify { .. },
+        }) => Some("a volume verification"),
+        Action::Named(Command::Migrate { .. }) => Some("a migration"),
+        _ => None,
     }
 }
 
@@ -435,4 +460,57 @@ fn verify_volume(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use clap::Parser as _;
+
+    use super::*;
+
+    fn action(argv: &[&str]) -> Action {
+        Cli::try_parse_from(argv)
+            .expect("the command parses")
+            .action()
+            .expect("an action")
+    }
+
+    /// Decision E19: a claim, a verification and a migration act on a volume; the offline
+    /// verifications of evidence an operator names do not.
+    #[test]
+    fn the_commands_that_act_on_a_volume_are_named() {
+        for (argv, what) in [
+            (
+                &["permguard", "volume", "claim", "--volume", "v", "--next"][..],
+                Some("a volume claim"),
+            ),
+            (
+                &["permguard", "volume", "verify", "--volume", "v"][..],
+                Some("a volume verification"),
+            ),
+            (
+                &[
+                    "permguard",
+                    "migrate",
+                    "events",
+                    "--volume",
+                    "v",
+                    "--backup",
+                    "b",
+                    "--config",
+                    "c",
+                ][..],
+                Some("a migration"),
+            ),
+            (&["permguard", "version"][..], None),
+            (
+                &["permguard", "keys", "export", "--directory", "d"][..],
+                None,
+            ),
+        ] {
+            assert_eq!(acts_on_a_volume(&action(argv)), what, "{argv:?}");
+        }
+    }
 }

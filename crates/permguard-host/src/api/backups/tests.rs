@@ -97,6 +97,44 @@ fn recorded(trail: &Recording) -> Vec<(String, String, Option<&'static str>)> {
         .collect()
 }
 
+/// Iteration 03, E5: on a backend with no volume every backup operation is answered the one
+/// stable refusal, after the caller is admitted, and nothing is prepared.
+#[tokio::test]
+async fn a_backend_with_no_volume_refuses_every_backup_operation() {
+    let (api, _root, trail) = backed("backup-no-volume", None);
+    let api = api.with_backend(permguard_core::volume::Backend::Postgresql);
+    let token = URL_SAFE_NO_PAD.encode([7u8; 32]);
+    let refusals = [
+        api.prepare_backup(&admin(), PrepareBackup {})
+            .map(|_| ())
+            .expect_err("no volume to snapshot"),
+        api.finalize_backup(
+            &admin(),
+            FinalizeBackup {
+                token: token.clone(),
+                snapshot_id: "csi:snap-1".to_owned(),
+            },
+        )
+        .map(|_| ())
+        .expect_err("nothing was prepared"),
+        api.abort_backup(&admin(), AbortBackup { token })
+            .map(|_| ())
+            .expect_err("nothing was prepared"),
+        api.list_backups(&admin())
+            .map(|_| ())
+            .expect_err("no volume keeps a backup"),
+    ];
+    for refusal in &refusals {
+        assert_eq!(code(refusal), codes::storage::BACKEND_UNSUPPORTED);
+    }
+    assert!(
+        recorded(&trail)
+            .iter()
+            .all(|(action, _, _)| !action.starts_with("host.backup")),
+        "nothing was prepared, so nothing is recorded as a backup"
+    );
+}
+
 /// WP-7.8: a prepare raises the barrier and answers a manifest naming the backup, the volume, the
 /// Host, the roots and the recovery labels, and the token once; while it holds, a mutation is
 /// refused `unavailable`, a second prepare `conflict`, another token `not_found`; the finalize

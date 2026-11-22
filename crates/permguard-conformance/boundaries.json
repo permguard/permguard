@@ -1483,6 +1483,11 @@
       "reason": "the assurance profile an operator states in `assurance.profile` (WP-2.8): operator configuration, read once at start"
     },
     {
+      "source": "crates/permguard-core/src/volume.rs",
+      "item": "Backend::from_str",
+      "reason": "the storage backend an operator states in `storage.backend` (iteration 03, E7): operator configuration, read once at start"
+    },
+    {
       "source": "crates/permguard-host/src/authz/store/files.rs",
       "item": "FileBootstrap::open",
       "reason": "the recovery principal's commitment on the Host's volume, one file this process or the offline bootstrap wrote under the volume's lock"

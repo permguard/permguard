@@ -157,6 +157,15 @@ impl HostApi {
     fn backups(
         &self,
     ) -> Result<(&Arc<Backups>, &Arc<crate::operations::mutation::Mutations>), Refusal> {
+        // A backend with no volume has nothing a snapshot could hold (decision E5): the one
+        // stable refusal, on both transports.
+        if !self.backend.has_volume() {
+            return Err(Refusal::new(
+                ErrorClass::Conflict,
+                codes::storage::BACKEND_UNSUPPORTED,
+                permguard_core::volume::unsupported(self.backend, "a backup"),
+            ));
+        }
         match (&self.backups, &self.mutations) {
             (Some(backups), Some(mutations)) => Ok((backups, mutations)),
             _ => Err(unavailable(

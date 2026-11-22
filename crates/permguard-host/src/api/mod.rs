@@ -265,6 +265,9 @@ pub struct HostApi {
     streams: Option<Arc<dyn streams::StreamReads>>,
     /// The application-consistent snapshots (WP-7.8), given once the server opened them.
     backups: Option<Arc<crate::operations::backup::Backups>>,
+    /// Where the process keeps its state: on a backend with no volume a backup has nothing to
+    /// act on (iteration 03, decision E5).
+    backend: permguard_core::volume::Backend,
     /// The recovery-key id and encryption profile every snapshot manifest binds.
     backup_labels: (Option<String>, Option<String>),
     /// The garbage-collection jobs the Planes provide (WP-7.11b), filled as they register.
@@ -319,6 +322,7 @@ impl HostApi {
             audit: composition.audit,
             streams: None,
             backups: None,
+            backend: permguard_core::volume::Backend::Files,
             backup_labels: (None, None),
             gc: Arc::default(),
             volume: None,
@@ -365,6 +369,12 @@ impl HostApi {
         local: Arc<crate::membership::local::LocalShipping>,
     ) -> Self {
         self.local_shipping = Some(local);
+        self
+    }
+
+    /// This facade on a process that keeps its state on `backend` (iteration 03, decision E7).
+    pub fn with_backend(mut self, backend: permguard_core::volume::Backend) -> Self {
+        self.backend = backend;
         self
     }
 

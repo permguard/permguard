@@ -1289,10 +1289,19 @@ sections:
     paths:
       - crates/permguard-host/src/storage/mod.rs
       - crates/permguard-conformance/src/dal.rs
+      - crates/permguard-core/src/volume.rs
+      - crates/permguard-runtime/src/composition.rs
+      - crates/permguard-server/src/app/cli.rs
+      - crates/permguard-host/src/api/backups.rs
     tests:
       - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-core/tests/config.rs::test_the_storage_backend_is_files_unless_the_configuration_says_otherwise
+      - crates/permguard-server/tests/app.rs::test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands
+      - crates/permguard-server/src/app/cli.rs::the_commands_that_act_on_a_volume_are_named
+      - crates/permguard-host/src/api/backups/tests.rs::a_backend_with_no_volume_refuses_every_backup_operation
+      - crates/permguard-cli/tests/restore.rs::a_backend_with_no_volume_refuses_a_restore
     gaps:
-      - "open (code): the PostgreSQL and S3 backend, the choice of a backend per process and everything of several instances are not built (iteration 03, WP-26.8, phases 27 and 28)"
+      - "open (code): the PostgreSQL and S3 backend and everything of several instances are not built (iteration 03, phases 27 and 28); a configuration that names that backend is refused at start"
   "1-architecture/8-architecture-storage-operations.md#store-contracts":
     paths:
       - crates/permguard-authority-plane/src/accounts.rs

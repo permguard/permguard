@@ -511,6 +511,10 @@ pub const SETTING_GC_INTERVAL: &str = "PERMGUARD_STORAGE_GC_INTERVAL";
 /// push, which is why the default is a day and not a minute.
 pub const SETTING_GC_GRACE: &str = "PERMGUARD_STORAGE_GC_GRACE";
 
+/// Runtime setting key for the storage backend of the process: `files`, the default, or
+/// `postgresql` (iteration 03, decisions E1 and E7).
+pub const SETTING_STORAGE_BACKEND: &str = "PERMGUARD_STORAGE_BACKEND";
+
 /// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
 /// next resumes where it stopped, so the work of a tick stays bounded however much is due.
 pub const SETTING_GC_MAX_REMOVALS: &str = "PERMGUARD_STORAGE_GC_MAX_REMOVALS";
@@ -1504,6 +1508,7 @@ pub struct Config {
     gc_interval: Duration,
     gc_grace: Duration,
     gc_max_removals: u32,
+    storage_backend: crate::volume::Backend,
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
     authz_cache_zone_partitions: Option<usize>,
@@ -1738,6 +1743,7 @@ impl Default for Config {
             gc_interval: DEFAULT_GC_INTERVAL,
             gc_grace: DEFAULT_GC_GRACE,
             gc_max_removals: DEFAULT_GC_MAX_REMOVALS,
+            storage_backend: crate::volume::Backend::Files,
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
             authz_cache_zone_partitions: None,
@@ -3865,6 +3871,11 @@ produce: use `EdDSA` or `ES256`"
         self.gc_max_removals
     }
 
+    /// Where this process keeps its durable state: files unless the configuration says otherwise.
+    pub fn storage_backend(&self) -> crate::volume::Backend {
+        self.storage_backend
+    }
+
     /// Whether this plane records the decisions it answers.
     pub fn log_enabled(&self) -> bool {
         self.log_enabled
@@ -4959,6 +4970,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_GC_INTERVAL => d(self.gc_interval),
             SETTING_GC_GRACE => d(self.gc_grace),
             SETTING_GC_MAX_REMOVALS => Some(self.gc_max_removals.to_string()),
+            SETTING_STORAGE_BACKEND => Some(self.storage_backend.as_str().to_owned()),
             SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
             SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
@@ -5729,6 +5741,12 @@ produce: use `EdDSA` or `ES256`"
             // `parse_count` refuses zero: a sweep that may remove nothing is not a sweep.
             self.gc_max_removals =
                 parse_count(value).with_context(|| format!("reading {SETTING_GC_MAX_REMOVALS}"))?;
+        }
+        if let Some(value) = settings.get(SETTING_STORAGE_BACKEND) {
+            self.storage_backend = value
+                .parse()
+                .map_err(|error: String| anyhow!(error))
+                .with_context(|| format!("reading {SETTING_STORAGE_BACKEND}"))?;
         }
         if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
             self.log_enabled_stated =
@@ -7030,6 +7048,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_GC_GRACE,
     SETTING_GC_MAX_REMOVALS,
     SETTING_GC_INTERVAL,
+    SETTING_STORAGE_BACKEND,
     SETTING_ISSUER,
     SETTING_KEYS_CUSTODY,
     SETTING_KEYS_DIRECTORY,

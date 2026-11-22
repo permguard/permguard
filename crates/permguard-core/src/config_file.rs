@@ -167,6 +167,9 @@ pub struct ConfigFile {
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StorageSection {
+    /// `files` or `postgresql`; absent means `files`.
+    #[serde(default)]
+    backend: Option<String>,
     #[serde(default)]
     volume: VolumeSection,
     #[serde(default)]
@@ -1638,6 +1641,10 @@ impl ConfigFile {
             ),
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
             (SETTING_ASSURANCE_PROFILE, self.assurance.profile.as_ref()),
+            (
+                crate::config::SETTING_STORAGE_BACKEND,
+                self.storage.backend.as_ref(),
+            ),
             (SETTING_ASSURANCE_ADDED_CONTROLS, added_controls.as_ref()),
             (
                 SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,

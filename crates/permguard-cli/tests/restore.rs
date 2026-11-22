@@ -717,6 +717,28 @@ fn under_dual_control_a_restore_is_refused() {
     assert!(!plan.exists());
 }
 
+/// Iteration 03, E5: a deployment whose backend keeps no volume has nothing a restore acts on:
+/// it is refused `storage_backend_unsupported` before the volume is held, and nothing changes.
+#[test]
+fn a_backend_with_no_volume_refuses_a_restore() {
+    let snapshot = Snapshot::new("no-volume", "");
+    snapshot.claim(snapshot.boot().generation + 1);
+    let mut config = std::fs::read_to_string(&snapshot.config).expect("the configuration");
+    config.push_str("storage:\n  backend: postgresql\n");
+    std::fs::write(&snapshot.config, config).expect("the configuration writes");
+    let before = tree(&snapshot.volume);
+    let plan = snapshot.dir.join("restore.plan");
+    let refused = snapshot.plan("dr", &plan);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains(permguard_core::codes::storage::BACKEND_UNSUPPORTED),
+        "{}",
+        stderr(&refused)
+    );
+    assert!(!plan.exists());
+    assert_eq!(tree(&snapshot.volume), before, "the volume is as it was");
+}
+
 /// WP-7.9: the run scans again: damage found after the plan refuses it before the plan is spent
 /// or anything recorded.
 #[test]

@@ -2543,6 +2543,57 @@ fn test_a_sweep_removes_a_bounded_number_of_objects() {
     );
 }
 
+/// Iteration 03, E1 and E7: a process keeps its state on files unless its configuration names
+/// the other backend, in `storage.backend` or the environment; a name that is neither is refused.
+#[test]
+fn test_the_storage_backend_is_files_unless_the_configuration_says_otherwise() {
+    use permguard_core::volume::Backend;
+
+    let default = config(&[], &[], &[]);
+    assert_eq!(default.storage_backend(), Backend::Files);
+    assert!(default.storage_backend().has_volume());
+
+    let named = config(
+        &[],
+        &[(
+            permguard_core::config::SETTING_STORAGE_BACKEND,
+            "postgresql",
+        )],
+        &[],
+    );
+    assert_eq!(named.storage_backend(), Backend::Postgresql);
+    assert!(!named.storage_backend().has_volume());
+
+    let file =
+        permguard_core::ConfigFile::parse("storage:\n  backend: postgresql\n").expect("parses");
+    let pairs_of_file: Vec<(String, String)> = file.settings();
+    let pairs_of_file: Vec<(&str, &str)> = pairs_of_file
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(
+        config(&pairs_of_file, &[], &[]).storage_backend(),
+        Backend::Postgresql
+    );
+
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_environment(pairs(&[(
+                permguard_core::config::SETTING_STORAGE_BACKEND,
+                "sqlite"
+            )])),
+        )
+        .is_err()
+    );
+    let refusal = permguard_core::volume::unsupported_command(Backend::Postgresql, "a backup");
+    assert!(
+        refusal.starts_with(permguard_core::codes::storage::BACKEND_UNSUPPORTED),
+        "{refusal}"
+    );
+}
+
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.
 #[test]
 fn test_a_transfer_session_is_open_at_most_an_hour() {

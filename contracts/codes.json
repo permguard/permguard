@@ -1732,7 +1732,8 @@
     "storage.BACKEND_UNSUPPORTED": {
       "code": "storage_backend_unsupported",
       "contract": "1-architecture/8-architecture-storage-operations.md",
-      "kind": "unused"
+      "kind": "refusal",
+      "class": "conflict"
     },
     "stream.ACK_AHEAD": {
       "code": "ack_ahead",
