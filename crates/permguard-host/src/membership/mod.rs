@@ -1,21 +1,9 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Memberships (WP-4.1): direct, bilateral grants between two Host identities, on the volume
-//! under `host/members/` (owner decisions of 2026-10-09).
-//!
-//! ```text
-//! host/members/
-//! ├── FORMAT                             the layout version, 1
-//! ├── journal.cborseq                    authoritative, hash-chained transitions
-//! ├── snapshot.cbor                      rebuildable summary, replaced atomically
-//! ├── invites/<sha256(token)>.cbor       the invitation; never the token
-//! ├── verifications/<membership_id>      a coordinator's pending proof request
-//! │   └── results/<operation_id>         immutable exact answers for recovery and replay
-//! └── manifests/<membership_id>/
-//!     ├── current.cose
-//!     └── history/<epoch>-<digest>.cose
-//! ```
+//! Memberships (WP-4.1): direct, bilateral grants between two Host identities (owner decisions
+//! of 2026-10-09), kept by a [`store::MemberStore`] (`1-architecture/3` Stores): [`files`], the
+//! default, is `host/members/` on the volume.
 //!
 //! | Transition                            | Who                     | Journal entry | Manifest               |
 //! | ------------------------------------- | ----------------------- | ------------- | ---------------------- |
@@ -37,6 +25,7 @@ pub mod appraisal;
 pub mod contracts;
 pub mod dormancy;
 pub mod egress;
+pub mod files;
 pub mod import;
 pub mod local;
 pub mod member;
@@ -46,6 +35,9 @@ pub mod repin;
 pub mod replay;
 pub mod reset;
 pub mod service;
+pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 pub mod task;
 pub mod watch;
 pub mod zone;
@@ -79,32 +71,18 @@ use crate::keys::ring::{
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Domain, Observed};
 use crate::session::record::Operation as SessionOperation;
-use crate::storage::volume::Volume;
-use crate::storage::write::{read_view, replace_view};
-use crate::storage::{Dir, StorageError, format, sequence};
+
+use store::{Doc, MemberStore};
 
 use record::{
     EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Manifest, OperatorApproval,
     Pending, RingPin, RingStatement, Role, Status, Task, TaskType, chain, manifest_digest,
 };
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "members";
-pub const FORMAT: &str = "FORMAT";
-pub const JOURNAL: &str = "journal.cborseq";
-pub const SNAPSHOT: &str = "snapshot.cbor";
-pub const INVITES: &str = "invites";
-pub const MANIFESTS: &str = "manifests";
-pub const CURRENT: &str = "current.cose";
-pub const HISTORY: &str = "history";
-/// The leases a member holds, one per task: `leases/<membership_id>/<task_id>.cose` (WP-4.3).
-pub const LEASES: &str = "leases";
-/// Durable coordinator requests for the next proven inbound session, by membership id (WP-4.8).
-pub const VERIFICATIONS: &str = "verifications";
-/// Immutable verification results by operation id, separate from consumable pending markers.
-pub const VERIFICATION_RESULTS: &str = "results";
-/// The layout version `FORMAT` holds.
-pub const LAYOUT_VERSION: u64 = 1;
+pub use files::{
+    CURRENT, DIRECTORY, FORMAT, HISTORY, INVITES, JOURNAL, LAYOUT_VERSION, LEASES, MANIFESTS,
+    SNAPSHOT, VERIFICATION_RESULTS, VERIFICATIONS,
+};
 
 /// The mutation domain.
 pub const DOMAIN: &str = "memberships";
@@ -176,6 +154,22 @@ pub const INVITE_DEFAULT_SECONDS: u64 = 86_400;
 pub const MANIFEST_LIFETIME_SECONDS: u64 = 365 * 86_400;
 /// The most journal entries one store reads: far beyond any real history.
 const MAX_ENTRIES: usize = 1_000_000;
+
+/// When a verification was asked, as its document says it: eight bytes, or the longer form an
+/// earlier build wrote. A document of another shape asks nothing.
+fn scheduled_at(bytes: &[u8]) -> Result<Option<u64>, MembershipError> {
+    let instant = match bytes.len() {
+        8 => bytes.get(..8),
+        33 if bytes.first() == Some(&0) => bytes.get(1..9),
+        _ => return Ok(None),
+    };
+    let bytes: [u8; 8] = instant
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| {
+            MembershipError::Storage("a verification schedule has no eight-byte instant".into())
+        })?;
+    Ok(Some(u64::from_be_bytes(bytes)))
+}
 
 /// The lease policy a membership signs when the approval names none.
 pub const DEFAULT_LEASE_POLICY: LeasePolicy = LeasePolicy {
@@ -268,12 +262,6 @@ impl fmt::Display for MembershipError {
 }
 
 impl std::error::Error for MembershipError {}
-
-impl From<StorageError> for MembershipError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error.to_string())
-    }
-}
 
 impl From<RecordError> for MembershipError {
     fn from(error: RecordError) -> Self {
@@ -498,17 +486,13 @@ struct State {
 
 /// The membership store of one Host.
 pub struct Store {
-    dir: Dir,
-    invites: Dir,
-    manifests: Dir,
+    store: Arc<dyn MemberStore>,
     state: RwLock<State>,
     /// Serializes appends: the chain is a function of the order.
     writing: Mutex<()>,
     /// Set by an identity reset once it starts settling: no invitation, enrollment, approval or
     /// join is taken from then on in this process.
     fenced: std::sync::atomic::AtomicBool,
-    /// Serializes a progress report's check and write (WP-4.4).
-    keeping: Mutex<()>,
     /// The replay windows read so far, by membership and task (WP-4.4).
     windows: Mutex<BTreeMap<([u8; 16], String), replay::Window>>,
     /// The version of the coordinator root this Host delivers zone keys at, `0` without a root:
@@ -521,9 +505,7 @@ pub struct Store {
 
 impl fmt::Debug for Store {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Store")
-            .field("dir", &self.dir.path())
-            .finish_non_exhaustive()
+        f.debug_struct("Store").finish_non_exhaustive()
     }
 }
 
@@ -1201,52 +1183,30 @@ pub struct Offered<'a> {
 }
 
 impl Store {
-    /// Opens `host/members/` on `volume`, laying it out when absent, and replays the journal,
-    /// checking its chain.
-    pub fn open(volume: &Volume) -> Result<Arc<Self>, MembershipError> {
-        let dir = volume.host().subdir(DIRECTORY, true)?;
-        match read_view(&dir, FORMAT, format::VIEW)? {
-            None => replace_view(&dir, FORMAT, format::VIEW, &LAYOUT_VERSION.to_be_bytes())?,
-            Some(bytes) if bytes == LAYOUT_VERSION.to_be_bytes() => {}
-            Some(_) => {
-                return Err(MembershipError::Storage(format!(
-                    "{} is a layout this build does not read",
-                    dir.child_path(FORMAT).display()
-                )));
-            }
-        }
-        let invites = dir.subdir(INVITES, true)?;
-        let manifests = dir.subdir(MANIFESTS, true)?;
-        let journal = sequence::recover(&dir, JOURNAL, record::MAX_RECORD_BYTES * 2)?;
-        if journal.items.len() > MAX_ENTRIES {
+    /// Opens the memberships `store` keeps and replays their entries, checking their chain.
+    /// `restored` is the `dr` restore of where they are kept, when it was restored.
+    pub fn open_in(
+        store: Arc<dyn MemberStore>,
+        restored: Option<record::RestoreAnchor>,
+    ) -> Result<Arc<Self>, MembershipError> {
+        let entries = store.entries()?;
+        if entries.len() > MAX_ENTRIES {
             return Err(MembershipError::Storage(
                 "the journal is beyond its bound".to_owned(),
             ));
         }
-        // A coordinator restored for disaster recovery re-anchors each membership's chain at its
-        // first revision since (BUG-0199).
-        let restored = crate::restore::marked(volume)?
-            .filter(|marker| marker.mode == crate::restore::Mode::Dr)
-            .map(|marker| record::RestoreAnchor {
-                plan_id: marker.plan_id,
-                previous_boot_id: marker.previous_boot_id,
-                at: marker.at,
-            });
         let mut state = State::default();
-        for item in journal.items {
+        for item in entries {
             let bytes =
                 cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
             let entry = Entry::decode(&bytes)?;
             apply(&mut state, &entry, &bytes)?;
         }
         Ok(Arc::new(Self {
-            dir,
-            invites,
-            manifests,
+            store,
             state: RwLock::new(state),
             writing: Mutex::new(()),
             fenced: std::sync::atomic::AtomicBool::new(false),
-            keeping: Mutex::new(()),
             windows: Mutex::new(BTreeMap::new()),
             root_version: std::sync::atomic::AtomicU64::new(0),
             restored,
@@ -1368,7 +1328,7 @@ impl Store {
         apply(&mut next, &entry, &bytes).map_err(|error| {
             MembershipError::Invalid(format!("the history does not take the entry: {error}"))
         })?;
-        sequence::append(&self.dir, JOURNAL, &bytes)?;
+        self.store.append(entry.seq, &bytes)?;
         *self.state.write().unwrap_or_else(PoisonError::into_inner) = next;
         // The views follow the journal, best effort: the journal is authoritative.
         if let (Kind::Manifest, Some(envelope), Some(epoch)) =
@@ -1416,7 +1376,7 @@ impl Store {
             ]))
         };
         if let Ok(bytes) = summary
-            && let Err(error) = replace_view(&self.dir, SNAPSHOT, format::VIEW, &bytes)
+            && let Err(error) = self.store.replace_summary(&bytes)
         {
             tracing::warn!(
                 event.name = "host.membership.snapshot_unwritten",
@@ -1435,15 +1395,12 @@ impl Store {
         epoch: u64,
         digest: &Digest,
     ) -> Result<(), MembershipError> {
-        let dir = self.manifests.subdir(&hex(membership_id), true)?;
-        let history = dir.subdir(HISTORY, true)?;
-        let name = format!(
-            "{epoch}-{}.cose",
-            digest.to_string().trim_start_matches("sha256:")
-        );
-        replace_view(&history, &name, format::VIEW, envelope)?;
-        replace_view(&dir, CURRENT, format::VIEW, envelope)?;
-        Ok(())
+        self.store.keep_manifest(
+            membership_id,
+            epoch,
+            digest.to_string().trim_start_matches("sha256:"),
+            envelope,
+        )
     }
 
     /// Keeps the lease a member holds for `task_id` of `id`, replacing the one before (WP-4.3).
@@ -1453,23 +1410,21 @@ impl Store {
         task_id: &str,
         envelope: &[u8],
     ) -> Result<(), MembershipError> {
-        let dir = self.dir.subdir(LEASES, true)?.subdir(&hex(id), true)?;
-        replace_view(&dir, &format!("{task_id}.cose"), format::VIEW, envelope)?;
-        Ok(())
+        self.store.keep(
+            &Doc::Lease {
+                membership: id,
+                task: task_id,
+            },
+            envelope,
+        )
     }
 
     /// The lease a member holds for `task_id` of `id`, if any.
     pub fn lease(&self, id: &[u8; 16], task_id: &str) -> Result<Option<Vec<u8>>, MembershipError> {
-        // Reading creates nothing: a member that never leased has no directory.
-        if !self.dir.subdirs()?.iter().any(|name| name == LEASES) {
-            return Ok(None);
-        }
-        let leases = self.dir.subdir(LEASES, false)?;
-        if !leases.subdirs()?.contains(&hex(id)) {
-            return Ok(None);
-        }
-        let dir = leases.subdir(&hex(id), false)?;
-        Ok(read_view(&dir, &format!("{task_id}.cose"), format::VIEW)?)
+        self.store.doc(&Doc::Lease {
+            membership: id,
+            task: task_id,
+        })
     }
 
     /// The coordinator's ring statements journaled with `id`'s manifest of `epoch`.
@@ -1516,12 +1471,7 @@ impl Store {
                 "only a coordinator schedules verification of a live membership".to_owned(),
             ));
         }
-        if let Some(scheduled) = self.verification_scheduled(id)? {
-            return Ok(scheduled);
-        }
-        let dir = self.dir.subdir(VERIFICATIONS, true)?;
-        replace_view(&dir, &hex(id), format::VIEW, &now.to_be_bytes())?;
-        Ok(now)
+        self.schedule(id, now)
     }
 
     /// [`Self::schedule_verification`] inside the security-mutation transaction. The consumable
@@ -1538,10 +1488,25 @@ impl Store {
                 "only a coordinator schedules verification of a live membership".to_owned(),
             ));
         }
-        let scheduled = self.verification_scheduled(id)?.unwrap_or(now);
         let _ = applying;
-        let dir = self.dir.subdir(VERIFICATIONS, true)?;
-        replace_view(&dir, &hex(id), format::VIEW, &scheduled.to_be_bytes())?;
+        self.schedule(id, now)
+    }
+
+    /// Keeps `now` as when `id`'s verification was asked, unless one is asked already: the first
+    /// time stays, decided in the store on the request as it stands, so of the requests that
+    /// arrive together every one is answered the same time.
+    fn schedule(&self, id: &[u8; 16], now: u64) -> Result<u64, MembershipError> {
+        let mut scheduled = now;
+        self.store.change(
+            &Doc::Verification { membership: id },
+            &mut |held| match held.map(scheduled_at).transpose()?.flatten() {
+                Some(first) => {
+                    scheduled = first;
+                    Ok(None)
+                }
+                None => Ok(Some(now.to_be_bytes().to_vec())),
+            },
+        )?;
         Ok(scheduled)
     }
 
@@ -1561,21 +1526,19 @@ impl Store {
         bytes.extend_from_slice(&serde_json::to_vec(result).map_err(|error| {
             MembershipError::Storage(format!("a verification result does not encode: {error}"))
         })?);
-        let dir = self
-            .dir
-            .subdir(VERIFICATIONS, true)?
-            .subdir(VERIFICATION_RESULTS, true)?;
-        let name = hex(applying.operation_id().as_bytes());
-        if let Some(existing) = read_view(&dir, &name, format::VIEW)? {
-            if existing == bytes {
-                return Ok(());
-            }
-            return Err(MembershipError::Storage(
-                "an immutable verification result differs from its operation".to_owned(),
-            ));
-        }
-        replace_view(&dir, &name, format::VIEW, &bytes)?;
-        Ok(())
+        // Kept once, decided in the store on what it holds: the same result again is the first.
+        self.store.change(
+            &Doc::VerificationResult {
+                operation: applying.operation_id().as_bytes(),
+            },
+            &mut |held| match held {
+                Some(existing) if existing == bytes.as_slice() => Ok(None),
+                Some(_) => Err(MembershipError::Storage(
+                    "an immutable verification result differs from its operation".to_owned(),
+                )),
+                None => Ok(Some(bytes.clone())),
+            },
+        )
     }
 
     /// The exact answer an applied verification recorded for recovery.
@@ -1593,24 +1556,12 @@ impl Store {
 
     /// When the coordinator scheduled `id` for verification, across restarts.
     pub fn verification_scheduled(&self, id: &[u8; 16]) -> Result<Option<u64>, MembershipError> {
-        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
-            return Ok(None);
-        }
-        let dir = self.dir.subdir(VERIFICATIONS, false)?;
-        let Some(bytes) = read_view(&dir, &hex(id), format::VIEW)? else {
-            return Ok(None);
-        };
-        let instant = match bytes.len() {
-            8 => bytes.get(..8),
-            33 if bytes.first() == Some(&0) => bytes.get(1..9),
-            _ => return Ok(None),
-        };
-        let bytes: [u8; 8] = instant
-            .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| {
-                MembershipError::Storage("a verification schedule has no eight-byte instant".into())
-            })?;
-        Ok(Some(u64::from_be_bytes(bytes)))
+        self.store
+            .doc(&Doc::Verification { membership: id })?
+            .as_deref()
+            .map(scheduled_at)
+            .transpose()
+            .map(Option::flatten)
     }
 
     /// What a verification's kept answer shows of `operation_id`. No answer kept is an answer;
@@ -1643,19 +1594,9 @@ impl Store {
         &self,
         operation_id: &OperationId,
     ) -> Result<Option<Vec<u8>>, MembershipError> {
-        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
-            return Ok(None);
-        }
-        let verifications = self.dir.subdir(VERIFICATIONS, false)?;
-        if !verifications
-            .subdirs()?
-            .iter()
-            .any(|name| name == VERIFICATION_RESULTS)
-        {
-            return Ok(None);
-        }
-        let dir = verifications.subdir(VERIFICATION_RESULTS, false)?;
-        read_view(&dir, &hex(operation_id.as_bytes()), format::VIEW).map_err(Into::into)
+        self.store.doc(&Doc::VerificationResult {
+            operation: operation_id.as_bytes(),
+        })
     }
 
     /// Consumes a scheduled verification only after the exact member completed a proven session.
@@ -1671,9 +1612,7 @@ impl Store {
         if held.role != Role::Coordinator || &held.request.member.host_id != peer {
             return Ok(false);
         }
-        let dir = self.dir.subdir(VERIFICATIONS, false)?;
-        crate::storage::tombstone::delete(&dir, &hex(id))?;
-        Ok(true)
+        self.store.remove(&Doc::Verification { membership: id })
     }
 
     /// When `id` last entered `active`, from the journal's clock (WP-4.6).
@@ -1817,12 +1756,7 @@ impl Store {
             Some(bytes.clone()),
         )?;
         // The view follows the journal, best effort.
-        if let Err(error) = replace_view(
-            &self.invites,
-            &format!("{}.cbor", hex(&invitation.invite_id)),
-            format::VIEW,
-            &bytes,
-        ) {
+        if let Err(error) = self.store.keep_invitation(&invitation.invite_id, &bytes) {
             tracing::warn!(
                 event.name = "host.membership.view_unwritten",
                 component = "host",

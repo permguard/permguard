@@ -93,6 +93,7 @@ pub const POINTS: &[&str] = &[
     "ring.public_published",
     "ring.entry_added",
     "ring.entries_forgotten",
+    "members.entry_added",
 ];
 
 /// The crash point `name`: aborts here when this process was told to, at the pass it was told.

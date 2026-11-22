@@ -618,6 +618,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "identity.",
         "slots.",
         "ring.",
+        "members.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -2188,6 +2189,120 @@ mod ringing {
             assert!(
                 kept.is_file(),
                 "{point}: the retired ring's entries are kept"
+            );
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The memberships (`1-architecture/3` Stores): a transition killed once its entry is added.
+
+mod membering {
+    use super::*;
+
+    use permguard_core::authz::Selector;
+    use permguard_host::membership::record::{Limits, Task, TaskType};
+    use permguard_host::membership::{self, Memberships, NewInvite, Store};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_invite() {
+        let volume = claim_volume(&root());
+        let store = Store::open(&volume).expect("the memberships open");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        mutations
+            .run(
+                Begin {
+                    domain: membership::DOMAIN,
+                    operation: "members.invite",
+                    action: "host.membership.invited",
+                    initiator: Initiator::System("test".to_owned()),
+                    request: None,
+                    target: None,
+                },
+                |applying| {
+                    let (invitation, _) = store
+                        .invite(
+                            applying,
+                            NewInvite {
+                                selector: Selector::parse("plane/data/*").expect("a selector"),
+                                tasks: vec![Task {
+                                    version: 1,
+                                    task_id: "decisions".to_owned(),
+                                    task_type: TaskType::DecisionsShip,
+                                    selector: Selector::parse("plane/data/*").expect("a selector"),
+                                    resource_types: vec!["decision".to_owned()],
+                                    required: true,
+                                    limits: Limits {
+                                        max_body_bytes: 1 << 20,
+                                        max_concurrency: 4,
+                                        max_rate_per_minute: 600,
+                                        max_batch_records: 1000,
+                                        retention_seconds: 30 * 86_400,
+                                    },
+                                    assurance_requirements: Vec::new(),
+                                }],
+                                expires: None,
+                                expected_fingerprint: None,
+                                min_assurance: None,
+                                name: None,
+                                groups: None,
+                            },
+                            "operator",
+                            NOW,
+                        )
+                        .map_err(|error| Failure::Refused(error.to_string()))?;
+                    Ok(Applied {
+                        revision: 1,
+                        target: Some(permguard_host::identity::record::uuid_text(
+                            &invitation.invite_id,
+                        )),
+                        value: (),
+                    })
+                },
+            )
+            .expect("invited");
+    }
+
+    /// A transition killed before its entry is added leaves nothing and a failed operation;
+    /// killed once it is added, before its views are written or its operation committed, the
+    /// transition is there, with the operation that made it, and recovery commits it.
+    #[test]
+    fn a_transition_killed_around_its_entry_is_whole_or_absent() {
+        for (point, added) in [
+            ("mutation.intent_audited", false),
+            ("members.entry_added", true),
+            ("mutation.applied", true),
+        ] {
+            let path = scratch(&format!("members-invite-{point}"));
+            drop(claim_volume(&path));
+            assert!(
+                crash("membering::child_invite", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let store = Store::open(&volume).expect("the memberships open again");
+            let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+            let recovered = mutations.recover(&Memberships(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            assert_eq!(
+                store.invitations(NOW).len(),
+                usize::from(added),
+                "{point}: the invitation is there, or it is not"
+            );
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if added { (1, 0) } else { (0, 1) },
+                "{point}: committed when its entry is durable"
             );
             let _ = std::fs::remove_dir_all(path);
         }

@@ -4743,6 +4743,23 @@ sections:
     tests:
       - crates/permguard-host/src/membership/tests.rs::an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat
       - crates/permguard-host/src/membership/tests.rs::the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them
+  "1-architecture/3-architecture-server-host-membership.md#stores":
+    paths:
+      - crates/permguard-host/src/membership/store.rs
+      - crates/permguard-host/src/membership/files.rs
+      - crates/permguard-host/src/membership/suite.rs
+      - crates/permguard-host/src/membership/mod.rs
+      - crates/permguard-host/src/membership/progress.rs
+      - crates/permguard-host/src/membership/replay.rs
+      - crates/permguard-host/src/membership/repin.rs
+      - crates/permguard-host/src/membership/zone.rs
+      - crates/permguard-host/src/membership/egress.rs
+    tests:
+      - crates/permguard-host/src/membership/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/membership/tests.rs::the_file_backend_keeps_each_document_in_the_file_it_always_was
+      - crates/permguard-host/src/membership/egress.rs::a_checkpoint_published_before_its_count_is_kept_when_it_is_shipped_again
+      - crates/permguard-host/src/membership/egress.rs::a_coordinator_keeps_a_trail_in_its_order_and_refuses_a_fork
+      - crates/permguard-host/tests/crash_points.rs::a_transition_killed_around_its_entry_is_whole_or_absent
   "3-control-plane/3-control-plane-evidence-stores.md#what-a-decision-store-accepts-in-clear":
     paths:
       - crates/permguard-decisions/src/ceiling.rs

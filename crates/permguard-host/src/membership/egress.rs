@@ -20,14 +20,10 @@
 //! | checkpoint_ack   | {1 trail, 2 checkpoint, 3 received_at}                                 |
 //! | egress_acks      | {1 [{1 trail, 2 name, 3 digest}]}: the member's, per membership and task |
 //!
-//! ```text
-//! host/members/audit/<membership>/<sha256(trail)>/
-//! ├── META                 the trail
-//! ├── LAST                 {1 count, 2 digest}: the checkpoints kept and the last one's digest
-//! ├── <count, 20 digits>.cose
-//! └── ANCHOR               the member's last anchor of the trail
-//! host/members/egress/<membership>-<task>.cbor     the member's acknowledgements
-//! ```
+//! A coordinator keeps of each trail, in the member store: its name, how many checkpoints are
+//! kept with the last one's digest (`{1 count, 2 digest}`), the checkpoints in order, the
+//! member's last anchor and the last fork found. A member keeps its acknowledgements, per
+//! membership and task.
 //!
 //! A checkpoint already kept is acknowledged again; one whose `previous_checkpoint` is not the
 //! last kept is a fork of the trail, refused and kept nowhere. The first one kept may continue
@@ -35,8 +31,6 @@
 
 use permguard_core::encoding::hex;
 use std::sync::Arc;
-
-use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::{Resource, Selector};
 use permguard_core::codes;
@@ -46,6 +40,7 @@ use permguard_objects::cose::Sign1;
 
 use super::member::Member;
 use super::record::{RingStatement, Role, Status, TaskType};
+use super::store::{Doc, Listing};
 use super::task::{TaskContext, TaskHandler};
 use super::{MembershipError, Store, public_of, statement_matches};
 use crate::audit::checkpoint::{Anchor, Checkpoint, MAX_CHECKPOINT_BYTES};
@@ -54,8 +49,6 @@ use crate::identity::record::{Labelled, RecordError, encode, uint, uuid_text};
 use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
 use crate::session::Refusal;
-use crate::storage::format;
-use crate::storage::write::{Published, publish_immutable, read_view, replace_view};
 use crate::time::TimeGuard;
 
 /// The contract version this module speaks.
@@ -69,16 +62,6 @@ const MAX_TRAILS: usize = 4096;
 pub const MAX_ACKS_BYTES: usize = 1024 * 1024;
 /// The most bytes the coordinator's last-kept record takes.
 pub const MAX_KEPT_BYTES: usize = 128;
-/// The directory of the coordinator's kept checkpoints, below the membership store.
-const AUDIT: &str = "audit";
-/// The directory of the member's acknowledgements, below the membership store.
-const EGRESS: &str = "egress";
-const META: &str = "META";
-const LAST: &str = "LAST";
-const ANCHOR: &str = "ANCHOR";
-/// The last fork found of a trail: the digest kept, the one offered, when (BUG-0154).
-const FORKED: &str = "FORKED";
-
 fn bounded(bytes: &[u8], what: &str) -> Result<(), RecordError> {
     if bytes.len() > MAX_RECORD_BYTES {
         return Err(RecordError(format!("{what} is out of its bound")));
@@ -443,18 +426,6 @@ pub struct AuditFork {
     pub detected_at: u64,
 }
 
-/// A kept checkpoint as its file holds it: the COSE envelope itself since BUG-0155, which `audit
-/// verify --checkpoint` takes as is, or the storage view an earlier build wrote.
-fn read_kept(dir: &crate::storage::Dir, name: &str) -> Result<Option<Vec<u8>>, MembershipError> {
-    let Some(bytes) = dir.read(name)? else {
-        return Ok(None);
-    };
-    if bytes.starts_with(b"PGSVIEW\0") {
-        return Ok(read_view(dir, name, format::VIEW)?);
-    }
-    Ok(Some(bytes))
-}
-
 /// The last checkpoint a coordinator kept of a trail: how many it keeps, and its digest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Kept {
@@ -503,66 +474,74 @@ impl Store {
         digest: [u8; 32],
         anchor: Option<(&[u8], [u8; 32])>,
     ) -> Result<(), MembershipError> {
-        let _keeping = self
-            .keeping
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let dir = self
-            .dir
-            .subdir(AUDIT, true)?
-            .subdir(&hex(membership_id), true)?
-            .subdir(&hex(&Sha256::digest(trail.as_bytes())), true)?;
-        let last = read_view(&dir, LAST, format::VIEW)?
-            .map(|bytes| last_of(&bytes))
-            .transpose()?;
-        let count = match last {
-            // Shipped again: already kept, acknowledged again.
-            Some((_, held)) if held == digest => return Ok(()),
-            Some((count, held)) => {
-                if *checkpoint.previous_checkpoint.raw() != held {
-                    // An older one shipped again is kept already: acknowledged, nothing written.
-                    for at in 1..=count {
-                        if read_kept(&dir, &format!("{at:020}.cose"))?.as_deref() == Some(envelope)
-                        {
-                            return Ok(());
+        let kept = |at: u64| self.store.checkpoint(membership_id, trail, at);
+        // Decided on the last checkpoint the store keeps, in the step that keeps this one: of
+        // two that arrive together for one trail, the second continues the first or is refused.
+        self.store.change(
+            &Doc::TrailLast {
+                membership: membership_id,
+                trail,
+            },
+            &mut |last| {
+                let last = last.map(last_of).transpose()?;
+                let count = match last {
+                    // Shipped again: already kept, acknowledged again.
+                    Some((_, held)) if held == digest => return Ok(None),
+                    Some((count, held)) => {
+                        if *checkpoint.previous_checkpoint.raw() != held {
+                            // An older one shipped again is kept already: acknowledged, nothing
+                            // written.
+                            for at in 1..=count {
+                                if kept(at)?.as_deref() == Some(envelope) {
+                                    return Ok(None);
+                                }
+                            }
+                            return Err(MembershipError::Invalid(format!(
+                                "the checkpoint does not continue the trail `{trail}` as kept"
+                            )));
                         }
+                        count + 1
                     }
-                    return Err(MembershipError::Invalid(format!(
-                        "the checkpoint does not continue the trail `{trail}` as kept"
-                    )));
+                    None => 1,
+                };
+                // An anchor names a seal the coordinator keeps, or the one shipped with it
+                // (after the review): never one outside the chain.
+                if let Some((_, cited)) = anchor
+                    && cited != digest
+                    && !(1..count).any(|at| {
+                        kept(at)
+                            .ok()
+                            .flatten()
+                            .is_some_and(|held| envelope_digest(&held) == cited)
+                    })
+                {
+                    return Err(MembershipError::Unverified(
+                        "the anchor names a checkpoint the coordinator does not keep".to_owned(),
+                    ));
                 }
-                count + 1
-            }
-            None => 1,
-        };
-        // An anchor names a seal the coordinator keeps, or the one shipped with it (after the
-        // review): never one outside the chain.
-        if let Some((_, cited)) = anchor
-            && cited != digest
-            && !(1..count).any(|at| {
-                read_kept(&dir, &format!("{at:020}.cose"))
-                    .ok()
-                    .flatten()
-                    .is_some_and(|held| envelope_digest(&held) == cited)
-            })
-        {
-            return Err(MembershipError::Unverified(
-                "the anchor names a checkpoint the coordinator does not keep".to_owned(),
-            ));
-        }
-        if read_view(&dir, META, format::VIEW)?.is_none() {
-            replace_view(&dir, META, format::VIEW, trail.as_bytes())?;
-        }
-        // The envelope itself, write-once: what `audit verify --checkpoint` reads (BUG-0155).
-        let same = |held: &[u8]| held == envelope;
-        match publish_immutable(&dir, &format!("{count:020}.cose"), envelope, &same, &same)? {
-            Published::Written | Published::AlreadyThere => {}
-        }
-        if let Some((anchor, _)) = anchor {
-            replace_view(&dir, ANCHOR, format::VIEW, anchor)?;
-        }
-        replace_view(&dir, LAST, format::VIEW, &Kept { count, digest }.encode()?)?;
-        Ok(())
+                let name = Doc::TrailName {
+                    membership: membership_id,
+                    trail,
+                };
+                if self.store.doc(&name)?.is_none() {
+                    self.store.keep(&name, trail.as_bytes())?;
+                }
+                // The envelope itself, write-once: what `audit verify --checkpoint` reads
+                // (BUG-0155).
+                self.store
+                    .publish_checkpoint(membership_id, trail, count, envelope)?;
+                if let Some((anchor, _)) = anchor {
+                    self.store.keep(
+                        &Doc::TrailAnchor {
+                            membership: membership_id,
+                            trail,
+                        },
+                        anchor,
+                    )?;
+                }
+                Ok(Some(Kept { count, digest }.encode()?))
+            },
+        )
     }
 
     /// The digest of the last checkpoint kept of `membership_id`'s `trail`, when one is.
@@ -571,10 +550,12 @@ impl Store {
         membership_id: &[u8; 16],
         trail: &str,
     ) -> Result<Option<[u8; 32]>, MembershipError> {
-        let Some(dir) = self.trail_dir(membership_id, trail)? else {
-            return Ok(None);
-        };
-        Ok(read_view(&dir, LAST, format::VIEW)?
+        Ok(self
+            .store
+            .doc(&Doc::TrailLast {
+                membership: membership_id,
+                trail,
+            })?
             .map(|bytes| last_of(&bytes))
             .transpose()?
             .map(|(_, digest)| digest))
@@ -589,39 +570,34 @@ impl Store {
         offered: [u8; 32],
         at: u64,
     ) -> Result<(), MembershipError> {
-        let dir = self
-            .dir
-            .subdir(AUDIT, true)?
-            .subdir(&hex(membership_id), true)?
-            .subdir(&hex(&Sha256::digest(trail.as_bytes())), true)?;
-        if read_view(&dir, META, format::VIEW)?.is_none() {
-            replace_view(&dir, META, format::VIEW, trail.as_bytes())?;
+        let name = Doc::TrailName {
+            membership: membership_id,
+            trail,
+        };
+        if self.store.doc(&name)?.is_none() {
+            self.store.keep(&name, trail.as_bytes())?;
         }
         let mut bytes = Vec::with_capacity(72);
         bytes.extend_from_slice(&kept);
         bytes.extend_from_slice(&offered);
         bytes.extend_from_slice(&at.to_be_bytes());
-        replace_view(&dir, FORKED, format::VIEW, &bytes)?;
-        Ok(())
+        self.store.keep(
+            &Doc::TrailFork {
+                membership: membership_id,
+                trail,
+            },
+            &bytes,
+        )
     }
 
     /// The forks found of every trail of `membership_id`, by trail (BUG-0154).
     pub fn audit_forks(&self, membership_id: &[u8; 16]) -> Result<Vec<AuditFork>, MembershipError> {
-        let audit = self.dir.subdir(AUDIT, true)?;
-        let member = hex(membership_id);
-        if !audit.subdirs()?.contains(&member) {
-            return Ok(Vec::new());
-        }
-        let member = audit.subdir(&member, false)?;
         let mut forks = Vec::new();
-        for name in member.subdirs()? {
-            let dir = member.subdir(&name, false)?;
-            let Some(bytes) = read_view(&dir, FORKED, format::VIEW)? else {
-                continue;
-            };
-            let trail = read_view(&dir, META, format::VIEW)?
-                .map(|trail| String::from_utf8_lossy(&trail).into_owned())
-                .unwrap_or_default();
+        for listed in self.store.list(&Listing::TrailForks {
+            membership: membership_id,
+        })? {
+            let trail = listed.name;
+            let bytes = listed.bytes.map_err(MembershipError::Storage)?;
             if bytes.len() != 72 {
                 return Err(MembershipError::Storage(format!(
                     "the fork kept of `{trail}` does not read"
@@ -644,42 +620,18 @@ impl Store {
         Ok(forks)
     }
 
-    fn trail_dir(
-        &self,
-        membership_id: &[u8; 16],
-        trail: &str,
-    ) -> Result<Option<crate::storage::Dir>, MembershipError> {
-        let audit = self.dir.subdir(AUDIT, true)?;
-        let member = hex(membership_id);
-        if !audit.subdirs()?.contains(&member) {
-            return Ok(None);
-        }
-        let member = audit.subdir(&member, false)?;
-        let digest = hex(&Sha256::digest(trail.as_bytes()));
-        if !member.subdirs()?.contains(&digest) {
-            return Ok(None);
-        }
-        Ok(Some(member.subdir(&digest, false)?))
-    }
-
     /// The checkpoints a coordinator keeps of `membership_id`'s `trail`, in the order kept.
     pub fn kept_checkpoints(
         &self,
         membership_id: &[u8; 16],
         trail: &str,
     ) -> Result<Vec<Vec<u8>>, MembershipError> {
-        let audit = self.dir.subdir(AUDIT, true)?;
-        let member = hex(membership_id);
-        if !audit.subdirs()?.contains(&member) {
-            return Ok(Vec::new());
-        }
-        let member = audit.subdir(&member, false)?;
-        let digest = hex(&Sha256::digest(trail.as_bytes()));
-        if !member.subdirs()?.contains(&digest) {
-            return Ok(Vec::new());
-        }
-        let dir = member.subdir(&digest, false)?;
-        let Some((count, _)) = read_view(&dir, LAST, format::VIEW)?
+        let Some((count, _)) = self
+            .store
+            .doc(&Doc::TrailLast {
+                membership: membership_id,
+                trail,
+            })?
             .map(|bytes| last_of(&bytes))
             .transpose()?
         else {
@@ -687,9 +639,11 @@ impl Store {
         };
         (1..=count)
             .map(|at| {
-                read_kept(&dir, &format!("{at:020}.cose"))?.ok_or_else(|| {
-                    MembershipError::Storage(format!("checkpoint {at} of `{trail}` is missing"))
-                })
+                self.store
+                    .checkpoint(membership_id, trail, at)?
+                    .ok_or_else(|| {
+                        MembershipError::Storage(format!("checkpoint {at} of `{trail}` is missing"))
+                    })
             })
             .collect()
     }
@@ -700,13 +654,15 @@ impl Store {
         membership_id: &[u8; 16],
         task_id: &str,
     ) -> Result<Acks, MembershipError> {
-        let dir = self.dir.subdir(EGRESS, true)?;
-        Ok(
-            read_view(&dir, &acks_name(membership_id, task_id), format::VIEW)?
-                .map(|bytes| Acks::decode(&bytes))
-                .transpose()?
-                .unwrap_or_default(),
-        )
+        Ok(self
+            .store
+            .doc(&Doc::Acks {
+                membership: membership_id,
+                task: task_id,
+            })?
+            .map(|bytes| Acks::decode(&bytes))
+            .transpose()?
+            .unwrap_or_default())
     }
 
     fn keep_egress_ack(
@@ -715,19 +671,19 @@ impl Store {
         task_id: &str,
         acked: Acked,
     ) -> Result<(), MembershipError> {
-        let _keeping = self
-            .keeping
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let dir = self.dir.subdir(EGRESS, true)?;
-        let name = acks_name(membership_id, task_id);
-        let mut acks = read_view(&dir, &name, format::VIEW)?
-            .map(|bytes| Acks::decode(&bytes))
-            .transpose()?
-            .unwrap_or_default();
-        acks.keep(acked);
-        replace_view(&dir, &name, format::VIEW, &acks.encode()?)?;
-        Ok(())
+        // Added to the acknowledgements the store keeps, in the step that keeps them: of two
+        // that arrive together, neither is lost to the other.
+        self.store.change(
+            &Doc::Acks {
+                membership: membership_id,
+                task: task_id,
+            },
+            &mut |held| {
+                let mut acks = held.map(Acks::decode).transpose()?.unwrap_or_default();
+                acks.keep(acked.clone());
+                Ok(Some(acks.encode()?))
+            },
+        )
     }
 
     /// The `audit.checkpoints` tasks that export `resource`'s trails: every task of that type of
@@ -796,10 +752,6 @@ pub fn pending_from(
         )),
         None => Ok(0),
     }
-}
-
-fn acks_name(membership_id: &[u8; 16], task_id: &str) -> String {
-    format!("{}-{task_id}.cbor", hex(membership_id))
 }
 
 /// What the export allows retention to delete (WP-5.9, owner decision): while a required task
@@ -977,6 +929,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use sha2::{Digest as _, Sha256};
 
     /// A checkpoint of `security:host` whose previous is `previous`; its envelope is `bytes`, the
     /// store keeping what the handler verified.
@@ -992,6 +945,64 @@ mod tests {
             key_set_epoch: 1,
             created_at: 1,
         }
+    }
+
+    /// A checkpoint published and its trail's count not yet kept, what a coordinator that
+    /// stopped between the two leaves: the member, which was not acknowledged, ships it again
+    /// and it is kept at that place, once; another checkpoint at that place is refused.
+    #[test]
+    fn a_checkpoint_published_before_its_count_is_kept_when_it_is_shipped_again() {
+        let root = crate::api::testing::scratch("egress-between");
+        let volume = crate::storage::volume::Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let store = Store::open(&volume).expect("the store");
+        let member = [9; 16];
+        let trail = "security:host";
+        let first = b"first".to_vec();
+        let second = b"second".to_vec();
+        let (one, two) = (envelope_digest(&first), envelope_digest(&second));
+        store
+            .keep_checkpoint(&member, trail, &first, &checkpoint([0; 32]), one, None)
+            .expect("kept");
+        // The second is published, and the coordinator stops before its count is kept.
+        store
+            .store
+            .publish_checkpoint(&member, trail, 2, &second)
+            .expect("published");
+        assert_eq!(store.last_kept(&member, trail).expect("reads"), Some(one));
+        assert_eq!(
+            store.kept_checkpoints(&member, trail).expect("reads"),
+            vec![first.clone()],
+            "what was not counted is not kept yet"
+        );
+        // Another checkpoint that continues the first finds the place taken.
+        let other = b"another second".to_vec();
+        assert!(
+            store
+                .keep_checkpoint(
+                    &member,
+                    trail,
+                    &other,
+                    &checkpoint(one),
+                    envelope_digest(&other),
+                    None
+                )
+                .is_err(),
+            "a place holds one checkpoint"
+        );
+        assert_eq!(store.last_kept(&member, trail).expect("reads"), Some(one));
+        // The one that was published is shipped again, and is kept.
+        store
+            .keep_checkpoint(&member, trail, &second, &checkpoint(one), two, None)
+            .expect("kept when shipped again");
+        assert_eq!(store.last_kept(&member, trail).expect("reads"), Some(two));
+        assert_eq!(
+            store.kept_checkpoints(&member, trail).expect("reads"),
+            vec![first, second]
+        );
     }
 
     /// The store keeps a trail's checkpoints in the order they continue it: one shipped again,
@@ -1064,7 +1075,7 @@ mod tests {
         let kept_dir = root
             .join("host")
             .join("members")
-            .join(AUDIT)
+            .join("audit")
             .join(hex(&member))
             .join(hex(&Sha256::digest(trail.as_bytes())));
         assert_eq!(

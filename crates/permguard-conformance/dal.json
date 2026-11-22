@@ -75,6 +75,10 @@
       "reason": "the file implementation of `keys::slots::SlotStore`"
     },
     {
+      "path": "crates/permguard-host/src/membership/files.rs",
+      "reason": "the file implementation of `membership::store::MemberStore`, and the entry point that takes a volume"
+    },
+    {
       "path": "crates/permguard-host/src/secrets/files.rs",
       "reason": "the file implementations of `secrets::WitnessStore` and `secrets::DeliveredKeys`"
     },
@@ -205,30 +209,6 @@
     {
       "source": "crates/permguard-host/src/hardening.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/egress.rs",
-      "until": "WP-26.5"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/mod.rs",
-      "until": "WP-26.5"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/progress.rs",
-      "until": "WP-26.5"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/repin.rs",
-      "until": "WP-26.5"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/replay.rs",
-      "until": "WP-26.5"
-    },
-    {
-      "source": "crates/permguard-host/src/membership/zone.rs",
-      "until": "WP-26.5"
     },
     {
       "source": "crates/permguard-host/src/operations/backup.rs",

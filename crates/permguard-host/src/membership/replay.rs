@@ -4,10 +4,7 @@
 //! The idempotency and replay gate of a coordinator's task messages (WP-4.4; owner decision of
 //! 2026-10-11).
 //!
-//! ```text
-//! host/members/replay/<membership_id>/<task_id>/
-//! └── 0000.cbor … 1023.cbor     one answered request per slot, the slot `seq` modulo the window
-//! ```
+//! One document of the member store an answered request, in the slot `seq` modulo the window.
 //!
 //! The last [`WINDOW`] requests a task answered are kept with the digest of their message, taken
 //! with the session's resource, and the answer. An identical repeat, a restart included, is
@@ -17,19 +14,15 @@
 //! back from its slot when a repeat asks for it. A temporary a crash left is swept, and a slot
 //! that does not read is skipped and logged rather than closing the task.
 
-use permguard_core::encoding::hex;
 use std::collections::{BTreeMap, BTreeSet};
 
 use sha2::{Digest as _, Sha256};
 
 use super::record::ReplayEntry;
+use super::store::{Doc, Listing};
 use super::{MembershipError, Store};
-use crate::storage::dir::{Dir, TEMP_PREFIX};
-use crate::storage::format;
-use crate::storage::write::{read_view, replace_view};
 
-/// The directory below `host/members/`.
-pub const DIRECTORY: &str = "replay";
+pub use super::files::REPLAY as DIRECTORY;
 /// How many answered requests a task keeps (owner decision).
 pub const WINDOW: u64 = 1024;
 
@@ -95,38 +88,28 @@ pub fn message_digest(bytes: &[u8], resource: &str) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn slot(seq: u64) -> String {
-    format!("{:04}.cbor", seq % WINDOW)
+/// The slot the request `seq` is kept in.
+fn slot(seq: u64) -> u64 {
+    seq % WINDOW
 }
 
 impl Store {
-    fn window_dir(&self, id: &[u8; 16], task_id: &str) -> Result<Dir, MembershipError> {
-        Ok(self
-            .dir
-            .subdir(DIRECTORY, true)?
-            .subdir(&hex(id), true)?
-            .subdir(task_id, true)?)
-    }
-
-    /// Reads `task_id`'s window of `id` from its slots: a temporary is swept, a slot that does not
-    /// read is skipped.
+    /// Reads `task_id`'s window of `id` from its slots: a slot that does not read is skipped.
     fn read_window(&self, id: &[u8; 16], task_id: &str) -> Result<Window, MembershipError> {
-        let dir = self.window_dir(id, task_id)?;
-        dir.sweep_temps()?;
         let mut window = Window::default();
-        for name in dir.names()? {
-            if name.starts_with(TEMP_PREFIX) {
-                continue;
-            }
-            let entry = match read_view(&dir, &name, format::VIEW)
-                .map_err(MembershipError::from)
-                .and_then(|bytes| {
-                    let bytes = bytes.ok_or_else(|| {
-                        MembershipError::Storage("the slot went missing".to_owned())
-                    })?;
-                    Ok(ReplayEntry::decode(&bytes)?)
-                }) {
-                Ok(entry) if entry.task_id == task_id && name == slot(entry.seq) => entry,
+        for listed in self.store.list(&Listing::ReplaySlots {
+            membership: id,
+            task: task_id,
+        })? {
+            let name = listed.name;
+            let entry = match listed
+                .bytes
+                .map_err(MembershipError::Storage)
+                .and_then(|bytes| Ok(ReplayEntry::decode(&bytes)?))
+            {
+                Ok(entry) if entry.task_id == task_id && name == slot(entry.seq).to_string() => {
+                    entry
+                }
                 Ok(_) => {
                     unreadable(&name, "another task's or another slot's entry");
                     continue;
@@ -185,8 +168,13 @@ impl Store {
         if held != *digest {
             return Ok(Gate::Reused);
         }
-        let dir = self.window_dir(id, task_id)?;
-        let bytes = read_view(&dir, &slot(seq), format::VIEW)?
+        let bytes = self
+            .store
+            .doc(&Doc::ReplaySlot {
+                membership: id,
+                task: task_id,
+                slot: slot(seq),
+            })?
             .ok_or_else(|| MembershipError::Storage("a replay slot went missing".to_owned()))?;
         let entry = ReplayEntry::decode(&bytes)?;
         if entry.request_id != request_id || entry.message_digest != *digest {
@@ -219,10 +207,12 @@ impl Store {
             answer: answer.to_vec(),
             seq,
         };
-        replace_view(
-            &self.window_dir(id, task_id)?,
-            &slot(seq),
-            format::VIEW,
+        self.store.keep(
+            &Doc::ReplaySlot {
+                membership: id,
+                task: task_id,
+                slot: slot(seq),
+            },
             &entry.encode()?,
         )?;
         window.next_seq = seq.saturating_add(1);

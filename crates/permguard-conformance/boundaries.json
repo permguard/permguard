@@ -1658,7 +1658,7 @@
       "reason": "a configuration value the operator sets: the custody of the Host's keys (WP-3.2)"
     },
     {
-      "source": "crates/permguard-host/src/membership/mod.rs",
+      "source": "crates/permguard-host/src/membership/files.rs",
       "item": "Store::open",
       "reason": "the store's own directory on the Host's volume, written by this process; every entry is decoded by `Entry::decode` and the records it carries by their registered decoders, the journal's hash chain checked as it is replayed"
     },
@@ -1741,6 +1741,11 @@
       "source": "crates/permguard-host/src/keys/ring/files.rs",
       "item": "FileRing::open",
       "reason": "a ring's directory on the Host's own volume (WP-3.1), opened as a store of bytes: a torn last entry of its journal is cut through the storage library, and no entry is decoded here; `Ring` replays and checks every one"
+    },
+    {
+      "source": "crates/permguard-host/src/membership/files.rs",
+      "item": "FileMembers::open",
+      "reason": "`host/members/` on the Host's own volume (WP-4.1), opened as a store of bytes: its layout version is checked, a torn last entry of its journal is cut through the storage library, and no entry or document is decoded here; `Store` replays every entry and checks its chain"
     }
   ]
 }
