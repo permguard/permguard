@@ -1240,7 +1240,7 @@ impl Registration {
             return Err(self.undeclared(format!("the mutation domain `{domain}`")));
         }
         Ok(self.mutations.as_ref().map(|engine| MutationHandle {
-            engine: Arc::clone(engine),
+            engine: Arc::clone(engine) as Arc<dyn crate::operations::mutation::Engine>,
             domain,
             subsystem: None,
         }))
@@ -1826,7 +1826,9 @@ impl Hints {
 /// operations, and no other domain's.
 #[derive(Clone)]
 pub struct MutationHandle {
-    engine: Arc<crate::operations::mutation::Mutations>,
+    /// The engine of the process's backend (iteration 03, decision E23): a domain never learns
+    /// which.
+    engine: Arc<dyn crate::operations::mutation::Engine>,
     domain: &'static str,
     /// The subsystem whose gate every operation of this handle holds while it applies.
     subsystem: Option<crate::operations::mutation::Subsystem>,
@@ -1842,6 +1844,15 @@ impl MutationHandle {
     /// A handle over `engine` for `domain`, for a test or a composition that holds the engine
     /// itself.
     pub fn new(engine: Arc<crate::operations::mutation::Mutations>, domain: &'static str) -> Self {
+        Self::over(engine, domain)
+    }
+
+    /// A handle over any engine for `domain`: what a composition root makes once it has chosen
+    /// the process's backend.
+    pub fn over(
+        engine: Arc<dyn crate::operations::mutation::Engine>,
+        domain: &'static str,
+    ) -> Self {
         Self {
             engine,
             domain,
@@ -1887,7 +1898,7 @@ impl MutationHandle {
 
     /// The engine behind it: a Plane that declared two domains runs the second on a handle of
     /// its own, [`MutationHandle::new`].
-    pub fn engine(&self) -> Arc<crate::operations::mutation::Mutations> {
+    pub fn engine(&self) -> Arc<dyn crate::operations::mutation::Engine> {
         Arc::clone(&self.engine)
     }
 
@@ -1918,11 +1929,12 @@ impl MutationHandle {
                 ),
             ));
         }
+        use crate::operations::mutation::run_checked_on;
         match &self.subsystem {
-            Some(subsystem) => self
-                .engine
-                .run_checked(begin, check, |applying| subsystem.hold(|| apply(applying))),
-            None => self.engine.run_checked(begin, check, apply),
+            Some(subsystem) => run_checked_on(self.engine.as_ref(), begin, check, |applying| {
+                subsystem.hold(|| apply(applying))
+            }),
+            None => run_checked_on(self.engine.as_ref(), begin, check, apply),
         }
     }
 
@@ -1947,7 +1959,7 @@ impl MutationHandle {
                 ),
             ));
         }
-        self.engine.replayed(begin)
+        crate::operations::mutation::replayed_on(self.engine.as_ref(), begin)
     }
 
     /// Resolves the open operations this domain left at a crash.
@@ -1962,7 +1974,9 @@ impl MutationHandle {
                 domain.name()
             )));
         }
-        self.engine.recover(domain)
+        self.engine
+            .recover(domain)
+            .map_err(crate::storage::StorageError::Refused)
     }
 }
 

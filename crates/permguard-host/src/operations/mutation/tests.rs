@@ -628,6 +628,7 @@ fn recovery_commits_what_the_domain_shows_and_fails_what_it_does_not() {
         ledger.apply(
             &Applying {
                 operation_id: shown.operation_id,
+                unit: None,
                 _engine: PhantomData,
             },
             "z1",
@@ -700,6 +701,7 @@ fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
         ledger.apply(
             &Applying {
                 operation_id: intent.operation_id,
+                unit: None,
                 _engine: PhantomData,
             },
             "z1",
@@ -1238,4 +1240,175 @@ fn the_operations_of_a_subsystem_apply_one_at_a_time_and_a_consistent_read_waits
     after.sort_unstable();
     assert_eq!(after, vec!["read", "second applies"]);
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// An engine that is no file engine: it runs the domain write inside a unit of its own and
+/// keeps what it was told, as a database's would.
+#[derive(Default)]
+struct UnitEngine {
+    /// The unit every operation is applied in.
+    unit: Mutex<Vec<String>>,
+    /// The answers kept for a retry, by request id.
+    kept: Mutex<BTreeMap<String, Vec<u8>>>,
+    /// Whether it answers applied without running the domain write.
+    lies: bool,
+}
+
+impl Engine for UnitEngine {
+    fn run_bytes(
+        &self,
+        begin: Begin,
+        check: &mut dyn FnMut() -> bool,
+        apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
+    ) -> Result<Ended, Stopped> {
+        if !check() {
+            return Err(Stopped::Unchecked);
+        }
+        if self.lies {
+            return Ok(Ended::Applied);
+        }
+        let token = Applying::within(OperationId::from_bytes([9; 16]), &self.unit);
+        let applied = apply(&token).map_err(|declined| match declined {
+            Declined::Refused => Stopped::Refused,
+            Declined::Indeterminate => Stopped::Indeterminate,
+        })?;
+        if let (Some(request), Some(result)) = (begin.request, applied.result) {
+            self.kept
+                .lock()
+                .expect("lock")
+                .insert(request.request_id, result);
+        }
+        Ok(Ended::Applied)
+    }
+
+    fn replayed_bytes(&self, begin: &Begin) -> Result<Option<Ended>, Stopped> {
+        Ok(begin
+            .request
+            .as_ref()
+            .and_then(|request| {
+                self.kept
+                    .lock()
+                    .expect("lock")
+                    .get(&request.request_id)
+                    .cloned()
+            })
+            .map(Ended::Replayed))
+    }
+
+    fn recover(&self, _domain: &dyn Domain) -> Result<Recovered, String> {
+        Err("this engine leaves nothing open".to_owned())
+    }
+
+    fn subsystem(&self, _name: &str) -> Subsystem {
+        Subsystem::default()
+    }
+}
+
+fn begin_of(request_id: &str) -> Begin {
+    Begin {
+        domain: "grants",
+        operation: "grants.create",
+        action: "host.grant.created",
+        initiator: Initiator::Principal("spiffe://acme/operator".to_owned()),
+        request: Some(RequestKey {
+            request_id: request_id.to_owned(),
+            digest: "sha256:request".to_owned(),
+        }),
+        target: None,
+    }
+}
+
+/// E23: a domain is handed the engine's unit of work by the token, on any engine, and the typed
+/// calls keep the domain's own answer and its own reason whatever the engine is.
+#[test]
+fn any_engine_hands_its_unit_of_work_to_the_domain() {
+    let engine = UnitEngine::default();
+    let applied = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-1"),
+        || Ok(()),
+        |applying| {
+            let unit = applying
+                .unit::<Mutex<Vec<String>>>()
+                .expect("the engine's unit");
+            unit.lock().expect("lock").push("written".to_owned());
+            assert!(
+                applying.unit::<String>().is_none(),
+                "a unit of another kind is none"
+            );
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: "the answer".to_owned(),
+            })
+        },
+    )
+    .expect("applied");
+    assert_eq!(applied, Outcome::Applied("the answer".to_owned()));
+    assert_eq!(*engine.unit.lock().expect("lock"), ["written"]);
+    // A retry learns the answer the engine kept, typed again.
+    assert_eq!(
+        replayed_on::<String, String>(&engine, &begin_of("request-1")).expect("answered"),
+        Some(Outcome::Replayed("the answer".to_owned()))
+    );
+    assert_eq!(
+        replayed_on::<String, String>(&engine, &begin_of("request-2")).expect("answered"),
+        None
+    );
+
+    // The domain's reason comes back as the domain gave it, from its validation and its write.
+    let unchecked = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-3"),
+        || Err("not valid".to_owned()),
+        |_| unreachable!("a refused validation applies nothing"),
+    );
+    assert!(matches!(unchecked, Err(MutationError::Refused(reason)) if reason == "not valid"));
+    let refused = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-4"),
+        || Ok(()),
+        |_| Err(Failure::Refused("not allowed".to_owned())),
+    );
+    assert!(matches!(refused, Err(MutationError::Refused(reason)) if reason == "not allowed"));
+    let unknown = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-5"),
+        || Ok(()),
+        |_| {
+            Err(Failure::Indeterminate(
+                "the write may have landed".to_owned(),
+            ))
+        },
+    );
+    assert!(matches!(
+        unknown,
+        Err(MutationError::Indeterminate(reason)) if reason == "the write may have landed"
+    ));
+}
+
+/// An engine that answers applied for a domain write it did not run is not believed: the caller
+/// is told the outcome is unrecorded, never handed an answer nobody made.
+#[test]
+fn an_engine_that_did_not_run_the_domain_write_is_not_believed() {
+    let engine = UnitEngine {
+        lies: true,
+        ..UnitEngine::default()
+    };
+    let answered = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-1"),
+        || Ok(()),
+        |_| {
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: "never made".to_owned(),
+            })
+        },
+    );
+    assert!(
+        matches!(answered, Err(MutationError::Unrecorded(_))),
+        "{answered:?}"
+    );
 }

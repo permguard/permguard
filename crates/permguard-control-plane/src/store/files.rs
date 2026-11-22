@@ -973,13 +973,21 @@ pub mod testing {
     /// A mutation transaction of the ref updates over an offline engine on a fresh volume at
     /// `directory`.
     pub fn offline_ref_mutations(directory: &Path) -> Result<MutationHandle, String> {
+        Ok(MutationHandle::new(
+            offline_ref_engine(directory)?,
+            REFS_DOMAIN,
+        ))
+    }
+
+    /// The offline file engine [`offline_ref_mutations`] runs on, for a test that raises a
+    /// backup barrier on it.
+    pub fn offline_ref_engine(directory: &Path) -> Result<Arc<Mutations>, String> {
         let volume = permguard_host::storage::volume::Volume::claim(
             directory,
             permguard_core::assurance::AssuranceProfile::Development,
         )
         .map_err(|error| error.to_string())?;
-        let engine = Mutations::open_offline(&volume, "test")?;
-        Ok(MutationHandle::new(Arc::new(engine), REFS_DOMAIN))
+        Ok(Arc::new(Mutations::open_offline(&volume, "test")?))
     }
 
     /// Runs `work` inside one ref-update operation of `mutations`, for a conformance suite.

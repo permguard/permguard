@@ -223,13 +223,40 @@ pub trait Domain {
 /// module builds one.
 pub struct Applying<'a> {
     operation_id: OperationId,
+    /// The unit of work the operation runs in, on an engine that has one.
+    unit: Option<&'a (dyn std::any::Any + Send + Sync)>,
     _engine: PhantomData<&'a Mutations>,
 }
 
-impl Applying<'_> {
+impl<'a> Applying<'a> {
     /// The operation being applied: what the domain writes beside its change.
     pub fn operation_id(&self) -> OperationId {
         self.operation_id
+    }
+
+    /// The unit of work the operation runs in, when the engine applying it has one of the kind
+    /// `T` (iteration 03, decision E23): a store of that engine's backend makes its change
+    /// inside it, so the change, the operation's record and its audit record are kept together
+    /// or not at all. The file engine has none: its unit of work is the protocol around the
+    /// domain write, and a store of the file backend never asks.
+    pub fn unit<T: 'static>(&self) -> Option<&'a T> {
+        self.unit.and_then(|unit| unit.downcast_ref())
+    }
+
+    /// The token of `operation_id` applied inside `unit`. An engine's alone: it is the proof a
+    /// domain mutator takes that an engine is applying the operation. Compiled for this
+    /// crate's tests until the engine of the second backend is written, with the check that
+    /// names who may call it.
+    #[cfg(test)]
+    pub(crate) fn within(
+        operation_id: OperationId,
+        unit: &'a (dyn std::any::Any + Send + Sync),
+    ) -> Self {
+        Self {
+            operation_id,
+            unit: Some(unit),
+            _engine: PhantomData,
+        }
     }
 }
 
@@ -239,6 +266,7 @@ impl Applying<'static> {
     pub(crate) fn for_tests(byte: u8) -> Self {
         Self {
             operation_id: OperationId::from_bytes([byte; 16]),
+            unit: None,
             _engine: PhantomData,
         }
     }
@@ -324,6 +352,219 @@ pub enum MutationError<E> {
     /// A backup barrier holds new mutations (WP-7.8): nothing was applied, and the same request
     /// succeeds once the backup is finalized or aborted.
     Quiesced(String),
+}
+
+/// What a domain answered an engine when it applied an operation: [`Applied`], its answer as
+/// the bytes a retry is given back.
+#[derive(Debug)]
+pub struct AppliedBytes {
+    pub revision: u64,
+    pub target: Option<String>,
+    /// The answer, serialized; `None` when it does not serialize, and a retry then rebuilds it
+    /// from the domain.
+    pub result: Option<Vec<u8>>,
+}
+
+/// Why a domain did not apply an operation, as an engine needs it: [`Failure`] without the
+/// domain's own reason, which the caller of the engine keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Declined {
+    Refused,
+    Indeterminate,
+}
+
+/// How an operation ended, as an engine says it: [`Outcome`] with a replayed answer still in
+/// the bytes it was kept in.
+#[derive(Debug)]
+pub enum Ended {
+    Applied,
+    Replayed(Vec<u8>),
+    Reconciled {
+        operation_id: OperationId,
+        revision: u64,
+        target: Option<String>,
+    },
+}
+
+/// Why an operation did not end applied, as an engine says it: [`MutationError`] without the
+/// domain's own reason.
+#[derive(Debug)]
+pub enum Stopped {
+    /// The caller's validation refused it, before any intent.
+    Unchecked,
+    /// The domain refused it: nothing was applied.
+    Refused,
+    /// The domain could not say whether it applied.
+    Indeterminate,
+    RequestIdReused(&'static str),
+    InFlight(&'static str),
+    AuditUnavailable(String),
+    Unrecorded(String),
+    Unavailable(String),
+    Quiesced(String),
+}
+
+/// A mutation engine (iteration 03, decision E23): what runs a security mutation as one unit
+/// of work. A domain asks it to run an operation and is handed the [`Applying`] that carries
+/// the unit; what the unit is, is the engine's. On files it is the protocol of this module,
+/// intent, apply, commit and their recovery; on a database it is a transaction.
+///
+/// The trait speaks in bytes so that it can be asked through a reference to any engine; the
+/// typed calls every domain makes, [`run_checked_on`] and [`replayed_on`], are written once
+/// over it.
+pub trait Engine: Send + Sync {
+    /// Runs one operation: `check` is the caller's validation and answers whether it passed,
+    /// `apply` the domain's write. See [`Mutations::run_checked`] for the rules an engine keeps.
+    fn run_bytes(
+        &self,
+        begin: Begin,
+        check: &mut dyn FnMut() -> bool,
+        apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
+    ) -> Result<Ended, Stopped>;
+
+    /// The answer a retry of `begin`'s request learns without a new mutation; `None` when the
+    /// engine holds none.
+    fn replayed_bytes(&self, begin: &Begin) -> Result<Option<Ended>, Stopped>;
+
+    /// Resolves the operations `domain` left open, where the engine can leave one open. An
+    /// engine whose unit of work is a transaction leaves none and answers that nothing was
+    /// resolved.
+    fn recover(&self, domain: &dyn Domain) -> Result<Recovered, String>;
+
+    /// The gate of the subsystem `name`, one per name for the life of the engine.
+    fn subsystem(&self, name: &str) -> Subsystem;
+
+    /// Whether a backup barrier holds new mutations now. An engine of a backend with no volume
+    /// has no barrier, and answers that none holds.
+    fn quiesced(&self) -> bool {
+        false
+    }
+}
+
+/// The typed form of [`Engine::run_bytes`]: what every domain calls, on any engine.
+pub fn run_checked_on<T, E>(
+    engine: &dyn Engine,
+    begin: Begin,
+    check: impl FnOnce() -> Result<(), E>,
+    apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+) -> Result<Outcome<T>, MutationError<E>>
+where
+    T: Serialize + DeserializeOwned,
+{
+    // The domain's own answer and reason stay here: the engine is told that there is one.
+    let refusal: std::cell::RefCell<Option<E>> = std::cell::RefCell::new(None);
+    let mut value: Option<T> = None;
+    let mut check = Some(check);
+    let mut apply = Some(apply);
+    let ended = engine.run_bytes(
+        begin,
+        &mut || match check.take().map(|check| check()) {
+            Some(Ok(())) => true,
+            Some(Err(refused)) => {
+                *refusal.borrow_mut() = Some(refused);
+                false
+            }
+            // Asked a second time: the validation is run once.
+            None => false,
+        },
+        &mut |applying| match apply.take().map(|apply| apply(applying)) {
+            Some(Ok(applied)) => {
+                let result = serde_json::to_vec(&applied.value).ok();
+                value = Some(applied.value);
+                Ok(AppliedBytes {
+                    revision: applied.revision,
+                    target: applied.target,
+                    result,
+                })
+            }
+            Some(Err(Failure::Refused(refused))) => {
+                *refusal.borrow_mut() = Some(refused);
+                Err(Declined::Refused)
+            }
+            Some(Err(Failure::Indeterminate(error))) => {
+                *refusal.borrow_mut() = Some(error);
+                Err(Declined::Indeterminate)
+            }
+            // Asked a second time: the domain write is run once, and an engine that would run
+            // it again is told the outcome is not known.
+            None => Err(Declined::Indeterminate),
+        },
+    );
+    let lost = || {
+        MutationError::Unrecorded(
+            "the engine answered for a domain write it did not run".to_owned(),
+        )
+    };
+    match ended {
+        Ok(Ended::Applied) => value.map(Outcome::Applied).ok_or_else(lost),
+        Ok(ended) => typed(ended),
+        Err(Stopped::Unchecked | Stopped::Refused) => Err(refusal
+            .into_inner()
+            .map(MutationError::Refused)
+            .unwrap_or_else(lost)),
+        Err(Stopped::Indeterminate) => Err(refusal
+            .into_inner()
+            .map(MutationError::Indeterminate)
+            .unwrap_or_else(lost)),
+        Err(stopped) => Err(untyped(stopped)),
+    }
+}
+
+/// The typed form of [`Engine::replayed_bytes`].
+pub fn replayed_on<T, E>(
+    engine: &dyn Engine,
+    begin: &Begin,
+) -> Result<Option<Outcome<T>>, MutationError<E>>
+where
+    T: DeserializeOwned,
+{
+    match engine.replayed_bytes(begin) {
+        Ok(None) => Ok(None),
+        Ok(Some(ended)) => typed(ended).map(Some),
+        Err(stopped) => Err(untyped(stopped)),
+    }
+}
+
+/// An engine's answer for a retry, read back as the domain's.
+fn typed<T: DeserializeOwned, E>(ended: Ended) -> Result<Outcome<T>, MutationError<E>> {
+    match ended {
+        Ended::Replayed(bytes) => serde_json::from_slice(&bytes)
+            .map(Outcome::Replayed)
+            .map_err(|error| {
+                MutationError::Unrecorded(format!(
+                    "the operation was applied and its committed answer does not read: {error}"
+                ))
+            }),
+        Ended::Reconciled {
+            operation_id,
+            revision,
+            target,
+        } => Ok(Outcome::Reconciled {
+            operation_id,
+            revision,
+            target,
+        }),
+        Ended::Applied => Err(MutationError::Unrecorded(
+            "the engine answered applied for an operation it did not run".to_owned(),
+        )),
+    }
+}
+
+/// An engine's own stop, as the caller is told it.
+fn untyped<E>(stopped: Stopped) -> MutationError<E> {
+    match stopped {
+        Stopped::RequestIdReused(detail) => MutationError::RequestIdReused(detail),
+        Stopped::InFlight(detail) => MutationError::InFlight(detail),
+        Stopped::AuditUnavailable(detail) => MutationError::AuditUnavailable(detail),
+        Stopped::Unrecorded(detail) => MutationError::Unrecorded(detail),
+        Stopped::Unavailable(detail) => MutationError::Unavailable(detail),
+        Stopped::Quiesced(detail) => MutationError::Quiesced(detail),
+        Stopped::Unchecked | Stopped::Refused | Stopped::Indeterminate => {
+            MutationError::Unrecorded(
+                "the engine answered for the domain without the domain's reason".to_owned(),
+            )
+        }
+    }
 }
 
 impl<E: std::fmt::Display> std::fmt::Display for MutationError<E> {
@@ -637,6 +878,33 @@ impl Drop for Running<'_> {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&self.operation_id);
+    }
+}
+
+impl Engine for Mutations {
+    fn run_bytes(
+        &self,
+        begin: Begin,
+        check: &mut dyn FnMut() -> bool,
+        apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
+    ) -> Result<Ended, Stopped> {
+        self.run_protocol(begin, check, apply)
+    }
+
+    fn replayed_bytes(&self, begin: &Begin) -> Result<Option<Ended>, Stopped> {
+        self.replayed_protocol(begin)
+    }
+
+    fn recover(&self, domain: &dyn Domain) -> Result<Recovered, String> {
+        Mutations::recover(self, domain).map_err(|error| error.to_string())
+    }
+
+    fn subsystem(&self, name: &str) -> Subsystem {
+        Mutations::subsystem(self, name)
+    }
+
+    fn quiesced(&self) -> bool {
+        Mutations::quiesced(self)
     }
 }
 
@@ -1029,22 +1297,7 @@ impl Mutations {
     where
         T: DeserializeOwned,
     {
-        let key = match (&begin.initiator, &begin.request) {
-            (Initiator::Principal(principal), Some(request)) => {
-                Some((principal.clone(), request.request_id.clone()))
-            }
-            _ => None,
-        };
-        let _in_flight = self.take(key.clone())?;
-        let Some(key) = &key else {
-            return Ok(None);
-        };
-        let Some(answer) = self.lookup(key, begin)? else {
-            return Ok(None);
-        };
-        self.settle()
-            .map_err(|halt| MutationError::Unrecorded(halt.detail()))?;
-        Ok(Some(answer))
+        replayed_on(self, begin)
     }
 
     /// [`Mutations::run`], with `check` the caller's validation (step 1): run after a retry is
@@ -1059,6 +1312,16 @@ impl Mutations {
     where
         T: Serialize + DeserializeOwned,
     {
+        run_checked_on(self, begin, check, apply)
+    }
+
+    /// The protocol of [`Mutations::run_checked`], as [`Engine::run_bytes`] asks it.
+    fn run_protocol(
+        &self,
+        begin: Begin,
+        check: &mut dyn FnMut() -> bool,
+        apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
+    ) -> Result<Ended, Stopped> {
         let key = match (&begin.initiator, &begin.request) {
             (Initiator::Principal(principal), Some(request)) => {
                 Some((principal.clone(), request.request_id.clone()))
@@ -1071,24 +1334,26 @@ impl Mutations {
         {
             // A success is answered only once its outcome record is durable, a retry's too.
             self.settle()
-                .map_err(|halt| MutationError::Unrecorded(halt.detail()))?;
+                .map_err(|halt| Stopped::Unrecorded(halt.detail()))?;
             return Ok(answer);
         }
         // An outcome record still pending is written before anything new is applied.
         self.settle().map_err(|halt| match halt {
-            Halt::Audit(detail) => MutationError::AuditUnavailable(detail),
-            Halt::Journal(detail) => MutationError::Unavailable(detail),
+            Halt::Audit(detail) => Stopped::AuditUnavailable(detail),
+            Halt::Journal(detail) => Stopped::Unavailable(detail),
         })?;
         // 1: the caller's validation.
-        check().map_err(MutationError::Refused)?;
+        if !check() {
+            return Err(Stopped::Unchecked);
+        }
         // A backup barrier refuses what is new; what was admitted before it runs to its answer.
         let _admitted = self
             .admit(begin.domain, begin.operation)
-            .map_err(MutationError::Quiesced)?;
+            .map_err(Stopped::Quiesced)?;
 
         // 2: the intent.
         let operation_id = OperationId::mint().ok_or_else(|| {
-            MutationError::Unavailable("the OS random source refused an operation id".to_owned())
+            Stopped::Unavailable("the OS random source refused an operation id".to_owned())
         })?;
         let intent = Intent {
             operation_id,
@@ -1109,7 +1374,7 @@ impl Mutations {
             operation_id,
         };
         self.append(Entry::Intent(intent.clone()))
-            .map_err(|error| MutationError::Unavailable(error.to_string()))?;
+            .map_err(|error| Stopped::Unavailable(error.to_string()))?;
         crash::point("mutation.intent_written");
 
         // 3: its audit record.
@@ -1125,7 +1390,7 @@ impl Mutations {
                     operation_id,
                     format!("the audit intent was not written: {error}"),
                 );
-                return Err(MutationError::AuditUnavailable(error));
+                return Err(Stopped::AuditUnavailable(error));
             }
         }
         crash::point("mutation.intent_audited");
@@ -1133,20 +1398,21 @@ impl Mutations {
         // 4: the domain.
         let token = Applying {
             operation_id,
+            unit: None,
             _engine: PhantomData,
         };
         let applied = match apply(&token) {
             Ok(applied) => applied,
-            Err(Failure::Refused(refused)) => {
+            Err(Declined::Refused) => {
                 self.fail(operation_id, "refused by the domain".to_owned());
                 let _ = self.settle();
-                return Err(MutationError::Refused(refused));
+                return Err(Stopped::Refused);
             }
-            Err(Failure::Indeterminate(error)) => {
+            Err(Declined::Indeterminate) => {
                 // Left open: the next start asks the domain whether it applied.
                 drop(running);
                 self.report();
-                return Err(MutationError::Indeterminate(error));
+                return Err(Stopped::Indeterminate);
             }
         };
         crash::point("mutation.applied");
@@ -1159,7 +1425,7 @@ impl Mutations {
             at: self.time.now_secs(),
             revision: applied.revision,
             target: applied.target.clone(),
-            result: serde_json::to_vec(&applied.value).ok(),
+            result: applied.result,
             reconciled: false,
         };
         if Entry::Commit(commit.clone()).encode().is_err() {
@@ -1168,26 +1434,46 @@ impl Mutations {
         if let Err(error) = self.append(Entry::Commit(commit)) {
             drop(running);
             self.report();
-            return Err(MutationError::Unrecorded(error.to_string()));
+            return Err(Stopped::Unrecorded(error.to_string()));
         }
         crash::point("mutation.committed");
 
         // 6: the outcome record, then the mark that it is written.
         drop(running);
         self.settle()
-            .map_err(|halt| MutationError::Unrecorded(halt.detail()))?;
-        Ok(Outcome::Applied(applied.value))
+            .map_err(|halt| Stopped::Unrecorded(halt.detail()))?;
+        Ok(Ended::Applied)
+    }
+
+    /// The lookup of [`Mutations::replayed`], as [`Engine::replayed_bytes`] asks it.
+    fn replayed_protocol(&self, begin: &Begin) -> Result<Option<Ended>, Stopped> {
+        let key = match (&begin.initiator, &begin.request) {
+            (Initiator::Principal(principal), Some(request)) => {
+                Some((principal.clone(), request.request_id.clone()))
+            }
+            _ => None,
+        };
+        let _in_flight = self.take(key.clone())?;
+        let Some(key) = &key else {
+            return Ok(None);
+        };
+        let Some(answer) = self.lookup(key, begin)? else {
+            return Ok(None);
+        };
+        self.settle()
+            .map_err(|halt| Stopped::Unrecorded(halt.detail()))?;
+        Ok(Some(answer))
     }
 
     /// Takes `(principal, request id)` for one operation, or refuses a second arrival.
-    fn take<E>(&self, key: Option<(String, String)>) -> Result<InFlight<'_>, MutationError<E>> {
+    fn take(&self, key: Option<(String, String)>) -> Result<InFlight<'_>, Stopped> {
         if let Some(key) = &key {
             let mut in_flight = self
                 .in_flight
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if !in_flight.insert(key.clone()) {
-                return Err(MutationError::InFlight(
+                return Err(Stopped::InFlight(
                     "a mutation with this request id is in flight; retry once it has answered",
                 ));
             }
@@ -1196,11 +1482,7 @@ impl Mutations {
     }
 
     /// The answer a retry of `key` learns, when the window holds one.
-    fn lookup<T: DeserializeOwned, E>(
-        &self,
-        key: &(String, String),
-        begin: &Begin,
-    ) -> Result<Option<Outcome<T>>, MutationError<E>> {
+    fn lookup(&self, key: &(String, String), begin: &Begin) -> Result<Option<Ended>, Stopped> {
         let now = self.time.now_secs();
         let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let Some(operation) = state
@@ -1222,25 +1504,18 @@ impl Mutations {
             Some(End::Commit(commit)) if commit.at.saturating_add(WINDOW.as_secs()) < now => {
                 Ok(None)
             }
-            _ if !same => Err(MutationError::RequestIdReused(
+            _ if !same => Err(Stopped::RequestIdReused(
                 "this request id was already used for a different mutation inside the replay window",
             )),
             Some(End::Commit(commit)) => match &commit.result {
-                Some(bytes) => serde_json::from_slice(bytes)
-                    .map(|value| Some(Outcome::Replayed(value)))
-                    .map_err(|error| {
-                        MutationError::Unrecorded(format!(
-                            "the operation was applied and its committed answer does not read: \
-                             {error}"
-                        ))
-                    }),
-                None => Ok(Some(Outcome::Reconciled {
+                Some(bytes) => Ok(Some(Ended::Replayed(bytes.clone()))),
+                None => Ok(Some(Ended::Reconciled {
                     operation_id: commit.operation_id,
                     revision: commit.revision,
                     target: commit.target.clone(),
                 })),
             },
-            None => Err(MutationError::Unrecorded(
+            None => Err(Stopped::Unrecorded(
                 "an earlier attempt with this request id may have been applied and is unresolved \
                  until the next start"
                     .to_owned(),

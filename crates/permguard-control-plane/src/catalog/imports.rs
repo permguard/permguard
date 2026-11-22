@@ -802,14 +802,22 @@ mod tests {
     /// another is a second archive.
     #[tokio::test]
     async fn an_archive_import_under_a_backup_barrier_is_refused_and_writes_nothing() {
-        let fixture = fixture("archive-barrier");
+        let mut fixture = fixture("archive-barrier");
         let check = under(&fixture.ring);
-        let engine = fixture
-            .target
-            .mutations
-            .as_ref()
-            .expect("a transaction")
-            .engine();
+        // The file engine itself, which raises the barrier, behind the handle the facade runs on.
+        let volume = permguard_host::storage::volume::Volume::claim(
+            &fixture.root.join("barrier-host"),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("a volume");
+        let engine = Arc::new(
+            permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
+                .expect("the engine opens"),
+        );
+        fixture.target.mutations = Some(permguard_host::composition::MutationHandle::new(
+            Arc::clone(&engine),
+            crate::catalog::CATALOG_DOMAIN,
+        ));
         engine
             .quiesce(
                 std::time::Instant::now() + std::time::Duration::from_secs(60),

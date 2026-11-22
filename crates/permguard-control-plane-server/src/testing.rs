@@ -61,10 +61,13 @@ pub fn catalog_mutations_over(
 pub fn ref_mutations_for_tests(
     directory: &std::path::Path,
 ) -> permguard_host::composition::MutationHandle {
-    let handle = permguard_control_plane::store::testing::offline_ref_mutations(directory)
+    let engine = permguard_control_plane::store::testing::offline_ref_engine(directory)
         .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
-    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(Arc::downgrade(&handle.engine())));
-    handle
+    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(Arc::downgrade(&engine)));
+    permguard_host::composition::MutationHandle::new(
+        engine,
+        permguard_control_plane::store::REFS_DOMAIN,
+    )
 }
 
 thread_local! {
