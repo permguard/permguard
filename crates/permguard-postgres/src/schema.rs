@@ -491,6 +491,53 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 16,
+        name: "stream consumers",
+        statements: "
+        CREATE TABLE permguard_stream_runs (
+            consumer text NOT NULL,
+            component text NOT NULL,
+            producer text NOT NULL,
+            run text NOT NULL,
+            first_index bigint NOT NULL CHECK (first_index >= 0),
+            next_index bigint NOT NULL CHECK (next_index >= first_index),
+            PRIMARY KEY (consumer, component, producer, run)
+        );
+        CREATE TABLE permguard_stream_frames (
+            consumer text NOT NULL,
+            component text NOT NULL,
+            producer text NOT NULL,
+            run text NOT NULL,
+            idx bigint NOT NULL CHECK (idx >= 0),
+            kind integer NOT NULL CHECK (kind BETWEEN 0 AND 65535),
+            payload bytea NOT NULL,
+            PRIMARY KEY (consumer, component, producer, run, idx),
+            FOREIGN KEY (consumer, component, producer, run)
+                REFERENCES permguard_stream_runs (consumer, component, producer, run)
+        );
+        CREATE TABLE permguard_stream_views (
+            consumer text NOT NULL,
+            component text NOT NULL,
+            producer text NOT NULL,
+            run text NOT NULL,
+            name text NOT NULL,
+            bytes bytea NOT NULL,
+            PRIMARY KEY (consumer, component, producer, run, name)
+        );
+        CREATE TABLE permguard_stream_shelves (
+            consumer text NOT NULL,
+            component text NOT NULL,
+            producer text NOT NULL,
+            run text NOT NULL,
+            shelf text NOT NULL,
+            name text NOT NULL,
+            PRIMARY KEY (consumer, component, producer, run, shelf, name),
+            FOREIGN KEY (consumer, component, producer, run)
+                REFERENCES permguard_stream_runs (consumer, component, producer, run)
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

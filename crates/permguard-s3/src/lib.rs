@@ -28,6 +28,8 @@ pub mod audit;
 pub mod control_plane;
 mod listing;
 mod sign;
+#[cfg(feature = "streams")]
+pub mod streams;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 

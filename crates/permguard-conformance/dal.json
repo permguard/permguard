@@ -85,14 +85,6 @@
       "reason": "the file implementation of `api::replay::ReplayStore`"
     },
     {
-      "path": "crates/permguard-postgres/src/audit.rs",
-      "reason": "the PostgreSQL implementation of `audit::store::Trails` and `audit::trail::TrailStore`, whose errors are the storage library's: it names the error type and reaches no file"
-    },
-    {
-      "path": "crates/permguard-stream/src/engine/consumer/store.rs",
-      "reason": "a stream consumer's runs on a volume: the file implementation of `consumer::store::Runs` and `RunStore`, and the directory as `RunFiles`"
-    },
-    {
       "path": "crates/permguard-host/src/audit/index.rs",
       "reason": "the index of the trails a volume ever held: the audit engine's file backend, reached through `audit::Engine` alone"
     },
@@ -165,6 +157,10 @@
       "reason": "the application-consistent snapshot of a volume: a capability of the file backend, refused `storage_backend_unsupported` elsewhere"
     },
     {
+      "path": "crates/permguard-host/src/operations/mutation.rs",
+      "reason": "the mutation engine of the file backend: the journal, the snapshot and their recovery on a volume (the other backend's is `permguard-postgres`)"
+    },
+    {
       "path": "crates/permguard-host/src/restore.rs",
       "reason": "the restore of a volume: a capability of the file backend, refused `storage_backend_unsupported` elsewhere"
     },
@@ -201,6 +197,10 @@
       "reason": "a composition root of the file backend: the volume opened offline for a command"
     },
     {
+      "path": "crates/permguard-postgres/src/audit.rs",
+      "reason": "the PostgreSQL implementation of `audit::store::Trails` and `audit::trail::TrailStore`, whose errors are the storage library's: it names the error type and reaches no file"
+    },
+    {
       "path": "crates/permguard-runtime/src/checkpoints.rs",
       "reason": "the composition of the checkpoint witnesses over the volume the process claimed"
     },
@@ -211,6 +211,10 @@
     {
       "path": "crates/permguard-runtime/src/storage_quota.rs",
       "reason": "the file backend's quota, measured from the volume's directories"
+    },
+    {
+      "path": "crates/permguard-s3/src/streams.rs",
+      "reason": "a stream consumer's runs on PostgreSQL and S3: the other implementation of `consumer::store::Runs`, whose errors are the storage library's; it names the error type and reaches no file"
     },
     {
       "path": "crates/permguard-server/src/app.rs",
@@ -231,6 +235,42 @@
     {
       "path": "crates/permguard-std/src/secrets.rs",
       "reason": "the file implementation of `permguard_core::SecretStore`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/consumer/store.rs",
+      "reason": "a stream consumer's runs on a volume: the file implementation of `consumer::store::Runs` and `RunStore`, and the directory as `RunFiles`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/mod.rs",
+      "reason": "the stream engine on a volume: `Streams::open` registers producers and file consumers below `host/streams/`; a process on the other backend makes its consumers with `Consumer::over`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer.rs",
+      "reason": "the stream producer, the file backend's alone: producers are the Data Plane's, which stays on files (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/prune.rs",
+      "reason": "the stream producer's retention, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/seal.rs",
+      "reason": "the stream producer's sealed batches, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/ship.rs",
+      "reason": "the stream producer's shipping state, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/verify.rs",
+      "reason": "offline verification of the streams in a directory an operator names: a command of the file backend (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/layout.rs",
+      "reason": "where a stream lives on a volume: the file backend's layout"
+    },
+    {
+      "path": "crates/permguard-stream/src/signers.rs",
+      "reason": "the signer spans kept beside a stream on a volume: the file backend's, the producer's (X103)"
     }
   ],
   "configured": [
@@ -254,43 +294,7 @@
   "direct": [
     {
       "source": "crates/permguard-authority-plane/src/admin.rs",
-      "until": "WP-27.2"
-    },
-    {
-      "source": "crates/permguard-host/src/operations/mutation.rs",
-      "until": "WP-27.2"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/mod.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/producer.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/producer/prune.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/producer/seal.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/producer/ship.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/verify.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/layout.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/signers.rs",
-      "until": "WP-27.4"
+      "until": "WP-28.1"
     }
   ]
 }

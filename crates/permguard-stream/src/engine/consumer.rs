@@ -50,6 +50,8 @@ mod import;
 mod inspect;
 mod prune;
 pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 
 use store::{RunFiles, RunStore, Runs};
 
@@ -504,6 +506,26 @@ impl<C: RecordCodec> Consumer<C> {
             all.remove(&at);
         }
         done.map(Some)
+    }
+
+    /// The consumer of `descriptor` over `runs`, on whatever backend keeps them: how a process
+    /// with no volume has one. Refused when the descriptor is not one a consumer can serve.
+    pub fn over(
+        runs: std::sync::Arc<dyn Runs>,
+        descriptor: Descriptor,
+        codec: C,
+        time: std::sync::Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<Self, StreamError> {
+        descriptor.check()?;
+        Ok(Self::new(runs, descriptor, codec, time))
+    }
+
+    /// This consumer, its runs opened for each hold as on a backend any instance may write:
+    /// what the tests run the consumer's own tests again over.
+    #[cfg(test)]
+    pub(crate) fn reopening(mut self) -> Self {
+        self.runs = std::sync::Arc::new(Reopened(self.runs));
+        self
     }
 
     /// Keeps `records`, verified upstream, from `first_seq` of `producer`'s run `run_id`: refused
@@ -1096,5 +1118,89 @@ impl<C: RecordCodec> super::retention::Prunable for Consumer<C> {
             }
         }
         Ok(Some(pruned))
+    }
+}
+
+/// A backend's runs, opened for each hold whatever the backend keeps: the path a consumer
+/// takes on a backend any instance may write, over the file backend, for the tests.
+#[cfg(test)]
+struct Reopened(std::sync::Arc<dyn Runs>);
+
+#[cfg(test)]
+impl Runs for Reopened {
+    fn kept_open(&self) -> bool {
+        false
+    }
+
+    fn open(
+        &self,
+        component: &str,
+        producer: &str,
+        run: &str,
+        create: bool,
+    ) -> Result<Option<Box<dyn RunStore>>, StreamError> {
+        self.0.open(component, producer, run, create)
+    }
+
+    fn peek(
+        &self,
+        component: &str,
+        producer: &str,
+        run: &str,
+    ) -> Result<Option<Box<dyn RunFiles>>, StreamError> {
+        self.0.peek(component, producer, run)
+    }
+
+    fn producer_view(
+        &self,
+        component: &str,
+        producer: &str,
+        name: &str,
+    ) -> Result<Option<Vec<u8>>, StreamError> {
+        self.0.producer_view(component, producer, name)
+    }
+
+    fn replace_producer_view(
+        &self,
+        component: &str,
+        producer: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<(), StreamError> {
+        self.0
+            .replace_producer_view(component, producer, name, bytes)
+    }
+
+    fn resource_view(&self, component: &str, name: &str) -> Result<Option<Vec<u8>>, StreamError> {
+        self.0.resource_view(component, name)
+    }
+
+    fn replace_resource_view(
+        &self,
+        component: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<(), StreamError> {
+        self.0.replace_resource_view(component, name, bytes)
+    }
+
+    fn components(&self) -> Result<Vec<String>, StreamError> {
+        self.0.components()
+    }
+
+    fn producers(&self, component: &str) -> Result<Vec<String>, StreamError> {
+        self.0.producers(component)
+    }
+
+    fn runs(&self, component: &str, producer: &str) -> Result<Vec<String>, StreamError> {
+        self.0.runs(component, producer)
+    }
+
+    fn release_reserve(&self, component: &str, producer: &str) -> Result<(), StreamError> {
+        self.0.release_reserve(component, producer)
+    }
+
+    fn keep_reserve(&self, component: &str, producer: &str) {
+        self.0.keep_reserve(component, producer);
     }
 }

@@ -3132,6 +3132,7 @@ dependencies = [
  "permguard-objects",
  "permguard-postgres",
  "permguard-s3",
+ "permguard-stream",
  "rustls",
  "serde",
  "serde_json",

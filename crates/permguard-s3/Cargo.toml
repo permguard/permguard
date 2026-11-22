@@ -21,6 +21,8 @@ publish = false
 test-support = []
 # The settled days of the audit trails kept on PostgreSQL: the bucket as their object store.
 audit = ["dep:permguard-postgres"]
+# A stream consumer's runs on PostgreSQL and S3: its batches and ring statements in the bucket.
+streams = ["dep:permguard-host", "dep:permguard-postgres", "dep:permguard-stream"]
 # The Control Plane's stores whose objects this bucket keeps: a ledger's, and the archives. They
 # live here and not in the Control Plane's own package, whose domain links no network client.
 control-plane = [
@@ -40,6 +42,7 @@ permguard-host = { workspace = true, optional = true }
 permguard-notp = { workspace = true, optional = true }
 permguard-objects = { workspace = true, optional = true }
 permguard-postgres = { workspace = true, optional = true }
+permguard-stream = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 bytes.workspace = true
@@ -57,6 +60,7 @@ zeroize.workspace = true
 [dev-dependencies]
 permguard-s3 = { path = ".", features = ["test-support"] }
 permguard-control-plane = { workspace = true, features = ["test-support"] }
+permguard-stream = { workspace = true, features = ["test-support"] }
 permguard-postgres = { workspace = true, features = ["test-support"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 permguard-objects.workspace = true
@@ -71,3 +75,7 @@ required-features = ["control-plane"]
 [[test]]
 name = "audit"
 required-features = ["audit"]
+
+[[test]]
+name = "streams"
+required-features = ["streams"]

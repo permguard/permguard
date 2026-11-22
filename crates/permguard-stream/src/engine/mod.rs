@@ -39,7 +39,7 @@
 pub mod anchor;
 pub mod batch;
 pub(crate) mod codec;
-mod consumer;
+pub mod consumer;
 pub mod ingest;
 mod producer;
 pub mod reads;

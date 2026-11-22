@@ -422,3 +422,35 @@ impl RunStore for FileRun {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// The file backend passes the contract's suite, each case below a directory of its own.
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-stream-runs-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let made = AtomicUsize::new(0);
+        super::super::suite::run(&|| {
+            let case = root.join(format!("case-{}", made.fetch_add(1, Ordering::Relaxed)));
+            std::fs::create_dir_all(&case).expect("a directory");
+            Arc::new(FileRuns::new(
+                Dir::open(&case).expect("opened"),
+                0,
+                permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
+            ))
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
