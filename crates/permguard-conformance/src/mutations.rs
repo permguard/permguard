@@ -63,6 +63,10 @@ pub struct Rules {
     pub engine: String,
     /// The token's type name.
     pub token: String,
+    /// The engines of the other backends: the files that may ask the engine's file for a token,
+    /// through its `within`, to apply an operation in a unit of work of their own.
+    #[serde(default)]
+    pub engines: Vec<String>,
     pub guarded: Vec<Guarded>,
 }
 
@@ -97,6 +101,7 @@ pub fn check(root: &Path, rules: &Rules) -> Vec<Violation> {
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
+        found.extend(minted(&relative, &text, rules));
         let scanned = scan(&relative, &text, rules);
         if scanned.writes > 0 {
             writes.insert(relative.clone());
@@ -119,6 +124,30 @@ pub fn check(root: &Path, rules: &Rules) -> Vec<Violation> {
     }
     found.sort();
     found
+}
+
+/// The token asked of the engine through its `within` by a file that is no engine: `within`
+/// builds the token for an engine of another backend, and for nothing else.
+pub fn minted(source: &str, text: &str, rules: &Rules) -> Vec<Violation> {
+    if source == rules.engine || rules.engines.iter().any(|engine| engine == source) {
+        return Vec::new();
+    }
+    let call = format!("{}::within", rules.token);
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim_start().starts_with("//"))
+        .filter(|(_, line)| line.split_whitespace().collect::<String>().contains(&call))
+        .map(|(index, _)| Violation {
+            source: source.to_owned(),
+            line: index + 1,
+            item: "<file>".to_owned(),
+            primitive: "token minted".to_owned(),
+            detail: format!(
+                "`{call}` builds the engine's token, and this file is no engine: \
+                 `mutations.json` names the engines"
+            ),
+        })
+        .collect()
 }
 
 /// What one file holds.

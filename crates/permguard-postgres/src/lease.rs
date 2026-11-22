@@ -12,9 +12,7 @@
 
 use std::time::Duration;
 
-use postgres::Transaction;
-
-use crate::database::{Database, DbError, Failure};
+use crate::database::{Database, DbError, Failure, Unit};
 
 /// A lease as its holder was given it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,12 +96,8 @@ pub fn release(database: &Database, lease: &Lease) -> Result<(), DbError> {
 
 /// Checks, inside the transaction that writes under `lease`, that the lease is still this
 /// holding, and keeps it so until the transaction ends: the write commits only if it was.
-pub fn held<E>(
-    transaction: &mut Transaction<'_>,
-    lease: &Lease,
-    lost: E,
-) -> Result<(), Failure<E>> {
-    let row = transaction.query_opt(
+pub fn held<E>(unit: &Unit, lease: &Lease, lost: E) -> Result<(), Failure<E>> {
+    let row = unit.query_opt(
         "SELECT 1 FROM permguard_leases
          WHERE name = $1 AND holder = $2 AND generation = $3 AND expires_at > now()
          FOR SHARE",

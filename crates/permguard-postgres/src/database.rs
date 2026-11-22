@@ -17,13 +17,14 @@
 //! A database that does not answer is [`DbError::Unavailable`], and nothing is answered from a
 //! copy in memory, because there is none (decision E28).
 
-use std::sync::{Condvar, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use permguard_core::Metrics;
 use permguard_core::metrics::{Metric, labels};
 use postgres::error::SqlState;
-use postgres::{Client, IsolationLevel, Transaction};
+use postgres::types::ToSql;
+use postgres::{Client, Row};
 
 /// The units of work this process ended, by how: `committed`, `refused` by their own rule, or
 /// `failed` when the database did.
@@ -144,15 +145,58 @@ impl std::fmt::Display for DbError {
 
 impl std::error::Error for DbError {}
 
+/// Why a statement of a unit of work failed.
+#[derive(Debug)]
+pub enum SqlError {
+    /// The database refused it or could not be reached.
+    Db(postgres::Error),
+    /// The unit's connection was given up: the unit was abandoned.
+    Closed,
+}
+
+impl std::fmt::Display for SqlError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // The server's message, never the statement's parameters: a parameter may be a
+            // secret.
+            Self::Db(error) => match error.as_db_error() {
+                Some(server) => {
+                    write!(formatter, "{} ({})", server.message(), server.code().code())
+                }
+                None => write!(formatter, "{error}"),
+            },
+            Self::Closed => formatter.write_str("the unit of work was abandoned"),
+        }
+    }
+}
+
+impl std::error::Error for SqlError {}
+
+impl From<postgres::Error> for SqlError {
+    fn from(error: postgres::Error) -> Self {
+        Self::Db(error)
+    }
+}
+
+impl SqlError {
+    /// The SQLSTATE the database answered, when it answered one.
+    pub fn code(&self) -> Option<&SqlState> {
+        match self {
+            Self::Db(error) => error.code(),
+            Self::Closed => None,
+        }
+    }
+}
+
+impl From<SqlError> for DbError {
+    fn from(error: SqlError) -> Self {
+        Self::Unavailable(error.to_string())
+    }
+}
+
 impl From<postgres::Error> for DbError {
     fn from(error: postgres::Error) -> Self {
-        // The server's message, never the statement's parameters: a parameter may be a secret.
-        match error.as_db_error() {
-            Some(server) => {
-                Self::Unavailable(format!("{} ({})", server.message(), server.code().code()))
-            }
-            None => Self::Unavailable(error.to_string()),
-        }
+        SqlError::Db(error).into()
     }
 }
 
@@ -160,20 +204,26 @@ impl From<postgres::Error> for DbError {
 #[derive(Debug)]
 pub enum Failure<E> {
     /// The database failed. One it could not serialize is run again, not answered.
-    Db(postgres::Error),
+    Db(SqlError),
     /// The work refused, with its own reason: nothing it did is kept.
     Refused(E),
 }
 
+impl<E> From<SqlError> for Failure<E> {
+    fn from(error: SqlError) -> Self {
+        Self::Db(error)
+    }
+}
+
 impl<E> From<postgres::Error> for Failure<E> {
     fn from(error: postgres::Error) -> Self {
-        Self::Db(error)
+        Self::Db(error.into())
     }
 }
 
 /// Whether the database rolled the transaction back for a reason that running it again cures:
 /// it could not be serialized with another, or was the victim of a deadlock.
-fn again(error: &postgres::Error) -> bool {
+pub fn again(error: &SqlError) -> bool {
     matches!(
         error.code(),
         Some(code) if *code == SqlState::T_R_SERIALIZATION_FAILURE
@@ -181,8 +231,37 @@ fn again(error: &postgres::Error) -> bool {
     )
 }
 
+/// Runs `work`, which calls the synchronous client, where the client may block: on this thread
+/// when it drives no asynchronous task, and on a thread of its own otherwise. The client blocks
+/// on a runtime it owns, which a thread already inside a runtime may not do; the caller's thread
+/// waits either way, as it waits on a file. `None` when no thread could be had for it, or the
+/// work panicked.
+fn apart<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return Some(work());
+    }
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("permguard-postgres".to_owned())
+            .spawn_scoped(scope, work)
+            .ok()?
+            .join()
+            .ok()
+    })
+}
+
+/// What [`apart`] answers when the work was not run to its end.
+fn no_thread() -> DbError {
+    DbError::Unavailable("no thread could run the work on the database".to_owned())
+}
+
 /// The connections of one process to one database.
+#[derive(Clone)]
 pub struct Database {
+    pool: Arc<Pool>,
+}
+
+struct Pool {
     config: Config,
     /// The connections that are open and free.
     free: Mutex<Vec<Client>>,
@@ -191,41 +270,192 @@ pub struct Database {
     /// Told when a connection comes back or is closed.
     returned: Condvar,
     /// Where the numbers go; a handle that may hold nothing.
-    metrics: Metrics,
+    metrics: Mutex<Metrics>,
 }
 
 impl std::fmt::Debug for Database {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Database")
-            .field("config", &self.config)
+            .field("config", &self.pool.config)
             .finish_non_exhaustive()
     }
 }
 
-/// A connection taken from the pool, given back when dropped unless it was found broken.
-struct Held<'a> {
-    database: &'a Database,
+/// A connection taken from the pool, given back when dropped unless it was found broken or was
+/// left inside a transaction.
+struct Held {
+    pool: Arc<Pool>,
     client: Option<Client>,
 }
 
-impl Drop for Held<'_> {
+impl Drop for Held {
     fn drop(&mut self) {
-        let kept = self.client.take().filter(|client| !client.is_closed());
-        if let Some(client) = kept {
-            self.database
+        let Some(client) = self.client.take() else {
+            return;
+        };
+        if client.is_closed() {
+            // Closing a connection is the client's work too.
+            let _ = apart(move || drop(client));
+            *self
+                .pool
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) -= 1;
+        } else {
+            self.pool
                 .free
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .push(client);
-        } else {
-            *self
-                .database
+        }
+        self.pool.returned.notify_one();
+    }
+}
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        let free = std::mem::take(self.free.get_mut().unwrap_or_else(PoisonError::into_inner));
+        let _ = apart(move || drop(free));
+    }
+}
+
+/// How a transaction reads what others commit while it runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Isolation {
+    Serializable,
+    ReadCommitted,
+}
+
+/// One unit of work: a transaction that is open on a connection of its own, until it is
+/// committed or dropped. Everything a store does of one operation it does through the unit it
+/// is given; a unit dropped without a commit keeps nothing.
+///
+/// It is a value with no borrow in it, so the mutation engine can hand it to a domain write
+/// inside the token the write takes (`Applying::unit`, iteration 03 decision E23).
+pub struct Unit {
+    held: Mutex<Held>,
+    /// Whether the transaction was ended, by a commit or a rollback.
+    ended: std::sync::atomic::AtomicBool,
+}
+
+impl std::fmt::Debug for Unit {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Unit")
+    }
+}
+
+impl Unit {
+    fn begin(mut held: Held, isolation: Isolation) -> Result<Self, SqlError> {
+        let statement = match isolation {
+            Isolation::Serializable => "BEGIN ISOLATION LEVEL SERIALIZABLE",
+            Isolation::ReadCommitted => "BEGIN ISOLATION LEVEL READ COMMITTED",
+        };
+        match held.client.as_mut() {
+            Some(client) => apart(|| client.batch_execute(statement)).ok_or(SqlError::Closed)??,
+            None => return Err(SqlError::Closed),
+        }
+        Ok(Self {
+            held: Mutex::new(held),
+            ended: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    /// Runs `ask` on the unit's connection.
+    fn with<T>(
+        &self,
+        ask: impl FnOnce(&mut Client) -> Result<T, postgres::Error> + Send,
+    ) -> Result<T, SqlError>
+    where
+        T: Send,
+    {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        match held.client.as_mut() {
+            Some(client) => Ok(apart(|| ask(client)).ok_or(SqlError::Closed)??),
+            None => Err(SqlError::Closed),
+        }
+    }
+
+    /// Runs a statement and answers how many rows it changed.
+    pub fn execute(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<u64, SqlError> {
+        self.with(|client| client.execute(statement, parameters))
+    }
+
+    /// Runs a query and answers its rows.
+    pub fn query(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<Vec<Row>, SqlError> {
+        self.with(|client| client.query(statement, parameters))
+    }
+
+    /// Runs a query that answers one row or none.
+    pub fn query_opt(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<Option<Row>, SqlError> {
+        self.with(|client| client.query_opt(statement, parameters))
+    }
+
+    /// Runs a query that answers exactly one row.
+    pub fn query_one(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<Row, SqlError> {
+        self.with(|client| client.query_one(statement, parameters))
+    }
+
+    /// Runs statements that take no parameter, one after another.
+    pub fn batch_execute(&self, statements: &str) -> Result<(), SqlError> {
+        self.with(|client| client.batch_execute(statements))
+    }
+
+    /// Marks a point the unit can go back to with [`Unit::back_to`], keeping what came before.
+    pub fn mark(&self, name: &str) -> Result<(), SqlError> {
+        self.batch_execute(&format!("SAVEPOINT {name}"))
+    }
+
+    /// Undoes everything since [`Unit::mark`] of `name`; the unit goes on.
+    pub fn back_to(&self, name: &str) -> Result<(), SqlError> {
+        self.batch_execute(&format!("ROLLBACK TO SAVEPOINT {name}"))
+    }
+
+    /// Commits the unit: what it did is kept, all of it.
+    pub fn commit(self) -> Result<(), SqlError> {
+        self.batch_execute("COMMIT")?;
+        self.ended.store(true, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+}
+
+impl Drop for Unit {
+    fn drop(&mut self) {
+        if self.ended.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        // Not committed: nothing is kept. A connection that cannot be rolled back is closed,
+        // never given back inside a transaction.
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let rolled = held.client.as_mut().is_some_and(|client| {
+            apart(|| client.batch_execute("ROLLBACK").is_ok()).unwrap_or(false)
+        });
+        if !rolled && let Some(client) = held.client.take() {
+            // Closed apart, and its place in the pool given back.
+            let _ = apart(move || drop(client));
+            *held
+                .pool
                 .open
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner) -= 1;
+            held.pool.returned.notify_one();
         }
-        self.database.returned.notify_one();
     }
 }
 
@@ -249,11 +479,13 @@ impl Database {
             )));
         }
         let database = Self {
-            config,
-            free: Mutex::new(Vec::new()),
-            open: Mutex::new(0),
-            returned: Condvar::new(),
-            metrics: Metrics::none(),
+            pool: Arc::new(Pool {
+                config,
+                free: Mutex::new(Vec::new()),
+                open: Mutex::new(0),
+                returned: Condvar::new(),
+                metrics: Mutex::new(Metrics::none()),
+            }),
         };
         database.ready()?;
         Ok(database)
@@ -261,89 +493,95 @@ impl Database {
 
     /// This database, counting its units of work in `metrics`.
     #[must_use]
-    pub fn with_metrics(mut self, metrics: Metrics) -> Self {
-        self.metrics = metrics;
+    pub fn with_metrics(self, metrics: Metrics) -> Self {
+        *self
+            .pool
+            .metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = metrics;
         self
     }
 
-    fn ended(&self, outcome: &str) {
-        self.metrics
+    fn metrics(&self) -> Metrics {
+        self.pool
+            .metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Counts a unit of work that ended `outcome`: `committed`, `refused` or `failed`.
+    pub fn ended(&self, outcome: &str) {
+        self.metrics()
             .count(&TRANSACTIONS, &[(labels::OUTCOME, outcome)]);
     }
 
-    /// Runs `work` on a thread that drives no asynchronous task, and answers what it answered.
-    /// The synchronous client blocks on a runtime of its own, which a thread already inside a
-    /// runtime may not do; the caller's thread waits, as it does on a file.
-    fn apart<T: Send>(work: impl FnOnce() -> T + Send) -> Result<T, DbError> {
-        std::thread::scope(|scope| {
-            std::thread::Builder::new()
-                .name("permguard-postgres".to_owned())
-                .spawn_scoped(scope, work)
-                .map_err(|error| DbError::Unavailable(format!("no thread for the work: {error}")))?
-                .join()
-                .map_err(|_| DbError::Unavailable("the work on the database panicked".to_owned()))
-        })
+    /// Counts a unit of work run again.
+    pub fn retried(&self) {
+        self.metrics().count(&RETRIES, &[]);
     }
 
     /// Opens one connection.
     fn open(&self) -> Result<Client, DbError> {
+        let config = &self.pool.config;
         let mut settings = postgres::Config::new();
         settings
-            .host(&self.config.host)
-            .port(self.config.port)
-            .dbname(&self.config.database)
-            .user(&self.config.user)
+            .host(&config.host)
+            .port(config.port)
+            .dbname(&config.database)
+            .user(&config.user)
             .application_name("permguard")
-            .connect_timeout(self.config.wait);
-        if let Some(password) = &self.config.password {
+            .connect_timeout(config.wait);
+        if let Some(password) = &config.password {
             settings.password(password);
         }
-        if let Some(schema) = &self.config.schema {
+        if let Some(schema) = &config.schema {
             settings.options(&format!("-c search_path={schema}"));
         }
-        let client = match &self.config.tls {
+        let client = apart(|| match &config.tls {
             Tls::Disabled => settings.connect(postgres::NoTls),
             Tls::Verified(roots) => {
                 let tls = rustls::ClientConfig::builder()
-                    .with_root_certificates(std::sync::Arc::clone(roots))
+                    .with_root_certificates(Arc::clone(roots))
                     .with_no_client_auth();
                 settings.connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls))
             }
-        };
+        })
+        .ok_or_else(no_thread)?;
         client.map_err(|error| DbError::Unavailable(format!("connecting: {error}")))
     }
 
     /// A connection: a free one, a new one while the pool has room, or the next given back.
-    fn take(&self) -> Result<Held<'_>, DbError> {
-        let deadline = Instant::now() + self.config.wait;
+    fn take(&self) -> Result<Held, DbError> {
+        let pool = &self.pool;
+        let deadline = Instant::now() + pool.config.wait;
+        let held = |client| Held {
+            pool: Arc::clone(pool),
+            client: Some(client),
+        };
         loop {
-            if let Some(client) = self
+            if let Some(client) = pool
                 .free
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .pop()
             {
                 if client.is_closed() {
-                    *self.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
+                    let _ = apart(move || drop(client));
+                    *pool.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
                     continue;
                 }
-                return Ok(Held {
-                    database: self,
-                    client: Some(client),
-                });
+                return Ok(held(client));
             }
-            let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-            if *open < self.config.pool {
+            let mut open = pool.open.lock().unwrap_or_else(PoisonError::into_inner);
+            if *open < pool.config.pool {
                 *open += 1;
                 drop(open);
                 return match self.open() {
-                    Ok(client) => Ok(Held {
-                        database: self,
-                        client: Some(client),
-                    }),
+                    Ok(client) => Ok(held(client)),
                     Err(error) => {
-                        *self.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
-                        self.returned.notify_one();
+                        *pool.open.lock().unwrap_or_else(PoisonError::into_inner) -= 1;
+                        pool.returned.notify_one();
                         Err(error)
                     }
                 };
@@ -352,10 +590,10 @@ impl Database {
             if left.is_zero() {
                 return Err(DbError::Unavailable(format!(
                     "every one of the {} connections stayed in use for {:?}",
-                    self.config.pool, self.config.wait
+                    pool.config.pool, pool.config.wait
                 )));
             }
-            let _ = self
+            let _ = pool
                 .returned
                 .wait_timeout(open, left)
                 .unwrap_or_else(PoisonError::into_inner);
@@ -364,99 +602,92 @@ impl Database {
 
     /// Whether the database answers now: what readiness asks.
     pub fn ready(&self) -> Result<(), DbError> {
-        Self::apart(|| {
-            let mut held = self.take()?;
-            let client = held
-                .client
-                .as_mut()
-                .ok_or_else(|| DbError::Unavailable("no connection".to_owned()))?;
-            client.simple_query("SELECT 1")?;
-            Ok(())
-        })?
+        let mut held = self.take()?;
+        match held.client.as_mut() {
+            Some(client) => {
+                apart(|| client.simple_query("SELECT 1")).ok_or_else(no_thread)??;
+                Ok(())
+            }
+            None => Err(DbError::Unavailable("no connection".to_owned())),
+        }
     }
 
-    /// Runs `work` in one `SERIALIZABLE` transaction and commits it. A transaction the database
-    /// could not serialize changed nothing and is run again; `work` may therefore run more than
-    /// once and does everything inside the transaction it is given. A refusal of `work` rolls
-    /// the transaction back and is answered as it is.
+    /// Opens one `SERIALIZABLE` unit of work for a caller that ends it itself: the mutation
+    /// engine, which commits the unit a domain wrote in.
+    pub fn begin(&self) -> Result<Unit, DbError> {
+        Ok(Unit::begin(self.take()?, Isolation::Serializable)?)
+    }
+
+    /// Runs `work` in one `SERIALIZABLE` unit of work and commits it. A unit the database could
+    /// not serialize changed nothing and is run again; `work` may therefore run more than once
+    /// and does everything inside the unit it is given. A refusal of `work` keeps nothing and
+    /// is answered as it is.
     pub fn transaction<T, E>(
         &self,
-        work: impl Fn(&mut Transaction<'_>) -> Result<T, Failure<E>> + Send + Sync,
-    ) -> Result<Result<T, E>, DbError>
-    where
-        T: Send,
-        E: Send,
-    {
-        self.run(IsolationLevel::Serializable, None, &work)
+        work: impl Fn(&Unit) -> Result<T, Failure<E>>,
+    ) -> Result<Result<T, E>, DbError> {
+        self.run(Isolation::Serializable, None, &work)
     }
 
-    /// Runs `work` in one transaction that holds `scope` from its first statement to its end:
-    /// of the transactions that take one scope, one runs at a time, and each sees what the ones
-    /// before it committed. For a rule the rows do not state, and for work that many do at once
-    /// on one row, where running it again and again would cost more than waiting in turn.
+    /// Runs `work` in one unit of work that holds `scope` from its first statement to its end:
+    /// of the units that take one scope, one runs at a time, and each sees what the ones before
+    /// it committed. For a rule the rows do not state, and for work that many do at once on one
+    /// row, where running it again and again would cost more than waiting in turn.
     ///
-    /// The transaction is at `READ COMMITTED`, not `SERIALIZABLE`: a serializable transaction
-    /// reads from the moment of its first statement, which is the statement that waits for the
-    /// scope, so it would decide on what was there before the holder it waited for committed.
+    /// The unit is at `READ COMMITTED`, not `SERIALIZABLE`: a serializable transaction reads
+    /// from the moment of its first statement, which is the statement that waits for the scope,
+    /// so it would decide on what was there before the holder it waited for committed.
     pub fn under_scope<T, E>(
         &self,
         scope: &str,
-        work: impl Fn(&mut Transaction<'_>) -> Result<T, Failure<E>> + Send + Sync,
-    ) -> Result<Result<T, E>, DbError>
-    where
-        T: Send,
-        E: Send,
-    {
-        self.run(IsolationLevel::ReadCommitted, Some(scope), &work)
+        work: impl Fn(&Unit) -> Result<T, Failure<E>>,
+    ) -> Result<Result<T, E>, DbError> {
+        self.run(Isolation::ReadCommitted, Some(scope), &work)
     }
 
     fn run<T, E>(
         &self,
-        isolation: IsolationLevel,
+        isolation: Isolation,
         scope: Option<&str>,
-        work: &(dyn Fn(&mut Transaction<'_>) -> Result<T, Failure<E>> + Send + Sync),
-    ) -> Result<Result<T, E>, DbError>
-    where
-        T: Send,
-        E: Send,
-    {
-        Self::apart(|| {
+        work: &dyn Fn(&Unit) -> Result<T, Failure<E>>,
+    ) -> Result<Result<T, E>, DbError> {
+        {
             let mut last = None;
             for attempt in 1..=ATTEMPTS {
-                let mut held = self.take()?;
-                let client = held
-                    .client
-                    .as_mut()
-                    .ok_or_else(|| DbError::Unavailable("no connection".to_owned()))?;
                 let attempted = (|| {
-                    let mut transaction = client
-                        .build_transaction()
-                        .isolation_level(isolation)
-                        .start()?;
+                    let unit = Unit::begin(
+                        self.take().map_err(|error| Failure::Refused(Err(error)))?,
+                        isolation,
+                    )?;
                     if let Some(scope) = scope {
-                        transaction.execute(
+                        unit.execute(
                             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                             &[&scope],
                         )?;
                     }
-                    let value = work(&mut transaction)?;
-                    transaction.commit()?;
-                    Ok::<T, Failure<E>>(value)
+                    let value = work(&unit).map_err(|failure| match failure {
+                        Failure::Db(error) => Failure::Db(error),
+                        Failure::Refused(refusal) => Failure::Refused(Ok(refusal)),
+                    })?;
+                    unit.commit()?;
+                    Ok::<T, Failure<Result<E, DbError>>>(value)
                 })();
                 match attempted {
                     Ok(value) => {
                         self.ended("committed");
                         return Ok(Ok(value));
                     }
-                    Err(Failure::Refused(refusal)) => {
+                    Err(Failure::Refused(Ok(refusal))) => {
                         self.ended("refused");
                         return Ok(Err(refusal));
                     }
+                    Err(Failure::Refused(Err(unavailable))) => {
+                        self.ended("failed");
+                        return Err(unavailable);
+                    }
                     Err(Failure::Db(error)) if again(&error) => {
-                        self.metrics.count(&RETRIES, &[]);
+                        self.retried();
                         last = Some(error);
-                        // The connection goes back before the wait: another may use it.
-                        drop(held);
                         std::thread::sleep(pause(attempt));
                     }
                     Err(Failure::Db(error)) => {
@@ -467,20 +698,17 @@ impl Database {
             }
             self.ended("failed");
             Err(DbError::Unavailable(format!(
-                "a transaction could not be serialized in {ATTEMPTS} attempts: {}",
-                last.map_or_else(String::new, |error| DbError::from(error).to_string())
+                "a unit of work could not be serialized in {ATTEMPTS} attempts: {}",
+                last.map_or_else(String::new, |error| error.to_string())
             )))
-        })?
+        }
     }
 
     /// Runs `work` as [`Self::transaction`] does, for work that has no refusal of its own.
-    pub fn write<T: Send>(
-        &self,
-        work: impl Fn(&mut Transaction<'_>) -> Result<T, postgres::Error> + Send + Sync,
-    ) -> Result<T, DbError> {
-        match self.transaction::<T, std::convert::Infallible>(|transaction| {
-            work(transaction).map_err(Failure::Db)
-        })? {
+    pub fn write<T>(&self, work: impl Fn(&Unit) -> Result<T, SqlError>) -> Result<T, DbError> {
+        match self
+            .transaction::<T, std::convert::Infallible>(|unit| work(unit).map_err(Failure::Db))?
+        {
             Ok(value) => Ok(value),
             Err(never) => match never {},
         }

@@ -1308,6 +1308,7 @@ sections:
       - crates/permguard-postgres/src/schema.rs
       - crates/permguard-postgres/src/lease.rs
       - crates/permguard-postgres/src/time.rs
+      - crates/permguard-postgres/src/mutations.rs
       - scripts/test-postgres.sh
       - .github/workflows/ci.yml
     tests:
@@ -1321,6 +1322,13 @@ sections:
       - crates/permguard-postgres/tests/foundations.rs::a_process_killed_inside_a_unit_of_work_leaves_nothing
       - crates/permguard-postgres/tests/foundations.rs::a_verified_connection_is_encrypted_and_an_unknown_authority_is_refused
       - crates/permguard-postgres/tests/foundations.rs::a_database_that_does_not_answer_is_unavailable
+      - crates/permguard-postgres/tests/mutations.rs::an_operation_is_kept_whole_and_a_retry_learns_its_answer
+      - crates/permguard-postgres/tests/mutations.rs::a_refused_write_is_undone_and_recorded_failed
+      - crates/permguard-postgres/tests/mutations.rs::instances_that_apply_one_request_together_keep_one_write
+      - crates/permguard-postgres/tests/mutations.rs::a_mutation_runs_from_inside_a_runtime_on_the_callers_thread
+      - crates/permguard-postgres/tests/mutations.rs::a_process_killed_inside_a_mutation_leaves_nothing
+      - crates/permguard-host/src/operations/mutation/tests.rs::any_engine_hands_its_unit_of_work_to_the_domain
+      - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
   "1-architecture/8-architecture-storage-operations.md#store-contracts":

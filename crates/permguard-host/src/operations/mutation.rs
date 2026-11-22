@@ -244,14 +244,10 @@ impl<'a> Applying<'a> {
     }
 
     /// The token of `operation_id` applied inside `unit`. An engine's alone: it is the proof a
-    /// domain mutator takes that an engine is applying the operation. Compiled for this
-    /// crate's tests until the engine of the second backend is written, with the check that
-    /// names who may call it.
-    #[cfg(test)]
-    pub(crate) fn within(
-        operation_id: OperationId,
-        unit: &'a (dyn std::any::Any + Send + Sync),
-    ) -> Self {
+    /// domain mutator takes that an engine is applying the operation, and
+    /// `task check:mutations` finds any file that asks for one and is not an engine
+    /// `mutations.json` names.
+    pub fn within(operation_id: OperationId, unit: &'a (dyn std::any::Any + Send + Sync)) -> Self {
         Self {
             operation_id,
             unit: Some(unit),

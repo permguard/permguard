@@ -1,6 +1,9 @@
 {
   "engine": "crates/permguard-host/src/operations/mutation.rs",
   "token": "Applying",
+  "engines": [
+    "crates/permguard-postgres/src/mutations.rs"
+  ],
   "guarded": [
     {
       "source": "crates/permguard-host/src/authz/store/files.rs",

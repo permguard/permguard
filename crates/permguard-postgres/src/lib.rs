@@ -12,15 +12,16 @@
 //! | [`time`]     | the clock's high-water mark, the first store contract kept here                 |
 //!
 //! The store contracts are synchronous, as the file backend's calls are, and are called from
-//! threads that drive asynchronous tasks. So this crate uses the synchronous client, and runs
-//! every unit of work on a thread of its own: the client blocks on a runtime it owns, which a
-//! thread already inside a runtime may not do.
+//! threads that drive asynchronous tasks. So this crate uses the synchronous client, and a call
+//! to it made from such a thread is run on a thread of its own: the client blocks on a runtime
+//! it owns, which a thread already inside a runtime may not do.
 //!
 //! No state is kept in memory: every decision reads inside its transaction.
 
 pub mod database;
 pub mod lease;
+pub mod mutations;
 pub mod schema;
 pub mod time;
 
-pub use database::{Config, Database, DbError, Failure, Tls};
+pub use database::{Config, Database, DbError, Failure, SqlError, Tls, Unit};

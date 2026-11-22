@@ -9,9 +9,7 @@
 //! find nothing left to apply. A migration is never edited once released and none goes back.
 //! A database whose schema is newer than this build knows is not served by it.
 
-use postgres::Transaction;
-
-use crate::database::{Database, DbError, Failure};
+use crate::database::{Database, DbError, Failure, Unit};
 
 /// One step of the schema.
 pub struct Migration {
@@ -21,10 +19,11 @@ pub struct Migration {
 }
 
 /// Every migration, oldest first, their versions counting from 1 with no gap.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "foundations",
-    statements: "
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "foundations",
+        statements: "
         CREATE TABLE permguard_leases (
             name text PRIMARY KEY,
             holder text NOT NULL,
@@ -36,7 +35,44 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
             mark bigint NOT NULL
         );
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        name: "mutations",
+        statements: "
+        CREATE TABLE permguard_mutations (
+            operation_id bytea PRIMARY KEY CHECK (octet_length(operation_id) = 16),
+            domain text NOT NULL,
+            operation text NOT NULL,
+            action text NOT NULL,
+            initiator_kind text NOT NULL CHECK (initiator_kind IN ('principal', 'system')),
+            initiator text NOT NULL,
+            request_id text,
+            request_digest text,
+            target text,
+            state text NOT NULL CHECK (state IN ('applied', 'failed')),
+            revision bigint CHECK (revision >= 0),
+            result bytea,
+            at timestamptz NOT NULL DEFAULT now(),
+            CHECK ((request_id IS NULL) = (request_digest IS NULL))
+        );
+        CREATE UNIQUE INDEX permguard_mutations_request
+            ON permguard_mutations (initiator, request_id)
+            WHERE request_id IS NOT NULL AND initiator_kind = 'principal' AND state = 'applied';
+        CREATE TABLE permguard_mutation_audit (
+            sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            operation_id bytea NOT NULL REFERENCES permguard_mutations (operation_id),
+            phase text NOT NULL CHECK (phase IN ('intent', 'applied', 'failed')),
+            action text NOT NULL,
+            subject_kind text NOT NULL CHECK (subject_kind IN ('principal', 'system')),
+            subject text NOT NULL,
+            target text,
+            at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (operation_id, phase)
+        );
+    ",
+    },
+];
 
 /// The version this build's schema is at.
 pub fn known() -> i32 {
@@ -44,15 +80,15 @@ pub fn known() -> i32 {
 }
 
 /// The version the database's schema is at; 0 for a database that holds none yet.
-fn version(transaction: &mut Transaction<'_>) -> Result<i32, postgres::Error> {
-    transaction.batch_execute(
+fn version(unit: &Unit) -> Result<i32, crate::database::SqlError> {
+    unit.batch_execute(
         "CREATE TABLE IF NOT EXISTS permguard_schema (
             version integer PRIMARY KEY CHECK (version > 0),
             name text NOT NULL,
             applied_at timestamptz NOT NULL DEFAULT now()
         )",
     )?;
-    Ok(transaction
+    Ok(unit
         .query_one(
             "SELECT COALESCE(MAX(version), 0) FROM permguard_schema",
             &[],
