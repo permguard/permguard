@@ -162,6 +162,40 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 5,
+        name: "holds",
+        statements: "
+        CREATE TABLE permguard_holds (
+            id text PRIMARY KEY,
+            resource text NOT NULL,
+            owner text NOT NULL,
+            reason text NOT NULL,
+            created_at bigint NOT NULL,
+            expires_at bigint,
+            review_at bigint,
+            operation text
+        );
+    ",
+    },
+    Migration {
+        version: 6,
+        name: "seen peers and the bootstrap commitment",
+        statements: "
+        CREATE TABLE permguard_seen_peers (
+            host_id bytea PRIMARY KEY CHECK (octet_length(host_id) = 16),
+            epoch bigint NOT NULL CHECK (epoch > 0),
+            fingerprint text NOT NULL,
+            at bigint NOT NULL
+        );
+        CREATE TABLE permguard_bootstrap (
+            only_one boolean PRIMARY KEY DEFAULT true CHECK (only_one),
+            principal text NOT NULL,
+            fingerprint text NOT NULL,
+            created_at bigint NOT NULL
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

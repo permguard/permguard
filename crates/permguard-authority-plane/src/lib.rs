@@ -24,8 +24,6 @@ pub mod cbor;
 pub mod completion;
 mod handles;
 pub mod marks;
-#[cfg(test)]
-mod on_postgres;
 pub mod plane;
 pub mod tokens;
 

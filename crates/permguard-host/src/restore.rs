@@ -215,7 +215,7 @@ pub fn record(
                 mark(volume, marker).map_err(Failure::Indeterminate)?;
                 Ok(Applied {
                     revision: marker.generation,
-                    target,
+                    target: target.clone(),
                     value: (),
                 })
             },

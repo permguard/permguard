@@ -60,13 +60,17 @@ fn hold(n: usize, applying: &Applying<'_>) -> Hold {
 
 /// Adds the hold `n` in an operation of its own and answers what was added.
 fn added<S: HoldStore + ?Sized>(store: &S, operate: Operate<'_>, n: usize) -> Hold {
+    // An engine may run the operation again when its unit of work kept nothing of a first run:
+    // what counts is the hold of the last run and what the store said of it.
     let mut made = None;
     operate(&mut |applying| {
         let hold = hold(n, applying);
-        store.add(applying, &hold).expect("added");
-        made = Some(hold);
+        let said = store.add(applying, &hold);
+        made = Some((hold, said));
     });
-    made.expect("the operation ran")
+    let (hold, said) = made.expect("the operation ran");
+    said.expect("added");
+    hold
 }
 
 /// Releases `id` in an operation of its own and answers what the store said.

@@ -501,7 +501,7 @@ fn plan(
                 .map_err(|refusal| Refused::Refused(refusal_text(&refusal)))?;
             Ok(Applied {
                 revision: held.generation(),
-                target,
+                target: target.clone(),
                 value: (),
             })
         },

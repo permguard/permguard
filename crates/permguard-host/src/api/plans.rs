@@ -433,7 +433,7 @@ pub fn consume_plan(
                 })?;
             Ok(Applied {
                 revision: plan.revision,
-                target,
+                target: target.clone(),
                 value: (),
             })
         },

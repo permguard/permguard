@@ -253,7 +253,7 @@ impl HostApi {
                         expires: rfc3339(issued.expires),
                         receipt: issued.receipt,
                         approvals_required: issued.approvals_required,
-                        report,
+                        report: report.clone(),
                     },
                 })
             },

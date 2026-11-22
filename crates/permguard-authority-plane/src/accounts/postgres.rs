@@ -430,10 +430,9 @@ mod tests {
 
     use std::sync::Arc;
 
-    use permguard_postgres::testing::server;
+    use permguard_postgres::testing::{Cases, server};
 
     use super::*;
-    use crate::on_postgres::Cases;
 
     /// The PostgreSQL backend passes the contract's suite, the one the file backend passes: each
     /// case on a schema of its own, every change of an operation inside a transaction of the

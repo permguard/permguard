@@ -42,12 +42,12 @@ pub const RETRIES: Metric = Metric::counter(
 /// How many times a unit of work is run when the database could not serialize it, and the
 /// longest it waits before running it again. The wait doubles from a millisecond and is spread
 /// at random, so the transactions that collided do not collide again in step.
-const ATTEMPTS: u32 = 16;
+pub const ATTEMPTS: u32 = 16;
 const LONGEST_WAIT: Duration = Duration::from_millis(200);
 
 /// How long the attempt `attempt`, counted from 1, waits before the next: between half of its
 /// step and the whole of it.
-fn pause(attempt: u32) -> Duration {
+pub fn pause(attempt: u32) -> Duration {
     let step = Duration::from_millis(1 << attempt.min(10)).min(LONGEST_WAIT);
     // Spread by the clock's low bits and the thread: enough to take colliding work out of step,
     // and nothing here needs a random number nobody could guess.
@@ -152,6 +152,12 @@ pub enum SqlError {
     Db(postgres::Error),
     /// The unit's connection was given up: the unit was abandoned.
     Closed,
+    /// A statement of the unit failed before, and the database keeps nothing of the unit: what
+    /// that statement was answered.
+    Failed {
+        code: Option<SqlState>,
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for SqlError {
@@ -166,6 +172,12 @@ impl std::fmt::Display for SqlError {
                 None => write!(formatter, "{error}"),
             },
             Self::Closed => formatter.write_str("the unit of work was abandoned"),
+            Self::Failed { detail, .. } => {
+                write!(
+                    formatter,
+                    "a statement of the unit of work failed: {detail}"
+                )
+            }
         }
     }
 }
@@ -184,6 +196,7 @@ impl SqlError {
         match self {
             Self::Db(error) => error.code(),
             Self::Closed => None,
+            Self::Failed { code, .. } => code.as_ref(),
         }
     }
 }
@@ -359,6 +372,10 @@ pub struct Unit {
     held: Mutex<Held>,
     /// Whether the transaction was ended, by a commit or a rollback.
     ended: std::sync::atomic::AtomicBool,
+    /// What the first statement that failed was answered. The database then keeps nothing of
+    /// the transaction, and answers a `COMMIT` of it by undoing it without a word: the unit
+    /// remembers, so that its commit says what happened.
+    failed: Mutex<Option<(Option<SqlState>, String)>>,
 }
 
 impl std::fmt::Debug for Unit {
@@ -380,6 +397,7 @@ impl Unit {
         Ok(Self {
             held: Mutex::new(held),
             ended: std::sync::atomic::AtomicBool::new(false),
+            failed: Mutex::new(None),
         })
     }
 
@@ -392,10 +410,19 @@ impl Unit {
         T: Send,
     {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        match held.client.as_mut() {
-            Some(client) => Ok(apart(|| ask(client)).ok_or(SqlError::Closed)??),
+        let answered = match held.client.as_mut() {
+            Some(client) => apart(|| ask(client))
+                .ok_or(SqlError::Closed)
+                .and_then(|answered| answered.map_err(SqlError::Db)),
             None => Err(SqlError::Closed),
+        };
+        if let Err(error) = &answered {
+            let mut failed = self.failed.lock().unwrap_or_else(PoisonError::into_inner);
+            if failed.is_none() {
+                *failed = Some((error.code().cloned(), error.to_string()));
+            }
         }
+        answered
     }
 
     /// Runs a statement and answers how many rows it changed.
@@ -444,13 +471,45 @@ impl Unit {
         self.batch_execute(&format!("SAVEPOINT {name}"))
     }
 
-    /// Undoes everything since [`Unit::mark`] of `name`; the unit goes on.
+    /// Undoes everything since [`Unit::mark`] of `name`; the unit goes on, a statement that
+    /// failed since the mark undone with the rest. A unit the database could not serialize does
+    /// not go on: nothing of it can be kept, whatever it goes back to.
     pub fn back_to(&self, name: &str) -> Result<(), SqlError> {
+        let failed = self
+            .failed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some((code, detail)) = failed {
+            let failure = SqlError::Failed { code, detail };
+            if again(&failure) {
+                if let SqlError::Failed { code, detail } = &failure {
+                    *self.failed.lock().unwrap_or_else(PoisonError::into_inner) =
+                        Some((code.clone(), detail.clone()));
+                }
+                return Err(failure);
+            }
+        }
         self.batch_execute(&format!("ROLLBACK TO SAVEPOINT {name}"))
     }
 
+    /// What the first statement that failed in the unit was answered, when one did.
+    pub fn failure(&self) -> Option<SqlError> {
+        self.failed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .map(|(code, detail)| SqlError::Failed { code, detail })
+    }
+
     /// Commits the unit: what it did is kept, all of it. Nothing is done through it afterwards.
+    ///
+    /// A unit one of whose statements failed is not committed: the database would undo it and
+    /// say nothing, so the unit answers what that statement was answered.
     pub fn commit(&self) -> Result<(), SqlError> {
+        if let Some(failure) = self.failure() {
+            return Err(failure);
+        }
         self.batch_execute("COMMIT")?;
         self.ended.store(true, std::sync::atomic::Ordering::Release);
         Ok(())

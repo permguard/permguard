@@ -19,10 +19,13 @@
 //! engine's recovery are the file engine's alone. A domain write that refuses is undone and the
 //! operation is kept as `failed`, with its audit row, as the file engine keeps it.
 //!
-//! A transaction the database could not serialize kept nothing and is answered unavailable:
-//! the domain write is run once, so the caller's retry, with the same request id, runs it again.
-//! Two instances that apply one request id at the same moment cannot both commit: the second
-//! finds the first's row, and is answered what the first was.
+//! A transaction the database could not serialize with another kept nothing, and the operation
+//! is run again, validation and domain write, a bounded number of times after a wait spread at
+//! random (decision E25). A domain write is therefore a function that may run more than once:
+//! everything it does through the stores of this backend is undone with the transaction, and
+//! what it does outside them it must be able to do again. Two instances that apply one request
+//! id at the same moment cannot both commit: the second finds the first's row, and is answered
+//! what the first was.
 //!
 //! The audit rows are the operation's audit record on this backend; sealing them to the trail's
 //! objects is the audit engine's, with its own implementation here.
@@ -35,7 +38,7 @@ use permguard_host::operations::mutation::{
 };
 use postgres::error::SqlState;
 
-use crate::database::{Database, SqlError, Unit, again};
+use crate::database::{ATTEMPTS, Database, SqlError, Unit, again, pause};
 
 /// How long an applied answer is kept for a retry: the file engine's window.
 pub const WINDOW: Duration = permguard_host::operations::mutation::WINDOW;
@@ -204,7 +207,15 @@ impl PostgresMutations {
         )?;
         unit.mark(BEFORE_THE_WRITE)?;
 
-        let applied = match apply(&Applying::within(operation_id, unit.as_ref())) {
+        let answered = apply(&Applying::within(operation_id, unit.as_ref()));
+        // Whatever the write answered: when one of its statements could not be serialized, the
+        // database kept nothing of the transaction and the whole operation is run again.
+        if let Some(failure) = unit.failure()
+            && again(&failure)
+        {
+            return Err(failure.into());
+        }
+        let applied = match answered {
             Ok(applied) => applied,
             Err(Declined::Refused) => {
                 // The write is undone and the operation kept as failed, with its record.
@@ -277,7 +288,19 @@ impl Engine for PostgresMutations {
         check: &mut dyn FnMut() -> bool,
         apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
     ) -> Result<Ended, Stopped> {
-        let ended = match self.attempt(&begin, check, apply) {
+        let mut attempt = 0;
+        let ended = loop {
+            attempt += 1;
+            let attempted = self.attempt(&begin, check, apply);
+            match attempted {
+                Err(Attempted::Sql(error)) if again(&error) && attempt < ATTEMPTS => {
+                    self.database.retried();
+                    std::thread::sleep(pause(attempt));
+                }
+                other => break other,
+            }
+        };
+        let ended = match ended {
             Ok(ended) => Ok(ended),
             Err(Attempted::Stopped(stopped)) => Err(stopped),
             // The same request id, applied by another instance while this one was applying:
@@ -289,12 +312,10 @@ impl Engine for PostgresMutations {
                     None => Err(unavailable(error)),
                 }
             }
-            Err(Attempted::Sql(error)) if again(&error) => {
-                self.database.retried();
-                Err(Stopped::Unavailable(format!(
-                    "the mutation could not be serialized with another and kept nothing: {error}"
-                )))
-            }
+            Err(Attempted::Sql(error)) if again(&error) => Err(Stopped::Unavailable(format!(
+                "the mutation could not be serialized with another in {ATTEMPTS} attempts and \
+                 kept nothing: {error}"
+            ))),
             Err(Attempted::Sql(error)) => Err(unavailable(error)),
         };
         self.database.ended(match &ended {

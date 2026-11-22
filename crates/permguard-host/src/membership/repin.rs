@@ -537,7 +537,7 @@ impl super::service::Coordinating {
         action: &'static str,
         initiator: crate::operations::journal::Initiator,
         id: &[u8; 16],
-        apply: impl FnOnce(&Applying<'_>) -> Result<(), MembershipError>,
+        mut apply: impl FnMut(&Applying<'_>) -> Result<(), MembershipError>,
     ) -> Result<(), MembershipError> {
         use crate::operations::mutation::{Applied, Begin, Failure, Outcome};
         let target = crate::identity::record::uuid_text(id);

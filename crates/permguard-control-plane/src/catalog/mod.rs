@@ -529,7 +529,7 @@ impl CatalogFacade {
         mutation: Mutation,
         change: Change<'_>,
         target: String,
-        apply: impl FnOnce(&permguard_core::catalog::Write<'_>) -> Result<T, CatalogError>,
+        mut apply: impl FnMut(&permguard_core::catalog::Write<'_>) -> Result<T, CatalogError>,
     ) -> Result<T, crate::refusal::Refusal>
     where
         T: Record + serde::Serialize + serde::de::DeserializeOwned,

@@ -1289,8 +1289,8 @@ impl Authority {
         request_id: &str,
         request: &R,
         target: &str,
-        check: impl FnOnce() -> Result<(), AccountsError>,
-        apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<AccountsError>>,
+        check: impl FnMut() -> Result<(), AccountsError>,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<AccountsError>>,
         rebuild: impl FnOnce() -> Result<T, Refusal>,
     ) -> Result<(T, bool), Refusal>
     where
@@ -1389,7 +1389,7 @@ impl Authority {
             |applying| {
                 let written = self
                     .accounts
-                    .create(Some(applying), account, &principal, now)
+                    .create(Some(applying), account.clone(), &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,

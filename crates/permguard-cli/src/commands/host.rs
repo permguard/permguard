@@ -1731,7 +1731,7 @@ fn reset(
                         .map_err(|refusal| Refused::Refused(refusal_text(&refusal)))?;
                     Ok(Applied {
                         revision: opened.epoch(),
-                        target,
+                        target: target.clone(),
                         value: (),
                     })
                 },

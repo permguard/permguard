@@ -1327,6 +1327,12 @@ sections:
       - crates/permguard-postgres/tests/mutations.rs::instances_that_apply_one_request_together_keep_one_write
       - crates/permguard-postgres/tests/mutations.rs::a_mutation_runs_from_inside_a_runtime_on_the_callers_thread
       - crates/permguard-postgres/tests/mutations.rs::a_process_killed_inside_a_mutation_leaves_nothing
+      - crates/permguard-postgres/tests/mutations.rs::a_store_inside_an_operation_reads_and_writes_in_it
+      - crates/permguard-postgres/tests/mutations.rs::a_write_whose_statement_failed_is_never_answered_applied
+      - crates/permguard-postgres/tests/foundations.rs::a_unit_whose_statement_failed_is_not_committed
+      - crates/permguard-postgres/tests/host_stores.rs::the_holds_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_seen_epochs_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_bootstrap_commitment_keeps_its_contract_on_postgresql
       - crates/permguard-host/src/operations/mutation/tests.rs::any_engine_hands_its_unit_of_work_to_the_domain
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:

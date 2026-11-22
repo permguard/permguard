@@ -148,6 +148,50 @@ fn a_refused_unit_of_work_changes_nothing() {
     assert_eq!(kept, 0);
 }
 
+/// A unit of work one of whose statements failed is never said committed, even when the work
+/// went on and answered as if nothing had happened: the database undoes such a transaction at
+/// its `COMMIT` without a word, and the unit says what the statement was answered instead.
+#[test]
+fn a_unit_whose_statement_failed_is_not_committed() {
+    let Some(server) = server("a_unit_whose_statement_failed_is_not_committed") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    database
+        .write(|unit| {
+            unit.execute(
+                "INSERT INTO permguard_clock_marks (scope, mark) VALUES ('held', 1)",
+                &[],
+            )
+        })
+        .expect("a row");
+    let answered = database.write(|unit| {
+        unit.execute(
+            "INSERT INTO permguard_clock_marks (scope, mark) VALUES ('beside', 2)",
+            &[],
+        )?;
+        // The same key again: refused, and the work goes on as if it had not been.
+        let _ = unit.execute(
+            "INSERT INTO permguard_clock_marks (scope, mark) VALUES ('held', 3)",
+            &[],
+        );
+        Ok(())
+    });
+    assert!(
+        matches!(answered, Err(DbError::Unavailable(_))),
+        "{answered:?}"
+    );
+    let kept: i64 = database
+        .write(|unit| {
+            Ok(unit
+                .query_one("SELECT count(*) FROM permguard_clock_marks", &[])?
+                .get(0))
+        })
+        .expect("read");
+    assert_eq!(kept, 1, "nothing of the failed unit is kept");
+}
+
 /// A scope is held by one transaction at a time, to the transaction's end.
 #[test]
 fn a_scope_is_held_by_one_transaction_at_a_time() {

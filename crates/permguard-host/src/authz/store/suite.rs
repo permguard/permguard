@@ -128,22 +128,31 @@ fn commitments_together_write_one<S: BootstrapStore + ?Sized>(
                     let (wrote, together) = (&wrote, &together);
                     scope.spawn(move || {
                         let named = fingerprint(if same { 7 } else { thread + 1 });
+                        // An engine may run the operation again when its unit of work kept
+                        // nothing of a first run: the threads are released together once, and
+                        // what counts is what the last run was answered.
+                        let mut released = false;
+                        let mut answered = None;
                         operate(&mut |applying| {
-                            together.wait();
-                            match store.commit(applying, &named, NOW) {
-                                Ok((held, written)) => {
-                                    assert_eq!(
-                                        held.fingerprint, named,
-                                        "a commitment answered is to the certificate asked"
-                                    );
-                                    if written {
-                                        wrote.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                }
-                                Err(AuthzError::Invalid(_)) => assert!(!same, "one certificate"),
-                                Err(other) => panic!("a commitment answered {other}"),
+                            if !released {
+                                released = true;
+                                together.wait();
                             }
+                            answered = Some(store.commit(applying, &named, NOW));
                         });
+                        match answered.expect("the operation ran") {
+                            Ok((held, written)) => {
+                                assert_eq!(
+                                    held.fingerprint, named,
+                                    "a commitment answered is to the certificate asked"
+                                );
+                                if written {
+                                    wrote.fetch_add(1, Ordering::Relaxed);
+                                }
+                            }
+                            Err(AuthzError::Invalid(_)) => assert!(!same, "one certificate"),
+                            Err(other) => panic!("a commitment answered {other}"),
+                        }
                     });
                 }
             });

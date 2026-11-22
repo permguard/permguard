@@ -441,30 +441,29 @@ pub trait Engine: Send + Sync {
 pub fn run_checked_on<T, E>(
     engine: &dyn Engine,
     begin: Begin,
-    check: impl FnOnce() -> Result<(), E>,
-    apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+    check: impl FnMut() -> Result<(), E>,
+    apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
 ) -> Result<Outcome<T>, MutationError<E>>
 where
     T: Serialize + DeserializeOwned,
 {
-    // The domain's own answer and reason stay here: the engine is told that there is one.
+    // The domain's own answer and reason stay here: the engine is told that there is one. An
+    // engine that runs the write again, because its unit of work kept nothing of the first run,
+    // is answered by the last run alone.
     let refusal: std::cell::RefCell<Option<E>> = std::cell::RefCell::new(None);
     let mut value: Option<T> = None;
-    let mut check = Some(check);
-    let mut apply = Some(apply);
+    let (mut check, mut apply) = (check, apply);
     let ended = engine.run_bytes(
         begin,
-        &mut || match check.take().map(|check| check()) {
-            Some(Ok(())) => true,
-            Some(Err(refused)) => {
+        &mut || match check() {
+            Ok(()) => true,
+            Err(refused) => {
                 *refusal.borrow_mut() = Some(refused);
                 false
             }
-            // Asked a second time: the validation is run once.
-            None => false,
         },
-        &mut |applying| match apply.take().map(|apply| apply(applying)) {
-            Some(Ok(applied)) => {
+        &mut |applying| match apply(applying) {
+            Ok(applied) => {
                 let result = serde_json::to_vec(&applied.value).ok();
                 value = Some(applied.value);
                 Ok(AppliedBytes {
@@ -473,17 +472,14 @@ where
                     result,
                 })
             }
-            Some(Err(Failure::Refused(refused))) => {
+            Err(Failure::Refused(refused)) => {
                 *refusal.borrow_mut() = Some(refused);
                 Err(Declined::Refused)
             }
-            Some(Err(Failure::Indeterminate(error))) => {
+            Err(Failure::Indeterminate(error)) => {
                 *refusal.borrow_mut() = Some(error);
                 Err(Declined::Indeterminate)
             }
-            // Asked a second time: the domain write is run once, and an engine that would run
-            // it again is told the outcome is not known.
-            None => Err(Declined::Indeterminate),
         },
     );
     let lost = || {
@@ -1323,7 +1319,7 @@ impl Mutations {
     pub fn run<T, E>(
         &self,
         begin: Begin,
-        apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
     ) -> Result<Outcome<T>, MutationError<E>>
     where
         T: Serialize + DeserializeOwned,
@@ -1347,8 +1343,8 @@ impl Mutations {
     pub fn run_checked<T, E>(
         &self,
         begin: Begin,
-        check: impl FnOnce() -> Result<(), E>,
-        apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+        check: impl FnMut() -> Result<(), E>,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
     ) -> Result<Outcome<T>, MutationError<E>>
     where
         T: Serialize + DeserializeOwned,

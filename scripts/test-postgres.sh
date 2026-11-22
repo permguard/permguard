@@ -5,8 +5,8 @@
 # Runs the tests of the PostgreSQL backend against a disposable server (iteration 03, WP-27.1).
 #
 # It starts one PostgreSQL container on a free port of the loopback interface, with a password
-# made for this run, points `PERMGUARD_TEST_POSTGRES` at it, runs the tests, and removes the
-# container whatever happened. Arguments replace the selection of tests, so
+# made for this run and room for the connections of the tests that run side by side, points
+# `PERMGUARD_TEST_POSTGRES` at it, runs the tests, and removes the container whatever happened. Arguments replace the selection of tests, so
 # `scripts/test-postgres.sh -E 'test(lease)'` runs a part of them.
 #
 # Without Docker, start a server yourself and set `PERMGUARD_TEST_POSTGRES` to its connection
@@ -29,7 +29,7 @@ docker run --detach --rm --name "${NAME}" \
     --env POSTGRES_PASSWORD="${PASSWORD}" \
     --env POSTGRES_DB=permguard \
     --publish 127.0.0.1::5432 \
-    "${IMAGE}" >/dev/null
+    "${IMAGE}" -c max_connections=500 >/dev/null
 
 PORT="$(docker port "${NAME}" 5432/tcp | head -1 | sed 's/.*://')"
 

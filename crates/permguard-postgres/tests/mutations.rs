@@ -291,6 +291,58 @@ fn a_refused_write_is_undone_and_recorded_failed() {
     assert_eq!(again, Outcome::Applied("created read".to_owned()));
 }
 
+/// A domain write whose statement failed, and that answered applied all the same, is not
+/// believed: the operation is not committed, nothing of it is kept, and a retry applies it.
+#[test]
+fn a_write_whose_statement_failed_is_never_answered_applied() {
+    let Some(server) = server("a_write_whose_statement_failed_is_never_answered_applied") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    domain(database);
+    let engine = PostgresMutations::new(Database::clone(database));
+    run_checked_on(
+        &engine,
+        begin("alice", "request-1", "d1"),
+        || Ok::<(), String>(()),
+        |applying| grant(applying, "read"),
+    )
+    .expect("applied");
+    let answered = run_checked_on::<String, String>(
+        &engine,
+        begin("alice", "request-2", "d1"),
+        || Ok(()),
+        |applying| {
+            // The same grant again: the statement fails, and the write says applied.
+            let _ = grant(applying, "read");
+            Ok(Applied {
+                revision: 2,
+                target: None,
+                value: "never made".to_owned(),
+            })
+        },
+    );
+    assert!(
+        matches!(answered, Err(MutationError::Unavailable(_))),
+        "{answered:?}"
+    );
+    assert_eq!(
+        count(
+            database,
+            "SELECT count(*) FROM permguard_mutations WHERE state = 'applied'"
+        ),
+        1,
+        "the second operation was not kept"
+    );
+    assert_eq!(
+        replayed_on::<String, String>(&engine, &begin("alice", "request-2", "d1"))
+            .expect("answered"),
+        None,
+        "and its request id answers nothing"
+    );
+}
+
 /// E30: of the instances that apply one request at the same moment, each on connections of its
 /// own, one write is kept; every instance is answered that write's answer or told to retry,
 /// and a retry learns it.

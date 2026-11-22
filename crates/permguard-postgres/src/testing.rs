@@ -106,3 +106,73 @@ pub fn scratch_with(server: &Server, pool: usize, migrated: bool) -> Scratch {
 pub fn scratch(server: &Server) -> Scratch {
     scratch_with(server, 8, true)
 }
+
+/// The cases of one conformance suite: each a schema of its own, kept until the suite ends, and
+/// operations run by the mutation engine of the case made last.
+pub struct Cases {
+    server: Server,
+    made: std::sync::Mutex<Vec<Scratch>>,
+}
+
+impl Cases {
+    pub fn new(server: Server) -> Self {
+        Self {
+            server,
+            made: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The database of a new case, empty at this build's schema.
+    pub fn next(&self) -> Database {
+        let case = scratch(&self.server);
+        let database = Database::clone(&case.database);
+        self.made.lock().expect("lock").push(case);
+        database
+    }
+
+    /// The database of the case made last.
+    pub fn current(&self) -> Database {
+        self.made
+            .lock()
+            .expect("lock")
+            .last()
+            .map(|case| Database::clone(&case.database))
+            .expect("a case was made")
+    }
+
+    /// Runs `work` inside one operation of `domain`, applied by the mutation engine of the
+    /// current case's database: every store call `work` makes is in that operation's
+    /// transaction. The engine runs an operation again when the database could not serialize it
+    /// with another, so `work` may run more than once.
+    pub fn operate(
+        &self,
+        domain: &'static str,
+        work: &mut dyn FnMut(&permguard_host::operations::mutation::Applying<'_>),
+    ) {
+        use permguard_host::operations::journal::Initiator;
+        use permguard_host::operations::mutation::{Applied, Begin, run_checked_on};
+
+        let engine = crate::mutations::PostgresMutations::new(self.current());
+        run_checked_on::<(), String>(
+            &engine,
+            Begin {
+                domain,
+                operation: "suite.operation",
+                action: "suite.operated",
+                initiator: Initiator::System("suite".to_owned()),
+                request: None,
+                target: None,
+            },
+            || Ok(()),
+            |applying| {
+                work(applying);
+                Ok(Applied {
+                    revision: 0,
+                    target: None,
+                    value: (),
+                })
+            },
+        )
+        .expect("the operation ran");
+    }
+}

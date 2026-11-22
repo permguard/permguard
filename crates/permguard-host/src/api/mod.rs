@@ -524,8 +524,8 @@ impl HostApi {
         mutation: &Mutation,
         request: &R,
         target: Option<String>,
-        check: impl FnOnce() -> Result<(), Refusal>,
-        apply: impl FnOnce(&Applying<'_>) -> Result<mutation::Applied<T>, Failure<Refusal>>,
+        check: impl FnMut() -> Result<(), Refusal>,
+        apply: impl FnMut(&Applying<'_>) -> Result<mutation::Applied<T>, Failure<Refusal>>,
         reconciled: impl FnOnce(OperationId, u64, Option<String>) -> Result<T, Refusal>,
     ) -> Result<T, Refusal>
     where

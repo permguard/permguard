@@ -1910,8 +1910,8 @@ impl MutationHandle {
     pub fn run_checked<T, E>(
         &self,
         begin: crate::operations::mutation::Begin,
-        check: impl FnOnce() -> Result<(), E>,
-        apply: impl FnOnce(
+        check: impl FnMut() -> Result<(), E>,
+        apply: impl FnMut(
             &crate::operations::mutation::Applying<'_>,
         ) -> Result<
             crate::operations::mutation::Applied<T>,
@@ -1934,23 +1934,20 @@ impl MutationHandle {
         }
         use crate::operations::mutation::run_checked_on;
         match &self.subsystem {
-            Some(subsystem) => run_checked_on(self.engine.as_ref(), begin, check, |applying| {
-                // Inside an operation the gate always runs the write: one it could not take
-                // fails the operation's unit of work, and the write's own change with it.
-                let mut apply = Some(apply);
-                let mut applied = None;
-                let _ = subsystem.hold(|| {
-                    if let Some(apply) = apply.take() {
-                        applied = Some(apply(applying));
+            Some(subsystem) => {
+                let mut apply = apply;
+                run_checked_on(self.engine.as_ref(), begin, check, |applying| {
+                    // Inside an operation the gate always runs the write: one it could not take
+                    // fails the operation's unit of work, and the write's own change with it.
+                    let mut applied = None;
+                    let _ = subsystem.hold(|| applied = Some(apply(applying)));
+                    match applied {
+                        Some(applied) => applied,
+                        // A gate that broke its rule and did not run the write: run without it.
+                        None => apply(applying),
                     }
-                });
-                match (applied, apply) {
-                    (Some(applied), _) => applied,
-                    // A gate that broke its rule and did not run the write: run without it.
-                    (None, Some(apply)) => apply(applying),
-                    (None, None) => unreachable!("the write is either run or still here"),
-                }
-            }),
+                })
+            }
             None => run_checked_on(self.engine.as_ref(), begin, check, apply),
         }
     }
