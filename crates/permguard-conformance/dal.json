@@ -8,6 +8,7 @@
     "permguard-events",
     "permguard-host",
     "permguard-offline",
+    "permguard-postgres",
     "permguard-runtime",
     "permguard-server",
     "permguard-std",

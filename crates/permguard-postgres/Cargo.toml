@@ -1,0 +1,28 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-postgres"
+description = "The PostgreSQL side of Permguard's second storage backend: the connection, the schema, the unit of work, the leases, and the store contracts implemented on them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+permguard-host.workspace = true
+# The synchronous client: the store contracts are synchronous, as the file backend's calls are.
+postgres = { workspace = true }
+tokio-postgres-rustls = { workspace = true }
+rustls = { workspace = true }
+
+[dev-dependencies]
+permguard-host = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true }

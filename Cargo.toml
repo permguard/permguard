@@ -27,6 +27,7 @@ members = [
     "crates/permguard-objects",
     "crates/permguard-offline",
     "crates/permguard-owner-only",
+    "crates/permguard-postgres",
     "crates/permguard-evaluator",
     "crates/permguard-language-cedar",
     "crates/permguard-language-core",
@@ -93,6 +94,7 @@ permguard-client = { path = "crates/permguard-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
 permguard-offline = { path = "crates/permguard-offline", version = "0.1.0" }
 permguard-owner-only = { path = "crates/permguard-owner-only", version = "0.1.0" }
+permguard-postgres = { path = "crates/permguard-postgres", version = "0.1.0" }
 permguard-evaluator = { path = "crates/permguard-evaluator", version = "0.1.0" }
 permguard-language-cedar = { path = "crates/permguard-language-cedar", version = "0.1.0" }
 permguard-language-core = { path = "crates/permguard-language-core", version = "0.1.0" }
@@ -142,6 +144,10 @@ opentelemetry = "0.33"
 opentelemetry-otlp = { version = "0.33", default-features = false, features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = "0.33"
 prost = "0.14"
+# The PostgreSQL client of the second storage backend (iteration 03, WP-27.1). The synchronous
+# client, because the store contracts are synchronous as the file backend's calls are; it drives
+# `tokio-postgres` on a runtime of its own. No default features: no extra type support is linked.
+postgres = { version = "0.19", default-features = false }
 prost-types = "0.14"
 proptest = "1"
 rcgen = "0.14"
@@ -155,6 +161,9 @@ serde_json = "1"
 serde_norway = "0.9"
 sha2 = "0.11"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+# TLS to PostgreSQL through the rustls and the `ring` provider the rest of the product uses: no
+# OpenSSL and no second provider enter the tree.
+tokio-postgres-rustls = { version = "0.14", default-features = false, features = ["ring"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging"] }
 tonic = "0.14"
 tonic-prost = "0.14"

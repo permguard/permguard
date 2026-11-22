@@ -1302,6 +1302,27 @@ sections:
       - crates/permguard-cli/tests/restore.rs::a_backend_with_no_volume_refuses_a_restore
     gaps:
       - "open (code): the PostgreSQL and S3 backend and everything of several instances are not built (iteration 03, phases 27 and 28); a configuration that names that backend is refused at start"
+  "1-architecture/8-architecture-storage-operations.md#postgresql-foundations":
+    paths:
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-postgres/src/schema.rs
+      - crates/permguard-postgres/src/lease.rs
+      - crates/permguard-postgres/src/time.rs
+      - scripts/test-postgres.sh
+      - .github/workflows/ci.yml
+    tests:
+      - crates/permguard-postgres/tests/foundations.rs::the_schema_is_applied_once_and_a_newer_one_is_refused
+      - crates/permguard-postgres/tests/foundations.rs::units_of_work_that_read_then_write_lose_no_update
+      - crates/permguard-postgres/tests/foundations.rs::a_refused_unit_of_work_changes_nothing
+      - crates/permguard-postgres/tests/foundations.rs::a_scope_is_held_by_one_transaction_at_a_time
+      - crates/permguard-postgres/tests/foundations.rs::a_lease_has_one_holder_and_a_lost_one_writes_nothing
+      - crates/permguard-postgres/tests/foundations.rs::the_clock_mark_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/foundations.rs::a_unit_of_work_runs_from_inside_a_runtime
+      - crates/permguard-postgres/tests/foundations.rs::a_process_killed_inside_a_unit_of_work_leaves_nothing
+      - crates/permguard-postgres/tests/foundations.rs::a_verified_connection_is_encrypted_and_an_unknown_authority_is_refused
+      - crates/permguard-postgres/tests/foundations.rs::a_database_that_does_not_answer_is_unavailable
+    gaps:
+      - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
   "1-architecture/8-architecture-storage-operations.md#store-contracts":
     paths:
       - crates/permguard-authority-plane/src/accounts.rs
