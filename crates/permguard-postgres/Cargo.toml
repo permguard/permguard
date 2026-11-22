@@ -28,6 +28,7 @@ permguard-objects.workspace = true
 postgres = { workspace = true }
 tokio-postgres-rustls = { workspace = true }
 serde_json.workspace = true
+zeroize.workspace = true
 # Only to ask whether the calling thread drives asynchronous tasks.
 tokio = { workspace = true }
 rustls = { workspace = true }

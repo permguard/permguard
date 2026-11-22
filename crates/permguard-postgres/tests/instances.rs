@@ -9,7 +9,8 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use std::sync::Barrier;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Barrier, Mutex};
 
 use permguard_core::catalog::{Catalog, CatalogError, Selector, Write};
 use permguard_host::identity::store::IdentityStore;
@@ -308,4 +309,86 @@ fn a_change_alone_sees_the_one_an_operation_made_on_postgresql() {
         alone.doc(&doc).expect("reads"),
         Some(100u64.to_be_bytes().to_vec())
     );
+}
+
+/// WP-27.5: two instances sign with one key, and no key is in the clear. A key generated on one
+/// instance, sealed under a key-encryption key held outside the database, is unsealed and signs
+/// on another; the row holds the sealed key, never the PKCS#8; and of two keys generated for one
+/// slot together, one is kept.
+#[test]
+fn instances_sign_with_one_sealed_key_on_postgresql() {
+    use permguard_host::keys::KeyProvider as _;
+    use permguard_host::keys::custody::{Keks, SealedFileKeyProvider, SecretKek, StoredPublic};
+    use permguard_host::secrets::{KeyVersion, Root};
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_sign_with_one_sealed_key_on_postgresql") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    // The key-encryption key every instance resolves from the same secret reference.
+    let kek = || {
+        let root =
+            Root::from_material(&[42; 32], KeyVersion::new(1).expect("a version")).expect("a root");
+        Keks {
+            current: Arc::new(SecretKek::from_root("kek", &root).expect("a KEK")),
+            previous: None,
+        }
+    };
+    let published: Arc<Mutex<BTreeMap<String, Vec<u8>>>> = Arc::default();
+    let stored = || -> StoredPublic {
+        let held = Arc::clone(&published);
+        Box::new(move |slot, _| Ok(held.lock().expect("lock").get(slot).cloned()))
+    };
+    let providers = instances(&server, &scratch.schema, |database| {
+        SealedFileKeyProvider::new(
+            Arc::new(PostgresSlots::new(database, "host.operations")),
+            [7; 16],
+            "host.operations",
+            kek(),
+            stored(),
+        )
+    });
+
+    let public = providers[0]
+        .generate("slot-1", Suite::Ed25519Sha256V1)
+        .expect("generated");
+    published
+        .lock()
+        .expect("lock")
+        .insert("slot-1".to_owned(), public.bytes.clone());
+    for (instance, provider) in providers.iter().enumerate() {
+        let message = format!("signed on instance {instance}");
+        let signature = provider
+            .sign("slot-1", Suite::Ed25519Sha256V1, message.as_bytes())
+            .expect("signed");
+        Suite::Ed25519Sha256V1
+            .verify(&public.bytes, message.as_bytes(), &signature)
+            .expect("one key signs on every instance");
+    }
+
+    // The row is the sealed key: neither the PKCS#8 nor any other form of the key in the clear.
+    let row: Vec<u8> = scratch
+        .database
+        .write(|unit| {
+            Ok(unit
+                .query_one(
+                    "SELECT bytes FROM permguard_key_slots WHERE slot = 'slot-1'",
+                    &[],
+                )?
+                .get(0))
+        })
+        .expect("read");
+    assert!(
+        permguard_objects::crypto::seal::SealedKey::decode(&row).is_ok(),
+        "the slot holds a sealed key"
+    );
+    assert_ne!(row.first(), Some(&0x30), "no PKCS#8 in the clear");
+
+    // Generated together for one slot: one key is kept, the others are refused.
+    let generated = together(&providers, |_, provider| {
+        provider.generate("slot-2", Suite::Ed25519Sha256V1)
+    });
+    assert_eq!(generated.iter().filter(|answer| answer.is_ok()).count(), 1);
 }

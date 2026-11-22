@@ -27,6 +27,7 @@
 //! `derive_host_local(root, host_id, stream.cursor, host_id, <api>/<resource>, 1)`.
 
 pub mod files;
+pub mod postgres;
 #[cfg(any(test, feature = "test-support"))]
 pub mod suite;
 

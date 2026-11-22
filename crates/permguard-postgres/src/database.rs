@@ -311,6 +311,9 @@ struct Pool {
     returned: Condvar,
     /// Where the numbers go; a handle that may hold nothing.
     metrics: Mutex<Metrics>,
+    /// The queue of the work of this pool that waits for a scope held across units of work:
+    /// one waits on the database at a time, so waiting holds no more than one connection.
+    queued: Mutex<()>,
 }
 
 impl std::fmt::Debug for Database {
@@ -545,6 +548,12 @@ impl Drop for Unit {
     }
 }
 
+/// A scope held by [`Database::hold_queued`]: the scope first let go, then the queue's turn.
+pub struct Queued<'a> {
+    _hold: Hold,
+    _turn: std::sync::MutexGuard<'a, ()>,
+}
+
 /// A named scope held on a connection of its own, for as long as the value lives: of the
 /// holders of one scope, on any instance, one holds it at a time and the others wait. What the
 /// holder reads and writes under it, it does on that connection, each statement kept when it
@@ -653,6 +662,7 @@ impl Database {
                 open: Mutex::new(0),
                 returned: Condvar::new(),
                 metrics: Mutex::new(Metrics::none()),
+                queued: Mutex::new(()),
             }),
         };
         database.ready()?;
@@ -810,6 +820,21 @@ impl Database {
             &[&scope],
         )?;
         Ok(hold)
+    }
+
+    /// [`Database::hold`], taken in this pool's queue: of the work of this pool that waits for a
+    /// scope, one waits on the database at a time, holding one connection, and the others wait
+    /// in the process, holding none. The answer holds the scope and the queue's turn.
+    pub fn hold_queued(&self, scope: &str) -> Result<Queued<'_>, DbError> {
+        let turn = self
+            .pool
+            .queued
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        Ok(Queued {
+            _hold: self.hold(scope)?,
+            _turn: turn,
+        })
     }
 
     /// Whether this thread is inside a unit of work on this database.

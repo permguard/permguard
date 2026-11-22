@@ -512,7 +512,7 @@ pub const SETTING_GC_INTERVAL: &str = "PERMGUARD_STORAGE_GC_INTERVAL";
 pub const SETTING_GC_GRACE: &str = "PERMGUARD_STORAGE_GC_GRACE";
 
 /// Runtime setting key for the storage backend of the process: `files`, the default, or
-/// `postgresql` (iteration 03, decisions E1 and E7).
+/// `postgresql-s3` (iteration 03, decisions E1 and E7).
 pub const SETTING_STORAGE_BACKEND: &str = "PERMGUARD_STORAGE_BACKEND";
 
 /// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
@@ -2751,6 +2751,20 @@ produce: use `EdDSA` or `ES256`"
     /// keys in a token or a KMS.
     fn validate_custody(&self) -> Result<()> {
         let custodies = self.keys_custodies();
+        // On the shared backend a key is never kept in the clear: a key of the `development`
+        // custody would be a row of the database, read by every instance and every backup of it
+        // (iteration 03, WP-27.5).
+        if self.storage_backend == crate::volume::Backend::PostgresqlS3
+            && let Some((ring, _)) = custodies
+                .iter()
+                .find(|(_, custody)| *custody == KeyCustody::Development)
+        {
+            bail!(
+                "the `postgresql-s3` storage backend keeps no key in the clear, and `{ring}` is in the \
+                 `development` custody: keep it `file`, sealed under a key-encryption key held \
+                 outside the database, or in a PKCS#11 token or a KMS ({SETTING_KEYS_CUSTODY})"
+            );
+        }
         let uses = |custody: KeyCustody| custodies.iter().any(|(_, held)| *held == custody);
         // The Planes' rings sign while a request waits — a decision batch, a head statement — and
         // a call to a remote KMS would hold a request worker for as long as the KMS takes.

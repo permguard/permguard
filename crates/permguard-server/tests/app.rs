@@ -194,7 +194,7 @@ async fn output_of(app: &App, action: &Action) -> String {
 async fn test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands() {
     let path = config_file(
         "no-volume",
-        &format!("{SERVABLE}storage:\n  backend: postgresql\n"),
+        &format!("{SERVABLE}storage:\n  backend: postgresql-s3\n"),
     );
     let mut sink = Vec::new();
     let refused = app()

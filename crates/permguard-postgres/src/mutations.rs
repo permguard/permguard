@@ -54,6 +54,9 @@ use crate::database::{ATTEMPTS, Database, SqlError, Unit, again, pause};
 /// How long an applied answer is kept for a retry: the file engine's window.
 pub const WINDOW: Duration = permguard_host::operations::mutation::WINDOW;
 
+/// How many attempts an operation makes racing the others of its domain before it queues.
+const OPTIMISTIC: u32 = 3;
+
 /// The point the transaction goes back to when the domain write refuses.
 const BEFORE_THE_WRITE: &str = "before_the_domain_write";
 
@@ -353,17 +356,32 @@ impl Engine for PostgresMutations {
         apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
     ) -> Result<Ended, Stopped> {
         let mut attempt = 0;
+        // Optimistic first: most operations meet no other. One that keeps losing to others of its
+        // domain stops racing them and queues: it holds the domain's scope, on any instance, for
+        // the attempts it has left, so operations that all change one row are applied one after
+        // the other rather than run again until they give up. In this process the queue is the
+        // pool's, so waiting holds no connection the holder's transaction needs.
+        let mut queued = None;
         let ended = loop {
             attempt += 1;
             let attempted = self.attempt(&begin, check, apply);
             match attempted {
                 Err(Attempted::Sql(error)) if again(&error) && attempt < ATTEMPTS => {
                     self.database.retried();
-                    std::thread::sleep(pause(attempt));
+                    if attempt >= OPTIMISTIC && queued.is_none() {
+                        queued = Some(
+                            self.database
+                                .hold_queued(&format!("mutation/{}", begin.domain))
+                                .map_err(unavailable)?,
+                        );
+                    } else {
+                        std::thread::sleep(pause(attempt));
+                    }
                 }
                 other => break other,
             }
         };
+        drop(queued);
         let ended = match ended {
             Ok(ended) => Ok(ended),
             Err(Attempted::Stopped(stopped)) => Err(stopped),

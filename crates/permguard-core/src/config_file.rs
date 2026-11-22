@@ -167,7 +167,7 @@ pub struct ConfigFile {
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StorageSection {
-    /// `files` or `postgresql`; absent means `files`.
+    /// `files` or `postgresql-s3`; absent means `files`.
     #[serde(default)]
     backend: Option<String>,
     #[serde(default)]

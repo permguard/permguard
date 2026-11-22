@@ -13,6 +13,7 @@ use std::sync::Arc;
 use permguard_postgres::audit::PostgresTrails;
 use permguard_postgres::bootstrap::PostgresBootstrap;
 use permguard_postgres::catalog::PostgresCatalog;
+use permguard_postgres::delivered::PostgresDeliveredKeys;
 use permguard_postgres::held::PostgresHeld;
 use permguard_postgres::holds::PostgresHolds;
 use permguard_postgres::identity::PostgresIdentity;
@@ -20,6 +21,7 @@ use permguard_postgres::members::PostgresMembers;
 use permguard_postgres::peers::PostgresSeen;
 use permguard_postgres::replay::PostgresReplay;
 use permguard_postgres::ring::PostgresRing;
+use permguard_postgres::slots::PostgresSlots;
 use permguard_postgres::testing::{Cases, server};
 use permguard_postgres::witnesses::{PostgresVersionWitnesses, PostgresWitnesses};
 
@@ -177,4 +179,49 @@ fn the_audit_trails_keep_their_contract_on_postgresql() {
     };
     let cases = Cases::new(server);
     permguard_host::audit::suite::run(&|| Arc::new(PostgresTrails::new(cases.next())));
+}
+
+#[test]
+fn the_key_slots_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_key_slots_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::keys::slots::suite::run(&|| {
+        Arc::new(PostgresSlots::new(cases.next(), "host.operations"))
+    });
+}
+
+#[test]
+fn the_delivered_keys_keep_their_contract_sealed_on_postgresql() {
+    let Some(server) = server("the_delivered_keys_keep_their_contract_sealed_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::secrets::suite::run_delivered(&|| {
+        Arc::new(PostgresDeliveredKeys::new(
+            cases.next(),
+            permguard_postgres::testing::sealer(),
+        ))
+    });
+    // What the last case kept: every key sealed, none in the clear.
+    let rows: Vec<Vec<u8>> = cases
+        .current()
+        .write(|unit| {
+            Ok(unit
+                .query("SELECT wrapped FROM permguard_delivered_keys", &[])?
+                .into_iter()
+                .map(|row| row.get(0))
+                .collect())
+        })
+        .expect("read");
+    assert!(!rows.is_empty());
+    for row in rows {
+        for byte in 1..=4u8 {
+            assert!(
+                !row.windows(32).any(|window| window == [byte; 32]),
+                "a key is in the clear"
+            );
+        }
+    }
 }

@@ -2557,15 +2557,15 @@ fn test_the_storage_backend_is_files_unless_the_configuration_says_otherwise() {
         &[],
         &[(
             permguard_core::config::SETTING_STORAGE_BACKEND,
-            "postgresql",
+            "postgresql-s3",
         )],
         &[],
     );
-    assert_eq!(named.storage_backend(), Backend::Postgresql);
+    assert_eq!(named.storage_backend(), Backend::PostgresqlS3);
     assert!(!named.storage_backend().has_volume());
 
     let file =
-        permguard_core::ConfigFile::parse("storage:\n  backend: postgresql\n").expect("parses");
+        permguard_core::ConfigFile::parse("storage:\n  backend: postgresql-s3\n").expect("parses");
     let pairs_of_file: Vec<(String, String)> = file.settings();
     let pairs_of_file: Vec<(&str, &str)> = pairs_of_file
         .iter()
@@ -2573,7 +2573,7 @@ fn test_the_storage_backend_is_files_unless_the_configuration_says_otherwise() {
         .collect();
     assert_eq!(
         config(&pairs_of_file, &[], &[]).storage_backend(),
-        Backend::Postgresql
+        Backend::PostgresqlS3
     );
 
     assert!(
@@ -2587,11 +2587,43 @@ fn test_the_storage_backend_is_files_unless_the_configuration_says_otherwise() {
         )
         .is_err()
     );
-    let refusal = permguard_core::volume::unsupported_command(Backend::Postgresql, "a backup");
+    let refusal = permguard_core::volume::unsupported_command(Backend::PostgresqlS3, "a backup");
     assert!(
         refusal.starts_with(permguard_core::codes::storage::BACKEND_UNSUPPORTED),
         "{refusal}"
     );
+}
+
+/// Iteration 03, WP-27.5: on the `postgresql-s3` backend no key is kept in the clear, so the
+/// `development` custody is refused at start, for every ring; on files it stays allowed in
+/// `development`, and another custody is not refused for that reason.
+#[test]
+fn test_the_shared_backend_keeps_no_key_in_the_clear() {
+    let with = |backend: &str, custody: &str| {
+        config(
+            &[
+                (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+                (SETTING_ASSURANCE_PROFILE, "development"),
+                (permguard_core::config::SETTING_STORAGE_BACKEND, backend),
+                (permguard_core::config::SETTING_KEYS_CUSTODY, custody),
+            ],
+            &[],
+            &[],
+        )
+        .validate()
+    };
+    let refused = with("postgresql-s3", "development").expect_err("a key in the clear is refused");
+    assert!(
+        refused.to_string().contains("keeps no key in the clear"),
+        "{refused}"
+    );
+    assert!(with("files", "development").is_ok());
+    if let Err(other) = with("postgresql-s3", "file") {
+        assert!(
+            !other.to_string().contains("keeps no key in the clear"),
+            "{other}"
+        );
+    }
 }
 
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.

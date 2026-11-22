@@ -777,6 +777,10 @@ sections:
       - crates/permguard-host/src/secrets/tests.rs::a_root_is_at_least_256_bits_and_its_material_is_witnessed_per_version
   "1-architecture/4-architecture-server-host-keys.md#stores":
     paths:
+      - crates/permguard-postgres/src/slots.rs
+      - crates/permguard-postgres/src/delivered.rs
+      - crates/permguard-host/src/secrets/sealed.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs
       - crates/permguard-host/src/keys/ring/store.rs
       - crates/permguard-host/src/keys/ring/files.rs
       - crates/permguard-host/src/keys/ring/suite.rs
@@ -790,6 +794,14 @@ sections:
       - crates/permguard-offline/src/custody/pkcs11.rs
       - crates/permguard-offline/src/custody/transit.rs
     tests:
+      - crates/permguard-postgres/tests/host_stores.rs::the_key_slots_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_sign_with_one_sealed_key_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_delivered_keys_keep_their_contract_sealed_on_postgresql
+      - crates/permguard-host/src/secrets/sealed.rs::a_secret_opens_only_as_what_it_was_sealed_for
+      - crates/permguard-host/src/secrets/sealed.rs::a_secret_of_the_previous_kek_opens_and_is_wrapped_again
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::the_cursor_roots_keep_their_contract_sealed_on_postgresql
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::a_cursor_root_rotates_on_postgresql
+      - crates/permguard-core/tests/config.rs::test_the_shared_backend_keeps_no_key_in_the_clear
       - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_keeps_the_contract
       - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_host
       - crates/permguard-host/src/keys/mod.rs::the_file_backend_of_the_slots_keeps_the_contract
@@ -1350,6 +1362,7 @@ sections:
       - crates/permguard-postgres/tests/mutations.rs::a_process_killed_inside_a_mutation_leaves_nothing
       - crates/permguard-postgres/tests/mutations.rs::a_store_inside_an_operation_reads_and_writes_in_it
       - crates/permguard-postgres/tests/mutations.rs::a_write_whose_statement_failed_is_never_answered_applied
+      - crates/permguard-postgres/tests/mutations.rs::operations_that_all_change_one_row_are_all_applied
       - crates/permguard-postgres/tests/foundations.rs::a_unit_whose_statement_failed_is_not_committed
       - crates/permguard-postgres/tests/foundations.rs::work_inside_a_unit_of_work_is_part_of_it_and_its_refusal_keeps_nothing
       - crates/permguard-postgres/tests/instances.rs::a_change_alone_sees_the_one_an_operation_made_on_postgresql

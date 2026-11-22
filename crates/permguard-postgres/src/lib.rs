@@ -27,6 +27,7 @@ pub mod audit;
 pub mod bootstrap;
 pub mod catalog;
 pub mod database;
+pub mod delivered;
 pub mod gate;
 pub mod held;
 pub mod holds;
@@ -38,6 +39,7 @@ pub mod peers;
 pub mod replay;
 pub mod ring;
 pub mod schema;
+pub mod slots;
 #[cfg(feature = "test-support")]
 pub mod testing;
 pub mod time;

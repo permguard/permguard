@@ -5,7 +5,7 @@
 //!
 //! | Key                                 | Meaning                                                                                    |
 //! | ----------------------------------- | ------------------------------------------------------------------------------------------ |
-//! | `storage.backend`                   | where the process keeps its state: `files`, the default, or `postgresql`                   |
+//! | `storage.backend`                   | where the process keeps its state: `files`, the default, or `postgresql-s3`                |
 //! | `storage.volume.storage_class`      | the storage class the volume comes from, declared by the operator                          |
 //! | `storage.volume.driver`             | the driver or provider that attaches it, declared by the operator                          |
 //! | `storage.qualified`                 | the qualified tuples: the tuple, evidence, encryption mechanism, revision and `expires_at` |
@@ -27,8 +27,9 @@ pub enum Backend {
     /// The volume of this document: the file backend.
     #[default]
     Files,
-    /// PostgreSQL, with S3 for objects and evidence.
-    Postgresql,
+    /// PostgreSQL and S3 together: the records in the database, the objects and the evidence
+    /// in the bucket. Its name says both, since it needs both.
+    PostgresqlS3,
 }
 
 impl Backend {
@@ -36,7 +37,7 @@ impl Backend {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Files => "files",
-            Self::Postgresql => "postgresql",
+            Self::PostgresqlS3 => "postgresql-s3",
         }
     }
 
@@ -53,9 +54,9 @@ impl std::str::FromStr for Backend {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim() {
             "files" => Ok(Self::Files),
-            "postgresql" => Ok(Self::Postgresql),
+            "postgresql-s3" => Ok(Self::PostgresqlS3),
             other => Err(format!(
-                "`{other}` is no storage backend: it is `files` or `postgresql`"
+                "`{other}` is no storage backend: it is `files` or `postgresql-s3`"
             )),
         }
     }

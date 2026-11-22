@@ -538,6 +538,50 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 17,
+        name: "key slots",
+        statements: "
+        CREATE TABLE permguard_key_slots (
+            scope text NOT NULL,
+            kind text NOT NULL CHECK (kind IN ('key', 'reference')),
+            slot text NOT NULL,
+            bytes bytea NOT NULL,
+            PRIMARY KEY (scope, kind, slot)
+        );
+    ",
+    },
+    Migration {
+        version: 18,
+        name: "sealed secrets",
+        statements: "
+        CREATE TABLE permguard_delivered_keys (
+            authority bytea NOT NULL CHECK (octet_length(authority) = 16),
+            zone bytea NOT NULL CHECK (octet_length(zone) = 16),
+            purpose text NOT NULL,
+            scope bytea NOT NULL CHECK (octet_length(scope) = 16),
+            version bigint NOT NULL CHECK (version >= 1),
+            kek_ref text NOT NULL,
+            kek_version bigint NOT NULL,
+            wrap_algorithm text NOT NULL,
+            wrapped bytea NOT NULL,
+            PRIMARY KEY (authority, zone, purpose, scope, version)
+        );
+        CREATE TABLE permguard_cursor_roots (
+            store text PRIMARY KEY,
+            kek_ref text,
+            kek_version bigint,
+            wrap_algorithm text,
+            wrapped bytea,
+            previous_kek_ref text,
+            previous_kek_version bigint,
+            previous_wrap_algorithm text,
+            previous_wrapped bytea,
+            CHECK ((kek_ref IS NULL) = (wrapped IS NULL)),
+            CHECK ((previous_kek_ref IS NULL) = (previous_wrapped IS NULL))
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

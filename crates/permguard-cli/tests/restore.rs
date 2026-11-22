@@ -724,7 +724,7 @@ fn a_backend_with_no_volume_refuses_a_restore() {
     let snapshot = Snapshot::new("no-volume", "");
     snapshot.claim(snapshot.boot().generation + 1);
     let mut config = std::fs::read_to_string(&snapshot.config).expect("the configuration");
-    config.push_str("storage:\n  backend: postgresql\n");
+    config.push_str("storage:\n  backend: postgresql-s3\n");
     std::fs::write(&snapshot.config, config).expect("the configuration writes");
     let before = tree(&snapshot.volume);
     let plan = snapshot.dir.join("restore.plan");

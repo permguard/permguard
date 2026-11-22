@@ -1628,6 +1628,16 @@
       "reason": "a configuration value the operator sets: `vN`, refused in any other form (WP-3.3)"
     },
     {
+      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "item": "ZonePurpose::parse",
+      "reason": "a zone key's purpose as this process wrote it into a row of the delivered keys (iteration 03, WP-27.5): one of two words, anything else refused"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/sealed.rs",
+      "item": "Sealer::open",
+      "reason": "a sealed secret kept in a row of the Host's own database (iteration 03, WP-27.5): its wrap is authenticated against the closed context the Host builds itself, and anything that does not open under it is refused, never read as a secret"
+    },
+    {
       "source": "crates/permguard-host/src/secrets/files.rs",
       "item": "Witnesses::open",
       "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"

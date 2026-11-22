@@ -600,3 +600,84 @@ fn a_process_killed_inside_a_mutation_leaves_nothing() {
     .expect("the same request applies on another instance");
     assert_eq!(applied, Outcome::Applied("created read".to_owned()));
 }
+
+/// Operations that all change one row, many at once, each holding it a while: every one is
+/// applied. One that keeps
+/// losing to the others stops racing them and queues on its domain's scope, so none gives up
+/// after its last attempt however many arrive together.
+#[test]
+fn operations_that_all_change_one_row_are_all_applied() {
+    let Some(server) = server("operations_that_all_change_one_row_are_all_applied") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    database
+        .write(|unit| {
+            unit.batch_execute(
+                "CREATE TABLE counter (id integer PRIMARY KEY, value bigint NOT NULL);
+                 INSERT INTO counter VALUES (1, 0);",
+            )
+        })
+        .expect("the domain's table");
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
+    // Each write holds the row a while, so the operations meet as they would on a loaded
+    // machine: without the queue some lose every attempt they have.
+    const THREADS: usize = 24;
+    const EACH: usize = 4;
+    let together = Barrier::new(THREADS);
+    let answers: Vec<bool> = std::thread::scope(|scope| {
+        let running: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let (engine, together) = (&engine, &together);
+                scope.spawn(move || {
+                    together.wait();
+                    (0..EACH)
+                        .map(|_| {
+                            run_checked_on(
+                                engine,
+                                Begin {
+                                    domain: "grants",
+                                    operation: "grants.create",
+                                    action: "host.grant.created",
+                                    initiator: Initiator::System("test".to_owned()),
+                                    request: None,
+                                    target: None,
+                                },
+                                || Ok::<(), String>(()),
+                                |applying| {
+                                    let unit = applying
+                                        .unit::<Unit>()
+                                        .ok_or_else(|| Failure::Refused("no unit".to_owned()))?;
+                                    unit.batch_execute(
+                                        "UPDATE counter SET value = value + 1 WHERE id = 1;
+                                         SELECT pg_sleep(0.01);",
+                                    )
+                                    .map_err(|error| Failure::Indeterminate(error.to_string()))?;
+                                    Ok(Applied {
+                                        revision: 1,
+                                        target: None,
+                                        value: (),
+                                    })
+                                },
+                            )
+                            .is_ok()
+                        })
+                        .collect::<Vec<bool>>()
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("a writer finished"))
+            .collect()
+    });
+    assert!(
+        answers.iter().all(|applied| *applied),
+        "every operation is applied"
+    );
+    assert_eq!(
+        count(database, "SELECT value FROM counter WHERE id = 1"),
+        (THREADS * EACH) as i64
+    );
+}

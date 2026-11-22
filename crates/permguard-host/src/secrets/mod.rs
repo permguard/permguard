@@ -38,6 +38,7 @@ use permguard_objects::crypto::kdf::{self, KEY_LEN, MIN_ROOT_LEN};
 use crate::identity::record::uuid_text;
 
 pub mod files;
+pub mod sealed;
 #[cfg(any(test, feature = "test-support"))]
 pub mod suite;
 
@@ -196,7 +197,7 @@ impl ZonePurpose {
         }
     }
 
-    pub(crate) fn parse(text: &str) -> Option<Self> {
+    pub fn parse(text: &str) -> Option<Self> {
         [Self::AuditPseudonym, Self::DecisionCommitment]
             .into_iter()
             .find(|purpose| purpose.as_str() == text)

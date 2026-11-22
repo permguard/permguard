@@ -226,3 +226,20 @@ pub fn engine(database: Database) -> crate::mutations::PostgresMutations {
     let audit = audit(&database);
     crate::mutations::PostgresMutations::new(database, audit)
 }
+
+/// What seals the secrets of a test's Host: a key-encryption key of the secret store, the same
+/// on every instance of the test.
+pub fn sealer() -> std::sync::Arc<permguard_host::secrets::sealed::Sealer> {
+    use permguard_host::keys::custody::{Keks, SecretKek};
+    use permguard_host::secrets::{KeyVersion, Root};
+
+    let root =
+        Root::from_material(&[42; 32], KeyVersion::new(1).expect("a version")).expect("a root");
+    std::sync::Arc::new(permguard_host::secrets::sealed::Sealer::new(
+        Keks {
+            current: std::sync::Arc::new(SecretKek::from_root("kek", &root).expect("a KEK")),
+            previous: None,
+        },
+        [1; 16],
+    ))
+}

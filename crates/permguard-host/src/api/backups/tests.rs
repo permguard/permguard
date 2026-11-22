@@ -102,7 +102,7 @@ fn recorded(trail: &Recording) -> Vec<(String, String, Option<&'static str>)> {
 #[tokio::test]
 async fn a_backend_with_no_volume_refuses_every_backup_operation() {
     let (api, _root, trail) = backed("backup-no-volume", None);
-    let api = api.with_backend(permguard_core::volume::Backend::Postgresql);
+    let api = api.with_backend(permguard_core::volume::Backend::PostgresqlS3);
     let token = URL_SAFE_NO_PAD.encode([7u8; 32]);
     let refusals = [
         api.prepare_backup(&admin(), PrepareBackup {})
