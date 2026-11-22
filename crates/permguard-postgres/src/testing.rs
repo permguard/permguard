@@ -152,7 +152,7 @@ impl Cases {
         use permguard_host::operations::journal::Initiator;
         use permguard_host::operations::mutation::{Applied, Begin, run_checked_on};
 
-        let engine = crate::mutations::PostgresMutations::new(self.current());
+        let engine = engine(self.current());
         run_checked_on::<(), String>(
             &engine,
             Begin {
@@ -175,4 +175,54 @@ impl Cases {
         )
         .expect("the operation ran");
     }
+}
+
+/// The audit engine of a test over the trails of `database`: the process's registry, and the
+/// actions the tests of this backend record that the product does not.
+pub fn audit(database: &Database) -> std::sync::Arc<permguard_host::audit::Engine> {
+    use permguard_host::audit::{ActionSchema, Class, Engine, HOST, REGISTRY, Stamp};
+
+    static ACTIONS: std::sync::OnceLock<&'static [ActionSchema]> = std::sync::OnceLock::new();
+    let registry = ACTIONS.get_or_init(|| {
+        let mut actions = REGISTRY.to_vec();
+        for action in [
+            "suite.operated",
+            "host.grant.created",
+            "authority.account.suspended",
+        ] {
+            actions.push(ActionSchema {
+                action,
+                class: Class::Security,
+                root: HOST,
+                facts: &[],
+                max_bytes: 8 * 1024,
+                phases: true,
+            });
+        }
+        Box::leak(actions.into_boxed_slice())
+    });
+    let engine = Engine::over_registry(
+        std::sync::Arc::new(crate::audit::PostgresTrails::new(database.clone())),
+        Vec::new(),
+        registry,
+        Stamp {
+            host_id: [1; 16],
+            boot_id: [2; 16],
+            build: "0.0.0-test".to_owned(),
+            config_revision: permguard_objects::digest::Digest::compute(b"test"),
+        },
+        std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        )),
+        None,
+    )
+    .expect("the audit engine of a test");
+    std::sync::Arc::new(engine)
+}
+
+/// The mutation engine of a test on `database`, its audit records written to the trails of
+/// that database.
+pub fn engine(database: Database) -> crate::mutations::PostgresMutations {
+    let audit = audit(&database);
+    crate::mutations::PostgresMutations::new(database, audit)
 }

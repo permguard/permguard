@@ -63,6 +63,18 @@ fn grant(applying: &Applying<'_>, name: &str) -> Result<Applied<String>, Failure
     })
 }
 
+/// Every record of the Host's security trail, in its order.
+fn audited(database: &Database) -> Vec<permguard_host::audit::record::AuditRecord> {
+    permguard_postgres::testing::audit(database)
+        .read(
+            permguard_host::audit::Class::Security,
+            permguard_host::audit::HOST,
+            &permguard_host::audit::query::Query::default(),
+        )
+        .expect("the trail reads")
+        .records
+}
+
 fn count(database: &Database, query: &str) -> i64 {
     database
         .write(|unit| Ok(unit.query_one(query, &[])?.get(0)))
@@ -80,7 +92,7 @@ fn an_operation_is_kept_whole_and_a_retry_learns_its_answer() {
     let scratch = scratch(&server);
     let database = &scratch.database;
     domain(database);
-    let engine = PostgresMutations::new(Database::clone(database));
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
 
     let first = run_checked_on(
         &engine,
@@ -101,14 +113,31 @@ fn an_operation_is_kept_whole_and_a_retry_learns_its_answer() {
         1,
         "the operation's row names the write it made"
     );
+    // Its audit record is in the Host's security trail, one record a phase, of one operation.
+    let recorded = audited(database);
     assert_eq!(
-        count(
-            database,
-            "SELECT count(*) FROM permguard_mutation_audit
-             WHERE phase IN ('intent', 'applied') AND action = 'host.grant.created'
-               AND subject_kind = 'principal' AND subject = 'alice'"
-        ),
-        2
+        recorded
+            .iter()
+            .map(|record| (
+                record.phase.as_deref(),
+                record.action.as_str(),
+                record.outcome.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (Some("intent"), "host.grant.created", "ok"),
+            (Some("applied"), "host.grant.created", "ok"),
+        ]
+    );
+    assert!(recorded[0].operation_id.is_some());
+    assert_eq!(recorded[0].operation_id, recorded[1].operation_id);
+    assert_eq!(recorded[1].target.as_deref(), Some("grant/read"));
+    // The engine keeps no pseudonym root here: the principal is rendered as the file backend
+    // renders it, never in the clear.
+    assert!(
+        !recorded[0].principal.contains("alice"),
+        "{}",
+        recorded[0].principal
     );
 
     let ran = AtomicUsize::new(0);
@@ -167,7 +196,7 @@ fn a_store_inside_an_operation_reads_and_writes_in_it() {
     let scratch = scratch(&server);
     let database = &scratch.database;
     domain(database);
-    let engine = PostgresMutations::new(Database::clone(database));
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
     let refused = run_checked_on::<String, String>(
         &engine,
         begin("alice", "request-1", "d1"),
@@ -220,7 +249,7 @@ fn a_refused_write_is_undone_and_recorded_failed() {
     let scratch = scratch(&server);
     let database = &scratch.database;
     domain(database);
-    let engine = PostgresMutations::new(Database::clone(database));
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
 
     let refused = run_checked_on::<String, String>(
         &engine,
@@ -245,11 +274,18 @@ fn a_refused_write_is_undone_and_recorded_failed() {
         1
     );
     assert_eq!(
-        count(
-            database,
-            "SELECT count(*) FROM permguard_mutation_audit WHERE phase IN ('intent', 'failed')"
-        ),
-        2
+        audited(database)
+            .iter()
+            .map(|record| (
+                record.phase.clone().unwrap_or_default(),
+                record.outcome.clone()
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("intent".to_owned(), "ok".to_owned()),
+            ("failed".to_owned(), "failed".to_owned()),
+        ],
+        "the refused write's audit record is kept, and nothing else of it"
     );
 
     let unchecked = run_checked_on::<String, String>(
@@ -301,7 +337,7 @@ fn a_write_whose_statement_failed_is_never_answered_applied() {
     let scratch = scratch(&server);
     let database = &scratch.database;
     domain(database);
-    let engine = PostgresMutations::new(Database::clone(database));
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
     run_checked_on(
         &engine,
         begin("alice", "request-1", "d1"),
@@ -357,7 +393,7 @@ fn instances_that_apply_one_request_together_keep_one_write() {
     const ROUNDS: usize = 4;
     let instances: Vec<PostgresMutations> = (0..INSTANCES)
         .map(|_| {
-            PostgresMutations::new(
+            permguard_postgres::testing::engine(
                 Database::connect(config(&server, Some(scratch.schema.clone()), 2))
                     .expect("an instance connects"),
             )
@@ -440,7 +476,7 @@ fn a_mutation_runs_from_inside_a_runtime_on_the_callers_thread() {
     };
     let scratch = scratch(&server);
     domain(&scratch.database);
-    let engine = PostgresMutations::new(Database::clone(&scratch.database));
+    let engine = permguard_postgres::testing::engine(Database::clone(&scratch.database));
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime");
@@ -499,7 +535,7 @@ fn child_dies_inside_a_mutation() {
     ) else {
         return;
     };
-    let engine = PostgresMutations::new(
+    let engine = permguard_postgres::testing::engine(
         Database::connect(config(&server, Some(schema), 1)).expect("connected"),
     );
     let _ = run_checked_on::<String, String>(
@@ -549,12 +585,12 @@ fn a_process_killed_inside_a_mutation_leaves_nothing() {
         count(
             database,
             "SELECT (SELECT count(*) FROM grants) + (SELECT count(*) FROM permguard_mutations)
-                  + (SELECT count(*) FROM permguard_mutation_audit)"
+                  + (SELECT count(*) FROM permguard_audit_records)"
         ),
         0,
         "nothing of the killed mutation is kept"
     );
-    let engine = PostgresMutations::new(Database::clone(database));
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
     let applied = run_checked_on(
         &engine,
         begin("alice", "request-1", "d1"),

@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 
+use permguard_postgres::audit::PostgresTrails;
 use permguard_postgres::bootstrap::PostgresBootstrap;
 use permguard_postgres::catalog::PostgresCatalog;
 use permguard_postgres::held::PostgresHeld;
@@ -167,4 +168,13 @@ fn the_catalog_keeps_its_contract_on_postgresql() {
     };
     let cases = Cases::new(server);
     permguard_core::catalog::suite::run(&|| Arc::new(PostgresCatalog::new(cases.next())));
+}
+
+#[test]
+fn the_audit_trails_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_audit_trails_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::audit::suite::run(&|| Arc::new(PostgresTrails::new(cases.next())));
 }

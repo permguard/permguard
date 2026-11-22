@@ -23,6 +23,7 @@
 //!
 //! No state is kept in memory: every decision reads inside its transaction.
 
+pub mod audit;
 pub mod bootstrap;
 pub mod catalog;
 pub mod database;

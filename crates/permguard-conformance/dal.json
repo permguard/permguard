@@ -85,6 +85,10 @@
       "reason": "the file implementation of `api::replay::ReplayStore`"
     },
     {
+      "path": "crates/permguard-postgres/src/audit.rs",
+      "reason": "the PostgreSQL implementation of `audit::store::Trails` and `audit::trail::TrailStore`, whose errors are the storage library's: it names the error type and reaches no file"
+    },
+    {
       "path": "crates/permguard-host/src/audit/index.rs",
       "reason": "the index of the trails a volume ever held: the audit engine's file backend, reached through `audit::Engine` alone"
     },

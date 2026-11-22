@@ -421,6 +421,67 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 13,
+        name: "audit trails",
+        statements: "
+        CREATE TABLE permguard_audit_trails (
+            class text NOT NULL CHECK (class IN ('security', 'operations', 'access')),
+            digest text NOT NULL,
+            resource text NOT NULL,
+            meta bytea NOT NULL,
+            next_seq bigint NOT NULL CHECK (next_seq >= 0),
+            previous bytea NOT NULL CHECK (octet_length(previous) = 32),
+            last_day text,
+            sealed text,
+            checkpoint_name text,
+            checkpoint_digest bytea CHECK (octet_length(checkpoint_digest) = 32),
+            checkpoint_last_seq bigint,
+            checkpoint_head bytea CHECK (octet_length(checkpoint_head) = 32),
+            anchor bytea,
+            PRIMARY KEY (class, digest),
+            CHECK ((checkpoint_name IS NULL) = (checkpoint_digest IS NULL)),
+            CHECK ((checkpoint_name IS NULL) = (checkpoint_last_seq IS NULL)),
+            CHECK ((checkpoint_name IS NULL) = (checkpoint_head IS NULL))
+        );
+        CREATE TABLE permguard_audit_days (
+            class text NOT NULL,
+            digest text NOT NULL,
+            day text NOT NULL,
+            archived boolean NOT NULL DEFAULT false,
+            PRIMARY KEY (class, digest, day),
+            FOREIGN KEY (class, digest) REFERENCES permguard_audit_trails (class, digest)
+        );
+        CREATE TABLE permguard_audit_records (
+            class text NOT NULL,
+            digest text NOT NULL,
+            seq bigint NOT NULL CHECK (seq >= 0),
+            day text NOT NULL,
+            record bytea NOT NULL,
+            PRIMARY KEY (class, digest, seq),
+            FOREIGN KEY (class, digest, day)
+                REFERENCES permguard_audit_days (class, digest, day)
+        );
+        CREATE INDEX permguard_audit_records_day
+            ON permguard_audit_records (class, digest, day, seq);
+        CREATE TABLE permguard_audit_checkpoints (
+            class text NOT NULL,
+            digest text NOT NULL,
+            name text NOT NULL,
+            envelope bytea NOT NULL,
+            archived boolean NOT NULL DEFAULT false,
+            PRIMARY KEY (class, digest, name),
+            FOREIGN KEY (class, digest) REFERENCES permguard_audit_trails (class, digest)
+        );
+    ",
+    },
+    Migration {
+        version: 14,
+        name: "the audit record of a mutation is in the trail",
+        statements: "
+        DROP TABLE permguard_mutation_audit;
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

@@ -539,7 +539,6 @@ mod tests {
         use permguard_host::composition::MutationHandle;
         use permguard_host::operations::journal::Initiator;
         use permguard_host::operations::mutation::{Applied, Begin, Failure, MutationError};
-        use permguard_postgres::mutations::PostgresMutations;
         use permguard_postgres::testing::{config, scratch};
 
         use crate::accounts::postgres::PostgresAccounts;
@@ -559,7 +558,7 @@ mod tests {
                 PostgresAccounts::new(database.clone()),
                 PostgresTokens::new(database.clone()),
                 MutationHandle::over(
-                    Arc::new(PostgresMutations::new(database)),
+                    Arc::new(permguard_postgres::testing::engine(database)),
                     crate::accounts::DOMAIN,
                 )
                 .in_subsystem(crate::PLANE),

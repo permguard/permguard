@@ -845,6 +845,10 @@ sections:
       - crates/permguard-host/src/operations/mutation/tests.rs::an_uncertain_domain_write_leaves_the_intent_for_the_next_start
   "1-architecture/5-architecture-server-host-audit.md#stores":
     paths:
+      - crates/permguard-host/src/audit/store.rs
+      - crates/permguard-host/src/audit/trail.rs
+      - crates/permguard-host/src/audit/suite.rs
+      - crates/permguard-postgres/src/audit.rs
       - crates/permguard-host/src/holds.rs
       - crates/permguard-host/src/holds/files.rs
       - crates/permguard-host/src/holds/suite.rs
@@ -855,6 +859,8 @@ sections:
       - crates/permguard-host/src/audit/mod.rs
       - crates/permguard-host/src/audit/index.rs
     tests:
+      - crates/permguard-host/src/audit/store.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-postgres/tests/host_stores.rs::the_audit_trails_keep_their_contract_on_postgresql
       - crates/permguard-host/src/holds/tests.rs::the_file_backend_keeps_the_contract
       - crates/permguard-host/src/holds/tests.rs::a_hold_removed_or_edited_outside_an_operation_is_detected
       - crates/permguard-host/src/holds/tests.rs::a_file_the_index_lacks_keeps_and_a_missing_index_is_refused

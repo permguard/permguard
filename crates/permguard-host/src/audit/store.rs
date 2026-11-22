@@ -231,3 +231,38 @@ impl Engine {
         Ok(engine)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use permguard_core::assurance::AssuranceProfile;
+
+    use super::*;
+
+    /// The file backend passes the contract's suite, each case on a volume of its own.
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-audit-trails-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let made = AtomicUsize::new(0);
+        super::super::suite::run(&|| {
+            let case = made.fetch_add(1, Ordering::Relaxed);
+            let volume = Volume::claim(
+                &root.join(format!("volume-{case}")),
+                AssuranceProfile::Development,
+            )
+            .expect("claimed");
+            let (trails, lost) = FileTrails::open(&volume, "2026-11-20.cborseq").expect("opens");
+            assert!(lost.is_empty());
+            Arc::new(trails)
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

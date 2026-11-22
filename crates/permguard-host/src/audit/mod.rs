@@ -40,6 +40,8 @@ pub mod pseudonym;
 pub mod query;
 pub mod record;
 pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 pub mod trail;
 pub mod verify;
 
@@ -838,10 +840,22 @@ impl Engine {
         time: Arc<TimeGuard>,
         pseudonyms: Option<ResourcePseudonyms>,
     ) -> Result<Self, Refused> {
+        Self::over_registry(trails, lost, REGISTRY, stamp, time, pseudonyms)
+    }
+
+    /// [`Engine::over`] with `registry`, for a test that registers its own actions.
+    pub fn over_registry(
+        trails: Arc<dyn Trails>,
+        lost: Vec<String>,
+        registry: &'static [ActionSchema],
+        stamp: Stamp,
+        time: Arc<TimeGuard>,
+        pseudonyms: Option<ResourcePseudonyms>,
+    ) -> Result<Self, Refused> {
         let engine = Self::over_with_queue(
             trails,
             lost,
-            REGISTRY,
+            registry,
             stamp,
             time,
             pseudonyms,

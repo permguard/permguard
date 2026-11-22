@@ -133,9 +133,7 @@ impl Fixture {
             _backend: Some(Box::new(scratch)),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
             mutations: permguard_host::composition::MutationHandle::over(
-                std::sync::Arc::new(permguard_postgres::mutations::PostgresMutations::new(
-                    database,
-                )),
+                std::sync::Arc::new(permguard_postgres::testing::engine(database)),
                 permguard_control_plane::store::REFS_DOMAIN,
             ),
             volume: PathBuf::new(),
@@ -172,9 +170,7 @@ impl Fixture {
                         _backend: Some(Box::new(std::sync::Arc::clone(&scratch))),
                         key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
                         mutations: permguard_host::composition::MutationHandle::over(
-                            std::sync::Arc::new(
-                                permguard_postgres::mutations::PostgresMutations::new(database),
-                            ),
+                            std::sync::Arc::new(permguard_postgres::testing::engine(database)),
                             permguard_control_plane::store::REFS_DOMAIN,
                         ),
                         volume: PathBuf::new(),

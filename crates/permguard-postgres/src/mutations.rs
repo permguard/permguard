@@ -8,16 +8,17 @@
 //! BEGIN
 //!   the answer a retry learns, when the request id was applied inside the window
 //!   the caller's validation
-//!   the operation's row, and its audit row `intent`
+//!   the operation's row
 //!   the domain write, inside this transaction: the token carries it
-//!   the revision and the answer in the operation's row, and its audit row `applied`
+//!   the revision and the answer in the operation's row
+//!   its audit records `intent` and `applied`, one after the other
 //! COMMIT
 //! ```
 //!
-//! The change, its record, its audit rows and its idempotency key are kept together or not at
-//! all, so nothing is left open and there is nothing to recover: the three answers of the file
-//! engine's recovery are the file engine's alone. A domain write that refuses is undone and the
-//! operation is kept as `failed`, with its audit row, as the file engine keeps it.
+//! The change, its record, its audit records and its idempotency key are kept together or not
+//! at all, so nothing is left open and there is nothing to recover: the three answers of the
+//! file engine's recovery are the file engine's alone. A domain write that refuses is undone and
+//! the operation is kept as `failed`, with its audit record, as the file engine keeps it.
 //!
 //! A transaction the database could not serialize with another kept nothing, and the operation
 //! is run again, validation and domain write, a bounded number of times after a wait spread at
@@ -27,14 +28,24 @@
 //! id at the same moment cannot both commit: the second finds the first's row, and is answered
 //! what the first was.
 //!
-//! The audit rows are the operation's audit record on this backend; sealing them to the trail's
-//! objects is the audit engine's, with its own implementation here.
+//! An audit record is written through the Host's projection, as the file engine writes it: a
+//! record of the `security` trail, with the privacy policy and the destination the Host gives
+//! every other. The trails of this backend are held inside the transaction of whoever holds
+//! them, so the record is in the operation's transaction; the projection is therefore one over
+//! the trails of this engine's own database. Since a trail is held from its first record to the
+//! end of the transaction, the records are written at the end, after the domain write: the
+//! operations of one trail wait for each other only for that end, never for each other's write.
+//! Inside one transaction the order of the writes changes nothing of what is kept: the records,
+//! the change and the operation's row are kept together or none of them.
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use permguard_core::{AuditEvent, AuditOutcome, AuditPhase, Subject};
 use permguard_host::operations::journal::{Initiator, OperationId};
 use permguard_host::operations::mutation::{
-    AppliedBytes, Applying, Begin, Declined, Domain, Ended, Engine, Recovered, Stopped, Subsystem,
+    AppliedBytes, Applying, Begin, Declined, Domain, Ended, Engine, Projection, Recovered, Stopped,
+    Subsystem,
 };
 use postgres::error::SqlState;
 
@@ -47,9 +58,20 @@ pub const WINDOW: Duration = permguard_host::operations::mutation::WINDOW;
 const BEFORE_THE_WRITE: &str = "before_the_domain_write";
 
 /// The mutation engine of one database.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PostgresMutations {
     database: Database,
+    /// Where the audit record of each phase is written.
+    projection: Arc<dyn Projection>,
+}
+
+impl std::fmt::Debug for PostgresMutations {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PostgresMutations")
+            .field("database", &self.database)
+            .finish_non_exhaustive()
+    }
 }
 
 fn unavailable(error: impl std::fmt::Display) -> Stopped {
@@ -117,34 +139,48 @@ fn lookup(unit: &Unit, begin: &Begin) -> Result<Option<Ended>, Stopped> {
     }
 }
 
-fn audit(
-    unit: &Unit,
-    begin: &Begin,
-    operation_id: &OperationId,
-    phase: &str,
-    target: Option<&str>,
-) -> Result<(), SqlError> {
-    let (subject_kind, subject) = kind(&begin.initiator);
-    unit.execute(
-        "INSERT INTO permguard_mutation_audit
-             (operation_id, phase, action, subject_kind, subject, target)
-         VALUES ($1, $2, $3, $4, $5, $6)",
-        &[
-            &operation_id.as_bytes().as_slice(),
-            &phase,
-            &begin.action,
-            &subject_kind,
-            &subject,
-            &target,
-        ],
-    )?;
-    Ok(())
-}
-
 impl PostgresMutations {
-    /// The engine of `database`, whose schema is this build's.
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    /// The engine of `database`, whose schema is this build's, writing the audit record of
+    /// each phase through `projection`: the Host's, over the trails of this same database.
+    pub fn new(database: Database, projection: Arc<dyn Projection>) -> Self {
+        Self {
+            database,
+            projection,
+        }
+    }
+
+    /// Writes the audit record of `begin` at `phase`, inside the operation's transaction. A
+    /// record the database could not serialize with another's is the operation to run again;
+    /// any other that is not written stops it, and nothing of it is kept.
+    fn project(
+        &self,
+        unit: &Unit,
+        begin: &Begin,
+        operation_id: &OperationId,
+        phase: AuditPhase,
+        target: Option<&str>,
+    ) -> Result<(), Attempted> {
+        let subject = match &begin.initiator {
+            Initiator::Principal(name) => Subject::Principal(name),
+            Initiator::System(name) => Subject::System(name),
+        };
+        let mut event = AuditEvent::new(begin.action, subject)
+            .in_operation(operation_id.as_bytes(), phase)
+            .with_outcome(match phase {
+                AuditPhase::Failed => AuditOutcome::Failed,
+                AuditPhase::Intent | AuditPhase::Applied | AuditPhase::Reconciled => {
+                    AuditOutcome::Ok
+                }
+            });
+        if let Some(target) = target {
+            event = event.on(target);
+        }
+        self.projection
+            .project(&event)
+            .map_err(|error| match unit.failure() {
+                Some(failure) if again(&failure) => Attempted::Sql(failure),
+                _ => Attempted::Stopped(Stopped::AuditUnavailable(error)),
+            })
     }
 
     /// One attempt at the whole operation, in one transaction.
@@ -206,13 +242,6 @@ impl PostgresMutations {
                 &begin.target,
             ],
         )?;
-        audit(
-            &unit,
-            begin,
-            &operation_id,
-            "intent",
-            begin.target.as_deref(),
-        )?;
         unit.mark(BEFORE_THE_WRITE)?;
 
         let answered = apply(&Applying::within(operation_id, unit.as_ref()));
@@ -234,11 +263,18 @@ impl PostgresMutations {
                      WHERE operation_id = $1",
                     &[&operation_id.as_bytes().as_slice()],
                 )?;
-                audit(
+                self.project(
                     &unit,
                     begin,
                     &operation_id,
-                    "failed",
+                    AuditPhase::Intent,
+                    begin.target.as_deref(),
+                )?;
+                self.project(
+                    &unit,
+                    begin,
+                    &operation_id,
+                    AuditPhase::Failed,
                     begin.target.as_deref(),
                 )?;
                 unit.commit()?;
@@ -259,11 +295,21 @@ impl PostgresMutations {
                 &applied.target.as_deref().or(begin.target.as_deref()),
             ],
         )?;
-        audit(
+        // The intent and the outcome are written last, together: a record takes its place in
+        // the trail by holding the trail until the transaction ends, and written first it
+        // would hold every other operation of the trail out for the whole domain write.
+        self.project(
             &unit,
             begin,
             &operation_id,
-            "applied",
+            AuditPhase::Intent,
+            begin.target.as_deref(),
+        )?;
+        self.project(
+            &unit,
+            begin,
+            &operation_id,
+            AuditPhase::Applied,
             applied.target.as_deref().or(begin.target.as_deref()),
         )?;
         match unit.commit() {
