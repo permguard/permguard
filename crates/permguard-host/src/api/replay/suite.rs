@@ -318,8 +318,15 @@ fn a_decision_reads_its_plan<S: ReplayStore + ?Sized>(store: &S, operate: Operat
             for thread in 0..THREADS {
                 let (plan_id, approved, together) = (&plan_id, &approved, &together);
                 scope.spawn(move || {
+                    // An engine may run the operation again when its unit of work kept nothing
+                    // of a first run: the threads are released together once, and what counts
+                    // is what the last run was answered.
+                    let (mut released, mut approved_last) = (false, false);
                     operate(&mut |applying| {
-                        together.wait();
+                        if !released {
+                            released = true;
+                            together.wait();
+                        }
                         // The rule of a plan that requires one approval: it takes one.
                         let answered = store.approve(applying, plan_id, &|plan, _| {
                             if plan.approvals.is_empty() {
@@ -328,10 +335,11 @@ fn a_decision_reads_its_plan<S: ReplayStore + ?Sized>(store: &S, operate: Operat
                                 Err(full())
                             }
                         });
-                        if answered.is_ok() {
-                            approved.fetch_add(1, Ordering::Relaxed);
-                        }
+                        approved_last = answered.is_ok();
                     });
+                    if approved_last {
+                        approved.fetch_add(1, Ordering::Relaxed);
+                    }
                 });
             }
         });
@@ -361,16 +369,22 @@ fn consumptions_together_spend_one<S: ReplayStore + ?Sized>(store: &S, operate: 
             for _ in 0..THREADS {
                 let (plan_id, spent, together) = (&plan_id, &spent, &together);
                 scope.spawn(move || {
+                    let mut released = false;
+                    let mut answered = None;
                     operate(&mut |applying| {
-                        together.wait();
-                        match store.consume(applying, "alice", plan_id) {
-                            Ok(()) => {
-                                spent.fetch_add(1, Ordering::Relaxed);
-                            }
-                            Err(ReplayError::PlanConsumed) => {}
-                            Err(other) => panic!("a consumption answered {other}"),
+                        if !released {
+                            released = true;
+                            together.wait();
                         }
+                        answered = Some(store.consume(applying, "alice", plan_id));
                     });
+                    match answered.expect("the operation ran") {
+                        Ok(()) => {
+                            spent.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(ReplayError::PlanConsumed) => {}
+                        Err(other) => panic!("a consumption answered {other}"),
+                    }
                 });
             }
         });

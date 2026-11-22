@@ -26,14 +26,17 @@
 pub mod bootstrap;
 pub mod database;
 pub mod gate;
+pub mod held;
 pub mod holds;
 pub mod lease;
 pub mod mutations;
 pub mod peers;
+pub mod replay;
 pub mod schema;
 #[cfg(feature = "test-support")]
 pub mod testing;
 pub mod time;
+pub mod witnesses;
 
 pub use database::{Config, Database, DbError, Failure, SqlError, Tls, Unit};
 /// What a statement's parameter is: named here so a store kept on this backend in another

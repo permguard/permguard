@@ -196,6 +196,49 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 7,
+        name: "witnesses and what a Host holds of the Authority Plane",
+        statements: "
+        CREATE TABLE permguard_witnesses (
+            name text PRIMARY KEY,
+            witness bytea NOT NULL
+        );
+        CREATE TABLE permguard_version_witnesses (
+            scope text NOT NULL,
+            position integer NOT NULL CHECK (position >= 0),
+            label text NOT NULL,
+            witness text NOT NULL,
+            PRIMARY KEY (scope, position)
+        );
+        CREATE TABLE permguard_held_keys (
+            only_one boolean PRIMARY KEY DEFAULT true CHECK (only_one),
+            key_set text NOT NULL
+        );
+        CREATE TABLE permguard_held_lists (
+            issuer text NOT NULL,
+            uri text NOT NULL,
+            iat bigint NOT NULL,
+            token text NOT NULL,
+            PRIMARY KEY (issuer, uri)
+        );
+    ",
+    },
+    Migration {
+        version: 8,
+        name: "plans",
+        statements: "
+        CREATE TABLE permguard_plans (
+            principal text NOT NULL,
+            plan_id text NOT NULL,
+            record text NOT NULL,
+            expires bigint NOT NULL,
+            consumed boolean NOT NULL,
+            PRIMARY KEY (principal, plan_id)
+        );
+        CREATE INDEX permguard_plans_id ON permguard_plans (plan_id);
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

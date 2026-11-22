@@ -1309,6 +1309,9 @@ sections:
       - crates/permguard-postgres/src/lease.rs
       - crates/permguard-postgres/src/time.rs
       - crates/permguard-postgres/src/mutations.rs
+      - crates/permguard-postgres/src/witnesses.rs
+      - crates/permguard-postgres/src/held.rs
+      - crates/permguard-postgres/src/replay.rs
       - scripts/test-postgres.sh
       - .github/workflows/ci.yml
     tests:
@@ -1333,6 +1336,10 @@ sections:
       - crates/permguard-postgres/tests/host_stores.rs::the_holds_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_seen_epochs_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_bootstrap_commitment_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_witnesses_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_version_witnesses_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::what_a_host_holds_of_the_authority_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_plans_keep_their_contract_on_postgresql
       - crates/permguard-host/src/operations/mutation/tests.rs::any_engine_hands_its_unit_of_work_to_the_domain
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:

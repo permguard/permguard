@@ -11,9 +11,12 @@
 use std::sync::Arc;
 
 use permguard_postgres::bootstrap::PostgresBootstrap;
+use permguard_postgres::held::PostgresHeld;
 use permguard_postgres::holds::PostgresHolds;
 use permguard_postgres::peers::PostgresSeen;
+use permguard_postgres::replay::PostgresReplay;
 use permguard_postgres::testing::{Cases, server};
+use permguard_postgres::witnesses::{PostgresVersionWitnesses, PostgresWitnesses};
 
 #[test]
 fn the_holds_keep_their_contract_on_postgresql() {
@@ -44,5 +47,50 @@ fn the_bootstrap_commitment_keeps_its_contract_on_postgresql() {
     permguard_host::authz::store::suite::run(
         &|| Arc::new(PostgresBootstrap::new(cases.next())),
         &|work| cases.operate("authz.bootstrap", work),
+    );
+}
+
+#[test]
+fn the_witnesses_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_witnesses_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::secrets::suite::run_witnesses(&|| {
+        Arc::new(PostgresWitnesses::new(cases.next()))
+    });
+}
+
+#[test]
+fn the_version_witnesses_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_version_witnesses_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::identity::witness::suite::run(&|| {
+        Arc::new(PostgresVersionWitnesses::new(cases.next()))
+    });
+}
+
+#[test]
+fn what_a_host_holds_of_the_authority_keeps_its_contract_on_postgresql() {
+    let Some(server) =
+        server("what_a_host_holds_of_the_authority_keeps_its_contract_on_postgresql")
+    else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::authz::held::suite::run(&|| Arc::new(PostgresHeld::new(cases.next())));
+}
+
+#[test]
+fn the_plans_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_plans_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::api::replay::suite::run(
+        &|| Arc::new(PostgresReplay::new(cases.next())),
+        &|work| cases.operate("host.plans", work),
     );
 }

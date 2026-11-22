@@ -3090,6 +3090,7 @@ dependencies = [
  "permguard-postgres",
  "postgres",
  "rustls",
+ "serde_json",
  "tokio",
  "tokio-postgres-rustls",
 ]
