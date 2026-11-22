@@ -18,26 +18,24 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
-use permguard_core::assurance::AssuranceProfile;
 use permguard_objects::crypto::suite::Suite;
 use permguard_objects::crypto::thumbprint::{self, KeySet};
 
-use super::migration;
+use super::ring::store::RingStore;
 use super::ring::{
     Binder, HOST_IDENTITY, Policy, Recorder, Ring, RingError, Rings, Statement, jwk_of,
 };
+use super::slots::SlotStore;
 use crate::identity::Identity;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Domain, Observed};
-use crate::storage::StorageError;
-use crate::storage::volume::Volume;
 use crate::time::TimeGuard;
 
 /// Why a ring could not be opened.
 #[derive(Debug)]
 pub enum OpenError {
     /// Its layout could not be read, declared or migrated.
-    Layout(StorageError),
+    Layout(Box<dyn std::error::Error + Send + Sync>),
     /// A legacy ring waits for the offline migration the profile requires.
     Migration(String),
     Ring(RingError),
@@ -57,8 +55,23 @@ impl std::error::Error for OpenError {}
 
 /// What opens a Host's rings: the volume, the clock, the identity that binds every set, the
 /// audit that records every transition, and the profile a migration's preflight runs under.
+/// What a ring is opened over: its records, and the slots of its private keys.
+pub struct Stores {
+    pub ring: Arc<dyn RingStore>,
+    pub slots: Arc<dyn SlotStore>,
+}
+
+/// Where a Host's rings are kept: what an [`Opener`] asks for the stores of each. A composition
+/// root makes the one of the process's backend.
+pub trait Home {
+    /// The records of `ring` and the slots of its private keys, laid out and ready to open;
+    /// `legacy` is where a ring written before the registry may still be.
+    fn stores(&self, ring: &'static str, legacy: Option<&Path>) -> Result<Stores, OpenError>;
+}
+
 pub struct Opener<'a> {
-    pub volume: &'a Volume,
+    /// Where the rings are kept.
+    pub home: Box<dyn Home + 'a>,
     /// The Host whose rings these are: what a sealed key is bound to.
     pub host_id: [u8; 16],
     /// Each ring's provider, from its custody (WP-3.2).
@@ -66,13 +79,11 @@ pub struct Opener<'a> {
     pub time: Arc<TimeGuard>,
     pub binder: Option<Arc<dyn Binder>>,
     pub recorder: Option<Arc<dyn Recorder>>,
-    pub profile: AssuranceProfile,
 }
 
 impl Opener<'_> {
-    /// Lays `ring` out, migrating the legacy ring at `legacy` first (owner decisions of
-    /// 2026-10-08), and opens it. From `production` upward a legacy ring is migrated only by
-    /// `permguard migrate keys`, which declares the backup the preflight requires.
+    /// Opens `ring` where its home keeps it, a legacy ring at `legacy` taken over first, through
+    /// the custody its configuration names.
     pub fn open(
         &self,
         ring: &'static str,
@@ -80,50 +91,14 @@ impl Opener<'_> {
         policy: Policy,
         legacy: Option<&Path>,
     ) -> Result<Arc<Ring>, OpenError> {
-        if self.profile.at_least(AssuranceProfile::Production)
-            && migration::needs_migration(self.volume, ring, legacy).map_err(OpenError::Layout)?
-        {
-            return Err(OpenError::Migration(format!(
-                "the key ring `{ring}` is still in its legacy directory, and from the production \
-                 profile upward its migration declares a backup: run `permguard migrate keys \
-                 --volume {} --backup <reference>` with the server stopped",
-                self.volume.root().display()
-            )));
-        }
-        let laid = migration::lay_out(
-            self.volume,
-            ring,
-            legacy,
-            self.profile,
-            None,
-            self.time.now_secs(),
-        )
-        .map_err(OpenError::Layout)?;
-        if laid == migration::Laid::Migrated {
-            tracing::info!(
-                event.name = "host.keys.migrated",
-                component = "host",
-                ring = ring,
-                "a legacy key ring was migrated; `migrate finalize` removes its old directory"
-            );
-        }
-        let dir = super::ring::directory(self.volume, ring).map_err(OpenError::Layout)?;
-        let public = dir
-            .subdir(super::ring::PUBLIC, true)
-            .map_err(OpenError::Layout)?;
-        let private = dir
-            .subdir(super::ring::PRIVATE, true)
-            .map_err(OpenError::Layout)?;
-        let stored = super::ring::stored_public(
-            crate::storage::Dir::open(public.path()).map_err(OpenError::Layout)?,
-        );
+        let Stores { ring: store, slots } = self.home.stores(ring, legacy)?;
+        let stored = super::ring::stored_public(Arc::clone(&store));
         let custodied = self
             .custodian
-            .plan(ring, self.host_id, private, stored, suite)
+            .plan(ring, self.host_id, slots, stored, suite)
             .map_err(|error| OpenError::Ring(RingError::Provider(error)))?;
         let mut opened = Ring::open_unchecked(
-            dir,
-            public,
+            store,
             Arc::clone(&custodied.provider),
             ring,
             suite,
@@ -262,6 +237,7 @@ mod tests {
 
     use super::*;
     use crate::keys::FileKeyProvider;
+    use crate::keys::migration;
     use crate::keys::ring::{DATA_ATTEST, Policy};
     use crate::storage::volume::Volume;
     use crate::time::TimeGuard;
@@ -353,14 +329,20 @@ mod tests {
             rotate_every: Duration::from_secs(3600),
             retain: Duration::from_secs(7200),
         };
-        let opener = |profile| Opener {
-            volume: &volume,
-            host_id: [1; 16],
-            custodian: Arc::new(crate::keys::custody::Custodian::development()),
-            time: Arc::new(TimeGuard::system(Duration::from_secs(30))),
-            binder: None,
-            recorder: None,
-            profile,
+        let opener = |profile| {
+            let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+            Opener {
+                home: Box::new(migration::VolumeHome {
+                    volume: &volume,
+                    profile,
+                    time: Arc::clone(&time),
+                }),
+                host_id: [1; 16],
+                custodian: Arc::new(crate::keys::custody::Custodian::development()),
+                time,
+                binder: None,
+                recorder: None,
+            }
         };
         let refused = opener(AssuranceProfile::Production)
             .open(DATA_ATTEST, Suite::Ed25519Sha256V1, policy, Some(&legacy))
@@ -401,9 +383,11 @@ mod custody_tests {
     use super::*;
     use crate::keys::KeyProvider as _;
     use crate::keys::custody::{Custodian, Keks, SecretKek};
+    use crate::keys::migration;
     use crate::keys::record::Kind;
     use crate::keys::ring::{DATA_ATTEST, journal_entries};
     use crate::secrets::{KeyVersion, Root};
+    use crate::storage::volume::Volume;
 
     fn kek(name: &str, version: u64, byte: u8) -> Arc<dyn crate::keys::custody::Wrap> {
         let root =
@@ -412,14 +396,18 @@ mod custody_tests {
     }
 
     fn opener<'a>(volume: &'a Volume, custodian: Custodian) -> Opener<'a> {
+        let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
         Opener {
-            volume,
+            home: Box::new(migration::VolumeHome {
+                volume,
+                profile: AssuranceProfile::Development,
+                time: Arc::clone(&time),
+            }),
             host_id: [4; 16],
             custodian: Arc::new(custodian),
-            time: Arc::new(TimeGuard::system(Duration::from_secs(30))),
+            time,
             binder: None,
             recorder: None,
-            profile: AssuranceProfile::Development,
         }
     }
 
@@ -573,24 +561,26 @@ mod custody_tests {
         let custodian = Custodian::new(|_| KeyCustody::File, Ok(Some(keks())));
 
         // The journal written, the sealing not: the crash.
-        let stored = crate::keys::ring::stored_public(
-            dir.subdir(crate::keys::ring::PUBLIC, false)
-                .expect("public"),
+        let store: Arc<dyn RingStore> = Arc::new(
+            crate::keys::ring::files::FileRing::open(
+                crate::storage::Dir::open(dir.path()).expect("opens"),
+                DATA_ATTEST,
+            )
+            .expect("the ring's records open"),
         );
+        let stored = crate::keys::ring::stored_public(Arc::clone(&store));
         let custodied = custodian
             .plan(
                 DATA_ATTEST,
                 [4; 16],
-                private,
+                Arc::new(crate::keys::slots::files::FileSlots::new(private)),
                 stored,
                 Suite::Ed25519Sha256V1,
             )
             .expect("planned");
         assert_eq!(custodied.plan.sealed.len(), 2);
         let ring = Ring::open_unchecked(
-            crate::storage::Dir::open(dir.path()).expect("opens"),
-            dir.subdir(crate::keys::ring::PUBLIC, false)
-                .expect("public"),
+            store,
             Arc::clone(&custodied.provider),
             DATA_ATTEST,
             Suite::Ed25519Sha256V1,

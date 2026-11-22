@@ -28,6 +28,11 @@ use permguard_host::keys::custody::{Dek, Remote as _, Wrap as _};
 use permguard_host::storage::Dir;
 use permguard_server::custody::{Endpoint, Transit, TransitKek, WRAP_TRANSIT};
 
+/// The slots a custody keeps its references in, below `dir`.
+fn slots(dir: Dir) -> std::sync::Arc<dyn permguard_host::keys::slots::SlotStore> {
+    std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(dir))
+}
+
 const TOKEN: &str = "s.test-token";
 
 #[derive(Default)]
@@ -389,7 +394,10 @@ fn a_ring_key_lives_in_transit_and_signs_there() {
     let dir = scratch("keys");
     let mount = transit(TOKEN);
     let keys = mount
-        .provider("host.operations", Dir::open(dir.path()).expect("opens"))
+        .provider(
+            "host.operations",
+            slots(Dir::open(dir.path()).expect("opens")),
+        )
         .expect("a provider");
     let (slot, public) = keys
         .generate_addressed(Suite::Ed25519Sha256V1)
@@ -425,7 +433,7 @@ fn a_ring_key_lives_in_transit_and_signs_there() {
     let other = mount
         .provider(
             "control.attest",
-            Dir::open(other_dir.path()).expect("opens"),
+            slots(Dir::open(other_dir.path()).expect("opens")),
         )
         .expect("a provider");
     // A reference to another ring's live key is refused before Transit is asked.
@@ -451,7 +459,7 @@ fn a_ring_key_lives_in_transit_and_signs_there() {
 #[test]
 fn a_p256_signature_from_transit_is_brought_to_low_s() {
     let keys = transit(TOKEN)
-        .provider("data.attest", scratch("p256"))
+        .provider("data.attest", slots(scratch("p256")))
         .expect("a provider");
     let (slot, public) = keys
         .generate_addressed(Suite::P256Sha256V1)
@@ -514,7 +522,7 @@ fn a_transit_kek_binds_its_context_and_a_wrong_token_is_refused() {
 
     let stranger = transit("s.other");
     let keys = stranger
-        .provider("host.operations", scratch("stranger"))
+        .provider("host.operations", slots(scratch("stranger")))
         .expect("a provider");
     assert!(keys.generate_addressed(Suite::Ed25519Sha256V1).is_err());
 }
@@ -525,7 +533,7 @@ fn a_transit_kek_binds_its_context_and_a_wrong_token_is_refused() {
 #[test]
 fn a_decision_never_reaches_the_kms() {
     let keys = transit(TOKEN)
-        .provider("host.operations", scratch("egress"))
+        .provider("host.operations", slots(scratch("egress")))
         .expect("a provider");
     let (slot, _) = keys
         .generate_addressed(Suite::Ed25519Sha256V1)

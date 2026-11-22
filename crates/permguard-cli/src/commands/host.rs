@@ -592,7 +592,13 @@ pub(super) fn open_identity(
             .map_err(|error| Failure::unavailable(format!("the identity's keys: {error}")))?,
     );
     let custodied = custodian(held, server_config)?
-        .plan(HOST_IDENTITY, host_id, keys, stored, suite)
+        .plan(
+            HOST_IDENTITY,
+            host_id,
+            std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(keys)),
+            stored,
+            suite,
+        )
         .map_err(|error| Failure::unavailable(without_custody(server_config, error)))?;
     // Sealing and rewrapping are the start's, which records them in the operations audit.
     if !custodied.plan.sealed.is_empty() || !custodied.plan.rewrapped.is_empty() {
@@ -660,7 +666,15 @@ fn identity(
                 &held,
                 |host_id| {
                     custodian
-                        .provider(HOST_IDENTITY, *host_id, keys, stored, suite)
+                        .provider(
+                            HOST_IDENTITY,
+                            *host_id,
+                            std::sync::Arc::new(
+                                permguard_host::keys::slots::files::FileSlots::new(keys),
+                            ),
+                            stored,
+                            suite,
+                        )
                         .map(|(provider, _)| provider)
                         .map_err(identity::IdentityError::from)
                 },

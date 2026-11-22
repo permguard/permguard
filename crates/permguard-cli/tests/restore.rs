@@ -213,7 +213,7 @@ impl Snapshot {
             .plan(
                 permguard_host::keys::ring::HOST_IDENTITY,
                 host_id,
-                keys,
+                std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(keys)),
                 stored,
                 identity::Suite::Ed25519Sha256V1,
             )

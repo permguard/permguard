@@ -160,7 +160,10 @@ pub fn backup_policy_shortfalls(
 /// clients, its key-encryption keys witnessed on the volume.
 pub fn custodian(config: &Config, volume: &Volume) -> Result<Arc<Custodian>> {
     let secrets = crate::factories::secret_store_for(config)?;
-    crate::keys::custodian_for(config, secrets.as_deref(), volume)
+    let witnesses = permguard_host::secrets::Witnesses::open(volume)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .context("opening the secrets' witnesses")?;
+    crate::keys::custodian_for(config, secrets.as_deref(), &witnesses)
 }
 
 /// What provisions the identity a reset makes on `volume` (WP-4.1): the identity's custody, its
@@ -180,7 +183,9 @@ pub fn provisioner(
             .provider(
                 permguard_host::keys::ring::HOST_IDENTITY,
                 *host_id,
-                permguard_host::storage::Dir::open(&keys)?,
+                Arc::new(permguard_host::keys::slots::files::FileSlots::new(
+                    permguard_host::storage::Dir::open(&keys)?,
+                )),
                 stored,
                 suite,
             )
@@ -202,13 +207,16 @@ pub fn rings(
     time: Arc<permguard_host::time::TimeGuard>,
 ) -> Result<Vec<Arc<permguard_host::keys::ring::Ring>>> {
     let opener = permguard_host::keys::registry::Opener {
-        volume,
+        home: Box::new(permguard_host::keys::migration::VolumeHome {
+            volume,
+            profile: config.assurance().profile(),
+            time: Arc::clone(&time),
+        }),
         host_id,
         custodian: Arc::clone(custodian),
         time,
         binder,
         recorder: None,
-        profile: config.assurance().profile(),
     };
     Ok([
         crate::factories::key_manager_for(config, &opener)?,

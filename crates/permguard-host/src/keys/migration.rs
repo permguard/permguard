@@ -413,5 +413,53 @@ pub fn lay_out(
     Ok(Laid::Migrated)
 }
 
+/// The rings of a volume: the home of the file backend. A legacy ring is migrated before its
+/// stores are handed out (owner decisions of 2026-10-08); from `production` upward only by
+/// `permguard migrate keys`, which declares the backup the preflight requires.
+pub struct VolumeHome<'a> {
+    pub volume: &'a Volume,
+    pub profile: AssuranceProfile,
+    pub time: std::sync::Arc<crate::time::TimeGuard>,
+}
+
+impl super::registry::Home for VolumeHome<'_> {
+    fn stores(
+        &self,
+        ring: &'static str,
+        legacy: Option<&Path>,
+    ) -> std::result::Result<super::registry::Stores, super::registry::OpenError> {
+        use super::registry::OpenError;
+        let layout = |error: StorageError| OpenError::Layout(Box::new(error));
+        if self.profile.at_least(AssuranceProfile::Production)
+            && needs_migration(self.volume, ring, legacy).map_err(layout)?
+        {
+            return Err(OpenError::Migration(format!(
+                "the key ring `{ring}` is still in its legacy directory, and from the production \
+                 profile upward its migration declares a backup: run `permguard migrate keys \
+                 --volume {} --backup <reference>` with the server stopped",
+                self.volume.root().display()
+            )));
+        }
+        let laid = lay_out(
+            self.volume,
+            ring,
+            legacy,
+            self.profile,
+            None,
+            self.time.now_secs(),
+        )
+        .map_err(layout)?;
+        if laid == Laid::Migrated {
+            tracing::info!(
+                event.name = "host.keys.migrated",
+                component = "host",
+                ring = ring,
+                "a legacy key ring was migrated; `migrate finalize` removes its old directory"
+            );
+        }
+        super::ring::files::stores(self.volume, ring).map_err(layout)
+    }
+}
+
 #[cfg(test)]
 mod tests;

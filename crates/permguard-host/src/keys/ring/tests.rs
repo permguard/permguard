@@ -12,7 +12,11 @@ use permguard_core::time::ManualClock;
 
 use super::*;
 use crate::identity::Identity;
+use crate::keys::FileKeyProvider;
 use crate::operations::mutation::Applying;
+use crate::storage::volume::Volume;
+use crate::storage::write::{read_view, replace_view};
+use crate::storage::{Dir, format, sequence};
 use crate::time::ManualMonotonic;
 use permguard_objects::crypto::suite::SigningKey;
 
@@ -74,6 +78,11 @@ impl Fixture {
 
     fn advance(&self, seconds: u64) {
         self.clock.jump(i64::try_from(seconds).expect("small"));
+    }
+
+    /// The ring's records, opened as a start opens them.
+    fn store(&self) -> Arc<dyn RingStore> {
+        Arc::new(files::FileRing::open(self.dir(), DATA_ATTEST).expect("the ring's records open"))
     }
 
     fn dir(&self) -> Dir {
@@ -339,8 +348,7 @@ fn the_private_half_is_destroyed_only_after_the_signings_in_flight() {
     });
     let ring = Arc::new(
         Ring::open_with(
-            directory(&fixture.volume, DATA_ATTEST).expect("dir"),
-            dir.subdir(PUBLIC, true).expect("public"),
+            fixture.store(),
             gated.clone(),
             DATA_ATTEST,
             Suite::Ed25519Sha256V1,
@@ -433,8 +441,7 @@ fn what_a_crash_left_is_completed_and_journaled_by_the_next_maintenance() {
     let private = || FileKeyProvider::new(dir.subdir(PRIVATE, true).expect("private"));
     let first = {
         let ring = Ring::open_with(
-            fixture.dir(),
-            dir.subdir(PUBLIC, true).expect("public"),
+            fixture.store(),
             Arc::new(Undestroyable {
                 inner: private(),
                 armed: std::sync::atomic::AtomicBool::new(true),
@@ -1188,5 +1195,116 @@ fn no_transition_shows_the_ring_without_an_active_key() {
     assert!(
         seen.iter().all(|(_, active)| *active),
         "a transition showed no active key: {seen:?}"
+    );
+}
+
+/// The file backend passes the contract's suite, each case on a volume of its own and what a
+/// retirement keeps inside an operation the engine built.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    use crate::operations::journal::Initiator;
+    use crate::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let engine_volume =
+        Volume::claim(&scratch("suite-engine"), AssuranceProfile::Development).expect("a volume");
+    let mutations = Mutations::open_offline(&engine_volume, "suite").expect("the engine opens");
+    let next = std::sync::atomic::AtomicU64::new(1);
+    // The volumes stay claimed while their stores are used.
+    let volumes = Mutex::new(Vec::new());
+    suite::run(
+        &|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let volume = Volume::claim(
+                &scratch(&format!("suite-{case}")),
+                AssuranceProfile::Development,
+            )
+            .expect("a volume");
+            let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+            let store = Arc::new(files::FileRing::open(dir, DATA_ATTEST).expect("the store opens"));
+            volumes.lock().expect("lock").push(volume);
+            store
+        },
+        &|work| {
+            let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            mutations
+                .run(
+                    Begin {
+                        domain: DOMAIN,
+                        operation: REVOKE_RUN,
+                        action: AUDIT_REVOKED,
+                        initiator: Initiator::System("suite".to_owned()),
+                        request: None,
+                        target: Some(format!("suite-{at}")),
+                    },
+                    |applying| {
+                        work(applying);
+                        Ok::<_, Failure<String>>(Applied {
+                            revision: at,
+                            target: None,
+                            value: (),
+                        })
+                    },
+                )
+                .expect("the operation ran");
+        },
+    );
+}
+
+/// What only the file backend can prove: an entry a process that stopped left half written is
+/// cut when the records are opened, and left as it is when they are opened to read; a retired
+/// ring's records are kept under the retired Host and the ring's name.
+#[test]
+fn the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_host() {
+    use std::io::Write as _;
+
+    let volume =
+        Volume::claim(&scratch("torn-entry"), AssuranceProfile::Development).expect("a volume");
+    let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+    let whole =
+        permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Int(7)).expect("an item");
+    {
+        let store = files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST)
+            .expect("opens");
+        store.append(1, &whole).expect("added");
+    }
+    let journal = dir.path().join(JOURNAL);
+    let before = std::fs::metadata(&journal).expect("the journal").len();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&journal)
+        .expect("opens")
+        .write_all(&[0x82, 0x01])
+        .expect("half an entry");
+    // Opened to read: one entry is read, and the file is as the stopped process left it.
+    let reading = files::FileRing::to_read(Dir::open(dir.path()).expect("opens"));
+    assert_eq!(reading.entries().expect("reads").len(), 1);
+    assert_eq!(
+        std::fs::metadata(&journal).expect("the journal").len(),
+        before + 2
+    );
+    // Opened to serve: the torn entry is cut.
+    let store =
+        files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST).expect("opens");
+    assert_eq!(
+        std::fs::metadata(&journal).expect("the journal").len(),
+        before
+    );
+    assert_eq!(store.entries().expect("reads").len(), 1);
+
+    store.publish_public("thumb", b"jwk").expect("published");
+    store
+        .retire(&Applying::for_tests(1), &[0x0a; 16])
+        .expect("retired");
+    let kept = volume
+        .root()
+        .join("host/keys")
+        .join(RETIRED)
+        .join(crate::identity::record::uuid_text(&[0x0a; 16]))
+        .join(DATA_ATTEST);
+    assert!(kept.join(JOURNAL).is_file(), "the entries are kept");
+    assert_eq!(
+        std::fs::read(kept.join(PUBLIC).join("thumb.jwk")).expect("the key"),
+        b"jwk"
     );
 }

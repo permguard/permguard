@@ -14,11 +14,11 @@ use permguard_core::secrets::SecretStore;
 ///
 /// It hands back an `Arc` rather than a `Box` because a key ring is maintained by work that outlives
 /// any single call — see [`ServerContext::with_keys`](permguard_core::ServerContext::with_keys).
-/// Resolves the root `reference` names at the text `version` (`vN`), witnessed on `volume`; the
+/// Resolves the root `reference` names at the text `version` (`vN`), witnessed in `witnesses`; the
 /// errors name the reference and never the material (WP-3.3).
 pub fn resolve_root(
     secrets: &dyn SecretStore,
-    volume: &permguard_host::storage::volume::Volume,
+    witnesses: &permguard_host::secrets::Witnesses,
     reference: &permguard_core::SecretRef,
     version: &str,
     what: &str,
@@ -28,10 +28,7 @@ pub fn resolve_root(
         .parse()
         .map_err(|error| anyhow::anyhow!("{error}"))
         .with_context(|| format!("reading the version of {what}"))?;
-    let witnesses = permguard_host::secrets::Witnesses::open(volume)
-        .map_err(|error| anyhow::anyhow!("{error}"))
-        .context("opening the secrets' witnesses")?;
-    permguard_host::secrets::resolve(secrets, &witnesses, reference, version, role)
+    permguard_host::secrets::resolve(secrets, witnesses, reference, version, role)
         .map_err(|error| anyhow::anyhow!("{error}"))
         .with_context(|| {
             format!(
@@ -212,7 +209,7 @@ fn transit_for(_config: &Config, _secrets: Option<&dyn SecretStore>) -> Result<K
 pub fn custodian_for(
     config: &Config,
     secrets: Option<&dyn SecretStore>,
-    volume: &permguard_host::storage::volume::Volume,
+    witnesses: &permguard_host::secrets::Witnesses,
 ) -> Result<Arc<permguard_host::keys::custody::Custodian>> {
     use permguard_core::config::KeyCustody;
     use permguard_host::keys::ring::{
@@ -256,7 +253,7 @@ pub fn custodian_for(
         None
     };
     let keks = if uses(KeyCustody::File) {
-        keks_for(config, secrets, volume, kms.as_ref(), hsm.as_ref())
+        keks_for(config, secrets, witnesses, kms.as_ref(), hsm.as_ref())
             .map(Some)
             .map_err(|error| format!("{error:#}"))
     } else {
@@ -285,7 +282,7 @@ pub fn custodian_for(
 fn keks_for(
     config: &Config,
     secrets: Option<&dyn SecretStore>,
-    volume: &permguard_host::storage::volume::Volume,
+    witnesses: &permguard_host::secrets::Witnesses,
     kms: Option<&Kms>,
     hsm: Option<&Token>,
 ) -> Result<permguard_host::keys::custody::Keks> {
@@ -346,7 +343,14 @@ fn keks_for(
          `operations.keys.kek_ref` names none",
     )?;
     let kek = |reference: &permguard_core::SecretRef, version: &str, what: &str| {
-        let root = resolve_root(secrets, volume, reference, version, what, "key-encryption")?;
+        let root = resolve_root(
+            secrets,
+            witnesses,
+            reference,
+            version,
+            what,
+            "key-encryption",
+        )?;
         let kek = SecretKek::from_root(reference.name(), &root)
             .map_err(|error| anyhow::anyhow!("{error}"))?;
         Ok::<Arc<dyn KeyWrap>, anyhow::Error>(Arc::new(kek))
@@ -402,7 +406,8 @@ mod tests {
         )
         .expect("a volume");
 
-        let refused = match custodian_for(&config, None, &volume) {
+        let witnesses = permguard_host::secrets::Witnesses::open(&volume).expect("the witnesses");
+        let refused = match custodian_for(&config, None, &witnesses) {
             Ok(_) => panic!("a custody this build cannot reach was accepted"),
             Err(refused) => format!("{refused:#}"),
         };

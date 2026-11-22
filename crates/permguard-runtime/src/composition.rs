@@ -915,7 +915,13 @@ impl Composition {
                 .map_err(|error| anyhow::anyhow!("{error}"))?
                 .unwrap_or(identity::Suite::Ed25519Sha256V1);
             let (provider, done) = custodian
-                .provider(HOST_IDENTITY, host_id, keys, stored, suite)
+                .provider(
+                    HOST_IDENTITY,
+                    host_id,
+                    std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(keys)),
+                    stored,
+                    suite,
+                )
                 .map_err(|error| anyhow::anyhow!("{error}"))
                 .context("preparing the custody of the Host identity's keys")?;
             prepared = done;
@@ -931,7 +937,15 @@ impl Composition {
                     volume,
                     |host_id| {
                         custodian
-                            .provider(HOST_IDENTITY, *host_id, keys, stored, suite)
+                            .provider(
+                                HOST_IDENTITY,
+                                *host_id,
+                                std::sync::Arc::new(
+                                    permguard_host::keys::slots::files::FileSlots::new(keys),
+                                ),
+                                stored,
+                                suite,
+                            )
                             .map(|(provider, _)| provider)
                             .map_err(IdentityError::from)
                     },
@@ -986,9 +1000,12 @@ impl Composition {
             .context("audit pseudonymisation is enabled but names no secret")?;
         let secrets = secrets
             .context("audit pseudonymisation is enabled but this build resolved no secret store")?;
+        let witnesses = permguard_host::secrets::Witnesses::open(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("opening the secrets' witnesses")?;
         let root = resolve_root(
             secrets,
-            volume,
+            &witnesses,
             reference,
             config.audit_pseudonym_key_version(),
             "the audit pseudonymisation key",
@@ -1147,9 +1164,12 @@ impl Composition {
             "`operations.secrets.coordinator_root_ref` is set and this build resolved no secret \
              store",
         )?;
+        let witnesses = permguard_host::secrets::Witnesses::open(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("opening the secrets' witnesses")?;
         let root = resolve_root(
             secrets,
-            volume,
+            &witnesses,
             reference,
             config.secrets_zone_key_version(),
             "the coordinator root",
@@ -1734,7 +1754,10 @@ impl Composition {
         // The identity's witness before the custody writes the key-encryption key's.
         identity_witness_checked(config, &volume)?;
         // Each ring's provider, from its custody (WP-3.2): the identity's first.
-        let custodian = custodian_for(config, secrets, &volume)?;
+        let witnesses = permguard_host::secrets::Witnesses::open(&volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("opening the secrets' witnesses")?;
+        let custodian = custodian_for(config, secrets, &witnesses)?;
 
         // The Host identity (WP-2.2), before anything is recorded under it: opened and verified,
         // or provisioned when the profile allows it, and matched to its external witness.
@@ -1981,7 +2004,11 @@ impl Composition {
         // migrated first, every set bound by the identity and every transition recorded by the
         // audit engine; an operator's rotation or revocation a crash left open resolved now.
         let opener = permguard_host::keys::registry::Opener {
-            volume: &volume,
+            home: Box::new(permguard_host::keys::migration::VolumeHome {
+                volume: &volume,
+                profile: config.assurance().profile(),
+                time: Arc::clone(&time),
+            }),
             host_id: host_identity.host_id(),
             custodian: Arc::clone(&custodian),
             time: Arc::clone(&time),
@@ -1989,7 +2016,6 @@ impl Composition {
             recorder: Some(
                 Arc::clone(&audit_engine) as Arc<dyn permguard_host::keys::ring::Recorder>
             ),
-            profile: config.assurance().profile(),
         };
         let keys = self
             .keys_for(config, &opener)

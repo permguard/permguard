@@ -63,6 +63,18 @@
       "reason": "the file implementation of `identity::witness::VersionWitnesses`"
     },
     {
+      "path": "crates/permguard-host/src/keys/migration.rs",
+      "reason": "the migration of a legacy ring directory into `host/keys/<ring>` through the storage library's migration framework, and the home that hands a volume's rings to an opener: both exist on the file backend alone"
+    },
+    {
+      "path": "crates/permguard-host/src/keys/ring/files.rs",
+      "reason": "the file implementation of `keys::ring::store::RingStore`, and the entry points that take a volume or a ring directory"
+    },
+    {
+      "path": "crates/permguard-host/src/keys/slots/files.rs",
+      "reason": "the file implementation of `keys::slots::SlotStore`"
+    },
+    {
       "path": "crates/permguard-host/src/secrets/files.rs",
       "reason": "the file implementations of `secrets::WitnessStore` and `secrets::DeliveredKeys`"
     },
@@ -92,6 +104,10 @@
     }
   ],
   "configured": [
+    {
+      "source": "crates/permguard-offline/src/custody/transit.rs",
+      "reason": "reads the certificate authority file the configuration names for the KMS (`PERMGUARD_KEYS_KMS_CA`), to verify the KMS it calls"
+    },
     {
       "source": "crates/permguard-runtime/src/join.rs",
       "reason": "reads the invitation an operator mounted as a file, once, to join a coordinator"
@@ -191,26 +207,6 @@
       "until": "WP-26.8"
     },
     {
-      "source": "crates/permguard-host/src/keys/custody.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-host/src/keys/migration.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-host/src/keys/mod.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-host/src/keys/registry.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-host/src/keys/ring.rs",
-      "until": "WP-26.4"
-    },
-    {
       "source": "crates/permguard-host/src/membership/egress.rs",
       "until": "WP-26.5"
     },
@@ -245,18 +241,6 @@
     {
       "source": "crates/permguard-host/src/restore.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-offline/src/custody/pkcs11.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-offline/src/custody/transit.rs",
-      "until": "WP-26.4"
-    },
-    {
-      "source": "crates/permguard-offline/src/keys.rs",
-      "until": "WP-26.4"
     },
     {
       "source": "crates/permguard-offline/src/legacy_events.rs",

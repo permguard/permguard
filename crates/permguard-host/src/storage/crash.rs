@@ -87,6 +87,12 @@ pub const POINTS: &[&str] = &[
     "identity.retired",
     "identity.reset_marked",
     "identity.init_removed",
+    "slots.filled",
+    "slots.replaced",
+    "slots.emptied",
+    "ring.public_published",
+    "ring.entry_added",
+    "ring.entries_forgotten",
 ];
 
 /// The crash point `name`: aborts here when this process was told to, at the pass it was told.

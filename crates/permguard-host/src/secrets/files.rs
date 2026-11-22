@@ -50,15 +50,23 @@ fn existing(dir: &Dir, name: &str) -> Result<Option<Dir>, SecretsError> {
 /// The witnesses of one volume.
 #[derive(Debug)]
 pub struct FileWitnesses {
-    dir: Dir,
+    /// `host/` of the volume: the witnesses' directory is made when the first one is asked for,
+    /// so a volume that witnesses nothing holds none.
+    host: Dir,
 }
 
 impl FileWitnesses {
-    /// `host/state/witness/` of `volume`, created `0700`.
+    /// The witnesses of `volume`, in `host/state/witness/`, created `0700` at the first witness.
     pub fn open(volume: &Volume) -> Result<Self, SecretsError> {
-        let dir = volume.host().subdir("state", true)?.subdir(WITNESS, true)?;
+        Ok(Self {
+            host: Dir::open(volume.host().path())?,
+        })
+    }
+
+    fn dir(&self) -> Result<Dir, SecretsError> {
+        let dir = self.host.subdir("state", true)?.subdir(WITNESS, true)?;
         dir.sweep_temps()?;
-        Ok(Self { dir })
+        Ok(dir)
     }
 }
 
@@ -67,8 +75,9 @@ impl WitnessStore for FileWitnesses {
         let (file, parents) = name
             .split_last()
             .ok_or_else(|| SecretsError::Storage("an empty witness path".to_owned()))?;
-        let dir = below(&self.dir, parents)?;
-        let dir = dir.as_ref().unwrap_or(&self.dir);
+        let root = self.dir()?;
+        let dir = below(&root, parents)?;
+        let dir = dir.as_ref().unwrap_or(&root);
         if let Some(held) = dir.read(file)? {
             return Ok(held);
         }

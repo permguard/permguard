@@ -234,16 +234,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("a scratch directory");
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let time = Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        ));
         let opener = Opener {
-            volume: &volume,
+            home: Box::new(permguard_host::keys::migration::VolumeHome {
+                volume: &volume,
+                profile: AssuranceProfile::Development,
+                time: Arc::clone(&time),
+            }),
             host_id: [7; 16],
             custodian: Arc::new(permguard_host::keys::custody::Custodian::development()),
-            time: Arc::new(permguard_host::time::TimeGuard::system(
-                std::time::Duration::from_secs(30),
-            )),
+            time,
             binder: None,
             recorder: None,
-            profile: AssuranceProfile::Development,
         };
         authority_tokens_keys_for(config, &opener)
     }

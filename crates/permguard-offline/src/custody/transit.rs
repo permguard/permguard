@@ -30,9 +30,8 @@ use zeroize::Zeroizing;
 
 use permguard_host::identity::Suite;
 use permguard_host::keys::custody::{Remote, Wrap};
+use permguard_host::keys::slots::{Kind, SlotStore};
 use permguard_host::keys::{Custody, KeyError, KeyProvider, PublicKey};
-use permguard_host::storage::Dir;
-use permguard_host::storage::write::{Published, publish_immutable};
 
 /// How long one Transit request may take before it fails.
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -328,10 +327,10 @@ fn key_type(suite: Suite) -> &'static str {
     }
 }
 
-/// A ring's keys in Transit, their names in `<slot>.ref` below `dir`.
+/// A ring's keys in Transit, their names the references of its slots.
 pub struct TransitKeys {
     transit: Arc<Transit>,
-    dir: Dir,
+    slots: Arc<dyn SlotStore>,
     ring: &'static str,
 }
 
@@ -339,16 +338,11 @@ impl fmt::Debug for TransitKeys {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TransitKeys")
             .field("ring", &self.ring)
-            .field("dir", &self.dir.path())
             .finish_non_exhaustive()
     }
 }
 
 impl TransitKeys {
-    fn reference(slot: &str) -> String {
-        format!("{slot}.ref")
-    }
-
     /// The prefix of every key name this ring creates: `pg-<ring>-`.
     fn prefix(&self) -> String {
         format!("pg-{}-", self.ring.replace('.', "-"))
@@ -358,8 +352,8 @@ impl TransitKeys {
     /// ring or the KEK's.
     fn name_of(&self, slot: &str) -> Result<String, KeyError> {
         let bytes = self
-            .dir
-            .read(&Self::reference(slot))?
+            .slots
+            .read(Kind::Reference, slot)?
             .ok_or_else(|| KeyError::Absent(slot.to_owned()))?;
         let refused = || KeyError::Malformed(format!("`{slot}.ref` names no key of this ring"));
         let name = String::from_utf8(bytes).map_err(|_| refused())?;
@@ -444,13 +438,7 @@ impl TransitKeys {
     }
 
     fn remember(&self, slot: &str, name: &str) -> Result<(), KeyError> {
-        let reference = Self::reference(slot);
-        let readable = |bytes: &[u8]| std::str::from_utf8(bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == name.as_bytes();
-        match publish_immutable(&self.dir, &reference, name.as_bytes(), &readable, &same)? {
-            Published::Written => Ok(()),
-            Published::AlreadyThere => Err(KeyError::Exists(slot.to_owned())),
-        }
+        self.slots.fill(Kind::Reference, slot, name.as_bytes())
     }
 }
 
@@ -464,7 +452,7 @@ impl KeyProvider for TransitKeys {
     }
 
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
-        if self.dir.read(&Self::reference(slot))?.is_some() {
+        if self.slots.read(Kind::Reference, slot)?.is_some() {
             return Err(KeyError::Exists(slot.to_owned()));
         }
         let (name, public) = self.create(suite)?;
@@ -480,12 +468,7 @@ impl KeyProvider for TransitKeys {
     }
 
     fn slots(&self) -> Result<Vec<String>, KeyError> {
-        Ok(self
-            .dir
-            .names()?
-            .into_iter()
-            .filter_map(|name| name.strip_suffix(".ref").map(str::to_owned))
-            .collect())
+        self.slots.slots(Kind::Reference)
     }
 
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
@@ -548,13 +531,16 @@ impl KeyProvider for TransitKeys {
             self.transit
                 .call(http::Method::DELETE, &format!("keys/{name}"), None),
         )?;
-        permguard_host::storage::tombstone::delete(&self.dir, &Self::reference(slot))?;
-        Ok(())
+        self.slots.empty(Kind::Reference, slot)
     }
 }
 
 impl Remote for Transit {
-    fn provider(&self, ring: &'static str, dir: Dir) -> Result<Arc<dyn KeyProvider>, KeyError> {
+    fn provider(
+        &self,
+        ring: &'static str,
+        slots: Arc<dyn SlotStore>,
+    ) -> Result<Arc<dyn KeyProvider>, KeyError> {
         Ok(Arc::new(TransitKeys {
             transit: Arc::new(Self {
                 jobs: Mutex::new(
@@ -565,7 +551,7 @@ impl Remote for Transit {
                 ),
                 mount: self.mount.clone(),
             }),
-            dir,
+            slots,
             ring,
         }))
     }

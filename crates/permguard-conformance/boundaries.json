@@ -1638,7 +1638,7 @@
       "reason": "`ring.cbor` on the Host's own volume (WP-3.1): a view this process wrote and rebuilds from the journal; the ring never reads its state back from it"
     },
     {
-      "source": "crates/permguard-host/src/keys/ring.rs",
+      "source": "crates/permguard-host/src/keys/ring/files.rs",
       "item": "Ring::open",
       "reason": "a ring's directory on the Host's own volume (WP-3.1): the journal replayed under the history it allows, anything else refusing the open"
     },
@@ -1736,6 +1736,11 @@
       "source": "crates/permguard-host/src/authz/held/files.rs",
       "item": "FileHeld::open",
       "reason": "`host/authority/` on the Host's own volume: the key set and the status lists this process kept, signed as they arrived; nothing is decoded at open, and every list is verified under the held key set before it is held"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/ring/files.rs",
+      "item": "FileRing::open",
+      "reason": "a ring's directory on the Host's own volume (WP-3.1), opened as a store of bytes: a torn last entry of its journal is cut through the storage library, and no entry is decoded here; `Ring` replays and checks every one"
     }
   ]
 }

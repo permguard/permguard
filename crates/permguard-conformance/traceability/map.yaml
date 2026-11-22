@@ -775,6 +775,30 @@ sections:
       - crates/permguard-host/src/keys/ring/tests.rs::a_revoked_key_leaves_the_set_at_once_and_an_active_one_is_replaced
       - crates/permguard-objects/src/crypto/thumbprint.rs::test_a_legacy_kid_selects_only_the_key_whose_thumbprint_it_is
       - crates/permguard-host/src/secrets/tests.rs::a_root_is_at_least_256_bits_and_its_material_is_witnessed_per_version
+  "1-architecture/4-architecture-server-host-keys.md#stores":
+    paths:
+      - crates/permguard-host/src/keys/ring/store.rs
+      - crates/permguard-host/src/keys/ring/files.rs
+      - crates/permguard-host/src/keys/ring/suite.rs
+      - crates/permguard-host/src/keys/ring.rs
+      - crates/permguard-host/src/keys/slots.rs
+      - crates/permguard-host/src/keys/slots/files.rs
+      - crates/permguard-host/src/keys/slots/suite.rs
+      - crates/permguard-host/src/keys/custody.rs
+      - crates/permguard-host/src/keys/registry.rs
+      - crates/permguard-host/src/keys/migration.rs
+      - crates/permguard-offline/src/custody/pkcs11.rs
+      - crates/permguard-offline/src/custody/transit.rs
+    tests:
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_host
+      - crates/permguard-host/src/keys/mod.rs::the_file_backend_of_the_slots_keeps_the_contract
+      - crates/permguard-host/src/keys/mod.rs::the_file_backend_keeps_a_slot_in_one_file_named_for_it
+      - crates/permguard-host/src/keys/custody/tests.rs::a_remote_custody_over_key_files_is_refused_and_names_them
+      - crates/permguard-host/tests/crash_points.rs::a_prepublication_killed_between_its_writes_leaves_one_successor
+      - crates/permguard-host/tests/crash_points.rs::a_hand_over_killed_between_its_writes_leaves_the_successor_signing
+      - crates/permguard-host/tests/crash_points.rs::a_sealing_killed_between_its_entry_and_its_key_seals_at_the_next_start
+      - crates/permguard-host/tests/crash_points.rs::a_retirement_killed_between_its_writes_opens_as_a_new_ring
   "1-architecture/5-architecture-server-host-audit.md#audit-versus-evidence":
     paths:
       - crates/permguard-host/src/audit/mod.rs

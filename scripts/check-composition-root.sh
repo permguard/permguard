@@ -24,6 +24,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/app.rs"
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-offline/src/factories.rs"
+    "crates/permguard-offline/src/volume.rs"
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
@@ -32,17 +33,18 @@ COMPOSITION_ROOTS=(
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a
-# single-line item (`#[cfg(test)] use …;`) alone. Comment lines are skipped.
+# single-line item (`#[cfg(test)] use …;`) alone. A condition that holds only in a test build,
+# `#[cfg(all(test, …))]`, marks its item the same way. Comment lines are skipped.
 NON_TEST_CODE='
     in_tests && /^\}/                     { in_tests = 0; next }
     in_tests                              { next }
     pending && /^#\[/                       { next }
     pending { pending = 0; if ($0 ~ /\{[[:space:]]*$/) { in_tests = 1 }; next }
-    /^#\[cfg\(test\)\][[:space:]]*$/      { pending = 1; next }
+    /^#\[cfg\((all\()?test[,)].*\][[:space:]]*$/ { pending = 1; next }
     /^#\[cfg\(test\)\]/ { if ($0 ~ /\{[[:space:]]*$/) { in_tests = 1 }; next }
     /^[[:space:]]*\/\//                    { next }
                                           { print FILENAME ":" FNR ": " $0 }
@@ -95,13 +97,19 @@ while IFS= read -r file; do
 
     # A file may construct the types it defines: a backend's file makes its own store for the
     # entry points it gives a composition root, and that is not a crate resolving a collaborator.
+    # A file backend is its `files.rs` files together: one of them may construct another's store
+    # (`File…`), as a ring's records are opened with the slots of its keys.
     found="$(
         awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" | while IFS= read -r line; do
             foreign=""
             for constructor in $(printf '%s\n' "${line}" | grep -oE "${CONSTRUCTORS}"); do
-                if ! grep -qE "^pub struct ${constructor%%::*}([ <{(;]|\$)" "${file}"; then
-                    foreign="yes"
+                if grep -qE "^pub struct ${constructor%%::*}([ <{(;]|\$)" "${file}"; then
+                    continue
                 fi
+                case "$(basename "${file}"):${constructor}" in
+                    (files.rs:File*) continue ;;
+                esac
+                foreign="yes"
             done
             if [ -n "${foreign}" ]; then
                 printf '%s\n' "${line}"

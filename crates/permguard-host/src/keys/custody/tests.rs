@@ -6,7 +6,9 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::keys::slots::files::FileSlots;
 use crate::secrets::KeyVersion;
+use crate::storage::Dir;
 
 const HOST: [u8; 16] = [7; 16];
 const RING: &str = "data.attest";
@@ -48,7 +50,7 @@ impl Stored {
 
 fn provider(dir: &Dir, host: [u8; 16], keks: Keks, stored: &Stored) -> SealedFileKeyProvider {
     SealedFileKeyProvider::new(
-        Dir::open(dir.path()).expect("opens"),
+        Arc::new(FileSlots::new(Dir::open(dir.path()).expect("opens"))),
         host,
         RING,
         keks,
@@ -294,7 +296,7 @@ fn a_remote_custody_over_key_files_is_refused_and_names_them() {
             .plan(
                 "host.identity",
                 HOST,
-                Dir::open(dir.path()).expect("opens"),
+                Arc::new(FileSlots::new(Dir::open(dir.path()).expect("opens"))),
                 Stored::default().reader(),
                 Suite::Ed25519Sha256V1,
             )

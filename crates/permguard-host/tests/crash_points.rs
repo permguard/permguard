@@ -60,6 +60,22 @@ fn crash(child: &str, point: &str, directory: &Path) -> bool {
 
 /// [`crash`] at the `hit`-th pass through `point`.
 fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
+    crash_with_hit(child, point, hit, directory, &[])
+}
+
+/// [`crash`], the child told what `variables` say beside the point.
+fn crash_with(child: &str, point: &str, directory: &Path, variables: &[(&str, &str)]) -> bool {
+    crash_with_hit(child, point, 1, directory, variables)
+}
+
+/// [`crash_at_hit`], the child told what `variables` say beside the point.
+fn crash_with_hit(
+    child: &str,
+    point: &str,
+    hit: u64,
+    directory: &Path,
+    variables: &[(&str, &str)],
+) -> bool {
     let status = Command::new(std::env::current_exe().expect("this binary names itself"))
         .args([
             "--ignored",
@@ -72,6 +88,7 @@ fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
         .env(CRASH_AT, point)
         .env(CRASH_HIT, hit.to_string())
         .env(DIRECTORY, directory)
+        .envs(variables.iter().copied())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -599,6 +616,8 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "audit.",
         "holds.",
         "identity.",
+        "slots.",
+        "ring.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -1751,6 +1770,357 @@ mod identifying {
                 grants::bootstrap(&mutations, &store, &"ab".repeat(32), NOW + 1).expect("again");
             assert_eq!(wrote, !written, "{point}");
             assert_eq!(held.unwrap_or_else(|| again.clone()), again, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// A ring's records and the slots of its keys (`1-architecture/4` Stores): a prepublication, a
+// hand-over, a sealing and a retirement killed between their writes.
+
+mod ringing {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use permguard_core::KeyManager as _;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::config::KeyCustody;
+    use permguard_core::keys::{PublicSet as _, Sign as _};
+    use permguard_host::keys::custody::{Custodian, Keks, SecretKek, Wrap};
+    use permguard_host::keys::migration::VolumeHome;
+    use permguard_host::keys::record::State;
+    use permguard_host::keys::registry::Opener;
+    use permguard_host::keys::ring::{DATA_ATTEST, Policy, Ring};
+    use permguard_host::keys::slots::files::FileSlots;
+    use permguard_host::keys::slots::{Kind, SlotStore as _};
+    use permguard_host::secrets::{KeyVersion, Root};
+    use permguard_host::storage::volume::Volume;
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+
+    const START: u64 = 1_800_000_000;
+    const AHEAD: u64 = 600;
+    const ROTATE: u64 = 3_600;
+    const RETAIN: u64 = 7_200;
+    /// When a successor is due to be prepublished, and when it takes over.
+    const PREPUBLISH_AT: u64 = START + ROTATE - AHEAD;
+    const HAND_OVER_AT: u64 = START + ROTATE;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    /// The moment the child of a test runs at, which its parent names.
+    const AT: &str = "PERMGUARD_CRASH_RING_AT";
+
+    fn policy() -> Policy {
+        Policy {
+            publish_ahead: Duration::from_secs(AHEAD),
+            rotate_every: Duration::from_secs(ROTATE),
+            retain: Duration::from_secs(RETAIN),
+        }
+    }
+
+    /// The ring of `volume` at the moment `at`, its keys in the clear.
+    fn ring_at(volume: &Volume, at: u64) -> Ring {
+        Ring::open(
+            volume,
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            policy(),
+            Arc::new(TimeGuard::fixed(at)),
+        )
+        .expect("the ring opens")
+    }
+
+    /// The slots that hold a private key of the ring of `volume`.
+    fn held(volume: &Volume) -> Vec<String> {
+        let private = volume
+            .host()
+            .subdir("keys", false)
+            .and_then(|keys| keys.subdir(DATA_ATTEST, false))
+            .and_then(|ring| ring.subdir("private", false))
+            .expect("the ring's private directory");
+        let mut slots = FileSlots::new(private)
+            .slots(Kind::Key)
+            .expect("the slots read");
+        slots.sort();
+        slots
+    }
+
+    /// The states of the ring's keys, in the order it lists them.
+    fn states(ring: &Ring) -> Vec<State> {
+        ring.view()
+            .expect("the view")
+            .keys
+            .iter()
+            .map(|key| key.state)
+            .collect()
+    }
+
+    /// A ring whose first key signs since `START`.
+    fn started(path: &Path) {
+        let volume = claim_volume(path);
+        ring_at(&volume, START).maintain().expect("the first key");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_maintain() {
+        let at: u64 = std::env::var(AT)
+            .expect("the parent names the moment")
+            .parse()
+            .expect("seconds");
+        let volume = claim_volume(&root());
+        ring_at(&volume, at).maintain().expect("maintained");
+    }
+
+    /// The child `child_maintain` at the moment `at`, killed at `point`.
+    fn crash_maintaining(at: u64, point: &str, path: &Path) -> bool {
+        crash_with(
+            "ringing::child_maintain",
+            point,
+            path,
+            &[(AT, &at.to_string())],
+        )
+    }
+
+    /// A prepublication killed after each of its writes: the ring opens again, and one
+    /// maintenance leaves it with its active key and one successor, every slot a key an entry
+    /// names. A key generated and never recorded is removed, never published.
+    #[test]
+    fn a_prepublication_killed_between_its_writes_leaves_one_successor() {
+        for point in ["slots.filled", "ring.public_published", "ring.entry_added"] {
+            let path = scratch(&format!("ring-prepublish-{point}"));
+            started(&path);
+            assert!(
+                crash_maintaining(PREPUBLISH_AT, point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, PREPUBLISH_AT);
+            let signer = ring.active_key_id().expect("the active key still signs");
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            assert_eq!(
+                states(&ring),
+                vec![State::Active, State::Prepublished],
+                "{point}"
+            );
+            assert_eq!(ring.active_key_id().expect("active"), signer, "{point}");
+            assert_eq!(
+                held(&volume).len(),
+                2,
+                "{point}: a private key for each key the ring names, and no other"
+            );
+            ring.sign(b"after the crash").expect("signs");
+            assert_eq!(ring.public_keys().expect("the set").len(), 2, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A hand-over killed after each entry it adds and after the retired key's slot is emptied:
+    /// the ring opens again with one active key, the successor, and one maintenance leaves the
+    /// retired key without its private half.
+    #[test]
+    fn a_hand_over_killed_between_its_writes_leaves_the_successor_signing() {
+        for (point, hit) in [
+            ("ring.entry_added", 1),
+            ("ring.entry_added", 2),
+            ("slots.emptied", 1),
+        ] {
+            let path = scratch(&format!("ring-hand-over-{point}-{hit}"));
+            started(&path);
+            {
+                let volume = claim_volume(&path);
+                ring_at(&volume, PREPUBLISH_AT)
+                    .maintain()
+                    .expect("a successor prepublished");
+            }
+            let died = crash_with_hit(
+                "ringing::child_maintain",
+                point,
+                hit,
+                &path,
+                &[(AT, &HAND_OVER_AT.to_string())],
+            );
+            assert!(died, "{point} ({hit}): the child died of the abort there");
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, HAND_OVER_AT);
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            let states = states(&ring);
+            assert_eq!(
+                states
+                    .iter()
+                    .filter(|state| **state == State::Active)
+                    .count(),
+                1,
+                "{point} ({hit}): exactly one key signs: {states:?}"
+            );
+            assert_eq!(
+                states,
+                vec![State::RetiredPublic, State::Active],
+                "{point} ({hit})"
+            );
+            assert_eq!(
+                held(&volume).len(),
+                1,
+                "{point} ({hit}): the retired key's private half is destroyed"
+            );
+            ring.sign(b"after the crash").expect("signs");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    fn kek() -> Arc<dyn Wrap> {
+        let root = Root::from_material(&[9; 32], KeyVersion::new(1).expect("v1")).expect("a root");
+        Arc::new(SecretKek::from_root("kek-a", &root).expect("a KEK"))
+    }
+
+    /// The ring of `volume` through the `file` custody, which seals what it finds in the clear.
+    fn sealed_ring(volume: &Volume) -> Arc<Ring> {
+        let time = Arc::new(TimeGuard::fixed(START + 1));
+        Opener {
+            home: Box::new(VolumeHome {
+                volume,
+                profile: AssuranceProfile::Development,
+                time: Arc::clone(&time),
+            }),
+            host_id: [4; 16],
+            custodian: Arc::new(Custodian::new(
+                |_| KeyCustody::File,
+                Ok(Some(Keks {
+                    current: kek(),
+                    previous: None,
+                })),
+            )),
+            time,
+            binder: None,
+            recorder: None,
+        }
+        .open(DATA_ATTEST, Suite::Ed25519Sha256V1, policy(), None)
+        .expect("the ring opens through the file custody")
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_seal() {
+        let volume = claim_volume(&root());
+        sealed_ring(&volume);
+    }
+
+    /// A sealing killed after its entry and before its key is sealed, or after the key is: the
+    /// next start seals what is still in the clear, records it, and the key signs as before.
+    #[test]
+    fn a_sealing_killed_between_its_entry_and_its_key_seals_at_the_next_start() {
+        for point in ["ring.entry_added", "slots.replaced"] {
+            let path = scratch(&format!("ring-seal-{point}"));
+            started(&path);
+            let signer = {
+                let volume = claim_volume(&path);
+                ring_at(&volume, START + 1).active_key_id().expect("active")
+            };
+            assert!(
+                crash("ringing::child_seal", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = sealed_ring(&volume);
+            assert_eq!(ring.active_key_id().expect("active"), signer, "{point}");
+            ring.sign(b"after the crash").expect("the sealed key signs");
+            let slot = held(&volume).pop().expect("one key");
+            let private = volume
+                .host()
+                .subdir("keys", false)
+                .and_then(|keys| keys.subdir(DATA_ATTEST, false))
+                .and_then(|ring| ring.subdir("private", false))
+                .expect("the private directory");
+            let bytes = FileSlots::new(private)
+                .read(Kind::Key, &slot)
+                .expect("reads")
+                .expect("held");
+            assert_ne!(
+                bytes.first(),
+                Some(&0x30),
+                "{point}: no key is left in the clear"
+            );
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_retire() {
+        use permguard_host::operations::journal::Initiator;
+        use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+        let volume = claim_volume(&root());
+        let ring = ring_at(&volume, START + 1);
+        // Retired as an identity reset retires it: inside one operation of the engine.
+        Mutations::open_offline(&volume, "test")
+            .expect("the journal opens")
+            .run(
+                Begin {
+                    domain: permguard_host::identity::DOMAIN,
+                    operation: permguard_host::identity::reset::RESET_RUN,
+                    action: permguard_host::identity::reset::AUDIT_RESET,
+                    initiator: Initiator::System("test".to_owned()),
+                    request: None,
+                    target: Some("reset:test".to_owned()),
+                },
+                |applying| {
+                    ring.retire(applying, &[0x0a; 16])
+                        .map_err(|error| Failure::Indeterminate(error.to_string()))?;
+                    Ok(Applied {
+                        revision: 1,
+                        target: None,
+                        value: (),
+                    })
+                },
+            )
+            .expect("retired");
+    }
+
+    /// A retirement killed once its entries are gone, or once its key is destroyed: the ring
+    /// opens as a new one, with a key of its own, and the retired ring's records are kept.
+    #[test]
+    fn a_retirement_killed_between_its_writes_opens_as_a_new_ring() {
+        for point in ["ring.entries_forgotten", "slots.emptied"] {
+            let path = scratch(&format!("ring-retire-{point}"));
+            started(&path);
+            let retired = {
+                let volume = claim_volume(&path);
+                ring_at(&volume, START + 1).active_key_id().expect("active")
+            };
+            assert!(
+                crash("ringing::child_retire", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, START + 2);
+            assert_eq!(ring.epoch(), 0, "{point}: a ring with no entry");
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            let signer = ring.active_key_id().expect("a key of its own");
+            assert_ne!(signer, retired, "{point}: never the retired ring's key");
+            assert_eq!(states(&ring), vec![State::Active], "{point}");
+            assert_eq!(
+                held(&volume).len(),
+                1,
+                "{point}: no private key of the retired ring is left"
+            );
+            let kept = path
+                .join("host/keys/retired")
+                .join(permguard_host::identity::record::uuid_text(&[0x0a; 16]))
+                .join(DATA_ATTEST)
+                .join("journal.cborseq");
+            assert!(
+                kept.is_file(),
+                "{point}: the retired ring's entries are kept"
+            );
             let _ = std::fs::remove_dir_all(path);
         }
     }
