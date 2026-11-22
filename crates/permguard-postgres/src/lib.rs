@@ -16,12 +16,23 @@
 //! to it made from such a thread is run on a thread of its own: the client blocks on a runtime
 //! it owns, which a thread already inside a runtime may not do.
 //!
+//! A thread is inside one unit of work at a time. While the mutation engine applies an operation,
+//! everything a store of this crate does on that thread, a read or a change, it does inside the
+//! operation's transaction: a domain write reads what it wrote, and every store it changes
+//! changes with it or not at all.
+//!
 //! No state is kept in memory: every decision reads inside its transaction.
 
 pub mod database;
+pub mod gate;
 pub mod lease;
 pub mod mutations;
 pub mod schema;
+#[cfg(feature = "test-support")]
+pub mod testing;
 pub mod time;
 
 pub use database::{Config, Database, DbError, Failure, SqlError, Tls, Unit};
+/// What a statement's parameter is: named here so a store kept on this backend in another
+/// crate links the client through this one alone.
+pub use postgres::types::ToSql;

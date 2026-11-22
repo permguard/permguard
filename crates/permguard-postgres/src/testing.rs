@@ -1,22 +1,34 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! What the tests of this backend share: where the test server is, and a schema of a test's own.
+//! What the tests of this backend share, in this crate and in every crate that keeps a store
+//! here: where the test server is, and a schema of a test's own.
+//!
+//! The tests need a server and say where it is with `PERMGUARD_TEST_POSTGRES`, a connection
+//! string such as `host=127.0.0.1 port=5432 user=permguard password=… dbname=permguard`;
+//! `scripts/test-postgres.sh` starts a disposable one and runs them. Without the variable
+//! [`server`] says the test was skipped and the test passes: a build with no database at hand
+//! stays green, and the pipeline that has one runs them. Every test works in a schema of its
+//! own and drops it.
 
-#![allow(clippy::expect_used, clippy::panic, dead_code)]
+#![allow(clippy::expect_used, clippy::panic)]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use permguard_postgres::database::DEFAULT_WAIT;
-use permguard_postgres::{Config, Database, Tls, schema};
+use crate::database::DEFAULT_WAIT;
+use crate::{Config, Database, Tls, schema};
 
 pub const VARIABLE: &str = "PERMGUARD_TEST_POSTGRES";
 
+/// Where the test server is.
+#[derive(Debug, Clone)]
+pub struct Server(postgres::Config);
+
 /// Where the test server is, or `None` with a line saying the test was skipped.
-pub fn server(test: &str) -> Option<postgres::Config> {
+pub fn server(test: &str) -> Option<Server> {
     match std::env::var(VARIABLE) {
-        Ok(text) => Some(text.parse().expect("a connection string")),
+        Ok(text) => Some(Server(text.parse().expect("a connection string"))),
         Err(_) => {
             eprintln!("{test}: skipped, {VARIABLE} names no PostgreSQL");
             None
@@ -41,7 +53,8 @@ impl Drop for Scratch {
     }
 }
 
-pub fn config(server: &postgres::Config, schema: Option<String>, pool: usize) -> Config {
+pub fn config(server: &Server, schema: Option<String>, pool: usize) -> Config {
+    let server = &server.0;
     let host = match server.get_hosts().first().expect("a host") {
         postgres::config::Host::Tcp(host) => host.clone(),
         #[cfg(unix)]
@@ -62,7 +75,7 @@ pub fn config(server: &postgres::Config, schema: Option<String>, pool: usize) ->
     }
 }
 
-pub fn scratch_with(server: &postgres::Config, pool: usize, migrated: bool) -> Scratch {
+pub fn scratch_with(server: &Server, pool: usize, migrated: bool) -> Scratch {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let schema = format!(
         "t{}_{}",
@@ -90,6 +103,6 @@ pub fn scratch_with(server: &postgres::Config, pool: usize, migrated: bool) -> S
     }
 }
 
-pub fn scratch(server: &postgres::Config) -> Scratch {
+pub fn scratch(server: &Server) -> Scratch {
     scratch_with(server, 8, true)
 }

@@ -1021,7 +1021,9 @@ impl Authority {
             Ok((issued, scopes))
         };
         let (issued, scopes) = match &self.mutations {
-            Some(mutations) => mutations.consistent(record),
+            Some(mutations) => mutations
+                .consistent(record)
+                .map_err(TokenRefusal::Unavailable)?,
             // No change of an account is made on a process with no mutation journal.
             None => record(),
         }?;

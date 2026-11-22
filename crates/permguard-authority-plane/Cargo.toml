@@ -28,6 +28,8 @@ permguard-core.workspace = true
 permguard-host.workspace = true
 # The canonical CBOR of the accounts journal and the token registry.
 permguard-objects.workspace = true
+# The second backend of the stores: their PostgreSQL implementations are beside the file ones.
+permguard-postgres.workspace = true
 # The OS CSPRNG: access keys, secret keys, salts, token ids and list entries.
 ring.workspace = true
 serde.workspace = true
@@ -38,6 +40,7 @@ tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+permguard-postgres = { workspace = true, features = ["test-support"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 # A ring that signs, for the whole Authority the tests compose.
 permguard-std = { workspace = true, features = ["keys"] }

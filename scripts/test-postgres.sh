@@ -6,7 +6,7 @@
 #
 # It starts one PostgreSQL container on a free port of the loopback interface, with a password
 # made for this run, points `PERMGUARD_TEST_POSTGRES` at it, runs the tests, and removes the
-# container whatever happened. Arguments are passed to the test runner, so
+# container whatever happened. Arguments replace the selection of tests, so
 # `scripts/test-postgres.sh -E 'test(lease)'` runs a part of them.
 #
 # Without Docker, start a server yourself and set `PERMGUARD_TEST_POSTGRES` to its connection
@@ -77,7 +77,15 @@ docker exec --user postgres "${NAME}" sh -c '
 '
 docker exec "${NAME}" cat /var/lib/postgresql/tls/ca.crt > "${CA_FILE}"
 
+# Every test of the backend's own crate, and every test of a store kept on it in another crate,
+# which says so in its name. Arguments replace the selection.
+if [ "$#" -gt 0 ]; then
+    FILTER=("$@")
+else
+    FILTER=(-E 'package(permguard-postgres) | test(/postgresql/)')
+fi
+
 cd "${ROOT}"
 PERMGUARD_TEST_POSTGRES_CA="${CA_FILE}" \
 PERMGUARD_TEST_POSTGRES="host=127.0.0.1 port=${PORT} user=permguard password=${PASSWORD} dbname=permguard" \
-    cargo nextest run -p permguard-postgres --locked "$@"
+    cargo nextest run --workspace --all-features --locked "${FILTER[@]}"

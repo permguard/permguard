@@ -231,7 +231,7 @@ impl std::fmt::Debug for FileTokens {
     }
 }
 
-fn random<const N: usize>() -> Result<[u8; N], TokenError> {
+pub(super) fn random<const N: usize>() -> Result<[u8; N], TokenError> {
     let mut bytes = [0u8; N];
     ring::rand::SystemRandom::new()
         .fill(&mut bytes)

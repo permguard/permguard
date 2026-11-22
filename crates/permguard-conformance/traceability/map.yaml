@@ -4655,6 +4655,9 @@ sections:
       - "open (test): the fetch from authority.url over HTTPS, its schedule and its metrics are proven by the lab, not by a Rust test"
   "2-security/8-security-authority.md#stores":
     paths:
+      - crates/permguard-authority-plane/src/accounts/postgres.rs
+      - crates/permguard-authority-plane/src/tokens/postgres.rs
+      - crates/permguard-postgres/src/gate.rs
       - crates/permguard-authority-plane/src/accounts.rs
       - crates/permguard-authority-plane/src/accounts/files.rs
       - crates/permguard-authority-plane/src/tokens.rs
@@ -4663,6 +4666,10 @@ sections:
       - crates/permguard-authority-plane/src/marks/files.rs
       - crates/permguard-authority-plane/src/completion.rs
     tests:
+      - crates/permguard-authority-plane/src/accounts/postgres.rs::the_accounts_keep_their_contract_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_tokens_keep_their_contract_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_marks_are_kept_whole_and_only_rise_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::a_token_issued_while_its_account_is_suspended_is_never_left_valid_on_postgresql
       - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
       - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract
       - crates/permguard-authority-plane/src/completion.rs::tokens_that_are_as_their_accounts_say_are_left

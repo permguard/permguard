@@ -20,8 +20,7 @@ use permguard_postgres::lease::{self, Lost};
 use permguard_postgres::time::PostgresClockMark;
 use permguard_postgres::{Config, Database, DbError, Failure, Tls, schema};
 
-mod support;
-use support::{config, scratch, scratch_with, server};
+use permguard_postgres::testing::{config, scratch, scratch_with, server};
 
 /// E29: a fresh database is brought to this build's schema; a second migration finds nothing to
 /// do; instances that start together apply once; a schema newer than the build refuses, and

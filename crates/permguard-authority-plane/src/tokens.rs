@@ -10,6 +10,7 @@
 //! | [`ListView`]     | a list as it stands: what a status list token signs                        |
 //! | [`TokenStore`]   | the contract: every way the Authority Plane records and revokes its tokens |
 //! | [`files`]        | the file backend: one journal on the volume                                |
+//! | [`postgres`]     | the PostgreSQL backend: a row a token and a row a list                     |
 //! | [`suite`]        | the conformance suite every backend of the contract passes                 |
 //!
 //! | Rule of the contract                                   | Where                                |
@@ -29,6 +30,7 @@ use permguard_host::operations::mutation::{Applying, Domain, Observed};
 use permguard_objects::status_list::{ENTRIES, StatusList};
 
 pub mod files;
+pub mod postgres;
 #[cfg(any(test, feature = "test-support"))]
 pub mod suite;
 

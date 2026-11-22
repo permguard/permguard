@@ -10,6 +10,7 @@
 //! | [`validate`]       | what no store ever writes: a name, a description, scopes, more live keys   |
 //! | [`AccountStore`]   | the contract: every way the Authority Plane reads and changes its accounts |
 //! | [`files`]          | the file backend: one journal on the volume                                |
+//! | [`postgres`]       | the PostgreSQL backend: a row an account, its keys and scopes beside it    |
 //! | [`suite`]          | the conformance suite every backend of the contract passes                 |
 //!
 //! | Rule of the contract                         | Where                                              |
@@ -29,6 +30,7 @@ use permguard_host::operations::journal::OperationId;
 use permguard_host::operations::mutation::{Applying, Domain, Observed};
 
 pub mod files;
+pub mod postgres;
 #[cfg(any(test, feature = "test-support"))]
 pub mod suite;
 

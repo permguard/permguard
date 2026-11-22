@@ -8,8 +8,6 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-mod support;
-
 use std::sync::Barrier;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -19,8 +17,8 @@ use permguard_host::operations::mutation::{
     run_checked_on,
 };
 use permguard_postgres::mutations::PostgresMutations;
+use permguard_postgres::testing::{config, scratch, server};
 use permguard_postgres::{Database, Unit};
-use support::{config, scratch, server};
 
 /// A request of `principal` to create the grant `request_id` names.
 fn begin(principal: &str, request_id: &str, digest: &str) -> Begin {
@@ -156,6 +154,59 @@ fn an_operation_is_kept_whole_and_a_retry_learns_its_answer() {
     .expect("another principal's request");
     assert_eq!(other, Outcome::Applied("created write".to_owned()));
     assert_eq!(count(database, "SELECT count(*) FROM grants"), 2);
+}
+
+/// A domain write reads what it wrote: what a store does on the thread of an operation it does
+/// inside the operation's transaction, while another thread, and this one once the operation
+/// ended, read what is committed.
+#[test]
+fn a_store_inside_an_operation_reads_and_writes_in_it() {
+    let Some(server) = server("a_store_inside_an_operation_reads_and_writes_in_it") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    domain(database);
+    let engine = PostgresMutations::new(Database::clone(database));
+    let refused = run_checked_on::<String, String>(
+        &engine,
+        begin("alice", "request-1", "d1"),
+        || Ok(()),
+        |applying| {
+            grant(applying, "read")?;
+            // A store's own read, and its own write, with no token: both inside the operation.
+            assert_eq!(count(database, "SELECT count(*) FROM grants"), 1);
+            database
+                .write(|unit| {
+                    unit.execute(
+                        "INSERT INTO grants (name, operation) VALUES ('beside', '\\x00')",
+                        &[],
+                    )
+                })
+                .expect("written beside");
+            assert_eq!(count(database, "SELECT count(*) FROM grants"), 2);
+            // Another thread is not inside it, and reads what is committed.
+            let elsewhere = std::thread::scope(|scope| {
+                scope
+                    .spawn(|| count(database, "SELECT count(*) FROM grants"))
+                    .join()
+                    .expect("read")
+            });
+            assert_eq!(elsewhere, 0);
+            Err(Failure::Refused(
+                "undone with everything beside it".to_owned(),
+            ))
+        },
+    );
+    assert!(
+        matches!(refused, Err(MutationError::Refused(_))),
+        "{refused:?}"
+    );
+    assert_eq!(
+        count(database, "SELECT count(*) FROM grants"),
+        0,
+        "the write beside it was undone with the operation"
+    );
 }
 
 /// A domain write that refuses is undone, and the operation is kept as failed with its record;

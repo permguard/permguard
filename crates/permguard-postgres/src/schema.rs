@@ -72,6 +72,96 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 3,
+        name: "authority accounts",
+        statements: "
+        CREATE TABLE permguard_authority_revisions (
+            store text PRIMARY KEY,
+            revision bigint NOT NULL CHECK (revision >= 0)
+        );
+        INSERT INTO permguard_authority_revisions (store, revision) VALUES ('accounts', 0);
+        CREATE TABLE permguard_authority_accounts (
+            name text PRIMARY KEY,
+            description text NOT NULL,
+            status text NOT NULL CHECK (status IN ('active', 'suspended')),
+            created_at bigint NOT NULL,
+            updated_at bigint NOT NULL,
+            revision bigint NOT NULL CHECK (revision > 0),
+            updated_by text NOT NULL
+        );
+        CREATE TABLE permguard_authority_scopes (
+            account text NOT NULL REFERENCES permguard_authority_accounts (name) ON DELETE CASCADE,
+            position integer NOT NULL CHECK (position >= 0),
+            operations text[] NOT NULL,
+            selector text NOT NULL,
+            PRIMARY KEY (account, position)
+        );
+        CREATE TABLE permguard_authority_access_keys (
+            access_key text PRIMARY KEY,
+            account text NOT NULL REFERENCES permguard_authority_accounts (name) ON DELETE CASCADE,
+            position integer NOT NULL CHECK (position >= 0),
+            secret_hash text NOT NULL,
+            created_at bigint NOT NULL,
+            expires_at bigint,
+            UNIQUE (account, position)
+        );
+        CREATE TABLE permguard_authority_account_operations (
+            operation_id bytea PRIMARY KEY CHECK (octet_length(operation_id) = 16),
+            revision bigint NOT NULL,
+            account text NOT NULL
+        );
+    ",
+    },
+    Migration {
+        version: 4,
+        name: "subsystems and authority tokens",
+        statements: "
+        CREATE TABLE permguard_subsystems (
+            name text PRIMARY KEY,
+            turns bigint NOT NULL CHECK (turns > 0)
+        );
+        INSERT INTO permguard_authority_revisions (store, revision) VALUES ('tokens', 0);
+        CREATE TABLE permguard_authority_lists (
+            list_id bytea PRIMARY KEY CHECK (octet_length(list_id) = 16),
+            open boolean NOT NULL,
+            drawn integer NOT NULL CHECK (drawn >= 0),
+            latest_expiry bigint NOT NULL,
+            changed_at bigint NOT NULL
+        );
+        CREATE UNIQUE INDEX permguard_authority_lists_open
+            ON permguard_authority_lists (open) WHERE open;
+        CREATE TABLE permguard_authority_tokens (
+            jti bytea PRIMARY KEY CHECK (octet_length(jti) = 16),
+            list_id bytea NOT NULL REFERENCES permguard_authority_lists (list_id) ON DELETE CASCADE,
+            entry integer NOT NULL CHECK (entry >= 0),
+            account text NOT NULL,
+            access_key text NOT NULL,
+            issued_at bigint NOT NULL,
+            expires_at bigint NOT NULL,
+            status smallint NOT NULL CHECK (status IN (0, 1, 2)),
+            UNIQUE (list_id, entry)
+        );
+        CREATE INDEX permguard_authority_tokens_access_key
+            ON permguard_authority_tokens (access_key);
+        CREATE TABLE permguard_authority_token_scopes (
+            jti bytea NOT NULL REFERENCES permguard_authority_tokens (jti) ON DELETE CASCADE,
+            position integer NOT NULL CHECK (position >= 0),
+            operations text[] NOT NULL,
+            selector text NOT NULL,
+            PRIMARY KEY (jti, position)
+        );
+        CREATE TABLE permguard_authority_token_operations (
+            operation_id bytea PRIMARY KEY CHECK (octet_length(operation_id) = 16),
+            revision bigint NOT NULL,
+            named text NOT NULL
+        );
+        CREATE TABLE permguard_authority_marks (
+            list_id bytea PRIMARY KEY CHECK (octet_length(list_id) = 16),
+            mark bigint NOT NULL
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

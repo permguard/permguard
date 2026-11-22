@@ -255,6 +255,28 @@ fn no_thread() -> DbError {
     DbError::Unavailable("no thread could run the work on the database".to_owned())
 }
 
+thread_local! {
+    /// The units of work open on this thread, the innermost last, each with the pool it is on.
+    static OPEN: std::cell::RefCell<Vec<(usize, Arc<Unit>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A unit of work made the thread's own until this is dropped ([`Database::enter`]).
+pub struct Entered {
+    pool: usize,
+}
+
+impl Drop for Entered {
+    fn drop(&mut self) {
+        OPEN.with(|open| {
+            let mut open = open.borrow_mut();
+            if let Some(at) = open.iter().rposition(|(pool, _)| *pool == self.pool) {
+                open.remove(at);
+            }
+        });
+    }
+}
+
 /// The connections of one process to one database.
 #[derive(Clone)]
 pub struct Database {
@@ -427,8 +449,8 @@ impl Unit {
         self.batch_execute(&format!("ROLLBACK TO SAVEPOINT {name}"))
     }
 
-    /// Commits the unit: what it did is kept, all of it.
-    pub fn commit(self) -> Result<(), SqlError> {
+    /// Commits the unit: what it did is kept, all of it. Nothing is done through it afterwards.
+    pub fn commit(&self) -> Result<(), SqlError> {
         self.batch_execute("COMMIT")?;
         self.ended.store(true, std::sync::atomic::Ordering::Release);
         Ok(())
@@ -614,8 +636,52 @@ impl Database {
 
     /// Opens one `SERIALIZABLE` unit of work for a caller that ends it itself: the mutation
     /// engine, which commits the unit a domain wrote in.
-    pub fn begin(&self) -> Result<Unit, DbError> {
-        Ok(Unit::begin(self.take()?, Isolation::Serializable)?)
+    pub fn begin(&self) -> Result<Arc<Unit>, DbError> {
+        Ok(Arc::new(Unit::begin(
+            self.take()?,
+            Isolation::Serializable,
+        )?))
+    }
+
+    /// Opens one `READ COMMITTED` unit of work for a caller that ends it itself: a subsystem's
+    /// gate, whose holder waits for the one before it and then reads what that one committed.
+    pub fn begin_read_committed(&self) -> Result<Arc<Unit>, DbError> {
+        Ok(Arc::new(Unit::begin(
+            self.take()?,
+            Isolation::ReadCommitted,
+        )?))
+    }
+
+    /// Whether this thread is inside a unit of work on this database.
+    pub fn inside(&self) -> bool {
+        self.entered().is_some()
+    }
+
+    fn identity(&self) -> usize {
+        Arc::as_ptr(&self.pool) as usize
+    }
+
+    /// Makes `unit` this thread's unit of work on this database until the answer is dropped:
+    /// everything a store of this database does on this thread meanwhile, a read or a change,
+    /// it does inside `unit`. An operation's domain write thereby reads what it wrote, and
+    /// every store it changes changes with it or not at all.
+    #[must_use]
+    pub fn enter(&self, unit: &Arc<Unit>) -> Entered {
+        let pool = self.identity();
+        OPEN.with(|open| open.borrow_mut().push((pool, Arc::clone(unit))));
+        Entered { pool }
+    }
+
+    /// The unit of work this thread is inside on this database, when it is inside one.
+    fn entered(&self) -> Option<Arc<Unit>> {
+        let pool = self.identity();
+        OPEN.with(|open| {
+            open.borrow()
+                .iter()
+                .rev()
+                .find(|(of, _)| *of == pool)
+                .map(|(_, unit)| Arc::clone(unit))
+        })
     }
 
     /// Runs `work` in one `SERIALIZABLE` unit of work and commits it. A unit the database could
@@ -651,6 +717,20 @@ impl Database {
         scope: Option<&str>,
         work: &dyn Fn(&Unit) -> Result<T, Failure<E>>,
     ) -> Result<Result<T, E>, DbError> {
+        // Inside a unit of work of this thread, the work is part of it: it is not committed
+        // here and not run again, and what it refuses is the unit's owner's to undo.
+        if let Some(unit) = self.entered() {
+            if scope.is_some() {
+                return Err(DbError::Unavailable(
+                    "a scope is not taken inside a unit of work".to_owned(),
+                ));
+            }
+            return match work(&unit) {
+                Ok(value) => Ok(Ok(value)),
+                Err(Failure::Refused(refusal)) => Ok(Err(refusal)),
+                Err(Failure::Db(error)) => Err(error.into()),
+            };
+        }
         {
             let mut last = None;
             for attempt in 1..=ATTEMPTS {

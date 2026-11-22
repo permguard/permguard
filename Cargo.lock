@@ -2492,6 +2492,7 @@ dependencies = [
  "permguard-core",
  "permguard-host",
  "permguard-objects",
+ "permguard-postgres",
  "permguard-std",
  "ring",
  "serde",
@@ -3086,6 +3087,7 @@ version = "0.1.0"
 dependencies = [
  "permguard-core",
  "permguard-host",
+ "permguard-postgres",
  "postgres",
  "rustls",
  "tokio",

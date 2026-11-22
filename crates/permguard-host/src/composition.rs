@@ -1884,10 +1884,13 @@ impl MutationHandle {
     /// Runs `read` while no operation of this handle's subsystem applies: what it reads of the
     /// subsystem's stores is as one operation left them, never between two of its writes. A
     /// handle in no subsystem runs it as it is.
-    pub fn consistent<R>(&self, read: impl FnOnce() -> R) -> R {
+    ///
+    /// `Err` when the subsystem could not be held, and `read` was then not run, or when what
+    /// `read` did under it could not be kept, and nothing of it is.
+    pub fn consistent<R>(&self, read: impl FnOnce() -> R) -> Result<R, String> {
         match &self.subsystem {
             Some(subsystem) => subsystem.hold(read),
-            None => read(),
+            None => Ok(read()),
         }
     }
 
@@ -1932,7 +1935,21 @@ impl MutationHandle {
         use crate::operations::mutation::run_checked_on;
         match &self.subsystem {
             Some(subsystem) => run_checked_on(self.engine.as_ref(), begin, check, |applying| {
-                subsystem.hold(|| apply(applying))
+                // Inside an operation the gate always runs the write: one it could not take
+                // fails the operation's unit of work, and the write's own change with it.
+                let mut apply = Some(apply);
+                let mut applied = None;
+                let _ = subsystem.hold(|| {
+                    if let Some(apply) = apply.take() {
+                        applied = Some(apply(applying));
+                    }
+                });
+                match (applied, apply) {
+                    (Some(applied), _) => applied,
+                    // A gate that broke its rule and did not run the write: run without it.
+                    (None, Some(apply)) => apply(applying),
+                    (None, None) => unreachable!("the write is either run or still here"),
+                }
             }),
             None => run_checked_on(self.engine.as_ref(), begin, check, apply),
         }

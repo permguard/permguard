@@ -15,6 +15,11 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
+[features]
+# What the tests of a store kept on this backend share: the test server and a schema of a
+# test's own. Tests only.
+test-support = []
+
 [dependencies]
 permguard-core.workspace = true
 permguard-host.workspace = true
@@ -26,5 +31,6 @@ tokio = { workspace = true }
 rustls = { workspace = true }
 
 [dev-dependencies]
+permguard-postgres = { path = ".", features = ["test-support"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 postgres = { workspace = true }

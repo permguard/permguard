@@ -155,6 +155,9 @@ impl PostgresMutations {
         if let Some(answer) = lookup(&unit, begin)? {
             return Ok(answer);
         }
+        // From here to the commit this thread is inside the operation's unit of work: what a
+        // store of this database reads or changes on it, it reads and changes in the operation.
+        let _inside = self.database.enter(&unit);
         if !check() {
             return Err(Stopped::Unchecked.into());
         }
@@ -201,7 +204,7 @@ impl PostgresMutations {
         )?;
         unit.mark(BEFORE_THE_WRITE)?;
 
-        let applied = match apply(&Applying::within(operation_id, &unit)) {
+        let applied = match apply(&Applying::within(operation_id, unit.as_ref())) {
             Ok(applied) => applied,
             Err(Declined::Refused) => {
                 // The write is undone and the operation kept as failed, with its record.
@@ -312,8 +315,7 @@ impl Engine for PostgresMutations {
         Ok(Recovered::default())
     }
 
-    /// The transaction is the gate: a subsystem's stores change together inside it.
-    fn subsystem(&self, _name: &str) -> Subsystem {
-        Subsystem::default()
+    fn subsystem(&self, name: &str) -> Subsystem {
+        crate::gate::PostgresGate::subsystem(self.database.clone(), name)
     }
 }

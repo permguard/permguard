@@ -738,9 +738,42 @@ pub struct Recovered {
 ///
 /// The gate is taken before any lock of a store and never while one is held, and never by the
 /// code it already holds: an operation's domain write does not start another gated operation.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Subsystem {
-    gate: Arc<Mutex<()>>,
+    gate: Arc<dyn SubsystemGate>,
+}
+
+/// What holds a subsystem: the engine's, of the kind its backend has. On files it is a lock of
+/// the process; on a database it is a row every holder takes inside its unit of work.
+pub trait SubsystemGate: Send + Sync {
+    /// Runs `work` while nothing else of the subsystem changes or reads under the gate, on any
+    /// instance the gate reaches. `Err` when the gate could not be taken, and `work` was then
+    /// not run, or when what `work` did under it could not be kept, and nothing of it is.
+    ///
+    /// Asked from inside an operation the engine is applying, the gate is taken in the
+    /// operation's own unit of work and `work` is always run: a gate that could not be taken
+    /// there fails the unit, and the operation with it.
+    fn hold(&self, work: &mut dyn FnMut()) -> Result<(), String>;
+}
+
+/// The gate of one process: a lock.
+#[derive(Default)]
+struct ProcessGate(Mutex<()>);
+
+impl SubsystemGate for ProcessGate {
+    fn hold(&self, work: &mut dyn FnMut()) -> Result<(), String> {
+        let _held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        work();
+        Ok(())
+    }
+}
+
+impl Default for Subsystem {
+    fn default() -> Self {
+        Self {
+            gate: Arc::new(ProcessGate::default()),
+        }
+    }
 }
 
 impl std::fmt::Debug for Subsystem {
@@ -750,10 +783,22 @@ impl std::fmt::Debug for Subsystem {
 }
 
 impl Subsystem {
-    /// Runs `work` while nothing else of the subsystem changes or reads under the gate.
-    pub fn hold<R>(&self, work: impl FnOnce() -> R) -> R {
-        let _held = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
-        work()
+    /// The subsystem `gate` holds: what an engine of another backend answers for its own.
+    pub fn over(gate: Arc<dyn SubsystemGate>) -> Self {
+        Self { gate }
+    }
+
+    /// Runs `work` while nothing else of the subsystem changes or reads under the gate. `Err`
+    /// as [`SubsystemGate::hold`] says: the work was not run, or nothing of it was kept.
+    pub fn hold<R>(&self, work: impl FnOnce() -> R) -> Result<R, String> {
+        let mut work = Some(work);
+        let mut answer = None;
+        self.gate.hold(&mut || {
+            if let Some(work) = work.take() {
+                answer = Some(work());
+            }
+        })?;
+        answer.ok_or_else(|| "the subsystem's gate did not run the work".to_owned())
     }
 }
 
