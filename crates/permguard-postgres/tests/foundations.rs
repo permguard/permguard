@@ -148,6 +148,70 @@ fn a_refused_unit_of_work_changes_nothing() {
     assert_eq!(kept, 0);
 }
 
+/// Work done inside a unit of work is part of it: it reads what the unit wrote and is kept
+/// with it, on the unit's connection. What it refuses keeps nothing of its own, even after a
+/// statement of it failed, and the unit goes on from where the work began.
+#[test]
+fn work_inside_a_unit_of_work_is_part_of_it_and_its_refusal_keeps_nothing() {
+    let Some(server) =
+        server("work_inside_a_unit_of_work_is_part_of_it_and_its_refusal_keeps_nothing")
+    else {
+        return;
+    };
+    // One connection: work that opened a unit of its own would wait for it and fail.
+    let scratch = scratch_with(&server, 1, true);
+    let database = &scratch.database;
+    let marks = |database: &Database| -> Vec<String> {
+        database
+            .write(|unit| {
+                Ok(unit
+                    .query(
+                        "SELECT scope FROM permguard_clock_marks ORDER BY scope",
+                        &[],
+                    )?
+                    .into_iter()
+                    .map(|row| row.get(0))
+                    .collect())
+            })
+            .expect("read")
+    };
+    let insert = "INSERT INTO permguard_clock_marks (scope, mark) VALUES ($1, 1)";
+    database
+        .transaction::<(), &str>(|unit| {
+            unit.execute(insert, &[&"outer"])?;
+            assert_eq!(
+                marks(database),
+                ["outer"],
+                "the work reads what the unit wrote"
+            );
+            database
+                .write(|inner| inner.execute(insert, &[&"inner"]))
+                .expect("the work is part of the unit");
+            // A refusal after a write, and one after a statement the database refused.
+            let refused = database
+                .transaction::<(), &str>(|inner| {
+                    inner.execute(insert, &[&"refused"])?;
+                    Err(Failure::Refused("not this one"))
+                })
+                .expect("the database answered");
+            assert_eq!(refused, Err("not this one"));
+            let refused = database
+                .transaction::<(), &str>(|inner| {
+                    inner.execute(insert, &[&"refused"])?;
+                    match inner.execute(insert, &[&"outer"]) {
+                        Err(_) => Err(Failure::Refused("taken")),
+                        Ok(_) => Ok(()),
+                    }
+                })
+                .expect("the database answered");
+            assert_eq!(refused, Err("taken"));
+            Ok(())
+        })
+        .expect("the database answered")
+        .expect("the unit goes on after the refusals and is committed");
+    assert_eq!(marks(database), ["inner", "outer"]);
+}
+
 /// A unit of work one of whose statements failed is never said committed, even when the work
 /// went on and answered as if nothing had happened: the database undoes such a transaction at
 /// its `COMMIT` without a word, and the unit says what the statement was answered instead.

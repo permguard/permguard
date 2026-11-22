@@ -1499,12 +1499,17 @@ impl Store {
         let mut scheduled = now;
         self.store.change(
             &Doc::Verification { membership: id },
+            // Asked again when the store's unit of work is: each time it answers for the
+            // document it is given then.
             &mut |held| match held.map(scheduled_at).transpose()?.flatten() {
                 Some(first) => {
                     scheduled = first;
                     Ok(None)
                 }
-                None => Ok(Some(now.to_be_bytes().to_vec())),
+                None => {
+                    scheduled = now;
+                    Ok(Some(now.to_be_bytes().to_vec()))
+                }
             },
         )?;
         Ok(scheduled)

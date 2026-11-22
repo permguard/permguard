@@ -161,7 +161,15 @@ impl PostgresMutations {
         // From here to the commit this thread is inside the operation's unit of work: what a
         // store of this database reads or changes on it, it reads and changes in the operation.
         let _inside = self.database.enter(&unit);
-        if !check() {
+        let checked = check();
+        // A check that read through a store and could not be serialized decided on nothing:
+        // the operation is run again, whatever the check answered.
+        if let Some(failure) = unit.failure()
+            && again(&failure)
+        {
+            return Err(failure.into());
+        }
+        if !checked {
             return Err(Stopped::Unchecked.into());
         }
         let operation_id = OperationId::mint()
@@ -258,8 +266,18 @@ impl PostgresMutations {
             "applied",
             applied.target.as_deref().or(begin.target.as_deref()),
         )?;
-        unit.commit()?;
-        Ok(Ended::Applied)
+        match unit.commit() {
+            Ok(()) => Ok(Ended::Applied),
+            // The database answered the commit with an error of its own: it kept nothing.
+            Err(error) if error.code().is_some() => Err(error.into()),
+            // No answer: the connection went before the database said what it did, and the
+            // operation may be kept whole. The caller reads the state before it retries; a
+            // retry of the same request learns the answer from the operation's row.
+            Err(error) => Err(Stopped::Unrecorded(format!(
+                "the database did not answer the commit of the mutation: {error}"
+            ))
+            .into()),
+        }
     }
 }
 

@@ -444,7 +444,8 @@ impl PostgresMarks {
 
 impl crate::marks::MarkStore for PostgresMarks {
     fn held(&self) -> BTreeMap<[u8; 16], u64> {
-        // None when the store does not answer, as the contract says of marks that do not read.
+        // None when the store does not answer, as the contract says of marks that do not read:
+        // a list then signed below the mark the database holds is refused by `keep`.
         self.database
             .write(|unit| unit.query("SELECT list_id, mark FROM permguard_authority_marks", &[]))
             .map(|rows| {
@@ -461,25 +462,45 @@ impl crate::marks::MarkStore for PostgresMarks {
     fn keep(&self, marks: &BTreeMap<[u8; 16], u64>) -> Result<(), String> {
         self.database
             .write(|unit| {
-                // The marks held are replaced whole, and a mark only rises: of two instances
-                // that sign one list, the higher `iat` is the one kept.
+                // The marks are every instance's: one this instance does not name is another's,
+                // and goes only when its list is gone from the tokens.
                 let named: Vec<&[u8]> = marks.keys().map(<[u8; 16]>::as_slice).collect();
                 unit.execute(
-                    "DELETE FROM permguard_authority_marks WHERE NOT (list_id = ANY($1))",
+                    "DELETE FROM permguard_authority_marks AS held
+                     WHERE NOT (held.list_id = ANY($1)) AND NOT EXISTS (
+                         SELECT 1 FROM permguard_authority_lists AS list
+                         WHERE list.list_id = held.list_id)",
                     &[&named],
                 )?;
+                // A mark only rises. One held above the one named is a list another instance
+                // signed past it: this one's list would be refused by every Plane that holds
+                // the other's, so it is not signed.
+                let mut passed = None;
                 for (list, mark) in marks {
-                    unit.execute(
-                        "INSERT INTO permguard_authority_marks AS held (list_id, mark)
-                         VALUES ($1, $2)
-                         ON CONFLICT (list_id) DO UPDATE SET mark = EXCLUDED.mark
-                         WHERE held.mark < EXCLUDED.mark",
-                        &[&list.as_slice(), &i64::try_from(*mark).unwrap_or(i64::MAX)],
-                    )?;
+                    let mark = i64::try_from(*mark).unwrap_or(i64::MAX);
+                    let held: i64 = unit
+                        .query_one(
+                            "INSERT INTO permguard_authority_marks AS held (list_id, mark)
+                             VALUES ($1, $2)
+                             ON CONFLICT (list_id) DO UPDATE
+                             SET mark = GREATEST(held.mark, EXCLUDED.mark)
+                             RETURNING mark",
+                            &[&list.as_slice(), &mark],
+                        )?
+                        .get(0);
+                    if held > mark {
+                        passed = Some(held);
+                    }
                 }
-                Ok(())
+                Ok(passed)
             })
             .map_err(|error| error.to_string())
+            .and_then(|passed| match passed {
+                None => Ok(()),
+                Some(held) => Err(format!(
+                    "another instance signed a list up to {held}, past the mark being kept"
+                )),
+            })
     }
 }
 
@@ -665,34 +686,57 @@ mod tests {
         }
     }
 
-    /// The marks are kept whole and only rise: a list no longer signed is forgotten, and of two
-    /// instances that sign one list the higher `iat` is the one kept, whichever kept it last.
+    /// The marks are every instance's and only rise: one of a list the tokens still hold stays
+    /// whoever keeps the marks, one of a list that is gone is forgotten, and a list another
+    /// instance signed past the mark being kept is not signed.
     #[test]
-    fn the_marks_are_kept_whole_and_only_rise_on_postgresql() {
-        let Some(server) = server("the_marks_are_kept_whole_and_only_rise_on_postgresql") else {
+    fn the_marks_are_every_instances_and_only_rise_on_postgresql() {
+        let Some(server) = server("the_marks_are_every_instances_and_only_rise_on_postgresql")
+        else {
             return;
         };
         let cases = Cases::new(server);
         let database = cases.next();
         let (one, other) = (
             PostgresMarks::new(database.clone()),
-            PostgresMarks::new(database),
+            PostgresMarks::new(database.clone()),
         );
         assert!(one.held().is_empty());
+        // The list 2 is held by the tokens; the list 1 is not.
+        database
+            .write(|unit| {
+                unit.execute(
+                    "INSERT INTO permguard_authority_lists
+                         (list_id, open, drawn, latest_expiry, changed_at)
+                     VALUES ($1, false, 0, 0, 0)",
+                    &[&[2u8; 16].as_slice()],
+                )
+            })
+            .expect("a list");
         one.keep(&BTreeMap::from([([1; 16], 100), ([2; 16], 200)]))
             .expect("kept");
         assert_eq!(
             other.held(),
             BTreeMap::from([([1; 16], 100), ([2; 16], 200)])
         );
-        // Another instance, behind on one list and ahead on another, with one list gone.
-        other
-            .keep(&BTreeMap::from([([1; 16], 90), ([3; 16], 300)]))
-            .expect("kept");
+        // Another instance, that never signed the list 2 and signs a third.
+        other.keep(&BTreeMap::from([([3; 16], 300)])).expect("kept");
         assert_eq!(
             one.held(),
-            BTreeMap::from([([1; 16], 100), ([3; 16], 300)]),
-            "a mark never goes back, and a list no longer signed is forgotten"
+            BTreeMap::from([([2; 16], 200), ([3; 16], 300)]),
+            "the mark of a list the tokens hold stays; the one of a list that is gone goes"
         );
+        // Behind on a list another instance signed: the list is not signed, and the mark stays.
+        let refused = other.keep(&BTreeMap::from([([2; 16], 150), ([3; 16], 310)]));
+        assert!(refused.is_err(), "a mark never goes back: {refused:?}");
+        assert_eq!(one.held().get(&[2; 16]), Some(&200));
+        // At the mark held, or past it, it is kept.
+        other
+            .keep(&BTreeMap::from([([2; 16], 200), ([3; 16], 320)]))
+            .expect("kept");
+        other
+            .keep(&BTreeMap::from([([2; 16], 201), ([3; 16], 320)]))
+            .expect("kept");
+        assert_eq!(one.held(), BTreeMap::from([([2; 16], 201), ([3; 16], 320)]));
     }
 }

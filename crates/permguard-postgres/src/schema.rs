@@ -239,6 +239,135 @@ pub const MIGRATIONS: &[Migration] = &[
         CREATE INDEX permguard_plans_id ON permguard_plans (plan_id);
     ",
     },
+    Migration {
+        version: 9,
+        name: "identity, rings and memberships",
+        statements: "
+        CREATE TABLE permguard_identity_records (
+            name text PRIMARY KEY CHECK (name IN ('init', 'document', 'start', 'resetting')),
+            record bytea NOT NULL
+        );
+        CREATE TABLE permguard_identity_successions (
+            position bigint PRIMARY KEY CHECK (position > 0),
+            envelope bytea NOT NULL
+        );
+        CREATE TABLE permguard_identity_public_keys (
+            epoch bigint PRIMARY KEY CHECK (epoch > 0),
+            key bytea NOT NULL
+        );
+        CREATE TABLE permguard_identity_retired (
+            host_id text PRIMARY KEY,
+            reset bytea NOT NULL
+        );
+        CREATE TABLE permguard_identity_evidence (
+            host_id text NOT NULL REFERENCES permguard_identity_retired (host_id) ON DELETE CASCADE,
+            kind text NOT NULL CHECK (kind IN ('init', 'document', 'succession', 'public')),
+            position bigint NOT NULL,
+            record bytea NOT NULL,
+            PRIMARY KEY (host_id, kind, position)
+        );
+        CREATE TABLE permguard_ring_entries (
+            ring text NOT NULL,
+            seq bigint NOT NULL CHECK (seq > 0),
+            entry bytea NOT NULL,
+            PRIMARY KEY (ring, seq)
+        );
+        CREATE TABLE permguard_ring_records (
+            ring text NOT NULL,
+            name text NOT NULL CHECK (name IN ('view', 'binding')),
+            record bytea NOT NULL,
+            PRIMARY KEY (ring, name)
+        );
+        CREATE TABLE permguard_ring_kept_bindings (
+            ring text NOT NULL,
+            seq bigint NOT NULL,
+            envelope bytea NOT NULL,
+            PRIMARY KEY (ring, seq)
+        );
+        CREATE TABLE permguard_ring_public_keys (
+            ring text NOT NULL,
+            thumbprint text NOT NULL,
+            jwk bytea NOT NULL,
+            PRIMARY KEY (ring, thumbprint)
+        );
+        CREATE TABLE permguard_ring_evidence (
+            ring text NOT NULL,
+            host_id text NOT NULL,
+            kind text NOT NULL CHECK (kind IN ('entry', 'record', 'kept binding', 'public key')),
+            name text NOT NULL,
+            record bytea NOT NULL,
+            PRIMARY KEY (ring, host_id, kind, name)
+        );
+        CREATE TABLE permguard_member_entries (
+            seq bigint PRIMARY KEY CHECK (seq > 0),
+            entry bytea NOT NULL
+        );
+        CREATE TABLE permguard_member_views (
+            kind text NOT NULL CHECK (kind IN ('summary', 'manifest', 'invitation')),
+            name text NOT NULL,
+            record bytea NOT NULL,
+            PRIMARY KEY (kind, name)
+        );
+        CREATE TABLE permguard_member_documents (
+            kind text NOT NULL,
+            owner bytea NOT NULL CHECK (octet_length(owner) = 16),
+            scope text NOT NULL,
+            name text NOT NULL,
+            record bytea NOT NULL,
+            PRIMARY KEY (kind, owner, scope, name)
+        );
+        CREATE TABLE permguard_member_checkpoints (
+            membership bytea NOT NULL CHECK (octet_length(membership) = 16),
+            trail text NOT NULL,
+            count bigint NOT NULL CHECK (count > 0),
+            envelope bytea NOT NULL,
+            PRIMARY KEY (membership, trail, count)
+        );
+    ",
+    },
+    Migration {
+        version: 10,
+        name: "catalog",
+        statements: "
+        CREATE TABLE permguard_zones (
+            id text PRIMARY KEY,
+            position bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+            name text NOT NULL UNIQUE,
+            created_at bigint NOT NULL,
+            updated_at bigint NOT NULL,
+            revision bigint NOT NULL CHECK (revision > 0),
+            operation text
+        );
+        CREATE TABLE permguard_ledgers (
+            id text PRIMARY KEY,
+            position bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+            zone_id text NOT NULL REFERENCES permguard_zones (id),
+            name text NOT NULL,
+            default_ref text NOT NULL,
+            created_at bigint NOT NULL,
+            updated_at bigint NOT NULL,
+            revision bigint NOT NULL CHECK (revision > 0),
+            operation text,
+            state text NOT NULL CHECK (state IN ('active', 'archived')),
+            provenance text,
+            UNIQUE (zone_id, name)
+        );
+        CREATE TABLE permguard_catalog_tombstones (
+            id text PRIMARY KEY,
+            zone_id text,
+            name text NOT NULL,
+            deleted_at bigint NOT NULL,
+            revision bigint NOT NULL,
+            operation text
+        );
+        CREATE TABLE permguard_catalog_marks (
+            scope text NOT NULL,
+            name text NOT NULL,
+            reached bigint NOT NULL,
+            PRIMARY KEY (scope, name)
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

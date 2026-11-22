@@ -1312,6 +1312,10 @@ sections:
       - crates/permguard-postgres/src/witnesses.rs
       - crates/permguard-postgres/src/held.rs
       - crates/permguard-postgres/src/replay.rs
+      - crates/permguard-postgres/src/identity.rs
+      - crates/permguard-postgres/src/ring.rs
+      - crates/permguard-postgres/src/members.rs
+      - crates/permguard-postgres/src/catalog.rs
       - scripts/test-postgres.sh
       - .github/workflows/ci.yml
     tests:
@@ -1333,6 +1337,8 @@ sections:
       - crates/permguard-postgres/tests/mutations.rs::a_store_inside_an_operation_reads_and_writes_in_it
       - crates/permguard-postgres/tests/mutations.rs::a_write_whose_statement_failed_is_never_answered_applied
       - crates/permguard-postgres/tests/foundations.rs::a_unit_whose_statement_failed_is_not_committed
+      - crates/permguard-postgres/tests/foundations.rs::work_inside_a_unit_of_work_is_part_of_it_and_its_refusal_keeps_nothing
+      - crates/permguard-postgres/tests/instances.rs::a_change_alone_sees_the_one_an_operation_made_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_holds_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_seen_epochs_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_bootstrap_commitment_keeps_its_contract_on_postgresql
@@ -1340,6 +1346,15 @@ sections:
       - crates/permguard-postgres/tests/host_stores.rs::the_version_witnesses_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::what_a_host_holds_of_the_authority_keeps_its_contract_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_plans_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_identity_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::a_ring_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_rings_of_one_database_are_apart_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_memberships_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_catalog_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_add_one_entry_together_add_it_once_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_publish_together_keep_one_record_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_change_one_document_together_lose_no_change_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_change_the_catalog_together_apply_once_on_postgresql
       - crates/permguard-host/src/operations/mutation/tests.rs::any_engine_hands_its_unit_of_work_to_the_domain
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
@@ -4681,7 +4696,7 @@ sections:
     tests:
       - crates/permguard-authority-plane/src/accounts/postgres.rs::the_accounts_keep_their_contract_on_postgresql
       - crates/permguard-authority-plane/src/tokens/postgres.rs::the_tokens_keep_their_contract_on_postgresql
-      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_marks_are_kept_whole_and_only_rise_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_marks_are_every_instances_and_only_rise_on_postgresql
       - crates/permguard-authority-plane/src/tokens/postgres.rs::a_token_issued_while_its_account_is_suspended_is_never_left_valid_on_postgresql
       - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
       - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract

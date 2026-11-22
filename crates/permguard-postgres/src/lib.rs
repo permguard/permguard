@@ -24,14 +24,18 @@
 //! No state is kept in memory: every decision reads inside its transaction.
 
 pub mod bootstrap;
+pub mod catalog;
 pub mod database;
 pub mod gate;
 pub mod held;
 pub mod holds;
+pub mod identity;
 pub mod lease;
+pub mod members;
 pub mod mutations;
 pub mod peers;
 pub mod replay;
+pub mod ring;
 pub mod schema;
 #[cfg(feature = "test-support")]
 pub mod testing;

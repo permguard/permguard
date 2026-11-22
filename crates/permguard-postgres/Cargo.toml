@@ -23,6 +23,7 @@ test-support = []
 [dependencies]
 permguard-core.workspace = true
 permguard-host.workspace = true
+permguard-objects.workspace = true
 # The synchronous client: the store contracts are synchronous, as the file backend's calls are.
 postgres = { workspace = true }
 tokio-postgres-rustls = { workspace = true }
@@ -34,4 +35,5 @@ rustls = { workspace = true }
 [dev-dependencies]
 permguard-postgres = { path = ".", features = ["test-support"] }
 permguard-host = { workspace = true, features = ["test-support"] }
+permguard-core = { workspace = true, features = ["test-support"] }
 postgres = { workspace = true }

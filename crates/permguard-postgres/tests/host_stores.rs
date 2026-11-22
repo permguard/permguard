@@ -11,10 +11,14 @@
 use std::sync::Arc;
 
 use permguard_postgres::bootstrap::PostgresBootstrap;
+use permguard_postgres::catalog::PostgresCatalog;
 use permguard_postgres::held::PostgresHeld;
 use permguard_postgres::holds::PostgresHolds;
+use permguard_postgres::identity::PostgresIdentity;
+use permguard_postgres::members::PostgresMembers;
 use permguard_postgres::peers::PostgresSeen;
 use permguard_postgres::replay::PostgresReplay;
+use permguard_postgres::ring::PostgresRing;
 use permguard_postgres::testing::{Cases, server};
 use permguard_postgres::witnesses::{PostgresVersionWitnesses, PostgresWitnesses};
 
@@ -93,4 +97,74 @@ fn the_plans_keep_their_contract_on_postgresql() {
         &|| Arc::new(PostgresReplay::new(cases.next())),
         &|work| cases.operate("host.plans", work),
     );
+}
+
+#[test]
+fn the_identity_keeps_its_contract_on_postgresql() {
+    let Some(server) = server("the_identity_keeps_its_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::identity::suite::run(
+        &|| Arc::new(PostgresIdentity::new(cases.next())),
+        &|work| cases.operate("host.identity", work),
+    );
+}
+
+#[test]
+fn a_ring_keeps_its_contract_on_postgresql() {
+    let Some(server) = server("a_ring_keeps_its_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::keys::ring::suite::run(
+        &|| Arc::new(PostgresRing::new(cases.next(), "host-signing")),
+        &|work| cases.operate("host.keys", work),
+    );
+}
+
+#[test]
+fn the_rings_of_one_database_are_apart_on_postgresql() {
+    use permguard_host::keys::ring::store::RingStore;
+
+    let Some(server) = server("the_rings_of_one_database_are_apart_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    let database = cases.next();
+    let (one, other) = (
+        PostgresRing::new(database.clone(), "one"),
+        PostgresRing::new(database, "other"),
+    );
+    one.append(1, &[0x01]).expect("added");
+    one.replace_view(b"the view of one").expect("written");
+    one.publish_public("thumb", b"a key of one")
+        .expect("published");
+    assert!(other.entries().expect("reads").is_empty());
+    assert_eq!(other.view().expect("reads"), None);
+    assert_eq!(other.public("thumb").expect("reads"), None);
+    other.append(1, &[0x02]).expect("its own first entry");
+    other.clear().expect("cleared");
+    other.forget_entries().expect("forgotten");
+    assert_eq!(one.entries().expect("reads").len(), 1);
+    assert!(one.view().expect("reads").is_some());
+    assert!(one.public("thumb").expect("reads").is_some());
+}
+
+#[test]
+fn the_memberships_keep_their_contract_on_postgresql() {
+    let Some(server) = server("the_memberships_keep_their_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_host::membership::suite::run(&|| Arc::new(PostgresMembers::new(cases.next())));
+}
+
+#[test]
+fn the_catalog_keeps_its_contract_on_postgresql() {
+    let Some(server) = server("the_catalog_keeps_its_contract_on_postgresql") else {
+        return;
+    };
+    let cases = Cases::new(server);
+    permguard_core::catalog::suite::run(&|| Arc::new(PostgresCatalog::new(cases.next())));
 }

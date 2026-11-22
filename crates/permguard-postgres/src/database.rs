@@ -115,11 +115,16 @@ impl std::fmt::Debug for Config {
     }
 }
 
+/// The point a unit of work goes back to when work that joined it refuses.
+const JOINED: &str = "permguard_joined";
+
 /// Why the database did not do what it was asked.
 #[derive(Debug)]
 pub enum DbError {
     /// The database could not be reached, or did not answer in time, or failed: the caller's
-    /// subsystem is not ready, and a retry is reasonable.
+    /// subsystem is not ready, and a retry is reasonable. A unit of work whose commit the
+    /// database did not answer may have been kept all the same: a caller whose change cannot
+    /// be made twice reads the state before it makes it again.
     Unavailable(String),
     /// The schema the database holds is newer than this build knows: the start is refused.
     SchemaNewer { found: i32, known: i32 },
@@ -777,16 +782,24 @@ impl Database {
         work: &dyn Fn(&Unit) -> Result<T, Failure<E>>,
     ) -> Result<Result<T, E>, DbError> {
         // Inside a unit of work of this thread, the work is part of it: it is not committed
-        // here and not run again, and what it refuses is the unit's owner's to undo.
+        // here and not run again. What it refuses keeps nothing, as when it runs alone: the
+        // unit goes back to where the work began, and goes on from there.
         if let Some(unit) = self.entered() {
             if scope.is_some() {
                 return Err(DbError::Unavailable(
                     "a scope is not taken inside a unit of work".to_owned(),
                 ));
             }
+            unit.mark(JOINED)?;
             return match work(&unit) {
-                Ok(value) => Ok(Ok(value)),
-                Err(Failure::Refused(refusal)) => Ok(Err(refusal)),
+                Ok(value) => {
+                    unit.batch_execute(&format!("RELEASE SAVEPOINT {JOINED}"))?;
+                    Ok(Ok(value))
+                }
+                Err(Failure::Refused(refusal)) => {
+                    unit.back_to(JOINED)?;
+                    Ok(Err(refusal))
+                }
                 Err(Failure::Db(error)) => Err(error.into()),
             };
         }
@@ -794,17 +807,22 @@ impl Database {
             let mut last = None;
             for attempt in 1..=ATTEMPTS {
                 let attempted = (|| {
-                    let unit = Unit::begin(
+                    let unit = Arc::new(Unit::begin(
                         self.take().map_err(|error| Failure::Refused(Err(error)))?,
                         isolation,
-                    )?;
+                    )?);
                     if let Some(scope) = scope {
                         unit.execute(
                             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                             &[&scope],
                         )?;
                     }
-                    let value = work(&unit).map_err(|failure| match failure {
+                    // The unit is this thread's while the work runs: a store the work calls
+                    // reads and writes in it, on its connection, and is kept or not with it.
+                    let inside = self.enter(&unit);
+                    let worked = work(&unit);
+                    drop(inside);
+                    let value = worked.map_err(|failure| match failure {
                         Failure::Db(error) => Failure::Db(error),
                         Failure::Refused(refusal) => Failure::Refused(Ok(refusal)),
                     })?;

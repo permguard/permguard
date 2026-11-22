@@ -3087,6 +3087,7 @@ version = "0.1.0"
 dependencies = [
  "permguard-core",
  "permguard-host",
+ "permguard-objects",
  "permguard-postgres",
  "postgres",
  "rustls",
