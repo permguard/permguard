@@ -545,10 +545,16 @@ impl Streams {
         codec: C,
     ) -> Result<Consumer<C>, StreamError> {
         let dir = self.register(&descriptor, "consumer")?;
-        Ok(
-            Consumer::new(dir, self.claim, descriptor, codec, Arc::clone(&self.time))
-                .with_segment_bytes(self.segment_bytes),
-        )
+        Ok(Consumer::new(
+            Arc::new(consumer::store::FileRuns::new(
+                dir,
+                self.claim,
+                self.segment_bytes,
+            )),
+            descriptor,
+            codec,
+            Arc::clone(&self.time),
+        ))
     }
 }
 

@@ -10,12 +10,10 @@
 use permguard_core::authz::Resource;
 use permguard_host::composition::{ImportOrigin, Imported, StreamImport};
 use permguard_host::membership::import::State;
-use permguard_host::storage::format;
-use permguard_host::storage::write::{read_view, replace_view};
 
 use super::super::ingest::{Outcome, Shipping};
 use super::super::{RecordCodec, StreamError};
-use super::{Consumer, child};
+use super::Consumer;
 
 /// The import's state of a ledger, beside its producers' directories.
 const IMPORT: &str = "IMPORT";
@@ -84,11 +82,9 @@ impl<C: RecordCodec> StreamImport for Consumer<C> {
             .key(resource, [0; 16])
             .map_err(wrap)?
             .resource_component();
-        let Some(dir) = child(&self.dir, &component, false).map_err(wrap)? else {
-            return Ok(None);
-        };
-        read_view(&dir, IMPORT, format::VIEW)
-            .map_err(|error| error.to_string())?
+        self.runs
+            .resource_view(&component, IMPORT)
+            .map_err(wrap)?
             .map(|bytes| State::decode(&bytes).map_err(|error| error.to_string()))
             .transpose()
     }
@@ -108,11 +104,9 @@ impl<C: RecordCodec> StreamImport for Consumer<C> {
             }
             let start = super::encode_start(first_seq, previous_head)?;
             super::decode_start(&start)?;
-            replace_view(&held.dir, super::START, format::VIEW, &start)?;
-            replace_view(
-                &held.dir,
+            held.store.replace_view(super::START, &start)?;
+            held.store.replace_view(
                 super::STATE,
-                format::VIEW,
                 &super::ConsumerState {
                     acked: first_seq - 1,
                     oldest_retained: first_seq,
@@ -135,10 +129,9 @@ impl<C: RecordCodec> StreamImport for Consumer<C> {
             .key(resource, [0; 16])
             .map_err(wrap)?
             .resource_component();
-        let dir = child(&self.dir, &component, true)
-            .map_err(wrap)?
-            .ok_or_else(|| "the ledger's directory is absent".to_owned())?;
         let bytes = state.encode().map_err(|error| error.to_string())?;
-        replace_view(&dir, IMPORT, format::VIEW, &bytes).map_err(|error| error.to_string())
+        self.runs
+            .replace_resource_view(&component, IMPORT, &bytes)
+            .map_err(wrap)
     }
 }

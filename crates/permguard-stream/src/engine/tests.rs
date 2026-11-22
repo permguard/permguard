@@ -3471,18 +3471,21 @@ fn a_consumer_journal_of_a_later_claim_is_refused() {
     let (_producer, run, batches) = shipped(&host, 2, 2);
     let at = |claim: u64| {
         Consumer::new(
-            permguard_host::storage::Dir::open(
-                &host
-                    .root
-                    .join("host")
-                    .join(STREAMS)
-                    .join("data")
-                    .join("decisions")
-                    .join("1")
-                    .join("consumer"),
-            )
-            .expect("the consumer directory"),
-            claim,
+            Arc::new(super::consumer::store::FileRuns::new(
+                permguard_host::storage::Dir::open(
+                    &host
+                        .root
+                        .join("host")
+                        .join(STREAMS)
+                        .join("data")
+                        .join("decisions")
+                        .join("1")
+                        .join("consumer"),
+                )
+                .expect("the consumer directory"),
+                claim,
+                permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
+            )),
             descriptor(),
             Text,
             Arc::clone(&host.time),

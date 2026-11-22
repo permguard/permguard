@@ -38,9 +38,6 @@ use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::Resource;
 use permguard_host::membership::record::{RingPin, RingStatement};
-use permguard_host::storage::journal::{Journal, Options};
-use permguard_host::storage::write::{Published, publish_immutable, read_view, replace_view};
-use permguard_host::storage::{Dir, StorageError, format};
 use permguard_objects::cbor::Value;
 
 use super::batch::{GENESIS_HEAD, KeyView, SealedBatch, digest_string};
@@ -52,6 +49,9 @@ use super::{Descriptor, RecordCodec, StreamError, StreamKey};
 mod import;
 mod inspect;
 mod prune;
+pub mod store;
+
+use store::{RunFiles, RunStore, Runs};
 
 /// The frame kind of a batch's admission time (WP-5.6b).
 const ADMITTED: u16 = 4;
@@ -63,7 +63,6 @@ pub(crate) const START: &str = "START";
 const SIGNERS: &str = "signers.cbor";
 const STATEMENTS: &str = "statements";
 const BATCHES: &str = "batches";
-const RECORDS_DIR: &str = "records";
 /// The most bytes a consumer's STATE and FORKED take.
 pub const MAX_VIEW_BYTES: usize = 256;
 
@@ -171,8 +170,8 @@ impl ForkMark {
 
 /// One producer run as the consumer holds it, kept open between batches.
 struct Held {
-    dir: Dir,
-    journal: Journal,
+    /// Where the run's records, views and immutable files rest, opened for this holder.
+    store: Box<dyn RunStore>,
     /// The highest contiguous sequence the records hold.
     acked: u64,
     /// The digest of the record at `acked`, as the envelope spells it; genesis before any.
@@ -219,7 +218,7 @@ impl Held {
             return Ok(Vec::new());
         };
         let mut found = Vec::new();
-        for frame in self.journal.frames_from(*index)? {
+        for frame in self.store.frames_from(*index)? {
             if frame.kind != RECORDS {
                 continue;
             }
@@ -243,8 +242,8 @@ type RunAt = (String, [u8; 16], [u8; 16]);
 
 /// The typed consumer handle of one descriptor.
 pub struct Consumer<C> {
-    dir: Dir,
-    claim: u64,
+    /// Where the runs rest, and how one is opened.
+    runs: std::sync::Arc<dyn Runs>,
     descriptor: Descriptor,
     codec: C,
     /// The clock an admission is dated by (WP-5.6b).
@@ -258,8 +257,6 @@ pub struct Consumer<C> {
     source: Option<std::sync::Arc<dyn super::retention::RetentionSource>>,
     /// Keeps the garbage collection's passes from overlapping.
     lease: super::retention::Lease,
-    /// The size past which a run's journal segment rolls (WP-5.6b).
-    segment_bytes: u64,
     /// The runs held open, by `(resource component, producer, run)`; the lock serializes
     /// admissions, one writer per consumer stream.
     held: Mutex<BTreeMap<RunAt, Held>>,
@@ -295,25 +292,15 @@ fn stream_name(key: &StreamKey, run: &[u8; 16]) -> String {
     )
 }
 
-/// The subdirectory `name` of `dir`, created when `create`, `None` when absent otherwise.
-fn child(dir: &Dir, name: &str, create: bool) -> Result<Option<Dir>, StreamError> {
-    if create || dir.subdirs()?.iter().any(|held| held == name) {
-        return Ok(Some(dir.subdir(name, true)?));
-    }
-    Ok(None)
-}
-
 impl<C: RecordCodec> Consumer<C> {
     pub(crate) fn new(
-        dir: Dir,
-        claim: u64,
+        runs: std::sync::Arc<dyn Runs>,
         descriptor: Descriptor,
         codec: C,
         time: std::sync::Arc<permguard_host::time::TimeGuard>,
     ) -> Self {
         Self {
-            dir,
-            claim,
+            runs,
             descriptor,
             codec,
             time,
@@ -321,7 +308,6 @@ impl<C: RecordCodec> Consumer<C> {
             plane_floor: std::sync::atomic::AtomicBool::new(false),
             source: None,
             lease: super::retention::Lease::default(),
-            segment_bytes: permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
             held: Mutex::new(BTreeMap::new()),
             admission: None,
         }
@@ -338,12 +324,6 @@ impl<C: RecordCodec> Consumer<C> {
     fn admission_refuses(&self, records: &[Vec<u8>]) -> Option<String> {
         let admission = self.admission.as_ref()?;
         records.iter().find_map(|record| admission(record).err())
-    }
-
-    /// This consumer's run journals rolling their segments past `bytes` (WP-5.6b).
-    pub(crate) fn with_segment_bytes(mut self, bytes: u64) -> Self {
-        self.segment_bytes = bytes;
-        self
     }
 
     /// This consumer's `history` streams kept above `floor` (WP-5.6b).
@@ -380,11 +360,20 @@ impl<C: RecordCodec> Consumer<C> {
     }
 
     /// The directory of `key`'s producer, beside its runs; `None` when absent and not `create`.
-    fn producer_dir(&self, key: &StreamKey, create: bool) -> Result<Option<Dir>, StreamError> {
-        let Some(resource) = child(&self.dir, &key.resource_component(), create)? else {
-            return Ok(None);
-        };
-        child(&resource, &hex(&key.producer_host_id), create)
+    /// Where `key`'s runs are kept: its resource's component and its producer, as the store
+    /// names them.
+    fn place_of(key: &StreamKey) -> (String, String) {
+        (key.resource_component(), hex(&key.producer_host_id))
+    }
+
+    /// `key`'s run `run_id`, read without opening its journal; `None` when absent.
+    fn peek(
+        &self,
+        key: &StreamKey,
+        run_id: &[u8; 16],
+    ) -> Result<Option<Box<dyn RunFiles>>, StreamError> {
+        let (component, producer) = Self::place_of(key);
+        self.runs.peek(&component, &producer, &hex(run_id))
     }
 
     /// Opens `key`'s run `run_id`: the head re-derived from its records, the authority; `None`
@@ -395,59 +384,41 @@ impl<C: RecordCodec> Consumer<C> {
         run_id: [u8; 16],
         create: bool,
     ) -> Result<Option<Held>, StreamError> {
-        let Some(producer) = self.producer_dir(key, create)? else {
+        let (component, producer) = Self::place_of(key);
+        let Some(store) = self
+            .runs
+            .open(&component, &producer, &hex(&run_id), create)?
+        else {
             return Ok(None);
         };
-        if create && !producer.exists(prune::RESERVE_FILE)? {
-            // The reserve a deletion's writes take (WP-5.6b); where the filesystem cannot
-            // allocate it, the consumer goes on without.
-            let _ = permguard_host::storage::write::allocate(
-                &producer,
-                prune::RESERVE_FILE,
-                prune::RESERVE_BYTES,
-            );
-        }
-        let Some(dir) = child(&producer, &hex(&run_id), create)? else {
-            return Ok(None);
-        };
-        let (journal, _) = Journal::open(
-            dir.subdir(RECORDS_DIR, true)?,
-            Options {
-                claim: self.claim,
-                segment_bytes: self.segment_bytes,
-                ..Options::default()
-            },
-        )?;
         let mut acked = 0;
         let mut last = GENESIS_HEAD.to_owned();
         let mut groups = Vec::new();
         let mut admitted = Vec::new();
-        let frames = journal.frames()?;
+        let frames = store.frames()?;
         // Once a prefix went (WP-5.6b): the first RECORDS frame left says where the records held
         // start; with none left, every record went, through the anchor's `through`.
         // A run started past its beginning holds nothing below its start (BUG-0128).
-        let start = read_view(&dir, START, format::VIEW)?
+        let start = store
+            .view(START)?
             .map(|bytes| decode_start(&bytes))
             .transpose()?;
-        if journal.first_index() == 0
+        if store.first_index() == 0
             && let Some((first_seq, head)) = &start
         {
             acked = first_seq - 1;
             last = head.clone();
         }
-        if journal.first_index() > 0 {
+        if store.first_index() > 0 {
             match frames.iter().find(|frame| frame.kind == RECORDS) {
                 Some(frame) => acked = decode_group(&frame.payload)?.0 - 1,
                 None => {
-                    let anchor = read_view(&dir, super::anchor::ANCHOR, format::VIEW)?
-                        .map(|bytes| super::anchor::Anchor::decode(&bytes))
-                        .transpose()?
-                        .ok_or_else(|| {
-                            StreamError::Corruption(format!(
-                                "run {} lost a prefix and keeps no anchor",
-                                hex(&run_id)
-                            ))
-                        })?;
+                    let anchor = super::anchor::anchor_in(store.as_ref())?.ok_or_else(|| {
+                        StreamError::Corruption(format!(
+                            "run {} lost a prefix and keeps no anchor",
+                            hex(&run_id)
+                        ))
+                    })?;
                     acked = anchor.through;
                     last = anchor.terminal_head;
                 }
@@ -474,7 +445,8 @@ impl<C: RecordCodec> Consumer<C> {
                 last = digest_string(self.descriptor.record_domain, record);
             }
         }
-        let state = read_view(&dir, STATE, format::VIEW)?
+        let state = store
+            .view(STATE)?
             .map(|bytes| ConsumerState::decode(&bytes))
             .transpose()?;
         let oldest_retained = state.map_or(1, |state| state.oldest_retained);
@@ -484,8 +456,7 @@ impl<C: RecordCodec> Consumer<C> {
         let undated = (acked > admitted.last().map_or(0, |(through, _)| *through))
             .then(|| (acked, self.time.now_secs()));
         Ok(Some(Held {
-            dir,
-            journal,
+            store,
             acked,
             last,
             oldest_retained,
@@ -508,6 +479,16 @@ impl<C: RecordCodec> Consumer<C> {
         work: impl FnOnce(&mut Held) -> Result<R, StreamError>,
     ) -> Result<Option<R>, StreamError> {
         let mut all = lock(&self.held);
+        if !self.runs.kept_open() {
+            // Any instance may write the run: it is opened for this hold, read again, and let
+            // go when the work ends. The process's lock keeps one holder of this consumer at a
+            // time, the store's open keeps one across instances.
+            drop(all);
+            let Some(mut held) = self.open(key, run_id, create)? else {
+                return Ok(None);
+            };
+            return work(&mut held).map(Some);
+        }
         let at = (key.resource_component(), key.producer_host_id, run_id);
         if !all.contains_key(&at) {
             let Some(opened) = self.open(key, run_id, create)? else {
@@ -580,7 +561,7 @@ impl<C: RecordCodec> Consumer<C> {
         records: &[Vec<u8>],
     ) -> Result<(), StreamError> {
         let group = super::producer::encode_group(first_seq, records.iter().map(Vec::as_slice))?;
-        let index = held.journal.append(RECORDS, &group)?;
+        let index = held.store.append(RECORDS, &group)?;
         held.groups.push((first_seq, index));
         held.acked = first_seq + records.len() as u64 - 1;
         if let Some(record) = records.last() {
@@ -588,17 +569,15 @@ impl<C: RecordCodec> Consumer<C> {
         }
         // The consumer's own time, which its retention counts from (WP-5.6b).
         let at = self.time.now_secs();
-        held.journal
+        held.store
             .append(ADMITTED, &encode_admitted(held.acked, at)?)?;
         held.admitted.push((held.acked, at));
         held.undated = None;
         if held.opened.is_none() {
             held.opened = Some(opened_now());
         }
-        replace_view(
-            &held.dir,
+        held.store.replace_view(
             STATE,
-            format::VIEW,
             &ConsumerState {
                 acked: held.acked,
                 oldest_retained: held.oldest_retained,
@@ -742,7 +721,7 @@ impl<C: RecordCodec> Consumer<C> {
             // it was signed under, as a live range signed by another key is a fork (after the
             // review).
             let equal = last < held.oldest_retained
-                && super::anchor::anchor_in(&held.dir)?.is_some_and(|anchor| {
+                && super::anchor::anchor_in(held.store.as_ref())?.is_some_and(|anchor| {
                     anchor
                         .signers
                         .iter()
@@ -827,7 +806,7 @@ impl<C: RecordCodec> Consumer<C> {
         }
         // The span, decided before anything is written: another key over a range the spans
         // already cover is a conflicting transition (after the review).
-        let mut spans = match read_view(&held.dir, SIGNERS, format::VIEW)? {
+        let mut spans = match held.store.view(SIGNERS)? {
             Some(bytes) => Spans::decode(&bytes)?,
             None => Spans::default(),
         };
@@ -849,30 +828,23 @@ impl<C: RecordCodec> Consumer<C> {
         // Durable before the answer: the statement, the batch file, the span, the records, STATE.
         // The statement is kept by its digest, so a batch delivered again under a re-pinned set
         // adds the new one beside the first (WP-6.2c1).
-        let statements = held.dir.subdir(STATEMENTS, true)?;
         let name = format!("{}.cbor", hex(&Sha256::digest(statement)));
-        publish_immutable(&statements, &name, statement, &|_| true, &|stored| {
-            stored == statement
-        })?;
-        let batches = held.dir.subdir(BATCHES, true)?;
-        match publish_immutable(
-            &batches,
-            &format!("{first}-{last}.jws"),
-            file,
-            &|_| true,
-            &|stored| stored == file,
-        ) {
-            Ok(Published::Written | Published::AlreadyThere) => {}
+        held.store.publish(STATEMENTS, &name, statement)?;
+        match held
+            .store
+            .publish(BATCHES, &format!("{first}-{last}.jws"), file)
+        {
+            Ok(()) => {}
             // Another batch file of the same range: signed again over the same records and
             // commitments, as a producer restored in `dr` mode seals what its snapshot held
             // unsealed, it is an exact replay and the first file stays (WP-7.7); over anything
             // else, a fork.
-            Err(StorageError::Corruption(_)) => {
-                if !self.same_commitments(&batches, first, last, envelope, &jwk.kid)? {
+            Err(StreamError::Corruption(_)) => {
+                if !self.same_commitments(held.store.as_ref(), first, last, envelope, &jwk.kid)? {
                     return forked(first);
                 }
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(error),
         }
         if new_span {
             spans.append(
@@ -883,7 +855,7 @@ impl<C: RecordCodec> Consumer<C> {
                     jwk: canonical_jwk(jwk)?,
                 },
             )?;
-            replace_view(&held.dir, SIGNERS, format::VIEW, &spans.encode()?)?;
+            held.store.replace_view(SIGNERS, &spans.encode()?)?;
         }
         if last > held.acked {
             let suffix = &records[(held.acked + 1 - first) as usize..];
@@ -900,7 +872,7 @@ impl<C: RecordCodec> Consumer<C> {
     /// corruption, never the producer's fork.
     fn same_commitments(
         &self,
-        batches: &Dir,
+        batches: &dyn RunFiles,
         first: u64,
         last: u64,
         envelope: &super::batch::Envelope,
@@ -912,7 +884,7 @@ impl<C: RecordCodec> Consumer<C> {
                 "the batch file `{name}` held does not read as a batch"
             ))
         };
-        let held = batches.read(&name)?.ok_or_else(unreadable)?;
+        let held = batches.read(BATCHES, &name)?.ok_or_else(unreadable)?;
         let held = SealedBatch::decode(&held).map_err(|_| unreadable())?;
         let (held_kid, held) = (
             held.kid().map_err(|_| unreadable())?,
@@ -931,10 +903,9 @@ impl<C: RecordCodec> Consumer<C> {
 
     /// The fork mark of `key`'s producer, when its stream was found forked.
     fn mark(&self, key: &StreamKey) -> Result<Option<ForkMark>, StreamError> {
-        let Some(dir) = self.producer_dir(key, false)? else {
-            return Ok(None);
-        };
-        read_view(&dir, FORKED, format::VIEW)?
+        let (component, producer) = Self::place_of(key);
+        self.runs
+            .producer_view(&component, &producer, FORKED)?
             .map(|bytes| ForkMark::decode(&bytes))
             .transpose()
     }
@@ -947,14 +918,16 @@ impl<C: RecordCodec> Consumer<C> {
         at_seq: u64,
         stream: &str,
     ) -> Result<(), StreamError> {
-        let dir = self
-            .producer_dir(key, true)?
-            .ok_or_else(|| StreamError::Corruption("a producer directory is absent".to_owned()))?;
-        if read_view(&dir, FORKED, format::VIEW)?.is_none() {
-            replace_view(
-                &dir,
+        let (component, producer) = Self::place_of(key);
+        if self
+            .runs
+            .producer_view(&component, &producer, FORKED)?
+            .is_none()
+        {
+            self.runs.replace_producer_view(
+                &component,
+                &producer,
                 FORKED,
-                format::VIEW,
                 &ForkMark { run, at_seq }.encode()?,
             )?;
         }
@@ -1001,7 +974,7 @@ impl<C: RecordCodec> Consumer<C> {
         let key = self.descriptor.key(resource, producer)?;
         Ok(self
             .with_held(&key, run_id, false, |held| {
-                Ok(match read_view(&held.dir, SIGNERS, format::VIEW)? {
+                Ok(match held.store.view(SIGNERS)? {
                     Some(bytes) => Spans::decode(&bytes)?,
                     None => Spans::default(),
                 })
@@ -1050,7 +1023,7 @@ impl<C: RecordCodec> Consumer<C> {
         let from_seq = from_seq.max(1);
         let held = self.with_held(&key, run_id, false, |held| {
             let gap = if from_seq < held.oldest_retained {
-                let anchor = super::anchor::anchor_in(&held.dir)?.ok_or_else(|| {
+                let anchor = super::anchor::anchor_in(held.store.as_ref())?.ok_or_else(|| {
                     StreamError::Corruption(format!(
                         "run {} lost a prefix and keeps no anchor",
                         hex(&run_id)

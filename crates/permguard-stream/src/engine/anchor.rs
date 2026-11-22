@@ -43,8 +43,10 @@ pub fn envelope_digest(envelope: &super::batch::Envelope) -> Result<String, Stre
 }
 
 /// The anchor kept in `dir`, when a prefix went.
-pub(crate) fn anchor_in(dir: &permguard_host::storage::Dir) -> Result<Option<Anchor>, StreamError> {
-    permguard_host::storage::write::read_view(dir, ANCHOR, permguard_host::storage::format::VIEW)?
+pub(crate) fn anchor_in(
+    run: &(impl super::consumer::store::RunFiles + ?Sized),
+) -> Result<Option<Anchor>, StreamError> {
+    run.view(ANCHOR)?
         .map(|bytes| Anchor::decode(&bytes))
         .transpose()
 }

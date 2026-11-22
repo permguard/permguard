@@ -89,6 +89,10 @@
       "reason": "the PostgreSQL implementation of `audit::store::Trails` and `audit::trail::TrailStore`, whose errors are the storage library's: it names the error type and reaches no file"
     },
     {
+      "path": "crates/permguard-stream/src/engine/consumer/store.rs",
+      "reason": "a stream consumer's runs on a volume: the file implementation of `consumer::store::Runs` and `RunStore`, and the directory as `RunFiles`"
+    },
+    {
       "path": "crates/permguard-host/src/audit/index.rs",
       "reason": "the index of the trails a volume ever held: the audit engine's file backend, reached through `audit::Engine` alone"
     },
@@ -255,26 +259,6 @@
     {
       "source": "crates/permguard-host/src/operations/mutation.rs",
       "until": "WP-27.2"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/anchor.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/consumer.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/consumer/import.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/consumer/inspect.rs",
-      "until": "WP-27.4"
-    },
-    {
-      "source": "crates/permguard-stream/src/engine/consumer/prune.rs",
-      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/mod.rs",

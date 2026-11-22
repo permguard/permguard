@@ -18,18 +18,15 @@
 
 use permguard_core::authz::Resource;
 use permguard_core::encoding::hex;
-use permguard_host::storage::Dir;
-use permguard_host::storage::format;
-use permguard_host::storage::write::{allocate, read_view, release, replace_view};
 
 use super::super::anchor::{ANCHOR, Anchor, envelope_digest};
 use super::super::batch::SealedBatch;
 use super::super::producer::{RECORDS, Spans, decode_group};
 use super::super::retention::{Audit, MAX_PRUNE_BATCHES, Pruned};
 use super::super::{RecordCodec, Retention, StreamError, StreamKey};
+use super::store::RunFiles;
 use super::{
-    ADMITTED, BATCHES, Consumer, ConsumerState, Held, SIGNERS, STATE, child, encode_admitted,
-    unhex16,
+    ADMITTED, BATCHES, Consumer, ConsumerState, Held, SIGNERS, STATE, encode_admitted, unhex16,
 };
 
 /// The name the job and the audit record give a consumer stream: plane, type, resource digest,
@@ -45,17 +42,10 @@ pub(super) fn pruned_name(key: &StreamKey, run: &[u8; 16]) -> String {
     )
 }
 
-/// The reserve a consumer keeps beside its runs, released for a deletion's writes.
-pub(super) const RESERVE_FILE: &str = "RESERVE";
-pub(super) const RESERVE_BYTES: u64 = 64 * 1024;
-
 /// The batch files of a run, `(first, last, name)`, in order.
-fn batch_files(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
-    let Some(batches) = child(dir, BATCHES, false)? else {
-        return Ok(Vec::new());
-    };
+fn batch_files(run: &dyn RunFiles) -> Result<Vec<(u64, u64, String)>, StreamError> {
     let mut found = Vec::new();
-    for name in batches.names()? {
+    for name in run.names(BATCHES)? {
         let Some((first, last)) = name
             .strip_suffix(".jws")
             .and_then(|range| range.split_once('-'))
@@ -70,10 +60,9 @@ fn batch_files(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
 }
 
 /// The resource a run's records are of: from a batch file it holds, or its anchor.
-fn resource_of(dir: &Dir) -> Result<Option<String>, StreamError> {
-    if let Some((_, _, name)) = batch_files(dir)?.first()
-        && let Some(batches) = child(dir, BATCHES, false)?
-        && let Some(bytes) = batches.read(name)?
+fn resource_of(run: &dyn RunFiles) -> Result<Option<String>, StreamError> {
+    if let Some((_, _, name)) = batch_files(run)?.first()
+        && let Some(bytes) = run.read(BATCHES, name)?
     {
         return Ok(Some(
             SealedBatch::decode(&bytes)?
@@ -82,7 +71,8 @@ fn resource_of(dir: &Dir) -> Result<Option<String>, StreamError> {
                 .resource,
         ));
     }
-    Ok(read_view(dir, ANCHOR, format::VIEW)?
+    Ok(run
+        .view(ANCHOR)?
         .map(|bytes| Anchor::decode(&bytes))
         .transpose()?
         .map(|anchor| anchor.resource))
@@ -105,21 +95,22 @@ impl<C: RecordCodec> Consumer<C> {
 
     fn runs_under(&self, only: Option<&str>) -> Result<Vec<(StreamKey, [u8; 16])>, StreamError> {
         let mut found = Vec::new();
-        for component in self.dir.subdirs()? {
+        for component in self.runs.components()? {
             if only.is_some_and(|only| only != component) {
                 continue;
             }
-            let resource_dir = self.dir.subdir(&component, false)?;
-            for producer in resource_dir.subdirs()? {
+            for producer in self.runs.producers(&component)? {
                 let Some(producer_id) = unhex16(&producer) else {
                     continue;
                 };
-                let producer_dir = resource_dir.subdir(&producer, false)?;
-                for run in producer_dir.subdirs()? {
+                for run in self.runs.runs(&component, &producer)? {
                     let Some(run_id) = unhex16(&run) else {
                         continue;
                     };
-                    let Some(resource) = resource_of(&producer_dir.subdir(&run, false)?)? else {
+                    let Some(held) = self.runs.peek(&component, &producer, &run)? else {
+                        continue;
+                    };
+                    let Some(resource) = resource_of(held.as_ref())? else {
                         continue;
                     };
                     let resource = Resource::parse(&resource)
@@ -157,33 +148,32 @@ impl<C: RecordCodec> Consumer<C> {
             };
             if audit.is_some() {
                 // Batch files a crash left below what is retained: decided, and finished.
-                let stale: Vec<String> = batch_files(&held.dir)?
+                let stale: Vec<String> = batch_files(held.store.as_ref())?
                     .into_iter()
                     .filter(|(_, last, _)| *last < held.oldest_retained)
                     .map(|(_, _, name)| name)
                     .collect();
-                if let Some(batches) = child(&held.dir, BATCHES, false)?
-                    && !stale.is_empty()
-                {
-                    for name in &stale {
-                        batches.unlink(name)?;
-                    }
-                    batches.sync()?;
+                if !stale.is_empty() {
+                    held.store.unlink(BATCHES, &stale)?;
                 }
             }
             if audit.is_some()
                 && let Some((through, at)) = held.undated.take()
             {
                 // Dated by the open that found them; written here, off any read path.
-                held.journal
+                held.store
                     .append(ADMITTED, &encode_admitted(through, at)?)?;
                 held.admitted.push((through, at));
             }
             // A batch file straddling what the run retains is not one this run wrote: refused,
             // as a producer refuses one straddling its mark (after the review).
-            if let Some((_, _, name)) = batch_files(&held.dir)?.iter().find(|(first, last, _)| {
-                *first < held.oldest_retained && *last >= held.oldest_retained
-            }) {
+            if let Some((_, _, name)) =
+                batch_files(held.store.as_ref())?
+                    .iter()
+                    .find(|(first, last, _)| {
+                        *first < held.oldest_retained && *last >= held.oldest_retained
+                    })
+            {
                 return Err(StreamError::Corruption(format!(
                     "the batch `{name}` straddles what run {} retains",
                     hex(&run)
@@ -213,7 +203,7 @@ impl<C: RecordCodec> Consumer<C> {
             }
             let mut expected = held.oldest_retained;
             let mut files = Vec::new();
-            for (first, last, name) in batch_files(&held.dir)? {
+            for (first, last, name) in batch_files(held.store.as_ref())? {
                 if last < held.oldest_retained {
                     continue;
                 }
@@ -258,14 +248,10 @@ impl<C: RecordCodec> Consumer<C> {
         pruned: &Pruned,
         audit: Audit<'_>,
     ) -> Result<(), StreamError> {
-        let producer = self.producer_dir(key, false)?.ok_or_else(|| {
-            StreamError::Corruption("a run held has no producer directory".to_owned())
-        })?;
-        if producer.exists(RESERVE_FILE)? {
-            release(&producer, RESERVE_FILE)?;
-        }
+        let (component, producer) = Self::place_of(key);
+        self.runs.release_reserve(&component, &producer)?;
         let deleted = self.delete_reserved(held, key, run, files, pruned, audit);
-        let _ = allocate(&producer, RESERVE_FILE, RESERVE_BYTES);
+        self.runs.keep_reserve(&component, &producer);
         deleted
     }
 
@@ -278,11 +264,10 @@ impl<C: RecordCodec> Consumer<C> {
         pruned: &Pruned,
         audit: Audit<'_>,
     ) -> Result<(), StreamError> {
-        let batches = child(&held.dir, BATCHES, false)?.ok_or_else(|| {
-            StreamError::Corruption("a run with batch files to delete has none".to_owned())
-        })?;
         let retained_below = held.oldest_retained - 1;
-        let anchor = read_view(&held.dir, ANCHOR, format::VIEW)?
+        let anchor = held
+            .store
+            .view(ANCHOR)?
             .map(|bytes| Anchor::decode(&bytes))
             .transpose()?;
         let anchored = anchor.as_ref().map_or(0, |anchor| anchor.through);
@@ -295,7 +280,7 @@ impl<C: RecordCodec> Consumer<C> {
         }
         if anchored > retained_below {
             // A pass a crash stopped after its anchor and before STATE: covered again below.
-            let again = batch_files(&held.dir)?
+            let again = batch_files(held.store.as_ref())?
                 .iter()
                 .filter(|(first, last, _)| *first > retained_below && *last <= anchored)
                 .count();
@@ -309,7 +294,7 @@ impl<C: RecordCodec> Consumer<C> {
         }
         let mut last = None;
         for (_, _, name) in files {
-            let bytes = batches.read(name)?.ok_or_else(|| {
+            let bytes = held.store.read(BATCHES, name)?.ok_or_else(|| {
                 StreamError::Corruption(format!("the batch `{name}` went before its anchor"))
             })?;
             let envelope = SealedBatch::decode(&bytes)?.envelope_unverified()?;
@@ -319,7 +304,7 @@ impl<C: RecordCodec> Consumer<C> {
         let Some((envelope, checkpoint)) = last else {
             return Ok(());
         };
-        let spans = match read_view(&held.dir, SIGNERS, format::VIEW)? {
+        let spans = match held.store.view(SIGNERS)? {
             Some(bytes) => Spans::decode(&bytes)?,
             None => Spans::default(),
         };
@@ -345,16 +330,14 @@ impl<C: RecordCodec> Consumer<C> {
             signers,
             checkpoint,
         };
-        replace_view(&held.dir, ANCHOR, format::VIEW, &anchor.encode()?)?;
+        held.store.replace_view(ANCHOR, &anchor.encode()?)?;
         audit(pruned).map_err(|error| {
             StreamError::Invalid(format!(
                 "the deletion could not be audited, and nothing was deleted: {error}"
             ))
         })?;
-        replace_view(
-            &held.dir,
+        held.store.replace_view(
             STATE,
-            format::VIEW,
             &ConsumerState {
                 acked: held.acked,
                 oldest_retained: pruned.through + 1,
@@ -365,8 +348,8 @@ impl<C: RecordCodec> Consumer<C> {
         held.oldest_retained = pruned.through + 1;
 
         // The journal: below the segment of the first RECORDS frame past `through`.
-        let mut keep_from = held.journal.next_index();
-        for frame in held.journal.frames()? {
+        let mut keep_from = held.store.next_index();
+        for frame in held.store.frames()? {
             if frame.kind != RECORDS {
                 continue;
             }
@@ -377,14 +360,14 @@ impl<C: RecordCodec> Consumer<C> {
             }
         }
         if let Some(at) = held
-            .journal
+            .store
             .segment_starts()
             .into_iter()
             .filter(|start| *start <= keep_from)
             .max()
-            && at > held.journal.first_index()
+            && at > held.store.first_index()
         {
-            let reached = held.journal.drop_prefix(at, None)?;
+            let reached = held.store.drop_prefix(at)?;
             if reached != at {
                 return Err(StreamError::Corruption(format!(
                     "the journal's prefix was to end at frame {at}, and ends at {reached}"
@@ -395,10 +378,8 @@ impl<C: RecordCodec> Consumer<C> {
         held.admitted
             .retain(|(through, _)| *through > pruned.through);
 
-        for (_, _, name) in files {
-            batches.unlink(name)?;
-        }
-        batches.sync()?;
+        let names: Vec<String> = files.iter().map(|(_, _, name)| name.clone()).collect();
+        held.store.unlink(BATCHES, &names)?;
         Ok(())
     }
 }
