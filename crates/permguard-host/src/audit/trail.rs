@@ -61,10 +61,182 @@ pub fn resource_digest(resource: &str) -> String {
     hex(Digest::compute(resource.as_bytes()).raw())
 }
 
+/// What one trail is kept in (iteration 03, decision E33): its day files, its checkpoints, its
+/// anchor. Everything a trail is, where a record goes, what a seal covers and what retention
+/// may delete, is [`Trail`]'s and the same on every backend; this is only where the bytes rest.
+///
+/// | Backend                  | Keeps a trail in                                             |
+/// | ------------------------ | ------------------------------------------------------------ |
+/// | [`Dir`], the file backend | `host/audit/trails/<class>/<resource digest>/`              |
+pub trait TrailStore: Send {
+    /// How a message names the trail, or what it keeps under `name`; the trail itself when
+    /// `name` is empty.
+    fn place(&self, name: &str) -> String;
+
+    /// Makes the trail ready to continue: what an interrupted write left is completed or
+    /// removed, and `meta`, the class and the resource the trail is of, is published once.
+    fn prepare(&self, meta: &[u8]) -> StorageResult<()>;
+
+    /// The day files held, oldest first.
+    fn days(&self) -> StorageResult<Vec<String>>;
+
+    /// The bytes of the day file `name`, whole; none when it holds nothing.
+    fn day(&self, name: &str) -> StorageResult<Vec<u8>>;
+
+    /// Adds `record`, the record `seq`, at the end of the day file `name`, durably. An append
+    /// that fails leaves the day file as it found it.
+    fn append(&self, name: &str, seq: u64, record: &[u8]) -> StorageResult<()>;
+
+    /// Cuts the day file `name` to its first `to` bytes: what removes a torn final record.
+    fn cut(&self, name: &str, to: u64) -> StorageResult<()>;
+
+    /// Removes the day file `name`.
+    fn remove_day(&self, name: &str) -> StorageResult<()>;
+
+    /// The names of the checkpoints and of their co-signatures.
+    fn checkpoint_names(&self) -> StorageResult<Vec<String>>;
+
+    /// The checkpoint, or the co-signature, `name`.
+    fn checkpoint(&self, name: &str) -> StorageResult<Option<Vec<u8>>>;
+
+    /// Publishes `envelope` as the checkpoint, or the co-signature, `name`, once: the same
+    /// again is the first, another is refused.
+    fn publish_checkpoint(&self, name: &str, envelope: &[u8]) -> StorageResult<()>;
+
+    /// The anchor, when retention deleted a prefix.
+    fn anchor(&self) -> StorageResult<Option<Vec<u8>>>;
+
+    /// Replaces the anchor.
+    fn replace_anchor(&self, anchor: &[u8]) -> StorageResult<()>;
+}
+
+/// Whether `error` says the thing asked for is not there.
+fn absent(error: &StorageError) -> bool {
+    matches!(error, StorageError::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound)
+}
+
+impl TrailStore for Dir {
+    fn place(&self, name: &str) -> String {
+        if name.is_empty() {
+            self.path().display().to_string()
+        } else {
+            self.child_path(name).display().to_string()
+        }
+    }
+
+    fn prepare(&self, meta: &[u8]) -> StorageResult<()> {
+        self.sweep_temps()?;
+        tombstone::complete(self)?;
+        let same = |held: &[u8]| held == meta;
+        match publish_immutable(self, META, meta, &same, &same)? {
+            Published::Written | Published::AlreadyThere => {}
+        }
+        self.subdir(CHECKPOINTS, true)?.sweep_temps()?;
+        Ok(())
+    }
+
+    fn days(&self) -> StorageResult<Vec<String>> {
+        let mut names: Vec<String> = self
+            .names()?
+            .into_iter()
+            .filter(|name| name.ends_with(DAY_SUFFIX))
+            .collect();
+        names.sort();
+        Ok(names)
+    }
+
+    fn day(&self, name: &str) -> StorageResult<Vec<u8>> {
+        Ok(self.read(name)?.unwrap_or_default())
+    }
+
+    fn append(&self, name: &str, _seq: u64, record: &[u8]) -> StorageResult<()> {
+        let mut file = match self.open_write(name) {
+            Ok(file) => file,
+            Err(error) if absent(&error) => {
+                let file = self.create_exclusive(name)?;
+                self.sync()?;
+                file
+            }
+            Err(error) => return Err(error),
+        };
+        let end = file
+            .metadata()
+            .map_err(|source| StorageError::Io {
+                what: format!("measuring {}", self.child_path(name).display()),
+                source,
+            })?
+            .len();
+        let written = (|| {
+            std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(end)).map_err(|source| {
+                StorageError::Io {
+                    what: format!("seeking {}", self.child_path(name).display()),
+                    source,
+                }
+            })?;
+            permguard_core::fault::write(&self.child_path(name), record.len(), || {
+                file.write_all(record)
+            })
+            .map_err(|source| StorageError::Io {
+                what: format!("appending to {}", self.child_path(name).display()),
+                source,
+            })?;
+            write::flush(self, name, &file)
+        })();
+        if let Err(error) = written {
+            // Whatever part of the record reached the file is cut back off, so the next record
+            // starts where this one would have. If the cut fails too, the caller reopens the
+            // trail, and opening cuts a torn final item.
+            let _ = write::truncate(self, name, &file, end);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn cut(&self, name: &str, to: u64) -> StorageResult<()> {
+        let file = self.open_write(name)?;
+        write::truncate(self, name, &file, to)
+    }
+
+    fn remove_day(&self, name: &str) -> StorageResult<()> {
+        tombstone::delete(self, name)
+    }
+
+    fn checkpoint_names(&self) -> StorageResult<Vec<String>> {
+        match self.subdir(CHECKPOINTS, false) {
+            Ok(held) => held.names(),
+            Err(error) if absent(&error) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn checkpoint(&self, name: &str) -> StorageResult<Option<Vec<u8>>> {
+        match self.subdir(CHECKPOINTS, false) {
+            Ok(held) => held.read(name),
+            Err(error) if absent(&error) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn publish_checkpoint(&self, name: &str, envelope: &[u8]) -> StorageResult<()> {
+        let held = self.subdir(CHECKPOINTS, true)?;
+        let same = |kept: &[u8]| kept == envelope;
+        match publish_immutable(&held, name, envelope, &same, &same)? {
+            Published::Written | Published::AlreadyThere => Ok(()),
+        }
+    }
+
+    fn anchor(&self) -> StorageResult<Option<Vec<u8>>> {
+        self.read(ANCHOR)
+    }
+
+    fn replace_anchor(&self, anchor: &[u8]) -> StorageResult<()> {
+        write::replace_bytes(self, ANCHOR, anchor)
+    }
+}
+
 /// An open trail: where it continues.
-#[derive(Debug)]
 pub struct Trail {
-    dir: Dir,
+    store: Box<dyn TrailStore>,
     /// `<class>:<resource>`.
     name: String,
     next_seq: u64,
@@ -78,13 +250,58 @@ pub struct Trail {
     sealed: Option<String>,
 }
 
+impl std::fmt::Debug for Trail {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Trail")
+            .field("name", &self.name)
+            .field("next_seq", &self.next_seq)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A checkpoint as the trail continues from it.
-#[derive(Debug, Clone)]
-struct Sealed {
-    name: String,
-    digest: Digest,
-    last_seq: u64,
-    head: Digest,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sealed {
+    pub name: String,
+    pub digest: Digest,
+    pub last_seq: u64,
+    pub head: Digest,
+}
+
+/// Where a trail continues: what [`Trail::over`] finds by reading the trail, and what a backend
+/// that keeps it beside the trail hands [`Trail::resume`] instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct State {
+    /// The sequence the next record gets.
+    pub next_seq: u64,
+    /// The digest the next record chains to.
+    pub previous: Digest,
+    /// The newest day file, which no record goes before.
+    pub last_day: Option<String>,
+    /// The newest checkpoint, which the next one chains to.
+    pub last_checkpoint: Option<Sealed>,
+    /// The newest day a seal closed, `YYYY-MM-DD`.
+    pub sealed: Option<String>,
+}
+
+impl State {
+    /// A trail that holds nothing yet.
+    pub fn new() -> Self {
+        Self {
+            next_seq: 0,
+            previous: genesis(),
+            last_day: None,
+            last_checkpoint: None,
+            sealed: None,
+        }
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Trail {
@@ -96,30 +313,39 @@ impl Trail {
         resource: &str,
         retention: Option<Duration>,
     ) -> StorageResult<Self> {
-        let dir = directory(trails, class, resource, true)?;
-        dir.sweep_temps()?;
-        tombstone::complete(&dir)?;
+        Self::over(
+            Box::new(directory(trails, class, resource, true)?),
+            class,
+            resource,
+            retention,
+        )
+    }
+
+    /// The trail of `(class, resource)` kept in `store`, continued from what the store holds:
+    /// its last record, its newest checkpoint, its anchor.
+    pub fn over(
+        store: Box<dyn TrailStore>,
+        class: Class,
+        resource: &str,
+        retention: Option<Duration>,
+    ) -> StorageResult<Self> {
         let meta = TrailMeta {
             class: class.as_str().to_owned(),
             resource: resource.to_owned(),
         }
         .encode()
         .map_err(|error| StorageError::Corruption(error.to_string()))?;
-        let same = |held: &[u8]| held == meta.as_slice();
-        match publish_immutable(&dir, META, &meta, &same, &same)? {
-            Published::Written | Published::AlreadyThere => {}
-        }
-        let checkpoints = dir.subdir(CHECKPOINTS, true)?;
-        checkpoints.sweep_temps()?;
-        let names = ordered(checkpoints.names()?);
+        store.prepare(&meta)?;
+        let dir = store.as_ref();
+        let names = ordered(store.checkpoint_names()?);
         let last_checkpoint = match names.last() {
             None => None,
             Some(name) => {
-                let envelope = checkpoints.read(name)?.unwrap_or_default();
+                let envelope = store.checkpoint(name)?.unwrap_or_default();
                 let checkpoint = read_unverified(&envelope).map_err(|error| {
                     StorageError::Corruption(format!(
-                        "{} does not read: {error}",
-                        checkpoints.child_path(name).display()
+                        "the checkpoint {name} of {} does not read: {error}",
+                        store.place("")
                     ))
                 })?;
                 Some(Sealed {
@@ -135,14 +361,14 @@ impl Trail {
             _ => None,
         });
 
-        let days = days(&dir)?;
+        let days = days(dir)?;
         let mut continued = None;
         // From the newest day back, past days a crash left empty or holding a torn item only.
         for (index, day) in days.iter().enumerate().rev() {
             let last = if index + 1 == days.len() {
-                recover(&dir, day)?
+                recover(dir, day)?
             } else {
-                read_day(&dir, day)?.pop()
+                read_day(dir, day)?.pop()
             };
             if let Some(record) = last {
                 continued = Some(record);
@@ -166,12 +392,12 @@ impl Trail {
             // anchor keeps records from right after that checkpoint; anything else verification
             // reports as records missing.
             let retained =
-                anchor(&dir)?.is_some_and(|anchor| anchor.low_watermark == checkpoint.last_seq + 1);
+                anchor(dir)?.is_some_and(|anchor| anchor.low_watermark == checkpoint.last_seq + 1);
             if !retained {
                 tracing::error!(
                 event.name = "audit.sealed_records_missing",
                 component = "host",
-                trail = %dir.path().display(),
+                trail = %store.place(""),
                 last_found = next_seq.checked_sub(1),
                 last_sealed = checkpoint.last_seq,
                 "records an audit checkpoint covers are missing from the trail"
@@ -180,16 +406,57 @@ impl Trail {
             next_seq = checkpoint.last_seq + 1;
             previous = checkpoint.head.clone();
         }
-        Ok(Self {
-            dir,
-            name: format!("{}:{resource}", class.as_str()),
-            next_seq,
-            previous,
-            last_day: days.last().cloned(),
+        let last_day = days.last().cloned();
+        Ok(Self::resume(
+            store,
+            class,
+            resource,
             retention,
-            last_checkpoint,
-            sealed,
-        })
+            State {
+                next_seq,
+                previous,
+                last_day,
+                last_checkpoint,
+                sealed,
+            },
+        ))
+    }
+
+    /// The trail of `(class, resource)` kept in `store`, continued from `state`: for a backend
+    /// that keeps where the trail continues beside it, and reads it with the trail held.
+    pub fn resume(
+        store: Box<dyn TrailStore>,
+        class: Class,
+        resource: &str,
+        retention: Option<Duration>,
+        state: State,
+    ) -> Self {
+        Self {
+            store,
+            name: format!("{}:{resource}", class.as_str()),
+            next_seq: state.next_seq,
+            previous: state.previous,
+            last_day: state.last_day,
+            retention,
+            last_checkpoint: state.last_checkpoint,
+            sealed: state.sealed,
+        }
+    }
+
+    /// Where the trail continues now.
+    pub fn state(&self) -> State {
+        State {
+            next_seq: self.next_seq,
+            previous: self.previous.clone(),
+            last_day: self.last_day.clone(),
+            last_checkpoint: self.last_checkpoint.clone(),
+            sealed: self.sealed.clone(),
+        }
+    }
+
+    /// What the trail is kept in.
+    pub fn store(&self) -> &dyn TrailStore {
+        self.store.as_ref()
     }
 
     /// The name of the newest checkpoint.
@@ -237,47 +504,7 @@ impl Trail {
             })?;
         }
         let new_day = self.last_day.as_deref() != Some(name.as_str());
-        let mut file = match self.dir.open_write(&name) {
-            Ok(file) => file,
-            Err(StorageError::Io { source, .. })
-                if source.kind() == std::io::ErrorKind::NotFound =>
-            {
-                let file = self.dir.create_exclusive(&name)?;
-                self.dir.sync()?;
-                file
-            }
-            Err(error) => return Err(error),
-        };
-        let end = file
-            .metadata()
-            .map_err(|source| StorageError::Io {
-                what: format!("measuring {}", self.dir.child_path(&name).display()),
-                source,
-            })?
-            .len();
-        let written = (|| {
-            std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(end)).map_err(|source| {
-                StorageError::Io {
-                    what: format!("seeking {}", self.dir.child_path(&name).display()),
-                    source,
-                }
-            })?;
-            permguard_core::fault::write(&self.dir.child_path(&name), bytes.len(), || {
-                file.write_all(&bytes)
-            })
-            .map_err(|source| StorageError::Io {
-                what: format!("appending to {}", self.dir.child_path(&name).display()),
-                source,
-            })?;
-            write::flush(&self.dir, &name, &file)
-        })();
-        if let Err(error) = written {
-            // Whatever part of the record reached the file is cut back off, so the next record
-            // starts where this one would have. If the cut fails too, the caller reopens the
-            // trail, and opening cuts a torn final item.
-            let _ = write::truncate(&self.dir, &name, &file, end);
-            return Err(error);
-        }
+        self.store.append(&name, record.seq, &bytes)?;
         self.previous = digest_of(&bytes);
         self.next_seq += 1;
         self.last_day = Some(name);
@@ -294,7 +521,7 @@ impl Trail {
         now: u64,
     ) -> Result<Vec<String>, String> {
         let mut written = Vec::new();
-        for day in days(&self.dir).map_err(|error| error.to_string())? {
+        for day in days(self.store.as_ref()).map_err(|error| error.to_string())? {
             if day.as_str() >= before {
                 break;
             }
@@ -347,7 +574,7 @@ impl Trail {
         host_id: [u8; 16],
         now: u64,
     ) -> Result<Option<String>, String> {
-        let records = read_day(&self.dir, day).map_err(|error| error.to_string())?;
+        let records = read_day(self.store.as_ref(), day).map_err(|error| error.to_string())?;
         let (Some(first), Some(last)) = (records.first(), records.last()) else {
             return Ok(None);
         };
@@ -376,12 +603,8 @@ impl Trail {
             created_at: now,
         };
         let envelope = signer.seal(&mut checkpoint)?;
-        let checkpoints = self
-            .dir
-            .subdir(CHECKPOINTS, true)
-            .map_err(|error| error.to_string())?;
-        let same = |held: &[u8]| held == envelope.as_slice();
-        publish_immutable(&checkpoints, &name, &envelope, &same, &same)
+        self.store
+            .publish_checkpoint(&name, &envelope)
             .map_err(|error| error.to_string())?;
         self.last_checkpoint = Some(Sealed {
             name: name.clone(),
@@ -421,7 +644,7 @@ impl Trail {
             })?),
         };
         let sealed_day = format!("{sealed}{DAY_SUFFIX}");
-        let doomed: Vec<String> = days(&self.dir)?
+        let doomed: Vec<String> = days(self.store.as_ref())?
             .into_iter()
             .filter(|day| *day < cutoff && day.as_str() != today && *day <= sealed_day)
             // A day goes only once the seal that closes it left the volume.
@@ -431,14 +654,13 @@ impl Trail {
                     .is_none_or(|acknowledged| (period_of(day), u64::MAX) <= *acknowledged)
             })
             .collect();
-        let checkpoints = self.dir.subdir(CHECKPOINTS, true)?;
         let Some((through, envelope)) = doomed
             .iter()
             .rev()
             .map(|day| {
                 let period = period_of(day);
-                checkpoints
-                    .read(&file_name(&period, None))
+                self.store
+                    .checkpoint(&file_name(&period, None))
                     .map(|held| held.map(|envelope| (day.clone(), envelope)))
             })
             .find_map(Result::transpose)
@@ -458,9 +680,9 @@ impl Trail {
         let bytes = anchor
             .encode()
             .map_err(|error| StorageError::Corruption(error.to_string()))?;
-        write::replace_bytes(&self.dir, ANCHOR, &bytes)?;
+        self.store.replace_anchor(&bytes)?;
         for day in doomed.iter().filter(|day| **day <= through) {
-            tombstone::delete(&self.dir, day)?;
+            self.store.remove_day(day)?;
         }
         Ok(Some(anchor))
     }
@@ -482,14 +704,11 @@ fn day_after(period: &str) -> Option<String> {
 }
 
 /// The anchor of the trail in `dir`, when retention deleted a prefix.
-pub fn anchor(dir: &Dir) -> StorageResult<Option<Anchor>> {
-    dir.read(ANCHOR)?
+pub fn anchor(dir: &dyn TrailStore) -> StorageResult<Option<Anchor>> {
+    dir.anchor()?
         .map(|bytes| {
             Anchor::decode(&bytes).map_err(|error| {
-                StorageError::Corruption(format!(
-                    "{} does not read: {error}",
-                    dir.child_path(ANCHOR).display()
-                ))
+                StorageError::Corruption(format!("{} does not read: {error}", dir.place(ANCHOR)))
             })
         })
         .transpose()
@@ -516,25 +735,19 @@ pub fn day_name(at: u64) -> String {
 }
 
 /// The day files of a trail, oldest first.
-pub fn days(dir: &Dir) -> StorageResult<Vec<String>> {
-    let mut names: Vec<String> = dir
-        .names()?
-        .into_iter()
-        .filter(|name| name.ends_with(DAY_SUFFIX))
-        .collect();
-    names.sort();
-    Ok(names)
+pub fn days(dir: &dyn TrailStore) -> StorageResult<Vec<String>> {
+    dir.days()
 }
 
 /// Every record of the day file `name`, in order; a torn final item is an error here, since only
 /// [`Trail::open`] repairs.
-pub fn read_day(dir: &Dir, name: &str) -> StorageResult<Vec<AuditRecord>> {
-    let bytes = dir.read(name)?.unwrap_or_default();
+pub fn read_day(dir: &dyn TrailStore, name: &str) -> StorageResult<Vec<AuditRecord>> {
+    let bytes = dir.day(name)?;
     let (records, complete) = parse(dir, name, &bytes)?;
     if complete != bytes.len() {
         return Err(StorageError::Corruption(format!(
             "{} ends inside a record",
-            dir.child_path(name).display()
+            dir.place(name)
         )));
     }
     Ok(records)
@@ -542,18 +755,17 @@ pub fn read_day(dir: &Dir, name: &str) -> StorageResult<Vec<AuditRecord>> {
 
 /// Every whole record of the day file `name`, in order, leaving out a final item still being
 /// written: what a read of a live trail sees, the trail's append holding no lock against it.
-pub fn read_written(dir: &Dir, name: &str) -> StorageResult<Vec<AuditRecord>> {
-    let bytes = dir.read(name)?.unwrap_or_default();
+pub fn read_written(dir: &dyn TrailStore, name: &str) -> StorageResult<Vec<AuditRecord>> {
+    let bytes = dir.day(name)?;
     Ok(parse(dir, name, &bytes)?.0)
 }
 
 /// Reads the last day file, cuts a torn final item, and answers its last whole record.
-fn recover(dir: &Dir, name: &str) -> StorageResult<Option<AuditRecord>> {
-    let bytes = dir.read(name)?.unwrap_or_default();
+fn recover(dir: &dyn TrailStore, name: &str) -> StorageResult<Option<AuditRecord>> {
+    let bytes = dir.day(name)?;
     let (mut records, complete) = parse(dir, name, &bytes)?;
     if complete != bytes.len() {
-        let file = dir.open_write(name)?;
-        write::truncate(dir, name, &file, complete as u64)?;
+        dir.cut(name, complete as u64)?;
         tracing::warn!(
             event.name = "audit.torn_record_cut",
             component = "host",
@@ -567,7 +779,11 @@ fn recover(dir: &Dir, name: &str) -> StorageResult<Option<AuditRecord>> {
 /// The records of `bytes` and how many bytes the whole ones take: a final item that ends early
 /// and is shorter than any record can be stops the reading as a torn write; anything else that
 /// does not read is corruption, a damaged length that runs past the end included.
-fn parse(dir: &Dir, name: &str, bytes: &[u8]) -> StorageResult<(Vec<AuditRecord>, usize)> {
+fn parse(
+    dir: &dyn TrailStore,
+    name: &str,
+    bytes: &[u8],
+) -> StorageResult<(Vec<AuditRecord>, usize)> {
     let mut records = Vec::new();
     let mut at = 0;
     while at < bytes.len() {
@@ -576,7 +792,7 @@ fn parse(dir: &Dir, name: &str, bytes: &[u8]) -> StorageResult<(Vec<AuditRecord>
                 let record = AuditRecord::from_value(value).map_err(|error| {
                     StorageError::Corruption(format!(
                         "{} holds a record that does not read: {error}",
-                        dir.child_path(name).display()
+                        dir.place(name)
                     ))
                 })?;
                 records.push(record);
@@ -586,7 +802,7 @@ fn parse(dir: &Dir, name: &str, bytes: &[u8]) -> StorageResult<(Vec<AuditRecord>
             Err(error) => {
                 return Err(StorageError::Corruption(format!(
                     "{} holds bytes that are not a record at offset {at}: {error}",
-                    dir.child_path(name).display()
+                    dir.place(name)
                 )));
             }
         }
@@ -598,7 +814,7 @@ fn parse(dir: &Dir, name: &str, bytes: &[u8]) -> StorageResult<(Vec<AuditRecord>
 /// `previous` is the digest of the record before it. The first record kept starts the check: a
 /// trail whose oldest days retention dropped begins mid-sequence. Answers how many records it
 /// checked.
-pub fn verify(dir: &Dir) -> StorageResult<u64> {
+pub fn verify(dir: &dyn TrailStore) -> StorageResult<u64> {
     let mut expected: Option<(u64, Digest)> = None;
     let mut checked = 0;
     for day in days(dir)? {
@@ -609,14 +825,14 @@ pub fn verify(dir: &Dir) -> StorageResult<u64> {
             if expected.is_none() && record.seq == 0 && record.previous != genesis() {
                 return Err(StorageError::Corruption(format!(
                     "the first record of {} does not start the chain",
-                    dir.path().display()
+                    dir.place("")
                 )));
             }
             if record.seq != seq {
                 return Err(StorageError::Corruption(format!(
                     "record {} of {} follows record {}",
                     record.seq,
-                    dir.path().display(),
+                    dir.place(""),
                     seq.saturating_sub(1)
                 )));
             }
@@ -624,7 +840,7 @@ pub fn verify(dir: &Dir) -> StorageResult<u64> {
                 return Err(StorageError::Corruption(format!(
                     "record {} of {} does not chain to the record before it",
                     record.seq,
-                    dir.path().display()
+                    dir.place("")
                 )));
             }
             let digest = record

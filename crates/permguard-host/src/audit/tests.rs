@@ -390,7 +390,7 @@ fn access_records_are_queued_and_a_drop_is_counted_and_marked_in_its_trail() {
     let engine = Engine::with_queue(&volume, TEST_REGISTRY, stamp(), time, None, 1).expect("opens");
     {
         // The writer cannot reach any trail: at most one record in its hands and one queued.
-        let _held = engine.inner.open.lock().expect("the trail map");
+        let _held = engine.files().creating();
         for _ in 0..5 {
             engine
                 .append(
@@ -526,7 +526,7 @@ fn a_listing_waits_for_a_trail_being_created() {
     let trails = trails_of(&volume);
     std::thread::scope(|scope| {
         // What `Inner::trail` holds while it creates one: the directory first, then its META.
-        let creating = engine.inner.open.lock().expect("the lock");
+        let creating = engine.files().creating();
         trail::directory(&trails, Class::Security, CONTROL, true).expect("the directory");
         let listing = scope.spawn(|| engine.trails_held());
         std::thread::sleep(Duration::from_millis(300));

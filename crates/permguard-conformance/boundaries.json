@@ -1533,9 +1533,14 @@
       "reason": "an audit class name this process wrote into a record's `trail` field or a trail's `META.cbor` (WP-3.5): one of three words, anything else refused"
     },
     {
-      "source": "crates/permguard-host/src/audit/mod.rs",
+      "source": "crates/permguard-host/src/audit/store.rs",
       "item": "Engine::open",
       "reason": "the audit trails directory on the Host's own volume, `host/audit/trails/` (WP-3.5): it only creates the directory, and each trail is read when it is first written, through `Trail::open`"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/store.rs",
+      "item": "FileTrails::open",
+      "reason": "the audit trails directory and its index on the Host's own volume, `host/audit/trails/` and `host/audit/index/` (iteration 03, WP-27.4): it creates the directories and reconciles the index with them, reading each trail's `META.cbor` as this process or an earlier one wrote it; each trail is read when it is first written, through `Trail::open`"
     },
     {
       "source": "crates/permguard-host/src/audit/record.rs",
