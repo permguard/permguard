@@ -1063,6 +1063,17 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::the_reserve_is_allocated_or_the_stream_closes_under_pressure
       - crates/permguard-stream/src/engine/tests.rs::a_rollover_stopped_at_any_step_completes_on_reopening
       - crates/permguard-stream/src/engine/tests.rs::a_sealed_batch_is_kept_before_it_is_answered_and_never_signed_again
+  "1-architecture/6-architecture-server-host-streams.md#stores":
+    paths:
+      - crates/permguard-host/src/composition.rs
+      - crates/permguard-stream/src/engine/mod.rs
+      - crates/permguard-stream/src/engine/consumer.rs
+      - crates/permguard-conformance/dal.json
+    tests:
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+    gaps:
+      - "open (code): the engine's second implementation, on PostgreSQL and S3, is WP-27.4; until then its sources are listed as direct access under that package"
   "1-architecture/6-architecture-server-host-streams.md#files-on-disk":
     paths:
       - crates/permguard-stream/src/layout.rs
@@ -2074,6 +2085,20 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_consumer_keeps_an_unmeasured_run_and_prunes_a_measured_one_to_its_floor
       - crates/permguard-runtime/src/stream_gc.rs::the_event_retention_waits_for_its_consumer_and_its_members
       - crates/permguard-host/src/membership/member/import/tests.rs::retention_refusals_and_bad_batches_leave_durable_gaps_and_stop_the_run
+  "3-control-plane/3-control-plane-evidence-stores.md#stores":
+    paths:
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/files.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/suite.rs
+      - crates/permguard-control-plane/src/decisions/store.rs
+      - crates/permguard-control-plane/src/events/store.rs
+    tests:
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::a_root_swapped_in_silence_is_refused_by_its_witness
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::a_rotation_keeps_outstanding_offsets_working_while_the_previous_key_is_kept
+      - crates/permguard-control-plane/tests/cursor_crash.rs::a_minting_interrupted_at_every_step_leaves_a_root
+    gaps:
+      - "open (code): the facades hold the legacy stores of a volume always; a process with no volume composes none, WP-27.4"
   "3-control-plane/3-control-plane-evidence-stores.md#files":
     paths:
       - crates/permguard-stream/src/engine/consumer.rs

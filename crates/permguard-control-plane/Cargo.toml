@@ -54,6 +54,10 @@ name = "catalog_crash"
 required-features = ["crash-points"]
 
 [[test]]
+name = "cursor_crash"
+required-features = ["crash-points"]
+
+[[test]]
 name = "push_crash"
 required-features = ["crash-points"]
 

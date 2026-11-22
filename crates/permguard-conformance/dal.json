@@ -31,8 +31,40 @@
       "reason": "the file implementation of `catalog::archives::ArchiveStore`"
     },
     {
+      "path": "crates/permguard-control-plane/src/decisions/cursorkey/files.rs",
+      "reason": "the file implementation of `decisions::cursorkey::CursorRoots`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/decisions/retention.rs",
+      "reason": "the sweep of that decision store's old segments"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/decisions/store.rs",
+      "reason": "the decision store a release before the Host's consumer wrote on a volume: read, and swept, never written; no other backend has one"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/events/retention.rs",
+      "reason": "the sweep of that event store's old segments"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/events/store.rs",
+      "reason": "the event store a release before the Host's consumer wrote on a volume: read, and swept, never written; no other backend has one"
+    },
+    {
       "path": "crates/permguard-control-plane/src/store/files.rs",
       "reason": "the file implementation of `store::LedgerStore` and `store::Ledgers`"
+    },
+    {
+      "path": "crates/permguard-events/src/archive.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
+    },
+    {
+      "path": "crates/permguard-events/src/index.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
+    },
+    {
+      "path": "crates/permguard-events/src/journal.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
     },
     {
       "path": "crates/permguard-host/src/api/replay/files.rs",
@@ -139,44 +171,12 @@
       "until": "WP-26.8"
     },
     {
-      "source": "crates/permguard-control-plane/src/decisions/cursorkey.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/decisions/retention.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/decisions/store.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/events/retention.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/events/store.rs",
-      "until": "WP-26.7"
-    },
-    {
       "source": "crates/permguard-control-plane/src/plane.rs",
       "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-control-plane/src/verify.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-events/src/archive.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-events/src/index.rs",
-      "until": "WP-26.7"
-    },
-    {
-      "source": "crates/permguard-events/src/journal.rs",
-      "until": "WP-26.7"
     },
     {
       "source": "crates/permguard-host/src/audit/jsonl.rs",
@@ -248,55 +248,55 @@
     },
     {
       "source": "crates/permguard-stream/src/engine/anchor.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/consumer.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/consumer/import.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/consumer/inspect.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/consumer/prune.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/mod.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/producer.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/producer/prune.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/producer/seal.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/producer/ship.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/engine/verify.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/layout.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     },
     {
       "source": "crates/permguard-stream/src/signers.rs",
-      "until": "WP-26.7"
+      "until": "WP-27.4"
     }
   ]
 }
