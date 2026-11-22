@@ -314,7 +314,9 @@ mod tests {
 
         let facade = NotpFacade::new(
             catalog,
-            root.join("zones"),
+            Arc::new(permguard_control_plane::store::FileLedgers::new(
+                root.join("zones"),
+            )),
             keys,
             [0x11; 16],
             EngineLimits {
@@ -1147,13 +1149,15 @@ mod tests {
         )
         .await;
         assert_eq!(status, 404);
-        let refs = facade
-            .zones_root
-            .join(&zone_id)
-            .join("ledgers")
-            .join(&ledger_id)
-            .join("refs");
-        assert!(refs.is_dir(), "the deleted ledger's refs stay on disk");
+        let kept = facade
+            .ledgers
+            .ledger(&zone_id, &ledger_id)
+            .read_ref("main")
+            .expect("the store reads");
+        assert!(
+            kept.is_some(),
+            "the deleted ledger's refs stay in its store"
+        );
     }
 
     async fn post(routes: &Router, path: &str, body: Vec<u8>) -> (u16, Vec<u8>) {

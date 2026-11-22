@@ -17,7 +17,6 @@
 //! catalog that cannot be listed is a failed check too. Reads only: nothing is written, no pin
 //! included.
 
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -26,7 +25,7 @@ use permguard_core::catalog::{Catalog, Selector};
 use permguard_core::{BoxFuture, PlaneContext, PlaneHealth, PlaneTask, ready};
 use tokio::task::JoinHandle;
 
-use crate::store::FileObjectStore;
+use crate::store::Ledgers;
 
 /// How often the requirements are checked again.
 pub const EVERY: Duration = Duration::from_secs(60);
@@ -41,7 +40,7 @@ pub const ATTEST: &str = "control.attest";
 const NAMED: usize = 5;
 
 /// Why the catalog's ledgers do not all verify, or `Ok` with how many did.
-pub fn ledgers(catalog: &dyn Catalog, zones_root: &Path) -> Result<usize, String> {
+pub fn ledgers(catalog: &dyn Catalog, stores: &dyn Ledgers) -> Result<usize, String> {
     let zones = catalog
         .list_zones()
         .map_err(|error| format!("the catalog could not be listed: {error}"))?;
@@ -59,8 +58,7 @@ pub fn ledgers(catalog: &dyn Catalog, zones_root: &Path) -> Result<usize, String
             }
         };
         for ledger in &ledgers {
-            let directory = zones_root.join(&zone.id).join("ledgers").join(&ledger.id);
-            match FileObjectStore::new(directory).verify_at_load() {
+            match stores.ledger(&zone.id, &ledger.id).verify_at_load() {
                 Ok(_) => verified += 1,
                 Err(error) => failed.push(format!("ledger {}/{}: {error}", zone.id, ledger.id)),
             }
@@ -91,7 +89,7 @@ pub fn ledgers(catalog: &dyn Catalog, zones_root: &Path) -> Result<usize, String
 struct Checks {
     health: PlaneHealth,
     catalog: Option<Arc<dyn Catalog>>,
-    zones_root: PathBuf,
+    ledgers: Arc<dyn Ledgers>,
     signer:
         Option<permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>>,
     /// The last reason the ledgers were said not to verify.
@@ -103,7 +101,7 @@ impl Checks {
     fn run(&self) {
         let now = SystemTime::now();
         if let Some(catalog) = &self.catalog {
-            match ledgers(catalog.as_ref(), &self.zones_root) {
+            match ledgers(catalog.as_ref(), self.ledgers.as_ref()) {
                 Ok(_) => {
                     *self
                         .said
@@ -145,14 +143,18 @@ impl Checks {
 }
 
 /// The service the plane mounts.
-#[derive(Default)]
 pub struct ReadinessService {
+    /// The stores this plane composed: the ledgers it verifies are the ones it serves.
+    ledgers: crate::plane::ComposedStores,
     running: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl ReadinessService {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(ledgers: crate::plane::ComposedStores) -> Self {
+        Self {
+            ledgers,
+            running: Mutex::new(None),
+        }
     }
 }
 
@@ -172,7 +174,7 @@ impl PlaneTask for ReadinessService {
             let checks = Arc::new(Checks {
                 health: context.health(),
                 catalog,
-                zones_root: context.config().zones_directory(),
+                ledgers: self.ledgers.under(context.config()).ledgers,
                 signer,
                 said: Mutex::new(None),
             });
@@ -220,7 +222,9 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::store::FileLedgers;
     use permguard_core::lifecycle::{Kind, Phase};
+    use std::path::{Path, PathBuf};
 
     fn scratch(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
@@ -284,7 +288,7 @@ mod tests {
         let checks = Checks {
             health: PlaneHealth::new(health.clone(), "control"),
             catalog,
-            zones_root,
+            ledgers: Arc::new(FileLedgers::new(zones_root)),
             signer,
             said: Mutex::new(None),
         };
@@ -300,12 +304,16 @@ mod tests {
         let root = scratch("ledgers");
         let (catalog, directory) = catalog(&root);
         let zones = root.join("zones");
-        assert_eq!(ledgers(catalog.as_ref(), &zones), Ok(1), "an empty ledger");
+        assert_eq!(
+            ledgers(catalog.as_ref(), &FileLedgers::new(&zones)),
+            Ok(1),
+            "an empty ledger"
+        );
 
         std::fs::create_dir_all(&directory).expect("the directory");
         std::fs::write(directory.join("FORMAT"), "1\n").expect("pinned");
         assert_eq!(
-            ledgers(catalog.as_ref(), &zones),
+            ledgers(catalog.as_ref(), &FileLedgers::new(&zones)),
             Ok(1),
             "a pinned, empty ledger"
         );
@@ -316,12 +324,13 @@ mod tests {
             .expect("its id")
             .to_owned();
         std::fs::write(directory.join("FORMAT"), "9\n").expect("another format");
-        let why = ledgers(catalog.as_ref(), &zones).expect_err("another format");
+        let why = ledgers(catalog.as_ref(), &FileLedgers::new(&zones)).expect_err("another format");
         assert!(why.contains(&ledger), "{why}");
 
         std::fs::remove_file(directory.join("FORMAT")).expect("unpinned");
         std::fs::create_dir_all(directory.join("objects")).expect("content");
-        let why = ledgers(catalog.as_ref(), &zones).expect_err("unpinned with content");
+        let why = ledgers(catalog.as_ref(), &FileLedgers::new(&zones))
+            .expect_err("unpinned with content");
         assert!(
             why.contains(&ledger) && why.contains("unversioned"),
             "{why}"
@@ -330,7 +339,8 @@ mod tests {
         std::fs::write(directory.join("FORMAT"), "1\n").expect("pinned");
         std::fs::create_dir_all(directory.join("refs")).expect("refs");
         std::fs::write(directory.join("refs").join("main"), "not a ref").expect("a broken ref");
-        let why = ledgers(catalog.as_ref(), &zones).expect_err("a ref that does not read");
+        let why = ledgers(catalog.as_ref(), &FileLedgers::new(&zones))
+            .expect_err("a ref that does not read");
         assert!(why.contains(&ledger), "{why}");
     }
 

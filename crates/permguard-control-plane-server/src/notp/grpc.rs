@@ -314,7 +314,9 @@ mod tests {
         let keys = crate::testing::head_signer_for_tests(keys);
         NotpFacade::new(
             Arc::new(FileCatalog::new(root.join("zones"))),
-            root.join("zones"),
+            Arc::new(permguard_control_plane::store::FileLedgers::new(
+                root.join("zones"),
+            )),
             keys,
             [0x11; 16],
             EngineLimits {

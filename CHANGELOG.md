@@ -19,6 +19,17 @@ is cut.
 
 ### Changed
 
+- **A push to a ledger waits while that ledger is swept.**
+  The garbage collection held a ledger's transfer sessions on a store of its own, so a push negotiated during a sweep was not kept out: an object it had been told was present could be removed before its commit, which was then refused for the missing object and had to be pushed again.
+  A ledger now has one store for the life of the process, and a push, a collection, an export, an import and the check at load go through it.
+- **Two imports of one archive name, one over REST and one over gRPC, keep one archive.**
+  The name and the request id of an archive were checked free and the archive kept afterwards, under a lock each transport had its own copy of.
+  The archives' store now checks and keeps in one step: the second import is answered `conflict`, or the archive the same `request_id` already kept.
+- **A ledger refused for its layout is served again once it is repaired, without a restart.**
+  A store that found a ledger's `FORMAT` wrong remembered the refusal for as long as it lived.
+  Only a layout found right is remembered.
+- **The log record `gc.temporaries_not_swept` names its ledger by its ids.**
+  Its `ledger` field is `<zone id>/<ledger id>`, where it was the ledger's directory.
 - **A plan is run once, and an approval is decided on the plan as it stands.**
   Approvals of one plan that arrived together were each checked against the plan before any of them was recorded, so all were recorded, more than the plan requires and more than one from a principal; the count of approving principals was not inflated by it.
   Two runs of one receipt could both spend it.

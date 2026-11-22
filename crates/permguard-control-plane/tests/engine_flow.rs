@@ -61,7 +61,7 @@ fn cedar_manifest() -> Manifest {
         )]),
     }
 }
-use permguard_control_plane::store::FileObjectStore;
+use permguard_control_plane::store::{FileObjectStore, LedgerStore};
 use permguard_notp::*;
 use permguard_objects::crypto::suite::Suite;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
@@ -1634,7 +1634,9 @@ fn a_ref_update_names_its_operation_for_recovery() {
         zones.join("zone-1").join("ledgers").join("ledger-1"),
     )
     .unwrap();
-    let domain = permguard_control_plane::store::RefDomain { zones_root: zones };
+    let domain = permguard_control_plane::store::RefDomain {
+        ledgers: std::sync::Arc::new(permguard_control_plane::store::FileLedgers::new(zones)),
+    };
     let target = permguard_control_plane::store::RefDomain::target("zone-1", "ledger-1", "main");
     let observed = domain
         .observe(&OperationId::from_bytes(bytes), Some(&target))

@@ -134,14 +134,15 @@ impl PlaneModule for ControlPlaneModule {
 
         // The catalog is optional in the contract and composed by every shipped binary; a build
         // that leaves it out simply has no zone routes, rather than routes that answer 500.
-        let routes = match permguard_control_plane::plane::catalog_facade(context) {
-            Some(facade) => {
-                // The holdings gauges start truthful, not at zero.
-                facade.refresh_holdings();
-                routes.merge(crate::catalog::http::routes(facade))
-            }
-            None => routes,
-        };
+        let routes =
+            match permguard_control_plane::plane::catalog_facade(&self.composition, context) {
+                Some(facade) => {
+                    // The holdings gauges start truthful, not at zero.
+                    facade.refresh_holdings();
+                    routes.merge(crate::catalog::http::routes(facade))
+                }
+                None => routes,
+            };
 
         // NOTP needs both the catalog (to resolve ledgers) and the git-like
         // signing ring (every served head is attested). Fail-closed: a build
@@ -196,7 +197,9 @@ impl PlaneModule for ControlPlaneModule {
             streams: permguard_server::plane::streams_document(&self.streams(context.config())),
         }));
 
-        if let Some(facade) = permguard_control_plane::plane::catalog_facade(context) {
+        if let Some(facade) =
+            permguard_control_plane::plane::catalog_facade(&self.composition, context)
+        {
             grpc.add_service(ZoneCatalogServer::new(crate::served::Served(facade)));
         }
 

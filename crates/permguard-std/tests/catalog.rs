@@ -17,6 +17,16 @@ fn scratch(name: &str) -> std::path::PathBuf {
     path
 }
 
+/// The file backend passes the contract's suite, each case on a root of its own.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    permguard_core::catalog::suite::run(&|| {
+        let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Arc::new(FileCatalog::new(scratch(&format!("suite-{case}"))))
+    });
+}
+
 #[test]
 fn test_a_zone_lives_from_creation_to_deletion() {
     let catalog = FileCatalog::new(scratch("lifecycle"));

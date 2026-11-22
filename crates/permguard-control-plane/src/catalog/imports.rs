@@ -6,7 +6,7 @@
 //!
 //! | Mode       | What lands                                                     | Served                   |
 //! | ---------- | -------------------------------------------------------------- | ------------------------ |
-//! | `archive`  | the archive verbatim, `<zone>/archives/<id>/{ARCHIVE, REQUEST.json, RECORD.json}` | never: foreign evidence |
+//! | `archive`  | the archive verbatim, in the zone's archives ([`super::archives`])              | never: foreign evidence |
 //! | `re-home`  | a new ledger per source ledger, its provenance in its catalog record, the objects | once an operator pushes a head |
 //!
 //! Before anything is written the archive is verified whole: the manifest from the source Host's
@@ -32,37 +32,15 @@ use permguard_core::authz::{Actor, operations};
 use permguard_core::catalog::Selector;
 use permguard_core::{ApiError, ErrorClass, Ledger, Provenance, Zone, codes};
 use permguard_host::exports::{self, Manifest};
-use permguard_host::storage::Dir;
-use permguard_host::storage::write::publish_immutable;
 use permguard_objects::Digest;
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::object::{self, Object};
 use serde::{Deserialize, Serialize};
 
-use super::exports::{OBJECT, STATEMENT};
+use super::archives::{ArchiveStore, Keeping, Requested};
+use super::exports::{Exports, OBJECT, STATEMENT};
 use super::{CatalogFacade, zone_resource};
 use crate::refusal::Refusal;
-use crate::store::FileObjectStore;
-
-/// The archive file of an archive kept as foreign evidence.
-pub const ARCHIVE: &str = "ARCHIVE";
-/// Its record.
-pub const RECORD: &str = "RECORD.json";
-/// The request that kept it, so a retry is answered with it (BUG-0187).
-pub const REQUEST: &str = "REQUEST.json";
-
-/// What an archive keeps of the request that imported it: its id, and what the request asked,
-/// the name and the manifest. A retry naming the same id and asking the same is answered with the
-/// archive; the same id asking anything else is `request_id_reused`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Requested {
-    request_id: String,
-    name: String,
-    manifest_digest: String,
-}
-/// The directory of a zone's archives.
-pub const ARCHIVES: &str = "archives";
 
 /// How an archive is imported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,7 +228,7 @@ pub(crate) async fn import_with(
         Mode::Archive => {
             // One request id names one import, whichever mode used it first (BUG-0187).
             refuse_if_rehomed(facade, actor, request).await?;
-            let (record, replayed) = keep(exports.zones_root(), &zone, request, &verified)?;
+            let (record, replayed) = keep(exports.archives.as_ref(), &zone, request, &verified)?;
             // A retry answered with the archive it kept records nothing again.
             if !replayed {
                 facade
@@ -267,15 +245,7 @@ pub(crate) async fn import_with(
             }
         }
         Mode::ReHome => {
-            let ledgers = rehome(
-                facade,
-                actor,
-                exports.zones_root(),
-                &zone,
-                request,
-                &verified,
-            )
-            .await?;
+            let ledgers = rehome(facade, actor, exports, &zone, request, &verified).await?;
             Imported {
                 mode: Mode::ReHome.as_str(),
                 manifest_digest: verified.manifest_digest.clone(),
@@ -435,66 +405,10 @@ fn closure<'a>(
     Ok(reached)
 }
 
-/// The zone's archives directory, created on first use.
-fn archives(zones_root: &std::path::Path, zone: &Zone) -> Result<Dir, ApiError> {
-    Dir::create_root(&zones_root.join(&zone.id))
-        .and_then(|dir| dir.subdir(ARCHIVES, true))
-        .map_err(internal)
-}
-
-/// Every archive the zone keeps.
-pub fn archived(zones_root: &std::path::Path, zone: &Zone) -> Result<Vec<ArchiveRecord>, ApiError> {
-    let dir = archives(zones_root, zone)?;
-    let mut held = Vec::new();
-    for id in dir.subdirs().map_err(internal)? {
-        let Some(bytes) = dir
-            .subdir(&id, false)
-            .and_then(|archive| archive.read(RECORD))
-            .map_err(internal)?
-        else {
-            // An archive a crash left without its record holds nothing yet.
-            continue;
-        };
-        held.push(
-            serde_json::from_slice(&bytes)
-                .map_err(|error| internal(format!("the archive {id}'s record: {error}")))?,
-        );
-    }
-    Ok(held)
-}
-
-/// The archive a request with `request_id` kept in `zone`, with what that request asked: `None`
-/// when none did, or when it was cut before its record, which keeps nothing yet.
-fn kept_by(
-    zones_root: &std::path::Path,
-    zone: &Zone,
-    request_id: &str,
-) -> Result<Option<(ArchiveRecord, Requested)>, ApiError> {
-    let dir = archives(zones_root, zone)?;
-    for id in dir.subdirs().map_err(internal)? {
-        let archive = dir.subdir(&id, false).map_err(internal)?;
-        let Some(asked) = archive.read(REQUEST).map_err(internal)? else {
-            continue;
-        };
-        let asked: Requested = serde_json::from_slice(&asked)
-            .map_err(|error| internal(format!("the archive {id}'s request: {error}")))?;
-        if asked.request_id != request_id {
-            continue;
-        }
-        let Some(record) = archive.read(RECORD).map_err(internal)? else {
-            continue;
-        };
-        let record: ArchiveRecord = serde_json::from_slice(&record)
-            .map_err(|error| internal(format!("the archive {id}'s record: {error}")))?;
-        return Ok(Some((record, asked)));
-    }
-    Ok(None)
-}
-
 /// Keeps the archive verbatim as foreign evidence: never a ledger, never served. Answers the
 /// record, and whether it was kept by an earlier request this one retries.
 fn keep(
-    zones_root: &std::path::Path,
+    archives: &dyn ArchiveStore,
     zone: &Zone,
     request: &Request<'_>,
     verified: &Verified,
@@ -511,33 +425,6 @@ fn keep(
         name: name.clone(),
         manifest_digest: verified.manifest_digest.clone(),
     };
-    // A retry is answered with what the first request kept; the id asking anything else is
-    // another request under a reused id (BUG-0187).
-    if let Some((record, held)) = kept_by(zones_root, zone, request.request_id)? {
-        if held == asked {
-            return Ok((record, true));
-        }
-        return Err(ApiError::new(
-            ErrorClass::Conflict,
-            codes::host::REQUEST_ID_REUSED,
-            format!(
-                "the request `{}` already kept the archive `{}` of another import: a new import \
-                 names a new `request_id`",
-                request.request_id, record.name
-            ),
-        )
-        .into());
-    }
-    if archived(zones_root, zone)?
-        .iter()
-        .any(|record| record.name == name)
-    {
-        return Err(conflict(format!(
-            "the zone `{}` keeps an archive named `{name}`: name the import otherwise",
-            zone.name
-        ))
-        .into());
-    }
     let id = permguard_host::api::replay::mint_id().map_err(|_| internal("no archive id"))?;
     let record = ArchiveRecord {
         id: id.clone(),
@@ -559,26 +446,30 @@ fn keep(
             })
             .collect(),
     };
-    let dir = archives(zones_root, zone)?
-        .subdir(&id, true)
-        .map_err(internal)?;
-    let archive = request.archive.to_vec();
-    publish_immutable(&dir, ARCHIVE, &archive, &|read| read == archive, &|held| {
-        held == archive
-    })
-    .map_err(internal)?;
-    let asked = serde_json::to_vec(&asked).map_err(internal)?;
-    publish_immutable(&dir, REQUEST, &asked, &|read| read == asked, &|held| {
-        held == asked
-    })
-    .map_err(internal)?;
-    // The record last: an archive without one is not listed, nor answered to a retry.
-    let body = serde_json::to_vec(&record).map_err(internal)?;
-    publish_immutable(&dir, RECORD, &body, &|read| read == body, &|held| {
-        held == body
-    })
-    .map_err(internal)?;
-    Ok((record, false))
+    match archives
+        .keep(&zone.id, request.archive, &asked, &record)
+        .map_err(internal)?
+    {
+        Keeping::Kept => Ok((record, false)),
+        // A retry is answered with what the first request kept; the id asking anything else is
+        // another request under a reused id (BUG-0187).
+        Keeping::Requested(kept, held) if held == asked => Ok((*kept, true)),
+        Keeping::Requested(kept, _) => Err(ApiError::new(
+            ErrorClass::Conflict,
+            codes::host::REQUEST_ID_REUSED,
+            format!(
+                "the request `{}` already kept the archive `{}` of another import: a new import \
+                 names a new `request_id`",
+                request.request_id, kept.name
+            ),
+        )
+        .into()),
+        Keeping::Named => Err(conflict(format!(
+            "the zone `{}` keeps an archive named `{}`: name the import otherwise",
+            zone.name, record.name
+        ))
+        .into()),
+    }
 }
 
 /// The refusal of an `archive` import whose `request_id` a re-home already used: a re-home journals
@@ -625,14 +516,18 @@ fn reused_by_rehome(request_id: &str, what: &str) -> Refusal {
 async fn rehome(
     facade: &CatalogFacade,
     actor: &Actor,
-    zones_root: &std::path::Path,
+    exports: &Exports,
     zone: &Zone,
     request: &Request<'_>,
     verified: &Verified,
 ) -> Result<Vec<Ledger>, Refusal> {
     let manifest = &verified.manifest;
     // One request id names one import, whichever mode used it first (BUG-0187).
-    if let Some((record, _)) = kept_by(zones_root, zone, request.request_id)? {
+    if let Some((record, _)) = exports
+        .archives
+        .kept_by(&zone.id, request.request_id)
+        .map_err(internal)?
+    {
         return Err(ApiError::new(
             ErrorClass::Conflict,
             codes::host::REQUEST_ID_REUSED,
@@ -750,8 +645,7 @@ async fn rehome(
             }
         };
         // The objects, write-once: a retry after a crash lands what the first did not.
-        let store =
-            FileObjectStore::new(zones_root.join(&zone.id).join("ledgers").join(&ledger.id));
+        let store = exports.ledgers.ledger(&zone.id, &ledger.id);
         for bytes in verified.objects[index].values() {
             if let Err(error) = store.publish_object(bytes) {
                 stopped(&created);
@@ -784,8 +678,11 @@ mod tests {
     use permguard_objects::cose::Sign1;
     use permguard_std::catalog::FileCatalog;
 
+    use super::super::archives::FileArchives;
+    use super::super::archives::files::{ARCHIVE, ARCHIVES};
     use super::super::exports::{self as exporting, Exports};
     use super::*;
+    use crate::store::LedgerStore as _;
 
     /// A source with one ledger exported, and a target zone to import it into.
     struct Fixture {
@@ -832,7 +729,8 @@ mod tests {
             audit_refusals: false,
             metrics: permguard_core::metrics::Metrics::none(),
             exports: Some(Arc::new(Exports::new(
-                root.join("zones"),
+                Arc::new(crate::store::FileLedgers::new(root.join("zones"))),
+                Arc::new(FileArchives::new(root.join("zones"))),
                 crate::handles::export_signer_for_tests(ring),
                 [9; 16],
                 1 << 20,
@@ -1007,7 +905,9 @@ mod tests {
         )
         .await
         .expect("another name");
-        let held = archived(&fixture.root.join("zones"), &fixture.zone).expect("listed");
+        let held = FileArchives::new(fixture.root.join("zones"))
+            .archived(&fixture.zone.id)
+            .expect("listed");
         assert_eq!(held.len(), 2);
     }
 
@@ -1067,7 +967,9 @@ mod tests {
                 assert_eq!(status(refused), 400, "{mode:?} {id:?}");
             }
         }
-        let held = archived(&fixture.root.join("zones"), &fixture.zone).expect("listed");
+        let held = FileArchives::new(fixture.root.join("zones"))
+            .archived(&fixture.zone.id)
+            .expect("listed");
         assert_eq!(held.len(), 1, "one archive kept: {held:?}");
     }
 
@@ -1098,7 +1000,8 @@ mod tests {
         .expect_err("the id named a re-home");
         assert_eq!(status(refused), 409);
         assert!(
-            archived(&fixture.root.join("zones"), &fixture.zone)
+            FileArchives::new(fixture.root.join("zones"))
+                .archived(&fixture.zone.id)
                 .expect("listed")
                 .is_empty(),
             "no archive kept"
@@ -1187,7 +1090,7 @@ mod tests {
             )
             .expect("in the catalog");
         assert_eq!(read.provenance.as_ref(), Some(provenance));
-        let store = FileObjectStore::new(
+        let store = crate::store::FileObjectStore::new(
             fixture
                 .root
                 .join("zones")

@@ -1727,6 +1727,59 @@ sections:
       - crates/permguard-control-plane/src/events/read/host_reads.rs::the_tenant_view_reads_every_consumer_run_of_its_ledger_in_order
     gaps:
       - "open (code): no jitter or last-success and lag metrics for the GC, inventory and index services; no index service over the Host consumer stream"
+  "3-control-plane/1-control-plane.md#stores":
+    paths:
+      - crates/permguard-core/src/catalog.rs
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/catalog/archives.rs
+      - crates/permguard-control-plane/src/plane.rs
+      - scripts/check-composition-root.sh
+    tests:
+      - crates/permguard-std/tests/catalog.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/store/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+  "3-control-plane/1-control-plane.md#catalog":
+    paths:
+      - crates/permguard-core/src/catalog.rs
+      - crates/permguard-core/src/catalog/suite.rs
+      - crates/permguard-std/src/catalog.rs
+      - crates/permguard-control-plane/src/catalog/mod.rs
+    tests:
+      - crates/permguard-std/tests/catalog.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-std/tests/catalog.rs::a_tombstone_an_interrupted_delete_left_leaves_the_record_live
+      - crates/permguard-control-plane/tests/catalog_crash.rs::a_catalog_change_interrupted_at_every_step_recovers
+    gaps:
+      - "open (code): a deletion that landed and whose answer a crash lost is answered `not_found` at its retry, because the tombstone does not keep the record; closing it changes the tombstone's format"
+  "3-control-plane/1-control-plane.md#ledger-store":
+    paths:
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/store/files.rs
+      - crates/permguard-control-plane/src/store/suite.rs
+      - crates/permguard-control-plane/src/transfer.rs
+      - crates/permguard-control-plane/src/engine.rs
+      - crates/permguard-control-plane/src/gc.rs
+      - crates/permguard-control-plane/src/readiness.rs
+      - crates/permguard-control-plane/src/inventory.rs
+      - crates/permguard-control-plane/src/notp/mod.rs
+    tests:
+      - crates/permguard-control-plane/src/store/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/store/files.rs::a_ledger_has_one_store_however_often_it_is_asked
+      - crates/permguard-control-plane/src/store/files.rs::a_repaired_layout_is_served_by_the_same_store
+      - crates/permguard-control-plane/tests/push_crash.rs::a_push_interrupted_at_every_step_recovers
+      - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
+  "3-control-plane/1-control-plane.md#archive-store":
+    paths:
+      - crates/permguard-control-plane/src/catalog/archives.rs
+      - crates/permguard-control-plane/src/catalog/archives/files.rs
+      - crates/permguard-control-plane/src/catalog/archives/suite.rs
+      - crates/permguard-control-plane/src/catalog/imports.rs
+    tests:
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::an_archive_is_kept_verbatim_on_disk
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::an_archive_without_its_record_keeps_nothing
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::a_record_that_does_not_read_is_an_error
+      - crates/permguard-control-plane/tests/archive_crash.rs::an_archive_interrupted_at_every_step_is_whole_or_absent
   "3-control-plane/1-control-plane.md#files":
     paths:
       - crates/permguard-control-plane/src/store.rs
@@ -1734,7 +1787,7 @@ sections:
       - crates/permguard-control-plane/src/transfer.rs
       - crates/permguard-stream/src/engine/consumer.rs
     tests:
-      - crates/permguard-control-plane/src/store.rs::invalid_ref_names_are_refused_everywhere
+      - crates/permguard-control-plane/src/store/files.rs::invalid_ref_names_are_refused_everywhere
       - crates/permguard-control-plane/tests/engine_flow.rs::every_file_of_a_populated_ledger_is_declared
       - crates/permguard-core/src/catalog.rs::test_a_reference_is_an_id_or_a_name_and_never_a_guess
       - crates/permguard-stream/src/engine/tests.rs::a_stream_key_names_its_four_parts_and_no_path_holds_caller_text
@@ -1805,9 +1858,9 @@ sections:
       - crates/permguard-objects/src/object.rs::unsorted_tree_is_rejected
       - crates/permguard-objects/src/object.rs::non_canonical_bytes_are_rejected
       - crates/permguard-objects/src/cbor.rs::a_map_naming_a_key_twice_is_refused_at_every_depth
-      - crates/permguard-control-plane/src/store.rs::corrupt_objects_are_detected_not_served
-      - crates/permguard-control-plane/src/store.rs::non_canonical_bytes_never_land
-      - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
+      - crates/permguard-control-plane/src/store/files.rs::corrupt_objects_are_detected_not_served
+      - crates/permguard-control-plane/src/store/files.rs::non_canonical_bytes_never_land
+      - crates/permguard-control-plane/src/store/files.rs::the_object_store_keeps_the_immutable_storage_contract
   "3-control-plane/2-control-plane-ledger-notp.md#manifest":
     paths:
       - crates/permguard-objects/src/manifest.rs
@@ -1839,7 +1892,7 @@ sections:
       - crates/permguard-mirror/src/verify.rs
     tests:
       - crates/permguard-objects/src/refstate.rs::a_ref_state_round_trips_and_chains_to_the_one_before
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-objects/src/statement.rs::freshness_table
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
       - crates/permguard-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
@@ -1888,8 +1941,8 @@ sections:
       - crates/permguard-control-plane/src/store.rs
       - crates/permguard-control-plane/src/engine.rs
     tests:
-      - crates/permguard-control-plane/src/store.rs::a_failed_flush_while_writing_a_ref_is_reported
-      - crates/permguard-control-plane/src/store.rs::a_failed_directory_flush_while_writing_a_ref_is_reported
+      - crates/permguard-control-plane/src/store/files.rs::a_failed_flush_while_writing_a_ref_is_reported
+      - crates/permguard-control-plane/src/store/files.rs::a_failed_directory_flush_while_writing_a_ref_is_reported
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ref_update_names_its_operation_for_recovery
       - crates/permguard-control-plane/tests/engine_flow.rs::a_commit_flushes_the_objects_it_reaches_before_writing_the_ref
       - crates/permguard-control-plane/tests/engine_flow.rs::a_retried_commit_whose_statement_was_lost_is_signed_again
@@ -1946,7 +1999,7 @@ sections:
     tests:
       - crates/permguard-notp/tests/notp_vectors.rs::the_messages_are_the_generators_bytes
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-sync/src/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
       - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
@@ -4164,7 +4217,7 @@ sections:
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_coalesces_by_key_and_sends_heartbeats_while_quiet
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_ends_on_overflow_and_on_a_fence
       - crates/permguard-sync/src/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
   "7-contracts/6-contract-ledger-notp.md#refusal-codes":
     paths:
@@ -4988,7 +5041,7 @@ findings:
       - crates/permguard-host/src/storage/write.rs::different_content_under_an_existing_name_is_corruption_and_the_original_stays
       - crates/permguard-host/src/storage/write.rs::concurrent_equal_publishes_are_idempotent
       - crates/permguard-host/src/storage/write.rs::identical_content_is_idempotent_and_keeps_the_inode
-      - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
+      - crates/permguard-control-plane/src/store/files.rs::the_object_store_keeps_the_immutable_storage_contract
       - crates/permguard-mirror/src/objects.rs::local_objects_keep_the_immutable_storage_contract
   "H-07":
     tests:

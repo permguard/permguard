@@ -44,8 +44,46 @@ pub struct Composition {
     /// The NOTP facade, composed once: REST, gRPC and the `policy.mirror` task share its stores,
     /// so one gate serializes a ledger's compare-and-swap and its transfer sessions (WP-7.12).
     notp: Composed<crate::notp::NotpFacade>,
+    /// The stores below the zones directory, composed once: everything that reads and writes a
+    /// ledger does it through the same store.
+    stores: ComposedStores,
     /// Whether the `events.import` handler was offered to the Host, once (WP-6.2c1).
     import: std::sync::OnceLock<()>,
+}
+
+/// The stores of what a zones directory keeps: every ledger's, and the zones' archives.
+#[derive(Clone)]
+pub struct ZoneStores {
+    pub ledgers: std::sync::Arc<dyn crate::store::Ledgers>,
+    pub archives: std::sync::Arc<dyn crate::catalog::archives::ArchiveStore>,
+}
+
+/// The zone stores this plane composed, once per zones directory, for every surface and every
+/// service: a store carries the holds of what it keeps, a ledger's compare-and-swap and its
+/// transfer sessions among them, and two stores over one ledger are two holds that do not see
+/// each other. A push, a collection, an export, an import and a recovery go through the same one.
+#[derive(Clone, Default)]
+pub struct ComposedStores(
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, ZoneStores>>>,
+);
+
+impl ComposedStores {
+    /// The stores of the zones directory `config` names.
+    pub fn under(&self, config: &permguard_core::Config) -> ZoneStores {
+        let directory = config.zones_directory();
+        let mut held = match self.0.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        held.entry(directory.clone())
+            .or_insert_with(|| ZoneStores {
+                ledgers: std::sync::Arc::new(crate::store::FileLedgers::new(directory.clone())),
+                archives: std::sync::Arc::new(crate::catalog::archives::FileArchives::new(
+                    directory,
+                )),
+            })
+            .clone()
+    }
 }
 
 impl Composition {
@@ -113,7 +151,7 @@ impl Composition {
     pub fn notp_facade(&self, context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         let directory = context.config().zones_directory();
         composed(&self.notp, directory, || {
-            let facade = notp_facade(context)?;
+            let facade = notp_facade(context, self.stores.under(context.config()).ledgers)?;
             if let Some(registration) = crate::handles::registration(context) {
                 let mirror = std::sync::Arc::new(crate::notp::mirror::Mirror {
                     facade: std::sync::Arc::new(facade.clone()),
@@ -453,6 +491,7 @@ fn build_decision_facade(
 /// or a Host identity to name as the source authority.
 fn exports_of(
     context: &PlaneContext<'_>,
+    stores: ZoneStores,
 ) -> Option<std::sync::Arc<crate::catalog::exports::Exports>> {
     let signer = crate::handles::export_signer(context)?;
     let authority = crate::handles::host_id(context)?;
@@ -461,14 +500,18 @@ fn exports_of(
     // of the ceiling both share.
     let max_bytes = grpc_message_ceiling(config) / 4 * 3;
     Some(std::sync::Arc::new(crate::catalog::exports::Exports::new(
-        config.zones_directory(),
+        stores.ledgers,
+        stores.archives,
         signer,
         authority,
         max_bytes,
     )))
 }
 
-fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
+fn notp_facade(
+    context: &PlaneContext<'_>,
+    ledgers: std::sync::Arc<dyn crate::store::Ledgers>,
+) -> Option<crate::notp::NotpFacade> {
     let catalog = context.catalog()?;
     let Some(keys) = crate::handles::head_signer(context) else {
         tracing::warn!(
@@ -500,7 +543,7 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         return None;
     };
     let domain = crate::store::RefDomain {
-        zones_root: config.zones_directory(),
+        ledgers: std::sync::Arc::clone(&ledgers),
     };
     if let Err(error) = mutations.recover(&domain) {
         tracing::error!(
@@ -515,7 +558,7 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
 
     Some(crate::notp::NotpFacade::new(
         std::sync::Arc::clone(catalog),
-        config.zones_directory(),
+        ledgers,
         keys,
         authority,
         crate::engine::EngineLimits {
@@ -558,7 +601,10 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
 
 /// The catalog's facade under `context`, when this build composes a catalog: the same facade for
 /// both transports.
-pub fn catalog_facade(context: &PlaneContext<'_>) -> Option<CatalogFacade> {
+pub fn catalog_facade(
+    composition: &Composition,
+    context: &PlaneContext<'_>,
+) -> Option<CatalogFacade> {
     let catalog = context.catalog()?;
     Some(CatalogFacade {
         catalog: std::sync::Arc::clone(catalog),
@@ -569,7 +615,7 @@ pub fn catalog_facade(context: &PlaneContext<'_>) -> Option<CatalogFacade> {
         authorization: crate::handles::authorization(context),
         host: crate::handles::registration(context),
         mutations: catalog_mutations(context, catalog),
-        exports: exports_of(context),
+        exports: exports_of(context, composition.stores.under(context.config())),
     })
 }
 
@@ -592,11 +638,15 @@ pub fn verified_trees() -> Vec<permguard_host::storage::verify::VerifiedTree> {
 pub fn services(composition: &Composition) -> Vec<Box<dyn permguard_core::PlaneTask>> {
     vec![
         // First: what Load verifies before the plane reports ready (BUG-0255).
-        Box::new(crate::readiness::ReadinessService::new()),
-        Box::new(crate::inventory::InventoryService::new()),
+        Box::new(crate::readiness::ReadinessService::new(
+            composition.stores.clone(),
+        )),
+        Box::new(crate::inventory::InventoryService::new(
+            composition.stores.clone(),
+        )),
         // What startup does not read: a sample of the objects, checked in the background.
         Box::new(crate::verify::VerifyService::new()),
-        Box::new(crate::gc::GcService::new()),
+        Box::new(crate::gc::GcService::new(composition.stores.clone())),
         Box::new(crate::decisions::retention::RetentionService::new()),
         // The event store's own sweep. Registered beside the decision store's rather than
         // relying on it: they are two stores with two windows, and the event one held a

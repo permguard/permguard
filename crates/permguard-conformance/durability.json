@@ -14,7 +14,7 @@
       "reason": "recognises the `*.tmp` temporaries of the mirror layout before the library, to sweep them; nothing is published under the name"
     },
     {
-      "source": "crates/permguard-control-plane/src/store.rs",
+      "source": "crates/permguard-control-plane/src/store/files.rs",
       "item": "sweep_tree",
       "primitive": "temporary",
       "reason": "recognises the `*.tmp` temporaries of the object store layout before the library, to sweep them; nothing is published under the name"

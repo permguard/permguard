@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use permguard_control_plane::gc;
-use permguard_control_plane::store::FileObjectStore;
+use permguard_control_plane::store::{FileObjectStore, LedgerStore};
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 

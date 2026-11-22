@@ -154,7 +154,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::store::FileObjectStore;
+    use crate::store::{FileObjectStore, LedgerStore};
     use permguard_objects::object::Blob;
 
     fn blob(text: &str) -> Vec<u8> {

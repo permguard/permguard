@@ -20,6 +20,9 @@
 //! somebody's hands is worse than an error. A name shaped like a GUID is refused too, because
 //! anything accepting "name or id" must never have to guess which one it was handed.
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -408,8 +411,8 @@ pub trait Catalog: Send + Sync {
         Ok(None)
     }
 
-    /// Archives or restores a ledger, held to `write` (WP-7.3b): the revision moves whether or
-    /// not the state does.
+    /// Archives or restores a ledger, held to `write` (WP-7.3b). A ledger already in `state` is
+    /// answered as it stands: nothing is written and its revision does not move (BUG-0147).
     fn set_ledger_state_with(
         &self,
         zone: &Selector,

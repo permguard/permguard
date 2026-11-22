@@ -110,6 +110,7 @@ mod window_tests {
     }
 }
 
+pub mod archives;
 pub mod exports;
 pub mod imports;
 pub mod ledgers;

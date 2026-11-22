@@ -54,6 +54,8 @@ zeroize = { workspace = true, optional = true }
 [dev-dependencies]
 # The tests exercise every implementation.
 permguard-std = { path = ".", features = ["audit", "catalog", "keys", "metrics", "provision", "pseudonym", "secrets", "storage"] }
+# The conformance suites of the contracts the implementations keep.
+permguard-core = { workspace = true, features = ["test-support"] }
 base64.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }

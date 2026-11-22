@@ -25,6 +25,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-offline/src/factories.rs"
     "crates/permguard-offline/src/volume.rs"
+    "crates/permguard-control-plane/src/plane.rs"
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
@@ -33,7 +34,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='[^d]FileKeyProvider::new|Ring::open\(|files::stores\(|FileRing::to_read|VolumeHome \{|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open|Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|FileMembers::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='[^d]FileKeyProvider::new|Ring::open\(|files::stores\(|FileRing::to_read|VolumeHome \{|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open|Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|FileMembers::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|FileLedgers::new|FileObjectStore::new|FileArchives::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
 
 # The files of the Host's file backend that make a store, or hand one to a composition root, for
 # another of them, and what they may construct or call among themselves.

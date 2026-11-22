@@ -19,7 +19,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use permguard_control_plane::store::FileObjectStore;
+use permguard_control_plane::store::{FileObjectStore, LedgerStore};
 use permguard_core::{Catalog, Selector, domains};
 use permguard_objects::object::Blob;
 use permguard_std::catalog::FileCatalog;

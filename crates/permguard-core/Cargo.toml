@@ -15,6 +15,11 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
+[features]
+# The conformance suites of the contracts this crate defines, for the tests of every backend.
+# Tests only.
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true

@@ -23,7 +23,7 @@ use permguard_control_plane::engine::{
     ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND, Engine, EngineError, EngineLimits,
     LedgerIdentity, MEDIA_TYPE_MANIFEST, MEDIA_TYPE_POLICY_CEDAR, TransferPolicy,
 };
-use permguard_control_plane::store::{FileObjectStore, RefDomain};
+use permguard_control_plane::store::{FileLedgers, FileObjectStore, LedgerStore, RefDomain};
 use permguard_control_plane::transfer::{Direction, State};
 use permguard_host::composition::MutationHandle;
 use permguard_host::operations::mutation::Mutations;
@@ -345,7 +345,7 @@ fn a_push_interrupted_at_every_step_recovers() {
             plane
                 .mutations
                 .recover(&RefDomain {
-                    zones_root: root.join("zones"),
+                    ledgers: std::sync::Arc::new(FileLedgers::new(root.join("zones"))),
                 })
                 .expect("recovery runs");
             assert!(

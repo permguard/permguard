@@ -27,6 +27,14 @@
       "reason": "the file implementation of `tokens::TokenStore`"
     },
     {
+      "path": "crates/permguard-control-plane/src/catalog/archives/files.rs",
+      "reason": "the file implementation of `catalog::archives::ArchiveStore`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/store/files.rs",
+      "reason": "the file implementation of `store::LedgerStore` and `store::Ledgers`"
+    },
+    {
       "path": "crates/permguard-host/src/api/replay/files.rs",
       "reason": "the file implementation of `api::replay::ReplayStore`"
     },
@@ -131,10 +139,6 @@
       "until": "WP-26.8"
     },
     {
-      "source": "crates/permguard-control-plane/src/catalog/imports.rs",
-      "until": "WP-26.6"
-    },
-    {
       "source": "crates/permguard-control-plane/src/decisions/cursorkey.rs",
       "until": "WP-26.7"
     },
@@ -147,10 +151,6 @@
       "until": "WP-26.7"
     },
     {
-      "source": "crates/permguard-control-plane/src/engine.rs",
-      "until": "WP-26.6"
-    },
-    {
       "source": "crates/permguard-control-plane/src/events/retention.rs",
       "until": "WP-26.7"
     },
@@ -159,24 +159,12 @@
       "until": "WP-26.7"
     },
     {
-      "source": "crates/permguard-control-plane/src/inventory.rs",
-      "until": "WP-26.6"
-    },
-    {
       "source": "crates/permguard-control-plane/src/plane.rs",
-      "until": "WP-26.6"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/store.rs",
-      "until": "WP-26.6"
-    },
-    {
-      "source": "crates/permguard-control-plane/src/transfer.rs",
-      "until": "WP-26.6"
+      "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-control-plane/src/verify.rs",
-      "until": "WP-26.6"
+      "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-events/src/archive.rs",

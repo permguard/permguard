@@ -294,8 +294,9 @@ pub mod exports {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
+    use permguard_control_plane::catalog::archives::FileArchives;
     use permguard_control_plane::catalog::exports::*;
-    use permguard_control_plane::store::FileObjectStore;
+    use permguard_control_plane::store::{FileLedgers, FileObjectStore, LedgerStore as _};
     use permguard_core::catalog::{Catalog as _, Selector};
     use permguard_core::{Ledger, Zone};
     use permguard_objects::Digest;
@@ -393,7 +394,8 @@ pub mod exports {
         Fixture {
             catalog,
             exports: Exports::new(
-                root.join("zones"),
+                Arc::new(FileLedgers::new(root.join("zones"))),
+                Arc::new(FileArchives::new(root.join("zones"))),
                 super::export_signer_for_tests(Arc::clone(&ring)),
                 [7; 16],
                 max_bytes,
