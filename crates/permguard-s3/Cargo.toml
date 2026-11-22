@@ -19,6 +19,8 @@ publish = false
 # What the tests of a store kept on this backend share: the test bucket and a prefix of a test's
 # own. Tests only.
 test-support = []
+# The settled days of the audit trails kept on PostgreSQL: the bucket as their object store.
+audit = ["dep:permguard-postgres"]
 # The Control Plane's stores whose objects this bucket keeps: a ledger's, and the archives. They
 # live here and not in the Control Plane's own package, whose domain links no network client.
 control-plane = [
@@ -56,6 +58,8 @@ zeroize.workspace = true
 permguard-s3 = { path = ".", features = ["test-support"] }
 permguard-control-plane = { workspace = true, features = ["test-support"] }
 permguard-postgres = { workspace = true, features = ["test-support"] }
+permguard-host = { workspace = true, features = ["test-support"] }
+permguard-objects.workspace = true
 rustls.workspace = true
 tokio = { workspace = true }
 zeroize.workspace = true
@@ -63,3 +67,7 @@ zeroize.workspace = true
 [[test]]
 name = "control_plane"
 required-features = ["control-plane"]
+
+[[test]]
+name = "audit"
+required-features = ["audit"]

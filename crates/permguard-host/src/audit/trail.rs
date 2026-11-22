@@ -688,6 +688,30 @@ impl Trail {
     }
 }
 
+/// Copies the trail `from` holds into the directory `into`, as the file backend lays a trail
+/// out: its `META.cbor` from `meta`, its day files, its checkpoints and their co-signatures, its
+/// anchor. What verifies a trail on files then verifies it, whatever backend kept it. Answers how
+/// many day files it copied.
+pub fn copy_into(from: &dyn TrailStore, meta: &[u8], into: &Dir) -> StorageResult<usize> {
+    let same = |held: &[u8]| held == meta;
+    match publish_immutable(into, META, meta, &same, &same)? {
+        Published::Written | Published::AlreadyThere => {}
+    }
+    let days = from.days()?;
+    for day in &days {
+        write::replace_bytes(into, day, &from.day(day)?)?;
+    }
+    for name in from.checkpoint_names()? {
+        if let Some(envelope) = from.checkpoint(&name)? {
+            into.publish_checkpoint(&name, &envelope)?;
+        }
+    }
+    if let Some(anchor) = from.anchor()? {
+        into.replace_anchor(&anchor)?;
+    }
+    Ok(days.len())
+}
+
 /// The period of a day file: `YYYY-MM-DD`.
 pub fn period_of(day: &str) -> String {
     day.strip_suffix(DAY_SUFFIX).unwrap_or(day).to_owned()

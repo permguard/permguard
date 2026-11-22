@@ -57,6 +57,38 @@ pub trait Trails: Send + Sync {
 
     /// Every trail the Host holds.
     fn held(&self) -> Result<Vec<Listed>, String>;
+
+    /// Moves what the trails no longer change to where the backend keeps it for good, outside
+    /// every trail's hold and every mutation's transaction; answers how much it moved. The
+    /// engine asks at each sweep. A backend that keeps everything in one place moves nothing.
+    fn settle(&self) -> Result<usize, String> {
+        Ok(0)
+    }
+}
+
+/// Copies every trail `trails` holds into the directory `into`, laid out as the file backend
+/// lays out `host/audit/trails/`: what verifies the trails of a volume then verifies them,
+/// whatever backend keeps them. Answers how many trails it copied.
+pub fn export(trails: &dyn Trails, into: &Dir) -> Result<usize, String> {
+    let mut copied = 0;
+    for (class, digest, resource) in trails.held()? {
+        let resource =
+            resource.map_err(|error| format!("the {} trail {digest}: {error}", class.as_str()))?;
+        let Some(held) = trails.view(class, &resource)? else {
+            continue;
+        };
+        let meta = record::TrailMeta {
+            class: class.as_str().to_owned(),
+            resource: resource.clone(),
+        }
+        .encode()
+        .map_err(|error| error.to_string())?;
+        let dir =
+            trail::directory(into, class, &resource, true).map_err(|error| error.to_string())?;
+        trail::copy_into(held.as_ref(), &meta, &dir).map_err(|error| error.to_string())?;
+        copied += 1;
+    }
+    Ok(copied)
 }
 
 /// The trails of a volume.

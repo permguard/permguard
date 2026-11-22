@@ -26,7 +26,17 @@
 //!
 //! A record is the canonical bytes the file backend writes, and a day read from here is the
 //! bytes of the day file it would be.
+//!
+//! A sealed day takes no record again, and is settled: its bytes are published to the object
+//! store under `audit/trails/<class>/<resource digest>/<day>`, the bytes of its day file, and
+//! only then are its rows removed and the day marked kept there. The object is the confirmation's
+//! precondition, so a settlement that stops anywhere leaves the day readable, from its rows or
+//! from its object. A day retention deletes once it is settled is removed with its trail's hold,
+//! and its object is named for removal; the object goes after, so a hold that is not kept never
+//! loses one. Settling runs at the engine's sweeps, outside every trail's hold and every
+//! mutation's transaction.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use permguard_host::audit::Class;
@@ -38,10 +48,29 @@ use permguard_objects::digest::Digest;
 
 use crate::database::{Database, DbError, Failure, Unit};
 
+/// Where the sealed days of the trails rest once they are settled: an object store, reached
+/// through this and nothing else. This package reaches no network client itself, so what
+/// implements it is the bucket's own package's (`permguard-s3`).
+pub trait Objects: Send + Sync + std::fmt::Debug {
+    /// Publishes `bytes` under `key` where the key holds nothing; answers whether it wrote.
+    fn put_new(&self, key: &str, bytes: &[u8]) -> Result<bool, String>;
+    /// The object under `key`, whole; `None` when the key holds none.
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String>;
+    /// Removes the object under `key`; nothing when the key holds none.
+    fn delete(&self, key: &str) -> Result<(), String>;
+}
+
 /// The audit trails of the Host of one database.
 #[derive(Debug, Clone)]
 pub struct PostgresTrails {
     database: Database,
+    /// Where the sealed days are settled; none, and they stay in their rows.
+    objects: Option<Arc<dyn Objects>>,
+}
+
+/// The key a settled day is kept under.
+fn day_key(class: &str, digest: &str, day: &str) -> String {
+    format!("audit/trails/{class}/{digest}/{day}")
 }
 
 fn failed(what: &str, error: impl std::fmt::Display) -> StorageError {
@@ -70,17 +99,74 @@ fn sequence(seq: u64) -> Result<i64, Failure<StorageError>> {
 }
 
 impl PostgresTrails {
-    /// The trails kept in `database`, whose schema is this build's.
+    /// The trails kept in `database`, whose schema is this build's, every day in its rows.
     pub fn new(database: Database) -> Self {
-        Self { database }
+        Self {
+            database,
+            objects: None,
+        }
+    }
+
+    /// These trails, their sealed days settled to `objects`.
+    #[must_use]
+    pub fn with_objects(mut self, objects: Arc<dyn Objects>) -> Self {
+        self.objects = Some(objects);
+        self
     }
 
     fn of(&self, class: Class, resource: &str) -> PostgresTrail {
         PostgresTrail {
             database: self.database.clone(),
+            objects: self.objects.clone(),
             class: class.as_str(),
             digest: trail::resource_digest(resource),
         }
+    }
+
+    /// Settles the sealed day `day` of the trail `(class, digest)`: its bytes published, then
+    /// its rows removed and the day marked settled.
+    fn settle_day(
+        &self,
+        objects: &dyn Objects,
+        class: &str,
+        digest: &str,
+        day: &str,
+    ) -> Result<(), String> {
+        let trail = PostgresTrail {
+            database: self.database.clone(),
+            objects: None,
+            class: Class::parse(class)
+                .ok_or_else(|| format!("`{class}` names no class"))?
+                .as_str(),
+            digest: digest.to_owned(),
+        };
+        let bytes = trail.day(day).map_err(|error| error.to_string())?;
+        let key = day_key(class, digest, day);
+        if !objects.put_new(&key, &bytes)? {
+            // A settlement that stopped before its rows went: the object must be these bytes.
+            if objects.get(&key)?.as_deref() != Some(bytes.as_slice()) {
+                return Err(format!(
+                    "{key} holds other bytes than the sealed day; it is left as it was"
+                ));
+            }
+        }
+        self.database
+            .write(|unit| {
+                let marked = unit.execute(
+                    "UPDATE permguard_audit_days SET archived = true
+                     WHERE class = $1 AND digest = $2 AND day = $3 AND NOT archived",
+                    &[&class, &digest, &day],
+                )?;
+                if marked == 1 {
+                    unit.execute(
+                        "DELETE FROM permguard_audit_records
+                         WHERE class = $1 AND digest = $2 AND day = $3",
+                        &[&class, &digest, &day],
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -215,6 +301,48 @@ impl Trails for PostgresTrails {
         Ok(held.map(|_| Box::new(store) as Box<dyn TrailStore>))
     }
 
+    fn settle(&self) -> Result<usize, String> {
+        let Some(objects) = self.objects.as_deref() else {
+            return Ok(0);
+        };
+        // The days no record goes to again: those a seal closed.
+        let sealed = self
+            .database
+            .write(|unit| {
+                unit.query(
+                    "SELECT day.class, day.digest, day.day
+                     FROM permguard_audit_days AS day
+                     JOIN permguard_audit_trails AS trail USING (class, digest)
+                     WHERE NOT day.archived AND trail.sealed IS NOT NULL
+                       AND day.day COLLATE \"C\" <= (trail.sealed || '.cborseq') COLLATE \"C\"
+                     ORDER BY day.class, day.digest, day.day",
+                    &[],
+                )
+            })
+            .map_err(|error| error.to_string())?;
+        let mut settled = 0;
+        for row in &sealed {
+            self.settle_day(objects, row.get(0), row.get(1), row.get(2))?;
+            settled += 1;
+        }
+        // The objects of the days retention deleted, now that no hold keeps their rows.
+        let doomed = self
+            .database
+            .write(|unit| unit.query("SELECT key FROM permguard_audit_doomed ORDER BY key", &[]))
+            .map_err(|error| error.to_string())?;
+        for row in &doomed {
+            let key: &str = row.get(0);
+            objects.delete(key)?;
+            self.database
+                .write(|unit| {
+                    unit.execute("DELETE FROM permguard_audit_doomed WHERE key = $1", &[&key])
+                })
+                .map_err(|error| error.to_string())?;
+            settled += 1;
+        }
+        Ok(settled)
+    }
+
     fn held(&self) -> Result<Vec<Listed>, String> {
         let rows = self
             .database
@@ -244,10 +372,12 @@ impl Trails for PostgresTrails {
     }
 }
 
-/// One trail: its records, its days, its checkpoints and its anchor, as rows.
+/// One trail: its records, its days, its checkpoints and its anchor, as rows; its settled days
+/// as objects.
 #[derive(Debug, Clone)]
 struct PostgresTrail {
     database: Database,
+    objects: Option<Arc<dyn Objects>>,
     class: &'static str,
     digest: String,
 }
@@ -294,6 +424,30 @@ impl TrailStore for PostgresTrail {
     }
 
     fn day(&self, name: &str) -> StorageResult<Vec<u8>> {
+        let settled = self.unit("reading a day", |unit| {
+            Ok(unit
+                .query_opt(
+                    "SELECT archived FROM permguard_audit_days
+                     WHERE class = $1 AND digest = $2 AND day = $3",
+                    &[&self.class, &self.digest, &name],
+                )?
+                .is_some_and(|row| row.get::<_, bool>(0)))
+        })?;
+        if settled {
+            let key = day_key(self.class, &self.digest, name);
+            let objects = self.objects.as_deref().ok_or_else(|| {
+                failed(
+                    "reading a settled day",
+                    "no object store is composed to read it from",
+                )
+            })?;
+            return objects
+                .get(&key)
+                .map_err(|error| failed("reading a settled day", error))?
+                .ok_or_else(|| {
+                    StorageError::Corruption(format!("{} is settled and its object is gone", key))
+                });
+        }
         self.unit("reading a day", |unit| {
             let mut bytes = Vec::new();
             for row in unit.query(
@@ -331,6 +485,19 @@ impl TrailStore for PostgresTrail {
 
     fn remove_day(&self, name: &str) -> StorageResult<()> {
         self.unit("removing a day", |unit| {
+            // A settled day's object goes after the hold that removes the day is kept.
+            unit.execute(
+                "INSERT INTO permguard_audit_doomed (key)
+                 SELECT $4 FROM permguard_audit_days
+                 WHERE class = $1 AND digest = $2 AND day = $3 AND archived
+                 ON CONFLICT (key) DO NOTHING",
+                &[
+                    &self.class,
+                    &self.digest,
+                    &name,
+                    &day_key(self.class, &self.digest, name),
+                ],
+            )?;
             unit.execute(
                 "DELETE FROM permguard_audit_records
                  WHERE class = $1 AND digest = $2 AND day = $3",

@@ -22,6 +22,8 @@
 //! waits for it, as it waits on a file. A request is bounded in time and an answer in size;
 //! a bucket that does not answer is said unavailable, and nothing is answered from memory.
 
+#[cfg(feature = "audit")]
+pub mod audit;
 #[cfg(feature = "control-plane")]
 pub mod control_plane;
 mod listing;

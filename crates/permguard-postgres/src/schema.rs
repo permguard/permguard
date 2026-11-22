@@ -482,6 +482,15 @@ pub const MIGRATIONS: &[Migration] = &[
         DROP TABLE permguard_mutation_audit;
     ",
     },
+    Migration {
+        version: 15,
+        name: "settled audit days",
+        statements: "
+        CREATE TABLE permguard_audit_doomed (
+            key text PRIMARY KEY
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

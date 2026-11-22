@@ -1013,6 +1013,16 @@ impl Engine {
             visited.push((class, resource));
         }
         self.inner.ask_witness(&visited);
+        // What no trail changes any more goes where the backend keeps it for good; a failure is
+        // said, and the next sweep moves it.
+        if let Err(error) = self.inner.trails.settle() {
+            tracing::error!(
+                event.name = "audit.settle_failed",
+                component = "host",
+                error = %error,
+                "sealed audit days could not be moved to where they are kept; the next sweep retries"
+            );
+        }
         Ok(written)
     }
 
