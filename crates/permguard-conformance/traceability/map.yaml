@@ -1359,6 +1359,41 @@ sections:
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/8-architecture-storage-operations.md#object-store":
+    paths:
+      - crates/permguard-s3/src/lib.rs
+      - crates/permguard-s3/src/sign.rs
+      - crates/permguard-s3/src/listing.rs
+      - crates/permguard-s3/src/control_plane/ledgers.rs
+      - crates/permguard-s3/src/control_plane/archives.rs
+      - crates/permguard-postgres/src/database.rs
+      - scripts/test-s3.sh
+      - .github/workflows/ci.yml
+    tests:
+      - crates/permguard-s3/tests/bucket.rs::an_object_is_published_once_and_read_whole
+      - crates/permguard-s3/tests/bucket.rs::a_listing_is_whole_and_of_its_prefix
+      - crates/permguard-s3/tests/bucket.rs::publications_of_one_key_together_write_one
+      - crates/permguard-s3/tests/bucket.rs::clients_under_two_prefixes_share_nothing
+      - crates/permguard-s3/tests/bucket.rs::a_request_runs_from_inside_a_runtime
+      - crates/permguard-s3/tests/bucket.rs::a_wrong_secret_an_unknown_authority_and_a_silent_store_are_told_apart
+      - crates/permguard-s3/tests/control_plane.rs::the_ledgers_keep_their_contract_on_postgresql_and_s3
+      - crates/permguard-s3/tests/control_plane.rs::the_archives_keep_their_contract_on_postgresql_and_s3
+      - crates/permguard-s3/tests/control_plane.rs::bytes_no_row_names_give_way_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::push_then_pull_round_trips_the_worked_example_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::multi_batch_transfer_lifecycle_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::tampered_uploads_are_rejected_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::the_quota_is_reserved_before_anything_lands_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::repeated_pull_rounds_are_never_refused_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::pushes_of_one_ref_together_move_it_once_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::an_object_no_ref_reaches_is_collected_on_postgresql_and_s3
+      - crates/permguard-s3/src/sign.rs::the_documented_example_is_signed_as_documented
+      - crates/permguard-s3/src/listing.rs::an_answer_that_does_not_read_whole_is_refused
+      - crates/permguard-s3/src/lib.rs::a_connection_in_the_clear_is_to_a_loopback_address_only
+      - crates/permguard-s3/src/lib.rs::a_key_is_a_path_of_plain_names
+      - crates/permguard-s3/src/lib.rs::a_publication_is_conditional_and_asks_for_the_encryption_configured
+      - crates/permguard-s3/src/lib.rs::a_configuration_shows_no_credential
+    gaps:
+      - "open (code): the tests need an S3 server and a PostgreSQL and are skipped without them; `scripts/test-s3.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-28.1)"
   "1-architecture/8-architecture-storage-operations.md#store-contracts":
     paths:
       - crates/permguard-authority-plane/src/accounts.rs

@@ -545,6 +545,88 @@ impl Drop for Unit {
     }
 }
 
+/// A named scope held on a connection of its own, for as long as the value lives: of the
+/// holders of one scope, on any instance, one holds it at a time and the others wait. What the
+/// holder reads and writes under it, it does on that connection, each statement kept when it
+/// is answered. The scope and the statements share the connection, so a holder whose
+/// connection went holds nothing and writes nothing: it cannot write under a scope it lost.
+pub struct Hold {
+    held: Mutex<Held>,
+}
+
+impl std::fmt::Debug for Hold {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Hold")
+    }
+}
+
+impl Hold {
+    fn with<T: Send>(
+        &self,
+        ask: impl FnOnce(&mut Client) -> Result<T, postgres::Error> + Send,
+    ) -> Result<T, SqlError> {
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        match held.client.as_mut() {
+            Some(client) => apart(|| ask(client))
+                .ok_or(SqlError::Closed)
+                .and_then(|answered| answered.map_err(SqlError::Db)),
+            None => Err(SqlError::Closed),
+        }
+    }
+
+    /// Runs a statement and answers how many rows it changed.
+    pub fn execute(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<u64, SqlError> {
+        self.with(|client| client.execute(statement, parameters))
+    }
+
+    /// Runs a query and answers its rows.
+    pub fn query(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<Vec<Row>, SqlError> {
+        self.with(|client| client.query(statement, parameters))
+    }
+
+    /// Runs a query that answers one row or none.
+    pub fn query_opt(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<Option<Row>, SqlError> {
+        self.with(|client| client.query_opt(statement, parameters))
+    }
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        // The scope is let go. A connection that cannot say it let it go is closed, which lets
+        // it go, and is never given back holding it.
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        let released = held.client.as_mut().is_some_and(|client| {
+            apart(|| {
+                client
+                    .batch_execute("SELECT pg_advisory_unlock_all()")
+                    .is_ok()
+            })
+            .unwrap_or(false)
+        });
+        if !released && let Some(client) = held.client.take() {
+            let _ = apart(move || drop(client));
+            *held
+                .pool
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) -= 1;
+            held.pool.returned.notify_one();
+        }
+    }
+}
+
 impl Database {
     /// The database `config` names, one connection opened to prove it answers.
     pub fn connect(config: Config) -> Result<Self, DbError> {
@@ -714,6 +796,20 @@ impl Database {
             self.take()?,
             Isolation::ReadCommitted,
         )?))
+    }
+
+    /// Takes the scope `scope` on a connection of its own and holds it until the answer is
+    /// dropped, waiting for the holder before it: for work that spans more than one unit of
+    /// work and must be one holder's at a time, on whatever instance.
+    pub fn hold(&self, scope: &str) -> Result<Hold, DbError> {
+        let hold = Hold {
+            held: Mutex::new(self.take()?),
+        };
+        hold.execute(
+            "SELECT pg_advisory_lock(hashtextextended($1, 0))",
+            &[&scope],
+        )?;
+        Ok(hold)
     }
 
     /// Whether this thread is inside a unit of work on this database.

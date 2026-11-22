@@ -2683,6 +2683,8 @@ dependencies = [
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
+ "permguard-postgres",
+ "permguard-s3",
  "permguard-std",
  "permguard-stream",
  "ring",
@@ -3111,6 +3113,32 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "permguard-s3"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "permguard-control-plane",
+ "permguard-core",
+ "permguard-host",
+ "permguard-notp",
+ "permguard-objects",
+ "permguard-postgres",
+ "permguard-s3",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tokio-rustls",
+ "zeroize",
 ]
 
 [[package]]

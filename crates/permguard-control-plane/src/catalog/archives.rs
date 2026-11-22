@@ -11,6 +11,7 @@
 //! | Backend            | Keeps a zone's archives in                                         |
 //! | ------------------ | ------------------------------------------------------------------ |
 //! | [`files`], default | `<zones>/<zone>/archives/<id>/{ARCHIVE, REQUEST.json, RECORD.json}` |
+//! | `permguard-s3`     | the bytes on S3, the record and the request in PostgreSQL         |
 
 pub mod files;
 #[cfg(any(test, feature = "test-support"))]

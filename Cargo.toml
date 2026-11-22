@@ -28,6 +28,7 @@ members = [
     "crates/permguard-offline",
     "crates/permguard-owner-only",
     "crates/permguard-postgres",
+    "crates/permguard-s3",
     "crates/permguard-evaluator",
     "crates/permguard-language-cedar",
     "crates/permguard-language-core",
@@ -95,6 +96,7 @@ permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
 permguard-offline = { path = "crates/permguard-offline", version = "0.1.0" }
 permguard-owner-only = { path = "crates/permguard-owner-only", version = "0.1.0" }
 permguard-postgres = { path = "crates/permguard-postgres", version = "0.1.0" }
+permguard-s3 = { path = "crates/permguard-s3", version = "0.1.0" }
 permguard-evaluator = { path = "crates/permguard-evaluator", version = "0.1.0" }
 permguard-language-cedar = { path = "crates/permguard-language-cedar", version = "0.1.0" }
 permguard-language-core = { path = "crates/permguard-language-core", version = "0.1.0" }

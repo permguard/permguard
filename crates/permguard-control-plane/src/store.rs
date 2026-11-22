@@ -14,6 +14,7 @@
 //! | Backend            | Keeps a ledger in                                        |
 //! | ------------------ | -------------------------------------------------------- |
 //! | [`files`], default | `<zones>/<zone>/ledgers/<ledger>/` on the local filesystem |
+//! | `permguard-s3`     | objects on S3, the rest in PostgreSQL                    |
 
 pub mod files;
 #[cfg(any(test, feature = "test-support"))]

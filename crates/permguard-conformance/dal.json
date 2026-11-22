@@ -10,6 +10,7 @@
     "permguard-offline",
     "permguard-postgres",
     "permguard-runtime",
+    "permguard-s3",
     "permguard-server",
     "permguard-std",
     "permguard-stream"
@@ -220,6 +221,10 @@
     {
       "source": "crates/permguard-offline/src/custody/transit.rs",
       "reason": "reads the certificate authority file the configuration names for the KMS (`PERMGUARD_KEYS_KMS_CA`), to verify the KMS it calls"
+    },
+    {
+      "source": "crates/permguard-s3/src/testing.rs",
+      "reason": "test support: reads the certificate authority file a test run names (`PERMGUARD_TEST_S3_CA`), to verify the S3 server the tests call"
     },
     {
       "source": "crates/permguard-runtime/src/join.rs",

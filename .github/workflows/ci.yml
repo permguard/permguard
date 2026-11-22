@@ -222,9 +222,9 @@ jobs:
           path: fuzz/artifacts/
 
   postgres:
-    name: the PostgreSQL backend against a server
-    # The store contracts kept on PostgreSQL are proven against a real server, one made for the
-    # run: the script starts it, turns TLS on with an authority of its own, and removes it.
+    name: the PostgreSQL and S3 backend against its servers
+    # The store contracts kept on PostgreSQL and S3 are proven against real servers, made for the
+    # run: each script starts its own, turns TLS on with an authority of its own, and removes it.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,8 +240,10 @@ jobs:
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: nextest
-      - name: every test of the backend, against PostgreSQL with TLS on
-        run: ./scripts/test-postgres.sh
+      - name: the client of the object store, against an S3 server with TLS on
+        run: ./scripts/test-s3.sh
+      - name: every test of the backend, against PostgreSQL and S3 with TLS on
+        run: ./scripts/test-s3.sh --then ./scripts/test-postgres.sh
 
   supply-chain:
     name: advisories, licences, sources

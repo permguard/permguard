@@ -85,7 +85,11 @@ fn limits() -> EngineLimits {
 }
 
 struct Fixture {
-    store: FileObjectStore,
+    store: std::sync::Arc<dyn LedgerStore>,
+    /// The ledger's directory, on the file backend: what a test of that backend's files reads.
+    root: PathBuf,
+    /// What keeps the other backend's scratch schema for the life of the fixture.
+    _backend: Option<Box<dyn std::any::Any + Send + Sync>>,
     key: Ed25519KeyPair,
     mutations: permguard_host::composition::MutationHandle,
     /// The volume the mutation transaction keeps its journal and trails on.
@@ -98,14 +102,87 @@ impl Fixture {
     fn new(tag: &str) -> Self {
         let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         let volume = scratch(&format!("{tag}-volume"));
+        let root = scratch(tag).join("ledger");
         Self {
-            store: FileObjectStore::new(scratch(tag).join("ledger")),
+            store: std::sync::Arc::new(FileObjectStore::new(&root)),
+            root,
+            _backend: None,
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
             mutations: permguard_control_plane::store::testing::offline_ref_mutations(&volume)
                 .unwrap(),
             volume,
             warnings_refused: false,
         }
+    }
+
+    /// A fixture on the PostgreSQL and S3 backend: the ledger's objects in the test bucket, the
+    /// rest in a schema of its own, and every ref update an operation of that backend's
+    /// mutation engine. `None`, with a line saying so, when the run names no servers.
+    fn on_postgres(test: &str) -> Option<Self> {
+        use permguard_control_plane::store::Ledgers as _;
+
+        let server = permguard_postgres::testing::server(test)?;
+        let bucket = permguard_s3::testing::scratch(test)?;
+        let scratch = permguard_postgres::testing::scratch(&server);
+        let database = (*scratch.database).clone();
+        let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        Some(Self {
+            store: permguard_s3::control_plane::PostgresLedgers::new(database.clone(), bucket)
+                .ledger("zone-1", "ledger-1"),
+            root: PathBuf::new(),
+            _backend: Some(Box::new(scratch)),
+            key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
+            mutations: permguard_host::composition::MutationHandle::over(
+                std::sync::Arc::new(permguard_postgres::mutations::PostgresMutations::new(
+                    database,
+                )),
+                permguard_control_plane::store::REFS_DOMAIN,
+            ),
+            volume: PathBuf::new(),
+            warnings_refused: false,
+        })
+    }
+
+    /// `instances` fixtures on the PostgreSQL and S3 backend that are one ledger: each with a
+    /// pool of connections of its own, as each process has, all on one schema and one bucket.
+    fn instances_on_postgres(test: &str, instances: usize) -> Option<Vec<Self>> {
+        use permguard_control_plane::store::Ledgers as _;
+
+        let server = permguard_postgres::testing::server(test)?;
+        let bucket = permguard_s3::testing::scratch(test)?;
+        let scratch = std::sync::Arc::new(permguard_postgres::testing::scratch(&server));
+        let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        Some(
+            (0..instances)
+                .map(|_| {
+                    let database =
+                        permguard_postgres::Database::connect(permguard_postgres::testing::config(
+                            &server,
+                            Some(scratch.schema.clone()),
+                            4,
+                        ))
+                        .expect("an instance connects");
+                    Self {
+                        store: permguard_s3::control_plane::PostgresLedgers::new(
+                            database.clone(),
+                            bucket.clone(),
+                        )
+                        .ledger("zone-1", "ledger-1"),
+                        root: PathBuf::new(),
+                        _backend: Some(Box::new(std::sync::Arc::clone(&scratch))),
+                        key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
+                        mutations: permguard_host::composition::MutationHandle::over(
+                            std::sync::Arc::new(
+                                permguard_postgres::mutations::PostgresMutations::new(database),
+                            ),
+                            permguard_control_plane::store::REFS_DOMAIN,
+                        ),
+                        volume: PathBuf::new(),
+                        warnings_refused: false,
+                    }
+                })
+                .collect(),
+        )
     }
 
     /// The same fixture, as a `regulated` deployment's ingest: engine warnings are errors.
@@ -116,7 +193,7 @@ impl Fixture {
 
     fn engine(&self) -> Engine<'_> {
         Engine {
-            store: &self.store,
+            store: self.store.as_ref(),
             authority: [0x11; 16],
             // A test signer binds no ring: the engine names none.
             ring: (0, permguard_objects::Digest::from_raw([0; 32])),
@@ -425,7 +502,19 @@ fn push(
 
 #[test]
 fn push_then_pull_round_trips_the_worked_example() {
-    let fixture = Fixture::new("happy");
+    push_then_pull_round_trips_the_worked_example_on(Fixture::new("happy"));
+}
+
+#[test]
+fn push_then_pull_round_trips_the_worked_example_on_postgresql_and_s3() {
+    if let Some(fixture) =
+        Fixture::on_postgres("push_then_pull_round_trips_the_worked_example_on_postgresql_and_s3")
+    {
+        push_then_pull_round_trips_the_worked_example_on(fixture);
+    }
+}
+
+fn push_then_pull_round_trips_the_worked_example_on(fixture: Fixture) {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
 
     // Initial push: creation, counter 1, statement verifies.
@@ -835,7 +924,19 @@ fn policy_identity_is_recomputed_and_enforced() {
 /// finalize once — with the failure modes the review demands.
 #[test]
 fn multi_batch_transfer_lifecycle() {
-    let fixture = Fixture::new("batches");
+    multi_batch_transfer_lifecycle_on(Fixture::new("batches"));
+}
+
+#[test]
+fn multi_batch_transfer_lifecycle_on_postgresql_and_s3() {
+    if let Some(fixture) =
+        Fixture::on_postgres("multi_batch_transfer_lifecycle_on_postgresql_and_s3")
+    {
+        multi_batch_transfer_lifecycle_on(fixture);
+    }
+}
+
+fn multi_batch_transfer_lifecycle_on(fixture: Fixture) {
     let engine = fixture.engine();
     let signer = fixture.signer();
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
@@ -999,7 +1100,19 @@ fn multi_batch_transfer_lifecycle() {
 /// stored independently — immutable, reusable on retry).
 #[test]
 fn tampered_uploads_are_rejected() {
-    let fixture = Fixture::new("tampered");
+    tampered_uploads_are_rejected_on(Fixture::new("tampered"));
+}
+
+#[test]
+fn tampered_uploads_are_rejected_on_postgresql_and_s3() {
+    if let Some(fixture) =
+        Fixture::on_postgres("tampered_uploads_are_rejected_on_postgresql_and_s3")
+    {
+        tampered_uploads_are_rejected_on(fixture);
+    }
+}
+
+fn tampered_uploads_are_rejected_on(fixture: Fixture) {
     let engine = fixture.engine();
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
 
@@ -1360,7 +1473,7 @@ fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
     let fixture = Fixture::new("statement-lost");
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
-    std::fs::remove_file(fixture.store.root().join("signatures").join("main"))
+    std::fs::remove_file(fixture.root.as_path().join("signatures").join("main"))
         .expect("the cached statement is removed");
 
     let signer = fixture.signer();
@@ -1375,8 +1488,8 @@ fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
     assert_eq!((statement.digest, statement.counter), (head, 1));
     assert!(
         fixture
-            .store
-            .root()
+            .root
+            .as_path()
             .join("signatures")
             .join("main")
             .is_file(),
@@ -1419,7 +1532,7 @@ fn every_file_of_a_populated_ledger_is_declared() {
         text.len() == length && text.bytes().all(|byte| byte.is_ascii_hexdigit())
     };
     let mut files = Vec::new();
-    let mut pending = vec![fixture.store.root().to_path_buf()];
+    let mut pending = vec![fixture.root.clone()];
     while let Some(directory) = pending.pop() {
         for entry in std::fs::read_dir(&directory).unwrap() {
             let path = entry.unwrap().path();
@@ -1427,7 +1540,7 @@ fn every_file_of_a_populated_ledger_is_declared() {
                 pending.push(path);
             } else {
                 let relative = path
-                    .strip_prefix(fixture.store.root())
+                    .strip_prefix(fixture.root.as_path())
                     .unwrap()
                     .to_string_lossy()
                     .replace('\\', "/");
@@ -1471,7 +1584,7 @@ fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
     let signer = fixture.signer();
     {
         let _guard = permguard_core::fault::inject(
-            fixture.store.root().join("objects"),
+            fixture.root.as_path().join("objects"),
             permguard_core::fault::Fault::Fsync,
         );
         assert!(
@@ -1496,7 +1609,7 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
     push(&fixture, &objects, &head, None);
     let signer = fixture.signer();
     let again = reopen(&fixture, &head, "again");
-    let refs = fixture.store.root().join("refs");
+    let refs = fixture.root.as_path().join("refs");
     for path in [refs.clone(), refs.join("main")] {
         // One failure only: a retry within the call would succeed, and the call must not.
         let _guard = permguard_core::fault::inject_exact(
@@ -1553,7 +1666,7 @@ fn a_cached_statement_of_another_ring_is_signed_again() {
     let state = fixture.store.read_ref("main").unwrap().unwrap();
     let previous = Digest::compute(b"another history");
     std::fs::write(
-        fixture.store.root().join("refs").join("main"),
+        fixture.root.as_path().join("refs").join("main"),
         format!(
             "{{\"version\":1,\"head\":\"{}\",\"counter\":{},\"previous\":\"{previous}\"}}\n",
             state.head, state.counter
@@ -1626,7 +1739,7 @@ fn a_ref_update_names_its_operation_for_recovery() {
         .try_into()
         .unwrap();
 
-    let ledger = fixture.store.root();
+    let ledger = fixture.root.as_path();
     let zones = ledger.parent().unwrap().join("zones");
     std::fs::create_dir_all(zones.join("zone-1").join("ledgers")).unwrap();
     std::fs::rename(
@@ -1817,7 +1930,19 @@ fn an_expired_transfer_is_closed_and_releases_its_reservation() {
 /// its own session reserved.
 #[test]
 fn the_quota_is_reserved_before_anything_lands() {
-    let fixture = Fixture::new("quota");
+    the_quota_is_reserved_before_anything_lands_on(Fixture::new("quota"));
+}
+
+#[test]
+fn the_quota_is_reserved_before_anything_lands_on_postgresql_and_s3() {
+    if let Some(fixture) =
+        Fixture::on_postgres("the_quota_is_reserved_before_anything_lands_on_postgresql_and_s3")
+    {
+        the_quota_is_reserved_before_anything_lands_on(fixture);
+    }
+}
+
+fn the_quota_is_reserved_before_anything_lands_on(fixture: Fixture) {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     let declared: u64 = objects.iter().map(|bytes| bytes.len() as u64).sum();
     let tight = Engine {
@@ -1921,7 +2046,19 @@ fn a_batch_refused_half_way_counts_what_landed() {
 /// session, so one caller's rounds never run into a cap however often they come.
 #[test]
 fn repeated_pull_rounds_are_never_refused() {
-    let fixture = Fixture::new("rounds");
+    repeated_pull_rounds_are_never_refused_on(Fixture::new("rounds"));
+}
+
+#[test]
+fn repeated_pull_rounds_are_never_refused_on_postgresql_and_s3() {
+    if let Some(fixture) =
+        Fixture::on_postgres("repeated_pull_rounds_are_never_refused_on_postgresql_and_s3")
+    {
+        repeated_pull_rounds_are_never_refused_on(fixture);
+    }
+}
+
+fn repeated_pull_rounds_are_never_refused_on(fixture: Fixture) {
     let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
     push(&fixture, &objects, &head, None);
     let engine = fixture.engine();
@@ -2294,4 +2431,180 @@ fn a_commit_reaching_what_a_ref_reaches_need_not_declare_it() {
             .any(|session| session.r#ref == "feature" && session.pinned(&digest)),
         "the reached blob is pinned"
     );
+}
+
+/// Iteration 03, WP-27.3: pushes of one ref that arrive together on several instances move it
+/// once. Each instance pushes a commit of its own from the state they all read; one is
+/// committed, the others are told the ref moved, and every instance then reads the same ref.
+#[test]
+fn pushes_of_one_ref_together_move_it_once_on_postgresql_and_s3() {
+    const INSTANCES: usize = 5;
+    let Some(instances) = Fixture::instances_on_postgres(
+        "pushes_of_one_ref_together_move_it_once_on_postgresql_and_s3",
+        INSTANCES,
+    ) else {
+        return;
+    };
+    let mut head: Option<Digest> = None;
+    // The identity the policy was given by its first text, carried by every later one.
+    let mut carried: Option<String> = None;
+    let source = |round: u64, instance: usize| {
+        format!("permit(principal in Group::\"r{round}i{instance}\", action, resource);")
+    };
+    for round in 1..=3u64 {
+        let expected_ref = expected(&instances[0], head.as_ref());
+        let commits: Vec<(Vec<Vec<u8>>, Digest)> = (0..INSTANCES)
+            .map(|instance| {
+                build_commit_with_id(
+                    &source(round, instance),
+                    head.iter().cloned().collect(),
+                    carried.clone(),
+                )
+            })
+            .collect();
+        let together = std::sync::Barrier::new(INSTANCES);
+        let answers: Vec<Result<CommitPushResponse, EngineError>> = std::thread::scope(|scope| {
+            let running: Vec<_> = instances
+                .iter()
+                .zip(&commits)
+                .map(|(fixture, (objects, new))| {
+                    let (together, expected_ref) = (&together, expected_ref.clone());
+                    scope.spawn(move || {
+                        together.wait();
+                        try_commit(fixture, "main", new, expected_ref, objects)
+                    })
+                })
+                .collect();
+            running
+                .into_iter()
+                .map(|instance| instance.join().expect("an instance finished"))
+                .collect()
+        });
+        let committed: Vec<&CommitPushResponse> = answers
+            .iter()
+            .filter_map(|answer| answer.as_ref().ok())
+            .collect();
+        assert_eq!(
+            committed.len(),
+            1,
+            "one push moves the ref in round {round}: {answers:?}"
+        );
+        assert_eq!(committed[0].counter, round);
+        for refused in answers.iter().filter_map(|answer| answer.as_ref().err()) {
+            assert!(
+                matches!(refused, EngineError::Conflict { .. }),
+                "a push that lost is told the ref moved: {refused:?}"
+            );
+        }
+        // Every instance reads the ref where the one push left it.
+        for fixture in &instances {
+            let state = fixture.store.read_ref("main").unwrap().expect("the ref");
+            assert_eq!((state.counter, &state.head), (round, &committed[0].head));
+        }
+        if carried.is_none() {
+            let winner = answers
+                .iter()
+                .position(Result::is_ok)
+                .expect("one push was committed");
+            carried = Some(derive_policy_id(source(round, winner).as_bytes()));
+        }
+        head = Some(committed[0].head.clone());
+    }
+    // And any instance serves the whole history to a pull.
+    let last = instances.last().expect("an instance");
+    let pulled = last
+        .engine()
+        .negotiate_pull(
+            &NegotiatePullRequest {
+                checkpoint: None,
+                r#ref: "main".into(),
+                at: None,
+                have: vec![],
+            },
+            &last.signer(),
+        )
+        .unwrap();
+    assert_eq!((pulled.counter, Some(pulled.head.clone())), (3, head));
+    let fetched = last
+        .engine()
+        .fetch(&FetchObjectsRequest {
+            transfer_id: pulled.transfer_id,
+            accept_compression: None,
+            digests: pulled.missing.clone(),
+        })
+        .unwrap();
+    assert_eq!(fetched.objects.len(), pulled.missing.len());
+}
+
+/// Iteration 03, WP-27.3: the collection over a ledger kept in PostgreSQL and S3. What a ref
+/// reaches stays, an object no ref reaches is kept while it is young and removed once it is
+/// not, and the ledger still serves its head afterwards.
+#[test]
+fn an_object_no_ref_reaches_is_collected_on_postgresql_and_s3() {
+    use permguard_control_plane::gc;
+    use std::time::Duration;
+
+    let Some(fixture) =
+        Fixture::on_postgres("an_object_no_ref_reaches_is_collected_on_postgresql_and_s3")
+    else {
+        return;
+    };
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let orphan = Blob {
+        media_type: "application/vnd.permguard.policy.cedar".to_owned(),
+        data: b"permit(principal, action, resource); // no ref reaches this".to_vec(),
+    }
+    .encode()
+    .unwrap();
+    let (orphan, _) = fixture.store.put_object(&orphan).unwrap();
+    let held = fixture.store.list_objects().unwrap().len();
+    assert_eq!(held, objects.len() + 1);
+    assert_eq!(
+        fixture.store.stored_bytes().unwrap(),
+        fixture
+            .store
+            .list_objects()
+            .unwrap()
+            .iter()
+            .map(|object| object.bytes)
+            .sum::<u64>()
+    );
+
+    // Young: it may be a push in flight, and is left alone.
+    let young = gc::sweep_once(fixture.store.as_ref(), Duration::from_secs(3600)).unwrap();
+    assert_eq!((young.removed, young.retained), (0, 1), "{young:?}");
+    assert_eq!(young.reached, objects.len());
+    assert!(fixture.store.has_object(&orphan));
+
+    // Past the grace: removed, and nothing a ref reaches with it.
+    std::thread::sleep(Duration::from_millis(2100));
+    let swept = gc::sweep_once(fixture.store.as_ref(), Duration::from_secs(1)).unwrap();
+    assert_eq!((swept.removed, swept.retained), (1, 0), "{swept:?}");
+    assert!(swept.reclaimed > 0);
+    assert!(!fixture.store.has_object(&orphan));
+    assert_eq!(fixture.store.list_objects().unwrap().len(), objects.len());
+    assert_eq!(fixture.store.verify_at_load().unwrap(), 1);
+
+    let pulled = fixture
+        .engine()
+        .negotiate_pull(
+            &NegotiatePullRequest {
+                checkpoint: None,
+                r#ref: "main".into(),
+                at: None,
+                have: vec![],
+            },
+            &fixture.signer(),
+        )
+        .unwrap();
+    let fetched = fixture
+        .engine()
+        .fetch(&FetchObjectsRequest {
+            transfer_id: pulled.transfer_id,
+            accept_compression: None,
+            digests: pulled.missing.clone(),
+        })
+        .unwrap();
+    assert_eq!(fetched.objects.len(), objects.len());
 }

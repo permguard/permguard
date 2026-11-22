@@ -368,6 +368,59 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 11,
+        name: "ledgers",
+        statements: "
+        CREATE TABLE permguard_ledger_refs (
+            zone text NOT NULL,
+            ledger text NOT NULL,
+            name text NOT NULL,
+            head text NOT NULL,
+            counter bigint NOT NULL CHECK (counter > 0),
+            previous text,
+            operation text NOT NULL,
+            PRIMARY KEY (zone, ledger, name)
+        );
+        CREATE TABLE permguard_ledger_statements (
+            zone text NOT NULL,
+            ledger text NOT NULL,
+            name text NOT NULL,
+            envelope bytea NOT NULL,
+            PRIMARY KEY (zone, ledger, name)
+        );
+        CREATE TABLE permguard_ledger_roots (
+            zone text NOT NULL,
+            ledger text NOT NULL,
+            head text NOT NULL,
+            PRIMARY KEY (zone, ledger, head)
+        );
+        CREATE TABLE permguard_ledger_transfers (
+            zone text NOT NULL,
+            ledger text NOT NULL,
+            transfer_id bytea NOT NULL CHECK (octet_length(transfer_id) = 16),
+            record bytea NOT NULL,
+            PRIMARY KEY (zone, ledger, transfer_id)
+        );
+    ",
+    },
+    Migration {
+        version: 12,
+        name: "archives",
+        statements: "
+        CREATE TABLE permguard_archives (
+            zone text NOT NULL,
+            id text NOT NULL,
+            name text NOT NULL,
+            request_id text NOT NULL,
+            record text NOT NULL,
+            requested text NOT NULL,
+            PRIMARY KEY (zone, id),
+            UNIQUE (zone, name),
+            UNIQUE (zone, request_id)
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

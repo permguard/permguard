@@ -1,0 +1,65 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-s3"
+description = "The object store side of Permguard's second storage backend: one bounded client of an S3 bucket, five requests, signed, with no development kit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[features]
+# What the tests of a store kept on this backend share: the test bucket and a prefix of a test's
+# own. Tests only.
+test-support = []
+# The Control Plane's stores whose objects this bucket keeps: a ledger's, and the archives. They
+# live here and not in the Control Plane's own package, whose domain links no network client.
+control-plane = [
+    "dep:permguard-control-plane",
+    "dep:permguard-host",
+    "dep:permguard-notp",
+    "dep:permguard-objects",
+    "dep:permguard-postgres",
+    "dep:serde",
+    "dep:serde_json",
+]
+
+[dependencies]
+permguard-core.workspace = true
+permguard-control-plane = { workspace = true, optional = true }
+permguard-host = { workspace = true, optional = true }
+permguard-notp = { workspace = true, optional = true }
+permguard-objects = { workspace = true, optional = true }
+permguard-postgres = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+bytes.workspace = true
+hmac.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+rustls.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tokio-rustls.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+permguard-s3 = { path = ".", features = ["test-support"] }
+permguard-control-plane = { workspace = true, features = ["test-support"] }
+permguard-postgres = { workspace = true, features = ["test-support"] }
+rustls.workspace = true
+tokio = { workspace = true }
+zeroize.workspace = true
+
+[[test]]
+name = "control_plane"
+required-features = ["control-plane"]

@@ -63,6 +63,9 @@ required-features = ["crash-points"]
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
+permguard-postgres = { workspace = true, features = ["test-support"] }
+# The stores of the second backend, for the push and pull scenarios run on it.
+permguard-s3 = { workspace = true, features = ["test-support", "control-plane"] }
 # Decoding an offset token, to prove that editing one is refused.
 base64.workspace = true
 # The producer half, so the shipping contract is exercised end to end rather
