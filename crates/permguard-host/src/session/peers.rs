@@ -4,10 +4,9 @@
 //! The peer Hosts this one trusts, and the last epoch each was seen at (WP-2.3; owner decision
 //! of 2026-10-08).
 //!
-//! ```text
-//! host/peers/
-//! └── <host_id>.cbor   {1 host_id, 2 epoch, 3 fingerprint of that epoch's key, 4 at}
-//! ```
+//! | Backend            | Keeps the seen epochs in            |
+//! | ------------------ | ----------------------------------- |
+//! | [`files`], default | `host/peers/`, one file a peer Host |
 //!
 //! A peer is trusted only when `host.peers[]` pins its `host_id` to its first identity
 //! fingerprint. Its presentation is verified from that key along its succession chain; the
@@ -17,23 +16,24 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
 use permguard_core::PinnedPeer;
 use permguard_objects::cbor::Value;
 use permguard_objects::cose::Sign1;
 use permguard_objects::digest::Digest;
 
-use crate::identity::record::{Document, Labelled, RecordError, encode, uint, uuid_text};
+use crate::identity::record::{Document, Labelled, RecordError, encode, uint};
 use crate::identity::{self, Verified};
 use crate::session::record::Operation;
-use crate::storage::volume::Volume;
-use crate::storage::{Dir, StorageError, write};
 
 use super::record::Presentation;
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "peers";
+pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
+pub use files::DIRECTORY;
 
 /// Why a peer is refused when no pin names it: a coordinator whose identity was reset presents a
 /// first key the member never pinned (BUG-0164).
@@ -73,12 +73,6 @@ impl fmt::Display for PeerRefusal {
 }
 
 impl std::error::Error for PeerRefusal {}
-
-impl From<StorageError> for PeerRefusal {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error.to_string())
-    }
-}
 
 impl From<RecordError> for PeerRefusal {
     fn from(error: RecordError) -> Self {
@@ -126,13 +120,26 @@ pub trait PinSource: Send + Sync {
     fn pin(&self, host_id: &[u8; 16], operation: Option<Operation>) -> Option<String>;
 }
 
+/// The store of the seen epochs: the only way the Host reads and advances them
+/// (`1-architecture/8` Store contracts).
+pub trait SeenStore: Send + Sync {
+    /// The last epoch a session with `host_id` was established at. A record that is there and
+    /// does not read, or names another Host, is a refusal, never a peer not seen.
+    fn seen(&self, host_id: &[u8; 16]) -> Result<Option<Seen>, PeerRefusal>;
+
+    /// Records that a session with `verified` was established at `at`: its epoch becomes the
+    /// seen one when it is higher. The identity is held against what the store holds in the step
+    /// that writes, with [`check`]: a presentation below the epoch held is a rollback, another
+    /// key at that epoch equivocation, and neither moves it. So of the sessions established
+    /// together, one with an older presentation never moves the epoch back.
+    fn advance(&self, verified: &Verified, at: u64) -> Result<(), PeerRefusal>;
+}
+
 /// The pinned peers and their seen epochs.
 pub struct Peers {
     pins: BTreeMap<[u8; 16], String>,
     source: RwLock<Option<Arc<dyn PinSource>>>,
-    dir: Dir,
-    /// Serializes the seen-epoch updates, so two sessions never move one backwards.
-    advancing: Mutex<()>,
+    seen: Arc<dyn SeenStore>,
 }
 
 impl fmt::Debug for Peers {
@@ -144,19 +151,16 @@ impl fmt::Debug for Peers {
 }
 
 impl Peers {
-    /// The peers `pins` names, with the seen epochs `volume` keeps.
-    pub fn open(volume: &Volume, pins: &[PinnedPeer]) -> Result<Self, StorageError> {
-        let dir = volume.host().subdir(DIRECTORY, true)?;
-        dir.sweep_temps()?;
-        Ok(Self {
+    /// The peers `pins` names, with the seen epochs `seen` keeps.
+    pub fn new(seen: Arc<dyn SeenStore>, pins: &[PinnedPeer]) -> Self {
+        Self {
             pins: pins
                 .iter()
                 .map(|pin| (pin.host_id(), pin.fingerprint().to_owned()))
                 .collect(),
             source: RwLock::new(None),
-            dir,
-            advancing: Mutex::new(()),
-        })
+            seen,
+        }
     }
 
     /// Adds the memberships' pins to the configured ones.
@@ -200,17 +204,7 @@ impl Peers {
 
     /// The last epoch a session with `host_id` was established at.
     pub fn seen(&self, host_id: &[u8; 16]) -> Result<Option<Seen>, PeerRefusal> {
-        let Some(bytes) = self.dir.read(&file(host_id))? else {
-            return Ok(None);
-        };
-        let seen = Seen::decode(&bytes)?;
-        if &seen.host_id != host_id {
-            return Err(PeerRefusal::Storage(format!(
-                "{} names another Host",
-                file(host_id)
-            )));
-        }
-        Ok(Some(seen))
+        self.seen.seen(host_id)
     }
 
     /// Verifies `presentation` from its pin for a session of `operation` and against its seen
@@ -275,32 +269,15 @@ impl Peers {
     }
 
     /// Records that a session with `verified` was established at `at`: its epoch becomes the
-    /// seen one when it is higher. Checked again under the lock, so a concurrent session with
-    /// an older presentation never moves it back.
+    /// seen one when it is higher. Checked again by the store in the step that writes, so a
+    /// concurrent session with an older presentation never moves it back.
     pub fn advance(&self, verified: &Verified, at: u64) -> Result<(), PeerRefusal> {
-        let _advancing = self
-            .advancing
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        if let Some(seen) = self.seen(&verified.host_id)? {
-            check(&seen, verified)?;
-            if seen.epoch == verified.epoch {
-                return Ok(());
-            }
-        }
-        let seen = Seen {
-            host_id: verified.host_id,
-            epoch: verified.epoch,
-            fingerprint: verified.fingerprint().to_owned(),
-            at,
-        };
-        write::replace_bytes(&self.dir, &file(&verified.host_id), &seen.encode()?)?;
-        Ok(())
+        self.seen.advance(verified, at)
     }
 }
 
 /// A presentation against what was seen: never below, and the key at the seen epoch unchanged.
-fn check(seen: &Seen, verified: &Verified) -> Result<(), PeerRefusal> {
+pub fn check(seen: &Seen, verified: &Verified) -> Result<(), PeerRefusal> {
     if verified.epoch < seen.epoch {
         return Err(PeerRefusal::Rollback {
             seen: seen.epoch,
@@ -316,10 +293,6 @@ fn check(seen: &Seen, verified: &Verified) -> Result<(), PeerRefusal> {
         return Err(PeerRefusal::Equivocation { epoch: seen.epoch });
     }
     Ok(())
-}
-
-fn file(host_id: &[u8; 16]) -> String {
-    format!("{}.cbor", uuid_text(host_id))
 }
 
 #[cfg(test)]

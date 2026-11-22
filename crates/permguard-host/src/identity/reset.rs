@@ -5,21 +5,15 @@
 //! an in-place replacement. The memberships are settled first, by whoever calls; this module
 //! retires the identity and provisions the next.
 //!
-//! ```text
-//! host/identity/
-//! ├── RESETTING                    the old host_id, while a reset is under way
-//! └── retired/<old host_id>/
-//!     ├── INIT, identity.cose, succession.cborseq, <epoch>.pub
-//!     └── RESET                    {1 old host_id, 2 at, 3? operation id}
-//! ```
-//!
 //! | Step     | What                                                                                     |
 //! | -------- | ---------------------------------------------------------------------------------------- |
 //! | retire   | in this process at once: the identity signs nothing more                                 |
-//! | evidence | the public records copied under `retired/`, the `RESET` record written                   |
-//! | marker   | `RESETTING`: an open refuses from here, a reset run again completes                      |
-//! | destroy  | every private key through its provider, then every file of `keys/`                       |
-//! | new      | `INIT` removed and a new identity provisioned in its place; the marker removed last      |
+//! | evidence | the public records kept as the retired identity's, with the record of the reset          |
+//! | marker   | the reset under way: an open refuses from here, a reset run again completes              |
+//! | destroy  | every private key through its provider, then every key the store holds                   |
+//! | new      | the provisioning record removed and a new identity provisioned; the marker cleared last  |
+//!
+//! The record of a reset is `{1 old host_id, 2 at, 3? operation id}`.
 //!
 //! The running process serves the new identity after a restart; a deployment pinning
 //! `host.identity.witness` updates it then.
@@ -32,21 +26,13 @@ use crate::keys::ring::Ring;
 use permguard_objects::cbor::{self, Value};
 
 use super::record::{self, Init};
-use super::{
-    DOCUMENT, INIT, Identity, IdentityError, KEYS, SUCCESSION, Suite, corrupt, directories, slot,
-};
+use super::store::IdentityStore;
+use super::{Identity, IdentityError, Suite, corrupt, slot};
 use crate::keys::KeyProvider;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Observed};
-use crate::storage::volume::Volume;
-use crate::storage::{Dir, tombstone, write};
 
-/// The marker of a reset under way, beside `INIT`.
-pub const RESETTING: &str = "RESETTING";
-/// The directory of the retired identities, below `host/identity/`.
-pub const RETIRED: &str = "retired";
-/// The record of a reset, in its retired identity's directory.
-pub const RESET: &str = "RESET";
+pub use super::files::{RESET, RESETTING, RETIRED, marked, resume, resume_run};
 /// The operation of the mutation engine.
 pub const RESET_PLAN: &str = "identity.reset.plan";
 pub const RESET_RUN: &str = "identity.reset.run";
@@ -81,6 +67,12 @@ impl Identity {
     /// Whether this process can provision the identity a reset makes.
     pub fn can_reset(&self) -> bool {
         self.provisioner.is_some()
+    }
+
+    /// Whether an identity was ever retired where this one lives: this Host is one a reset
+    /// provisioned.
+    pub fn was_reset(&self) -> Result<bool, IdentityError> {
+        Ok(!self.store.retired()?.is_empty())
     }
 
     /// Whether a reset retired the identity.
@@ -132,17 +124,12 @@ impl Identity {
         now_millis: u64,
     ) -> Result<Reset, IdentityError> {
         let old_host_id = self.host_id();
-        let retired = self
-            .dir
-            .subdir(RETIRED, true)?
-            .subdir(&record::uuid_text(&old_host_id), true)?;
-        keep_evidence(&self.dir, &self.keys, &retired)?;
-        write::replace_bytes(
-            &retired,
-            RESET,
+        self.store.retire(
+            applying,
+            &old_host_id,
             &reset_record(&old_host_id, now, Some(&applying.operation_id()))?,
         )?;
-        write::replace_bytes(&self.dir, RESETTING, &old_host_id)?;
+        self.store.mark_resetting(applying, &old_host_id)?;
         // Retired once the marker is durable, and once only: a second reset of this identity,
         // however concurrent, is refused here.
         if self
@@ -167,8 +154,7 @@ impl Identity {
             }
         }
         complete(
-            &self.dir,
-            &self.keys,
+            self.store.as_ref(),
             self.volume_id,
             provisioner,
             suite,
@@ -240,11 +226,13 @@ fn retire_rings(
     Ok(())
 }
 
-/// Completes an interrupted reset as `initiator`, one operation of the mutation engine (the
-/// offline CLI): `None` when no reset is under way.
-pub fn resume_run(
+/// Completes an interrupted reset of the identity `store` keeps, at the home `volume_id`, as
+/// `initiator`, one operation of the mutation engine: `None` when no reset is under way.
+#[allow(clippy::too_many_arguments)]
+pub fn resume_run_in(
     mutations: &crate::operations::mutation::Mutations,
-    volume: &Volume,
+    store: &dyn IdentityStore,
+    volume_id: [u8; 16],
     provisioner: &Provisioner,
     rings: &[Arc<Ring>],
     suite: Suite,
@@ -252,13 +240,17 @@ pub fn resume_run(
     now: u64,
 ) -> Result<Option<Reset>, crate::operations::mutation::MutationError<IdentityError>> {
     use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Outcome};
-    let Some(marker) = directories(volume)
-        .map_err(IdentityError::from)
-        .and_then(|(dir, _)| Ok(dir.read(RESETTING)?))
-        .map_err(MutationError::Refused)?
-    else {
+    let Some(marker) = store.resetting().map_err(MutationError::Refused)? else {
         return Ok(None);
     };
+    // The reset that stopped left its operation open, and the engine takes no other while one
+    // is: it is resolved first, against what the store holds of it, since no identity opens
+    // while a reset is under way.
+    mutations.recover(&Resetting(store)).map_err(|error| {
+        MutationError::Unavailable(format!(
+            "resolving the reset that stopped before it is completed: {error}"
+        ))
+    })?;
     let target = <[u8; 16]>::try_from(marker.as_slice())
         .map(|old| format!("reset:{}", record::uuid_text(&old)))
         .unwrap_or_else(|_| "reset:unknown".to_owned());
@@ -273,9 +265,10 @@ pub fn resume_run(
             target: Some(target),
         },
         |applying| {
-            let reset = resume(
+            let reset = resume_in(
                 applying,
-                volume,
+                store,
+                volume_id,
                 provisioner,
                 rings,
                 suite,
@@ -304,58 +297,118 @@ pub fn resume_run(
     }
 }
 
-/// The identity a reset under way on `volume` retires, when one is: the start refuses until it
-/// is completed.
-pub fn marked(volume: &Volume) -> Result<Option<[u8; 16]>, IdentityError> {
-    directories(volume)?
-        .0
-        .read(RESETTING)?
-        .map(|marker| {
-            <[u8; 16]>::try_from(marker.as_slice())
-                .map_err(|_| corrupt("RESETTING does not name a host_id"))
-        })
+/// The identity's domain while a reset is under way and no identity opens: what recovery asks
+/// of the reset that stopped, before it is completed. That reset is done when the store keeps
+/// the evidence of a retired identity under its operation and the identity provisioned is
+/// another; it is not while the retired one, or none, still stands. No other operation of the
+/// identity can be open here: the engine takes a reset only when none is.
+pub struct Resetting<'a>(pub &'a dyn IdentityStore);
+
+impl crate::operations::mutation::Domain for Resetting<'_> {
+    fn name(&self) -> &'static str {
+        super::DOMAIN
+    }
+
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        if !target.is_some_and(|target| target.starts_with("reset:")) {
+            return Err(format!(
+                "an operation of the identity that is not a reset, `{}`, is open while a reset \
+                 is under way",
+                target.unwrap_or("none")
+            ));
+        }
+        let unread = |error: IdentityError| error.to_string();
+        let standing = match self.0.init().map_err(unread)? {
+            Some(bytes) => Some(record::uuid_text(
+                &Init::decode(&bytes).map_err(|error| error.0)?.host_id,
+            )),
+            None => None,
+        };
+        Ok(reset_of(&self.0.retired().map_err(unread)?, operation_id)
+            .filter(|_| standing.is_some())
+            .filter(|retired| standing.as_deref() != Some(retired.as_str()))
+            .and(standing)
+            .map(|host_id| Observed {
+                revision: 1,
+                target: Some(format!("host:{host_id}")),
+            }))
+    }
+}
+
+/// The retired identity whose reset record names the operation `operation_id`.
+fn reset_of(retired: &[super::store::Retired], operation_id: &OperationId) -> Option<String> {
+    retired.iter().find_map(|retired| {
+        // A record that is not a reset's names no operation.
+        let Ok(Value::Map(pairs)) = cbor::decode_canonical(retired.reset.as_deref()?) else {
+            return None;
+        };
+        pairs
+            .iter()
+            .any(|(key, value)| {
+                *key == Value::Int(3) && *value == Value::Bytes(operation_id.as_bytes().to_vec())
+            })
+            .then(|| retired.host_id.clone())
+    })
+}
+
+/// The identity the mark `marker` of a reset under way names.
+pub(super) fn marked_host(marker: &[u8]) -> Result<[u8; 16], IdentityError> {
+    <[u8; 16]>::try_from(marker).map_err(|_| corrupt("RESETTING does not name a host_id"))
+}
+
+/// The identity a reset under way retires, when one is: the start refuses until it is
+/// completed.
+pub fn marked_in(store: &dyn IdentityStore) -> Result<Option<[u8; 16]>, IdentityError> {
+    store
+        .resetting()?
+        .map(|marker| marked_host(&marker))
         .transpose()
 }
 
-/// Completes the reset `RESETTING` marks on `volume`: what a reset run again does after a crash
-/// (the offline CLI). The marker must name a retired identity whose evidence is kept, and `INIT`,
-/// while there, that same identity; the old identity's keys are destroyed through the provider
-/// made for it, the `rings` retired. Answers `None` when no reset is under way.
-pub fn resume(
+/// Completes the reset marked under way in `store`, at the home `volume_id`: what a reset run
+/// again does after a crash. The mark must name a retired identity whose evidence is kept, and
+/// the provisioning record, while there, that same identity; the old identity's keys are
+/// destroyed through the provider made for it, the `rings` retired. Answers `None` when no reset
+/// is under way.
+#[allow(clippy::too_many_arguments)]
+pub fn resume_in(
     applying: &Applying<'_>,
-    volume: &Volume,
+    store: &dyn IdentityStore,
+    volume_id: [u8; 16],
     provisioner: &Provisioner,
     rings: &[Arc<Ring>],
     suite: Suite,
     now: u64,
     now_millis: u64,
 ) -> Result<Option<Reset>, IdentityError> {
-    let (dir, keys) = directories(volume)?;
-    let Some(marker) = dir.read(RESETTING)? else {
+    let Some(marker) = store.resetting()? else {
         return Ok(None);
     };
-    let old_host_id: [u8; 16] = marker
-        .as_slice()
-        .try_into()
-        .map_err(|_| corrupt("RESETTING does not name a host_id"))?;
-    let evidence = dir
-        .subdir(RETIRED, true)?
-        .subdir(&record::uuid_text(&old_host_id), true)?;
-    if evidence.read(RESET)?.is_none() || evidence.read(INIT)?.is_none() {
+    let old_host_id = marked_host(&marker)?;
+    let old = record::uuid_text(&old_host_id);
+    let kept = store
+        .retired()?
+        .into_iter()
+        .any(|retired| retired.host_id == old && retired.reset.is_some() && retired.init);
+    if !kept {
         return Err(corrupt(
             "RESETTING names an identity whose evidence was not kept: nothing is completed",
         ));
     }
-    if let Some(bytes) = dir.read(INIT)? {
+    if let Some(bytes) = store.init()? {
         let init = Init::decode(&bytes)?;
         if init.host_id != old_host_id {
             // The new identity was published and the marker not yet removed: the reset is
             // complete but for that.
-            tombstone::delete(&dir, RESETTING)?;
+            store.clear_resetting()?;
             return Ok(Some(Reset {
                 old_host_id,
                 host_id: init.host_id,
-                witness: record::witness(&bytes, &volume.id(), &init.fingerprint),
+                witness: record::witness(&bytes, &volume_id, &init.fingerprint),
                 fingerprint: init.fingerprint,
             }));
         }
@@ -373,16 +426,7 @@ pub fn resume(
             );
         }
     }
-    complete(
-        &dir,
-        &keys,
-        volume.id(),
-        provisioner,
-        suite,
-        now,
-        now_millis,
-    )
-    .map(|reset| {
+    complete(store, volume_id, provisioner, suite, now, now_millis).map(|reset| {
         Some(Reset {
             old_host_id,
             ..reset
@@ -390,30 +434,27 @@ pub fn resume(
     })
 }
 
-/// Removes `INIT` and provisions the new identity; the marker goes once `INIT` is published.
+/// Removes the provisioning record and provisions the new identity; the mark goes once the new
+/// record is published.
 fn complete(
-    dir: &Dir,
-    keys: &Dir,
+    store: &dyn IdentityStore,
     volume_id: [u8; 16],
     provisioner: &Provisioner,
     suite: Suite,
     now: u64,
     now_millis: u64,
 ) -> Result<Reset, IdentityError> {
-    if dir.read(INIT)?.is_some() {
-        tombstone::delete(dir, INIT)?;
-    }
-    Identity::provision_in(
-        dir,
-        keys,
+    store.remove_init()?;
+    Identity::provision_records(
+        store,
         volume_id,
         |host_id| provisioner(host_id),
         suite,
         now,
         now_millis,
     )?;
-    let bytes = dir
-        .read(INIT)?
+    let bytes = store
+        .init()?
         .ok_or_else(|| corrupt("the new identity has no INIT"))?;
     let init = Init::decode(&bytes)?;
     Ok(Reset {
@@ -422,24 +463,6 @@ fn complete(
         witness: record::witness(&bytes, &volume_id, &init.fingerprint),
         fingerprint: init.fingerprint,
     })
-}
-
-/// Copies the public records of the identity into `retired`: `INIT`, the document, the
-/// successions and every public key. Nothing private is kept.
-fn keep_evidence(dir: &Dir, keys: &Dir, retired: &Dir) -> Result<(), IdentityError> {
-    for name in [INIT, DOCUMENT, SUCCESSION] {
-        if let Some(bytes) = dir.read(name)? {
-            write::replace_bytes(retired, name, &bytes)?;
-        }
-    }
-    for name in keys.names()? {
-        if name.ends_with(".pub")
-            && let Some(bytes) = keys.read(&name)?
-        {
-            write::replace_bytes(retired, &format!("{KEYS}-{name}"), &bytes)?;
-        }
-    }
-    Ok(())
 }
 
 fn reset_record(
@@ -472,41 +495,16 @@ pub(super) fn observe(
     identity: &Identity,
     operation_id: &OperationId,
 ) -> Result<Option<Observed>, String> {
-    let unread = |error: crate::storage::StorageError| error.to_string();
-    if !identity
-        .dir
-        .subdirs()
-        .map_err(unread)?
-        .iter()
-        .any(|name| name == RETIRED)
-    {
-        return Ok(None);
-    }
-    let retired = identity.dir.subdir(RETIRED, false).map_err(unread)?;
-    for name in retired.subdirs().map_err(unread)? {
-        let Some(bytes) = retired
-            .subdir(&name, false)
-            .map_err(unread)?
-            .read(RESET)
-            .map_err(unread)?
-        else {
-            continue;
-        };
-        // A record that is not a reset's names no operation.
-        let Ok(Value::Map(pairs)) = cbor::decode_canonical(&bytes) else {
-            continue;
-        };
-        let named = pairs.iter().any(|(key, value)| {
-            *key == Value::Int(3) && *value == Value::Bytes(operation_id.as_bytes().to_vec())
-        });
-        if named && name != identity.host_id_text() {
-            return Ok(Some(Observed {
-                revision: 1,
-                target: Some(format!("host:{}", identity.host_id_text())),
-            }));
-        }
-    }
-    Ok(None)
+    let retired = identity
+        .store
+        .retired()
+        .map_err(|error| error.to_string())?;
+    Ok(reset_of(&retired, operation_id)
+        .filter(|retired| *retired != identity.host_id_text())
+        .map(|_| Observed {
+            revision: 1,
+            target: Some(format!("host:{}", identity.host_id_text())),
+        }))
 }
 
 #[cfg(test)]

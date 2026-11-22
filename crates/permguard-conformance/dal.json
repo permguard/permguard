@@ -43,12 +43,40 @@
       "reason": "one trail's day files, checkpoints and anchor: the audit engine's file backend, reached through `audit::Engine` alone"
     },
     {
+      "path": "crates/permguard-host/src/authz/held/files.rs",
+      "reason": "the file implementation of `authz::held::HeldStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/authz/store/files.rs",
+      "reason": "the file implementation of `authz::store::BootstrapStore`"
+    },
+    {
       "path": "crates/permguard-host/src/holds/files.rs",
       "reason": "the file implementation of `holds::HoldStore`"
     },
     {
+      "path": "crates/permguard-host/src/identity/files.rs",
+      "reason": "the file implementation of `identity::store::IdentityStore`, and the entry points that take a volume"
+    },
+    {
+      "path": "crates/permguard-host/src/identity/witness/files.rs",
+      "reason": "the file implementation of `identity::witness::VersionWitnesses`"
+    },
+    {
+      "path": "crates/permguard-host/src/secrets/files.rs",
+      "reason": "the file implementations of `secrets::WitnessStore` and `secrets::DeliveredKeys`"
+    },
+    {
+      "path": "crates/permguard-host/src/session/peers/files.rs",
+      "reason": "the file implementation of `session::peers::SeenStore`"
+    },
+    {
       "path": "crates/permguard-host/src/storage/",
       "reason": "the storage library: the primitives of the file backend"
+    },
+    {
+      "path": "crates/permguard-host/src/time/files.rs",
+      "reason": "the file implementation of `time::ClockMark`"
     },
     {
       "path": "crates/permguard-std/src/catalog.rs",
@@ -155,36 +183,12 @@
       "until": "WP-27.4"
     },
     {
-      "source": "crates/permguard-host/src/authz/authority.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/status_lists.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/authz/store.rs",
-      "until": "WP-26.3"
-    },
-    {
       "source": "crates/permguard-host/src/composition.rs",
       "until": "WP-26.8"
     },
     {
       "source": "crates/permguard-host/src/hardening.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-host/src/identity/mod.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/identity/reset.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/identity/witness.rs",
-      "until": "WP-26.3"
     },
     {
       "source": "crates/permguard-host/src/keys/custody.rs",
@@ -243,18 +247,6 @@
       "until": "WP-26.8"
     },
     {
-      "source": "crates/permguard-host/src/secrets/mod.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/session/peers.rs",
-      "until": "WP-26.3"
-    },
-    {
-      "source": "crates/permguard-host/src/time.rs",
-      "until": "WP-26.3"
-    },
-    {
       "source": "crates/permguard-offline/src/custody/pkcs11.rs",
       "until": "WP-26.4"
     },
@@ -293,10 +285,6 @@
     {
       "source": "crates/permguard-runtime/src/storage_quota.rs",
       "until": "WP-26.8"
-    },
-    {
-      "source": "crates/permguard-runtime/src/witness.rs",
-      "until": "WP-26.3"
     },
     {
       "source": "crates/permguard-server/src/app.rs",

@@ -16,6 +16,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use permguard_objects::status_list::{ENTRIES, StatusList};
 use sha2::{Digest as _, Sha256};
 
+use super::held::{HeldStore, Named};
+
 /// The most bytes a list token takes, checked before it is parsed (`2-security/9` Delivery).
 pub const MAX_LIST_TOKEN_BYTES: usize = 1024 * 1024;
 /// The most lists an index names.
@@ -202,7 +204,7 @@ pub fn verify_list(
 /// The lists a Host holds, by issuer and `uri`, and where they are kept.
 pub struct HeldLists {
     held: Mutex<BTreeMap<(String, String), Arc<HeldList>>>,
-    dir: Option<crate::storage::Dir>,
+    store: Option<Arc<dyn HeldStore>>,
     /// The lists whose newest one could not be kept on the volume: held in memory only, and the
     /// older file removed, so a restart never brings back a list a fresher one replaced.
     unkept: Mutex<BTreeSet<(String, String)>>,
@@ -234,17 +236,13 @@ impl std::fmt::Debug for HeldLists {
     }
 }
 
-/// The name a list is kept under: the SHA-256 of its issuer and `uri`, so no `uri` names a path
-/// and no issuer's list takes another's place.
-fn file_of(issuer: &str, uri: &str) -> String {
-    let digest = Sha256::digest(format!("{issuer}\n{uri}").as_bytes());
-    format!(
-        "{}.jwt",
-        digest
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
+/// What the store knows a list by.
+fn named(list: &HeldList) -> Named {
+    Named {
+        issuer: list.issuer.clone(),
+        uri: list.uri.clone(),
+        iat: list.iat,
+    }
 }
 
 impl HeldLists {
@@ -252,17 +250,18 @@ impl HeldLists {
     pub fn in_memory() -> Self {
         Self {
             held: Mutex::default(),
-            dir: None,
+            store: None,
             unkept: Mutex::default(),
             refused: Mutex::default(),
         }
     }
 
-    /// Lists kept in `dir`. What it holds is read by [`Self::restore`], once the pins are known.
-    pub fn kept_in(dir: crate::storage::Dir) -> Self {
+    /// Lists kept in `store`. What it holds is read by [`Self::restore`], once the pins are
+    /// known.
+    pub fn kept_in(store: Arc<dyn HeldStore>) -> Self {
         Self {
             held: Mutex::default(),
-            dir: Some(dir),
+            store: Some(store),
             unkept: Mutex::default(),
             refused: Mutex::default(),
         }
@@ -271,29 +270,28 @@ impl HeldLists {
     /// Reads the kept tokens back, each verified as when it arrived by `verify`: one that no
     /// longer verifies, or has expired, is dropped. Answers how many were restored.
     pub fn restore(&self, verify: impl Fn(&str) -> Option<HeldList>) -> usize {
-        let Some(dir) = &self.dir else {
+        let Some(store) = &self.store else {
             return 0;
         };
-        let Ok(names) = dir.names() else {
-            return 0;
+        let named = |token: &str| verify(token).map(|list| named(&list));
+        let tokens = match store.restore(&named) {
+            Ok(tokens) => tokens,
+            Err(error) => {
+                // Nothing is held: every token is refused until the lists are fetched again.
+                tracing::warn!(
+                    event.name = "host.token_status_unrestored",
+                    component = "host",
+                    error = %error,
+                    "the status lists kept could not be read: none is held until they are fetched"
+                );
+                return 0;
+            }
         };
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         let mut restored = 0;
-        for name in names.iter().filter(|name| name.ends_with(".jwt")) {
-            let token = dir
-                .read(name)
-                .ok()
-                .flatten()
-                .and_then(|bytes| String::from_utf8(bytes).ok());
-            match token.as_deref().and_then(&verify) {
-                Some(list) if file_of(&list.issuer, &list.uri) == *name => {
-                    held.insert((list.issuer.clone(), list.uri.clone()), Arc::new(list));
-                    restored += 1;
-                }
-                _ => {
-                    let _ = dir.unlink(name);
-                }
-            }
+        for list in tokens.iter().filter_map(|token| verify(token)) {
+            held.insert((list.issuer.clone(), list.uri.clone()), Arc::new(list));
+            restored += 1;
         }
         restored
     }
@@ -346,17 +344,24 @@ impl HeldLists {
                 offered: list.iat,
             });
         }
-        if let Some(dir) = &self.dir {
-            let file = file_of(&list.issuer, &list.uri);
+        if let Some(store) = &self.store {
             let mut unkept = self.unkept.lock().unwrap_or_else(PoisonError::into_inner);
-            match crate::storage::write::replace_bytes(dir, &file, list.token.as_bytes()) {
-                Ok(()) => {
+            match store.keep_list(&named(&list), &list.token) {
+                Ok(true) => {
                     unkept.remove(&key);
                 }
+                // The store keeps a newer list than the one this Host holds: another instance
+                // fetched it. This one is refused as any list that is not newer.
+                Ok(false) => {
+                    return Err(ListRefusal::Rollback {
+                        held: list.iat,
+                        offered: list.iat,
+                    });
+                }
                 Err(error) => {
-                    // The older file goes: a restart then holds no list for it and refuses its
+                    // The older one goes: a restart then holds no list for it and refuses its
                     // tokens until a fresh one arrives, rather than bring back one this replaced.
-                    let removed = dir.unlink(&file);
+                    let removed = store.drop_list(&list.issuer, &list.uri);
                     tracing::error!(
                         event.name = "host.token_status_unkept",
                         component = "host",
@@ -392,8 +397,8 @@ impl HeldLists {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .remove(&key);
-            if let Some(dir) = &self.dir {
-                let _ = dir.unlink(&file_of(&key.0, &key.1));
+            if let Some(store) = &self.store {
+                let _ = store.drop_list(&key.0, &key.1);
             }
         }
     }

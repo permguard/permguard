@@ -88,7 +88,12 @@ fn context(host: &Host, pinned: &[&Identity], time: &Arc<TimeGuard>) -> Context 
     let pins: Vec<PinnedPeer> = pinned.iter().map(|identity| pin(identity)).collect();
     Context {
         identity: Arc::clone(&host.identity),
-        peers: Arc::new(Peers::open(&host.volume, &pins).expect("the peers")),
+        peers: Arc::new(Peers::new(
+            Arc::new(
+                crate::session::peers::files::FileSeen::open(&host.volume).expect("the peers"),
+            ),
+            &pins,
+        )),
         time: Arc::clone(time),
         declared_assurance: AssuranceProfile::Development,
         audit: None,

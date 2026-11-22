@@ -16,8 +16,12 @@
 //! which is the highest wall time the guard knew of: the operator resolves time by correcting the
 //! clock, and the guard notices (owner decisions of 2026-10-07).
 //!
-//! The highest wall time observed is kept on the volume, `host/state/CLOCK`, so a restart under a
-//! clock set back is caught at Bootstrap too, where no monotonic reading links the two processes.
+//! The highest wall time observed is kept in the [`ClockMark`], so a restart under a clock set
+//! back is caught at Bootstrap too, where no monotonic reading links the two processes.
+//!
+//! | Backend            | Keeps the mark in  |
+//! | ------------------ | ------------------ |
+//! | [`files`], default | `host/state/CLOCK` |
 //!
 //! Ordering never depends on any of this: journals and trails order by sequence, and keep doing so
 //! through an anomaly, which is itself recorded.
@@ -27,11 +31,9 @@ use std::time::{Duration, Instant};
 
 pub use permguard_core::time::{Clock, ManualClock, SystemClock};
 
-use crate::storage::dir::Dir;
-use crate::storage::format;
-use crate::storage::volume::Volume;
-use crate::storage::write::{read_view, replace_view};
-use crate::storage::{Result as StorageResult, StorageError};
+pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 
 /// The capability the Host reports as degraded while the clock is in anomaly.
 pub const CAPABILITY: &str = "time";
@@ -40,10 +42,42 @@ pub const AUDIT_CLOCK_ANOMALY: &str = "host.clock_anomaly";
 /// The audit action written when the wall clock has caught up again.
 pub const AUDIT_CLOCK_RESTORED: &str = "host.clock_restored";
 
-/// The directory below `host/` the high-water mark is kept in.
-const STATE: &str = "state";
-/// The view holding the highest wall time observed, seconds since the epoch, big-endian.
-const CLOCK: &str = "CLOCK";
+/// Why the mark was not read or raised.
+#[derive(Debug)]
+pub enum MarkError {
+    /// The mark held does not read as one: the check it carries cannot be made.
+    Record(String),
+    /// The store could not be read or written.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for MarkError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Record(detail) => formatter.write_str(detail),
+            Self::Unavailable(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for MarkError {}
+
+/// The store of the highest wall time the Host observed: the only way the guard reads and
+/// raises it (`1-architecture/8` Store contracts).
+pub trait ClockMark: Send + Sync {
+    /// The mark, seconds since the epoch; `None` when none was ever kept. One that is there and
+    /// does not read is an error, never none.
+    fn read(&self) -> Result<Option<i64>, MarkError>;
+
+    /// Raises the mark to `mark`. It only rises: one not above the mark held changes nothing,
+    /// whoever raised that one.
+    fn raise(&self, mark: i64) -> Result<(), MarkError>;
+
+    /// What an operator does when the mark itself is wrong, left by a run under a clock set
+    /// ahead: said where the anomaly it opens is logged.
+    fn remedy(&self) -> String;
+}
+
 /// How far the high-water mark may run ahead of what is on the volume before it is written again:
 /// a restart misses at most this much of a backward step.
 const PERSIST_EVERY: i64 = 60;
@@ -176,7 +210,7 @@ pub struct TimeGuard {
     monotonic: Arc<dyn Monotonic>,
     bound: Duration,
     state: Mutex<State>,
-    store: Option<Dir>,
+    store: Option<Arc<dyn ClockMark>>,
     observers: Mutex<Vec<Arc<dyn Observer>>>,
     /// Held while transitions are delivered, so observers hear them one at a time and in order.
     delivering: Mutex<()>,
@@ -236,33 +270,20 @@ impl TimeGuard {
         )
     }
 
-    /// A guard for the Host that holds `volume`: the high-water mark a previous process left in
-    /// `host/state/CLOCK` is checked first, so a clock set back across a restart opens the anomaly
-    /// at once. A damaged mark fails the start: the check it carries cannot be made, and nothing
-    /// silently forgets it.
+    /// A guard for the Host that keeps `mark`: the high-water mark a previous process left is
+    /// checked first, so a clock set back across a restart opens the anomaly at once. A damaged
+    /// mark fails the start: the check it carries cannot be made, and nothing silently forgets
+    /// it.
     pub fn open(
-        volume: &Volume,
+        mark: Arc<dyn ClockMark>,
         wall: Arc<dyn Clock>,
         monotonic: Arc<dyn Monotonic>,
         bound: Duration,
-    ) -> StorageResult<Self> {
-        let store = volume.host().subdir(STATE, true)?;
-        let persisted = match read_view(&store, CLOCK, format::VIEW)? {
-            None => None,
-            Some(body) => {
-                let bytes: [u8; 8] = body.as_slice().try_into().map_err(|_| {
-                    StorageError::Corruption(format!(
-                        "{} holds {} bytes where a wall time takes 8",
-                        store.child_path(CLOCK).display(),
-                        body.len()
-                    ))
-                })?;
-                Some(i64::from_be_bytes(bytes))
-            }
-        };
-        let store_path = store.child_path(CLOCK);
+    ) -> Result<Self, MarkError> {
+        let persisted = mark.read()?;
+        let remedy = mark.remedy();
         let mut guard = Self::new(wall, monotonic, bound);
-        guard.store = Some(store);
+        guard.store = Some(mark);
         {
             let state = guard
                 .state
@@ -283,10 +304,9 @@ impl TimeGuard {
                         component = "host",
                         mark,
                         observed = state.anchor_wall,
-                        path = %store_path.display(),
-                        "the wall clock is behind the high-water mark a previous run left; if the \
-                         mark itself is wrong, stop the server and remove the file, which makes the \
-                         next start a first start"
+                        remedy = %remedy,
+                        "the wall clock is behind the high-water mark a previous run left; the \
+                         remedy is what to do if the mark itself is wrong"
                     );
                     state.anomaly = Some(anomaly);
                     state.anomaly_mono = state.anchor_mono;
@@ -518,9 +538,9 @@ impl TimeGuard {
         }
     }
 
-    fn persist(&self, mark: i64) -> StorageResult<()> {
+    fn persist(&self, mark: i64) -> Result<(), MarkError> {
         match &self.store {
-            Some(store) => replace_view(store, CLOCK, format::VIEW, &mark.to_be_bytes()),
+            Some(store) => store.raise(mark),
             None => Ok(()),
         }
     }
@@ -535,6 +555,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::storage::volume::Volume;
 
     const START: i64 = 1_800_000_000;
     const BOUND: Duration = Duration::from_secs(30);
@@ -694,7 +715,7 @@ mod tests {
         {
             let volume = Volume::claim(&root, profile).expect("claimed");
             let guard = TimeGuard::open(
-                &volume,
+                Arc::new(files::FileClockMark::open(&volume).expect("the mark opens")),
                 Arc::new(ManualClock::at(START)),
                 Arc::new(ManualMonotonic::default()),
                 BOUND,
@@ -704,7 +725,7 @@ mod tests {
         }
         let volume = Volume::claim(&root, profile).expect("claimed again");
         let guard = TimeGuard::open(
-            &volume,
+            Arc::new(files::FileClockMark::open(&volume).expect("the mark opens")),
             Arc::new(ManualClock::at(START - 31)),
             Arc::new(ManualMonotonic::default()),
             BOUND,
@@ -722,7 +743,7 @@ mod tests {
         drop((guard, volume));
         let volume = Volume::claim(&root, profile).expect("claimed a third time");
         TimeGuard::open(
-            &volume,
+            Arc::new(files::FileClockMark::open(&volume).expect("the mark opens")),
             Arc::new(ManualClock::at(START - 30)),
             Arc::new(ManualMonotonic::default()),
             BOUND,
@@ -732,6 +753,71 @@ mod tests {
         .expect("inside the bound");
         drop(volume);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// What only the file backend can prove: a mark damaged at rest fails the start, and is
+    /// never read as no mark, which would forget the check it carries.
+    #[test]
+    fn a_damaged_mark_fails_the_start() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-host-time-damaged-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let mark = Arc::new(files::FileClockMark::open(&volume).expect("the mark opens"));
+        mark.raise(START).expect("raised");
+        let state = volume.host().subdir("state", false).expect("state");
+        crate::storage::write::replace_view(
+            &state,
+            "CLOCK",
+            crate::storage::format::VIEW,
+            b"short",
+        )
+        .expect("a view of another length");
+        assert!(matches!(mark.read(), Err(MarkError::Record(_))));
+        let refused = TimeGuard::open(
+            mark,
+            Arc::new(ManualClock::at(START)),
+            Arc::new(ManualMonotonic::default()),
+            BOUND,
+        )
+        .expect_err("a damaged mark");
+        assert!(
+            refused.to_string().contains("where a wall time takes 8"),
+            "{refused}"
+        );
+        drop(volume);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The file backend passes the contract's suite, each case on a volume of its own.
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        let volumes = Mutex::new(Vec::new());
+        suite::run(&|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "permguard-host-time-suite-{case}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let volume = Volume::claim(
+                &root,
+                permguard_core::assurance::AssuranceProfile::Development,
+            )
+            .expect("claimed");
+            let store = Arc::new(files::FileClockMark::open(&volume).expect("the mark opens"));
+            volumes.lock().expect("held").push(volume);
+            store
+        });
     }
 
     #[test]
@@ -746,15 +832,21 @@ mod tests {
         let volume = Volume::claim(&root, profile).expect("claimed");
         let wall = Arc::new(ManualClock::at(START));
         let mono = Arc::new(ManualMonotonic::default());
-        let guard = TimeGuard::open(&volume, wall.clone(), mono.clone(), BOUND).expect("opened");
+        let guard = TimeGuard::open(
+            Arc::new(files::FileClockMark::open(&volume).expect("the mark opens")),
+            wall.clone(),
+            mono.clone(),
+            BOUND,
+        )
+        .expect("opened");
         mono.advance(Duration::from_secs(3_600));
         wall.jump(3_600);
         guard.tick();
-        let store = volume.host().subdir(STATE, false).expect("state");
-        let mark = read_view(&store, CLOCK, format::VIEW)
-            .expect("read")
-            .expect("written");
-        assert_eq!(mark, (START + 3_600).to_be_bytes());
+        let mark = files::FileClockMark::open(&volume)
+            .expect("the mark opens")
+            .read()
+            .expect("read");
+        assert_eq!(mark, Some(START + 3_600));
         drop((guard, volume));
         let _ = std::fs::remove_dir_all(root);
     }

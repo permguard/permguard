@@ -42,6 +42,11 @@ fn volume(name: &str) -> PathBuf {
     path
 }
 
+/// The versions' witnesses of `config`'s deployment, on the file backend.
+fn versions(config: &Config) -> permguard_host::identity::witness::files::FileVersionWitnesses {
+    permguard_host::identity::witness::files::FileVersionWitnesses::new(config.working_dir())
+}
+
 fn config(root: &Path) -> Config {
     Config::from_layers(
         BuildSettings::new("9.9.9", "2026", "Test Holder"),
@@ -60,7 +65,7 @@ fn test_the_first_start_records_the_version_and_says_nothing() {
     let config = config(&root);
 
     witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "alpha",
             version: "v1",
@@ -80,9 +85,9 @@ fn test_starting_again_with_the_same_key_is_fine() {
         version: "v1",
     };
 
-    witness::check(&config, Some(&key)).expect("the first start records it");
-    witness::check(&config, Some(&key)).expect("the second start recognises it");
-    witness::check(&config, Some(&key)).expect("and so does the third");
+    witness::check(&versions(&config), Some(&key)).expect("the first start records it");
+    witness::check(&versions(&config), Some(&key)).expect("the second start recognises it");
+    witness::check(&versions(&config), Some(&key)).expect("and so does the third");
 }
 
 #[test]
@@ -91,7 +96,7 @@ fn test_a_key_that_changed_without_its_version_stops_the_start() {
     let config = config(&root);
 
     witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "alpha",
             version: "v1",
@@ -101,7 +106,7 @@ fn test_a_key_that_changed_without_its_version_stops_the_start() {
 
     // The mistake: new key material behind the same reference, and nobody bumped the version.
     let error = witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "beta",
             version: "v1",
@@ -122,7 +127,7 @@ fn test_rotating_properly_is_accepted() {
     let config = config(&root);
 
     witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "alpha",
             version: "v1",
@@ -132,7 +137,7 @@ fn test_rotating_properly_is_accepted() {
 
     // A new key *and* a new version, which is what rotating means.
     witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "beta",
             version: "v2",
@@ -142,7 +147,7 @@ fn test_rotating_properly_is_accepted() {
 
     // And the old version is still remembered, so going back to the old key by mistake is caught.
     let error = witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "gamma",
             version: "v1",
@@ -158,7 +163,7 @@ fn test_a_deployment_that_does_not_pseudonymise_is_not_asked_about_keys() {
     let root = volume("disabled");
     let config = config(&root);
 
-    witness::check(&config, None).expect("there is nothing to check");
+    witness::check(&versions(&config), None).expect("there is nothing to check");
 
     assert!(
         !witness::witness_path(&config).exists(),
@@ -172,7 +177,7 @@ fn test_the_file_holds_no_key_and_is_readable_only_by_this_user() {
     let config = config(&root);
 
     witness::check(
-        &config,
+        &versions(&config),
         Some(&Keyed {
             key: "a-very-secret-key",
             version: "v1",
@@ -208,7 +213,7 @@ fn test_a_real_keyed_pseudonymiser_leaves_no_key_material_on_disk() {
     let config = config(&root);
     let key = b"a key long enough to derive pseudonyms from";
 
-    witness::check(&config, Some(&HmacPseudonymizer::new(key, "v1")))
+    witness::check(&versions(&config), Some(&HmacPseudonymizer::new(key, "v1")))
         .expect("the first start records it");
 
     let text = fs::read_to_string(witness::witness_path(&config)).expect("the file reads");
@@ -220,10 +225,10 @@ fn test_a_real_keyed_pseudonymiser_leaves_no_key_material_on_disk() {
     );
 
     // The same key still verifies, and a different one under the same version does not.
-    witness::check(&config, Some(&HmacPseudonymizer::new(key, "v1")))
+    witness::check(&versions(&config), Some(&HmacPseudonymizer::new(key, "v1")))
         .expect("the same key is recognised");
     witness::check(
-        &config,
+        &versions(&config),
         Some(&HmacPseudonymizer::new(b"an entirely different key", "v1")),
     )
     .expect_err("a different key under the same version is caught");
@@ -250,20 +255,21 @@ fn test_after_an_identity_reset_the_new_host_starts_under_the_same_version() {
         host_id: host.to_owned(),
         reset,
     };
-    witness::check_for(&fresh, Some(&old), &scope("old-host", false)).expect("the old Host");
-    witness::check_for(&fresh, Some(&new), &scope("new-host", false))
+    witness::check_for(&versions(&fresh), Some(&old), &scope("old-host", false))
+        .expect("the old Host");
+    witness::check_for(&versions(&fresh), Some(&new), &scope("new-host", false))
         .expect("another Host's witness is not this one's");
-    witness::check_for(&fresh, Some(&new), &scope("new-host", true)).expect("and again");
-    witness::check_for(&fresh, Some(&old), &scope("new-host", true))
+    witness::check_for(&versions(&fresh), Some(&new), &scope("new-host", true)).expect("and again");
+    witness::check_for(&versions(&fresh), Some(&old), &scope("new-host", true))
         .expect_err("the new Host's own label now names another key");
 
     // A witness written before entries named a Host: the old Host's key under `v1`.
     let legacy = volume("reset-legacy");
     let before = config(&legacy);
-    witness::check(&before, Some(&old)).expect("recorded by version alone");
-    witness::check_for(&before, Some(&new), &scope("new-host", false))
+    witness::check(&versions(&before), Some(&old)).expect("recorded by version alone");
+    witness::check_for(&versions(&before), Some(&new), &scope("new-host", false))
         .expect_err("no reset explains another key");
-    witness::check_for(&before, Some(&new), &scope("new-host", true))
+    witness::check_for(&versions(&before), Some(&new), &scope("new-host", true))
         .expect("the reset's new Host starts with the configuration unchanged");
     let text = fs::read_to_string(witness::witness_path(&before)).expect("the file reads");
     assert!(text.starts_with("v1@retired\t"), "{text}");

@@ -19,7 +19,43 @@
 //! | `<version>`, written before entries named a Host | another, no reset      | refused: the key changed under its label     |
 //! | none                                             |                        | this Host's recorded                         |
 
-use std::path::Path;
+pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
+/// Why the versions' witnesses were not read or kept.
+#[derive(Debug)]
+pub struct VersionsError(pub String);
+
+impl std::fmt::Display for VersionsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for VersionsError {}
+
+/// A change of the entries kept for one scope, each a label and its witness: it answers whether
+/// it changed them.
+pub type Change<'a> = &'a mut dyn FnMut(&mut Vec<(String, String)>) -> bool;
+
+/// The store of the witnesses of the pseudonym key versions: the only way a start reads and
+/// keeps them (`1-architecture/8` Store contracts).
+///
+/// | Backend            | Keeps them in                                                       |
+/// | ------------------ | ------------------------------------------------------------------- |
+/// | [`files`], default | `operations/state/audit-pseudonym-versions`, the server's and a realm's |
+pub trait VersionWitnesses: Send + Sync {
+    /// Gives `change` the entries kept for `realm`, the server's own when `None`, each a label
+    /// and its witness, and keeps them as it left them when it answers that it changed them.
+    /// The read, the change and the write are one step for every other update of those entries:
+    /// of two starts that witness a version together, the second is given what the first kept.
+    fn update(&self, realm: Option<&str>, change: Change<'_>) -> Result<(), VersionsError>;
+
+    /// What an operator removes when a version has genuinely never written a record: said in
+    /// the refusal of a key that changed under its label.
+    fn place(&self, realm: Option<&str>) -> String;
+}
 
 /// The Host a witness is checked for: its `host_id`, and whether a reset ever retired an identity
 /// on its volume.
@@ -30,16 +66,9 @@ pub struct HostScope {
 }
 
 impl HostScope {
-    /// The scope of the Host `host_id` on the volume at `root`: reset when `host/identity/retired/`
-    /// holds an identity.
-    pub fn of(root: &Path, host_id: &[u8; 16]) -> Self {
-        let retired = root
-            .join(crate::storage::volume::HOST)
-            .join("identity")
-            .join(super::reset::RETIRED);
-        let reset = std::fs::read_dir(retired)
-            .map(|mut entries| entries.any(|entry| entry.is_ok()))
-            .unwrap_or(false);
+    /// The scope of the Host `host_id`; `reset` when an identity was ever retired where it
+    /// lives.
+    pub fn new(host_id: &[u8; 16], reset: bool) -> Self {
         Self {
             host_id: super::record::uuid_text(host_id),
             reset,
@@ -210,15 +239,77 @@ mod tests {
         );
     }
 
+    /// The file backend passes the contract's suite, each case below a directory of its own.
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        super::suite::run(&|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "pg-witness-versions-{case}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::sync::Arc::new(super::files::FileVersionWitnesses::new(root))
+        });
+    }
+
+    /// What only the file backend can prove: the entries are read back by a later process, from
+    /// a file only its owner reads.
+    #[test]
+    fn the_file_backend_keeps_its_entries_across_a_restart() {
+        use super::VersionWitnesses as _;
+        use super::files::FileVersionWitnesses;
+
+        let root = std::env::temp_dir().join(format!(
+            "pg-witness-versions-restart-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = FileVersionWitnesses::new(&root);
+        store
+            .update(Some("acme"), &mut |entries| {
+                entries.push(("v1@host".to_owned(), "w".to_owned()));
+                true
+            })
+            .expect("kept");
+        let path = store.path(Some("acme"));
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("the file"),
+            "v1@host\tw\n"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = |path: &std::path::Path| {
+                std::fs::metadata(path).expect("stat").permissions().mode() & 0o777
+            };
+            assert_eq!(mode(&path), 0o600);
+            assert_eq!(mode(path.parent().expect("a parent")), 0o700);
+        }
+        drop(store);
+        let mut read = Vec::new();
+        FileVersionWitnesses::new(&root)
+            .update(Some("acme"), &mut |entries| {
+                read.clone_from(entries);
+                false
+            })
+            .expect("reads");
+        assert_eq!(read, vec![("v1@host".to_owned(), "w".to_owned())]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn a_scope_knows_a_reset_from_the_retired_identities_on_the_volume() {
         let root = std::env::temp_dir().join(format!("pg-witness-scope-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let retired = root.join("host/identity/retired");
         std::fs::create_dir_all(&retired).expect("created");
-        assert!(!HostScope::of(&root, &[1; 16]).reset, "an empty directory");
+        let was_reset = super::super::files::was_reset_at;
+        assert!(!was_reset(&root), "an empty directory");
         std::fs::create_dir_all(retired.join("0101")).expect("created");
-        let scope = HostScope::of(&root, &[1; 16]);
+        let scope = HostScope::new(&[1; 16], was_reset(&root));
         assert!(scope.reset);
         assert_eq!(scope.host_id, super::super::record::uuid_text(&[1; 16]));
         let _ = std::fs::remove_dir_all(&root);

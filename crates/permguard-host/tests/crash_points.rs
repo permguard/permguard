@@ -598,6 +598,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "mutation.",
         "audit.",
         "holds.",
+        "identity.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -1518,6 +1519,238 @@ mod stores {
                 consume_plan(&mutations, &replay, &planner, &held).expect("spent now");
             }
             drop((mutations, replay, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Host identity's records (`1-architecture/2` Stores): a rotation and a reset killed between
+// their writes, and the recovery principal's commitment killed around its one.
+
+mod identifying {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_host::authz::BootstrapStore as _;
+    use permguard_host::authz::store::files::FileBootstrap;
+    use permguard_host::identity::reset::{self, Provisioner};
+    use permguard_host::identity::{self, Identities, Identity, IdentityError, Suite};
+    use permguard_host::keys::{FileKeyProvider, KeyProvider};
+    use permguard_host::operations::grants::{self, Grants};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::Mutations;
+    use permguard_host::storage::volume::Volume;
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn provider(volume: &Volume) -> Arc<dyn KeyProvider> {
+        let (_, keys) = identity::directories(volume).expect("the directories");
+        Arc::new(FileKeyProvider::new(keys))
+    }
+
+    fn provisioner(volume: &Volume) -> Provisioner {
+        let (_, keys) = identity::directories(volume).expect("the directories");
+        let path = keys.path().to_path_buf();
+        Arc::new(move |_| {
+            Ok(Arc::new(FileKeyProvider::new(Dir::open(&path)?)) as Arc<dyn KeyProvider>)
+        })
+    }
+
+    /// Provisions an identity at `path` and answers its `host_id`.
+    fn provision(path: &Path) -> [u8; 16] {
+        let volume = claim_volume(path);
+        Identity::provision(
+            &volume,
+            provider(&volume),
+            Suite::Ed25519Sha256V1,
+            NOW,
+            NOW * 1000,
+        )
+        .expect("provisioned")
+        .host_id()
+    }
+
+    fn open(path: &Path) -> (Volume, Result<Identity, IdentityError>, Mutations) {
+        let volume = claim_volume(path);
+        let identity = Identity::open(&volume, provider(&volume))
+            .map(|identity| identity.with_provisioner(provisioner(&volume)));
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, identity, mutations)
+    }
+
+    fn system() -> Initiator {
+        Initiator::System("test".to_owned())
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_rotate() {
+        let (_volume, identity, mutations) = open(&root());
+        let identity = identity.expect("opened");
+        identity::rotate(&mutations, &identity, system(), 1, NOW + 1).expect("rotated");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_reset() {
+        let (_volume, identity, mutations) = open(&root());
+        let identity = identity.expect("opened");
+        reset::run(&mutations, &identity, &[], system(), NOW + 1).expect("reset");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_bootstrap() {
+        let volume = claim_volume(&root());
+        let store = FileBootstrap::open(&volume).expect("the store opens");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        grants::bootstrap(&mutations, &store, &"ab".repeat(32), NOW).expect("committed");
+    }
+
+    /// A rotation killed after each of its three writes: the identity opens again, at the epoch
+    /// it was at while no succession names the next, at the next once one does, its document
+    /// issued by the start that finds it missing; and the next rotation is taken either way.
+    #[test]
+    fn a_rotation_killed_between_its_writes_is_at_one_epoch_or_the_next() {
+        for (point, epoch) in [
+            ("identity.public_published", 1),
+            ("identity.succession_added", 2),
+            ("identity.document_replaced", 2),
+        ] {
+            let path = scratch(&format!("rotate-{point}"));
+            let host_id = provision(&path);
+            assert!(
+                crash("identifying::child_rotate", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, identity, mutations) = open(&path);
+            let identity = identity.unwrap_or_else(|error| panic!("{point}: opens, not {error}"));
+            assert_eq!(identity.host_id(), host_id, "{point}");
+            assert_eq!(identity.epoch(), epoch, "{point}");
+            assert_eq!(
+                identity.successions().len() as u64,
+                epoch - 1,
+                "{point}: a succession for every epoch after the first"
+            );
+            let recovered = mutations.recover(&Identities(&identity)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if epoch == 2 { (1, 0) } else { (0, 1) },
+                "{point}: the rotation is committed when its succession is durable"
+            );
+            // A key the killed rotation left without a succession is replaced, not kept.
+            let rotated = identity::rotate(&mutations, &identity, system(), epoch, NOW + 2)
+                .unwrap_or_else(|error| panic!("{point}: the next rotation, not {error}"));
+            assert_eq!(rotated.epoch, epoch + 1, "{point}");
+            drop((identity, mutations, volume));
+            let (_volume, reopened, _mutations) = open(&path);
+            assert_eq!(reopened.expect("reopens").epoch(), epoch + 1, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A reset killed after each of its writes. Before its mark is durable the identity is the
+    /// one it was, and the reset failed; from its mark on the open refuses, and the reset run
+    /// again provisions the next identity, the retired one's evidence kept.
+    #[test]
+    fn a_reset_killed_between_its_writes_keeps_the_identity_or_completes_when_run_again() {
+        // The provisioning of the next identity publishes its key, its document and its record:
+        // the first pass through each of those points in the child.
+        for (point, marked) in [
+            ("identity.retired", false),
+            ("identity.reset_marked", true),
+            ("identity.init_removed", true),
+            ("identity.public_published", true),
+            ("identity.document_replaced", true),
+            ("identity.init_published", true),
+        ] {
+            let path = scratch(&format!("reset-{point}"));
+            let old = provision(&path);
+            assert!(
+                crash("identifying::child_reset", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, identity, mutations) = open(&path);
+            if !marked {
+                let identity = identity.unwrap_or_else(|error| panic!("{point}: opens: {error}"));
+                assert_eq!(identity.host_id(), old, "{point}: the identity it was");
+                let recovered = mutations.recover(&Identities(&identity)).expect("recovers");
+                assert_eq!(recovered.failed.len(), 1, "{point}: nothing was reset");
+                // The evidence a killed reset kept names no reset of this identity as done.
+                assert!(identity.was_reset().expect("reads"), "{point}");
+                reset::run(&mutations, &identity, &[], system(), NOW + 2)
+                    .unwrap_or_else(|error| panic!("{point}: the reset run again: {error}"));
+            } else {
+                assert!(
+                    matches!(identity, Err(IdentityError::ResetIncomplete)),
+                    "{point}: an open refuses while a reset is under way"
+                );
+                assert_eq!(reset::marked(&volume).expect("reads"), Some(old), "{point}");
+                let resumed = reset::resume_run(
+                    &mutations,
+                    &volume,
+                    &provisioner(&volume),
+                    &[],
+                    Suite::Ed25519Sha256V1,
+                    system(),
+                    NOW + 2,
+                )
+                .unwrap_or_else(|error| panic!("{point}: the reset run again: {error}"))
+                .expect("a reset was under way");
+                assert_eq!(resumed.old_host_id, old, "{point}");
+            }
+            drop((mutations, volume));
+            let (volume, next, mutations) = open(&path);
+            let next = next.unwrap_or_else(|error| panic!("{point}: the next identity: {error}"));
+            assert_ne!(next.host_id(), old, "{point}: another Host");
+            assert_eq!(next.epoch(), 1, "{point}");
+            assert!(next.was_reset().expect("reads"), "{point}");
+            assert_eq!(reset::marked(&volume).expect("reads"), None, "{point}");
+            // Whatever the killed reset left open is resolved against the identity that stands.
+            mutations.recover(&Identities(&next)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A commitment to the recovery principal killed before its write leaves none and a failed
+    /// operation; killed after it, the commitment and an operation recovery commits.
+    #[test]
+    fn a_bootstrap_killed_midway_is_committed_or_absent() {
+        // Its one write is an immutable publish, whose own crash points are proven above.
+        for (point, written) in [
+            ("mutation.intent_audited", false),
+            ("mutation.applied", true),
+        ] {
+            let path = scratch(&format!("bootstrap-{point}"));
+            drop(claim_volume(&path));
+            assert!(
+                crash("identifying::child_bootstrap", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let store = FileBootstrap::open(&volume).expect("the store opens");
+            let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+            let recovered = mutations.recover(&Grants(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.bootstrap().expect("the commitment reads");
+            assert_eq!(held.is_some(), written, "{point}: whole or absent");
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if written { (1, 0) } else { (0, 1) },
+                "{point}"
+            );
+            // Committed again, to the same certificate: the first when it was written.
+            let (again, wrote) =
+                grants::bootstrap(&mutations, &store, &"ab".repeat(32), NOW + 1).expect("again");
+            assert_eq!(wrote, !written, "{point}");
+            assert_eq!(held.unwrap_or_else(|| again.clone()), again, "{point}");
             let _ = std::fs::remove_dir_all(path);
         }
     }

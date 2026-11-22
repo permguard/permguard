@@ -32,7 +32,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a
@@ -93,8 +93,20 @@ while IFS= read -r file; do
         continue
     fi
 
+    # A file may construct the types it defines: a backend's file makes its own store for the
+    # entry points it gives a composition root, and that is not a crate resolving a collaborator.
     found="$(
-        awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" || true
+        awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" | while IFS= read -r line; do
+            foreign=""
+            for constructor in $(printf '%s\n' "${line}" | grep -oE "${CONSTRUCTORS}"); do
+                if ! grep -qE "^pub struct ${constructor%%::*}([ <{(;]|\$)" "${file}"; then
+                    foreign="yes"
+                fi
+            done
+            if [ -n "${foreign}" ]; then
+                printf '%s\n' "${line}"
+            fi
+        done || true
     )"
 
     if [ -n "${found}" ]; then

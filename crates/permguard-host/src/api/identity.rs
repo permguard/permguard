@@ -187,7 +187,7 @@ impl HostApi {
                 let rotated = identity
                     .rotate(applying, Some(expected), now)
                     .map_err(|error| match error {
-                        IdentityError::Storage(_) | IdentityError::Indeterminate(_) => {
+                        IdentityError::Unavailable(_) | IdentityError::Indeterminate(_) => {
                             Failure::Indeterminate(refusal_of(error))
                         }
                         other => Failure::Refused(refusal_of(other)),

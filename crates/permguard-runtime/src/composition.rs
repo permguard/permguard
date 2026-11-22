@@ -118,7 +118,7 @@ struct HostAuthz {
     authenticator: Arc<dyn permguard_core::authz::Authenticator>,
     /// The Authority Plane's key set and status lists, as this Host holds them.
     trust: Arc<permguard_host::authz::AuthorityTrust>,
-    bootstrap: Arc<permguard_host::authz::BootstrapStore>,
+    bootstrap: Arc<dyn permguard_host::authz::BootstrapStore>,
 }
 
 /// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
@@ -1309,15 +1309,21 @@ impl Composition {
                  never joins another coordinator; remove host.join"
             );
         }
-        let bootstrap = BootstrapStore::open(volume).with_context(|| {
-            format!(
-                "opening the recovery principal's commitment on {}",
-                volume.host().path().display()
-            )
-        })?;
+        let bootstrap: Arc<dyn BootstrapStore> = Arc::new(
+            permguard_host::authz::store::files::FileBootstrap::open(volume).with_context(
+                || {
+                    format!(
+                        "opening the recovery principal's commitment on {}",
+                        volume.host().path().display()
+                    )
+                },
+            )?,
+        );
         // A commitment a crash left open is committed or failed before anything reads it.
         mutations
-            .recover(&permguard_host::operations::grants::Grants(&bootstrap))
+            .recover(&permguard_host::operations::grants::Grants(
+                bootstrap.as_ref(),
+            ))
             .context("recovering the bootstrap commitment a crash left open")?;
         // A development volume this server provisions: the operator certificate `autogenerate`
         // wrote, `tls/client.pem`, is the bootstrap principal when the volume commits none, so the
@@ -1327,14 +1333,17 @@ impl Composition {
         if config.autogenerate()
             && config.assurance().profile()
                 == permguard_core::assurance::AssuranceProfile::Development
-            && bootstrap.bootstrap().is_none()
+            && bootstrap
+                .bootstrap()
+                .context("reading the bootstrap commitment")?
+                .is_none()
             && operator.is_file()
         {
             let pem = std::fs::read(&operator)
                 .with_context(|| format!("reading {}", operator.display()))?;
             if let Some(held) = permguard_host::operations::grants::bootstrap_development_operator(
                 mutations,
-                &bootstrap,
+                bootstrap.as_ref(),
                 &pem,
                 time.now_secs(),
             )
@@ -1354,7 +1363,9 @@ impl Composition {
                 );
             }
         }
-        let held = bootstrap.bootstrap();
+        let held = bootstrap
+            .bootstrap()
+            .context("reading the bootstrap commitment")?;
         let mapper = PrincipalMapper::new(held.as_ref().map(|held| held.fingerprint.as_str()))
             .context("reading the bootstrap commitment")?;
         let public: Vec<PublicGrant> = auth
@@ -1406,16 +1417,19 @@ impl Composition {
             .map(str::trim)
             .filter(|audience| !audience.is_empty())
             .unwrap_or(permguard_host::authz::authority::DEFAULT_AUDIENCE);
-        let trust = Arc::new(
-            AuthorityTrust::kept_in(volume, issuer, audience, time.now_secs()).with_context(
-                || {
-                    format!(
-                        "opening the Authority Plane's keys and lists on {}",
-                        volume.host().path().display()
-                    )
-                },
-            )?,
-        );
+        let kept =
+            permguard_host::authz::held::files::FileHeld::open(volume).with_context(|| {
+                format!(
+                    "opening the Authority Plane's keys and lists on {}",
+                    volume.host().path().display()
+                )
+            })?;
+        let trust = Arc::new(AuthorityTrust::kept_in(
+            Arc::new(kept),
+            issuer,
+            audience,
+            time.now_secs(),
+        ));
         tracing::info!(
             event.name = "authz.opened",
             component = "server",
@@ -1589,7 +1603,16 @@ impl Composition {
         // keeps: a clock set back across a restart is in anomaly from here on.
         let time = Arc::new(
             permguard_host::time::TimeGuard::open(
-                &volume,
+                Arc::new(
+                    permguard_host::time::files::FileClockMark::open(&volume).with_context(
+                        || {
+                            format!(
+                                "opening the clock's high-water mark on {}",
+                                volume.host().path().display()
+                            )
+                        },
+                    )?,
+                ),
                 Arc::new(permguard_host::time::SystemClock),
                 Arc::new(permguard_host::time::SystemMonotonic::new()),
                 config.time_max_clock_skew(),
@@ -1755,11 +1778,16 @@ impl Composition {
         // Before the first record is written, not after: the damage a silent key change does is
         // done by the records made under it.
         // Per Host (BUG-0079): a reset's new identity derives new keys under the same labels.
-        let host_scope = permguard_host::identity::witness::HostScope::of(
-            config.working_dir(),
+        let host_scope = permguard_host::identity::witness::HostScope::new(
             &host_identity.host_id(),
+            host_identity
+                .was_reset()
+                .context("reading the identities a reset retired")?,
         );
-        crate::witness::check_for(config, pseudonymizer.as_deref(), &host_scope)?;
+        let versions = permguard_host::identity::witness::files::FileVersionWitnesses::new(
+            config.working_dir(),
+        );
+        crate::witness::check_for(&versions, pseudonymizer.as_deref(), &host_scope)?;
 
         let destination = self.audit_for(config)?;
         // The audit engine (WP-3.5): every record of the process in a trail per (class,
@@ -2107,7 +2135,7 @@ impl Composition {
         // The same silent-key-change guard the server just passed, once per realm against its own
         // witness — before any realm record is written, for the same reason.
         for realm in realms.all() {
-            crate::witness::check_realm(config, realm, None)?;
+            crate::witness::check_realm(&versions, realm, None)?;
         }
 
         record_build(&self.identity, config, self.server.name());
@@ -2184,7 +2212,10 @@ impl Composition {
             bootstrap,
         } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
         context = context.with_authenticator(authenticator);
-        let bootstrap_principal = bootstrap.bootstrap().map(|held| held.principal);
+        let bootstrap_principal = bootstrap
+            .bootstrap()
+            .context("reading the bootstrap commitment")?
+            .map(|held| held.principal);
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
         // journal on the volume, the grant store, every ring this process composes and the
@@ -2239,15 +2270,19 @@ impl Composition {
                 "the replay journal is open"
             );
             // The peers a session accepts: the configured pins and the memberships' (WP-4.1).
-            let peers = Arc::new(
-                permguard_host::session::peers::Peers::open(&volume, config.host_peers())
-                    .with_context(|| {
-                        format!(
-                            "opening the pinned peers on {}",
-                            volume.host().path().display()
-                        )
-                    })?,
-            );
+            let peers = Arc::new(permguard_host::session::peers::Peers::new(
+                Arc::new(
+                    permguard_host::session::peers::files::FileSeen::open(&volume).with_context(
+                        || {
+                            format!(
+                                "opening the pinned peers on {}",
+                                volume.host().path().display()
+                            )
+                        },
+                    )?,
+                ),
+                config.host_peers(),
+            ));
             peers.with_source(
                 Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>
             );

@@ -196,7 +196,10 @@ mod tests {
         };
         let context = Context {
             identity: Arc::clone(api.identity.as_ref().expect("an identity")),
-            peers: Arc::new(Peers::open(&volume, &[]).expect("the peers")),
+            peers: Arc::new(Peers::new(
+                Arc::new(crate::session::peers::files::FileSeen::open(&volume).expect("the peers")),
+                &[],
+            )),
             time: Arc::clone(&api.time),
             declared_assurance: permguard_core::assurance::AssuranceProfile::Development,
             audit: None,

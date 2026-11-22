@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Principal;
+use permguard_host::authz::store::files::FileBootstrap;
 use permguard_host::authz::{AuthzError, BootstrapStore};
 use permguard_host::keys::custody::Custodian;
 use permguard_host::keys::ring::HOST_IDENTITY;
@@ -83,7 +84,7 @@ fn grants_bootstrap(
     let volume = volume_of(globals)?;
     let (store, mutations) = open_mutable(&volume, server_config, trace)?;
     let (commitment, written) =
-        grants::bootstrap(&mutations, &store, fingerprint, now).map_err(refused)?;
+        grants::bootstrap(&mutations, store.as_ref(), fingerprint, now).map_err(refused)?;
     render(
         &BootstrapReport {
             principal: commitment.principal.to_string(),
@@ -108,12 +109,13 @@ fn open_mutable(
     volume: &Path,
     server_config: Option<&Path>,
     trace: &Trace,
-) -> Result<(std::sync::Arc<BootstrapStore>, Mutations), Failure> {
+) -> Result<(std::sync::Arc<dyn BootstrapStore>, Mutations), Failure> {
     let held = claim(volume, trace)?;
-    let store = BootstrapStore::open(&held).map_err(failure)?;
+    let store: std::sync::Arc<dyn BootstrapStore> =
+        std::sync::Arc::new(FileBootstrap::open(&held).map_err(failure)?);
     let mutations = offline_engine(&held, server_config, trace)?;
     let recovered = mutations
-        .recover(&grants::Grants(&store))
+        .recover(&grants::Grants(store.as_ref()))
         .map_err(|error| Failure::unavailable(format!("recovering mutations: {error}")))?;
     if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
         trace.say(format!(
@@ -493,7 +495,7 @@ fn refused(error: MutationError<AuthzError>) -> Failure {
 fn failure(error: AuthzError) -> Failure {
     match error {
         AuthzError::Invalid(_) => Failure::usage(error),
-        AuthzError::Storage(_) => Failure::unavailable(error),
+        AuthzError::Record(_) | AuthzError::Unavailable(_) => Failure::unavailable(error),
     }
 }
 

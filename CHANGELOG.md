@@ -26,6 +26,13 @@ is cut.
 - **An audit trail that never held a record is no longer reported lost.**
   A trail was named in `host/audit/index` before its directory existed. A Host that stopped between the two, or that could not create the directory and was restarted, found at its next start a trail the index named and the volume lacked: it recorded `host.audit.trail_lost`, and `audit verify` failed on that trail for good.
   The directory is now created first, named second, and written to third; a start that stops midway leaves nothing to report.
+- **An identity reset that stopped midway can be completed.**
+  A reset that stopped after it had marked itself under way left its operation open in the mutation journal, and the journal takes no other operation while one is open: `permguard host identity reset run` answered that the journal was unavailable, and the Host, whose identity does not open while a reset is under way, did not start again.
+  The reset run again now resolves the stopped operation first, from what the volume holds of it, and then completes.
+- **A bootstrap commitment that does not read refuses the start.**
+  `host/authz/bootstrap.cbor` damaged at rest was read as no commitment: the Host started with no recovery principal, and said nothing. The start, and `permguard host grants bootstrap`, now refuse naming the file.
+- **Two log fields changed.**
+  `host.clock_mark_ahead` carries `remedy`, what to do when the mark itself is wrong, with the file's path in it, in place of `path`. `host.identity_keys_unnamed` carries `epochs`, the epochs no succession names, in place of the file names in `keys`.
 - **A plan made before an identity reset runs nothing after it.**
   A receipt names the Host identity it was made for. A run step now refuses, as a plan that is not held, a receipt that names another identity than the Host's: the plan of a reset whose consumption was lost can no longer reset the identity provisioned in its place.
 - **A Host whose recovery cannot finish answers not ready.**

@@ -7,6 +7,8 @@ use permguard_core::assurance::AssuranceProfile;
 
 use super::*;
 use crate::keys::FileKeyProvider;
+use crate::storage::volume::Volume;
+use crate::storage::{Dir, write};
 
 const NOW: u64 = 1_800_000_000;
 
@@ -789,4 +791,94 @@ fn a_swapped_first_public_key_is_refused() {
     let refused = Identity::open(&volume, provider(&volume)).expect_err("not INIT's key");
     assert!(refused.to_string().contains("INIT pins"), "{refused}");
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// The file backend passes the contract's suite, each case on a volume of its own and what a
+/// reset writes inside an operation the engine built.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    use crate::operations::journal::Initiator;
+    use crate::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let engine_volume =
+        Volume::claim(&scratch("suite-engine"), AssuranceProfile::Development).expect("a volume");
+    let mutations = Mutations::open_offline(&engine_volume, "suite").expect("the engine opens");
+    let next = std::sync::atomic::AtomicU64::new(1);
+    // The volumes stay claimed while their stores are used.
+    let volumes = std::sync::Mutex::new(Vec::new());
+    suite::run(
+        &|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let volume = Volume::claim(
+                &scratch(&format!("suite-{case}")),
+                AssuranceProfile::Development,
+            )
+            .expect("a volume");
+            let store = Arc::new(files::FileIdentity::open(&volume).expect("the store opens"));
+            volumes.lock().expect("lock").push(volume);
+            store
+        },
+        &|work| {
+            let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            mutations
+                .run(
+                    Begin {
+                        domain: DOMAIN,
+                        operation: reset::RESET_RUN,
+                        action: reset::AUDIT_RESET,
+                        initiator: Initiator::System("suite".to_owned()),
+                        request: None,
+                        target: Some(format!("suite-{at}")),
+                    },
+                    |applying| {
+                        work(applying);
+                        Ok::<_, Failure<String>>(Applied {
+                            revision: at,
+                            target: None,
+                            value: (),
+                        })
+                    },
+                )
+                .expect("the operation ran");
+        },
+    );
+}
+
+/// What only the file backend can prove: a private key that rests beside the identity is told
+/// from a public one, and a file named for an epoch is key material of it whatever its suffix.
+#[test]
+fn the_file_backend_tells_the_keys_it_holds_by_their_files() {
+    use store::{HeldEpoch, IdentityStore as _};
+
+    let volume =
+        Volume::claim(&scratch("held-epochs"), AssuranceProfile::Development).expect("a volume");
+    let store = files::FileIdentity::open(&volume).expect("the store opens");
+    let (_, keys) = directories(&volume).expect("the directories");
+    for name in ["1.key", "1.pub", "2.key", "3.ref", "notes"] {
+        write::replace_bytes(&keys, name, b"x").expect("written");
+    }
+    assert_eq!(
+        store.held_epochs().expect("reads"),
+        vec![
+            HeldEpoch {
+                epoch: 1,
+                public: true,
+                private: true
+            },
+            HeldEpoch {
+                epoch: 2,
+                public: false,
+                private: true
+            },
+            HeldEpoch {
+                epoch: 3,
+                public: false,
+                private: false
+            },
+        ]
+    );
+    // Clearing removes every file of the keys, named for an epoch or not.
+    store.clear().expect("cleared");
+    assert!(keys.names().expect("names").is_empty());
 }

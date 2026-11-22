@@ -219,7 +219,13 @@ impl Host {
         let pins: Vec<PinnedPeer> = peers.iter().map(|identity| pin(identity)).collect();
         Context {
             identity: Arc::clone(&self.identity),
-            peers: Arc::new(Peers::open(&self.volume, &pins).expect("the peers")),
+            peers: Arc::new(Peers::new(
+                Arc::new(
+                    permguard_host::session::peers::files::FileSeen::open(&self.volume)
+                        .expect("the peers"),
+                ),
+                &pins,
+            )),
             time: Arc::clone(&self.time),
             declared_assurance: AssuranceProfile::Development,
             audit: None,
@@ -819,7 +825,12 @@ async fn side_with(
                 .with(permguard_decisions::stream::STREAM, Arc::clone(producer)),
         )
     });
-    let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
+    let peers = Arc::new(Peers::new(
+        Arc::new(
+            permguard_host::session::peers::files::FileSeen::open(&host.volume).expect("the peers"),
+        ),
+        &[],
+    ));
     peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
     let context = Context {
         identity: Arc::clone(&host.identity),

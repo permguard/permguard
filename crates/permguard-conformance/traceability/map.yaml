@@ -59,7 +59,7 @@ sections:
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
       - crates/permguard-host/src/authz/mod.rs::closed_refuses_everybody_and_public_admits_anonymous_and_authenticated_alike
       - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
-      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
       - crates/permguard-core/src/authz.rs::a_token_permits_only_what_its_scopes_name
   "1-architecture/1-architecture-server.md#authorization-store":
     paths:
@@ -68,7 +68,7 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
       - crates/permguard-host/src/authz/store.rs
     tests:
-      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
       - crates/permguard-authority-plane/src/accounts/files.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
       - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/tests/crash_points.rs::every_crash_point_of_a_mutation_recovers_to_one_outcome
@@ -378,6 +378,62 @@ sections:
       - crates/permguard-server/tests/app.rs::test_a_witness_that_does_not_match_the_volume_refuses_the_start
       - crates/permguard-host/src/membership/task/tests.rs::a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new_boot_id
       - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
+  "1-architecture/2-architecture-server-host-identity.md#stores":
+    paths:
+      - crates/permguard-host/src/authz/store.rs
+      - crates/permguard-host/src/authz/store/files.rs
+      - crates/permguard-host/src/authz/store/suite.rs
+      - crates/permguard-host/src/operations/grants.rs
+      - crates/permguard-host/src/secrets/mod.rs
+      - crates/permguard-host/src/secrets/files.rs
+      - crates/permguard-host/src/secrets/suite.rs
+      - crates/permguard-host/src/identity/witness.rs
+      - crates/permguard-host/src/identity/witness/files.rs
+      - crates/permguard-host/src/identity/witness/suite.rs
+      - crates/permguard-runtime/src/witness.rs
+    tests:
+      - crates/permguard-host/src/authz/store/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
+      - crates/permguard-host/tests/crash_points.rs::a_bootstrap_killed_midway_is_committed_or_absent
+      - crates/permguard-host/src/secrets/tests.rs::the_file_backends_keep_their_contracts
+      - crates/permguard-host/src/secrets/tests.rs::a_delivered_key_is_stored_once_witnessed_and_read_back
+      - crates/permguard-host/src/identity/witness.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/identity/witness.rs::the_file_backend_keeps_its_entries_across_a_restart
+  "1-architecture/2-architecture-server-host-identity.md#identity-store":
+    paths:
+      - crates/permguard-host/src/identity/store.rs
+      - crates/permguard-host/src/identity/files.rs
+      - crates/permguard-host/src/identity/suite.rs
+      - crates/permguard-host/src/identity/mod.rs
+      - crates/permguard-host/src/identity/reset.rs
+    tests:
+      - crates/permguard-host/src/identity/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/identity/tests.rs::the_file_backend_tells_the_keys_it_holds_by_their_files
+      - crates/permguard-host/tests/crash_points.rs::a_rotation_killed_between_its_writes_is_at_one_epoch_or_the_next
+      - crates/permguard-host/tests/crash_points.rs::a_reset_killed_between_its_writes_keeps_the_identity_or_completes_when_run_again
+      - crates/permguard-host/src/identity/reset/tests.rs::an_interrupted_reset_refuses_the_open_and_completes_when_run_again
+  "1-architecture/2-architecture-server-host-identity.md#trust-held":
+    paths:
+      - crates/permguard-host/src/session/peers.rs
+      - crates/permguard-host/src/session/peers/files.rs
+      - crates/permguard-host/src/session/peers/suite.rs
+      - crates/permguard-host/src/authz/held.rs
+      - crates/permguard-host/src/authz/held/files.rs
+      - crates/permguard-host/src/authz/held/suite.rs
+      - crates/permguard-host/src/authz/authority.rs
+      - crates/permguard-host/src/authz/status_lists.rs
+      - crates/permguard-host/src/time.rs
+      - crates/permguard-host/src/time/files.rs
+      - crates/permguard-host/src/time/suite.rs
+    tests:
+      - crates/permguard-host/src/session/peers/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/session/peers/tests.rs::a_seen_file_naming_another_host_is_refused
+      - crates/permguard-host/src/authz/authority.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/authz/authority.rs::a_list_the_store_keeps_newer_is_not_replaced
+      - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
+      - crates/permguard-host/src/time.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/time.rs::a_damaged_mark_fails_the_start
+      - crates/permguard-host/src/time.rs::a_restart_under_a_clock_set_back_opens_the_anomaly_from_the_volume
   "1-architecture/3-architecture-server-host-membership.md#model":
     paths:
       - crates/permguard-host/src/membership/record.rs

@@ -24,7 +24,7 @@ pub const BOOTSTRAP: &str = "grants.bootstrap";
 pub const AUDIT_COMMITTED: &str = "host.bootstrap.committed";
 
 /// The bootstrap store, as recovery sees it: a commitment written is the operation applied.
-pub struct Grants<'a>(pub &'a BootstrapStore);
+pub struct Grants<'a>(pub &'a dyn BootstrapStore);
 
 impl Domain for Grants<'_> {
     fn name(&self) -> &'static str {
@@ -36,7 +36,9 @@ impl Domain for Grants<'_> {
         _operation_id: &OperationId,
         _target: Option<&str>,
     ) -> Result<Option<Observed>, String> {
-        Ok(self.0.bootstrap().map(|held| Observed {
+        // A commitment that does not read is not one that is not there: it stops the recovery.
+        let held = self.0.bootstrap().map_err(|error| error.to_string())?;
+        Ok(held.map(|held| Observed {
             revision: 1,
             target: Some(held.principal.as_str().to_owned()),
         }))
@@ -47,7 +49,7 @@ impl Domain for Grants<'_> {
 /// which leaves the intent for recovery; anything else is a refusal before any write.
 pub fn failure<E>(error: AuthzError, render: impl FnOnce(AuthzError) -> E) -> Failure<E> {
     match error {
-        AuthzError::Storage(_) => Failure::Indeterminate(render(error)),
+        AuthzError::Unavailable(_) => Failure::Indeterminate(render(error)),
         other => Failure::Refused(render(other)),
     }
 }
@@ -58,11 +60,11 @@ pub fn failure<E>(error: AuthzError, render: impl FnOnce(AuthzError) -> E) -> Fa
 /// when one is held already, for this certificate or another: a commitment is never replaced.
 pub fn bootstrap_development_operator(
     mutations: &Mutations,
-    store: &BootstrapStore,
+    store: &dyn BootstrapStore,
     certificate_pem: &[u8],
     now: u64,
 ) -> Result<Option<Bootstrap>, MutationError<AuthzError>> {
-    if store.bootstrap().is_some() {
+    if store.bootstrap().map_err(MutationError::Refused)?.is_some() {
         return Ok(None);
     }
     let fingerprint = crate::authz::store::certificate_fingerprint(certificate_pem)
@@ -74,13 +76,13 @@ pub fn bootstrap_development_operator(
 /// certificate is answered without an operation; one for another certificate is refused.
 pub fn bootstrap(
     mutations: &Mutations,
-    store: &BootstrapStore,
+    store: &dyn BootstrapStore,
     fingerprint: &str,
     now: u64,
 ) -> Result<(Bootstrap, bool), MutationError<AuthzError>> {
     let wanted =
         crate::authz::store::bootstrap_principal(fingerprint).map_err(MutationError::Refused)?;
-    if let Some(held) = store.bootstrap() {
+    if let Some(held) = store.bootstrap().map_err(MutationError::Refused)? {
         if held.principal == wanted {
             return Ok((held, false));
         }
@@ -160,7 +162,7 @@ mod tests {
         )
         .expect("claimed");
         let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
-        let store = BootstrapStore::open(&volume).expect("the store");
+        let store = crate::authz::store::files::FileBootstrap::open(&volume).expect("the store");
 
         let committed =
             bootstrap_development_operator(&mutations, &store, &pem_of(b"operator"), 1_800_000_000)
@@ -175,7 +177,7 @@ mod tests {
             format!("cert:sha256:{expected}")
         );
         assert_eq!(
-            store.bootstrap().map(|held| held.principal),
+            store.bootstrap().expect("reads").map(|held| held.principal),
             Some(committed.principal.clone())
         );
         assert_eq!(

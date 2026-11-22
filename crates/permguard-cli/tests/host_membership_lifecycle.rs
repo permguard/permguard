@@ -281,7 +281,13 @@ fn launch_host(
                     .expect("the task handler registers"),
                 ..permguard_host::membership::task::Tasks::default()
             });
-            let peers = Arc::new(Peers::open(&volume, &[]).expect("the peers open"));
+            let peers = Arc::new(Peers::new(
+                Arc::new(
+                    permguard_host::session::peers::files::FileSeen::open(&volume)
+                        .expect("the peers open"),
+                ),
+                &[],
+            ));
             peers.with_source(
                 Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>
             );

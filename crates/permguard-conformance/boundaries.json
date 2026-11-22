@@ -1483,8 +1483,8 @@
       "reason": "the assurance profile an operator states in `assurance.profile` (WP-2.8): operator configuration, read once at start"
     },
     {
-      "source": "crates/permguard-host/src/authz/store.rs",
-      "item": "BootstrapStore::open",
+      "source": "crates/permguard-host/src/authz/store/files.rs",
+      "item": "FileBootstrap::open",
       "reason": "the recovery principal's commitment on the Host's volume, one file this process or the offline bootstrap wrote under the volume's lock"
     },
     {
@@ -1500,7 +1500,7 @@
     {
       "source": "crates/permguard-host/src/time.rs",
       "item": "TimeGuard::open",
-      "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
+      "reason": "the clock's high-water mark as its store answers it (WP-2.12): a wall time the store read and checked, compared and never parsed here"
     },
     {
       "source": "crates/permguard-host/src/storage/migrate.rs",
@@ -1568,7 +1568,7 @@
       "reason": "`host/identity/BOOT` on the Host's own volume (WP-2.2): two labels this process wrote"
     },
     {
-      "source": "crates/permguard-host/src/identity/mod.rs",
+      "source": "crates/permguard-host/src/identity/files.rs",
       "item": "Identity::open",
       "reason": "the identity directory on the Host's own volume (WP-2.2): INIT, the document, the succession records and the keys, each verified against INIT and the chain; anything that does not verify refuses the open"
     },
@@ -1608,8 +1608,8 @@
       "reason": "`host/peers/<host_id>.cbor` on the Host's own volume (WP-2.3): four labels this process wrote; one naming another Host refuses the peer"
     },
     {
-      "source": "crates/permguard-host/src/session/peers.rs",
-      "item": "Peers::open",
+      "source": "crates/permguard-host/src/session/peers/files.rs",
+      "item": "FileSeen::open",
       "reason": "the pinned peers' directory on the Host's own volume (WP-2.3); each seen file is read through `Seen::decode`"
     },
     {
@@ -1618,12 +1618,12 @@
       "reason": "a configuration value the operator sets: `vN`, refused in any other form (WP-3.3)"
     },
     {
-      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "source": "crates/permguard-host/src/secrets/files.rs",
       "item": "Witnesses::open",
       "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"
     },
     {
-      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "source": "crates/permguard-host/src/secrets/files.rs",
       "item": "ZoneKeys::open",
       "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
     },
@@ -1711,6 +1711,31 @@
       "source": "crates/permguard-core/src/planes/discovery.rs",
       "item": "PlaneId::parse",
       "reason": "a Plane module's id, from the closed set this build registers; never received"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/files.rs",
+      "item": "FileIdentity::open",
+      "reason": "the identity directory on the Host's own volume (WP-2.2), opened as a store of bytes: what a process that stopped left of a write or a deletion is completed through the storage library, and no record is decoded here; `Identity` verifies each against the provisioning record and the chain"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/files.rs",
+      "item": "FileWitnesses::open",
+      "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/files.rs",
+      "item": "FileDeliveredKeys::open",
+      "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
+    },
+    {
+      "source": "crates/permguard-host/src/time/files.rs",
+      "item": "FileClockMark::open",
+      "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/held/files.rs",
+      "item": "FileHeld::open",
+      "reason": "`host/authority/` on the Host's own volume: the key set and the status lists this process kept, signed as they arrived; nothing is decoded at open, and every list is verified under the held key set before it is held"
     }
   ]
 }

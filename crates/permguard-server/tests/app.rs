@@ -1065,7 +1065,9 @@ async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() 
         )
         .expect("claimed");
         TimeGuard::open(
-            &volume,
+            Arc::new(
+                permguard_host::time::files::FileClockMark::open(&volume).expect("the mark opens"),
+            ),
             Arc::new(permguard_core::time::ManualClock::at(
                 SystemClock.now() + 3_600,
             )),

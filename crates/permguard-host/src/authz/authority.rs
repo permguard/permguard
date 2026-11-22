@@ -4,47 +4,27 @@
 //! What a Host trusts access tokens from: the Authority Plane's key set and status lists, as it
 //! holds them (`2-security/8` Keys and lists on a Plane).
 //!
-//! ```text
-//! host/authority/
-//! ├── keys.json        the last good key set, with the issuer it was taken for
-//! └── lists/           every status list held, a signed statuslist+jwt each
-//! ```
-//!
 //! Two feeds fill it, through the same checks: a Host beside the Authority Plane, in an
 //! all-in-one or on its own Server, is handed the key set and every list in-process; any other
 //! Host fetches them from `authority.url`. A list is verified under the held key set and the
-//! issuer before it replaces the one held, whatever brought it. What is held is kept on the volume,
-//! so a restart decides at once, and an Authority Plane away keeps a Plane deciding until a list's
+//! issuer before it replaces the one held, whatever brought it. What is held is kept in the
+//! [`HeldStore`], so a restart decides at once, and an Authority Plane away keeps a Plane deciding until a list's
 //! `exp`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, PoisonError, RwLock};
-
-use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use super::access_tokens::{Anchor, StatusLists, Trust};
+use super::held::{HeldStore, KeptKeys};
 use super::status_lists::{HeldLists, ListRefusal, PinnedKey, Standing, keys_of, verify_list};
-use crate::storage::dir::Dir;
-use crate::storage::volume::Volume;
-use crate::storage::{StorageError, write};
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "authority";
-const KEYS: &str = "keys.json";
-const LISTS: &str = "lists";
+pub use super::held::DIRECTORY;
 /// The audience every token names unless `authority.audience` says otherwise.
 pub const DEFAULT_AUDIENCE: &str = "permguard";
 /// The most keys a held set takes: a rotation's current and retiring keys, with room to spare.
 pub const MAX_KEYS: usize = 16;
 /// The capability a Host reports degraded while a held list has expired.
 pub const CAPABILITY: &str = "token-status";
-
-/// The key set as it is kept: the issuer it was taken for and its JWKs.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-struct KeptKeys {
-    issuer: String,
-    keys: Vec<serde_json::Value>,
-}
 
 /// The Authority Plane's key set and lists, as a Host holds them.
 pub struct AuthorityTrust {
@@ -54,7 +34,7 @@ pub struct AuthorityTrust {
     audience: String,
     keys: RwLock<Vec<PinnedKey>>,
     lists: HeldLists,
-    dir: Option<Dir>,
+    store: Option<Arc<dyn HeldStore>>,
     /// A token named a key the held set lacks: the next refresh fetches the key set.
     keys_wanted: AtomicBool,
     /// When the key set was last asked for after an unknown key, to bound how often.
@@ -94,7 +74,7 @@ impl AuthorityTrust {
             audience: audience.to_owned(),
             keys: RwLock::default(),
             lists: HeldLists::in_memory(),
-            dir: None,
+            store: None,
             keys_wanted: AtomicBool::new(false),
             asked: Mutex::default(),
             lists_wanted: AtomicBool::new(false),
@@ -102,32 +82,36 @@ impl AuthorityTrust {
         }
     }
 
-    /// A trust kept in `host/authority/` of `volume`, what it held restored: the key set kept for
-    /// the same issuer, then every list that still verifies under it and has not expired.
+    /// A trust kept in `store`, what it held restored: the key set kept for the same issuer,
+    /// then every list that still verifies under it and has not expired. What the store cannot
+    /// read is not held: it is fetched again, and until then no token verifies.
     pub fn kept_in(
-        volume: &Volume,
+        store: Arc<dyn HeldStore>,
         issuer: Option<&str>,
         audience: &str,
         now: u64,
-    ) -> Result<Self, StorageError> {
-        let dir = volume.host().subdir(DIRECTORY, true)?;
-        let lists_dir = dir.subdir(LISTS, true)?;
+    ) -> Self {
         let trust = Self {
             issuer: RwLock::new(issuer.map(normalized)),
             audience: audience.to_owned(),
             keys: RwLock::default(),
-            lists: HeldLists::kept_in(lists_dir),
-            dir: Some(dir),
+            lists: HeldLists::kept_in(Arc::clone(&store)),
+            store: Some(Arc::clone(&store)),
             keys_wanted: AtomicBool::new(false),
             asked: Mutex::default(),
             lists_wanted: AtomicBool::new(false),
             lists_asked: Mutex::default(),
         };
-        let kept = trust
-            .dir
-            .as_ref()
-            .and_then(|dir| dir.read(KEYS).ok().flatten())
-            .and_then(|bytes| serde_json::from_slice::<KeptKeys>(&bytes).ok());
+        let kept = store.keys().unwrap_or_else(|error| {
+            tracing::warn!(
+                event.name = "authz.authority_keys_unrestored",
+                component = "host",
+                error = %error,
+                "the Authority Plane's key set kept could not be read: none is held until it is \
+                 fetched"
+            );
+            None
+        });
         if let Some(kept) = kept {
             // A key set kept for another issuer is not this one's: the first fetch replaces it.
             let configured = trust.issuer();
@@ -144,7 +128,7 @@ impl AuthorityTrust {
                 .lists
                 .restore(|token| verify_list(token, &keys, &issuer, None, now).ok());
         }
-        Ok(trust)
+        trust
     }
 
     /// The issuer tokens are verified for, once known.
@@ -203,21 +187,18 @@ impl AuthorityTrust {
         if keys.is_empty() {
             return Err("the key set holds no key this build verifies".to_owned());
         }
-        if let Some(dir) = &self.dir {
-            let kept = serde_json::to_vec(&KeptKeys {
+        if let Some(store) = &self.store
+            && let Err(error) = store.keep_keys(&KeptKeys {
                 issuer,
                 keys: documents,
             })
-            .map_err(|error| error.to_string())?;
-            if let Err(error) = write::replace_bytes(dir, KEYS, &kept) {
-                tracing::warn!(
-                    event.name = "authz.authority_keys_unkept",
-                    component = "host",
-                    error = %error,
-                    "the Authority Plane's key set could not be kept on the volume: it is held \
-                     in memory only"
-                );
-            }
+        {
+            tracing::warn!(
+                event.name = "authz.authority_keys_unkept",
+                component = "host",
+                error = %error,
+                "the Authority Plane's key set could not be kept: it is held in memory only"
+            );
         }
         let count = keys.len();
         *self.keys.write().unwrap_or_else(PoisonError::into_inner) = keys;
@@ -378,6 +359,8 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::authz::held::files::FileHeld;
+    use crate::storage::volume::Volume;
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use permguard_objects::status_list::{ENTRIES, StatusList};
@@ -419,6 +402,67 @@ mod tests {
         format!("{header}.{claims}.{signature}")
     }
 
+    /// What `volume` holds of the Authority Plane, opened as a start opens it.
+    fn store_of(volume: &Volume) -> Arc<dyn HeldStore> {
+        Arc::new(FileHeld::open(volume).expect("the held store opens"))
+    }
+
+    /// The file backend passes the contract's suite, each case on a volume of its own.
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        let volumes = Mutex::new(Vec::new());
+        crate::authz::held::suite::run(&|| {
+            let case = made.fetch_add(1, Ordering::Relaxed);
+            let volume = Volume::claim(
+                &scratch(&format!("suite-{case}")),
+                permguard_core::assurance::AssuranceProfile::Development,
+            )
+            .expect("claimed");
+            let store = Arc::new(FileHeld::open(&volume).expect("the held store opens"));
+            volumes.lock().expect("lock").push(volume);
+            store
+        });
+    }
+
+    /// A list another instance kept newer is not replaced by the one this Host verified: the
+    /// store refuses it, and what the Host holds in memory stays.
+    #[test]
+    fn a_list_the_store_keeps_newer_is_not_replaced() {
+        let root = scratch("newer-kept");
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let pair = pair();
+        let store = store_of(&volume);
+        let trust =
+            AuthorityTrust::kept_in(Arc::clone(&store), Some(ISSUER), DEFAULT_AUDIENCE, NOW);
+        trust.accept_keys(&jwks(&pair)).expect("held");
+        // Another instance of this Host fetched a later list and kept it.
+        let later = crate::authz::held::Named {
+            issuer: ISSUER.to_owned(),
+            uri: URI.to_owned(),
+            iat: NOW + 50,
+        };
+        assert!(
+            store
+                .keep_list(&later, &list_token(&pair, NOW + 50, &[7]))
+                .expect("kept")
+        );
+        assert!(matches!(
+            trust.accept_list(&list_token(&pair, NOW + 5, &[]), NOW),
+            Err(ListRefusal::Rollback { .. })
+        ));
+        // A start holds the later one.
+        let restarted = AuthorityTrust::kept_in(store, Some(ISSUER), DEFAULT_AUDIENCE, NOW + 60);
+        assert_eq!(
+            restarted.lists().list(ISSUER, URI).expect("restored").iat,
+            NOW + 50
+        );
+    }
+
     fn scratch(tag: &str) -> std::path::PathBuf {
         let root =
             std::env::temp_dir().join(format!("pg-authority-trust-{tag}-{}", std::process::id()));
@@ -436,9 +480,12 @@ mod tests {
         )
         .expect("claimed");
         let pair = pair();
-        let trust =
-            AuthorityTrust::kept_in(&volume, Some(&format!("{ISSUER}/")), DEFAULT_AUDIENCE, NOW)
-                .expect("opens");
+        let trust = AuthorityTrust::kept_in(
+            store_of(&volume),
+            Some(&format!("{ISSUER}/")),
+            DEFAULT_AUDIENCE,
+            NOW,
+        );
         assert_eq!(trust.anchor(), None, "no key set yet");
         // A list before its key set does not verify.
         assert!(
@@ -475,20 +522,19 @@ mod tests {
             Err(ListRefusal::Signature(_))
         ));
         drop(trust);
-        let restored = AuthorityTrust::kept_in(&volume, Some(ISSUER), DEFAULT_AUDIENCE, NOW + 10)
-            .expect("reopens");
+        let restored =
+            AuthorityTrust::kept_in(store_of(&volume), Some(ISSUER), DEFAULT_AUDIENCE, NOW + 10);
         assert_eq!(restored.keys().len(), 1);
         let held = restored.lists().list(ISSUER, URI).expect("restored");
         assert_eq!(held.iat, NOW + 5);
         assert_eq!(held.list.get(4).expect("in range"), 1);
         // Another issuer configured: what was kept is not its.
         let elsewhere = AuthorityTrust::kept_in(
-            &volume,
+            store_of(&volume),
             Some("https://other.example"),
             DEFAULT_AUDIENCE,
             NOW + 10,
-        )
-        .expect("reopens");
+        );
         assert_eq!(elsewhere.anchor(), None);
     }
 

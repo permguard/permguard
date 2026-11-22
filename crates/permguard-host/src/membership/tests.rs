@@ -1406,7 +1406,12 @@ pub(crate) mod protocol {
                 )
                 .expect("the engine opens"),
             );
-            let peers = Arc::new(Peers::open(&host._volume, &[]).expect("the peers"));
+            let peers = Arc::new(Peers::new(
+                Arc::new(
+                    crate::session::peers::files::FileSeen::open(&host._volume).expect("the peers"),
+                ),
+                &[],
+            ));
             peers.with_source(Arc::clone(&host.store) as Arc<dyn crate::session::peers::PinSource>);
             let registry = Arc::new(crate::keys::registry::Registry::new(
                 Some(Arc::clone(&host.identity)),

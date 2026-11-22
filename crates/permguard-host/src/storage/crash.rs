@@ -80,6 +80,13 @@ pub const POINTS: &[&str] = &[
     "audit.trail_created",
     "holds.file_written",
     "holds.entry_removed",
+    "identity.public_published",
+    "identity.succession_added",
+    "identity.document_replaced",
+    "identity.init_published",
+    "identity.retired",
+    "identity.reset_marked",
+    "identity.init_removed",
 ];
 
 /// The crash point `name`: aborts here when this process was told to, at the pass it was told.
