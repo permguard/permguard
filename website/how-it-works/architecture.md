@@ -19,7 +19,7 @@ A Permguard Server is one running program: one [Host](./glossary#host) and the p
 The Host owns what every part shares: identity, keys, audit and membership.
 A plane owns one job: the [Authority Plane](./glossary#authority-plane) admits callers, the [Control Plane](./glossary#control-plane) publishes policy, the [Data Plane](./glossary#data-plane) decides.
 
-<div class="pgx-system-map" role="img" aria-label="One Permguard Server contains one Host, on port 5443, and the planes it composes: the Authority Plane on port 8443, the Control Plane on 6443 and the Data Plane on 7443. The Trust Plane is next on the roadmap and not served today.">
+<div class="pgx-system-map" role="img" aria-label="One Permguard Server contains one Host, on port 5443, and the planes it composes: the Authority Plane on port 8443, the Control Plane on 6443 and the Data Plane on 7443.">
   <div class="pgx-system-map__frame">
     <div class="pgx-system-map__label"><strong>Permguard Server</strong><span>one Host · the planes you deploy</span></div>
     <div class="pgx-system-map__host"><small>HOST · :5443</small><strong>Identity · Keys · Audit · Membership</strong></div>
@@ -29,7 +29,6 @@ A plane owns one job: the [Authority Plane](./glossary#authority-plane) admits c
       <article><small>DATA PLANE · :7443</small><strong>Decide</strong><span>beside the workload</span></article>
       <article><small>AUTHORITY PLANE · :8443</small><strong>Admit</strong><span>identities · access tokens</span></article>
     </div>
-    <div class="pgx-system-map__next"><small>TRUST PLANE · NEXT</small><span>authority continuity with PIC-X · not served today</span></div>
   </div>
 </div>
 
@@ -41,7 +40,6 @@ Each part keeps its own standard port.
 | Control Plane   | `6443` | policies, decision logs, events                 |
 | Data Plane      | `7443` | decisions, beside the workload                  |
 | Authority Plane | `8443` | identities, access keys, tokens                 |
-| Trust Plane     |      — | next on the roadmap; not served today           |
 
 Run every plane in one process, all-in-one, or split them so that each process runs one Host with one plane.
 The ports stay the same either way.
@@ -85,7 +83,7 @@ To walk the whole chain from one address, run `permguard discover http://127.0.0
   <a href="../authority-plane"><strong>Authority Plane</strong><span>who may call Permguard itself</span></a>
   <a href="../control-plane"><strong>Control Plane</strong><span>zones · ledgers · signed policy</span></a>
   <a href="../data-plane"><strong>Data Plane</strong><span>decides beside the workload</span></a>
-  <a href="../trust-plane"><strong>Trust Plane</strong><span>next on the roadmap · PIC-X</span></a>
+  <a href="./glossary"><strong>Glossary</strong><span>every term, in one line</span></a>
 </div>
 
 <nav class="pgx-pager" aria-label="Documentation pages">

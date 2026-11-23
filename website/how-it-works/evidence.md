@@ -63,7 +63,7 @@ In the shipped configurations the answer leaves only once its record is durable.
 </div>
 
 - **What it proves:** what was decided, in which order, under which policy version, and which key signed it.
-- **What it does not prove:** that the policy was right, or that authority may carry on into the next step; traceability is not authority continuity, which belongs to the [Trust Plane](../trust-plane).
+- **What it does not prove:** that the policy was right: a record shows what was decided, not whether the rule deserved to exist.
 
 ## In practice
 
@@ -98,7 +98,7 @@ With the keys, the check does not depend on trusting the server that served the 
 <div class="pgx-link-grid">
   <a href="./decision-lifecycle"><strong>Decision Path</strong><span>where a record comes from</span></a>
   <a href="../data-plane"><strong>Data Plane</strong><span>where records are written</span></a>
-  <a href="../trust-plane"><strong>Trust Plane</strong><span>authority continuity · next</span></a>
+  <a href="./architecture"><strong>Server, Host &amp; Planes</strong><span>who keeps the records</span></a>
   <a href="./glossary"><strong>Glossary</strong><span>every term, in one line</span></a>
 </div>
 

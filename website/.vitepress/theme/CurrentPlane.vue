@@ -16,8 +16,7 @@ const props = defineProps<{ screenMenu?: boolean }>()
 const planes = [
   { slug: 'authority-plane', name: 'Authority Plane' },
   { slug: 'control-plane', name: 'Control Plane' },
-  { slug: 'data-plane', name: 'Data Plane' },
-  { slug: 'trust-plane', name: 'Trust Plane' }
+  { slug: 'data-plane', name: 'Data Plane' }
 ]
 
 const route = useRoute()

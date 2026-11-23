@@ -38,7 +38,7 @@ When nothing permits, the answer is deny, and every answer leaves evidence you c
 ## One Server, independent planes
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Authority Plane on 8443, which authorizes: service accounts, access keys and the tokens every plane verifies; the Control Plane on 6443, which publishes; and the Data Plane on 7443, which decides. The Trust Plane, in development, will continue authority with Trust Anchors and the PIC hand-off. Deploy all-in-one, one process with every enabled plane, or as a cluster, one Host per role with its own volume." width="820">
+  <img src="https://raw.githubusercontent.com/permguard/permguard/main/assets/readme/server-planes.png" alt="A Permguard Server is one Host and zero or more planes. The Host, on 5443 for discovery, health and metrics and 5444 for the Host API over TLS, owns identity, authorization, keys, audit, membership, streams, storage and lifecycle. Through typed, least-privilege handles it serves the Authority Plane on 8443, which authorizes: service accounts, access keys and the tokens every plane verifies; the Control Plane on 6443, which publishes; and the Data Plane on 7443, which decides. Deploy all-in-one, one process with every enabled plane, or as a cluster, one Host per role with its own volume." width="820">
 </p>
 
 A **Permguard Server** is one process with exactly one **Host** and zero or more **planes**.
@@ -52,7 +52,6 @@ A plane owns one business domain, and receives typed, least-privilege handles fr
 | Authority Plane        | `8443` | service accounts, access keys, the tokens every plane verifies | available      |
 | Control Plane          | `6443` | zones, ledgers, signed heads, NOTP, decision and event stores  | available      |
 | Data Plane             | `7443` | mirror, verify, compile, evaluate, record decisions            | available      |
-| Trust Plane            |      — | Trust Anchors and authority continuity with PIC                | in development |
 
 The role owns the port.
 HTTP and gRPC share it, and TLS changes the scheme, never the number.
@@ -1068,14 +1067,12 @@ See the organization-wide [contribution rules](https://github.com/permguard/.git
 | Evidence            | [Evidence](https://docs.permguard.com/how-it-works/evidence)                                   |
 | Your own data plane | [Bring Your Own Data Plane](https://docs.permguard.com/how-it-works/bring-your-own-data-plane) |
 | Who may call        | [Authority Plane](https://docs.permguard.com/how-it-works/authority-plane)                     |
-| Trust Plane         | [Trust Plane, in development](https://docs.permguard.com/trust-plane)                          |
 | Operations          | [Verify released container images](ops/container-verification.md)                              |
 
 ## Part of a bigger picture
 
 Permguard is the Policy Decision Point of the [Permguard organization](https://github.com/permguard).
-Its Trust Plane, in development, will carry authority from one execution to the next with the [PIC protocol](https://www.pic-protocol.org).
-[Soglia](https://github.com/permguard/soglia), also in development, is the runtime where AI agents run under that authority: Permguard decides, Soglia confines.
+[Soglia](https://github.com/permguard/soglia), in development, is the runtime where AI agents run confined: Permguard decides, Soglia confines.
 
 ## License
 

@@ -154,7 +154,7 @@ const { theme } = useData()
         <a class="pg-doc" :href="withBase('/command-line')"><h3>Command Line</h3><p>Integrate and manage Permguard from your terminal.</p><span aria-hidden="true">→</span></a>
         <a class="pg-doc" :href="withBase('/control-plane')"><h3>Control Plane</h3><p>Publish and distribute immutable policy history.</p><span aria-hidden="true">→</span></a>
         <a class="pg-doc" :href="withBase('/data-plane')"><h3>Data Plane</h3><p>Decide embedded, as a sidecar, remotely or at your own edge.</p><span aria-hidden="true">→</span></a>
-        <a class="pg-doc" :href="withBase('/trust-plane')"><h3>Trust Plane</h3><p>Authority continuity, clearly marked in development.</p><span aria-hidden="true">→</span></a>
+        <a class="pg-doc" :href="withBase('/authority-plane')"><h3>Authority Plane</h3><p>Who may call Permguard: identities, access keys, tokens.</p><span aria-hidden="true">→</span></a>
       </div>
     </div>
   </section>
