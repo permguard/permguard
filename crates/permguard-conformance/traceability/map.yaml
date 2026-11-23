@@ -1386,6 +1386,14 @@ sections:
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/8-architecture-storage-operations.md#connection-settings":
+    paths:
+      - crates/permguard-core/src/config.rs
+      - crates/permguard-core/src/config_file.rs
+      - crates/permguard-core/src/volume.rs
+    tests:
+      - crates/permguard-core/tests/config.rs::test_the_shared_backend_is_told_where_its_database_and_bucket_are
+      - crates/permguard-core/src/config_file.rs::test_the_storage_connection_maps_to_its_settings
   "1-architecture/8-architecture-storage-operations.md#import-of-a-volume":
     paths:
       - crates/permguard-postgres/src/identity.rs

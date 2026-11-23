@@ -6,6 +6,7 @@
 //! | Key                                 | Meaning                                                                                    |
 //! | ----------------------------------- | ------------------------------------------------------------------------------------------ |
 //! | `storage.backend`                   | where the process keeps its state: `files`, the default, or `postgresql-s3`                |
+//! | `storage.postgresql`, `storage.s3`  | where a process on `postgresql-s3` finds its database and its bucket                       |
 //! | `storage.volume.storage_class`      | the storage class the volume comes from, declared by the operator                          |
 //! | `storage.volume.driver`             | the driver or provider that attaches it, declared by the operator                          |
 //! | `storage.qualified`                 | the qualified tuples: the tuple, evidence, encryption mechanism, revision and `expires_at` |
@@ -19,6 +20,68 @@
 //!
 //! The filesystem and its version are never configured: the probe detects them. Configuration
 //! states only what the process cannot see, and the qualified tuples it is compared with.
+
+/// Where a process on `postgresql-s3` finds its database and its bucket (iteration 03, WP-28.1).
+/// Secrets are named by reference, never held: the whole may be printed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Connection {
+    pub postgresql_host: Option<String>,
+    pub postgresql_port: Option<u16>,
+    pub postgresql_database: Option<String>,
+    pub postgresql_user: Option<String>,
+    pub postgresql_password_ref: Option<crate::secrets::SecretRef>,
+    pub postgresql_schema: Option<String>,
+    /// The roots the server is verified against, as written: resolved by the configuration.
+    pub postgresql_ca: Option<String>,
+    pub postgresql_pool: Option<usize>,
+    /// TLS to the database, `true` unless stated `disabled`.
+    pub postgresql_tls: bool,
+    /// `https://host:port`, or `http://` to a loopback address in development.
+    pub s3_endpoint: Option<String>,
+    pub s3_region: Option<String>,
+    pub s3_bucket: Option<String>,
+    pub s3_prefix: Option<String>,
+    pub s3_access_key: Option<String>,
+    pub s3_secret_ref: Option<crate::secrets::SecretRef>,
+    pub s3_session_token_ref: Option<crate::secrets::SecretRef>,
+    pub s3_ca: Option<String>,
+}
+
+impl Default for Connection {
+    fn default() -> Self {
+        Self {
+            postgresql_host: None,
+            postgresql_port: None,
+            postgresql_database: None,
+            postgresql_user: None,
+            postgresql_password_ref: None,
+            postgresql_schema: None,
+            postgresql_ca: None,
+            postgresql_pool: None,
+            postgresql_tls: true,
+            s3_endpoint: None,
+            s3_region: None,
+            s3_bucket: None,
+            s3_prefix: None,
+            s3_access_key: None,
+            s3_secret_ref: None,
+            s3_session_token_ref: None,
+            s3_ca: None,
+        }
+    }
+}
+
+impl Connection {
+    /// The database's port: `5432` when none is said.
+    pub fn postgresql_port(&self) -> u16 {
+        self.postgresql_port.unwrap_or(5432)
+    }
+
+    /// The connections kept open at most: `16` when none is said.
+    pub fn postgresql_pool(&self) -> usize {
+        self.postgresql_pool.unwrap_or(16)
+    }
+}
 
 /// Where a process keeps its durable state (iteration 03, decisions E1 and E7): chosen per
 /// process, files when nothing is said. The Planes of one process share it.

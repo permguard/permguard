@@ -515,6 +515,59 @@ pub const SETTING_GC_GRACE: &str = "PERMGUARD_STORAGE_GC_GRACE";
 /// `postgresql-s3` (iteration 03, decisions E1 and E7).
 pub const SETTING_STORAGE_BACKEND: &str = "PERMGUARD_STORAGE_BACKEND";
 
+/// On `postgresql-s3`, the database's host (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_HOST: &str = "PERMGUARD_STORAGE_POSTGRESQL_HOST";
+
+/// On `postgresql-s3`, the database's port, 5432 when none is said (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_PORT: &str = "PERMGUARD_STORAGE_POSTGRESQL_PORT";
+
+/// On `postgresql-s3`, the database (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_DATABASE: &str = "PERMGUARD_STORAGE_POSTGRESQL_DATABASE";
+
+/// On `postgresql-s3`, the role the process connects as (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_USER: &str = "PERMGUARD_STORAGE_POSTGRESQL_USER";
+
+/// On `postgresql-s3`, a secret reference to the role's password (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_PASSWORD_REF: &str =
+    "PERMGUARD_STORAGE_POSTGRESQL_PASSWORD_REF";
+
+/// On `postgresql-s3`, the schema the tables live in (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_SCHEMA: &str = "PERMGUARD_STORAGE_POSTGRESQL_SCHEMA";
+
+/// On `postgresql-s3`, the roots the database's certificate is verified against (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_CA: &str = "PERMGUARD_STORAGE_POSTGRESQL_CA";
+
+/// On `postgresql-s3`, the connections kept open at most, 16 when none is said (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_POOL: &str = "PERMGUARD_STORAGE_POSTGRESQL_POOL";
+
+/// On `postgresql-s3`, `verified`, the default, or `disabled`: a database in the clear, only in
+/// development and only on a loopback address (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_POSTGRESQL_TLS: &str = "PERMGUARD_STORAGE_POSTGRESQL_TLS";
+
+/// On `postgresql-s3`, the object store, `https://host:port` (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_ENDPOINT: &str = "PERMGUARD_STORAGE_S3_ENDPOINT";
+
+/// On `postgresql-s3`, the region the object store's signatures name (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_REGION: &str = "PERMGUARD_STORAGE_S3_REGION";
+
+/// On `postgresql-s3`, the bucket (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_BUCKET: &str = "PERMGUARD_STORAGE_S3_BUCKET";
+
+/// On `postgresql-s3`, what every key of the bucket starts with (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_PREFIX: &str = "PERMGUARD_STORAGE_S3_PREFIX";
+
+/// On `postgresql-s3`, the object store's access key id (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_ACCESS_KEY: &str = "PERMGUARD_STORAGE_S3_ACCESS_KEY";
+
+/// On `postgresql-s3`, a secret reference to the object store's secret access key (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_SECRET_REF: &str = "PERMGUARD_STORAGE_S3_SECRET_REF";
+
+/// On `postgresql-s3`, a secret reference to the session token of temporary credentials (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_SESSION_TOKEN_REF: &str = "PERMGUARD_STORAGE_S3_SESSION_TOKEN_REF";
+
+/// On `postgresql-s3`, the roots the object store's certificate is verified against (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_CA: &str = "PERMGUARD_STORAGE_S3_CA";
+
 /// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
 /// next resumes where it stopped, so the work of a tick stays bounded however much is due.
 pub const SETTING_GC_MAX_REMOVALS: &str = "PERMGUARD_STORAGE_GC_MAX_REMOVALS";
@@ -1509,6 +1562,7 @@ pub struct Config {
     gc_grace: Duration,
     gc_max_removals: u32,
     storage_backend: crate::volume::Backend,
+    storage_connection: crate::volume::Connection,
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
     authz_cache_zone_partitions: Option<usize>,
@@ -1744,6 +1798,7 @@ impl Default for Config {
             gc_grace: DEFAULT_GC_GRACE,
             gc_max_removals: DEFAULT_GC_MAX_REMOVALS,
             storage_backend: crate::volume::Backend::Files,
+            storage_connection: crate::volume::Connection::default(),
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
             authz_cache_zone_partitions: None,
@@ -2371,6 +2426,7 @@ produce: use `EdDSA` or `ES256`"
         self.validate_listener_classes()?;
         self.validate_key_lifecycle()?;
         self.validate_custody()?;
+        self.validate_storage_connection()?;
         self.validate_realms()?;
         // Last of the rules: a configuration a specific rule refuses says that rule's reason first,
         // and the profile then judges what the remaining values amount to (WP-2.8).
@@ -2743,6 +2799,76 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        Ok(())
+    }
+
+    /// Where a process on `postgresql-s3` finds its database and its bucket (iteration 03,
+    /// WP-28.1): everything it needs is stated, and a connection is in the clear only in
+    /// development and only to a loopback address. On `files` the settings are not read.
+    fn validate_storage_connection(&self) -> Result<()> {
+        if self.storage_backend != crate::volume::Backend::PostgresqlS3 {
+            return Ok(());
+        }
+        let connection = &self.storage_connection;
+        for (setting, stated) in [
+            (
+                SETTING_STORAGE_POSTGRESQL_HOST,
+                connection.postgresql_host.is_some(),
+            ),
+            (
+                SETTING_STORAGE_POSTGRESQL_DATABASE,
+                connection.postgresql_database.is_some(),
+            ),
+            (
+                SETTING_STORAGE_POSTGRESQL_USER,
+                connection.postgresql_user.is_some(),
+            ),
+            (
+                SETTING_STORAGE_S3_ENDPOINT,
+                connection.s3_endpoint.is_some(),
+            ),
+            (SETTING_STORAGE_S3_REGION, connection.s3_region.is_some()),
+            (SETTING_STORAGE_S3_BUCKET, connection.s3_bucket.is_some()),
+            (
+                SETTING_STORAGE_S3_ACCESS_KEY,
+                connection.s3_access_key.is_some(),
+            ),
+            (
+                SETTING_STORAGE_S3_SECRET_REF,
+                connection.s3_secret_ref.is_some(),
+            ),
+        ] {
+            if !stated {
+                bail!("the `postgresql-s3` storage backend needs {setting}, and none is stated");
+            }
+        }
+        let endpoint = connection.s3_endpoint.as_deref().unwrap_or_default();
+        let in_the_clear = match endpoint.split_once("://") {
+            Some(("https", rest)) if !rest.is_empty() => false,
+            Some(("http", rest)) if !rest.is_empty() => true,
+            _ => bail!("{SETTING_STORAGE_S3_ENDPOINT} is `https://host:port`, not `{endpoint}`"),
+        };
+        if in_the_clear {
+            let host = endpoint.split_once("://").map_or("", |(_, rest)| rest);
+            if !(self.development_mode && is_loopback(host.trim_end_matches('/'))) {
+                bail!(
+                    "{SETTING_STORAGE_S3_ENDPOINT} is `http://`: a bucket is reached in the clear \
+                     only in development and only on a loopback address"
+                );
+            }
+        }
+        if !connection.postgresql_tls
+            && !(self.development_mode
+                && connection
+                    .postgresql_host
+                    .as_deref()
+                    .is_some_and(is_loopback))
+        {
+            bail!(
+                "{SETTING_STORAGE_POSTGRESQL_TLS} is `disabled`: a database is reached in the clear \
+                 only in development and only on a loopback address"
+            );
+        }
         Ok(())
     }
 
@@ -3890,6 +4016,29 @@ produce: use `EdDSA` or `ES256`"
         self.storage_backend
     }
 
+    /// Where a process on `postgresql-s3` finds its database and its bucket (WP-28.1).
+    pub fn storage_connection(&self) -> &crate::volume::Connection {
+        &self.storage_connection
+    }
+
+    /// The roots the database's certificate is verified against, resolved; the system's when
+    /// `None`.
+    pub fn storage_postgresql_ca(&self) -> Option<PathBuf> {
+        self.storage_connection
+            .postgresql_ca
+            .as_deref()
+            .map(|path| self.resolve(path))
+    }
+
+    /// The roots the object store's certificate is verified against, resolved; the system's
+    /// when `None`.
+    pub fn storage_s3_ca(&self) -> Option<PathBuf> {
+        self.storage_connection
+            .s3_ca
+            .as_deref()
+            .map(|path| self.resolve(path))
+    }
+
     /// Whether this plane records the decisions it answers.
     pub fn log_enabled(&self) -> bool {
         self.log_enabled
@@ -4985,6 +5134,50 @@ produce: use `EdDSA` or `ES256`"
             SETTING_GC_GRACE => d(self.gc_grace),
             SETTING_GC_MAX_REMOVALS => Some(self.gc_max_removals.to_string()),
             SETTING_STORAGE_BACKEND => Some(self.storage_backend.as_str().to_owned()),
+            SETTING_STORAGE_POSTGRESQL_HOST => self.storage_connection.postgresql_host.clone(),
+            SETTING_STORAGE_POSTGRESQL_PORT => {
+                Some(self.storage_connection.postgresql_port().to_string())
+            }
+            SETTING_STORAGE_POSTGRESQL_DATABASE => {
+                self.storage_connection.postgresql_database.clone()
+            }
+            SETTING_STORAGE_POSTGRESQL_USER => self.storage_connection.postgresql_user.clone(),
+            SETTING_STORAGE_POSTGRESQL_PASSWORD_REF => self
+                .storage_connection
+                .postgresql_password_ref
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_STORAGE_POSTGRESQL_SCHEMA => self.storage_connection.postgresql_schema.clone(),
+            SETTING_STORAGE_POSTGRESQL_CA => self
+                .storage_postgresql_ca()
+                .map(|path| path.display().to_string()),
+            SETTING_STORAGE_POSTGRESQL_POOL => {
+                Some(self.storage_connection.postgresql_pool().to_string())
+            }
+            SETTING_STORAGE_POSTGRESQL_TLS => Some(
+                if self.storage_connection.postgresql_tls {
+                    "verified"
+                } else {
+                    "disabled"
+                }
+                .to_owned(),
+            ),
+            SETTING_STORAGE_S3_ENDPOINT => self.storage_connection.s3_endpoint.clone(),
+            SETTING_STORAGE_S3_REGION => self.storage_connection.s3_region.clone(),
+            SETTING_STORAGE_S3_BUCKET => self.storage_connection.s3_bucket.clone(),
+            SETTING_STORAGE_S3_PREFIX => self.storage_connection.s3_prefix.clone(),
+            SETTING_STORAGE_S3_ACCESS_KEY => self.storage_connection.s3_access_key.clone(),
+            SETTING_STORAGE_S3_SECRET_REF => self
+                .storage_connection
+                .s3_secret_ref
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_STORAGE_S3_SESSION_TOKEN_REF => self
+                .storage_connection
+                .s3_session_token_ref
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_STORAGE_S3_CA => self.storage_s3_ca().map(|path| path.display().to_string()),
             SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
             SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
@@ -5761,6 +5954,79 @@ produce: use `EdDSA` or `ES256`"
                 .parse()
                 .map_err(|error: String| anyhow!(error))
                 .with_context(|| format!("reading {SETTING_STORAGE_BACKEND}"))?;
+        }
+        let connection = &mut self.storage_connection;
+        for (setting, field) in [
+            (
+                SETTING_STORAGE_POSTGRESQL_HOST,
+                &mut connection.postgresql_host,
+            ),
+            (
+                SETTING_STORAGE_POSTGRESQL_DATABASE,
+                &mut connection.postgresql_database,
+            ),
+            (
+                SETTING_STORAGE_POSTGRESQL_USER,
+                &mut connection.postgresql_user,
+            ),
+            (
+                SETTING_STORAGE_POSTGRESQL_SCHEMA,
+                &mut connection.postgresql_schema,
+            ),
+            (SETTING_STORAGE_POSTGRESQL_CA, &mut connection.postgresql_ca),
+            (SETTING_STORAGE_S3_ENDPOINT, &mut connection.s3_endpoint),
+            (SETTING_STORAGE_S3_REGION, &mut connection.s3_region),
+            (SETTING_STORAGE_S3_BUCKET, &mut connection.s3_bucket),
+            (SETTING_STORAGE_S3_PREFIX, &mut connection.s3_prefix),
+            (SETTING_STORAGE_S3_ACCESS_KEY, &mut connection.s3_access_key),
+            (SETTING_STORAGE_S3_CA, &mut connection.s3_ca),
+        ] {
+            if let Some(value) = settings.get(setting) {
+                *field = Some(value.trim().to_owned()).filter(|value| !value.is_empty());
+            }
+        }
+        for (setting, field) in [
+            (
+                SETTING_STORAGE_POSTGRESQL_PASSWORD_REF,
+                &mut connection.postgresql_password_ref,
+            ),
+            (SETTING_STORAGE_S3_SECRET_REF, &mut connection.s3_secret_ref),
+            (
+                SETTING_STORAGE_S3_SESSION_TOKEN_REF,
+                &mut connection.s3_session_token_ref,
+            ),
+        ] {
+            if let Some(value) = settings.get(setting) {
+                *field = Some(SecretRef::new(value.trim()));
+            }
+        }
+        if let Some(value) = settings.get(SETTING_STORAGE_POSTGRESQL_PORT) {
+            connection.postgresql_port = Some(
+                value
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|port| *port > 0)
+                    .ok_or_else(|| anyhow!("`{value}` is no port"))
+                    .with_context(|| format!("reading {SETTING_STORAGE_POSTGRESQL_PORT}"))?,
+            );
+        }
+        if let Some(value) = settings.get(SETTING_STORAGE_POSTGRESQL_TLS) {
+            connection.postgresql_tls = match value.trim() {
+                "verified" => true,
+                "disabled" => false,
+                other => bail!(
+                    "reading {SETTING_STORAGE_POSTGRESQL_TLS}: `{other}` is not `verified` or \
+                     `disabled`"
+                ),
+            };
+        }
+        if let Some(value) = settings.get(SETTING_STORAGE_POSTGRESQL_POOL) {
+            connection.postgresql_pool = Some(
+                parse_count(value)
+                    .with_context(|| format!("reading {SETTING_STORAGE_POSTGRESQL_POOL}"))?
+                    as usize,
+            );
         }
         if let Some(value) = settings.get(SETTING_LOG_ENABLED) {
             self.log_enabled_stated =
@@ -7063,6 +7329,23 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_GC_MAX_REMOVALS,
     SETTING_GC_INTERVAL,
     SETTING_STORAGE_BACKEND,
+    SETTING_STORAGE_POSTGRESQL_HOST,
+    SETTING_STORAGE_POSTGRESQL_PORT,
+    SETTING_STORAGE_POSTGRESQL_DATABASE,
+    SETTING_STORAGE_POSTGRESQL_USER,
+    SETTING_STORAGE_POSTGRESQL_PASSWORD_REF,
+    SETTING_STORAGE_POSTGRESQL_SCHEMA,
+    SETTING_STORAGE_POSTGRESQL_CA,
+    SETTING_STORAGE_POSTGRESQL_POOL,
+    SETTING_STORAGE_POSTGRESQL_TLS,
+    SETTING_STORAGE_S3_ENDPOINT,
+    SETTING_STORAGE_S3_REGION,
+    SETTING_STORAGE_S3_BUCKET,
+    SETTING_STORAGE_S3_PREFIX,
+    SETTING_STORAGE_S3_ACCESS_KEY,
+    SETTING_STORAGE_S3_SECRET_REF,
+    SETTING_STORAGE_S3_SESSION_TOKEN_REF,
+    SETTING_STORAGE_S3_CA,
     SETTING_ISSUER,
     SETTING_KEYS_CUSTODY,
     SETTING_KEYS_DIRECTORY,

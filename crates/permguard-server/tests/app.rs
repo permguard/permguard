@@ -194,7 +194,9 @@ async fn output_of(app: &App, action: &Action) -> String {
 async fn test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands() {
     let path = config_file(
         "no-volume",
-        &format!("{SERVABLE}storage:\n  backend: postgresql-s3\n"),
+        &format!(
+            "{SERVABLE}storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    database: permguard\n    user: permguard\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    access_key: AKIA\n    secret_ref: s3-secret\n"
+        ),
     );
     let mut sink = Vec::new();
     let refused = app()
