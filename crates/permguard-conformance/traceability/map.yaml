@@ -1386,6 +1386,34 @@ sections:
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/8-architecture-storage-operations.md#import-of-a-volume":
+    paths:
+      - crates/permguard-postgres/src/identity.rs
+      - crates/permguard-postgres/src/catalog.rs
+      - crates/permguard-postgres/src/schema.rs
+      - crates/permguard-host/src/identity/files.rs
+      - crates/permguard-host/src/membership/files.rs
+      - crates/permguard-host/src/authz/authority.rs
+      - crates/permguard-std/src/catalog.rs
+      - crates/permguard-authority-plane/src/accounts/postgres.rs
+      - crates/permguard-authority-plane/src/tokens/postgres.rs
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs
+      - crates/permguard-s3/src/control_plane/ledgers.rs
+      - crates/permguard-s3/src/streams.rs
+      - crates/permguard-stream/src/engine/consumer.rs
+    tests:
+      - crates/permguard-postgres/tests/import.rs::an_audit_trail_is_imported_as_it_was_on_postgresql
+      - crates/permguard-postgres/tests/import.rs::the_identity_and_a_ring_are_imported_as_they_were
+      - crates/permguard-postgres/tests/import.rs::the_memberships_are_imported_as_they_were
+      - crates/permguard-postgres/tests/import.rs::the_catalog_is_imported_as_it_was
+      - crates/permguard-postgres/tests/import.rs::the_host_secrets_and_trust_are_imported_as_they_were
+      - crates/permguard-authority-plane/src/accounts/postgres.rs::the_accounts_of_a_volume_are_imported_as_they_were
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_tokens_of_a_volume_are_imported_as_they_were
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::the_cursor_roots_of_a_volume_are_imported_as_they_were
+      - crates/permguard-s3/tests/import.rs::a_ledger_is_imported_as_it_was
+      - crates/permguard-s3/tests/import.rs::the_archives_of_a_zone_are_imported_as_they_were
+      - crates/permguard-s3/tests/import.rs::a_consumers_runs_are_imported_as_they_were
   "1-architecture/8-architecture-storage-operations.md#object-store":
     paths:
       - crates/permguard-s3/src/lib.rs

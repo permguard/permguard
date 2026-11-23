@@ -168,6 +168,54 @@ impl FileObjectStore {
     }
 }
 
+impl FileObjectStore {
+    /// Everything this ledger holds but its objects, read without writing: what an import
+    /// carries to another backend (iteration 03, WP-27.6).
+    pub fn export(&self) -> Result<super::Exported> {
+        self.check_format()?;
+        let mut exported = super::Exported {
+            roots: self.roots()?,
+            ..super::Exported::default()
+        };
+        for (name, state) in self.list_refs()? {
+            if let Some(envelope) = self.read_signature(&name)? {
+                exported.statements.push((name.clone(), envelope));
+            }
+            let operation = self.ref_operation(&name)?;
+            exported.refs.push((name, state, operation));
+        }
+        let sessions = match fs::read_dir(self.root.join(TRANSFERS)) {
+            Ok(entries) => entries.collect::<std::io::Result<Vec<_>>>(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+        .map_err(|error| backend("listing sessions", error))?;
+        for entry in sessions {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // The storage library's temporaries are swept with the ledger's.
+            let Some(stem) = name.strip_suffix(".cbor") else {
+                continue;
+            };
+            let id = (stem.len() == 32)
+                .then(|| {
+                    let mut id = [0_u8; 16];
+                    for (at, byte) in id.iter_mut().enumerate() {
+                        *byte = u8::from_str_radix(stem.get(at * 2..at * 2 + 2)?, 16).ok()?;
+                    }
+                    Some(id)
+                })
+                .flatten()
+                .filter(|id| permguard_core::encoding::hex(id) == stem)
+                .ok_or_else(|| backend("listing sessions", format!("{name} names no session")))?;
+            let record =
+                fs::read(entry.path()).map_err(|error| backend("reading a session", error))?;
+            exported.transfers.push((id, record));
+        }
+        exported.transfers.sort();
+        Ok(exported)
+    }
+}
+
 impl LedgerStore for FileObjectStore {
     /// A file stat, nothing more.
     fn has_object(&self, digest: &Digest) -> bool {

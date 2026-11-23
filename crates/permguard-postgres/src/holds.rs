@@ -67,6 +67,41 @@ impl PostgresHolds {
     }
 }
 
+impl PostgresHolds {
+    /// Writes `holds` as a volume kept them, each with its id and its record: what the import of a
+    /// volume does, outside every operation, into a database that holds none.
+    pub fn import(&self, holds: &[Hold]) -> Result<usize, HoldError> {
+        self.database.transaction(|unit| {
+            for hold in holds {
+                unit.execute(
+                    "INSERT INTO permguard_holds
+                         (id, resource, owner, reason, created_at, expires_at, review_at, operation)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    &[
+                        &hold.id,
+                        &hold.resource,
+                        &hold.owner,
+                        &hold.reason,
+                        &kept(hold.created_at).map_err(Failure::Refused)?,
+                        &hold
+                            .expires_at
+                            .map(kept)
+                            .transpose()
+                            .map_err(Failure::Refused)?,
+                        &hold
+                            .review_at
+                            .map(kept)
+                            .transpose()
+                            .map_err(Failure::Refused)?,
+                        &hold.operation,
+                    ],
+                )?;
+            }
+            Ok(holds.len())
+        })?
+    }
+}
+
 impl HoldStore for PostgresHolds {
     fn list(&self) -> Result<Vec<Hold>, HoldError> {
         self.rows(|unit| {

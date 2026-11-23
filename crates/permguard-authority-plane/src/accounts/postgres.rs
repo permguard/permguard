@@ -259,6 +259,80 @@ impl PostgresAccounts {
     }
 }
 
+impl PostgresAccounts {
+    /// Writes `exported`, as another backend held it, in one transaction: the import of a volume
+    /// (iteration 03, WP-27.6), into a database no server is using. Every account keeps its
+    /// revision and its times, and the store its revision; an account already held refuses.
+    pub fn import(&self, exported: &super::Exported) -> Result<(), AccountsError> {
+        self.within(|unit| {
+            for (account, by) in &exported.accounts {
+                unit.execute(
+                    "INSERT INTO permguard_authority_accounts
+                         (name, description, status, created_at, updated_at, revision, updated_by)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    &[
+                        &account.name,
+                        &account.description,
+                        &account.status.as_str(),
+                        &kept(account.created_at)?,
+                        &kept(account.updated_at)?,
+                        &kept(account.revision)?,
+                        by,
+                    ],
+                )?;
+                for (position, scope) in account.scopes.iter().enumerate() {
+                    unit.execute(
+                        "INSERT INTO permguard_authority_scopes
+                             (account, position, operations, selector)
+                         VALUES ($1, $2, $3, $4)",
+                        &[
+                            &account.name,
+                            &(position as i32),
+                            &scope.operations.iter().cloned().collect::<Vec<String>>(),
+                            &scope.selector.to_string(),
+                        ],
+                    )?;
+                }
+                for (position, key) in account.keys.iter().enumerate() {
+                    unit.execute(
+                        "INSERT INTO permguard_authority_access_keys
+                             (access_key, account, position, secret_hash, created_at, expires_at)
+                         VALUES ($1, $2, $3, $4, $5, $6)",
+                        &[
+                            &key.access_key,
+                            &account.name,
+                            &(position as i32),
+                            &key.secret_hash,
+                            &kept(key.created_at)?,
+                            &key.expires_at.map(kept).transpose()?,
+                        ],
+                    )?;
+                }
+            }
+            for (operation, revision, name) in &exported.operations {
+                unit.execute(
+                    "INSERT INTO permguard_authority_account_operations
+                         (operation_id, revision, account)
+                     VALUES ($1, $2, $3)",
+                    &[&operation.as_bytes().as_slice(), &kept(*revision)?, name],
+                )?;
+            }
+            // The revision row is the migration's: an import raises it from nothing only.
+            let raised = unit.execute(
+                "UPDATE permguard_authority_revisions SET revision = $1
+                 WHERE store = 'accounts' AND revision = 0",
+                &[&kept(exported.revision)?],
+            )?;
+            if raised != 1 {
+                return Err(Failure::Refused(AccountsError::Conflict(
+                    "the accounts were changed here before the import".to_owned(),
+                )));
+            }
+            Ok(())
+        })
+    }
+}
+
 impl AccountStore for PostgresAccounts {
     fn revision(&self) -> Result<u64, AccountsError> {
         let revision: i64 = self.asked(|unit| {
@@ -446,5 +520,124 @@ mod tests {
         crate::accounts::suite::run(&|| Arc::new(PostgresAccounts::new(cases.next())), &|work| {
             cases.operate(crate::accounts::DOMAIN, work)
         });
+    }
+
+    /// The accounts a volume held, read back on PostgreSQL as they were: every account, its keys
+    /// and scopes, the revision and the operations; the next change follows the last carried.
+    #[test]
+    fn the_accounts_of_a_volume_are_imported_as_they_were() {
+        let Some(server) = server("the_accounts_of_a_volume_are_imported_as_they_were") else {
+            return;
+        };
+        let root = std::env::temp_dir().join(format!(
+            "pg-authority-accounts-import-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let dir = permguard_host::storage::dir::Dir::open(&root).expect("a directory");
+        let (files, _) = crate::accounts::files::FileAccounts::open(
+            &dir,
+            permguard_host::storage::journal::Options::default(),
+        )
+        .expect("opens");
+        let scope = |selector: &str| TokenScope {
+            operations: std::iter::once("decision.evaluate".to_owned()).collect(),
+            selector: Selector::parse(selector).expect("a selector"),
+        };
+        let operating = crate::bench::Operating::new("accounts-import");
+        for name in ["billing", "payroll", "gone"] {
+            operating.run(crate::accounts::DOMAIN, &mut |applying| {
+                files
+                    .create(
+                        Some(applying),
+                        Account::new(name, "a service", vec![scope("plane/data/*")], 10),
+                        "admin",
+                        10,
+                    )
+                    .expect("created");
+            });
+        }
+        files
+            .update(
+                None,
+                "billing",
+                &|held| {
+                    Ok(Account {
+                        status: Status::Suspended,
+                        keys: vec![AccessKey {
+                            access_key: "pgak_AAAAAAAAAAAAAAAAAAAA".to_owned(),
+                            secret_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA".to_owned(),
+                            created_at: 20,
+                            expires_at: Some(9_000),
+                        }],
+                        ..held.clone()
+                    })
+                },
+                "operator",
+                20,
+            )
+            .expect("updated");
+        files
+            .delete(None, "gone", &|_| Ok(()), "operator", 30)
+            .expect("deleted");
+
+        let cases = Cases::new(server);
+        let target = PostgresAccounts::new(cases.next());
+        target
+            .import(&files.export().expect("exported"))
+            .expect("imported");
+        assert_eq!(
+            target.revision().expect("read"),
+            files.revision().expect("read")
+        );
+        assert_eq!(target.revision().expect("read"), 5);
+        assert_eq!(
+            target.list().expect("listed"),
+            files.list().expect("listed")
+        );
+        assert_eq!(
+            target
+                .by_access_key("pgak_AAAAAAAAAAAAAAAAAAAA")
+                .expect("read")
+                .map(|(account, _)| account.name),
+            Some("billing".to_owned())
+        );
+        let exported = files.export().expect("exported");
+        assert_eq!(exported.operations.len(), 3);
+        for (operation, revision, name) in &exported.operations {
+            assert_eq!(
+                target.operation(operation).expect("read"),
+                Some((*revision, name.clone()))
+            );
+        }
+        let updated_by: String = cases
+            .current()
+            .write(|unit| {
+                Ok(unit
+                    .query_one(
+                        "SELECT updated_by FROM permguard_authority_accounts WHERE name = 'billing'",
+                        &[],
+                    )?
+                    .get(0))
+            })
+            .expect("read");
+        assert_eq!(updated_by, "operator");
+        // The next change follows the last one carried; an import over it is refused.
+        target
+            .create(
+                None,
+                Account::new("after", "a service", vec![scope("plane/data/*")], 40),
+                "admin",
+                40,
+            )
+            .expect("created");
+        assert_eq!(target.revision().expect("read"), 6);
+        assert!(
+            target
+                .import(&crate::accounts::Exported::default())
+                .is_err()
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }

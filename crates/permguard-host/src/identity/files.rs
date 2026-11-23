@@ -28,7 +28,7 @@ use permguard_objects::cbor::Value;
 
 use super::record::{self, Init};
 use super::reset::{self, Provisioner, Reset};
-use super::store::{HeldEpoch, IdentityStore, Retired};
+use super::store::{HeldEpoch, IdentityStore, Public, Records, Retired};
 use super::{Home, Identity, IdentityError, Suite};
 use crate::keys::KeyProvider;
 use crate::keys::ring::Ring;
@@ -110,6 +110,76 @@ impl FileIdentity {
             return Ok(None);
         }
         Ok(Some(retired.subdir(host_id, false)?))
+    }
+}
+
+/// The public records below `dir`, the evidence of a retired identity when `keys` is `None`:
+/// its public keys are then `keys-<epoch>.pub` beside the records.
+fn public_records(dir: &Dir, keys: Option<&Dir>) -> Result<Public, IdentityError> {
+    let successions = sequence::read(dir, SUCCESSION, MAX_RECORD_BYTES)?
+        .items
+        .iter()
+        .map(|item| {
+            permguard_objects::cbor::encode(item).map_err(|error| {
+                IdentityError::Corrupt(format!("a succession does not encode: {error:?}"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (keys_dir, prefix) = match keys {
+        Some(keys) => (keys, ""),
+        None => (dir, "keys-"),
+    };
+    let mut public = Vec::new();
+    for name in keys_dir.names()? {
+        let Some(epoch) = name
+            .strip_prefix(prefix)
+            .and_then(|name| name.strip_suffix(".pub"))
+            .and_then(|stem| stem.parse::<u64>().ok())
+            .filter(|epoch| name == format!("{prefix}{}", public_name(*epoch)))
+        else {
+            continue;
+        };
+        if let Some(key) = keys_dir.read(&name)? {
+            public.push((epoch, key));
+        }
+    }
+    public.sort();
+    Ok(Public {
+        init: dir.read(INIT)?,
+        document: dir.read(DOCUMENT)?,
+        successions,
+        keys: public,
+    })
+}
+
+impl FileIdentity {
+    /// Every record held but the keys the custody keeps, read without writing: what an import
+    /// carries to another backend (iteration 03, WP-27.6).
+    ///
+    /// A reset under way, or a retired identity whose reset is not recorded, refuses: the next
+    /// start on files completes it, and an import carries a volume at rest.
+    pub fn export(&self) -> Result<Records, IdentityError> {
+        let unsettled = || {
+            IdentityError::Unavailable(
+                "a reset is under way: start the server on files once, so it completes, then \
+                 import"
+                    .into(),
+            )
+        };
+        if self.dir.read(RESETTING)?.is_some() {
+            return Err(unsettled());
+        }
+        let mut retired = Vec::new();
+        for held in self.retired()? {
+            let evidence = self.evidence(&held.host_id)?.ok_or_else(unsettled)?;
+            let reset = held.reset.ok_or_else(unsettled)?;
+            retired.push((held.host_id, reset, public_records(&evidence, None)?));
+        }
+        Ok(Records {
+            current: public_records(&self.dir, Some(&self.keys))?,
+            start: self.dir.read(BOOT)?,
+            retired,
+        })
     }
 }
 

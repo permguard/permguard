@@ -328,6 +328,37 @@ pub fn normalized(issuer: &str) -> String {
     issuer.trim().trim_end_matches('/').to_owned()
 }
 
+/// Carries what a Host held into `to`: the key set `keys`, and of `tokens` every list that
+/// verifies under it, checked as a start checks them (iteration 03, WP-27.6). Answers how many
+/// lists were carried and how many were not: those a start would have dropped as well.
+pub fn carry_held(
+    keys: Option<&KeptKeys>,
+    tokens: &[String],
+    to: &dyn HeldStore,
+    now: u64,
+) -> Result<(usize, usize), super::held::HeldError> {
+    let Some(keys) = keys else {
+        // Without the key set no list verifies, as at a start.
+        return Ok((0, tokens.len()));
+    };
+    to.keep_keys(keys)?;
+    let pinned = parse_keys(&keys.keys);
+    let mut carried = 0;
+    for token in tokens {
+        if let Ok(list) = verify_list(token, &pinned, &keys.issuer, None, now) {
+            let named = super::held::Named {
+                issuer: list.issuer.clone(),
+                uri: list.uri.clone(),
+                iat: list.iat,
+            };
+            if to.keep_list(&named, token)? {
+                carried += 1;
+            }
+        }
+    }
+    Ok((carried, tokens.len() - carried))
+}
+
 fn parse_keys(documents: &[serde_json::Value]) -> Vec<PinnedKey> {
     keys_of(
         &documents

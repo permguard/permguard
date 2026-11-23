@@ -320,6 +320,43 @@ pub trait LedgerStore: Send + Sync {
     fn stored_bytes(&self) -> Result<u64>;
 }
 
+/// What a ledger holds besides its objects, each as it was written: what an import carries to
+/// another backend at rest (iteration 03, WP-27.6). The objects travel through
+/// [`copy_objects`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    /// Every ref, its state and the operation that wrote it, `None` for a ref written before
+    /// the transaction.
+    pub refs: Vec<(String, RefState, Option<String>)>,
+    /// The signed head statement kept of a ref.
+    pub statements: Vec<(String, Vec<u8>)>,
+    /// The roots of the collection.
+    pub roots: Vec<Digest>,
+    /// Every transfer session, by its id, as its record was kept.
+    pub transfers: Vec<([u8; 16], Vec<u8>)>,
+}
+
+/// Publishes every object of `from` into `to`: each verified on its way out of `from` and
+/// ingested by `to` as a push would be. Answers how many `to` did not hold.
+pub fn copy_objects(from: &dyn LedgerStore, to: &dyn LedgerStore) -> Result<usize> {
+    let mut written = 0;
+    for stored in from.list_objects()? {
+        let bytes = from
+            .get_object(&stored.digest)?
+            .ok_or_else(|| backend("copying an object", "it vanished"))?;
+        let (digest, _, landed) = to.publish_object(&bytes)?;
+        if digest != stored.digest {
+            return Err(StoreError::Corrupt {
+                digest: stored.digest,
+            });
+        }
+        if landed == Landed::Written {
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
 /// The ledgers of a Control Plane: what hands out the store of each. One store a ledger for the
 /// life of the process, so that everything that reads and writes a ledger does it through the
 /// same one: a push, a collection, an export and a recovery meet in its holds.

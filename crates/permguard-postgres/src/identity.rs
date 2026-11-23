@@ -19,7 +19,7 @@
 
 use permguard_host::identity::IdentityError;
 use permguard_host::identity::record::uuid_text;
-use permguard_host::identity::store::{HeldEpoch, IdentityStore, Retired};
+use permguard_host::identity::store::{HeldEpoch, IdentityStore, Records, Retired};
 use permguard_host::operations::mutation::Applying;
 use permguard_objects::cbor::{self, Value};
 
@@ -95,6 +95,60 @@ impl PostgresIdentity {
 
     fn unit<T>(&self, work: impl Fn(&Unit) -> Step<T>) -> Result<T, IdentityError> {
         self.database.transaction(work)?
+    }
+}
+
+impl PostgresIdentity {
+    /// Writes `records`, as another backend held them, in one transaction: the import of a
+    /// volume (iteration 03, WP-27.6), into a database no server is using. A record already held
+    /// refuses.
+    pub fn import(&self, records: &Records) -> Result<(), IdentityError> {
+        self.unit(|unit| {
+            let current = &records.current;
+            for (name, bytes) in [
+                (INIT, &current.init),
+                (DOCUMENT, &current.document),
+                (START, &records.start),
+            ] {
+                if let Some(bytes) = bytes {
+                    unit.execute(
+                        "INSERT INTO permguard_identity_records (name, record) VALUES ($1, $2)",
+                        &[&name, bytes],
+                    )?;
+                }
+            }
+            for (position, envelope) in (1_i64..).zip(&current.successions) {
+                unit.execute(
+                    "INSERT INTO permguard_identity_successions (position, envelope)
+                     VALUES ($1, $2)",
+                    &[&position, envelope],
+                )?;
+            }
+            for (epoch, key) in &current.keys {
+                unit.execute(
+                    "INSERT INTO permguard_identity_public_keys (epoch, key) VALUES ($1, $2)",
+                    &[&epoch_of(*epoch)?, key],
+                )?;
+            }
+            for (host_id, reset, evidence) in &records.retired {
+                unit.execute(
+                    "INSERT INTO permguard_identity_retired (host_id, reset) VALUES ($1, $2)",
+                    &[host_id, reset],
+                )?;
+                for (name, bytes) in [(INIT, &evidence.init), (DOCUMENT, &evidence.document)] {
+                    if let Some(bytes) = bytes {
+                        keep(unit, host_id, name, 0, bytes)?;
+                    }
+                }
+                for (position, envelope) in (1_i64..).zip(&evidence.successions) {
+                    keep(unit, host_id, "succession", position, envelope)?;
+                }
+                for (epoch, key) in &evidence.keys {
+                    keep(unit, host_id, "public", epoch_of(*epoch)?, key)?;
+                }
+            }
+            Ok(())
+        })
     }
 }
 

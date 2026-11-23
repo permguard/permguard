@@ -76,6 +76,30 @@ impl PostgresReplay {
     }
 }
 
+impl PostgresReplay {
+    /// Writes the plans a volume kept, each with its approvals and whether it was run: what the
+    /// import of a volume does. The results of requests answered before the mutation engine kept
+    /// them are not carried: on this backend a retry is answered from the operation's row (X71).
+    pub fn import(&self, plans: &[(Plan, bool)]) -> Result<usize, ReplayError> {
+        self.read(|unit| {
+            for (plan, consumed) in plans {
+                unit.execute(
+                    "INSERT INTO permguard_plans (principal, plan_id, record, expires, consumed)
+                     VALUES ($1, $2, $3, $4, $5)",
+                    &[
+                        &plan.principal,
+                        &plan.plan_id,
+                        &encoded(plan).map_err(Failure::Refused)?,
+                        &i64::try_from(plan.expires).unwrap_or(i64::MAX),
+                        consumed,
+                    ],
+                )?;
+            }
+            Ok(plans.len())
+        })
+    }
+}
+
 impl ReplayStore for PostgresReplay {
     fn result(
         &self,

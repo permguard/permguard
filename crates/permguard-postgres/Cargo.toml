@@ -37,4 +37,5 @@ rustls = { workspace = true }
 permguard-postgres = { path = ".", features = ["test-support"] }
 permguard-host = { workspace = true, features = ["test-support"] }
 permguard-core = { workspace = true, features = ["test-support"] }
+permguard-std = { workspace = true, features = ["catalog"] }
 postgres = { workspace = true }

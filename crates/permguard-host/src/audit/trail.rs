@@ -336,90 +336,13 @@ impl Trail {
         .encode()
         .map_err(|error| StorageError::Corruption(error.to_string()))?;
         store.prepare(&meta)?;
-        let dir = store.as_ref();
-        let names = ordered(store.checkpoint_names()?);
-        let last_checkpoint = match names.last() {
-            None => None,
-            Some(name) => {
-                let envelope = store.checkpoint(name)?.unwrap_or_default();
-                let checkpoint = read_unverified(&envelope).map_err(|error| {
-                    StorageError::Corruption(format!(
-                        "the checkpoint {name} of {} does not read: {error}",
-                        store.place("")
-                    ))
-                })?;
-                Some(Sealed {
-                    name: name.clone(),
-                    digest: envelope_digest(&envelope),
-                    last_seq: checkpoint.last_seq,
-                    head: checkpoint.head_digest,
-                })
-            }
-        };
-        let sealed = names.iter().rev().find_map(|name| match parse_name(name) {
-            Some((period, None)) => Some(period),
-            _ => None,
-        });
-
-        let days = days(dir)?;
-        let mut continued = None;
-        // From the newest day back, past days a crash left empty or holding a torn item only.
-        for (index, day) in days.iter().enumerate().rev() {
-            let last = if index + 1 == days.len() {
-                recover(dir, day)?
-            } else {
-                read_day(dir, day)?.pop()
-            };
-            if let Some(record) = last {
-                continued = Some(record);
-                break;
-            }
+        // The newest day's torn final record, which only an open repairs, is cut first.
+        let days = days(store.as_ref())?;
+        if let Some(last) = days.last() {
+            recover(store.as_ref(), last)?;
         }
-        let (mut next_seq, mut previous) = match continued {
-            Some(record) => {
-                let digest = record
-                    .digest()
-                    .map_err(|error| StorageError::Corruption(error.to_string()))?;
-                (record.seq + 1, digest)
-            }
-            None => (0, genesis()),
-        };
-        if let Some(checkpoint) = &last_checkpoint
-            && checkpoint.last_seq >= next_seq
-        {
-            // Records a checkpoint covers are gone from the day files: the trail continues after
-            // the checkpoint, never reusing a sequence it sealed. Retention explains it when the
-            // anchor keeps records from right after that checkpoint; anything else verification
-            // reports as records missing.
-            let retained =
-                anchor(dir)?.is_some_and(|anchor| anchor.low_watermark == checkpoint.last_seq + 1);
-            if !retained {
-                tracing::error!(
-                event.name = "audit.sealed_records_missing",
-                component = "host",
-                trail = %store.place(""),
-                last_found = next_seq.checked_sub(1),
-                last_sealed = checkpoint.last_seq,
-                "records an audit checkpoint covers are missing from the trail"
-                );
-            }
-            next_seq = checkpoint.last_seq + 1;
-            previous = checkpoint.head.clone();
-        }
-        let last_day = days.last().cloned();
-        Ok(Self::resume(
-            store,
-            class,
-            resource,
-            retention,
-            State {
-                next_seq,
-                previous,
-                last_day,
-                last_checkpoint,
-                sealed,
-            },
-        ))
+        let state = state_of(store.as_ref())?;
+        Ok(Self::resume(store, class, resource, retention, state))
     }
 
     /// The trail of `(class, resource)` kept in `store`, continued from `state`: for a backend
@@ -686,6 +609,91 @@ impl Trail {
         }
         Ok(Some(anchor))
     }
+}
+
+/// Where the trail `store` holds continues: its last record, its newest checkpoint and seal, and
+/// what retention left. Nothing is written: a torn final record is left out, not cut.
+pub fn state_of(store: &dyn TrailStore) -> StorageResult<State> {
+    let dir = store;
+    let names = ordered(store.checkpoint_names()?);
+    let last_checkpoint = match names.last() {
+        None => None,
+        Some(name) => {
+            let envelope = store.checkpoint(name)?.unwrap_or_default();
+            let checkpoint = read_unverified(&envelope).map_err(|error| {
+                StorageError::Corruption(format!(
+                    "the checkpoint {name} of {} does not read: {error}",
+                    store.place("")
+                ))
+            })?;
+            Some(Sealed {
+                name: name.clone(),
+                digest: envelope_digest(&envelope),
+                last_seq: checkpoint.last_seq,
+                head: checkpoint.head_digest,
+            })
+        }
+    };
+    let sealed = names.iter().rev().find_map(|name| match parse_name(name) {
+        Some((period, None)) => Some(period),
+        _ => None,
+    });
+
+    let days = days(dir)?;
+    let mut continued = None;
+    // From the newest day back, past days a crash left empty or holding a torn item only.
+    for (index, day) in days.iter().enumerate().rev() {
+        // The newest day may end in a record still being written, which is left out; any other
+        // day is read whole, and one that ends inside a record is corruption.
+        let last = if index + 1 == days.len() {
+            read_written(dir, day)?.pop()
+        } else {
+            read_day(dir, day)?.pop()
+        };
+        if let Some(record) = last {
+            continued = Some(record);
+            break;
+        }
+    }
+    let (mut next_seq, mut previous) = match continued {
+        Some(record) => {
+            let digest = record
+                .digest()
+                .map_err(|error| StorageError::Corruption(error.to_string()))?;
+            (record.seq + 1, digest)
+        }
+        None => (0, genesis()),
+    };
+    if let Some(checkpoint) = &last_checkpoint
+        && checkpoint.last_seq >= next_seq
+    {
+        // Records a checkpoint covers are gone from the day files: the trail continues after
+        // the checkpoint, never reusing a sequence it sealed. Retention explains it when the
+        // anchor keeps records from right after that checkpoint; anything else verification
+        // reports as records missing.
+        let retained =
+            anchor(dir)?.is_some_and(|anchor| anchor.low_watermark == checkpoint.last_seq + 1);
+        if !retained {
+            tracing::error!(
+            event.name = "audit.sealed_records_missing",
+            component = "host",
+            trail = %store.place(""),
+            last_found = next_seq.checked_sub(1),
+            last_sealed = checkpoint.last_seq,
+            "records an audit checkpoint covers are missing from the trail"
+            );
+        }
+        next_seq = checkpoint.last_seq + 1;
+        previous = checkpoint.head.clone();
+    }
+    let last_day = days.last().cloned();
+    Ok(State {
+        next_seq,
+        previous,
+        last_day,
+        last_checkpoint,
+        sealed,
+    })
 }
 
 /// Copies the trail `from` holds into the directory `into`, as the file backend lays a trail

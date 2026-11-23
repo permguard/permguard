@@ -52,6 +52,26 @@ impl PostgresBootstrap {
     }
 }
 
+impl PostgresBootstrap {
+    /// Writes the commitment a volume kept, as it is: what the import of a volume does.
+    pub fn import(&self, commitment: &Bootstrap) -> Result<(), AuthzError> {
+        let created_at = i64::try_from(commitment.created_at)
+            .map_err(|_| AuthzError::Invalid("a time past what the store keeps".to_owned()))?;
+        self.database.write(|unit| {
+            unit.execute(
+                "INSERT INTO permguard_bootstrap (principal, fingerprint, created_at)
+                 VALUES ($1, $2, $3)",
+                &[
+                    &commitment.principal.as_str(),
+                    &commitment.fingerprint,
+                    &created_at,
+                ],
+            )
+        })?;
+        Ok(())
+    }
+}
+
 impl BootstrapStore for PostgresBootstrap {
     fn bootstrap(&self) -> Result<Option<Bootstrap>, AuthzError> {
         self.database.transaction(held)?

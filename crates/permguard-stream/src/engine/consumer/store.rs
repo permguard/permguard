@@ -70,6 +70,32 @@ pub trait RunStore: RunFiles {
     fn unlink(&self, shelf: &str, names: &[String]) -> Result<(), StreamError>;
 }
 
+/// One run as an export carries it: its journal, each frame at its own index, its views and the
+/// files of its shelves (iteration 03, WP-27.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedRun {
+    pub component: String,
+    pub producer: String,
+    pub run: String,
+    pub first_index: u64,
+    pub next_index: u64,
+    pub frames: Vec<Frame>,
+    /// Each view by its name.
+    pub views: Vec<(String, Vec<u8>)>,
+    /// Each file of a shelf: the shelf, its name and its bytes.
+    pub shelves: Vec<(String, String, Vec<u8>)>,
+}
+
+/// Everything a consumer's runs hold, as an import carries it to another backend at rest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    pub runs: Vec<ExportedRun>,
+    /// Each view of a producer: its component, the producer, the name and the bytes.
+    pub producer_views: Vec<(String, String, String, Vec<u8>)>,
+    /// Each view of a resource: its component, the name and the bytes.
+    pub resource_views: Vec<(String, String, Vec<u8>)>,
+}
+
 /// The runs of one consumer: the only way it reaches one. `component` is a resource's
 /// component, `producer` and `run` hex.
 pub trait Runs: Send + Sync {

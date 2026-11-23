@@ -50,6 +50,32 @@ pub struct Retired {
     pub init: bool,
 }
 
+/// The public records of one identity, each as the bytes it was written as.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Public {
+    /// The provisioning record.
+    pub init: Option<Vec<u8>>,
+    /// The signed document.
+    pub document: Option<Vec<u8>>,
+    /// The succession records, oldest first.
+    pub successions: Vec<Vec<u8>>,
+    /// The public keys, by epoch, lowest first.
+    pub keys: Vec<(u64, Vec<u8>)>,
+}
+
+/// Every record a backend holds of the Host identity, but the keys its custody keeps: what an
+/// import carries to another backend at rest (iteration 03, WP-27.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Records {
+    /// The identity held.
+    pub current: Public,
+    /// The record of the last start.
+    pub start: Option<Vec<u8>>,
+    /// The identities a reset retired: the `host_id`, as text, the record of the reset and the
+    /// evidence kept.
+    pub retired: Vec<(String, Vec<u8>, Public)>,
+}
+
 /// The store of the Host identity's records: the only way the Host reads and writes them
 /// (`1-architecture/8` Store contracts).
 ///

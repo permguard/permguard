@@ -12,6 +12,7 @@
 use std::cell::RefCell;
 
 use permguard_host::identity::witness::{Change, VersionWitnesses, VersionsError};
+use permguard_host::secrets::files::Witness;
 use permguard_host::secrets::{SecretsError, WitnessStore};
 
 use crate::database::{Database, DbError};
@@ -71,6 +72,50 @@ impl PostgresVersionWitnesses {
     /// The version witnesses of `database`, whose schema is this build's.
     pub fn new(database: Database) -> Self {
         Self { database }
+    }
+}
+
+impl PostgresWitnesses {
+    /// Writes `witnesses`, as another backend held them, in one transaction: the import of a
+    /// volume (iteration 03, WP-27.6), into a database no server is using. A name already held
+    /// refuses.
+    pub fn import(&self, witnesses: &[Witness]) -> Result<usize, SecretsError> {
+        self.database
+            .write(|unit| {
+                for (name, witness) in witnesses {
+                    unit.execute(
+                        "INSERT INTO permguard_witnesses (name, witness) VALUES ($1, $2)",
+                        &[&name.join("/"), &witness.as_slice()],
+                    )?;
+                }
+                Ok(witnesses.len())
+            })
+            .map_err(secrets)
+    }
+}
+
+impl PostgresVersionWitnesses {
+    /// Writes the entries of `realm`, the server's own when `None`, as another backend held them:
+    /// the import of a volume (iteration 03, WP-27.6), into a database no server is using. A
+    /// scope already held refuses.
+    pub fn import(
+        &self,
+        realm: Option<&str>,
+        entries: &[(String, String)],
+    ) -> Result<usize, VersionsError> {
+        let scope = scope(realm);
+        self.database
+            .write(|unit| {
+                for (position, (label, witness)) in entries.iter().enumerate() {
+                    unit.execute(
+                        "INSERT INTO permguard_version_witnesses (scope, position, label, witness)
+                         VALUES ($1, $2, $3, $4)",
+                        &[&scope, &(position as i32), label, witness],
+                    )?;
+                }
+                Ok(entries.len())
+            })
+            .map_err(|error| VersionsError(error.to_string()))
     }
 }
 

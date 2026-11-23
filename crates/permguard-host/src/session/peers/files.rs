@@ -13,6 +13,8 @@ use std::sync::{Mutex, PoisonError};
 use super::{PeerRefusal, Seen, SeenStore, check};
 use crate::identity::Verified;
 use crate::identity::record::uuid_text;
+use crate::secrets::parse_uuid;
+use crate::storage::dir::TEMP_PREFIX;
 use crate::storage::volume::Volume;
 use crate::storage::{Dir, StorageError, write};
 
@@ -45,6 +47,31 @@ impl FileSeen {
             dir,
             advancing: Mutex::new(()),
         })
+    }
+}
+
+impl FileSeen {
+    /// Every peer seen, as held: what an import carries to another backend (iteration 03,
+    /// WP-27.6).
+    ///
+    /// A temporary file is an unfinished write and is not carried; any other file that is not a
+    /// peer's refuses, so nothing the volume holds is dropped unseen.
+    pub fn export(&self) -> Result<Vec<Seen>, PeerRefusal> {
+        let mut found = Vec::new();
+        for name in self.dir.names()? {
+            if name.starts_with(TEMP_PREFIX) {
+                continue;
+            }
+            let host_id = name
+                .strip_suffix(".cbor")
+                .and_then(parse_uuid)
+                .ok_or_else(|| PeerRefusal::Storage(format!("{name} is not a peer seen")))?;
+            let seen = self
+                .seen(&host_id)?
+                .ok_or_else(|| PeerRefusal::Storage(format!("{name} vanished")))?;
+            found.push(seen);
+        }
+        Ok(found)
     }
 }
 

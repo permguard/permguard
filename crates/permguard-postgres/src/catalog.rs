@@ -16,8 +16,8 @@
 //! instance.
 
 use permguard_core::catalog::{
-    Catalog, CatalogError, FIRST_REVISION, Ledger, LedgerState, Provenance, Selector, Tombstone,
-    Write, validate_name,
+    Catalog, CatalogError, Exported, FIRST_REVISION, Ledger, LedgerState, Provenance, Selector,
+    Tombstone, Write, validate_name,
 };
 use permguard_host::identity::record::{uuid_text, uuid_v7};
 use postgres::Row;
@@ -281,6 +281,100 @@ impl PostgresCatalog {
             ],
         )?;
         Ok(ledger)
+    }
+}
+
+impl PostgresCatalog {
+    /// Writes `exported`, as another backend held it, in one transaction: the import of a
+    /// volume (iteration 03, WP-27.6), into a database no server is using. Each record keeps its
+    /// id, its revision and its operation, the zones and the ledgers their order; a record
+    /// already held refuses.
+    pub fn import(&self, exported: &Exported) -> Result<(), CatalogError> {
+        self.database
+            .transaction(|unit| {
+                for zone in &exported.zones {
+                    unit.execute(
+                        "INSERT INTO permguard_zones
+                             (id, name, created_at, updated_at, revision, operation)
+                         VALUES ($1, $2, $3, $4, $5, $6)",
+                        &[
+                            &zone.id,
+                            &zone.name,
+                            &stored(zone.created_at)?,
+                            &stored(zone.updated_at)?,
+                            &stored(zone.revision)?,
+                            &zone.operation,
+                        ],
+                    )?;
+                }
+                for ledger in &exported.ledgers {
+                    let provenance = ledger
+                        .provenance
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()
+                        .map_err(|_| {
+                            Failure::Refused(CatalogError::backend("a provenance does not encode"))
+                        })?;
+                    unit.execute(
+                        "INSERT INTO permguard_ledgers
+                             (id, zone_id, name, default_ref, created_at, updated_at, revision,
+                              operation, state, provenance)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                        &[
+                            &ledger.id,
+                            &ledger.zone_id,
+                            &ledger.name,
+                            &ledger.default_ref,
+                            &stored(ledger.created_at)?,
+                            &stored(ledger.updated_at)?,
+                            &stored(ledger.revision)?,
+                            &ledger.operation,
+                            &match ledger.state {
+                                LedgerState::Active => "active",
+                                LedgerState::Archived => "archived",
+                            },
+                            &provenance,
+                        ],
+                    )?;
+                }
+                for tombstone in &exported.tombstones {
+                    unit.execute(
+                        "INSERT INTO permguard_catalog_tombstones
+                             (id, zone_id, name, deleted_at, revision, operation)
+                         VALUES ($1, $2, $3, $4, $5, $6)",
+                        &[
+                            &tombstone.id,
+                            &tombstone.zone_id,
+                            &tombstone.name,
+                            &stored(tombstone.deleted_at)?,
+                            &stored(tombstone.revision)?,
+                            &tombstone.operation,
+                        ],
+                    )?;
+                }
+                let mut marks: Vec<(String, &String, u64)> = Vec::new();
+                for (name, reached) in &exported.zone_names {
+                    marks.push((ZONE_NAMES.to_owned(), name, *reached));
+                }
+                for (zone_id, names) in &exported.ledger_names {
+                    for (name, reached) in names {
+                        marks.push((ledger_names(zone_id), name, *reached));
+                    }
+                }
+                for (name, reached) in &exported.ledger_paths {
+                    marks.push((LEDGER_PATHS.to_owned(), name, *reached));
+                }
+                for (scope, name, reached) in marks {
+                    unit.execute(
+                        "INSERT INTO permguard_catalog_marks (scope, name, reached)
+                         VALUES ($1, $2, $3)",
+                        &[&scope, name, &stored(reached)?],
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(|error| CatalogError::backend(error.to_string()))?
     }
 }
 

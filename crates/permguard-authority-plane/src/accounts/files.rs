@@ -320,6 +320,38 @@ impl FileAccounts {
     }
 }
 
+impl FileAccounts {
+    /// Everything held, as the journal leaves it: what an import carries to another backend
+    /// (iteration 03, WP-27.6). Who made each account's last change is read from its frame.
+    pub fn export(&self) -> Result<super::Exported, AccountsError> {
+        let journal = self.journal.lock().unwrap_or_else(PoisonError::into_inner);
+        let state = self.read();
+        let mut by = BTreeMap::new();
+        for frame in journal.frames()? {
+            let record = AccountRecord::decode(&frame.payload)?;
+            by.insert(record.name, record.by);
+        }
+        Ok(super::Exported {
+            revision: state.revision,
+            accounts: state
+                .accounts
+                .values()
+                .map(|account| {
+                    (
+                        account.clone(),
+                        by.get(&account.name).cloned().unwrap_or_default(),
+                    )
+                })
+                .collect(),
+            operations: state
+                .operations
+                .iter()
+                .map(|(id, (revision, name))| (*id, *revision, name.clone()))
+                .collect(),
+        })
+    }
+}
+
 impl AccountStore for FileAccounts {
     fn revision(&self) -> Result<u64, AccountsError> {
         Ok(self.read().revision)

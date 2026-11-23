@@ -145,6 +145,32 @@ pub struct ListView {
     pub changed_at: u64,
 }
 
+/// A list as an export carries it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedList {
+    pub list_id: [u8; 16],
+    /// The list new tokens draw from.
+    pub open: bool,
+    /// How many entries are drawn.
+    pub drawn: usize,
+    /// The latest expiry of a token it holds.
+    pub latest_expiry: u64,
+    /// The revision of its last change.
+    pub changed_at: u64,
+}
+
+/// Everything a [`TokenStore`] holds, as an import carries it to another backend at rest
+/// (iteration 03, WP-27.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    /// The number of changes applied.
+    pub revision: u64,
+    pub lists: Vec<ExportedList>,
+    pub tokens: Vec<IssuedToken>,
+    /// The revision each operation produced and what it named.
+    pub operations: Vec<(OperationId, u64, String)>,
+}
+
 /// The tokens of one Authority Plane and their lists: the only way its code records, reads and
 /// revokes them.
 ///

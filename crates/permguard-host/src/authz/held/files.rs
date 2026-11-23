@@ -77,6 +77,27 @@ impl FileHeld {
     }
 }
 
+impl FileHeld {
+    /// Every list token kept, read as it is and not verified, the volume left as it was: what
+    /// an import verifies and carries to another backend (iteration 03, WP-27.6).
+    pub fn export(&self) -> Result<Vec<String>, HeldError> {
+        let mut tokens = Vec::new();
+        for name in self.lists.names()? {
+            if !name.ends_with(".jwt") {
+                continue;
+            }
+            let Some(bytes) = self.lists.read(&name)? else {
+                continue;
+            };
+            // What is not text is no token: a start drops it, and an import does not carry it.
+            if let Ok(token) = String::from_utf8(bytes) {
+                tokens.push(token);
+            }
+        }
+        Ok(tokens)
+    }
+}
+
 impl HeldStore for FileHeld {
     fn keys(&self) -> Result<Option<KeptKeys>, HeldError> {
         Ok(self

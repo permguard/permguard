@@ -51,6 +51,44 @@ impl FileVersionWitnesses {
     }
 }
 
+/// The entries of one scope: the realm, the server's own when `None`, and its entries in order.
+pub type Scope = (Option<String>, Vec<(String, String)>);
+
+impl FileVersionWitnesses {
+    /// The entries of the server and of every realm that keeps a witness file: what an import
+    /// carries to another backend (iteration 03, WP-27.6). A scope without a file has no entry.
+    pub fn export(&self) -> Result<Vec<Scope>, VersionsError> {
+        let mut scopes = Vec::new();
+        let server = self.path(None);
+        if server.exists() {
+            scopes.push((None, read(&server)?));
+        }
+        let realms = self.working_dir.join("realms");
+        let listing = match std::fs::read_dir(&realms) {
+            Ok(listing) => listing,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(scopes),
+            Err(error) => return Err(failed("listing", &realms, error)),
+        };
+        let mut names = Vec::new();
+        for entry in listing {
+            let entry = entry.map_err(|error| failed("listing", &realms, error))?;
+            let name = entry.file_name().into_string().map_err(|name| {
+                VersionsError(format!("{} names no realm", realms.join(name).display()))
+            })?;
+            names.push(name);
+        }
+        names.sort();
+        for realm in names {
+            let path = self.path(Some(&realm));
+            if path.exists() {
+                let entries = read(&path)?;
+                scopes.push((Some(realm), entries));
+            }
+        }
+        Ok(scopes)
+    }
+}
+
 fn failed(doing: &str, path: &Path, error: impl std::fmt::Display) -> VersionsError {
     VersionsError(format!("{doing} {}: {error}", path.display()))
 }

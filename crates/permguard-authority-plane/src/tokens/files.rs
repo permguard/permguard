@@ -284,6 +284,34 @@ impl FileTokens {
     }
 }
 
+impl FileTokens {
+    /// Everything held, as the journal leaves it: what an import carries to another backend
+    /// (iteration 03, WP-27.6).
+    pub fn export(&self) -> super::Exported {
+        let state = self.read();
+        super::Exported {
+            revision: state.revision,
+            lists: state
+                .lists
+                .iter()
+                .map(|(list_id, list)| super::ExportedList {
+                    list_id: *list_id,
+                    open: state.open == Some(*list_id),
+                    drawn: list.count,
+                    latest_expiry: list.latest_expiry,
+                    changed_at: list.changed_at,
+                })
+                .collect(),
+            tokens: state.tokens.values().cloned().collect(),
+            operations: state
+                .operations
+                .iter()
+                .map(|(id, (revision, named))| (*id, *revision, named.clone()))
+                .collect(),
+        }
+    }
+}
+
 impl TokenStore for FileTokens {
     fn revision(&self) -> Result<u64, TokenError> {
         Ok(self.read().revision)

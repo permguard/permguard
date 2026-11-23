@@ -60,8 +60,8 @@ use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 
 use permguard_core::catalog::{
-    Catalog, CatalogError, FIRST_REVISION, Ledger, LedgerState, Selector, Tombstone, Write, Zone,
-    is_guid_shaped, validate_name,
+    Catalog, CatalogError, Exported, FIRST_REVISION, Ledger, LedgerState, Selector, Tombstone,
+    Write, Zone, is_guid_shaped, validate_name,
 };
 
 /// What the zone index file is called, beside the zone directories it describes.
@@ -360,6 +360,85 @@ impl FileCatalog {
                 kind: "zone",
                 selector: zone.to_string(),
             })
+    }
+}
+
+impl FileCatalog {
+    /// Everything this catalog holds, read without writing: what an import carries to another
+    /// backend (iteration 03, WP-27.6). A zone's directory stays when the zone is deleted, so
+    /// the tombstones and the marks of its ledgers are read from every zone directory there is.
+    pub fn export(&self) -> Result<Exported> {
+        let listing = |path: &Path| -> Result<Vec<std::fs::DirEntry>> {
+            match fs::read_dir(path) {
+                Ok(entries) => entries
+                    .map(|entry| {
+                        entry.map_err(|error| {
+                            CatalogError::backend(format!("listing {}: {error}", path.display()))
+                        })
+                    })
+                    .collect(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+                Err(error) => Err(CatalogError::backend(format!(
+                    "listing {}: {error}",
+                    path.display()
+                ))),
+            }
+        };
+        let tombstones_in = |path: &Path| -> Result<Vec<Tombstone>> {
+            let mut found = Vec::new();
+            for entry in listing(path)? {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if let Some(id) = name.strip_suffix(".json")
+                    && is_guid_shaped(id)
+                    && let Some(tombstone) = Self::read_tombstone(Some(entry.path()))?
+                {
+                    found.push(tombstone);
+                }
+            }
+            Ok(found)
+        };
+        let zones = self.read_index::<ZoneIndex>(&self.zones_path())?.zones;
+        let mut exported = Exported {
+            tombstones: tombstones_in(&self.root.join(TOMBSTONES_DIRECTORY).join("zones"))?,
+            zone_names: self.read_index::<NameMarks>(&self.zone_names_path())?.names,
+            ledger_paths: self
+                .read_index::<NameMarks>(&self.ledger_paths_path())?
+                .names,
+            ..Exported::default()
+        };
+        let mut directories: Vec<String> = listing(&self.root)?
+            .into_iter()
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| is_guid_shaped(name))
+            .collect();
+        directories.sort();
+        for zone_id in directories {
+            let marks = self
+                .read_index::<NameMarks>(&self.ledger_names_path(&zone_id))?
+                .names;
+            if !marks.is_empty() {
+                exported.ledger_names.insert(zone_id.clone(), marks);
+            }
+            exported.tombstones.extend(tombstones_in(
+                &self.zone_directory(&zone_id).join(TOMBSTONES_DIRECTORY),
+            )?);
+            if zones.iter().any(|zone| zone.id == zone_id) {
+                exported.ledgers.extend(
+                    self.read_index::<LedgerIndex>(&self.ledgers_path(&zone_id))?
+                        .ledgers,
+                );
+            }
+        }
+        // The ledgers in the order their zones are listed.
+        exported.ledgers.sort_by_key(|ledger| {
+            zones
+                .iter()
+                .position(|zone| zone.id == ledger.zone_id)
+                .unwrap_or(usize::MAX)
+        });
+        exported.zones = zones;
+        Ok(exported)
     }
 }
 

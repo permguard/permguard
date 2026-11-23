@@ -115,6 +115,42 @@ impl FileCursorRoots {
     }
 }
 
+impl FileCursorRoots {
+    /// The roots held, checked against their witness as [`load_root`] checks them, never minted
+    /// and nothing written: what an import carries to another backend (iteration 03, WP-27.6).
+    /// `None` when the store never issued an offset.
+    pub fn export(&self) -> Result<Option<Roots>> {
+        let path = self.directory.join(KEY_FILE);
+        let issuing = match fs::read(&path) {
+            Ok(held) => held,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(error).with_context(|| format!("reading {}", path.display()));
+            }
+        };
+        let previous = fs::read(self.directory.join(PREVIOUS_KEY_FILE))
+            .ok()
+            .filter(|previous| previous.len() >= permguard_stream::cursor::MIN_KEY_BYTES);
+        let witness_path = self.directory.join(WITNESS_FILE);
+        let witnessed = fs::read(&witness_path)
+            .with_context(|| format!("reading {}", witness_path.display()))?;
+        if issuing.len() < permguard_stream::cursor::MIN_KEY_BYTES
+            || witnessed != permguard_host::secrets::witness_of(&issuing)
+        {
+            anyhow::bail!(
+                "`{}` is not the key `{}` witnesses: start the server on files once, so it \
+                 settles the root, then import",
+                path.display(),
+                witness_path.display()
+            );
+        }
+        Ok(Some(Roots {
+            issuing: zeroize::Zeroizing::new(issuing),
+            previous: previous.map(zeroize::Zeroizing::new),
+        }))
+    }
+}
+
 impl CursorRoots for FileCursorRoots {
     fn roots(&self) -> Result<Roots> {
         let _asking = self

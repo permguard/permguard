@@ -195,6 +195,99 @@ fn state_of(row: &postgres::Row) -> Result<State, Failure<StorageError>> {
     })
 }
 
+impl PostgresTrails {
+    /// Writes the trail of `(class, resource)` that `from` holds, as it is: its records, their
+    /// sequences and chain, its days, its checkpoints and their co-signatures, its anchor, and
+    /// where it continues. What the import of a volume does, into a database that holds no such
+    /// trail; `from` is only read.
+    pub fn import(
+        &self,
+        class: Class,
+        resource: &str,
+        from: &dyn TrailStore,
+    ) -> Result<usize, String> {
+        let state = trail::state_of(from).map_err(|error| error.to_string())?;
+        let meta = TrailMeta {
+            class: class.as_str().to_owned(),
+            resource: resource.to_owned(),
+        }
+        .encode()
+        .map_err(|error| error.to_string())?;
+        let digest = trail::resource_digest(resource);
+        let days = from.days().map_err(|error| error.to_string())?;
+        let mut held = Vec::new();
+        for (index, day) in days.iter().enumerate() {
+            let records = if index + 1 == days.len() {
+                trail::read_written(from, day)
+            } else {
+                trail::read_day(from, day)
+            }
+            .map_err(|error| error.to_string())?;
+            for record in records {
+                let bytes = record.encode().map_err(|error| error.to_string())?;
+                held.push((day.clone(), record.seq, bytes));
+            }
+        }
+        let mut checkpoints = Vec::new();
+        for name in from.checkpoint_names().map_err(|error| error.to_string())? {
+            if let Some(envelope) = from.checkpoint(&name).map_err(|error| error.to_string())? {
+                checkpoints.push((name, envelope));
+            }
+        }
+        let anchor = from.anchor().map_err(|error| error.to_string())?;
+        let class = class.as_str();
+        let sealed = state.last_checkpoint.as_ref();
+        self.database
+            .transaction(|unit| {
+                unit.execute(
+                    "INSERT INTO permguard_audit_trails
+                         (class, digest, resource, meta, next_seq, previous, last_day, sealed,
+                          checkpoint_name, checkpoint_digest, checkpoint_last_seq, checkpoint_head,
+                          anchor)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+                    &[
+                        &class,
+                        &digest,
+                        &resource,
+                        &meta,
+                        &sequence(state.next_seq)?,
+                        &state.previous.raw().as_slice(),
+                        &state.last_day,
+                        &state.sealed,
+                        &sealed.map(|sealed| sealed.name.as_str()),
+                        &sealed.map(|sealed| sealed.digest.raw().as_slice()),
+                        &sealed.map(|sealed| sequence(sealed.last_seq)).transpose()?,
+                        &sealed.map(|sealed| sealed.head.raw().as_slice()),
+                        &anchor,
+                    ],
+                )?;
+                for day in &days {
+                    unit.execute(
+                        "INSERT INTO permguard_audit_days (class, digest, day) VALUES ($1, $2, $3)",
+                        &[&class, &digest, day],
+                    )?;
+                }
+                for (day, seq, bytes) in &held {
+                    unit.execute(
+                        "INSERT INTO permguard_audit_records (class, digest, seq, day, record)
+                         VALUES ($1, $2, $3, $4, $5)",
+                        &[&class, &digest, &sequence(*seq)?, day, bytes],
+                    )?;
+                }
+                for (name, envelope) in &checkpoints {
+                    unit.execute(
+                        "INSERT INTO permguard_audit_checkpoints (class, digest, name, envelope)
+                         VALUES ($1, $2, $3, $4)",
+                        &[&class, &digest, name, envelope],
+                    )?;
+                }
+                Ok(held.len())
+            })
+            .map_err(|error| error.to_string())?
+            .map_err(|error: StorageError| error.to_string())
+    }
+}
+
 impl Trails for PostgresTrails {
     fn hold(
         &self,

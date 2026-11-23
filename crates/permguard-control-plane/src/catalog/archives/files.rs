@@ -85,6 +85,35 @@ impl FileArchives {
     }
 }
 
+impl FileArchives {
+    /// Every archive `zone` keeps, with what its request asked and its bytes, read without
+    /// writing: what an import carries to another backend (iteration 03, WP-27.6). An archive
+    /// whose request does not read refuses: it could not be kept again as it was.
+    pub fn export(
+        &self,
+        zone: &str,
+    ) -> Result<Vec<(ArchiveRecord, Requested, Vec<u8>)>, ArchiveError> {
+        if !self.zones_root.join(zone).join(ARCHIVES).is_dir() {
+            return Ok(Vec::new());
+        }
+        let dir = self.directory(zone)?;
+        let mut exported = Vec::new();
+        for (record, asked) in self.kept(zone)? {
+            let asked = asked.ok_or_else(|| {
+                ArchiveError::Record(format!("the archive {} keeps no request", record.id))
+            })?;
+            let archive = dir
+                .subdir(&record.id, false)?
+                .read(ARCHIVE)?
+                .ok_or_else(|| {
+                    ArchiveError::Record(format!("the archive {} keeps no bytes", record.id))
+                })?;
+            exported.push((record, asked, archive));
+        }
+        Ok(exported)
+    }
+}
+
 impl ArchiveStore for FileArchives {
     fn archived(&self, zone: &str) -> Result<Vec<ArchiveRecord>, ArchiveError> {
         Ok(self

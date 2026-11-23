@@ -264,6 +264,18 @@ pub fn validate(account: &Account, now: u64) -> Result<(), AccountsError> {
     Ok(())
 }
 
+/// Everything an [`AccountStore`] holds, as an import carries it to another backend at rest
+/// (iteration 03, WP-27.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    /// The number of changes applied.
+    pub revision: u64,
+    /// Every account, with who made its last change.
+    pub accounts: Vec<(Account, String)>,
+    /// The revision each operation produced and the account it changed.
+    pub operations: Vec<(OperationId, u64, String)>,
+}
+
 /// The accounts of one Authority Plane: the only way its code reads and changes them.
 ///
 /// A call holds one complete rule: what it checks and what it writes are never two calls a

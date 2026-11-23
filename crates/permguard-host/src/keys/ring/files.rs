@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use permguard_objects::cbor::Value;
 use permguard_objects::crypto::suite::Suite;
 
-use super::store::RingStore;
+use super::store::{Exported, Records, RingStore};
 use super::{Policy, Ring, RingError};
 use crate::keys::record::{Entry, MAX_ENTRY_BYTES};
 use crate::keys::registry::Stores;
@@ -127,6 +127,83 @@ impl FileRing {
             ));
         }
         Ok(())
+    }
+}
+
+impl FileRing {
+    /// What this ring holds, and what a reset kept of it, read without writing: what an import
+    /// carries to another backend (iteration 03, WP-27.6). The ring is one opened with its name.
+    pub fn export(&self) -> Result<Exported, RingError> {
+        let mut retired = Vec::new();
+        let keys = Dir::open(
+            self.dir
+                .path()
+                .parent()
+                .ok_or_else(|| RingError::Corrupt("a ring directory has no parent".to_owned()))?,
+        )?;
+        if !self.ring.is_empty() && keys.subdirs()?.iter().any(|name| name == RETIRED) {
+            let hosts = keys.subdir(RETIRED, false)?;
+            for host_id in hosts.subdirs()? {
+                let host = hosts.subdir(&host_id, false)?;
+                if host.subdirs()?.contains(&self.ring) {
+                    let kept = Self::to_read(host.subdir(&self.ring, false)?);
+                    retired.push((host_id, kept.records()?));
+                }
+            }
+        }
+        Ok(Exported {
+            current: self.records()?,
+            retired,
+        })
+    }
+
+    /// The records of this ring's directory, as its store answers them.
+    fn records(&self) -> Result<Records, RingError> {
+        let entries = sequence::read(&self.dir, JOURNAL, MAX_ENTRY_BYTES)?
+            .items
+            .iter()
+            .map(|item| {
+                permguard_objects::cbor::encode(item).map_err(|error| {
+                    RingError::Corrupt(format!("an entry does not encode: {error:?}"))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut kept_bindings = Vec::new();
+        if let Some(dir) = self.existing(BINDINGS)? {
+            for name in dir.names()? {
+                let Some(seq) = name
+                    .strip_suffix(".cose")
+                    .and_then(|stem| stem.parse::<u64>().ok())
+                    .filter(|seq| name == format!("{seq}.cose"))
+                else {
+                    continue;
+                };
+                // As the store reads them: what does not read as a kept binding is none.
+                if let Ok(Some(bytes)) = read_view(&dir, &name, format::VIEW) {
+                    kept_bindings.push((seq, bytes));
+                }
+            }
+        }
+        kept_bindings.sort();
+        let mut public_keys = Vec::new();
+        if let Some(dir) = self.existing(PUBLIC)? {
+            for name in dir.names()? {
+                let Some(thumbprint) = name.strip_suffix(".jwk") else {
+                    continue;
+                };
+                if let Some(jwk) = dir.read(&name)? {
+                    public_keys.push((thumbprint.to_owned(), jwk));
+                }
+            }
+        }
+        public_keys.sort();
+        Ok(Records {
+            entries,
+            view: self.view()?,
+            binding: self.binding()?,
+            kept_bindings,
+            public_keys,
+        })
     }
 }
 

@@ -141,6 +141,85 @@ impl PostgresTokens {
     }
 }
 
+impl PostgresTokens {
+    /// Writes `exported`, as another backend held it, in one transaction: the import of a volume
+    /// (iteration 03, WP-27.6), into a database no server is using. Every token keeps its entry
+    /// and its status, every list what it drew, and the store its revision; what is already
+    /// held refuses.
+    pub fn import(&self, exported: &super::Exported) -> Result<(), TokenError> {
+        self.within(|unit| {
+            for list in &exported.lists {
+                let drawn = i32::try_from(list.drawn)
+                    .map_err(|_| Failure::Refused(TokenError::Invalid("a list's count".into())))?;
+                unit.execute(
+                    "INSERT INTO permguard_authority_lists
+                         (list_id, open, drawn, latest_expiry, changed_at)
+                     VALUES ($1, $2, $3, $4, $5)",
+                    &[
+                        &list.list_id.as_slice(),
+                        &list.open,
+                        &drawn,
+                        &kept(list.latest_expiry)?,
+                        &kept(list.changed_at)?,
+                    ],
+                )?;
+            }
+            for token in &exported.tokens {
+                let entry = i32::try_from(token.index)
+                    .map_err(|_| Failure::Refused(TokenError::Invalid("an entry".into())))?;
+                unit.execute(
+                    "INSERT INTO permguard_authority_tokens
+                         (jti, list_id, entry, account, access_key, issued_at, expires_at, status)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    &[
+                        &token.jti.as_slice(),
+                        &token.list_id.as_slice(),
+                        &entry,
+                        &token.account,
+                        &token.access_key,
+                        &kept(token.issued_at)?,
+                        &kept(token.expires_at)?,
+                        &i16::from(token.status),
+                    ],
+                )?;
+                for (position, scope) in token.scopes.iter().enumerate() {
+                    unit.execute(
+                        "INSERT INTO permguard_authority_token_scopes
+                             (jti, position, operations, selector)
+                         VALUES ($1, $2, $3, $4)",
+                        &[
+                            &token.jti.as_slice(),
+                            &(position as i32),
+                            &scope.operations.iter().cloned().collect::<Vec<String>>(),
+                            &scope.selector.to_string(),
+                        ],
+                    )?;
+                }
+            }
+            for (operation, revision, named) in &exported.operations {
+                unit.execute(
+                    "INSERT INTO permguard_authority_token_operations
+                         (operation_id, revision, named)
+                     VALUES ($1, $2, $3)",
+                    &[&operation.as_bytes().as_slice(), &kept(*revision)?, named],
+                )?;
+            }
+            // The revision row is the migration's: an import raises it from nothing only.
+            let raised = unit.execute(
+                "UPDATE permguard_authority_revisions SET revision = $1
+                 WHERE store = 'tokens' AND revision = 0",
+                &[&kept(exported.revision)?],
+            )?;
+            if raised != 1 {
+                return Err(Failure::Refused(TokenError::Invalid(
+                    "the tokens were changed here before the import".to_owned(),
+                )));
+            }
+            Ok(())
+        })
+    }
+}
+
 impl TokenStore for PostgresTokens {
     fn revision(&self) -> Result<u64, TokenError> {
         let revision: i64 = self.database.write(|unit| {
@@ -737,5 +816,110 @@ mod tests {
             .keep(&BTreeMap::from([([2; 16], 201), ([3; 16], 320)]))
             .expect("kept");
         assert_eq!(one.held(), BTreeMap::from([([2; 16], 201), ([3; 16], 320)]));
+    }
+
+    /// The tokens a volume held, read back on PostgreSQL as they were: every token, its entry
+    /// and status, every list as its bits and its last change, the revision, the operations and
+    /// the marks; the next token draws from the open list carried.
+    #[test]
+    fn the_tokens_of_a_volume_are_imported_as_they_were() {
+        use crate::marks::MarkStore as _;
+
+        let Some(server) = server("the_tokens_of_a_volume_are_imported_as_they_were") else {
+            return;
+        };
+        const NOW: u64 = 1_795_176_000;
+        let root =
+            std::env::temp_dir().join(format!("pg-authority-tokens-import-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let dir = permguard_host::storage::dir::Dir::open(&root).expect("a directory");
+        let (files, _) = crate::tokens::files::FileTokens::open(
+            &dir,
+            permguard_host::storage::journal::Options::default(),
+        )
+        .expect("opens");
+        let draft = |account: &str| TokenDraft {
+            account: account.to_owned(),
+            access_key: "pgak_AAAAAAAAAAAAAAAAAAAA".to_owned(),
+            scopes: vec![TokenScope {
+                operations: std::iter::once("decision.evaluate".to_owned()).collect(),
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+            }],
+            expires_at: NOW + 3_600,
+        };
+        let first = files.issue(draft("billing"), NOW).expect("issued");
+        let second = files.issue(draft("payroll"), NOW + 1).expect("issued");
+        let operating = crate::bench::Operating::new("tokens-import");
+        operating.run(crate::tokens::DOMAIN, &mut |applying| {
+            files
+                .set_status(
+                    Some(applying),
+                    &|token| token.jti == first.jti,
+                    status::INVALID,
+                    "operator",
+                    NOW + 2,
+                )
+                .expect("changed");
+        });
+        let marks = crate::marks::files::FileMarks::new(
+            permguard_host::storage::dir::Dir::open(&root).expect("a directory"),
+        );
+        marks
+            .keep(&BTreeMap::from([(first.list_id, 7)]))
+            .expect("kept");
+
+        let cases = Cases::new(server);
+        let database = cases.next();
+        let target = PostgresTokens::new(database.clone());
+        target.import(&files.export()).expect("imported");
+        let target_marks = PostgresMarks::new(database);
+        target_marks.keep(&marks.held()).expect("kept");
+        assert_eq!(
+            target.revision().expect("read"),
+            files.revision().expect("read")
+        );
+        for jti in [first.jti, second.jti] {
+            assert_eq!(
+                target.token(&jti).expect("read"),
+                files.token(&jti).expect("read")
+            );
+        }
+        assert_eq!(
+            target.live_tokens(NOW).expect("read"),
+            files.live_tokens(NOW).expect("read")
+        );
+        assert_eq!(
+            target.list_ids().expect("read"),
+            files.list_ids().expect("read")
+        );
+        let list = |store: &dyn TokenStore| {
+            let view = store.list(&first.list_id).expect("read").expect("held");
+            (view.list.encode().expect("encodes"), view.changed_at)
+        };
+        assert_eq!(list(&target), list(files.as_ref()));
+        assert_eq!(
+            target.changed_at(&first.list_id).expect("read"),
+            files.changed_at(&first.list_id).expect("read")
+        );
+        let exported = files.export();
+        assert_eq!(exported.operations.len(), 1);
+        for (operation, revision, named) in &exported.operations {
+            assert_eq!(
+                target.operation(operation).expect("read"),
+                Some((*revision, named.clone()))
+            );
+        }
+        assert_eq!(target_marks.held(), marks.held());
+        // The next token draws from the list carried, at the next revision.
+        let third = target.issue(draft("billing"), NOW + 3).expect("issued");
+        assert_eq!(third.list_id, first.list_id);
+        assert_ne!(third.index, first.index);
+        assert_ne!(third.index, second.index);
+        assert_eq!(
+            target.revision().expect("read"),
+            files.revision().expect("read") + 1
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }

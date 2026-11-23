@@ -27,8 +27,8 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use permguard_control_plane::store::{
-    Landed, LedgerStore, Ledgers, RefState, RefUpdate, StoreError, StoredObject, TransferSessions,
-    ref_digest,
+    Exported, Landed, LedgerStore, Ledgers, RefState, RefUpdate, StoreError, StoredObject,
+    TransferSessions, ref_digest,
 };
 use permguard_control_plane::transfer::Transfers;
 use permguard_host::operations::mutation::Applying;
@@ -72,6 +72,60 @@ impl PostgresLedgers {
     /// The ledgers kept in `database`, whose schema is this build's, and in `bucket`.
     pub fn new(database: Database, bucket: Bucket) -> Self {
         Self { database, bucket }
+    }
+}
+
+impl PostgresLedgers {
+    /// Writes what the ledger `ledger` of the zone `zone` held besides its objects, as another
+    /// backend held it, in one transaction: the import of a volume (iteration 03, WP-27.6), into
+    /// a database no server is using. Every ref keeps its counter, its previous state and its
+    /// operation; what is already held refuses. The objects are published first, through
+    /// [`permguard_control_plane::store::copy_objects`], so no ref names one the bucket lacks.
+    pub fn import(&self, zone: &str, ledger: &str, exported: &Exported) -> Result<()> {
+        self.database
+            .transaction(|unit| {
+                for (name, state, operation) in &exported.refs {
+                    let counter = i64::try_from(state.counter).map_err(|_| {
+                        Failure::Refused(backend("a ref's counter", "past what the store keeps"))
+                    })?;
+                    unit.execute(
+                        "INSERT INTO permguard_ledger_refs
+                             (zone, ledger, name, head, counter, previous, operation)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                        &[
+                            &zone,
+                            &ledger,
+                            name,
+                            &state.head.to_string(),
+                            &counter,
+                            &state.previous_ref_digest.as_ref().map(ToString::to_string),
+                            operation,
+                        ],
+                    )?;
+                }
+                for (name, envelope) in &exported.statements {
+                    unit.execute(
+                        "INSERT INTO permguard_ledger_statements (zone, ledger, name, envelope)
+                         VALUES ($1, $2, $3, $4)",
+                        &[&zone, &ledger, name, envelope],
+                    )?;
+                }
+                for head in &exported.roots {
+                    unit.execute(
+                        "INSERT INTO permguard_ledger_roots (zone, ledger, head) VALUES ($1, $2, $3)",
+                        &[&zone, &ledger, &head.to_string()],
+                    )?;
+                }
+                for (transfer_id, record) in &exported.transfers {
+                    unit.execute(
+                        "INSERT INTO permguard_ledger_transfers (zone, ledger, transfer_id, record)
+                         VALUES ($1, $2, $3, $4)",
+                        &[&zone, &ledger, &transfer_id.as_slice(), record],
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(database)?
     }
 }
 
@@ -275,7 +329,7 @@ impl LedgerStore for PostgresLedger {
                      WHERE zone = $1 AND ledger = $2 AND name = $3",
                     &[&self.zone, &self.ledger, &name],
                 )?
-                .map(|row| row.get(0)))
+                .and_then(|row| row.get(0)))
         })
     }
 

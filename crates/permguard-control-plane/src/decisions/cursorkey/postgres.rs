@@ -75,6 +75,55 @@ impl PostgresCursorRoots {
         Ok(())
     }
 
+    /// Keeps `roots`, as another backend held them, sealed: the import of a volume (iteration
+    /// 03, WP-27.6), into a database no server is using, so an offset issued before it verifies
+    /// after. A root this backend cannot keep, of another length than [`KEY_BYTES`], refuses, and
+    /// so does a store that holds a root already.
+    pub fn import(&self, roots: &Roots) -> Result<()> {
+        let sealed = |root: &[u8]| -> Result<Sealed> {
+            let root: &[u8; KEY_BYTES] = root.try_into().map_err(|_| {
+                anyhow!(
+                    "the cursor root of `{}` is {} bytes, and this backend keeps {KEY_BYTES}",
+                    self.store,
+                    root.len()
+                )
+            })?;
+            self.seal(root).map_err(|error| anyhow!(error))
+        };
+        let issuing = sealed(&roots.issuing)?;
+        let previous = roots
+            .previous
+            .as_ref()
+            .map(|root| sealed(root))
+            .transpose()?;
+        let version = |sealed: &Sealed| i64::try_from(sealed.kek_version).unwrap_or(i64::MAX);
+        self.database
+            .write(|unit| {
+                unit.execute(
+                    "INSERT INTO permguard_cursor_roots
+                         (store, kek_ref, kek_version, wrap_algorithm, wrapped,
+                          previous_kek_ref, previous_kek_version, previous_wrap_algorithm,
+                          previous_wrapped)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                    &[
+                        &self.store,
+                        &issuing.kek_ref,
+                        &version(&issuing),
+                        &issuing.wrap_algorithm,
+                        &issuing.wrapped,
+                        &previous.as_ref().map(|sealed| sealed.kek_ref.clone()),
+                        &previous.as_ref().map(version),
+                        &previous
+                            .as_ref()
+                            .map(|sealed| sealed.wrap_algorithm.clone()),
+                        &previous.as_ref().map(|sealed| sealed.wrapped.clone()),
+                    ],
+                )
+            })
+            .map_err(|error| anyhow!("importing the cursor root of `{}`: {error}", self.store))?;
+        Ok(())
+    }
+
     /// A root is bound to its store, not to where in its row it is: a rotation moves the sealed
     /// bytes from the issuing root to the previous one as they are.
     fn open(&self, sealed: &Sealed) -> Result<Zeroizing<Vec<u8>>, String> {
@@ -216,5 +265,49 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The roots a volume held, the previous one a rotation left among them, read back on
+    /// PostgreSQL as they were, sealed: an offset issued on files verifies after the import.
+    /// Exporting them mints nothing.
+    #[test]
+    fn the_cursor_roots_of_a_volume_are_imported_as_they_were() {
+        use crate::decisions::cursorkey::{FileCursorRoots, KEY_FILE, PREVIOUS_KEY_FILE};
+
+        let Some(server) = server("the_cursor_roots_of_a_volume_are_imported_as_they_were") else {
+            return;
+        };
+        let root =
+            std::env::temp_dir().join(format!("permguard-cursor-import-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        let files = FileCursorRoots::new(&root);
+        assert!(files.export().expect("read").is_none(), "nothing minted");
+        assert!(!root.join(KEY_FILE).exists());
+        let first = files.roots().expect("minted");
+        // A rotation on files: the root moved aside, the next ask mints another.
+        std::fs::rename(root.join(KEY_FILE), root.join(PREVIOUS_KEY_FILE)).expect("rotated");
+        let held = files.roots().expect("minted again");
+        assert_eq!(
+            held.previous.as_deref().map(|root| root.as_slice()),
+            Some(first.issuing.as_slice())
+        );
+
+        let cases = Cases::new(server);
+        let store = PostgresCursorRoots::new(cases.next(), sealer(), "decisions");
+        store
+            .import(&files.export().expect("read").expect("held"))
+            .expect("imported");
+        let imported = store.roots().expect("read");
+        assert_eq!(imported.issuing.as_slice(), held.issuing.as_slice());
+        assert_eq!(
+            imported.previous.as_deref().map(|root| root.as_slice()),
+            Some(first.issuing.as_slice())
+        );
+        assert!(
+            store.import(&held).is_err(),
+            "a root held is never replaced"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }

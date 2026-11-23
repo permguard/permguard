@@ -23,7 +23,7 @@ use permguard_host::storage::StorageError;
 use permguard_host::storage::journal::Frame;
 use permguard_postgres::{Database, Hold, Row, ToSql};
 use permguard_stream::engine::StreamError;
-use permguard_stream::engine::consumer::store::{RunFiles, RunStore, Runs};
+use permguard_stream::engine::consumer::store::{Exported, RunFiles, RunStore, Runs};
 
 use crate::{Bucket, Put};
 
@@ -173,6 +173,118 @@ impl PostgresRuns {
             .into_iter()
             .map(|row| row.get(0))
             .collect())
+    }
+}
+
+impl PostgresRuns {
+    /// Writes `exported`, as another backend held it: the import of a volume (iteration 03,
+    /// WP-27.6), into a database and a bucket no server is using. The files of the shelves are
+    /// published first, then every row in one transaction: each run keeps where its journal
+    /// starts and ends and each frame its index, so a position a reader holds names the same
+    /// record after. A run already held refuses.
+    pub fn import(&self, exported: &Exported) -> Result<(), StreamError> {
+        for run in &exported.runs {
+            let held = self.run(
+                Connection::Pool(self.database.clone()),
+                &run.component,
+                &run.producer,
+                &run.run,
+            );
+            for (shelf, name, bytes) in &run.shelves {
+                let key = held.key(shelf, name);
+                if self
+                    .bucket
+                    .put_new(&key, bytes)
+                    .map_err(|error| failed("publishing a file of a shelf", error))?
+                    == Put::Exists
+                {
+                    let kept = self
+                        .bucket
+                        .get(&key, MAX_FILE_BYTES)
+                        .map_err(|error| failed("reading a file of a shelf", error))?;
+                    if kept.as_deref() != Some(&bytes[..]) {
+                        return Err(StreamError::Corruption(format!(
+                            "{key} already holds different content; it is left as it was"
+                        )));
+                    }
+                }
+            }
+        }
+        self.database
+            .transaction(|unit| {
+                for run in &exported.runs {
+                    let at = [&run.component, &run.producer, &run.run];
+                    unit.execute(
+                        "INSERT INTO permguard_stream_runs
+                             (consumer, component, producer, run, first_index, next_index)
+                         VALUES ($1, $2, $3, $4, $5, $6)",
+                        &[
+                            &self.consumer,
+                            at[0],
+                            at[1],
+                            at[2],
+                            &stored(run.first_index)
+                                .map_err(permguard_postgres::Failure::Refused)?,
+                            &stored(run.next_index)
+                                .map_err(permguard_postgres::Failure::Refused)?,
+                        ],
+                    )?;
+                    for frame in &run.frames {
+                        unit.execute(
+                            "INSERT INTO permguard_stream_frames
+                                 (consumer, component, producer, run, idx, kind, payload)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                            &[
+                                &self.consumer,
+                                at[0],
+                                at[1],
+                                at[2],
+                                &stored(frame.index)
+                                    .map_err(permguard_postgres::Failure::Refused)?,
+                                &i32::from(frame.kind),
+                                &frame.payload,
+                            ],
+                        )?;
+                    }
+                    for (name, bytes) in &run.views {
+                        unit.execute(
+                            "INSERT INTO permguard_stream_views
+                                 (consumer, component, producer, run, name, bytes)
+                             VALUES ($1, $2, $3, $4, $5, $6)",
+                            &[&self.consumer, at[0], at[1], at[2], name, bytes],
+                        )?;
+                    }
+                    for (shelf, name, _) in &run.shelves {
+                        unit.execute(
+                            "INSERT INTO permguard_stream_shelves
+                                 (consumer, component, producer, run, shelf, name)
+                             VALUES ($1, $2, $3, $4, $5, $6)",
+                            &[&self.consumer, at[0], at[1], at[2], shelf, name],
+                        )?;
+                    }
+                }
+                let empty = String::new();
+                let views = exported
+                    .producer_views
+                    .iter()
+                    .map(|(component, producer, name, bytes)| (component, producer, name, bytes))
+                    .chain(
+                        exported
+                            .resource_views
+                            .iter()
+                            .map(|(component, name, bytes)| (component, &empty, name, bytes)),
+                    );
+                for (component, producer, name, bytes) in views {
+                    unit.execute(
+                        "INSERT INTO permguard_stream_views
+                             (consumer, component, producer, run, name, bytes)
+                         VALUES ($1, $2, $3, '', $4, $5)",
+                        &[&self.consumer, component, producer, name, bytes],
+                    )?;
+                }
+                Ok(())
+            })
+            .map_err(|error| failed("importing the runs", error))?
     }
 }
 

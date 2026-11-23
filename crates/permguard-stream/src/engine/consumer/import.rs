@@ -16,7 +16,7 @@ use super::super::{RecordCodec, StreamError};
 use super::Consumer;
 
 /// The import's state of a ledger, beside its producers' directories.
-const IMPORT: &str = "IMPORT";
+pub(super) const IMPORT: &str = "IMPORT";
 
 fn wrap(error: StreamError) -> String {
     error.to_string()

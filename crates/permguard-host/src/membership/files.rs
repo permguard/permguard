@@ -281,6 +281,304 @@ impl FileMembers {
     }
 }
 
+/// The id `text` names: 32 lowercase hexadecimal characters, as [`hex`] writes them.
+fn id_of(text: &str) -> Option<[u8; 16]> {
+    if text.len() != 32 {
+        return None;
+    }
+    let mut id = [0_u8; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(text.get(at * 2..at * 2 + 2)?, 16).ok()?;
+    }
+    (hex(&id) == text).then_some(id)
+}
+
+impl FileMembers {
+    /// Writes everything these memberships hold into `to` through its contract, the volume left
+    /// as it was: what an import carries to another backend (iteration 03, WP-27.6). Answers how
+    /// many records were carried.
+    ///
+    /// A temporary file is an unfinished write and is not carried; any other file this layout
+    /// does not name refuses, so nothing the volume holds is dropped unseen.
+    pub fn copy_into(&self, to: &dyn MemberStore) -> Result<usize, MembershipError> {
+        let unexpected = |path: &str| {
+            MembershipError::Storage(format!("{path} is no record of the memberships"))
+        };
+        let names = |dir: &Dir| -> Result<Vec<String>, MembershipError> {
+            Ok(dir
+                .names()?
+                .into_iter()
+                .filter(|name| !name.starts_with(TEMP_PREFIX))
+                .collect())
+        };
+        let view = |dir: &Dir, name: &str| -> Result<Vec<u8>, MembershipError> {
+            read_view(dir, name, format::VIEW)?
+                .ok_or_else(|| MembershipError::Storage(format!("{name} vanished")))
+        };
+        let subdir = |name: &str| -> Result<Option<Dir>, MembershipError> {
+            Ok(self.below(&[name.to_owned()], false)?)
+        };
+        let mut carried = 0;
+
+        let entries = sequence::read(&self.dir, JOURNAL, record::MAX_RECORD_BYTES * 2)?.items;
+        for (seq, entry) in (1_u64..).zip(&entries) {
+            let bytes = permguard_objects::cbor::encode(entry).map_err(|error| {
+                MembershipError::Storage(format!("an entry does not encode: {error:?}"))
+            })?;
+            to.append(seq, &bytes)?;
+            carried += 1;
+        }
+        for name in names(&self.dir)? {
+            match name.as_str() {
+                FORMAT | JOURNAL => {}
+                SNAPSHOT => {
+                    to.replace_summary(&view(&self.dir, SNAPSHOT)?)?;
+                    carried += 1;
+                }
+                _ => return Err(unexpected(&name)),
+            }
+        }
+
+        if let Some(manifests) = subdir(MANIFESTS)? {
+            for member in manifests.subdirs()? {
+                let membership = id_of(&member).ok_or_else(|| unexpected(&member))?;
+                let dir = manifests.subdir(&member, false)?;
+                let mut kept = Vec::new();
+                if dir.subdirs()?.iter().any(|name| name == HISTORY) {
+                    let history = dir.subdir(HISTORY, false)?;
+                    for name in names(&history)? {
+                        let (epoch, digest) = name
+                            .strip_suffix(".cose")
+                            .and_then(|stem| stem.split_once('-'))
+                            .and_then(|(epoch, digest)| Some((epoch.parse::<u64>().ok()?, digest)))
+                            .ok_or_else(|| unexpected(&name))?;
+                        kept.push((epoch, digest.to_owned(), view(&history, &name)?));
+                    }
+                }
+                // Oldest first: the current manifest is the one of the highest epoch.
+                kept.sort();
+                for (epoch, digest, envelope) in kept {
+                    to.keep_manifest(&membership, epoch, &digest, &envelope)?;
+                    carried += 1;
+                }
+            }
+        }
+        if let Some(invites) = subdir(INVITES)? {
+            for name in names(&invites)? {
+                let invite = name
+                    .strip_suffix(".cbor")
+                    .and_then(id_of)
+                    .ok_or_else(|| unexpected(&name))?;
+                to.keep_invitation(&invite, &view(&invites, &name)?)?;
+                carried += 1;
+            }
+        }
+
+        let mut documents: Vec<(Vec<u8>, DocOwned)> = Vec::new();
+        if let Some(leases) = subdir(LEASES)? {
+            for member in leases.subdirs()? {
+                let membership = id_of(&member).ok_or_else(|| unexpected(&member))?;
+                let dir = leases.subdir(&member, false)?;
+                for name in names(&dir)? {
+                    let task = name
+                        .strip_suffix(".cose")
+                        .ok_or_else(|| unexpected(&name))?;
+                    documents.push((view(&dir, &name)?, DocOwned::Lease(membership, task.into())));
+                }
+            }
+        }
+        if let Some(progress) = subdir(PROGRESS)? {
+            for member in progress.subdirs()? {
+                let membership = id_of(&member).ok_or_else(|| unexpected(&member))?;
+                let dir = progress.subdir(&member, false)?;
+                for name in names(&dir)? {
+                    let bytes = view(&dir, &name)?;
+                    let doc = if name == DELIVERED {
+                        DocOwned::Delivered(membership)
+                    } else if let Some(stem) = name.strip_suffix(&format!(".{ZONE_RECEIPT}")) {
+                        let (task, digest) =
+                            stem.rsplit_once('.').ok_or_else(|| unexpected(&name))?;
+                        let resource = super::zone::Receipt::decode(&bytes)?.resource;
+                        if hex(&Sha256::digest(resource.as_bytes())) != digest {
+                            return Err(unexpected(&name));
+                        }
+                        DocOwned::ZoneReceipt(membership, task.into(), resource)
+                    } else if let Some(task) = name.strip_suffix(".session") {
+                        DocOwned::Session(membership, task.into())
+                    } else if let Some(task) = name.strip_suffix(".cbor") {
+                        DocOwned::Progress(membership, task.into())
+                    } else {
+                        return Err(unexpected(&name));
+                    };
+                    documents.push((bytes, doc));
+                }
+            }
+        }
+        if let Some(replay) = subdir(REPLAY)? {
+            for member in replay.subdirs()? {
+                let membership = id_of(&member).ok_or_else(|| unexpected(&member))?;
+                let tasks = replay.subdir(&member, false)?;
+                for task in tasks.subdirs()? {
+                    let dir = tasks.subdir(&task, false)?;
+                    for name in names(&dir)? {
+                        let slot = name
+                            .strip_suffix(".cbor")
+                            .filter(|digits| digits.len() == 4)
+                            .and_then(|digits| digits.parse::<u64>().ok())
+                            .ok_or_else(|| unexpected(&name))?;
+                        documents.push((
+                            view(&dir, &name)?,
+                            DocOwned::ReplaySlot(membership, task.clone(), slot),
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(verifications) = subdir(VERIFICATIONS)? {
+            for name in names(&verifications)? {
+                let membership = id_of(&name).ok_or_else(|| unexpected(&name))?;
+                documents.push((
+                    view(&verifications, &name)?,
+                    DocOwned::Verification(membership),
+                ));
+            }
+            for sub in verifications.subdirs()? {
+                if sub != VERIFICATION_RESULTS {
+                    return Err(unexpected(&sub));
+                }
+                let results = verifications.subdir(&sub, false)?;
+                for name in names(&results)? {
+                    let operation = id_of(&name).ok_or_else(|| unexpected(&name))?;
+                    documents.push((
+                        view(&results, &name)?,
+                        DocOwned::VerificationResult(operation),
+                    ));
+                }
+            }
+        }
+        if let Some(egress) = subdir(EGRESS)? {
+            for name in names(&egress)? {
+                let (membership, task) = name
+                    .strip_suffix(".cbor")
+                    .and_then(|stem| stem.get(..32).zip(stem.get(32..)))
+                    .and_then(|(id, rest)| Some((id_of(id)?, rest.strip_prefix('-')?)))
+                    .ok_or_else(|| unexpected(&name))?;
+                documents.push((
+                    view(&egress, &name)?,
+                    DocOwned::Acks(membership, task.into()),
+                ));
+            }
+        }
+        let mut checkpoints = Vec::new();
+        if let Some(audit) = subdir(AUDIT)? {
+            for member in audit.subdirs()? {
+                let membership = id_of(&member).ok_or_else(|| unexpected(&member))?;
+                let trails = audit.subdir(&member, false)?;
+                for digest in trails.subdirs()? {
+                    let dir = trails.subdir(&digest, false)?;
+                    // A trail's directory is named by its name's digest, which its `META` holds.
+                    let trail = String::from_utf8(view(&dir, META)?)
+                        .ok()
+                        .filter(|trail| hex(&Sha256::digest(trail.as_bytes())) == digest)
+                        .ok_or_else(|| unexpected(&digest))?;
+                    for name in names(&dir)? {
+                        let doc = match name.as_str() {
+                            META => DocOwned::TrailName(membership, trail.clone()),
+                            LAST => DocOwned::TrailLast(membership, trail.clone()),
+                            ANCHOR => DocOwned::TrailAnchor(membership, trail.clone()),
+                            FORKED => DocOwned::TrailFork(membership, trail.clone()),
+                            _ => {
+                                let count = name
+                                    .strip_suffix(".cose")
+                                    .filter(|digits| digits.len() == 20)
+                                    .and_then(|digits| digits.parse::<u64>().ok())
+                                    .filter(|count| *count > 0)
+                                    .ok_or_else(|| unexpected(&name))?;
+                                let envelope = self
+                                    .checkpoint(&membership, &trail, count)?
+                                    .ok_or_else(|| unexpected(&name))?;
+                                checkpoints.push((membership, trail.clone(), count, envelope));
+                                continue;
+                            }
+                        };
+                        documents.push((view(&dir, &name)?, doc));
+                    }
+                }
+            }
+        }
+        for sub in self.dir.subdirs()? {
+            if ![
+                MANIFESTS,
+                INVITES,
+                LEASES,
+                PROGRESS,
+                REPLAY,
+                VERIFICATIONS,
+                EGRESS,
+                AUDIT,
+            ]
+            .contains(&sub.as_str())
+            {
+                return Err(unexpected(&sub));
+            }
+        }
+        for (bytes, doc) in &documents {
+            to.keep(&doc.borrowed(), bytes)?;
+            carried += 1;
+        }
+        for (membership, trail, count, envelope) in &checkpoints {
+            to.publish_checkpoint(membership, trail, *count, envelope)?;
+            carried += 1;
+        }
+        Ok(carried)
+    }
+}
+
+/// A [`Doc`] that owns what names it: what [`FileMembers::copy_into`] reads before it writes.
+enum DocOwned {
+    Lease([u8; 16], String),
+    Progress([u8; 16], String),
+    Session([u8; 16], String),
+    Delivered([u8; 16]),
+    ZoneReceipt([u8; 16], String, String),
+    ReplaySlot([u8; 16], String, u64),
+    Verification([u8; 16]),
+    VerificationResult([u8; 16]),
+    Acks([u8; 16], String),
+    TrailName([u8; 16], String),
+    TrailLast([u8; 16], String),
+    TrailAnchor([u8; 16], String),
+    TrailFork([u8; 16], String),
+}
+
+impl DocOwned {
+    fn borrowed(&self) -> Doc<'_> {
+        match self {
+            Self::Lease(membership, task) => Doc::Lease { membership, task },
+            Self::Progress(membership, task) => Doc::Progress { membership, task },
+            Self::Session(membership, task) => Doc::Session { membership, task },
+            Self::Delivered(membership) => Doc::Delivered { membership },
+            Self::ZoneReceipt(membership, task, resource) => Doc::ZoneReceipt {
+                membership,
+                task,
+                resource,
+            },
+            Self::ReplaySlot(membership, task, slot) => Doc::ReplaySlot {
+                membership,
+                task,
+                slot: *slot,
+            },
+            Self::Verification(membership) => Doc::Verification { membership },
+            Self::VerificationResult(operation) => Doc::VerificationResult { operation },
+            Self::Acks(membership, task) => Doc::Acks { membership, task },
+            Self::TrailName(membership, trail) => Doc::TrailName { membership, trail },
+            Self::TrailLast(membership, trail) => Doc::TrailLast { membership, trail },
+            Self::TrailAnchor(membership, trail) => Doc::TrailAnchor { membership, trail },
+            Self::TrailFork(membership, trail) => Doc::TrailFork { membership, trail },
+        }
+    }
+}
+
 impl MemberStore for FileMembers {
     fn entries(&self) -> Result<Vec<Value>, MembershipError> {
         // Counted under the same hold as an entry is added.

@@ -582,6 +582,15 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 19,
+        name: "refs written before the transaction",
+        // A ref a build before WP-3.6 wrote names no operation, on files as here: an import
+        // keeps it so (iteration 03, WP-27.6).
+        statements: "
+        ALTER TABLE permguard_ledger_refs ALTER COLUMN operation DROP NOT NULL;
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

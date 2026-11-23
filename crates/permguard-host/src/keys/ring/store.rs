@@ -27,6 +27,31 @@ use permguard_objects::cbor::Value;
 use super::RingError;
 use crate::operations::mutation::Applying;
 
+/// The public records of one ring, each as the bytes the store answers: what an import carries
+/// to another backend at rest (iteration 03, WP-27.6). The private keys are its custody's, in
+/// the ring's slots.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Records {
+    /// The journal's entries, in order, each as the canonical item it was added as.
+    pub entries: Vec<Vec<u8>>,
+    /// The materialized view.
+    pub view: Option<Vec<u8>>,
+    /// The identity-signed binding of the current set.
+    pub binding: Option<Vec<u8>>,
+    /// Every binding issued, by the sequence of its `bound` entry.
+    pub kept_bindings: Vec<(u64, Vec<u8>)>,
+    /// Every key published, by thumbprint.
+    pub public_keys: Vec<(String, Vec<u8>)>,
+}
+
+/// A ring's records, and those a reset kept of it for each retired Host, by its `host_id` as
+/// text.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    pub current: Records,
+    pub retired: Vec<(String, Records)>,
+}
+
 /// The store of one ring's records: the only way the ring reads and writes them
 /// (`1-architecture/8` Store contracts).
 pub trait RingStore: Send + Sync {

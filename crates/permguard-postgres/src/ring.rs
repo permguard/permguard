@@ -18,7 +18,7 @@
 
 use permguard_host::identity::record::uuid_text;
 use permguard_host::keys::ring::RingError;
-use permguard_host::keys::ring::store::RingStore;
+use permguard_host::keys::ring::store::{Exported, Records, RingStore};
 use permguard_host::operations::mutation::Applying;
 use permguard_objects::cbor::{self, Value};
 
@@ -81,6 +81,77 @@ impl PostgresRing {
                  ON CONFLICT (ring, name) DO UPDATE SET record = EXCLUDED.record",
                 &[&self.ring, &name, &bytes],
             )?;
+            Ok(())
+        })
+    }
+}
+
+impl PostgresRing {
+    /// Writes `exported`, as another backend held it, in one transaction: the import of a volume
+    /// (iteration 03, WP-27.6), into a database no server is using. A record already held
+    /// refuses.
+    pub fn import(&self, exported: &Exported) -> Result<(), RingError> {
+        self.unit(|unit| {
+            let Records {
+                entries,
+                view,
+                binding,
+                kept_bindings,
+                public_keys,
+            } = &exported.current;
+            for (seq, entry) in (1_i64..).zip(entries) {
+                unit.execute(
+                    "INSERT INTO permguard_ring_entries (ring, seq, entry) VALUES ($1, $2, $3)",
+                    &[&self.ring, &seq, entry],
+                )?;
+            }
+            for (name, record) in [(VIEW, view), (BINDING, binding)] {
+                if let Some(record) = record {
+                    unit.execute(
+                        "INSERT INTO permguard_ring_records (ring, name, record)
+                         VALUES ($1, $2, $3)",
+                        &[&self.ring, &name, record],
+                    )?;
+                }
+            }
+            for (seq, envelope) in kept_bindings {
+                unit.execute(
+                    "INSERT INTO permguard_ring_kept_bindings (ring, seq, envelope)
+                     VALUES ($1, $2, $3)",
+                    &[&self.ring, &sequence(*seq)?, envelope],
+                )?;
+            }
+            for (thumbprint, jwk) in public_keys {
+                unit.execute(
+                    "INSERT INTO permguard_ring_public_keys (ring, thumbprint, jwk)
+                     VALUES ($1, $2, $3)",
+                    &[&self.ring, thumbprint, jwk],
+                )?;
+            }
+            for (host_id, kept) in &exported.retired {
+                let mut evidence: Vec<(&str, String, &[u8])> = Vec::new();
+                for (seq, entry) in (1_u64..).zip(&kept.entries) {
+                    evidence.push(("entry", seq.to_string(), entry));
+                }
+                for (name, record) in [(VIEW, &kept.view), (BINDING, &kept.binding)] {
+                    if let Some(record) = record {
+                        evidence.push(("record", name.to_owned(), record));
+                    }
+                }
+                for (seq, envelope) in &kept.kept_bindings {
+                    evidence.push(("kept binding", seq.to_string(), envelope));
+                }
+                for (thumbprint, jwk) in &kept.public_keys {
+                    evidence.push(("public key", thumbprint.clone(), jwk));
+                }
+                for (kind, name, record) in evidence {
+                    unit.execute(
+                        "INSERT INTO permguard_ring_evidence (ring, host_id, kind, name, record)
+                         VALUES ($1, $2, $3, $4, $5)",
+                        &[&self.ring, host_id, &kind, &name, &record],
+                    )?;
+                }
+            }
             Ok(())
         })
     }

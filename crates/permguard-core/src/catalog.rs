@@ -171,6 +171,24 @@ pub struct Tombstone {
     pub operation: Option<String>,
 }
 
+/// Everything a catalog holds, each record as it was written: what an import carries to another
+/// backend at rest (iteration 03, WP-27.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    /// The zones, in the order they are listed.
+    pub zones: Vec<Zone>,
+    /// The ledgers, each zone's in the order they are listed.
+    pub ledgers: Vec<Ledger>,
+    /// What every deleted zone and ledger left.
+    pub tombstones: Vec<Tombstone>,
+    /// The highest revision each zone name reached.
+    pub zone_names: std::collections::BTreeMap<String, u64>,
+    /// The highest revision each ledger name reached, by the id of its zone.
+    pub ledger_names: std::collections::BTreeMap<String, std::collections::BTreeMap<String, u64>>,
+    /// The highest revision each path `<zone name>/<ledger name>` reached.
+    pub ledger_paths: std::collections::BTreeMap<String, u64>,
+}
+
 /// The revision a record is born at, and one written before revisions existed reads as.
 pub const FIRST_REVISION: u64 = 1;
 

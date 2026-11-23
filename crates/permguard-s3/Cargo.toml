@@ -79,3 +79,7 @@ required-features = ["audit"]
 [[test]]
 name = "streams"
 required-features = ["streams"]
+
+[[test]]
+name = "import"
+required-features = ["control-plane", "streams"]

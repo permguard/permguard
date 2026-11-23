@@ -52,6 +52,37 @@ impl PostgresSeen {
     }
 }
 
+impl PostgresSeen {
+    /// Writes `seen`, as another backend held them, in one transaction: the import of a volume
+    /// (iteration 03, WP-27.6), into a database no server is using. A peer already held refuses.
+    pub fn import(&self, seen: &[Seen]) -> Result<usize, PeerRefusal> {
+        let kept = |value: u64| {
+            i64::try_from(value).map_err(|_| {
+                Failure::Refused(PeerRefusal::Storage(
+                    "an epoch past what the store keeps".to_owned(),
+                ))
+            })
+        };
+        self.database
+            .transaction(|unit| {
+                for peer in seen {
+                    unit.execute(
+                        "INSERT INTO permguard_seen_peers (host_id, epoch, fingerprint, at)
+                         VALUES ($1, $2, $3, $4)",
+                        &[
+                            &peer.host_id.as_slice(),
+                            &kept(peer.epoch)?,
+                            &peer.fingerprint,
+                            &kept(peer.at)?,
+                        ],
+                    )?;
+                }
+                Ok(seen.len())
+            })
+            .map_err(storage)?
+    }
+}
+
 impl SeenStore for PostgresSeen {
     fn seen(&self, host_id: &[u8; 16]) -> Result<Option<Seen>, PeerRefusal> {
         self.database

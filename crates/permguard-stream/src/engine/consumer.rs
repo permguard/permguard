@@ -55,6 +55,60 @@ pub mod suite;
 
 use store::{RunFiles, RunStore, Runs};
 
+/// Everything `runs` holds, read as the consumer reads it: what an import carries to another
+/// backend at rest (iteration 03, WP-27.6). Every run is opened in turn, as one hold.
+pub fn export(runs: &dyn Runs) -> Result<store::Exported, StreamError> {
+    let mut exported = store::Exported::default();
+    for component in runs.components()? {
+        if let Some(bytes) = runs.resource_view(&component, import::IMPORT)? {
+            exported
+                .resource_views
+                .push((component.clone(), import::IMPORT.to_owned(), bytes));
+        }
+        for producer in runs.producers(&component)? {
+            if let Some(bytes) = runs.producer_view(&component, &producer, FORKED)? {
+                exported.producer_views.push((
+                    component.clone(),
+                    producer.clone(),
+                    FORKED.to_owned(),
+                    bytes,
+                ));
+            }
+            for run in runs.runs(&component, &producer)? {
+                let Some(held) = runs.open(&component, &producer, &run, false)? else {
+                    continue;
+                };
+                let mut views = Vec::new();
+                for name in [STATE, START, SIGNERS, super::anchor::ANCHOR] {
+                    if let Some(bytes) = held.view(name)? {
+                        views.push((name.to_owned(), bytes));
+                    }
+                }
+                let mut shelves = Vec::new();
+                for shelf in [BATCHES, STATEMENTS] {
+                    for name in held.names(shelf)? {
+                        let bytes = held.read(shelf, &name)?.ok_or_else(|| {
+                            StreamError::Corruption(format!("{shelf}/{name} vanished"))
+                        })?;
+                        shelves.push((shelf.to_owned(), name, bytes));
+                    }
+                }
+                exported.runs.push(store::ExportedRun {
+                    first_index: held.first_index(),
+                    next_index: held.next_index(),
+                    frames: held.frames()?,
+                    views,
+                    shelves,
+                    component: component.clone(),
+                    producer: producer.clone(),
+                    run,
+                });
+            }
+        }
+    }
+    Ok(exported)
+}
+
 /// The frame kind of a batch's admission time (WP-5.6b).
 const ADMITTED: u16 = 4;
 const FORKED: &str = "FORKED";
