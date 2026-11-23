@@ -166,9 +166,9 @@ impl HostApi {
                 permguard_core::volume::unsupported(self.backend, "a backup"),
             ));
         }
-        match (&self.backups, &self.mutations) {
-            (Some(backups), Some(mutations)) => Ok((backups, mutations)),
-            _ => Err(unavailable(
+        match &self.backups {
+            Some((backups, mutations)) => Ok((backups, mutations)),
+            None => Err(unavailable(
                 "this Host keeps no backups: it runs without a volume",
             )),
         }

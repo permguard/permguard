@@ -274,7 +274,9 @@ impl Drop for Monitoring {
 pub struct Sources {
     pub health: permguard_core::Health,
     pub metrics: permguard_core::Metrics,
-    pub backups: Arc<permguard_host::operations::backup::Backups>,
+    /// The volume's backups; `None` on a backend with no volume, whose database and bucket are
+    /// backed up by their own mechanisms (E5): no backup interval is measured here then.
+    pub backups: Option<Arc<permguard_host::operations::backup::Backups>>,
     /// The decision spool's capacity, when this process spools decisions.
     pub spool_capacity: Option<u64>,
     /// The Host's guarded time: a monitor never reads a clock of its own.
@@ -414,17 +416,17 @@ fn measure(sources: &Sources, stalls: &Mutex<Stalls>) -> Measures {
             })
             .reduce(f64::max)
     };
-    let newest = sources.backups.list().ok().and_then(|listed| {
-        listed
-            .into_iter()
-            .filter(|backup| backup.state == permguard_host::operations::backup::FINALIZED)
-            .filter_map(|backup| backup.ended_at)
-            .max()
-    });
     let now = sources.time.now_secs();
-    let since_backup = Some(Duration::from_secs(
-        now.saturating_sub(newest.unwrap_or(sources.volume_created)),
-    ));
+    let since_backup = sources.backups.as_ref().map(|backups| {
+        let newest = backups.list().ok().and_then(|listed| {
+            listed
+                .into_iter()
+                .filter(|backup| backup.state == permguard_host::operations::backup::FINALIZED)
+                .filter_map(|backup| backup.ended_at)
+                .max()
+        });
+        Duration::from_secs(now.saturating_sub(newest.unwrap_or(sources.volume_created)))
+    });
     let qualification_expired_at = expired(sources.qualification_expires_at, sources.time.now());
     Measures {
         mirror_age: gauge("permguard_sync_mirror_age_seconds"),

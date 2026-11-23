@@ -48,9 +48,7 @@ use permguard_core::{AccessDenial, ApiError, ErrorClass, Health, codes};
 
 use crate::authz::Authorization;
 use crate::operations::journal::{Initiator, OperationId, RequestKey};
-use crate::operations::mutation::{
-    self, Applying, Begin, Failure, MutationError, Mutations, Outcome,
-};
+use crate::operations::mutation::{self, Applying, Begin, Failure, MutationError, Outcome};
 
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
@@ -228,7 +226,7 @@ pub struct Composition {
     pub trail: String,
     /// The security-mutation engine every mutation runs through (WP-3.6): its journal, its
     /// audit records and its idempotent answers. Without it the mutations are refused.
-    pub mutations: Option<Arc<Mutations>>,
+    pub mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     /// The Host identity (WP-2.2); without it the identity routes are `identity_unavailable`.
     pub identity: Option<Arc<crate::identity::Identity>>,
     /// The Host's time guard: grant expiry and the times receipts carry (WP-2.12).
@@ -254,7 +252,7 @@ pub struct HostApi {
     assurance: Assurance,
     effective: Effective,
     trail: String,
-    mutations: Option<Arc<Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     identity: Option<Arc<crate::identity::Identity>>,
     time: Arc<crate::time::TimeGuard>,
     peer_sessions: sessions::PeerSessions,
@@ -264,7 +262,11 @@ pub struct HostApi {
     /// The stream engine's reads (WP-5.7a), given once the server composed the engine.
     streams: Option<Arc<dyn streams::StreamReads>>,
     /// The application-consistent snapshots (WP-7.8), given once the server opened them.
-    backups: Option<Arc<crate::operations::backup::Backups>>,
+    /// The volume's backups and the file engine whose barrier they raise.
+    backups: Option<(
+        Arc<crate::operations::backup::Backups>,
+        Arc<crate::operations::mutation::Mutations>,
+    )>,
     /// Where the process keeps its state: on a backend with no volume a backup has nothing to
     /// act on (iteration 03, decision E5).
     backend: permguard_core::volume::Backend,
@@ -383,10 +385,11 @@ impl HostApi {
     pub fn with_backups(
         mut self,
         backups: Arc<crate::operations::backup::Backups>,
+        engine: Arc<crate::operations::mutation::Mutations>,
         recovery_key_id: Option<String>,
         encryption_profile: Option<String>,
     ) -> Self {
-        self.backups = Some(backups);
+        self.backups = Some((backups, engine));
         self.backup_labels = (recovery_key_id, encryption_profile);
         self
     }
@@ -498,8 +501,8 @@ impl HostApi {
     }
 
     /// The mutation engine, or the refusal a mutation without one answers.
-    fn mutations(&self) -> Result<&Arc<Mutations>, Refusal> {
-        self.mutations.as_ref().ok_or_else(|| {
+    fn mutations(&self) -> Result<&dyn crate::operations::mutation::Engine, Refusal> {
+        self.mutations.as_deref().ok_or_else(|| {
             Refusal::new(
                 ErrorClass::Unavailable,
                 codes::host::REPLAY_UNAVAILABLE,
@@ -789,6 +792,8 @@ pub(crate) mod testing {
 
     use std::sync::Arc;
 
+    use crate::operations::mutation::Mutations;
+
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::authz::{ActorContext, Selector, operations};
 
@@ -999,7 +1004,7 @@ pub(crate) mod testing {
     pub(crate) fn reopen(
         root: &std::path::Path,
         rings: Vec<&'static str>,
-    ) -> (HostApi, (), Volume) {
+    ) -> (HostApi, Arc<Mutations>, Volume) {
         reopen_with(root, rings, Arc::new(Recording::default()))
     }
 
@@ -1008,7 +1013,7 @@ pub(crate) mod testing {
         root: &std::path::Path,
         rings: Vec<&'static str>,
         trail: Arc<Recording>,
-    ) -> (HostApi, (), Volume) {
+    ) -> (HostApi, Arc<Mutations>, Volume) {
         let volume =
             Volume::claim(root, AssuranceProfile::Development).expect("the volume is claimed");
         let time = Arc::new(crate::time::TimeGuard::system(
@@ -1113,7 +1118,7 @@ pub(crate) mod testing {
                 public_grants: Vec::new(),
             },
             trail: "audit".to_owned(),
-            mutations: Some(mutations),
+            mutations: Some(Arc::clone(&mutations) as _),
             identity: Some(identity),
             time,
             peer_sessions: sessions::PeerSessions::none(),
@@ -1152,7 +1157,7 @@ pub(crate) mod testing {
                 importing: None,
             })),
         });
-        (api, (), volume)
+        (api, mutations, volume)
     }
 
     /// The administrator: every operation on the Host, and what [`grant_to`] added.

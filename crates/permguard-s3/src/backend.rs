@@ -1,0 +1,344 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The `postgresql-s3` backend as a build selects it (iteration 03, WP-28.1): one database and
+//! one bucket a process, opened from the configuration, and every store of the Host over them.
+//!
+//! The runtime links neither: a build hands it [`connect`] and [`shared`], as it hands it the
+//! KMS custody, and the runtime composes the Host from the [`Shared`] they answer. A Plane's
+//! server reads the [`Connected`] the Host was given and composes its own stores over it.
+//!
+//! | Step     | What it does                                                                         |
+//! | -------- | ------------------------------------------------------------------------------------ |
+//! | database | TLS verified against the CA named, or the system's roots; the schema brought to this build's |
+//! | bucket   | TLS likewise; the store must refuse a replacement before it is used (decision X112) |
+//! | secrets  | the database's password and the bucket's keys resolved from the secret store, by reference |
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result, bail};
+use zeroize::Zeroizing;
+
+use permguard_core::Config;
+use permguard_core::secrets::{SecretRef, SecretStore};
+use permguard_host::backend::Shared;
+use permguard_postgres::Database;
+
+use crate::{Bucket, Encryption, Put};
+
+/// How long a connection to the database is waited for.
+const DATABASE_WAIT: Duration = Duration::from_secs(10);
+/// How long one request to the bucket may take.
+const BUCKET_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The one database and the one bucket of a process.
+#[derive(Debug, Clone)]
+pub struct Connected {
+    pub database: Database,
+    pub bucket: Bucket,
+}
+
+/// The roots a server is verified against: the CA bundle at `ca`, or the system's.
+fn roots(ca: Option<&std::path::Path>, what: &str) -> Result<Arc<rustls::RootCertStore>> {
+    use rustls::pki_types::pem::PemObject as _;
+
+    let mut roots = rustls::RootCertStore::empty();
+    match ca {
+        Some(path) => {
+            let pem = std::fs::read(path)
+                .with_context(|| format!("reading the {what} CA at {}", path.display()))?;
+            for certificate in rustls::pki_types::CertificateDer::pem_slice_iter(&pem) {
+                let certificate = certificate
+                    .map_err(|error| anyhow::anyhow!("reading the {what} CA: {error:?}"))?;
+                roots
+                    .add(certificate)
+                    .with_context(|| format!("adding the {what} CA"))?;
+            }
+        }
+        None => {
+            for certificate in rustls_native_certs::load_native_certs().certs {
+                let _ = roots.add(certificate);
+            }
+        }
+    }
+    if roots.is_empty() {
+        bail!("no root verifies the {what}: name its CA");
+    }
+    Ok(Arc::new(roots))
+}
+
+/// The text a secret reference resolves to.
+fn resolved(
+    secrets: Option<&dyn SecretStore>,
+    reference: &SecretRef,
+    what: &str,
+) -> Result<Zeroizing<String>> {
+    let secrets = secrets.with_context(|| {
+        format!(
+            "the {what} is resolved from the secret store, and this build resolved none: set \
+             `operations.secrets.provider`"
+        )
+    })?;
+    let secret = secrets
+        .resolve(reference)
+        .with_context(|| format!("resolving the {what} `{}`", reference.name()))?;
+    Ok(Zeroizing::new(
+        std::str::from_utf8(secret.expose())
+            .with_context(|| format!("the {what} is text"))?
+            .trim()
+            .to_owned(),
+    ))
+}
+
+/// Opens the database and the bucket `config` names, the schema brought to this build's and the
+/// bucket proven to refuse a replacement. Refused, before anything is written, when either is
+/// unreachable, misconfigured, or a store that would overwrite in silence.
+pub fn connect(config: &Config, secrets: Option<&dyn SecretStore>) -> Result<Connected> {
+    let connection = config.storage_connection();
+    let named = |value: &Option<String>, what: &str| {
+        value
+            .clone()
+            .with_context(|| format!("the `postgresql-s3` backend names no {what}"))
+    };
+    let database = Database::connect(permguard_postgres::Config {
+        host: named(&connection.postgresql_host, "database host")?,
+        port: connection.postgresql_port(),
+        database: named(&connection.postgresql_database, "database")?,
+        user: named(&connection.postgresql_user, "database user")?,
+        password: connection
+            .postgresql_password_ref
+            .as_ref()
+            .map(|reference| resolved(secrets, reference, "database password"))
+            .transpose()?
+            .map(|password| password.as_str().to_owned()),
+        schema: connection.postgresql_schema.clone(),
+        tls: if connection.postgresql_tls {
+            permguard_postgres::Tls::Verified(roots(
+                config.storage_postgresql_ca().as_deref(),
+                "database",
+            )?)
+        } else {
+            permguard_postgres::Tls::Disabled
+        },
+        pool: connection.postgresql_pool(),
+        wait: DATABASE_WAIT,
+    })
+    .context("connecting to the database")?;
+    let version = permguard_postgres::schema::migrate(&database)
+        .context("bringing the database's schema to this build's")?;
+    tracing::info!(
+        event.name = "storage.database_ready",
+        component = "host",
+        schema = version,
+        "the database is at this build's schema"
+    );
+
+    let endpoint = named(&connection.s3_endpoint, "bucket endpoint")?;
+    let (scheme, address) = endpoint
+        .split_once("://")
+        .with_context(|| format!("`{endpoint}` is no endpoint: `https://host:port`"))?;
+    let address = address.trim_end_matches('/');
+    let (host, port) = match address.rsplit_once(':') {
+        Some((host, port)) => (
+            host.to_owned(),
+            port.parse::<u16>()
+                .with_context(|| format!("`{endpoint}` names no port"))?,
+        ),
+        None => (address.to_owned(), if scheme == "https" { 443 } else { 80 }),
+    };
+    let tls = match scheme {
+        "https" => crate::Tls::Verified(roots(config.storage_s3_ca().as_deref(), "bucket")?),
+        "http" => crate::Tls::Disabled,
+        other => bail!("`{other}` is no scheme of an object store: `https://host:port`"),
+    };
+    let encryption = match connection.s3_encryption.as_str() {
+        "managed" => Some(Encryption::Managed),
+        "none" => None,
+        other => Some(Encryption::Kms(
+            other
+                .strip_prefix("kms:")
+                .with_context(|| format!("`{other}` is no encryption of a bucket"))?
+                .to_owned(),
+        )),
+    };
+    let bucket = Bucket::connect(crate::Config {
+        host,
+        port,
+        tls,
+        region: named(&connection.s3_region, "bucket region")?,
+        bucket: named(&connection.s3_bucket, "bucket")?,
+        prefix: connection.s3_prefix.clone().unwrap_or_default(),
+        access_key: named(&connection.s3_access_key, "bucket access key")?,
+        secret: resolved(
+            secrets,
+            connection
+                .s3_secret_ref
+                .as_ref()
+                .context("the `postgresql-s3` backend names no bucket secret")?,
+            "bucket secret",
+        )?,
+        session_token: connection
+            .s3_session_token_ref
+            .as_ref()
+            .map(|reference| resolved(secrets, reference, "bucket session token"))
+            .transpose()?,
+        encryption,
+        timeout: BUCKET_TIMEOUT,
+    })
+    .context("reaching the bucket")?;
+    refuses_a_replacement(&bucket)?;
+    Ok(Connected { database, bucket })
+}
+
+/// Whether the bucket refuses to replace what a key holds (decision X112): a ledger's objects,
+/// an archive and a batch are published once, and a store that ignores `If-None-Match` would
+/// overwrite them in silence. A probe key is published twice, and the second must be refused.
+fn refuses_a_replacement(bucket: &Bucket) -> Result<()> {
+    let mut random = [0_u8; 16];
+    getrandom(&mut random)?;
+    let key = format!(
+        "probes/{}",
+        random
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    bucket
+        .put_new(&key, b"probe")
+        .context("publishing a probe to the bucket")?;
+    let second = bucket
+        .put_new(&key, b"replacement")
+        .context("publishing a probe to the bucket again");
+    let removed = bucket.delete(&key);
+    if second? != Put::Exists {
+        bail!(
+            "the bucket replaced what a key held: a store that ignores `If-None-Match` would \
+             overwrite a ledger's objects in silence, and is not used"
+        );
+    }
+    removed.context("removing the probe from the bucket")?;
+    Ok(())
+}
+
+fn getrandom(bytes: &mut [u8]) -> Result<()> {
+    use ring::rand::SecureRandom as _;
+    ring::rand::SystemRandom::new()
+        .fill(bytes)
+        .map_err(|_| anyhow::anyhow!("the system's random source refused"))
+}
+
+/// Every store of the Host over `connected`.
+pub fn shared(connected: &Connected) -> Result<Shared> {
+    use permguard_postgres as pg;
+
+    let database = connected.database.clone();
+    let home = pg::deployment::home(&database).context("reading the deployment's id")?;
+    let delivered = database.clone();
+    let mutations = database.clone();
+    Ok(Shared {
+        backend: permguard_core::volume::Backend::PostgresqlS3.as_str(),
+        home,
+        clock_mark: Arc::new(pg::time::PostgresClockMark::new(
+            Arc::new(database.clone()),
+            "host",
+        )),
+        identity: Arc::new(pg::identity::PostgresIdentity::new(database.clone())),
+        identity_slots: Arc::new(pg::slots::PostgresSlots::new(
+            database.clone(),
+            permguard_host::keys::ring::HOST_IDENTITY,
+        )),
+        rings: Arc::new(PostgresRings::new(database.clone())),
+        members: Arc::new(pg::members::PostgresMembers::new(database.clone())),
+        seen: Arc::new(pg::peers::PostgresSeen::new(database.clone())),
+        witnesses: Arc::new(pg::witnesses::PostgresWitnesses::new(database.clone())),
+        delivered: Box::new(move |sealer| {
+            Arc::new(pg::delivered::PostgresDeliveredKeys::new(
+                delivered.clone(),
+                sealer,
+            ))
+        }),
+        versions: Arc::new(pg::witnesses::PostgresVersionWitnesses::new(
+            database.clone(),
+        )),
+        held: Arc::new(pg::held::PostgresHeld::new(database.clone())),
+        bootstrap: Arc::new(pg::bootstrap::PostgresBootstrap::new(database.clone())),
+        holds: Arc::new(pg::holds::PostgresHolds::new(database.clone())),
+        plans: Arc::new(pg::replay::PostgresReplay::new(database.clone())),
+        trails: Arc::new(
+            pg::audit::PostgresTrails::new(database.clone())
+                .with_objects(Arc::new(connected.bucket.clone())),
+        ),
+        catalog: Arc::new(pg::catalog::PostgresCatalog::new(database.clone())),
+        mutations: Box::new(move |projection| {
+            Arc::new(pg::mutations::PostgresMutations::new(
+                mutations.clone(),
+                projection,
+            ))
+        }),
+        handles: vec![
+            Arc::new(connected.clone()),
+            Arc::new(consumer_runs(connected)),
+        ],
+    })
+}
+
+/// The runs of each stream consumer, kept under its descriptor's `plane/type/version`.
+fn consumer_runs(connected: &Connected) -> permguard_stream::engine::consumer::store::ConsumerRuns {
+    let connected = connected.clone();
+    permguard_stream::engine::consumer::store::ConsumerRuns(Box::new(move |descriptor| {
+        Arc::new(crate::streams::PostgresRuns::new(
+            connected.database.clone(),
+            connected.bucket.clone(),
+            &format!(
+                "{}/{}/{}",
+                descriptor.plane, descriptor.stream_type, descriptor.version
+            ),
+        ))
+    }))
+}
+
+/// Where a Host's rings are kept in one database: a ring's records and the slots of its private
+/// keys, each under the ring's name (iteration 03, WP-28.1).
+#[derive(Debug, Clone)]
+struct PostgresRings {
+    database: Database,
+}
+
+impl PostgresRings {
+    /// The rings of `database`, whose schema is this build's.
+    fn new(database: Database) -> Self {
+        Self { database }
+    }
+}
+
+impl permguard_host::keys::registry::Home for PostgresRings {
+    fn stores(
+        &self,
+        ring: &'static str,
+        legacy: Option<&std::path::Path>,
+    ) -> Result<permguard_host::keys::registry::Stores, permguard_host::keys::registry::OpenError>
+    {
+        // A ring written before the registry is a directory of a volume: it reaches this
+        // backend by the import of that volume, never by a start that would leave it behind.
+        if let Some(legacy) = legacy.filter(|legacy| legacy.exists()) {
+            return Err(permguard_host::keys::registry::OpenError::Migration(
+                format!(
+                    "`{ring}` is still at {} on files: import the volume before a start on this \
+                 backend",
+                    legacy.display()
+                ),
+            ));
+        }
+        Ok(permguard_host::keys::registry::Stores {
+            ring: Arc::new(permguard_postgres::ring::PostgresRing::new(
+                self.database.clone(),
+                ring,
+            )),
+            slots: Arc::new(permguard_postgres::slots::PostgresSlots::new(
+                self.database.clone(),
+                ring,
+            )),
+        })
+    }
+}

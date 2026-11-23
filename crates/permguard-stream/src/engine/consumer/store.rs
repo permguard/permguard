@@ -96,6 +96,15 @@ pub struct Exported {
     pub resource_views: Vec<(String, String, Vec<u8>)>,
 }
 
+/// The runs of the consumer of one descriptor, made by a backend that is not a volume.
+pub type MakeRuns =
+    Box<dyn Fn(&super::super::Descriptor) -> std::sync::Arc<dyn Runs> + Send + Sync>;
+
+/// What makes the runs of each consumer on a backend that is not a volume (iteration 03,
+/// WP-28.1): a composition root finds it among the backend's handles and composes every
+/// consumer over it.
+pub struct ConsumerRuns(pub MakeRuns);
+
 /// The runs of one consumer: the only way it reaches one. `component` is a resource's
 /// component, `producer` and `run` hex.
 pub trait Runs: Send + Sync {

@@ -504,7 +504,18 @@ pub struct PlaneServer {
     identity: ProductIdentity,
     build_settings: BuildSettings,
     planes: Vec<PlaneService>,
+    shared_backend: Option<SharedBackend>,
 }
+
+/// What opens the stores of the `postgresql-s3` backend, as a binary selects it.
+type SharedBackend = Box<
+    dyn Fn(
+            &Config,
+            Option<&dyn permguard_core::secrets::SecretStore>,
+        ) -> anyhow::Result<permguard_host::backend::Shared>
+        + Send
+        + Sync,
+>;
 
 impl PlaneServer {
     /// Starts a server with no planes registered yet.
@@ -513,7 +524,24 @@ impl PlaneServer {
             identity,
             build_settings,
             planes: Vec::new(),
+            shared_backend: None,
         }
+    }
+
+    /// Serves the `postgresql-s3` backend through `open`, the adapter a binary selects
+    /// (iteration 03, WP-28.1); without one the process serves from files alone.
+    pub fn with_shared_backend<F>(mut self, open: F) -> Self
+    where
+        F: Fn(
+                &Config,
+                Option<&dyn permguard_core::secrets::SecretStore>,
+            ) -> anyhow::Result<permguard_host::backend::Shared>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.shared_backend = Some(Box::new(open));
+        self
     }
 
     /// Adds a plane to the process.
@@ -552,6 +580,10 @@ impl PlaneServer {
         .with_metrics(Metrics::new(Arc::new(Registry::new())))
         .with_provisioner(permguard_std::provision::prepare)
         .with_secrets_factory(secret_store_for);
+        let app = match self.shared_backend {
+            Some(open) => app.with_shared_backend(open),
+            None => app,
+        };
         // What the offline commands read on a stopped volume: a ring's journal for
         // `keys export --directory` (WP-3.4), the Host's trails, their checkpoints and anchors for
         // `audit verify --directory` (WP-3.7), the Planes' content-addressed trees for

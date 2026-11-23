@@ -136,6 +136,14 @@ type RingFactory = Box<
 /// Builds the catalog of zones and ledgers a deployment keeps, from its effective configuration.
 type CatalogFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn Catalog>>> + Send + Sync>;
 
+/// Opens the stores of a backend that is not a volume (iteration 03, WP-28.1), from the
+/// configuration and the secret store: what a build that serves `postgresql-s3` registers.
+type SharedBackendFactory = Box<
+    dyn Fn(&Config, Option<&dyn SecretStore>) -> Result<permguard_host::backend::Shared>
+        + Send
+        + Sync,
+>;
+
 /// Builds the audit destination the effective configuration names.
 ///
 /// Returning nothing means "the one this app was composed with", so a build that offers a choice of
@@ -202,6 +210,7 @@ pub struct Composition {
     secrets_factory: Option<SecretStoreFactory>,
     keys_factory: Option<RingFactory>,
     catalog_factory: Option<CatalogFactory>,
+    shared_backend: Option<SharedBackendFactory>,
     control_signing_keys_factory: Option<RingFactory>,
     data_signing_keys_factory: Option<RingFactory>,
     audit_factory: Option<AuditSinkFactory>,
@@ -251,6 +260,7 @@ impl Composition {
             secrets_factory: None,
             keys_factory: None,
             catalog_factory: None,
+            shared_backend: None,
             control_signing_keys_factory: None,
             data_signing_keys_factory: None,
             audit_factory: None,
@@ -289,6 +299,23 @@ impl Composition {
         // looking at before it reads anything else.
         metrics.publish_schema();
         self.metrics = metrics;
+
+        self
+    }
+
+    /// Supplies what opens the stores of the `postgresql-s3` backend (iteration 03, WP-28.1).
+    ///
+    /// The runtime links no database and no object store: a build that serves the backend
+    /// registers the adapter that opens them, as it registers the KMS custody. A build that
+    /// registers none serves from files alone, and refuses a configuration that names another.
+    pub fn with_shared_backend<F>(mut self, factory: F) -> Self
+    where
+        F: Fn(&Config, Option<&dyn SecretStore>) -> Result<permguard_host::backend::Shared>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.shared_backend = Some(Box::new(factory));
 
         self
     }
@@ -846,6 +873,90 @@ impl Composition {
     /// `development` profile, refused otherwise until `permguard host identity provision` ran
     /// (owner decision of 2026-10-08); matched to `host.identity.witness`, which the
     /// `production` profile and above require. Answers whether this start provisioned it.
+    /// What the file backend judges of the volume it claimed before anything opens on it: a
+    /// restore it must not serve, the clock's high-water mark it keeps, the filesystem's probe
+    /// and the tuple's qualification, the Host's quota, and the layouts this build reads.
+    fn opened_volume(
+        &self,
+        config: &Config,
+        volume: &permguard_host::storage::volume::Volume,
+        storage: &permguard_core::volume::VolumeConfig,
+    ) -> Result<(
+        Arc<permguard_host::time::TimeGuard>,
+        permguard_host::storage::qualify::Standing,
+        permguard_host::storage::quota::Quota,
+    )> {
+        // A volume restored for forensics is never served; another restore is logged (WP-7.9).
+        if let Some(reason) = permguard_host::restore::serving_refused(volume)
+            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
+        {
+            bail!("{reason}");
+        }
+        if let Some(restored) = permguard_host::restore::marked(volume)
+            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
+        {
+            tracing::info!(
+                event.name = "volume.restored",
+                mode = restored.mode.as_str(),
+                generation = restored.generation,
+                "this volume was restored: every remote task opens its session for a fresh lease"
+            );
+        }
+
+        // The Host's one time service (WP-2.12), opened against the high-water mark the volume
+        // keeps: a clock set back across a restart is in anomaly from here on.
+        let mark = permguard_host::time::files::FileClockMark::open(volume).with_context(|| {
+            format!(
+                "opening the clock's high-water mark on {}",
+                volume.host().path().display()
+            )
+        })?;
+        let time = time_guard(config, Arc::new(mark)).with_context(|| {
+            format!(
+                "opening the clock's high-water mark on {}",
+                volume.host().path().display()
+            )
+        })?;
+
+        // The filesystem prerequisites probed and the volume's tuple qualified (WP-1.3, TS-5): a
+        // failed probe is refused under every profile, an unqualified, incomplete or stale record
+        // from `production`. Discovery publishes the qualification and its evidence id only.
+        let standing = qualify_volume(volume, storage, config.assurance().profile(), time.now())
+            .with_context(|| {
+                format!(
+                    "qualifying the volume at {} for the `{}` profile",
+                    config.working_dir().display(),
+                    config.assurance().profile()
+                )
+            })?;
+
+        // The Host's quota and emergency floor (BUG-0062): the volume measured now when the Host has
+        // a quota, and judged by a pass once the Host serves.
+        let host_quota = crate::storage_quota::for_volume(volume, storage).with_context(|| {
+            format!(
+                "opening the storage quota of the volume at {}",
+                config.working_dir().display()
+            )
+        })?;
+        // Every write of this volume through the storage primitives is charged to it from here
+        // on, whichever crate writes (BUG-0062).
+        permguard_host::storage::gate::install(volume.root(), host_quota.clone());
+
+        // No subsystem is served while a migration is between two sides, and no layout this build
+        // does not read is served at all (WP-1.9): an interrupted migration is landed by its
+        // command, a downgrade is possible only where every active layout is understood.
+        // The rings' own layouts are always read here: this build lays them out (WP-3.1).
+        let mut layouts = self.layouts.clone();
+        layouts.extend(permguard_host::keys::migration::layouts());
+        layouts.extend(permguard_host::audit::jsonl::layouts());
+        layouts.extend(permguard_decisions::archive::layouts());
+        layouts.extend(permguard_events::archive::layouts());
+        permguard_host::storage::migrate::check_servable(volume, &layouts).with_context(|| {
+            format!("checking the layouts on {}", config.working_dir().display())
+        })?;
+        Ok((time, standing, host_quota))
+    }
+
     fn host_identity_for(
         &self,
         config: &Config,
@@ -858,8 +969,6 @@ impl Composition {
         Config,
         permguard_host::keys::custody::Prepared,
     )> {
-        use permguard_core::assurance::Relaxation;
-        use permguard_core::config::KeyCustody;
         use permguard_host::identity::{self, Identity, IdentityError};
         use permguard_host::keys::ring::HOST_IDENTITY;
 
@@ -881,25 +990,13 @@ impl Composition {
                 volume.root().display()
             );
         }
-        let witness = identity_witness_checked(config, volume)?;
+        let witness = permguard_host::identity::witness_of(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("reading the Host identity's INIT")?;
         // Before anything is written to the identity: its custody, a relaxation of the Host the
         // profile may forbid (owner decision of 2026-10-08, until the custody providers of
         // WP-3.2), and its witness, which a replaced or rolled-back volume fails.
-        let config = match custodian.custody_of(HOST_IDENTITY) {
-            KeyCustody::Development => config
-                .clone()
-                .with_host_relaxation(Relaxation::CustodyPlaintext),
-            KeyCustody::File | KeyCustody::Pkcs11 | KeyCustody::Kms => config.clone(),
-        };
-        config
-            .assurance()
-            .check(&config.relaxations_in_force())
-            .map_err(|refused| {
-                anyhow::anyhow!(
-                    "{refused}; keys held in plaintext are the `development` custody: set \
-                     `operations.keys.custody` to `file`, `pkcs11` or `kms`"
-                )
-            })?;
+        let config = custody_checked(config, custodian)?;
         // The identity's keys through its custody's provider (WP-3.2): a `file` custody seals a
         // key it finds in plaintext, and rewraps one the previous KEK wrapped, before it opens.
         let stored = identity::stored_public(
@@ -989,7 +1086,7 @@ impl Composition {
         &self,
         config: &Config,
         secrets: Option<&dyn SecretStore>,
-        volume: &permguard_host::storage::volume::Volume,
+        witnesses: &permguard_host::secrets::Witnesses,
         host_id: [u8; 16],
     ) -> Result<Option<permguard_host::secrets::HostLocal>> {
         if !config.audit_pseudonym_enabled() {
@@ -1000,12 +1097,9 @@ impl Composition {
             .context("audit pseudonymisation is enabled but names no secret")?;
         let secrets = secrets
             .context("audit pseudonymisation is enabled but this build resolved no secret store")?;
-        let witnesses = permguard_host::secrets::Witnesses::open(volume)
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("opening the secrets' witnesses")?;
         let root = resolve_root(
             secrets,
-            &witnesses,
+            witnesses,
             reference,
             config.audit_pseudonym_key_version(),
             "the audit pseudonymisation key",
@@ -1023,10 +1117,10 @@ impl Composition {
         &self,
         config: &Config,
         secrets: Option<&dyn SecretStore>,
-        volume: &permguard_host::storage::volume::Volume,
+        witnesses: &permguard_host::secrets::Witnesses,
         host_id: [u8; 16],
     ) -> Result<Option<Box<dyn Pseudonymizer>>> {
-        let Some(local) = self.pseudonym_root_for(config, secrets, volume, host_id)? else {
+        let Some(local) = self.pseudonym_root_for(config, secrets, witnesses, host_id)? else {
             return Ok(None);
         };
         Ok(Some(Box::new(
@@ -1078,56 +1172,18 @@ impl Composition {
         // snapshot is resent what it lost (WP-7.9b).
         decisions = decisions.with_acknowledged_retention(acknowledged_retention);
         events = events.with_acknowledged_retention(acknowledged_retention);
-        // Their consumers, what this Host ingests as a coordinator over `decisions.ship` and
-        // `events.ship` (WP-5.3), kept as long as the task shipping them says (WP-5.6b).
-        let retention = |task| {
-            Arc::new(crate::stream_gc::ShipRetention {
-                members: Arc::clone(members),
-                task,
-            })
-        };
-        let decision_consumer = engine
-            .register_consumer(
+        let (decision_consumer, event_consumer) = configured_consumers(
+            engine.register_consumer(
                 permguard_decisions::stream::descriptor(),
                 permguard_decisions::stream::Codec,
-            )?
-            .with_retention_source(retention(
-                permguard_host::membership::record::TaskType::DecisionsShip,
-            ));
-        // What the decision store accepts in clear, held over what a coordinator ingests exactly
-        // as over the Control Plane's own ingest (`controlPlane.decisions.accept`).
-        let decision_consumer = match ceiling {
-            Some(ceiling) => decision_consumer.with_admission(Arc::new(move |bytes: &[u8]| {
-                let record: serde_json::Value =
-                    serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
-                match permguard_decisions::ceiling::beyond(&record, &ceiling) {
-                    Some(member) => Err(permguard_decisions::ceiling::refusal(&member)),
-                    None => Ok(()),
-                }
-            })),
-            None => decision_consumer,
-        };
-        // The events' also keeps the origins this Host imports as long as its Data Plane's
-        // windows read them (WP-6.2c2b1).
-        let event_retention = Arc::new(crate::stream_gc::EventRetention {
-            ship: crate::stream_gc::ShipRetention {
-                members: Arc::clone(members),
-                task: permguard_host::membership::record::TaskType::EventsShip,
-            },
-            consumer: std::sync::OnceLock::new(),
-        });
-        let event_consumer = engine
-            .register_consumer(
+            )?,
+            engine.register_consumer(
                 permguard_events::stream::descriptor(),
                 permguard_events::stream::Codec,
-            )?
-            .with_retention_source(Arc::clone(&event_retention)
-                as Arc<dyn permguard_stream::engine::retention::RetentionSource>);
-        let decision_consumer = Arc::new(decision_consumer);
-        let event_consumer = Arc::new(event_consumer);
-        let _ = event_retention
-            .consumer
-            .set(Arc::downgrade(&event_consumer));
+            )?,
+            members,
+            ceiling,
+        );
         Ok((
             permguard_stream::engine::Served::default()
                 .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
@@ -1154,7 +1210,7 @@ impl Composition {
         &self,
         config: &Config,
         secrets: Option<&dyn SecretStore>,
-        volume: &permguard_host::storage::volume::Volume,
+        witnesses: &permguard_host::secrets::Witnesses,
         host_id: [u8; 16],
     ) -> Result<Option<permguard_host::secrets::Coordinator>> {
         let Some(reference) = config.secrets_coordinator_root_ref() else {
@@ -1164,12 +1220,9 @@ impl Composition {
             "`operations.secrets.coordinator_root_ref` is set and this build resolved no secret \
              store",
         )?;
-        let witnesses = permguard_host::secrets::Witnesses::open(volume)
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("opening the secrets' witnesses")?;
         let root = resolve_root(
             secrets,
-            &witnesses,
+            witnesses,
             reference,
             config.secrets_zone_key_version(),
             "the coordinator root",
@@ -1309,14 +1362,12 @@ impl Composition {
         config: &Config,
         config_file: &Path,
         file: &ConfigFile,
-        volume: &permguard_host::storage::volume::Volume,
+        stores: AuthzStores,
         time: &Arc<permguard_host::time::TimeGuard>,
-        mutations: &Arc<permguard_host::operations::mutation::Mutations>,
+        mutations: &Arc<dyn permguard_host::operations::mutation::Engine>,
     ) -> Result<HostAuthz> {
         use permguard_host::authz::access_tokens::TokenAuthenticator;
-        use permguard_host::authz::{
-            AuthorityTrust, Authorization, BootstrapStore, PrincipalMapper, PublicGrant,
-        };
+        use permguard_host::authz::{AuthorityTrust, Authorization, PrincipalMapper, PublicGrant};
 
         let auth = file
             .host_auth()
@@ -1329,21 +1380,16 @@ impl Composition {
                  never joins another coordinator; remove host.join"
             );
         }
-        let bootstrap: Arc<dyn BootstrapStore> = Arc::new(
-            permguard_host::authz::store::files::FileBootstrap::open(volume).with_context(
-                || {
-                    format!(
-                        "opening the recovery principal's commitment on {}",
-                        volume.host().path().display()
-                    )
-                },
-            )?,
-        );
+        let AuthzStores {
+            bootstrap,
+            held: kept,
+        } = stores;
         // A commitment a crash left open is committed or failed before anything reads it.
         mutations
             .recover(&permguard_host::operations::grants::Grants(
                 bootstrap.as_ref(),
             ))
+            .map_err(anyhow::Error::msg)
             .context("recovering the bootstrap commitment a crash left open")?;
         // A development volume this server provisions: the operator certificate `autogenerate`
         // wrote, `tls/client.pem`, is the bootstrap principal when the volume commits none, so the
@@ -1362,7 +1408,7 @@ impl Composition {
             let pem = std::fs::read(&operator)
                 .with_context(|| format!("reading {}", operator.display()))?;
             if let Some(held) = permguard_host::operations::grants::bootstrap_development_operator(
-                mutations,
+                mutations.as_ref(),
                 bootstrap.as_ref(),
                 &pem,
                 time.now_secs(),
@@ -1437,15 +1483,8 @@ impl Composition {
             .map(str::trim)
             .filter(|audience| !audience.is_empty())
             .unwrap_or(permguard_host::authz::authority::DEFAULT_AUDIENCE);
-        let kept =
-            permguard_host::authz::held::files::FileHeld::open(volume).with_context(|| {
-                format!(
-                    "opening the Authority Plane's keys and lists on {}",
-                    volume.host().path().display()
-                )
-            })?;
         let trust = Arc::new(AuthorityTrust::kept_in(
-            Arc::new(kept),
+            kept,
             issuer,
             audience,
             time.now_secs(),
@@ -1538,12 +1577,22 @@ impl Composition {
         config_file: &Path,
         out: &mut dyn Write,
     ) -> Result<()> {
-        // The backend is chosen here, per process (iteration 03, decision E7). This build serves
-        // from files alone: a configuration that names the other backend is refused before
-        // anything is opened, never served from a volume it did not ask for.
-        if !config.storage_backend().has_volume() {
+        // The backend is chosen here, per process (iteration 03, decision E7). A build that
+        // registered no adapter for the other backend serves from files alone: a configuration
+        // that names it is refused before anything is opened, never served from a volume it did
+        // not ask for. A Data Plane keeps its state on files alone (E6, decision X111).
+        let on_volume = config.storage_backend().has_volume();
+        if !on_volume && self.shared_backend.is_none() {
             anyhow::bail!(
                 "storage.backend is `{}`, and this build serves from `{}` alone",
+                config.storage_backend().as_str(),
+                permguard_core::volume::Backend::Files.as_str()
+            );
+        }
+        if !on_volume && permguard_core::planes::discovery::plane_enabled(config, "data") {
+            anyhow::bail!(
+                "storage.backend is `{}`, and a process that runs the Data Plane keeps its state \
+                 on `{}`: run the Data Plane in a process of its own",
                 config.storage_backend().as_str(),
                 permguard_core::volume::Backend::Files.as_str()
             );
@@ -1602,107 +1651,42 @@ impl Composition {
         // held until this returns: a second process on the same mount fails here instead of writing
         // beside this one. The configuration states no assurance profile yet (WP-07), so a volume
         // without a claim is served as under `development`.
-        let volume = permguard_host::storage::volume::Volume::claim(
-            config.working_dir(),
-            config.assurance().profile(),
-        )
-        .with_context(|| format!("claiming the volume at {}", config.working_dir().display()))?;
-        tracing::info!(
-            event.name = "volume.claimed",
-            volume_id = %volume.id_hex(),
-            generation = volume.generation(),
-            "this process holds the volume"
-        );
-        // A volume restored for forensics is never served; another restore is logged (WP-7.9).
-        if let Some(reason) = permguard_host::restore::serving_refused(&volume)
-            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
-        {
-            bail!("{reason}");
-        }
-        if let Some(restored) = permguard_host::restore::marked(&volume)
-            .with_context(|| format!("reading the restore of {}", config.working_dir().display()))?
-        {
-            tracing::info!(
-                event.name = "volume.restored",
-                mode = restored.mode.as_str(),
-                generation = restored.generation,
-                "this volume was restored: every remote task opens its session for a fresh lease"
-            );
-        }
-
-        // The Host's one time service (WP-2.12), opened against the high-water mark the volume
-        // keeps: a clock set back across a restart is in anomaly from here on.
-        let time = Arc::new(
-            permguard_host::time::TimeGuard::open(
-                Arc::new(
-                    permguard_host::time::files::FileClockMark::open(&volume).with_context(
-                        || {
-                            format!(
-                                "opening the clock's high-water mark on {}",
-                                volume.host().path().display()
-                            )
-                        },
-                    )?,
-                ),
-                Arc::new(permguard_host::time::SystemClock),
-                Arc::new(permguard_host::time::SystemMonotonic::new()),
-                config.time_max_clock_skew(),
-            )
-            .with_context(|| {
-                format!(
-                    "opening the clock's high-water mark on {}",
-                    volume.host().path().display()
-                )
-            })?,
-        );
-
-        // The filesystem prerequisites probed and the volume's tuple qualified (WP-1.3, TS-5): a
-        // failed probe is refused under every profile, an unqualified, incomplete or stale record
-        // from `production`. Discovery publishes the qualification and its evidence id only.
+        // On files: the volume is claimed before anything writes to it — the provisioner, the
+        // stores — and held until this returns: a second process on the same mount fails here
+        // instead of writing beside this one. On the shared backend there is no volume: what
+        // follows that judges one is the file backend's own.
         let storage = self
             .load(config_file)?
             .volume()
             .with_context(|| format!("in the configuration file {}", config_file.display()))?;
-        let standing = qualify_volume(&volume, &storage, config.assurance().profile(), time.now())
+        let mut on_files = None;
+        let config = &if on_volume {
+            let volume = permguard_host::storage::volume::Volume::claim(
+                config.working_dir(),
+                config.assurance().profile(),
+            )
             .with_context(|| {
-                format!(
-                    "qualifying the volume at {} for the `{}` profile",
-                    config.working_dir().display(),
-                    config.assurance().profile()
-                )
+                format!("claiming the volume at {}", config.working_dir().display())
             })?;
-        let config = &config
-            .clone()
-            .with_storage_report(permguard_core::volume::StorageReport {
-                qualification: standing.as_str().to_owned(),
-                evidence: standing.evidence().map(str::to_owned),
-            });
-
-        // The Host's quota and emergency floor (BUG-0062): the volume measured now when the Host has
-        // a quota, and judged by a pass once the Host serves.
-        let host_quota =
-            crate::storage_quota::for_volume(&volume, &storage).with_context(|| {
-                format!(
-                    "opening the storage quota of the volume at {}",
-                    config.working_dir().display()
-                )
-            })?;
-        // Every write of this volume through the storage primitives is charged to it from here
-        // on, whichever crate writes (BUG-0062).
-        permguard_host::storage::gate::install(volume.root(), host_quota.clone());
-
-        // No subsystem is served while a migration is between two sides, and no layout this build
-        // does not read is served at all (WP-1.9): an interrupted migration is landed by its
-        // command, a downgrade is possible only where every active layout is understood.
-        // The rings' own layouts are always read here: this build lays them out (WP-3.1).
-        let mut layouts = self.layouts.clone();
-        layouts.extend(permguard_host::keys::migration::layouts());
-        layouts.extend(permguard_host::audit::jsonl::layouts());
-        layouts.extend(permguard_decisions::archive::layouts());
-        layouts.extend(permguard_events::archive::layouts());
-        permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
-            format!("checking the layouts on {}", config.working_dir().display())
-        })?;
+            tracing::info!(
+                event.name = "volume.claimed",
+                volume_id = %volume.id_hex(),
+                generation = volume.generation(),
+                "this process holds the volume"
+            );
+            let (time, standing, host_quota) = self.opened_volume(config, &volume, &storage)?;
+            let config =
+                config
+                    .clone()
+                    .with_storage_report(permguard_core::volume::StorageReport {
+                        qualification: standing.as_str().to_owned(),
+                        evidence: standing.evidence().map(str::to_owned),
+                    });
+            on_files = Some((volume, time, standing, host_quota));
+            config
+        } else {
+            config.clone()
+        };
 
         if let Some(provisioner) = &self.provisioner {
             provisioner(config).with_context(|| {
@@ -1721,12 +1705,43 @@ impl Composition {
         // key-encryption key of the `file` custody included (WP-3.2).
         let resolved = self.secrets_for(config)?;
         let secrets = resolved.as_deref().or(self.secrets.as_deref());
+        // The shared backend opened, once the secrets its connections need resolve: every store
+        // of the Host below comes from it, and the time service from the mark it keeps.
+        let (volume, time, standing, host_quota, shared) = match on_files {
+            Some((volume, time, standing, host_quota)) => {
+                (Some(volume), time, Some(standing), Some(host_quota), None)
+            }
+            None => {
+                let open = self
+                    .shared_backend
+                    .as_ref()
+                    .context("this build registered no adapter for the shared backend")?;
+                let shared = open(config, secrets).with_context(|| {
+                    format!(
+                        "opening the `{}` storage backend",
+                        config.storage_backend().as_str()
+                    )
+                })?;
+                let time = time_guard(config, Arc::clone(&shared.clock_mark))
+                    .context("opening the clock's high-water mark in the database")?;
+                (None, time, None, None, Some(shared))
+            }
+        };
         // The backups' recovery key (TS-5): resolved, its id its fingerprint, which every snapshot
-        // manifest binds from here on; from `production` the whole backup policy is declared.
-        let recovery_key_id = permguard_offline::volume::recovery_key_id_from(config, secrets)
-            .context("resolving the backups' recovery key")?;
-        let shortfalls =
-            permguard_offline::volume::backup_policy_shortfalls(config, recovery_key_id.as_deref());
+        // manifest binds from here on; from `production` the whole backup policy is declared. A
+        // backend with no volume takes no snapshot: its database's and bucket's own mechanisms.
+        let recovery_key_id = match &volume {
+            Some(_) => permguard_offline::volume::recovery_key_id_from(config, secrets)
+                .context("resolving the backups' recovery key")?,
+            None => None,
+        };
+        let shortfalls = match &volume {
+            Some(_) => permguard_offline::volume::backup_policy_shortfalls(
+                config,
+                recovery_key_id.as_deref(),
+            ),
+            None => Vec::new(),
+        };
         if !shortfalls.is_empty() {
             if config
                 .assurance()
@@ -1763,17 +1778,45 @@ impl Composition {
             .clone()
             .with_objectives_report(objectives.report(validation));
         // The identity's witness before the custody writes the key-encryption key's.
-        identity_witness_checked(config, &volume)?;
         // Each ring's provider, from its custody (WP-3.2): the identity's first.
-        let witnesses = permguard_host::secrets::Witnesses::open(&volume)
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("opening the secrets' witnesses")?;
+        let witnesses = match (&volume, &shared) {
+            (Some(volume), _) => {
+                identity_witness_checked(
+                    config,
+                    permguard_host::identity::witness_of(volume)
+                        .map_err(|error| anyhow::anyhow!("{error}"))
+                        .context("reading the Host identity's INIT")?,
+                    &format!("on {}", volume.root().display()),
+                )?;
+                permguard_host::secrets::Witnesses::open(volume)
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+                    .context("opening the secrets' witnesses")?
+            }
+            (None, Some(shared)) => {
+                identity_witness_checked(
+                    config,
+                    permguard_host::identity::provisioned_in(
+                        shared.identity.as_ref(),
+                        &shared.home,
+                    )
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+                    .context("reading the Host identity's INIT")?
+                    .map(|provisioned| provisioned.witness),
+                    &format!("in the `{}` backend", shared.backend),
+                )?;
+                permguard_host::secrets::Witnesses::new(Arc::clone(&shared.witnesses))
+            }
+            (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+        };
         let custodian = custodian_for(config, secrets, &witnesses)?;
 
         // The Host identity (WP-2.2), before anything is recorded under it: opened and verified,
         // or provisioned when the profile allows it, and matched to its external witness.
-        let (host_identity, provisioned, config, identity_custody) =
-            self.host_identity_for(config, &volume, &time, &custodian)?;
+        let (host_identity, provisioned, config, identity_custody) = match (&volume, &shared) {
+            (Some(volume), _) => self.host_identity_for(config, volume, &time, &custodian)?,
+            (None, Some(shared)) => host_identity_shared(config, shared, &time, &custodian)?,
+            (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+        };
         let config = &config;
 
         tracing::info!(
@@ -1796,7 +1839,7 @@ impl Composition {
         // The Host-local pseudonym root (WP-3.3): the sinks' policy for the resource `host`, and
         // the audit engine's per-resource pseudonyms below.
         let pseudonym_root =
-            self.pseudonym_root_for(config, secrets, &volume, host_identity.host_id())?;
+            self.pseudonym_root_for(config, secrets, &witnesses, host_identity.host_id())?;
         let pseudonymizer: Option<Arc<dyn Pseudonymizer>> = match &pseudonym_root {
             Some(local) => Some(Arc::new(
                 local
@@ -1807,7 +1850,7 @@ impl Composition {
         };
         // The coordinator root (WP-3.3): the zone keys this Host derives as its own authority.
         let coordinator =
-            self.coordinator_for(config, secrets, &volume, host_identity.host_id())?;
+            self.coordinator_for(config, secrets, &witnesses, host_identity.host_id())?;
 
         // Before the first record is written, not after: the damage a silent key change does is
         // done by the records made under it.
@@ -1818,53 +1861,64 @@ impl Composition {
                 .was_reset()
                 .context("reading the identities a reset retired")?,
         );
-        let versions = permguard_host::identity::witness::files::FileVersionWitnesses::new(
-            config.working_dir(),
-        );
-        crate::witness::check_for(&versions, pseudonymizer.as_deref(), &host_scope)?;
+        let file_versions;
+        let versions: &dyn permguard_host::identity::witness::VersionWitnesses = match &shared {
+            Some(shared) => shared.versions.as_ref(),
+            None => {
+                file_versions = permguard_host::identity::witness::files::FileVersionWitnesses::new(
+                    config.working_dir(),
+                );
+                &file_versions
+            }
+        };
+        crate::witness::check_for(versions, pseudonymizer.as_deref(), &host_scope)?;
 
         let destination = self.audit_for(config)?;
         // The audit engine (WP-3.5): every record of the process in a trail per (class,
         // resource) under `host/audit/trails`, whatever `audit.destination` says; the sink the
         // destination chose sees every record too, the log stream by default, nothing under
         // `file` (owner decisions of 2026-10-07).
-        // The legacy JSON-lines audit chain in `audit.directory` (WP-3.8).
-        crate::checkpoints::lay_out_legacy(
-            &volume,
-            &config.audit_directory(),
-            config.assurance().profile(),
-            config.working_dir(),
-            time.now_secs(),
-        )?;
-        // A version 1 decision spool its shipper sent whole (WP-6.1c), before any plane opens it.
-        permguard_offline::legacy_spool::archive_at_start(
-            &volume,
-            config.working_dir(),
-            config.log_spool_directory(),
-            config.assurance().profile(),
-            time.now_secs(),
-        );
-        // The Control Plane's event store, where releases before kept it by default inside the
-        // legacy event history, moved to where it is kept now before anything opens either
-        // (BUG-0122, BUG-0124).
-        if config.event_store_directory_is_default() {
-            permguard_offline::legacy_events::relocate_event_store(
-                &config
-                    .working_dir()
-                    .join(permguard_core::config::LEGACY_EVENT_STORE_DIRECTORY),
-                &config.event_store_directory(),
+        // What releases before kept on the volume, taken over before anything opens it: on files
+        // alone, where it is.
+        if let Some(volume) = &volume {
+            // The legacy JSON-lines audit chain in `audit.directory` (WP-3.8).
+            crate::checkpoints::lay_out_legacy(
+                volume,
+                &config.audit_directory(),
+                config.assurance().profile(),
+                config.working_dir(),
+                time.now_secs(),
             )?;
+            // A version 1 decision spool its shipper sent whole (WP-6.1c), before any plane opens it.
+            permguard_offline::legacy_spool::archive_at_start(
+                volume,
+                config.working_dir(),
+                config.log_spool_directory(),
+                config.assurance().profile(),
+                time.now_secs(),
+            );
+            // The Control Plane's event store, where releases before kept it by default inside the
+            // legacy event history, moved to where it is kept now before anything opens either
+            // (BUG-0122, BUG-0124).
+            if config.event_store_directory_is_default() {
+                permguard_offline::legacy_events::relocate_event_store(
+                    &config
+                        .working_dir()
+                        .join(permguard_core::config::LEGACY_EVENT_STORE_DIRECTORY),
+                    &config.event_store_directory(),
+                )?;
+            }
+            // The legacy event journals and the retired pull's store once shipped and older than every
+            // window (WP-6.2d), before the Data Plane opens them.
+            permguard_offline::legacy_events::archive_at_start(
+                volume,
+                &config.events_directory(),
+                permguard_offline::legacy_events::bounds_of(config),
+                config_file,
+                config.assurance().profile(),
+                time.now_secs(),
+            );
         }
-        // The legacy event journals and the retired pull's store once shipped and older than every
-        // window (WP-6.2d), before the Data Plane opens them.
-        permguard_offline::legacy_events::archive_at_start(
-            &volume,
-            &config.events_directory(),
-            permguard_offline::legacy_events::bounds_of(config),
-            config_file,
-            config.assurance().profile(),
-            time.now_secs(),
-        );
         let audit_engine = {
             use permguard_host::audit::{Engine, Stamp, config_revision};
 
@@ -1883,14 +1937,19 @@ impl Composition {
             let pseudonyms =
                 pseudonym_root.map(permguard_host::audit::pseudonym::ResourcePseudonyms::new);
             Arc::new(
-                Engine::open(&volume, stamp, Arc::clone(&time), pseudonyms)
-                    .map_err(|error| anyhow::anyhow!("{error}"))
-                    .with_context(|| {
-                        format!(
-                            "opening the audit trails on {}",
-                            volume.host().path().display()
-                        )
-                    })?,
+                match (&volume, &shared) {
+                    (Some(volume), _) => Engine::open(volume, stamp, Arc::clone(&time), pseudonyms),
+                    (None, Some(shared)) => Engine::over(
+                        Arc::clone(&shared.trails),
+                        Vec::new(),
+                        stamp,
+                        Arc::clone(&time),
+                        pseudonyms,
+                    ),
+                    (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+                }
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("opening the audit trails")?,
             )
         };
         // Sealed `access` and `operations` days older than `audit.retention` go; sealed
@@ -1910,26 +1969,39 @@ impl Composition {
         // The security-mutation journal (WP-3.6), its records written as every other record is:
         // the audit engine under the privacy policy, and the destination too. Its open intents
         // are resolved once each domain is open, the grants just below.
-        let mutations = Arc::new(
-            permguard_host::operations::mutation::Mutations::open(
-                &volume,
-                Arc::new(permguard_host::operations::mutation::HostProjection::new(
-                    Arc::clone(&audit_engine),
-                    pseudonymizer.clone(),
-                    also.clone(),
-                )),
-                Arc::clone(&time),
-            )
-            .with_context(|| {
-                format!(
-                    "opening the mutation journal on {}",
-                    volume.host().path().display()
+        let projection: Arc<dyn permguard_host::operations::mutation::Projection> =
+            Arc::new(permguard_host::operations::mutation::HostProjection::new(
+                Arc::clone(&audit_engine),
+                pseudonymizer.clone(),
+                also.clone(),
+            ));
+        // On files the engine is also what a backup's barrier holds (WP-7.8).
+        let file_mutations = match &volume {
+            Some(volume) => Some(Arc::new(
+                permguard_host::operations::mutation::Mutations::open(
+                    volume,
+                    Arc::clone(&projection),
+                    Arc::clone(&time),
                 )
-            })?,
-        );
+                .with_context(|| {
+                    format!(
+                        "opening the mutation journal on {}",
+                        volume.host().path().display()
+                    )
+                })?,
+            )),
+            None => None,
+        };
+        let mutations: Arc<dyn permguard_host::operations::mutation::Engine> =
+            match (&file_mutations, &shared) {
+                (Some(engine), _) => Arc::clone(engine) as _,
+                (None, Some(shared)) => (shared.mutations)(projection),
+                (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+            };
         // A rotation of the identity a crash left open is resolved now; the grants are below.
         mutations
             .recover(&permguard_host::identity::Identities(&host_identity))
+            .map_err(anyhow::Error::msg)
             .context("recovering the identity mutations a crash left open")?;
         // The provisioning is recorded by the start that provisions, or, when that start was
         // refused before it could record it, by the next one: a Host identity never goes without
@@ -2010,16 +2082,23 @@ impl Composition {
             Arc::clone(&audit_engine),
             also,
         ));
-        let catalog = self.catalog_for(config)?;
+        let catalog = match &shared {
+            Some(shared) => Some(Arc::clone(&shared.catalog)),
+            None => self.catalog_for(config)?,
+        };
         // The Host's rings (WP-3.1): laid out under `host/keys`, a legacy `ring.json` directory
         // migrated first, every set bound by the identity and every transition recorded by the
         // audit engine; an operator's rotation or revocation a crash left open resolved now.
         let opener = permguard_host::keys::registry::Opener {
-            home: Box::new(permguard_host::keys::migration::VolumeHome {
-                volume: &volume,
-                profile: config.assurance().profile(),
-                time: Arc::clone(&time),
-            }),
+            home: match (&volume, &shared) {
+                (Some(volume), _) => Box::new(permguard_host::keys::migration::VolumeHome {
+                    volume,
+                    profile: config.assurance().profile(),
+                    time: Arc::clone(&time),
+                }),
+                (None, Some(shared)) => Box::new(SharedRings(Arc::clone(&shared.rings))),
+                (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+            },
             host_id: host_identity.host_id(),
             custodian: Arc::clone(&custodian),
             time: Arc::clone(&time),
@@ -2070,11 +2149,14 @@ impl Composition {
         ));
         mutations
             .recover(key_registry.as_ref())
+            .map_err(anyhow::Error::msg)
             .context("recovering the key ring mutations a crash left open")?;
         // No ring publishes, activates, retires or archives a key while a backup barrier holds:
         // the snapshot holds the rings it was inventoried with (BUG-0207).
-        for ring in key_registry.rings() {
-            ring.set_hold(Arc::new(mutations.barrier()));
+        if let Some(engine) = &file_mutations {
+            for ring in key_registry.rings() {
+                ring.set_hold(Arc::new(engine.barrier()));
+            }
         }
         // The Host's stream engine (WP-5.1), its runs signed under `host.operations`: the decision
         // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
@@ -2085,19 +2167,31 @@ impl Composition {
         let mut stream_reads: Option<Arc<dyn permguard_host::api::streams::StreamReads>> = None;
         let (streams, ingests) = match keys.as_ref() {
             Some(operations) => {
-                let (served, decisions, events) = self
-                    .stream_engine(
-                        &volume,
-                        &host_identity,
-                        operations,
-                        data_signing_keys.as_ref(),
+                let (served, decisions, events) = match (&volume, &shared) {
+                    (Some(volume), _) => self
+                        .stream_engine(
+                            volume,
+                            &host_identity,
+                            operations,
+                            data_signing_keys.as_ref(),
+                            &time,
+                            &retention_members,
+                            config.stream_acknowledged_retention(),
+                            config.decision_ceiling(),
+                        )
+                        .map_err(|error| anyhow::anyhow!("{error}"))
+                        .context("opening the stream engine")?,
+                    (None, Some(shared)) => shared_stream_parts(
+                        shared,
                         &time,
                         &retention_members,
-                        config.stream_acknowledged_retention(),
                         config.decision_ceiling(),
                     )
-                    .map_err(|error| anyhow::anyhow!("{error}"))
-                    .context("opening the stream engine")?;
+                    .context("opening the stream consumers")?,
+                    (None, None) => {
+                        unreachable!("a process is on a volume or on a shared backend")
+                    }
+                };
                 // What the garbage collection runs (WP-5.6b): every producer and consumer.
                 prunables = served.prunables();
                 prunables.push(Arc::clone(&decisions) as _);
@@ -2114,12 +2208,21 @@ impl Composition {
         };
         // The memberships (WP-4.1): the store on the volume, whatever surface serves it, so a
         // membership mutation a crash left open is resolved before anything reads it.
-        let members = permguard_host::membership::Store::open(&volume).with_context(|| {
-            format!(
-                "opening the memberships on {}",
-                volume.host().path().display()
-            )
-        })?;
+        let members = match (&volume, &shared) {
+            (Some(volume), _) => {
+                permguard_host::membership::Store::open(volume).with_context(|| {
+                    format!(
+                        "opening the memberships on {}",
+                        volume.host().path().display()
+                    )
+                })?
+            }
+            (None, Some(shared)) => {
+                permguard_host::membership::Store::open_in(Arc::clone(&shared.members), None)
+                    .context("opening the memberships")?
+            }
+            (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+        };
         // The root version keys are delivered at, what the member view compares a receipt with
         // (BUG-0097).
         if let Some(coordinator) = &coordinator {
@@ -2127,33 +2230,40 @@ impl Composition {
         }
         mutations
             .recover(&permguard_host::membership::Memberships(&members))
+            .map_err(anyhow::Error::msg)
             .context("recovering the membership mutations a crash left open")?;
         let members_joined: Arc<dyn permguard_host::authz::bootstrap::Joined> =
             Arc::clone(&members) as _;
         // The volume's backups (WP-7.8): a prepare a restart cut short is aborted, and recorded.
         // Recovery first: an ending a crash left open is judged on its own write, then what is
         // still prepared is cut.
-        let backups =
-            permguard_host::operations::backup::Backups::open(&volume).with_context(|| {
-                format!("opening the backups on {}", volume.host().path().display())
-            })?;
-        mutations
-            .recover(&backups)
-            .context("recovering the backup mutations a crash left open")?;
-        let cut = backups
-            .cut(time.now_secs())
-            .context("aborting the backups a restart cut short")?;
-        if !cut.is_empty() {
-            let recorded = backups.record_cut(&mutations, &cut, time.now_secs());
-            tracing::warn!(
-                event.name = "host.backup_cut",
-                component = "server",
-                backups = cut.len(),
-                recorded,
-                "a restart cut a prepared backup short: it is aborted"
-            );
-        }
-        let backups = Arc::new(backups);
+        // A backend with no volume takes no snapshot (E5): there are no backups to recover.
+        let backups = match (&volume, &file_mutations) {
+            (Some(volume), Some(engine)) => {
+                let backups = permguard_host::operations::backup::Backups::open(volume)
+                    .with_context(|| {
+                        format!("opening the backups on {}", volume.host().path().display())
+                    })?;
+                engine
+                    .recover(&backups)
+                    .context("recovering the backup mutations a crash left open")?;
+                let cut = backups
+                    .cut(time.now_secs())
+                    .context("aborting the backups a restart cut short")?;
+                if !cut.is_empty() {
+                    let recorded = backups.record_cut(engine, &cut, time.now_secs());
+                    tracing::warn!(
+                        event.name = "host.backup_cut",
+                        component = "server",
+                        backups = cut.len(),
+                        recorded,
+                        "a restart cut a prepared backup short: it is aborted"
+                    );
+                }
+                Some(Arc::new(backups))
+            }
+            _ => None,
+        };
         let _ = retention_members.set(Arc::clone(&members));
         // Retention deletes a day of an exported trail only once its seal is acknowledged
         // (WP-5.9, owner decision).
@@ -2172,7 +2282,7 @@ impl Composition {
         // The same silent-key-change guard the server just passed, once per realm against its own
         // witness — before any realm record is written, for the same reason.
         for realm in realms.all() {
-            crate::witness::check_realm(&versions, realm, None)?;
+            crate::witness::check_realm(versions, realm, None)?;
         }
 
         record_build(&self.identity, config, self.server.name());
@@ -2197,6 +2307,13 @@ impl Composition {
             .context(config, pseudonymizer.as_deref(), keys)
             .with_audit(audit.as_ref())
             .with_realms(realms);
+        // On a shared backend, what the Planes compose their own stores over: the one
+        // database and the one bucket of the process.
+        if let Some(shared) = &shared {
+            for handle in &shared.handles {
+                context = context.with_extension(Arc::clone(handle));
+            }
+        }
         // An `operations` record the engine could not write degrades the Host's readiness.
         audit_engine.observe(context.health().clone());
         // The process document names the Host by its id (WP-7.4a).
@@ -2208,7 +2325,9 @@ impl Composition {
         if let Some(report) = config.storage_report() {
             context.health().lifecycle().set_storage(report.clone());
         }
-        mutations.observe(context.health().clone());
+        if let Some(engine) = &file_mutations {
+            engine.observe(context.health().clone());
+        }
         // `production` admits the ring in files on this volume, and the Host says so until it
         // moves to a PKCS#11 token or a KMS: whoever holds the volume signs every token.
         if let Some(advice) = authority_host
@@ -2247,7 +2366,41 @@ impl Composition {
             authenticator,
             trust,
             bootstrap,
-        } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
+        } = self.authorization_for(
+            config,
+            config_file,
+            &file,
+            match (&volume, &shared) {
+                (Some(volume), _) => AuthzStores {
+                    bootstrap: Arc::new(
+                        permguard_host::authz::store::files::FileBootstrap::open(volume)
+                            .with_context(|| {
+                                format!(
+                                    "opening the recovery principal's commitment on {}",
+                                    volume.host().path().display()
+                                )
+                            })?,
+                    ),
+                    held: Arc::new(
+                        permguard_host::authz::held::files::FileHeld::open(volume).with_context(
+                            || {
+                                format!(
+                                    "opening the Authority Plane's keys and lists on {}",
+                                    volume.host().path().display()
+                                )
+                            },
+                        )?,
+                    ),
+                },
+                (None, Some(shared)) => AuthzStores {
+                    bootstrap: Arc::clone(&shared.bootstrap),
+                    held: Arc::clone(&shared.held),
+                },
+                (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+            },
+            &time,
+            &mutations,
+        )?;
         context = context.with_authenticator(authenticator);
         let bootstrap_principal = bootstrap
             .bootstrap()
@@ -2285,39 +2438,60 @@ impl Composition {
         if config.admin_addr().is_some() || dials_out {
             use permguard_host::api::{Assurance, Composition, Effective, HostApi};
 
-            let (replay, recovery) =
-                permguard_host::api::replay::files::FileReplay::open(&volume, time.now_secs())
-                    .with_context(|| {
-                        format!(
-                            "opening the replay journal on {}",
-                            volume.host().path().display()
-                        )
-                    })?;
-            let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
+            let (replay, truncated): (Arc<dyn permguard_host::api::replay::ReplayStore>, u64) =
+                match (&volume, &shared) {
+                    (Some(volume), _) => {
+                        let (replay, recovery) =
+                            permguard_host::api::replay::files::FileReplay::open(
+                                volume,
+                                time.now_secs(),
+                            )
+                            .with_context(|| {
+                                format!(
+                                    "opening the replay journal on {}",
+                                    volume.host().path().display()
+                                )
+                            })?;
+                        (Arc::new(replay), recovery.truncated_bytes)
+                    }
+                    (None, Some(shared)) => (Arc::clone(&shared.plans), 0),
+                    (None, None) => {
+                        unreachable!("a process is on a volume or on a shared backend")
+                    }
+                };
+            let replay = permguard_host::api::Replay::new(replay);
             let replay = replay.with_time(Arc::clone(&time));
             // An approval a crash left open is committed when its frame is durable (WP-3.9).
             mutations
                 .recover(&replay)
+                .map_err(anyhow::Error::msg)
                 .context("recovering the plans' mutations a crash left open")?;
             tracing::info!(
                 event.name = "host_api.replay_opened",
                 component = "server",
                 held = replay.held().context("reading the replay window")?,
-                recovered_truncated_bytes = recovery.truncated_bytes,
+                recovered_truncated_bytes = truncated,
                 "the replay journal is open"
             );
             // The peers a session accepts: the configured pins and the memberships' (WP-4.1).
+            let seen: Arc<dyn permguard_host::session::peers::SeenStore> =
+                match (&volume, &shared) {
+                    (Some(volume), _) => Arc::new(
+                        permguard_host::session::peers::files::FileSeen::open(volume)
+                            .with_context(|| {
+                                format!(
+                                    "opening the pinned peers on {}",
+                                    volume.host().path().display()
+                                )
+                            })?,
+                    ),
+                    (None, Some(shared)) => Arc::clone(&shared.seen),
+                    (None, None) => {
+                        unreachable!("a process is on a volume or on a shared backend")
+                    }
+                };
             let peers = Arc::new(permguard_host::session::peers::Peers::new(
-                Arc::new(
-                    permguard_host::session::peers::files::FileSeen::open(&volume).with_context(
-                        || {
-                            format!(
-                                "opening the pinned peers on {}",
-                                volume.host().path().display()
-                            )
-                        },
-                    )?,
-                ),
+                seen,
                 config.host_peers(),
             ));
             peers.with_source(
@@ -2552,7 +2726,10 @@ impl Composition {
                 None => api,
             };
             // The volume a drain receipt names (TD-2).
-            let api = api.with_volume(volume.id(), volume.generation());
+            let api = match &volume {
+                Some(volume) => api.with_volume(volume.id(), volume.generation()),
+                None => api,
+            };
             // An approval stands for its ttl, and while the approver's token is valid (BUG-0099).
             let api = api.with_approvals(
                 config.dual_control_approval_ttl(),
@@ -2560,11 +2737,15 @@ impl Composition {
             );
             // The application-consistent snapshot's barrier (WP-7.8).
             let api = api.with_backend(config.storage_backend());
-            let api = api.with_backups(
-                Arc::clone(&backups),
-                config.backup_recovery_key_id().map(str::to_owned),
-                config.backup_encryption_profile().map(str::to_owned),
-            );
+            let api = match (&backups, &file_mutations) {
+                (Some(backups), Some(engine)) => api.with_backups(
+                    Arc::clone(backups),
+                    Arc::clone(engine),
+                    config.backup_recovery_key_id().map(str::to_owned),
+                    config.backup_encryption_profile().map(str::to_owned),
+                ),
+                _ => api,
+            };
             // A Host running both Planes ships its Data Plane's decisions and events to its own
             // Control Plane through local tasks, verified under its own `data.attest`: what the
             // Control Plane's public reads answer from, with no membership.
@@ -2632,16 +2813,19 @@ impl Composition {
             crate::objectives::Sources {
                 health: context.health().clone(),
                 metrics: context.metrics().clone(),
-                backups: Arc::clone(&backups),
+                backups: backups.clone(),
                 spool_capacity: (permguard_core::planes::discovery::plane_enabled(config, "data")
                     && config.log_enabled())
                 .then(|| config.log_spool_bytes()),
                 time: Arc::clone(&time),
-                volume_created: volume_created(&volume, &time),
+                volume_created: volume
+                    .as_ref()
+                    .map_or(time.now_secs(), |volume| volume_created(volume, &time)),
                 qualification_expires_at: match &standing {
-                    permguard_host::storage::qualify::Standing::Qualified {
-                        expires_at, ..
-                    } if config
+                    Some(permguard_host::storage::qualify::Standing::Qualified {
+                        expires_at,
+                        ..
+                    }) if config
                         .assurance()
                         .profile()
                         .at_least(permguard_core::assurance::AssuranceProfile::Production) =>
@@ -2657,11 +2841,10 @@ impl Composition {
             },
         );
         // Readiness held while free space is at the emergency floor; the quota measured and reported.
-        let _storage = crate::storage_quota::watch(
-            host_quota,
-            context.health().clone(),
-            context.metrics().clone(),
-        );
+        // A backend with no volume measures no free space of its own.
+        let _storage = host_quota.map(|quota| {
+            crate::storage_quota::watch(quota, context.health().clone(), context.metrics().clone())
+        });
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning =
             crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
@@ -2729,10 +2912,22 @@ impl Composition {
             .as_ref()
             .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
         // The zone keys this Host's memberships as a member grant, received and confirmed (WP-4.7).
-        let zone_keys = Arc::new(
-            permguard_host::secrets::ZoneKeys::open(&volume)
+        let zone_keys = Arc::new(match (&volume, &shared) {
+            (Some(volume), _) => permguard_host::secrets::ZoneKeys::open(volume)
                 .context("opening the delivered zone keys")?,
-        );
+            (None, Some(shared)) => {
+                // Sealed by the `file` custody's key-encryption key, bound to this Host.
+                let sealer = custodian
+                    .sealer(host_identity.host_id())
+                    .map_err(anyhow::Error::msg)
+                    .context("sealing the delivered zone keys")?;
+                permguard_host::secrets::ZoneKeys::new(
+                    (shared.delivered)(Arc::new(sealer)),
+                    permguard_host::secrets::Witnesses::new(Arc::clone(&shared.witnesses)),
+                )
+            }
+            (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+        });
         let _receiving = serving
             .as_ref()
             .map(|api| crate::zone::drive(Arc::clone(api), Arc::clone(&zone_keys)));
@@ -2800,10 +2995,15 @@ impl Composition {
         }
         // The version in force of every layout, as the start steps left them: a Plane reads those
         // it declared (WP-6.2d).
-        let laid_out = permguard_host::storage::migrate::status(&volume)
-            .context("reading the layouts")?
-            .into_iter()
-            .map(|status| (status.manifest.subsystem, status.manifest.active.version));
+        // A backend with no volume lays nothing out: its schema is the database's, one version.
+        let laid_out: Vec<_> = match &volume {
+            Some(volume) => permguard_host::storage::migrate::status(volume)
+                .context("reading the layouts")?
+                .into_iter()
+                .map(|status| (status.manifest.subsystem, status.manifest.active.version))
+                .collect(),
+            None => Vec::new(),
+        };
         let mut host = permguard_host::composition::Host::builder()
             .layouts(laid_out)
             .audit(recorder)
@@ -2814,10 +3014,14 @@ impl Composition {
             // Plane's ref updates (WP-7.12).
             .mutations(Arc::clone(&mutations))
             // What the Control Plane's garbage collection keeps (WP-7.3c).
-            .holds(Arc::new(
-                permguard_host::holds::files::FileHolds::open(&volume)
-                    .context("opening the holds")?,
-            ))
+            .holds(match (&volume, &shared) {
+                (Some(volume), _) => Arc::new(
+                    permguard_host::holds::files::FileHolds::open(volume)
+                        .context("opening the holds")?,
+                ),
+                (None, Some(shared)) => Arc::clone(&shared.holds),
+                (None, None) => unreachable!("a process is on a volume or on a shared backend"),
+            })
             .task_slot(
                 permguard_host::membership::record::TaskType::PolicyMirror,
                 1,
@@ -2887,7 +3091,10 @@ impl Composition {
             context = context.with_maintained_ring("authority-tokens", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::AUTHORITY_TOKENS, keys);
         }
-        host = host.authority_trust(Arc::clone(&trust)).volume(&volume);
+        host = host.authority_trust(Arc::clone(&trust));
+        if let Some(volume) = &volume {
+            host = host.volume(volume);
+        }
         if let Some(keys) = control_signing_keys {
             let keys: Arc<dyn KeyManager> = keys;
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
@@ -3096,6 +3303,294 @@ fn volume_created(
 /// Probes the filesystem under the volume's `host/state` and qualifies its tuple for `profile`
 /// (WP-1.3, TS-5) at `now`, the Host's guarded time, logging what was found; the refusal carries
 /// the reason's registered code.
+/// The custody of the Host identity's keys, judged before anything is written to it: a
+/// relaxation of the Host the profile may forbid (owner decision of 2026-10-08). Answers the
+/// configuration with the relaxation it carries.
+fn custody_checked(
+    config: &Config,
+    custodian: &permguard_host::keys::custody::Custodian,
+) -> Result<Config> {
+    use permguard_core::assurance::Relaxation;
+    use permguard_core::config::KeyCustody;
+
+    let config = match custodian.custody_of(permguard_host::keys::ring::HOST_IDENTITY) {
+        KeyCustody::Development => config
+            .clone()
+            .with_host_relaxation(Relaxation::CustodyPlaintext),
+        KeyCustody::File | KeyCustody::Pkcs11 | KeyCustody::Kms => config.clone(),
+    };
+    config
+        .assurance()
+        .check(&config.relaxations_in_force())
+        .map_err(|refused| {
+            anyhow::anyhow!(
+                "{refused}; keys held in plaintext are the `development` custody: set \
+                 `operations.keys.custody` to `file`, `pkcs11` or `kms`"
+            )
+        })?;
+    Ok(config)
+}
+
+/// The Host identity a shared backend keeps (iteration 03, WP-28.1): opened and verified, or
+/// provisioned when the profile allows it, under the deployment's id, its keys through their
+/// custody in the backend's slots. What [`Composition::host_identity_for`] does on a volume.
+fn host_identity_shared(
+    config: &Config,
+    shared: &permguard_host::backend::Shared,
+    time: &Arc<permguard_host::time::TimeGuard>,
+    custodian: &Arc<permguard_host::keys::custody::Custodian>,
+) -> Result<(
+    Arc<permguard_host::identity::Identity>,
+    bool,
+    Config,
+    permguard_host::keys::custody::Prepared,
+)> {
+    use permguard_host::identity::{self, Home, Identity, IdentityError};
+    use permguard_host::keys::ring::HOST_IDENTITY;
+
+    // A reset a crash interrupted is completed offline before the Host starts.
+    if identity::reset::marked_in(shared.identity.as_ref())
+        .map_err(|error| anyhow::anyhow!("{error}"))?
+        .is_some()
+    {
+        bail!(
+            "an identity reset began in the `{}` backend and did not complete: complete it \
+             before a start",
+            shared.backend
+        );
+    }
+    let config = custody_checked(config, custodian)?;
+    let provisioned = identity::provisioned_in(shared.identity.as_ref(), &shared.home)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .context("reading the Host identity's INIT")?;
+    // One home for every instance: the deployment's id. The claim generation a volume gives a
+    // start has no counterpart here; a boot id per instance is WP-28.5's.
+    let home = Home {
+        id: shared.home,
+        generation: 0,
+    };
+    let provider_for = |host_id: &[u8; 16], suite| {
+        custodian.provider(
+            HOST_IDENTITY,
+            *host_id,
+            Arc::clone(&shared.identity_slots),
+            identity::stored_public_in(Arc::clone(&shared.identity)),
+            suite,
+        )
+    };
+    let mut prepared = permguard_host::keys::custody::Prepared::default();
+    let (opened, fresh) = match &provisioned {
+        Some(held) => {
+            let suite = held.suite.unwrap_or(identity::Suite::Ed25519Sha256V1);
+            let (provider, done) = provider_for(&held.host_id, suite)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("preparing the custody of the Host identity's keys")?;
+            prepared = done;
+            (
+                Identity::open_in(Arc::clone(&shared.identity), home, provider),
+                false,
+            )
+        }
+        None => {
+            let suite = config
+                .host_identity_suite()
+                .and_then(identity::Suite::from_name)
+                .unwrap_or(identity::Suite::Ed25519Sha256V1);
+            let now = time.now_secs();
+            (
+                Identity::provision_in(
+                    Arc::clone(&shared.identity),
+                    home,
+                    |host_id| {
+                        provider_for(host_id, suite)
+                            .map(|(provider, _)| provider)
+                            .map_err(IdentityError::from)
+                    },
+                    suite,
+                    now,
+                    now.saturating_mul(1000),
+                ),
+                true,
+            )
+        }
+    };
+    let opened = opened
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .with_context(|| {
+            format!(
+                "opening the Host identity in the `{}` backend",
+                shared.backend
+            )
+        })?;
+    if fresh
+        && let Some(expected) = config.host_identity_witness()
+        && expected != opened.witness()
+    {
+        bail!("`host.identity.witness` names another identity than the one just provisioned");
+    }
+    // What a reset provisions the next identity with (WP-4.1): the same custody, in the same
+    // slots, its keys bound to the `host_id` the reset mints.
+    let (slots, store, custody, suite) = (
+        Arc::clone(&shared.identity_slots),
+        Arc::clone(&shared.identity),
+        Arc::clone(custodian),
+        opened.suite(),
+    );
+    let provisioner: permguard_host::identity::reset::Provisioner = Arc::new(move |host_id| {
+        custody
+            .provider(
+                HOST_IDENTITY,
+                *host_id,
+                Arc::clone(&slots),
+                identity::stored_public_in(Arc::clone(&store)),
+                suite,
+            )
+            .map(|(provider, _)| provider)
+            .map_err(IdentityError::from)
+    });
+    Ok((
+        Arc::new(opened.with_provisioner(provisioner)),
+        fresh,
+        config,
+        prepared,
+    ))
+}
+
+/// The decision and event consumers of a coordinator, whatever keeps their runs: kept as long as
+/// the task shipping them says (WP-5.6b), the decisions held to what the store accepts in clear.
+fn configured_consumers(
+    decision_consumer: permguard_stream::engine::Consumer<permguard_decisions::stream::Codec>,
+    event_consumer: permguard_stream::engine::Consumer<permguard_events::stream::Codec>,
+    members: &Arc<std::sync::OnceLock<Arc<permguard_host::membership::Store>>>,
+    ceiling: Option<permguard_core::decisions::IncludeSection>,
+) -> (
+    Arc<permguard_stream::engine::Consumer<permguard_decisions::stream::Codec>>,
+    Arc<permguard_stream::engine::Consumer<permguard_events::stream::Codec>>,
+) {
+    // Their consumers, what this Host ingests as a coordinator over `decisions.ship` and
+    // `events.ship` (WP-5.3), kept as long as the task shipping them says (WP-5.6b).
+    let retention = |task| {
+        Arc::new(crate::stream_gc::ShipRetention {
+            members: Arc::clone(members),
+            task,
+        })
+    };
+    let decision_consumer = decision_consumer.with_retention_source(retention(
+        permguard_host::membership::record::TaskType::DecisionsShip,
+    ));
+    // What the decision store accepts in clear, held over what a coordinator ingests exactly
+    // as over the Control Plane's own ingest (`controlPlane.decisions.accept`).
+    let decision_consumer = match ceiling {
+        Some(ceiling) => decision_consumer.with_admission(Arc::new(move |bytes: &[u8]| {
+            let record: serde_json::Value =
+                serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+            match permguard_decisions::ceiling::beyond(&record, &ceiling) {
+                Some(member) => Err(permguard_decisions::ceiling::refusal(&member)),
+                None => Ok(()),
+            }
+        })),
+        None => decision_consumer,
+    };
+    // The events' also keeps the origins this Host imports as long as its Data Plane's
+    // windows read them (WP-6.2c2b1).
+    let event_retention = Arc::new(crate::stream_gc::EventRetention {
+        ship: crate::stream_gc::ShipRetention {
+            members: Arc::clone(members),
+            task: permguard_host::membership::record::TaskType::EventsShip,
+        },
+        consumer: std::sync::OnceLock::new(),
+    });
+    let event_consumer = event_consumer.with_retention_source(Arc::clone(&event_retention)
+        as Arc<dyn permguard_stream::engine::retention::RetentionSource>);
+    let decision_consumer = Arc::new(decision_consumer);
+    let event_consumer = Arc::new(event_consumer);
+    let _ = event_retention
+        .consumer
+        .set(Arc::downgrade(&event_consumer));
+    (decision_consumer, event_consumer)
+}
+
+/// The consumers of a coordinator on a backend that is not a volume (iteration 03, WP-28.1):
+/// their runs where the backend keeps them. No producer: a Data Plane, the only producer, keeps
+/// its state on files (E6).
+fn shared_stream_parts(
+    shared: &permguard_host::backend::Shared,
+    time: &Arc<permguard_host::time::TimeGuard>,
+    members: &Arc<std::sync::OnceLock<Arc<permguard_host::membership::Store>>>,
+    ceiling: Option<permguard_core::decisions::IncludeSection>,
+) -> Result<StreamParts> {
+    let runs = shared
+        .handle::<permguard_stream::engine::consumer::store::ConsumerRuns>()
+        .context("the shared backend keeps no stream consumer's runs")?;
+    let decisions = permguard_decisions::stream::descriptor();
+    let events = permguard_events::stream::descriptor();
+    let (decision_consumer, event_consumer) = configured_consumers(
+        permguard_stream::engine::Consumer::over(
+            (runs.0)(&decisions),
+            decisions,
+            permguard_decisions::stream::Codec,
+            Arc::clone(time),
+        )?,
+        permguard_stream::engine::Consumer::over(
+            (runs.0)(&events),
+            events,
+            permguard_events::stream::Codec,
+            Arc::clone(time),
+        )?,
+        members,
+        ceiling,
+    );
+    Ok((
+        permguard_stream::engine::Served::default()
+            .with_consumer(
+                permguard_decisions::stream::STREAM,
+                Arc::clone(&decision_consumer),
+            )
+            .with_consumer(
+                permguard_events::stream::STREAM,
+                Arc::clone(&event_consumer),
+            ),
+        decision_consumer,
+        event_consumer,
+    ))
+}
+
+/// The stores the Host's authorization reads: the recovery principal's commitment, and what it
+/// holds of the Authority Plane.
+struct AuthzStores {
+    bootstrap: Arc<dyn permguard_host::authz::BootstrapStore>,
+    held: Arc<dyn permguard_host::authz::held::HeldStore>,
+}
+
+/// The rings of a shared backend, as the registry's opener takes them.
+struct SharedRings(Arc<dyn permguard_host::keys::registry::Home + Send + Sync>);
+
+impl permguard_host::keys::registry::Home for SharedRings {
+    fn stores(
+        &self,
+        ring: &'static str,
+        legacy: Option<&std::path::Path>,
+    ) -> std::result::Result<
+        permguard_host::keys::registry::Stores,
+        permguard_host::keys::registry::OpenError,
+    > {
+        self.0.stores(ring, legacy)
+    }
+}
+
+/// The Host's one time service over `mark`, the high-water mark its backend keeps.
+fn time_guard(
+    config: &Config,
+    mark: Arc<dyn permguard_host::time::ClockMark>,
+) -> Result<Arc<permguard_host::time::TimeGuard>> {
+    Ok(Arc::new(permguard_host::time::TimeGuard::open(
+        mark,
+        Arc::new(permguard_host::time::SystemClock),
+        Arc::new(permguard_host::time::SystemMonotonic::new()),
+        config.time_max_clock_skew(),
+    )?))
+}
+
 fn qualify_volume(
     volume: &permguard_host::storage::volume::Volume,
     storage: &permguard_core::volume::VolumeConfig,
@@ -3148,14 +3643,12 @@ const WITNESS_FILE_MAX_BYTES: u64 = 128;
 /// volume, or one never provisioned where the profile requires it, is refused first.
 fn identity_witness_checked(
     config: &Config,
-    volume: &permguard_host::storage::volume::Volume,
+    witness: Option<String>,
+    place: &str,
 ) -> Result<Option<String>> {
     use permguard_core::assurance::{AssuranceProfile, Control};
 
     let assurance = config.assurance();
-    let witness = permguard_host::identity::witness_of(volume)
-        .map_err(|error| anyhow::anyhow!("{error}"))
-        .context("reading the Host identity's INIT")?;
     // The witness from its file, when the orchestrator mounts one per replica: a file not there
     // yet is a witness not recorded yet, said below as one. A witness is a line: a file that is
     // not a regular one, or longer than one, holds none.
@@ -3199,10 +3692,9 @@ fn identity_witness_checked(
     let expected = config.host_identity_witness().or(from_file.as_deref());
     if witness.is_none() && assurance.profile() != AssuranceProfile::Development {
         bail!(
-            "the Host identity is not provisioned on {}: under the `{}` profile it is \
-             created by `permguard host identity provision --volume <path>` before the first \
-             start, which prints the witness to keep outside the volume",
-            volume.root().display(),
+            "the Host identity is not provisioned {place}: under the `{}` profile it is \
+             created by `permguard host identity provision` before the first start, which \
+             prints the witness to keep outside where the identity is kept",
             assurance.profile()
         );
     }

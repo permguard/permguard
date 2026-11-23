@@ -591,6 +591,18 @@ pub const MIGRATIONS: &[Migration] = &[
         ALTER TABLE permguard_ledger_refs ALTER COLUMN operation DROP NOT NULL;
     ",
     },
+    Migration {
+        version: 20,
+        name: "the deployment",
+        // The id the Host identity is provisioned and opened under, as a volume's id is on files
+        // (iteration 03, WP-28.1): one row, minted once, or written by the import of a volume.
+        statements: "
+        CREATE TABLE permguard_deployment (
+            only_one boolean PRIMARY KEY DEFAULT true CHECK (only_one),
+            id bytea NOT NULL CHECK (octet_length(id) = 16)
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

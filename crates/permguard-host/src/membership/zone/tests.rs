@@ -75,7 +75,7 @@ fn zone_task(purposes: &[&str]) -> Task {
 fn hosting<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
     Member {
         store: &side.host.store,
-        mutations: &side.mutations,
+        mutations: side.mutations.as_ref(),
         identity: &side.host.identity,
         rings: &side.host.rings,
         capabilities: Box::leak(Box::new(Capabilities::host())),

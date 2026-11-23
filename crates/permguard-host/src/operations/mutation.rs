@@ -435,6 +435,53 @@ pub trait Engine: Send + Sync {
     fn quiesced(&self) -> bool {
         false
     }
+
+    /// Writes a record of an operation's own facts beside its phases, through the same audit
+    /// projection, failure answered: what a phase record cannot carry (WP-4.2: an operator
+    /// approval's principal, scope, reason and expiry). Called from inside the operation's
+    /// write; the engine keeps it after the operation's intent and before its outcome.
+    fn project(&self, event: &AuditEvent<'_>) -> Result<(), String>;
+
+    /// Where the intent record of `operation_id` was written, when this engine knows: what a
+    /// receipt names (BUG-0095). `None` names the trail alone, as after a restart.
+    fn intent_recorded(&self, _operation_id: &OperationId) -> Option<crate::audit::Recorded> {
+        None
+    }
+}
+
+impl<'e> dyn Engine + 'e {
+    /// [`Mutations::run`] on any engine.
+    pub fn run<T, E>(
+        &self,
+        begin: Begin,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+    ) -> Result<Outcome<T>, MutationError<E>>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        run_checked_on(self, begin, || Ok(()), apply)
+    }
+
+    /// [`Mutations::run_checked`] on any engine.
+    pub fn run_checked<T, E>(
+        &self,
+        begin: Begin,
+        check: impl FnMut() -> Result<(), E>,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<E>>,
+    ) -> Result<Outcome<T>, MutationError<E>>
+    where
+        T: Serialize + DeserializeOwned,
+    {
+        run_checked_on(self, begin, check, apply)
+    }
+
+    /// [`Mutations::replayed`] on any engine.
+    pub fn replayed<T, E>(&self, begin: &Begin) -> Result<Option<Outcome<T>>, MutationError<E>>
+    where
+        T: DeserializeOwned,
+    {
+        replayed_on(self, begin)
+    }
 }
 
 /// The typed form of [`Engine::run_bytes`]: what every domain calls, on any engine.
@@ -934,6 +981,14 @@ impl Engine for Mutations {
 
     fn recover(&self, domain: &dyn Domain) -> Result<Recovered, String> {
         Mutations::recover(self, domain).map_err(|error| error.to_string())
+    }
+
+    fn project(&self, event: &AuditEvent<'_>) -> Result<(), String> {
+        Mutations::project(self, event)
+    }
+
+    fn intent_recorded(&self, operation_id: &OperationId) -> Option<crate::audit::Recorded> {
+        Mutations::intent_recorded(self, operation_id)
     }
 
     fn subsystem(&self, name: &str) -> Subsystem {

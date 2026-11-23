@@ -22,7 +22,7 @@ fn code(refusal: &Refusal) -> &str {
 fn backed(tag: &str, lifetime: Option<Duration>) -> (HostApi, std::path::PathBuf, Arc<Recording>) {
     let root = scratch(tag);
     let trail = Arc::new(Recording::default());
-    let (api, _, volume) = reopen_with(
+    let (api, engine, volume) = reopen_with(
         &root,
         vec![HOST_OPERATIONS, crate::keys::ring::DATA_ATTEST],
         Arc::clone(&trail),
@@ -43,6 +43,7 @@ fn backed(tag: &str, lifetime: Option<Duration>) -> (HostApi, std::path::PathBuf
     (
         api.with_backups(
             Arc::new(backups),
+            engine,
             Some("kms:backups/recovery-1".to_owned()),
             Some("aes-256-gcm".to_owned()),
         ),
@@ -303,6 +304,7 @@ async fn an_abandoned_backup_aborts_when_its_barrier_expires() {
         .backups
         .as_ref()
         .expect("backups")
+        .0
         .list()
         .expect("listed");
     assert_eq!(held[0].state, "aborted", "the timer aborted it");

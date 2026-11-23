@@ -24,6 +24,8 @@
 
 #[cfg(feature = "audit")]
 pub mod audit;
+#[cfg(feature = "backend")]
+pub mod backend;
 #[cfg(feature = "control-plane")]
 pub mod control_plane;
 mod listing;

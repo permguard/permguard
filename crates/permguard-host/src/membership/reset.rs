@@ -19,7 +19,7 @@ use super::{
 };
 use crate::identity::record::uuid_text;
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Mutations, Outcome};
+use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Outcome};
 
 /// What a reset does to one live membership.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +113,7 @@ pub fn preflight(
 /// Revokes every invitation still issued: the identity that offered them leaves.
 pub fn revoke_invites(
     store: &Store,
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     initiator: &Initiator,
     now: u64,
 ) -> Result<usize, MembershipError> {
@@ -159,7 +159,7 @@ pub fn revoke_invites(
 /// revoked, each a manifest under the coordinator's operations key. Answers them as now held.
 pub fn end_coordinated(
     store: &Store,
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     coordinator: &Coordinator<'_>,
     initiator: &Initiator,
     now: u64,
@@ -212,7 +212,7 @@ pub fn end_coordinated(
 /// Marks `ids` `orphaned`: terminal here, their coordinators to revoke them out of band.
 pub fn orphan(
     store: &Store,
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     ids: &[[u8; 16]],
     initiator: &Initiator,
     now: u64,
@@ -299,7 +299,7 @@ impl std::error::Error for EmergencyError {}
 /// `evidence` checkpoints the local evidence before the identity and its rings retire (WP-4.9).
 pub fn emergency(
     store: &Store,
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     identity: &crate::identity::Identity,
     rings: &[std::sync::Arc<crate::keys::ring::Ring>],
     initiator: &Initiator,

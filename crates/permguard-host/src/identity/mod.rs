@@ -256,6 +256,53 @@ fn destroy_retired(
     }
 }
 
+/// What a start reads of the identity a store keeps, before it opens it and writing nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provisioned {
+    /// The external witness: the provisioning record, the home's id and the first fingerprint.
+    pub witness: String,
+    /// The Host the provisioning record names.
+    pub host_id: [u8; 16],
+    /// The suite of the current document; `None` before one is written.
+    pub suite: Option<Suite>,
+}
+
+/// What a start reads of the identity `store` keeps at `home` before it opens it (iteration 03,
+/// WP-28.1): what [`witness_of`], [`host_id_of`] and [`suite_of`] read of a volume, for any
+/// backend. `None` when the identity is not provisioned.
+pub fn provisioned_in(
+    store: &dyn store::IdentityStore,
+    home: &[u8; 16],
+) -> Result<Option<Provisioned>, IdentityError> {
+    let Some(bytes) = store.init()? else {
+        return Ok(None);
+    };
+    let init = record::Init::decode(&bytes)?;
+    Ok(Some(Provisioned {
+        witness: record::witness(&bytes, home, &init.fingerprint),
+        host_id: init.host_id,
+        suite: store
+            .document()?
+            .map(|document| suite_of_document(&document))
+            .transpose()?,
+    }))
+}
+
+/// The stored public keys of the identity `store` keeps, by epoch: what a sealed identity key
+/// must open as (WP-3.2), for any backend.
+pub fn stored_public_in(
+    store: Arc<dyn store::IdentityStore>,
+) -> crate::keys::custody::StoredPublic {
+    Box::new(move |slot, _suite| {
+        let Ok(epoch) = slot.parse::<u64>() else {
+            return Ok(None);
+        };
+        store
+            .public(epoch)
+            .map_err(|error| crate::keys::KeyError::Malformed(error.to_string()))
+    })
+}
+
 /// The suite the identity document `bytes` names, read without verifying it.
 fn suite_of_document(bytes: &[u8]) -> Result<Suite, IdentityError> {
     let envelope = Sign1::decode(bytes).map_err(|error| corrupt(error.to_string()))?;
@@ -887,7 +934,7 @@ impl Identity {
 /// Rotates `identity` as `initiator`, with no request id: the offline CLI. `expected_epoch` is
 /// the epoch the operator read.
 pub fn rotate(
-    mutations: &crate::operations::mutation::Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     identity: &Identity,
     initiator: crate::operations::journal::Initiator,
     expected_epoch: u64,

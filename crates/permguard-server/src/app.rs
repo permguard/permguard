@@ -295,6 +295,21 @@ impl App {
         self
     }
 
+    /// Supplies what opens the stores of the `postgresql-s3` backend (iteration 03, WP-28.1): a
+    /// build that serves it registers its adapter; one that registers none serves from files
+    /// alone.
+    pub fn with_shared_backend<F>(mut self, factory: F) -> Self
+    where
+        F: Fn(&Config, Option<&dyn SecretStore>) -> Result<permguard_host::backend::Shared>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.composition = self.composition.with_shared_backend(factory);
+
+        self
+    }
+
     pub fn with_catalog_factory<F>(mut self, factory: F) -> Self
     where
         F: Fn(&Config) -> Result<Option<Arc<dyn Catalog>>> + Send + Sync + 'static,

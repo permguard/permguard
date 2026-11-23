@@ -2746,6 +2746,25 @@ fn test_the_shared_backend_is_told_where_its_database_and_bucket_are() {
             "{changes:?} in development {development}: {text}"
         );
     }
+    // What the bucket encrypts with: its own keys by default, or a key of its KMS; nothing only
+    // in development.
+    use permguard_core::config::SETTING_STORAGE_S3_ENCRYPTION;
+    assert_eq!(connection.s3_encryption, "managed");
+    for (encryption, development, refused) in [
+        ("kms:permguard", false, false),
+        ("none", true, false),
+        ("none", false, true),
+        ("kms:", true, true),
+        ("aes", true, true),
+    ] {
+        let (result, _) = with(&[(SETTING_STORAGE_S3_ENCRYPTION, encryption)], development);
+        let text = refusal(result);
+        assert_eq!(
+            text.contains(SETTING_STORAGE_S3_ENCRYPTION),
+            refused,
+            "{encryption} in development {development}: {text}"
+        );
+    }
     // On files nothing of it is asked for.
     let files = config(
         &[

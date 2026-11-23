@@ -842,7 +842,7 @@ async fn side_with(
         service: Some(Arc::new(
             permguard_host::membership::service::Coordinating {
                 store: Arc::clone(&members),
-                mutations: Arc::clone(&mutations),
+                mutations: Arc::clone(&mutations) as _,
                 identity: Arc::clone(&host.identity),
                 keys: Arc::clone(&keys),
                 capabilities: capabilities.clone(),
@@ -883,7 +883,7 @@ async fn side_with(
             public_grants: Vec::new(),
         },
         trail: "test".to_owned(),
-        mutations: Some(Arc::clone(&mutations)),
+        mutations: Some(Arc::clone(&mutations) as _),
         identity: Some(Arc::clone(&host.identity)),
         time: Arc::clone(&host.time),
         peer_sessions: PeerSessions {
@@ -1510,7 +1510,7 @@ impl Acting<'_> {
     > {
         let member = permguard_host::membership::member::Member {
             store: &self.side.members,
-            mutations: &self.side.mutations,
+            mutations: self.side.mutations.as_ref(),
             identity: &self.side.host.identity,
             rings: self.side.keys.rings(),
             capabilities: &self.capabilities,
@@ -2056,7 +2056,7 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
     let capabilities = Capabilities::default().declare(TaskType::DecisionsShip, Role::Member);
     let acting = Member {
         store: &member.members,
-        mutations: &member.mutations,
+        mutations: member.mutations.as_ref(),
         identity: &member.host.identity,
         rings: member.keys.rings(),
         capabilities: &capabilities,
@@ -2320,7 +2320,7 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
     let capabilities = Capabilities::default().declare(TaskType::DecisionsShip, Role::Member);
     let acting = Member {
         store: &member.members,
-        mutations: &member.mutations,
+        mutations: member.mutations.as_ref(),
         identity: &member.host.identity,
         rings: member.keys.rings(),
         capabilities: &capabilities,

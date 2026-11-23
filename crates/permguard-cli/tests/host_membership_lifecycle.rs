@@ -301,7 +301,7 @@ fn launch_host(
                 service: Some(Arc::new(
                     permguard_host::membership::service::Coordinating {
                         store: Arc::clone(&members),
-                        mutations: Arc::clone(&mutations),
+                        mutations: Arc::clone(&mutations) as _,
                         identity: Arc::clone(&identity),
                         keys: Arc::clone(&keys),
                         capabilities: capabilities.clone(),
@@ -349,7 +349,7 @@ fn launch_host(
                         }],
                     },
                     trail: "test".to_owned(),
-                    mutations: Some(mutations),
+                    mutations: Some(Arc::clone(&mutations) as _),
                     identity: Some(Arc::clone(&identity)),
                     time,
                     peer_sessions: PeerSessions {
@@ -376,6 +376,7 @@ fn launch_host(
                         permguard_host::operations::backup::Backups::open(&volume)
                             .expect("the backups open"),
                     ),
+                    Arc::clone(&mutations),
                     None,
                     None,
                 ),

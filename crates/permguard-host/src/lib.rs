@@ -17,6 +17,7 @@
 pub mod api;
 pub mod audit;
 pub mod authz;
+pub mod backend;
 pub mod composition;
 pub mod exports;
 pub mod gc;

@@ -66,6 +66,14 @@ fn listening(config: &permguard_core::Config) -> bool {
             .is_some_and(|address| !address.trim().is_empty())
 }
 
+/// The stores of the Authority Plane on a backend that is not a volume (iteration 03, WP-28.1):
+/// what the composition hands it, found among the context's extensions.
+pub struct AuthorityStores {
+    pub accounts: Arc<dyn accounts::AccountStore>,
+    pub tokens: Arc<dyn tokens::TokenStore>,
+    pub marks: Arc<dyn crate::marks::MarkStore>,
+}
+
 fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let config = context.config();
     if !listening(config) {
@@ -95,13 +103,26 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         );
         return None;
     };
-    let (dir, options) = match registration.state_dir() {
-        Ok(Some(found)) => found,
-        Ok(None) => {
+    // On a shared backend the composition hands the stores over; on files they are this Plane's
+    // directory of the volume. Either way the administrator's first secret and an offline mark
+    // are files of this instance, beside its configuration (decision X105).
+    let shared = context.extension::<AuthorityStores>();
+    let (dir, options) = match (&shared, registration.state_dir()) {
+        (None, Ok(Some(found))) => found,
+        (Some(_), _) => match permguard_host::storage::Dir::create_root(
+            &config.working_dir().join("planes").join(crate::PLANE),
+        ) {
+            Ok(dir) => (dir, permguard_host::storage::journal::Options::default()),
+            Err(error) => {
+                fail("its directory does not open", &error);
+                return None;
+            }
+        },
+        (None, Ok(None)) => {
             fail("the Host composes no volume", &"no volume");
             return None;
         }
-        Err(error) => {
+        (None, Err(error)) => {
             fail("its directory does not open", &error);
             return None;
         }
@@ -117,22 +138,27 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         .ok()
         .flatten()
         .map(|handle| handle.in_subsystem(crate::PLANE));
-    let accounts: Arc<dyn accounts::AccountStore> =
-        match accounts::files::FileAccounts::open(&dir, options) {
-            Ok((opened, _)) => opened,
-            Err(error) => {
-                fail("its accounts do not open", &error);
-                return None;
+    let (accounts, registry): (Arc<dyn accounts::AccountStore>, Arc<dyn tokens::TokenStore>) =
+        match &shared {
+            Some(stores) => (Arc::clone(&stores.accounts), Arc::clone(&stores.tokens)),
+            None => {
+                let accounts = match accounts::files::FileAccounts::open(&dir, options) {
+                    Ok((opened, _)) => opened,
+                    Err(error) => {
+                        fail("its accounts do not open", &error);
+                        return None;
+                    }
+                };
+                let registry = match tokens::files::FileTokens::open(&dir, options) {
+                    Ok((opened, _)) => opened,
+                    Err(error) => {
+                        fail("its tokens do not open", &error);
+                        return None;
+                    }
+                };
+                (accounts as _, registry as _)
             }
         };
-    let registry: Arc<dyn tokens::TokenStore> = match tokens::files::FileTokens::open(&dir, options)
-    {
-        Ok((opened, _)) => opened,
-        Err(error) => {
-            fail("its tokens do not open", &error);
-            return None;
-        }
-    };
     // A change a crash left open is committed or failed before anything reads the state.
     if let Some(handle) = &accounts_mutations
         && let Err(error) = handle.recover(&accounts::Recovering(&*accounts))
@@ -224,12 +250,15 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         audit: audit.clone(),
         trust: registration.authority_trust(),
         time,
-        marks: permguard_host::storage::Dir::open(dir.path())
-            .ok()
-            .map(|dir| {
-                Arc::new(crate::marks::files::FileMarks::new(dir))
-                    as Arc<dyn crate::marks::MarkStore>
-            }),
+        marks: match &shared {
+            Some(stores) => Some(Arc::clone(&stores.marks)),
+            None => permguard_host::storage::Dir::open(dir.path())
+                .ok()
+                .map(|dir| {
+                    Arc::new(crate::marks::files::FileMarks::new(dir))
+                        as Arc<dyn crate::marks::MarkStore>
+                }),
+        },
     }) {
         Ok(authority) => Arc::new(authority),
         Err(error) => {

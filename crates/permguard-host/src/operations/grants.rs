@@ -9,9 +9,7 @@
 //! | `grants.bootstrap` | `bootstrap` | `host.bootstrap.committed`  |
 
 use super::journal::{Initiator, OperationId};
-use super::mutation::{
-    Applied, Begin, Domain, Failure, MutationError, Mutations, Observed, Outcome,
-};
+use super::mutation::{Applied, Begin, Domain, Engine, Failure, MutationError, Observed, Outcome};
 use crate::authz::{AuthzError, Bootstrap, BootstrapStore};
 
 /// The domain name intents carry.
@@ -59,7 +57,7 @@ pub fn failure<E>(error: AuthzError, render: impl FnOnce(AuthzError) -> E) -> Fa
 /// `autogenerate` wrote acts, where it otherwise maps to nobody. Answers the commitment, or `None`
 /// when one is held already, for this certificate or another: a commitment is never replaced.
 pub fn bootstrap_development_operator(
-    mutations: &Mutations,
+    mutations: &dyn Engine,
     store: &dyn BootstrapStore,
     certificate_pem: &[u8],
     now: u64,
@@ -75,7 +73,7 @@ pub fn bootstrap_development_operator(
 /// Writes the bootstrap commitment once, as one operation. A bootstrap already done for the same
 /// certificate is answered without an operation; one for another certificate is refused.
 pub fn bootstrap(
-    mutations: &Mutations,
+    mutations: &dyn Engine,
     store: &dyn BootstrapStore,
     fingerprint: &str,
     now: u64,
@@ -92,7 +90,8 @@ pub fn bootstrap(
         ))));
     }
     let mut committed = None;
-    let outcome = mutations.run(
+    let outcome = super::mutation::run_checked_on(
+        mutations,
         Begin {
             domain: DOMAIN,
             operation: BOOTSTRAP,
@@ -101,6 +100,7 @@ pub fn bootstrap(
             request: None,
             target: Some(wanted.as_str().to_owned()),
         },
+        || Ok(()),
         |applying| {
             let (held, written) = store
                 .commit(applying, fingerprint, now)
@@ -161,7 +161,8 @@ mod tests {
             permguard_core::assurance::AssuranceProfile::Development,
         )
         .expect("claimed");
-        let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
+        let mutations = crate::operations::mutation::Mutations::open_offline(&volume, "test")
+            .expect("the journal");
         let store = crate::authz::store::files::FileBootstrap::open(&volume).expect("the store");
 
         let committed =

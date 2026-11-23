@@ -28,6 +28,7 @@ pub mod bootstrap;
 pub mod catalog;
 pub mod database;
 pub mod delivered;
+pub mod deployment;
 pub mod gate;
 pub mod held;
 pub mod holds;

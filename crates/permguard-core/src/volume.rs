@@ -45,6 +45,8 @@ pub struct Connection {
     pub s3_secret_ref: Option<crate::secrets::SecretRef>,
     pub s3_session_token_ref: Option<crate::secrets::SecretRef>,
     pub s3_ca: Option<String>,
+    /// `managed`, `kms:<key>` or `none`.
+    pub s3_encryption: String,
 }
 
 impl Default for Connection {
@@ -67,6 +69,7 @@ impl Default for Connection {
             s3_secret_ref: None,
             s3_session_token_ref: None,
             s3_ca: None,
+            s3_encryption: "managed".to_owned(),
         }
     }
 }

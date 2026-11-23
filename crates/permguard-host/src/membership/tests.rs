@@ -1428,7 +1428,7 @@ pub(crate) mod protocol {
             let service = service.then(|| {
                 Arc::new(Coordinating {
                     store: Arc::clone(&host.store),
-                    mutations: Arc::clone(&mutations),
+                    mutations: Arc::clone(&mutations) as _,
                     identity: Arc::clone(&host.identity),
                     keys: registry,
                     capabilities: capabilities(),
@@ -1625,7 +1625,7 @@ pub(crate) mod protocol {
     pub(crate) fn member<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
         Member {
             store: &side.host.store,
-            mutations: &side.mutations,
+            mutations: side.mutations.as_ref(),
             identity: &side.host.identity,
             rings: &side.host.rings,
             capabilities: Box::leak(Box::new(harness(Role::Member))),

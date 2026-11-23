@@ -3121,6 +3121,7 @@ dependencies = [
 name = "permguard-s3"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bytes",
  "hmac",
  "http",
@@ -3135,12 +3136,15 @@ dependencies = [
  "permguard-postgres",
  "permguard-s3",
  "permguard-stream",
+ "ring",
  "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "sha2",
  "tokio",
  "tokio-rustls",
+ "tracing",
  "zeroize",
 ]
 

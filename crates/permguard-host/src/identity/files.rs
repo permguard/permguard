@@ -492,7 +492,7 @@ pub fn resume(
 /// Completes an interrupted reset of `volume` as `initiator`, one operation of the mutation
 /// engine (the offline CLI): `None` when no reset is under way.
 pub fn resume_run(
-    mutations: &crate::operations::mutation::Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     volume: &Volume,
     provisioner: &Provisioner,
     rings: &[Arc<Ring>],

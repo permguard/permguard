@@ -568,6 +568,11 @@ pub const SETTING_STORAGE_S3_SESSION_TOKEN_REF: &str = "PERMGUARD_STORAGE_S3_SES
 /// On `postgresql-s3`, the roots the object store's certificate is verified against (iteration 03, WP-28.1).
 pub const SETTING_STORAGE_S3_CA: &str = "PERMGUARD_STORAGE_S3_CA";
 
+/// On `postgresql-s3`, how the bucket encrypts what it is given: `managed`, the default, with its
+/// own keys, `kms:<key>` with a key of its key management service, or `none` under
+/// `development_mode` (iteration 03, WP-28.1).
+pub const SETTING_STORAGE_S3_ENCRYPTION: &str = "PERMGUARD_STORAGE_S3_ENCRYPTION";
+
 /// How many objects one sweep removes at most (WP-7.11): a pass that reaches it stops, and the
 /// next resumes where it stopped, so the work of a tick stays bounded however much is due.
 pub const SETTING_GC_MAX_REMOVALS: &str = "PERMGUARD_STORAGE_GC_MAX_REMOVALS";
@@ -2856,6 +2861,22 @@ produce: use `EdDSA` or `ES256`"
                      only in development and only on a loopback address"
                 );
             }
+        }
+        match connection.s3_encryption.as_str() {
+            "managed" => {}
+            "none" if self.development_mode => {}
+            "none" => bail!(
+                "{SETTING_STORAGE_S3_ENCRYPTION} is `none`: a bucket keeps what it is given \
+                 unencrypted only under development_mode"
+            ),
+            other
+                if other
+                    .strip_prefix("kms:")
+                    .is_some_and(|key| !key.is_empty()) => {}
+            other => bail!(
+                "{SETTING_STORAGE_S3_ENCRYPTION} is `managed`, `kms:<key>` or, in development, \
+                 `none`, not `{other}`"
+            ),
         }
         if !connection.postgresql_tls
             && !(self.development_mode
@@ -5178,6 +5199,7 @@ produce: use `EdDSA` or `ES256`"
                 .as_ref()
                 .map(|reference| reference.name().to_owned()),
             SETTING_STORAGE_S3_CA => self.storage_s3_ca().map(|path| path.display().to_string()),
+            SETTING_STORAGE_S3_ENCRYPTION => Some(self.storage_connection.s3_encryption.clone()),
             SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
             SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
             SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
@@ -6010,6 +6032,9 @@ produce: use `EdDSA` or `ES256`"
                     .ok_or_else(|| anyhow!("`{value}` is no port"))
                     .with_context(|| format!("reading {SETTING_STORAGE_POSTGRESQL_PORT}"))?,
             );
+        }
+        if let Some(value) = settings.get(SETTING_STORAGE_S3_ENCRYPTION) {
+            connection.s3_encryption = value.trim().to_owned();
         }
         if let Some(value) = settings.get(SETTING_STORAGE_POSTGRESQL_TLS) {
             connection.postgresql_tls = match value.trim() {
@@ -7346,6 +7371,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_STORAGE_S3_SECRET_REF,
     SETTING_STORAGE_S3_SESSION_TOKEN_REF,
     SETTING_STORAGE_S3_CA,
+    SETTING_STORAGE_S3_ENCRYPTION,
     SETTING_ISSUER,
     SETTING_KEYS_CUSTODY,
     SETTING_KEYS_DIRECTORY,

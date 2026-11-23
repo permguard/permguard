@@ -369,7 +369,7 @@ impl std::error::Error for CompositionError {}
 
 /// The Host: every generic capability, implemented once.
 pub struct Host {
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     task_slots: BTreeMap<
         (crate::membership::record::TaskType, u64),
         Arc<crate::membership::task::Deferred>,
@@ -401,7 +401,7 @@ struct Claims {
 /// Builds the [`Host`] from the collaborators composition resolved.
 #[derive(Default)]
 pub struct HostBuilder {
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     task_slots: BTreeMap<
         (crate::membership::record::TaskType, u64),
         Arc<crate::membership::task::Deferred>,
@@ -490,7 +490,7 @@ impl HostBuilder {
 
     /// The Host's security mutation transaction (WP-3.6): a Plane that declared a mutation
     /// domain applies it through a handle over this engine.
-    pub fn mutations(mut self, mutations: Arc<crate::operations::mutation::Mutations>) -> Self {
+    pub fn mutations(mut self, mutations: Arc<dyn crate::operations::mutation::Engine>) -> Self {
         self.mutations = Some(mutations);
         self
     }
@@ -865,7 +865,7 @@ pub struct Registration {
     >,
     provided: Vec<(crate::membership::record::TaskType, u64)>,
     hints: Option<Hints>,
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     declared_mutations: Vec<&'static str>,
     plane: String,
     signers: BTreeMap<&'static str, (RingId, Arc<dyn KeyManager>)>,
@@ -1240,7 +1240,7 @@ impl Registration {
             return Err(self.undeclared(format!("the mutation domain `{domain}`")));
         }
         Ok(self.mutations.as_ref().map(|engine| MutationHandle {
-            engine: Arc::clone(engine) as Arc<dyn crate::operations::mutation::Engine>,
+            engine: Arc::clone(engine),
             domain,
             subsystem: None,
         }))

@@ -739,7 +739,7 @@ fn test_a_configuration_that_leaves_pseudonymisation_off_builds_no_policy() {
     assert!(!config.audit_pseudonym_enabled());
     assert!(
         app()
-            .pseudonymizer_for(&config, None, &pseudonym_volume("off"), HOST_ID)
+            .pseudonymizer_for(&config, None, &witnesses(&pseudonym_volume("off")), HOST_ID)
             .expect("no policy is needed")
             .is_none()
     );
@@ -758,7 +758,7 @@ fn test_the_policy_is_the_host_local_key_of_the_configured_root_and_version() {
 
     let store = secrets();
     let policy = app
-        .pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .pseudonymizer_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("the policy builds")
         .expect("the configuration asked for one");
 
@@ -792,13 +792,14 @@ fn test_another_key_under_a_witnessed_version_is_refused() {
         .expect("the config builds");
     let volume = pseudonym_volume("changed");
     let store = secrets();
-    app.pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+    app.pseudonymizer_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("first seen");
     let other: Box<dyn SecretStore> = Box::new(WideSecret32);
-    let error = match app.pseudonymizer_for(&config, Some(other.as_ref()), &volume, HOST_ID) {
-        Err(error) => error,
-        Ok(_) => panic!("other material under v7"),
-    };
+    let error =
+        match app.pseudonymizer_for(&config, Some(other.as_ref()), &witnesses(&volume), HOST_ID) {
+            Err(error) => error,
+            Ok(_) => panic!("other material under v7"),
+        };
     assert!(format!("{error:#}").contains("new version"), "{error:#}");
 }
 
@@ -828,7 +829,12 @@ fn test_asking_for_pseudonymisation_with_nowhere_to_resolve_the_key_refuses() {
 
     // A build that can pseudonymise but has nowhere to get the key refuses, rather than deriving
     // pseudonyms from something it invented.
-    let error = match app.pseudonymizer_for(&config, None, &pseudonym_volume("no-store"), HOST_ID) {
+    let error = match app.pseudonymizer_for(
+        &config,
+        None,
+        &witnesses(&pseudonym_volume("no-store")),
+        HOST_ID,
+    ) {
         Err(error) => error,
         Ok(_) => panic!("there is no secret store"),
     };
@@ -848,7 +854,7 @@ fn test_a_secret_shorter_than_256_bits_is_refused() {
     let error = match app.pseudonymizer_for(
         &config,
         Some(store.as_ref()),
-        &pseudonym_volume("short"),
+        &witnesses(&pseudonym_volume("short")),
         HOST_ID,
     ) {
         Err(error) => error,
@@ -875,7 +881,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
     let volume = pseudonym_volume("coordinating");
     let store = secrets();
     let coordinator = app
-        .coordinator_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .coordinator_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("resolved")
         .expect("the configuration names one");
     assert_eq!(coordinator.authority(), HOST_ID);
@@ -893,7 +899,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
         .coordinator_for(
             &config,
             Some(short.as_ref()),
-            &pseudonym_volume("short-root"),
+            &witnesses(&pseudonym_volume("short-root")),
             HOST_ID,
         )
         .err()
@@ -905,7 +911,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
         .config_for(&serve_action(&config_file("not-coordinating", SERVABLE)))
         .expect("the config builds");
     assert!(
-        app.coordinator_for(&plain, Some(store.as_ref()), &volume, HOST_ID)
+        app.coordinator_for(&plain, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
             .expect("nothing to resolve")
             .is_none()
     );
@@ -2151,4 +2157,11 @@ fn recovery_secrets() -> String {
 /// backups' recovery key is resolved at Bootstrap, and these tests are about what comes after.
 fn production_app() -> App {
     app().with_secrets(Box::new(StubSecrets))
+}
+
+/// The witnesses of `volume`, as a start opens them before it resolves a root.
+fn witnesses(
+    volume: &permguard_host::storage::volume::Volume,
+) -> permguard_host::secrets::Witnesses {
+    permguard_host::secrets::Witnesses::open(volume).expect("the witnesses open")
 }

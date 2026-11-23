@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::operations::journal::{Initiator, OperationId};
 use crate::operations::mutation::{
-    Applied, Applying, Begin, Domain, Failure, MutationError, Mutations, Observed, Outcome,
+    Applied, Applying, Begin, Domain, Failure, MutationError, Observed, Outcome,
 };
 
 pub mod files;
@@ -389,7 +389,7 @@ fn answered(
 /// Adds the hold `new` as `initiator` at `now`: refused before any operation when it is not one
 /// this Host would keep.
 pub fn add(
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     store: &dyn HoldStore,
     initiator: Initiator,
     new: NewHold,
@@ -442,7 +442,7 @@ pub fn add(
 
 /// Releases the hold `id` as `initiator`: its file is removed.
 pub fn release(
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     store: &dyn HoldStore,
     initiator: Initiator,
     id: &str,

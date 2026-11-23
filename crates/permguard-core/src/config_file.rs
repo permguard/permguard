@@ -230,6 +230,8 @@ struct S3Section {
     session_token_ref: Option<String>,
     #[serde(default)]
     ca: Option<String>,
+    #[serde(default)]
+    encryption: Option<String>,
 }
 
 /// A number the file may write bare or quoted.
@@ -1772,6 +1774,10 @@ impl ConfigFile {
                 crate::config::SETTING_STORAGE_S3_CA,
                 self.storage.s3.ca.as_ref(),
             ),
+            (
+                crate::config::SETTING_STORAGE_S3_ENCRYPTION,
+                self.storage.s3.encryption.as_ref(),
+            ),
             (SETTING_ASSURANCE_ADDED_CONTROLS, added_controls.as_ref()),
             (
                 SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
@@ -2345,7 +2351,7 @@ mod tests {
     #[test]
     fn test_the_storage_connection_maps_to_its_settings() {
         let settings = settings_of(
-            "storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    port: 6432\n    database: permguard\n    user: permguard\n    password_ref: postgres-password\n    schema: tenant_a\n    ca: db-ca.pem\n    pool: \"8\"\n    tls: verified\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    prefix: tenant-a/\n    access_key: AKIA\n    secret_ref: s3-secret\n    session_token_ref: s3-session\n    ca: s3-ca.pem\n",
+            "storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    port: 6432\n    database: permguard\n    user: permguard\n    password_ref: postgres-password\n    schema: tenant_a\n    ca: db-ca.pem\n    pool: \"8\"\n    tls: verified\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    prefix: tenant-a/\n    access_key: AKIA\n    secret_ref: s3-secret\n    session_token_ref: s3-session\n    ca: s3-ca.pem\n    encryption: kms:permguard\n",
         );
         for (key, value) in [
             ("PERMGUARD_STORAGE_POSTGRESQL_HOST", "db.internal"),
@@ -2368,6 +2374,7 @@ mod tests {
             ("PERMGUARD_STORAGE_S3_SECRET_REF", "s3-secret"),
             ("PERMGUARD_STORAGE_S3_SESSION_TOKEN_REF", "s3-session"),
             ("PERMGUARD_STORAGE_S3_CA", "s3-ca.pem"),
+            ("PERMGUARD_STORAGE_S3_ENCRYPTION", "kms:permguard"),
         ] {
             assert!(
                 settings.contains(&(key.to_owned(), value.to_owned())),

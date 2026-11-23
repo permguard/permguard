@@ -294,7 +294,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
                 public_grants: Vec::new(),
             },
             trail: "recording".to_owned(),
-            mutations: Some(mutations),
+            mutations: Some(Arc::clone(&mutations) as _),
             identity: Some(identity),
             time: Arc::new(permguard_host::time::TimeGuard::system(
                 std::time::Duration::from_secs(30),
@@ -334,7 +334,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             })),
         })
         .with_streams(Arc::new(FixedStreams))
-        .with_backups(Arc::new(backups), None, None),
+        .with_backups(Arc::new(backups), mutations, None, None),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()

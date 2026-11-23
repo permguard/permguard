@@ -171,7 +171,7 @@ impl Identity {
 /// Resets `identity` as `initiator`, with no request id: the offline CLI's emergency reset, its
 /// memberships settled first.
 pub fn run(
-    mutations: &crate::operations::mutation::Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     identity: &Identity,
     rings: &[Arc<Ring>],
     initiator: crate::operations::journal::Initiator,
@@ -230,7 +230,7 @@ fn retire_rings(
 /// `initiator`, one operation of the mutation engine: `None` when no reset is under way.
 #[allow(clippy::too_many_arguments)]
 pub fn resume_run_in(
-    mutations: &crate::operations::mutation::Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     store: &dyn IdentityStore,
     volume_id: [u8; 16],
     provisioner: &Provisioner,

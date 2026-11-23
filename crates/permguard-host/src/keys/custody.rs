@@ -558,6 +558,19 @@ impl Custodian {
         self
     }
 
+    /// What seals the secrets a shared backend keeps for the Host `host_id`, its delivered zone
+    /// keys and its cursor roots (iteration 03, WP-27.5): the `file` custody's key-encryption key,
+    /// the current one and the one a rotation left. None is configured: refused, as a `file`
+    /// custody without one is.
+    pub fn sealer(&self, host_id: [u8; 16]) -> Result<crate::secrets::sealed::Sealer, String> {
+        let keks = self.keks.clone()?.ok_or_else(|| {
+            "the secrets of a shared backend are sealed under a key-encryption key, and none is \
+             configured: set `operations.keys.kek_ref`"
+                .to_owned()
+        })?;
+        Ok(crate::secrets::sealed::Sealer::new(keks, host_id))
+    }
+
     /// The custody of `ring`.
     pub fn custody_of(&self, ring: &str) -> KeyCustody {
         (self.custody_of)(ring)

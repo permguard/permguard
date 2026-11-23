@@ -11,7 +11,7 @@ use permguard_core::assurance::AssuranceProfile;
 
 use super::files::{FileHolds, INDEX};
 use super::*;
-use crate::operations::mutation::Projection;
+use crate::operations::mutation::{Mutations, Projection};
 use crate::storage::volume::Volume;
 use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
 

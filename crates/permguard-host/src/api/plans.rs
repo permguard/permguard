@@ -24,9 +24,7 @@ use permguard_core::{ErrorClass, codes};
 
 use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{
-    Applied, Applying, Begin, Failure, MutationError, Mutations, Outcome,
-};
+use crate::operations::mutation::{Applied, Applying, Begin, Failure, MutationError, Outcome};
 use crate::operations::plan::{
     self, Approval, IDENTITY_RESET, KEYS_REVOKE, MEMBERSHIP_REVOKE, PlanReceipt, PlanSigner,
 };
@@ -408,7 +406,7 @@ pub fn held_plan(
 /// spends a plan once: a second consumption, from this process or another, is refused with
 /// [`ReplayError::PlanConsumed`] and nothing is written.
 pub fn consume_plan(
-    mutations: &Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     replay: &Replay,
     principal: &Principal,
     plan: &Plan,

@@ -57,6 +57,45 @@ pub const WINDOW: Duration = permguard_host::operations::mutation::WINDOW;
 /// How many attempts an operation makes racing the others of its domain before it queues.
 const OPTIMISTIC: u32 = 3;
 
+/// The operation this thread is applying, while its write runs: what a record of its own facts
+/// is written beside.
+struct Running {
+    action: &'static str,
+    initiator: Initiator,
+    target: Option<String>,
+    operation_id: OperationId,
+    /// Whether its intent is written already: by a record of its facts, which it precedes.
+    intent: bool,
+}
+
+thread_local! {
+    static RUNNING: std::cell::RefCell<Option<Running>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The audit event of an operation's phase.
+fn phase_event<'a>(
+    action: &'a str,
+    initiator: &'a Initiator,
+    operation_id: &'a OperationId,
+    phase: AuditPhase,
+    target: Option<&'a str>,
+) -> AuditEvent<'a> {
+    let subject = match initiator {
+        Initiator::Principal(name) => Subject::Principal(name),
+        Initiator::System(name) => Subject::System(name),
+    };
+    let event = AuditEvent::new(action, subject)
+        .in_operation(operation_id.as_bytes(), phase)
+        .with_outcome(match phase {
+            AuditPhase::Failed => AuditOutcome::Failed,
+            AuditPhase::Intent | AuditPhase::Applied | AuditPhase::Reconciled => AuditOutcome::Ok,
+        });
+    match target {
+        Some(target) => event.on(target),
+        None => event,
+    }
+}
+
 /// The point the transaction goes back to when the domain write refuses.
 const BEFORE_THE_WRITE: &str = "before_the_domain_write";
 
@@ -163,23 +202,14 @@ impl PostgresMutations {
         phase: AuditPhase,
         target: Option<&str>,
     ) -> Result<(), Attempted> {
-        let subject = match &begin.initiator {
-            Initiator::Principal(name) => Subject::Principal(name),
-            Initiator::System(name) => Subject::System(name),
-        };
-        let mut event = AuditEvent::new(begin.action, subject)
-            .in_operation(operation_id.as_bytes(), phase)
-            .with_outcome(match phase {
-                AuditPhase::Failed => AuditOutcome::Failed,
-                AuditPhase::Intent | AuditPhase::Applied | AuditPhase::Reconciled => {
-                    AuditOutcome::Ok
-                }
-            });
-        if let Some(target) = target {
-            event = event.on(target);
-        }
         self.projection
-            .project(&event)
+            .project(&phase_event(
+                begin.action,
+                &begin.initiator,
+                operation_id,
+                phase,
+                target,
+            ))
             .map_err(|error| match unit.failure() {
                 Some(failure) if again(&failure) => Attempted::Sql(failure),
                 _ => Attempted::Stopped(Stopped::AuditUnavailable(error)),
@@ -247,7 +277,19 @@ impl PostgresMutations {
         )?;
         unit.mark(BEFORE_THE_WRITE)?;
 
+        RUNNING.with(|running| {
+            *running.borrow_mut() = Some(Running {
+                action: begin.action,
+                initiator: begin.initiator.clone(),
+                target: begin.target.clone(),
+                operation_id,
+                intent: false,
+            });
+        });
         let answered = apply(&Applying::within(operation_id, unit.as_ref()));
+        let intent_written = RUNNING
+            .with(|running| running.borrow_mut().take())
+            .is_some_and(|running| running.intent);
         // Whatever the write answered: when one of its statements could not be serialized, the
         // database kept nothing of the transaction and the whole operation is run again.
         if let Some(failure) = unit.failure()
@@ -300,14 +342,17 @@ impl PostgresMutations {
         )?;
         // The intent and the outcome are written last, together: a record takes its place in
         // the trail by holding the trail until the transaction ends, and written first it
-        // would hold every other operation of the trail out for the whole domain write.
-        self.project(
-            &unit,
-            begin,
-            &operation_id,
-            AuditPhase::Intent,
-            begin.target.as_deref(),
-        )?;
+        // would hold every other operation of the trail out for the whole domain write. An
+        // operation that recorded facts of its own wrote its intent before them.
+        if !intent_written {
+            self.project(
+                &unit,
+                begin,
+                &operation_id,
+                AuditPhase::Intent,
+                begin.target.as_deref(),
+            )?;
+        }
         self.project(
             &unit,
             begin,
@@ -416,6 +461,38 @@ impl Engine for PostgresMutations {
     /// Nothing is left open by a transaction: there is nothing to resolve.
     fn recover(&self, _domain: &dyn Domain) -> Result<Recovered, String> {
         Ok(Recovered::default())
+    }
+
+    /// A record of the operation's own facts, in its transaction: its intent first, when it is
+    /// not written yet, so the trail reads intent, facts, outcome as on files. Written from here
+    /// to the commit, it holds the trail for the rest of the write, which only an operation that
+    /// records facts of its own pays. A write that refuses goes back before both.
+    fn project(&self, event: &AuditEvent<'_>) -> Result<(), String> {
+        let intent = RUNNING.with(|running| {
+            running
+                .borrow_mut()
+                .as_mut()
+                .filter(|running| !running.intent)
+                .map(|running| {
+                    running.intent = true;
+                    (
+                        running.action,
+                        running.initiator.clone(),
+                        running.target.clone(),
+                        running.operation_id,
+                    )
+                })
+        });
+        if let Some((action, initiator, target, operation_id)) = intent {
+            self.projection.project(&phase_event(
+                action,
+                &initiator,
+                &operation_id,
+                AuditPhase::Intent,
+                target.as_deref(),
+            ))?;
+        }
+        self.projection.project(event)
     }
 
     fn subsystem(&self, name: &str) -> Subsystem {

@@ -78,7 +78,7 @@ fn timed_coordinator(tag: &str) -> (Clocks, Side) {
 fn coordinating(c: &Side) -> Coordinating {
     Coordinating {
         store: Arc::clone(&c.host.store),
-        mutations: Arc::clone(&c.mutations),
+        mutations: Arc::clone(&c.mutations) as _,
         identity: Arc::clone(&c.host.identity),
         keys: Arc::new(crate::keys::registry::Registry::new(
             Some(Arc::clone(&c.host.identity)),

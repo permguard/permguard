@@ -1299,6 +1299,10 @@ impl Engine for UnitEngine {
         Err("this engine leaves nothing open".to_owned())
     }
 
+    fn project(&self, _event: &permguard_core::AuditEvent<'_>) -> Result<(), String> {
+        Ok(())
+    }
+
     fn subsystem(&self, _name: &str) -> Subsystem {
         Subsystem::default()
     }
