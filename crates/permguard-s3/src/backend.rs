@@ -332,6 +332,41 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
     })
 }
 
+/// What the offline verification of the trails reads (decision X101): the Host's trails, their
+/// settled days in the bucket, and the records of `host.operations`, whose keys sign their
+/// checkpoints. Opened apart from [`shared`], so the database is read as it is: no deployment is
+/// minted in one that holds none.
+pub fn audit(
+    connected: &Connected,
+) -> (
+    Arc<dyn permguard_host::audit::store::Trails>,
+    Arc<dyn permguard_host::keys::ring::store::RingStore>,
+) {
+    (
+        Arc::new(
+            permguard_postgres::audit::PostgresTrails::new(connected.database.clone())
+                .with_objects(Arc::new(connected.bucket.clone())),
+        ),
+        Arc::new(permguard_postgres::ring::PostgresRing::new(
+            connected.database.clone(),
+            permguard_host::keys::ring::HOST_OPERATIONS,
+        )),
+    )
+}
+
+/// Rotates the cursor root of the evidence store `store`, `decisions` or `events` (decision
+/// X110): the issuing root becomes the previous, and the next ask mints another. Answers whether
+/// the store held a root to rotate. An instance reads the roots at its start, so the servers are
+/// stopped while it runs.
+pub fn rotate_cursor_root(connected: &Connected, store: &str) -> Result<bool> {
+    use permguard_control_plane::plane::{DECISIONS_API, EVENTS_API};
+
+    if store != DECISIONS_API && store != EVENTS_API {
+        bail!("`{store}` is no evidence store: `{DECISIONS_API}` or `{EVENTS_API}`");
+    }
+    permguard_control_plane::decisions::cursorkey::postgres::rotate(&connected.database, store)
+}
+
 /// The runs of each stream consumer, kept under its descriptor's `plane/type/version`.
 fn consumer_runs(connected: &Connected) -> permguard_stream::engine::consumer::store::ConsumerRuns {
     let connected = connected.clone();

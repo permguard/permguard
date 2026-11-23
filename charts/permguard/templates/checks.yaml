@@ -657,6 +657,35 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- end }}
 
 {{- /*
+The Control Plane on the `postgresql-s3` backend (iteration 03, WP-28.1): its state is the
+database's and the bucket's, so it keeps no volume, and what the server refuses at start is refused
+here first. Above `development` a Host's identity is made offline before its first start, and the
+command that makes it in the database arrives with one identity across instances (WP-28.5).
+*/ -}}
+{{- $cpStorage := .Values.controlPlane.storage | default dict }}
+{{- $cpBackend := toString ($cpStorage.backend | default "files") }}
+{{- if and .Values.controlPlane.enabled (eq $cpBackend "postgresql-s3") }}
+{{- if include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane) }}
+{{- fail "controlPlane.storage.backend=postgresql-s3 keeps the Host's state in the database and the bucket, and no volume: set controlPlane.persistence.enabled=false." }}
+{{- end }}
+{{- if include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance) }}
+{{- fail "controlPlane.storage.backend=postgresql-s3 serves under the `development` profile alone until the Host's identity can be made offline in the database (WP-28.5): set controlPlane.assurance.profile=development." }}
+{{- end }}
+{{- range $key := list "host" "database" "user" }}
+{{- if not (get ($cpStorage.postgresql | default dict) $key) }}
+{{- fail (printf "controlPlane.storage.backend=postgresql-s3 needs controlPlane.storage.postgresql.%s." $key) }}
+{{- end }}
+{{- end }}
+{{- range $key := list "endpoint" "region" "bucket" "accessKey" "secretRef" }}
+{{- if not (get ($cpStorage.s3 | default dict) $key) }}
+{{- fail (printf "controlPlane.storage.backend=postgresql-s3 needs controlPlane.storage.s3.%s." $key) }}
+{{- end }}
+{{- end }}
+{{- else if and .Values.controlPlane.enabled (ne $cpBackend "files") }}
+{{- fail (printf "controlPlane.storage.backend=%s is no backend: `files` or `postgresql-s3`." $cpBackend) }}
+{{- end }}
+
+{{- /*
 The Host identity under `production` (TS-10): made offline once, and the Host started on its witness
 only, so the identity must outlive its Pod. A Host on an emptyDir would make a new one in every Pod,
 whose witness nobody could record before it starts. A group is refused that already, by the evidence

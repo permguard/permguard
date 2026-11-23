@@ -2777,3 +2777,82 @@ dataPlane:
         "mirrors the Control Plane's ledgers",
     );
 }
+
+/// A Control Plane on the `postgresql-s3` backend (iteration 03, WP-28.1), as a test states it.
+const SHARED_BACKEND: &str = "\
+controlPlane:
+  assurance: { profile: development }
+  persistence: { enabled: false }
+  storage:
+    backend: postgresql-s3
+    postgresql: { host: db.internal, database: permguard, user: permguard, passwordRef: postgres-password }
+    s3: { endpoint: \"https://s3.internal:9000\", region: eu-west-1, bucket: permguard, accessKey: AKIA, secretRef: s3-secret }
+";
+
+/// On `postgresql-s3` the Control Plane keeps no volume: no claim, no init container that writes
+/// one, its working directory an emptyDir, and its configuration names the database and the bucket
+/// with references to their secrets, never the secrets.
+#[test]
+fn a_control_plane_on_postgresql_s3_keeps_no_volume() {
+    let rendered = render(SHARED_BACKEND);
+    assert!(
+        !rendered
+            .names()
+            .iter()
+            .any(|name| name.starts_with("PersistentVolumeClaim")),
+        "{:#?}",
+        rendered.names()
+    );
+    let spec = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    assert!(
+        spec["initContainers"]
+            .as_array()
+            .is_none_or(|init| init.iter().all(|c| c["name"] != "claim")),
+        "no claim on a volume it does not keep"
+    );
+    let state = spec["volumes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|volume| volume["name"] == "state")
+        .expect("the working directory");
+    assert_eq!(state["emptyDir"], json!({}));
+    let storage = &rendered.config("permguard-control-plane")["storage"];
+    assert_eq!(storage["backend"], "postgresql-s3");
+    assert_eq!(storage["postgresql"]["host"], "db.internal");
+    assert_eq!(storage["postgresql"]["password_ref"], "postgres-password");
+    assert_eq!(storage["s3"]["access_key"], "AKIA");
+    assert_eq!(storage["s3"]["secret_ref"], "s3-secret");
+    // The Data Plane stays on files: nothing of the backend reaches its configuration.
+    assert!(
+        rendered.config("permguard-data-plane-default")["storage"]["backend"].is_null(),
+        "the Data Plane keeps its volume"
+    );
+}
+
+/// What the server refuses on `postgresql-s3` the chart refuses first: a volume it would not use,
+/// a profile above `development` before the identity can be made in the database, a connection
+/// stated in part, and a backend that is none.
+#[test]
+fn a_control_plane_on_postgresql_s3_is_refused_what_its_server_refuses() {
+    refused(
+        &SHARED_BACKEND.replace("enabled: false", "enabled: true"),
+        "set controlPlane.persistence.enabled=false",
+    );
+    refused(
+        &SHARED_BACKEND.replace("profile: development", "profile: production"),
+        "serves under the `development` profile alone",
+    );
+    refused(
+        &SHARED_BACKEND.replace("bucket: permguard, ", ""),
+        "needs controlPlane.storage.s3.bucket",
+    );
+    refused(
+        &SHARED_BACKEND.replace("host: db.internal, ", ""),
+        "needs controlPlane.storage.postgresql.host",
+    );
+    refused(
+        &SHARED_BACKEND.replace("backend: postgresql-s3", "backend: mysql"),
+        "controlPlane.storage.backend=mysql is no backend",
+    );
+}

@@ -423,6 +423,10 @@ pub enum Command {
     ///
     /// The retained prefix anchors of its decision and event streams, through the Host listener.
     Evidence {
+        /// The server's configuration file, for what is done offline on the `postgresql-s3`
+        /// backend: where the database is, and how it is reached.
+        #[arg(long, global = true, value_name = "FILE")]
+        server_config: Option<PathBuf>,
         #[command(subcommand)]
         action: EvidenceAction,
     },
@@ -2268,6 +2272,20 @@ Examples:\n  permguard host audit checkpoint --class security --resource host\n 
         #[arg(long, value_name = "FILE")]
         out: PathBuf,
     },
+    /// Copy the trails a stopped server keeps on `postgresql-s3` into a new directory, offline.
+    ///
+    /// The trails as the file backend lays them out, and the `host.operations` keys that sign
+    /// their checkpoints, for the server binary's `audit verify` to check.
+    #[command(
+        after_help = "Then: `permguard-control-plane audit verify --directory <out>/trails --keys <out>/host.operations.keys.json`. The keys come from the database too: an independent verification takes them from an export kept apart. On files the volume's trails are read where they are.
+
+Examples:\n  permguard host audit copy --server-config /etc/permguard/server.yaml --out ./audit-copy\n  permguard host audit copy --server-config server.yaml --out ./audit-copy -o json"
+    )]
+    Copy {
+        /// A new directory that receives the trails and the keys.
+        #[arg(long, value_name = "DIRECTORY")]
+        out: PathBuf,
+    },
 }
 
 /// `permguard host config …` (TC-2).
@@ -2905,6 +2923,20 @@ Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 019
         zone: String,
         /// The ledger, by id.
         ledger: String,
+    },
+    /// Rotate the cursor root of an evidence store on `postgresql-s3`, the servers stopped.
+    ///
+    /// The issuing root becomes the previous, still accepted, and the next ask mints another; a
+    /// second rotation drops the previous, and the offsets issued under it are refused.
+    #[command(
+        after_help = "An instance reads the roots at its start: stop every instance, rotate, start them. On files the rotation is the operator's move of `CURSOR_KEY` to `CURSOR_KEY.previous` beside the store.
+
+Examples:\n  permguard evidence rotate-cursor-root --store decisions --server-config /etc/permguard/server.yaml\n  permguard evidence rotate-cursor-root --store events --server-config server.yaml -o json"
+    )]
+    RotateCursorRoot {
+        /// The evidence store: `decisions` or `events`.
+        #[arg(long, value_parser = ["decisions", "events"])]
+        store: String,
     },
 }
 

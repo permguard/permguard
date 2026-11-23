@@ -737,3 +737,196 @@ fn units_of_work_that_all_change_one_row_are_all_applied() {
         .expect("read");
     assert_eq!(value, i64::try_from(THREADS * EACH).expect("small"));
 }
+
+/// X68: every attempt of an operation ends once, told whether it was kept: the attempts a
+/// contended row made the engine run again end unkept, the one committed ends kept, and a refused
+/// operation ends unkept. What a domain write changes outside the database waits for it.
+#[test]
+fn every_attempt_ends_once_told_whether_it_was_kept() {
+    let Some(server) = server("every_attempt_ends_once_told_whether_it_was_kept") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    database
+        .write(|unit| {
+            unit.batch_execute(
+                "CREATE TABLE counter (id integer PRIMARY KEY, value bigint NOT NULL);
+                 INSERT INTO counter VALUES (1, 0);",
+            )
+        })
+        .expect("the domain's table");
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
+    let (attempts, kept, undone) = (
+        std::sync::Arc::new(AtomicUsize::new(0)),
+        std::sync::Arc::new(AtomicUsize::new(0)),
+        std::sync::Arc::new(AtomicUsize::new(0)),
+    );
+    const THREADS: usize = 12;
+    let together = Barrier::new(THREADS);
+    std::thread::scope(|scope| {
+        for _ in 0..THREADS {
+            let (engine, together) = (&engine, &together);
+            let (attempts, kept, undone) = (&attempts, &kept, &undone);
+            scope.spawn(move || {
+                together.wait();
+                run_checked_on(
+                    engine,
+                    Begin {
+                        domain: "grants",
+                        operation: "grants.create",
+                        action: "host.grant.created",
+                        initiator: Initiator::System("test".to_owned()),
+                        request: None,
+                        target: None,
+                    },
+                    || Ok::<(), String>(()),
+                    |applying| {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        let (kept, undone) =
+                            (std::sync::Arc::clone(kept), std::sync::Arc::clone(undone));
+                        applying.on_end(move |was_kept| {
+                            let ended = if was_kept { &kept } else { &undone };
+                            ended.fetch_add(1, Ordering::SeqCst);
+                        });
+                        let unit = applying
+                            .unit::<Unit>()
+                            .ok_or_else(|| Failure::Refused("no unit".to_owned()))?;
+                        unit.batch_execute(
+                            "UPDATE counter SET value = value + 1 WHERE id = 1;
+                             SELECT pg_sleep(0.01);",
+                        )
+                        .map_err(|error| Failure::Indeterminate(error.to_string()))?;
+                        Ok(Applied {
+                            revision: 1,
+                            target: None,
+                            value: (),
+                        })
+                    },
+                )
+                .expect("applied");
+            });
+        }
+    });
+    assert_eq!(
+        kept.load(Ordering::SeqCst),
+        THREADS,
+        "one kept end an operation"
+    );
+    assert_eq!(
+        kept.load(Ordering::SeqCst) + undone.load(Ordering::SeqCst),
+        attempts.load(Ordering::SeqCst),
+        "every attempt ends, once"
+    );
+    // A refused operation keeps nothing, and its attempt is told so.
+    let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let refused = run_checked_on::<(), String>(
+        &engine,
+        Begin {
+            domain: "grants",
+            operation: "grants.create",
+            action: "host.grant.created",
+            initiator: Initiator::System("test".to_owned()),
+            request: None,
+            target: None,
+        },
+        || Ok(()),
+        |applying| {
+            let told = std::sync::Arc::clone(&told);
+            applying.on_end(move |was_kept| told.lock().expect("held").push(was_kept));
+            Err(Failure::Refused("no".to_owned()))
+        },
+    );
+    assert!(matches!(refused, Err(MutationError::Refused(_))));
+    assert_eq!(*told.lock().expect("held"), vec![false]);
+}
+
+/// X68 for the memberships: an operation whose entry was written and that the database then
+/// undid leaves the memberships as they are kept, and the next operation applies. A process that
+/// showed the undone entry would write the next one past it, and every one after be refused.
+#[test]
+fn an_undone_membership_entry_is_never_shown() {
+    use permguard_host::membership::record::{Limits, Task, TaskType};
+    use permguard_host::membership::{NewInvite, Store};
+
+    let Some(server) = server("an_undone_membership_entry_is_never_shown") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
+    let store = Store::open_in(
+        std::sync::Arc::new(permguard_postgres::members::PostgresMembers::new(
+            Database::clone(database),
+        )),
+        None,
+    )
+    .expect("opens");
+    let new = || NewInvite {
+        selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![Task {
+            version: 1,
+            task_id: "decisions".to_owned(),
+            task_type: TaskType::DecisionsShip,
+            selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+            resource_types: vec!["decision".to_owned()],
+            required: true,
+            limits: Limits {
+                max_body_bytes: 1 << 20,
+                max_concurrency: 4,
+                max_rate_per_minute: 600,
+                max_batch_records: 1000,
+                retention_seconds: 30 * 86_400,
+            },
+            assurance_requirements: Vec::new(),
+        }],
+        expires: None,
+        expected_fingerprint: None,
+        min_assurance: None,
+        groups: None,
+        name: None,
+    };
+    let invite = |refuse: bool| {
+        run_checked_on::<(), String>(
+            &engine,
+            Begin {
+                domain: permguard_host::membership::DOMAIN,
+                operation: permguard_host::membership::INVITE,
+                action: permguard_host::membership::AUDIT_INVITED,
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: None,
+            },
+            || Ok(()),
+            |applying| {
+                store
+                    .invite(
+                        applying,
+                        new(),
+                        "operator",
+                        permguard_core::time::unix_now(),
+                    )
+                    .map_err(|error| Failure::Refused(error.to_string()))?;
+                if refuse {
+                    // The entry is written; the operation is undone after it.
+                    return Err(Failure::Refused("undone".to_owned()));
+                }
+                Ok(Applied {
+                    revision: 1,
+                    target: None,
+                    value: (),
+                })
+            },
+        )
+    };
+    invite(false).expect("the first invitation");
+    assert_eq!(store.seq(), 1);
+    assert!(matches!(invite(true), Err(MutationError::Refused(_))));
+    assert_eq!(store.seq(), 1, "the undone entry is not shown");
+    invite(false).expect("the next invitation follows what is kept");
+    assert_eq!(store.seq(), 2);
+    assert_eq!(
+        count(database, "SELECT COUNT(*) FROM permguard_member_entries"),
+        2
+    );
+}

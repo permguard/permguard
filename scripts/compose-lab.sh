@@ -135,6 +135,13 @@ run_profile() {
         step "${profile}: what it must prove, served from postgresql-s3"
         dc_served run --rm lab assert "${profile}" imported || failed "the imported identity differs"
         dc_served run --rm lab assert "${profile}" || failed "an assertion failed after the import"
+        step "${profile}: the offline commands on postgresql-s3, the Control Plane stopped"
+        dc_served stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
+        dc_served run --rm --no-deps control-plane offline permguard-control-plane \
+            /opt/permguard/lab/control-plane.yml || failed "an offline command failed"
+        dc_served up -d --no-deps --wait control-plane 2>/dev/null ||
+            failed "the Control Plane did not serve again after the offline commands"
+        dc_served run --rm lab assert "${profile}" imported || failed "the identity differs after a restart"
     fi
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         step "${profile}: decisions across key rotations"

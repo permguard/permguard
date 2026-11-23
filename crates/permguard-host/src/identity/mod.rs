@@ -171,11 +171,11 @@ pub struct Identity {
     first_public: Vec<u8>,
     volume_id: [u8; 16],
     boot: Boot,
-    current: RwLock<Current>,
+    current: Arc<RwLock<Current>>,
     /// Set by a reset: from then on the identity signs nothing.
-    retired: std::sync::atomic::AtomicBool,
+    retired: Arc<std::sync::atomic::AtomicBool>,
     /// Set while a reset of this identity runs: a second one is refused before it writes.
-    resetting: std::sync::atomic::AtomicBool,
+    resetting: Arc<std::sync::atomic::AtomicBool>,
     /// Makes the provider of the identity a reset provisions, for its `host_id`.
     provisioner: Option<reset::Provisioner>,
 }
@@ -716,16 +716,16 @@ impl Identity {
             init_bytes,
             first_public,
             boot,
-            current: RwLock::new(Current {
+            current: Arc::new(RwLock::new(Current {
                 epoch,
                 public: key,
                 document,
                 envelope,
                 successions,
                 last,
-            }),
-            retired: std::sync::atomic::AtomicBool::new(false),
-            resetting: std::sync::atomic::AtomicBool::new(false),
+            })),
+            retired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            resetting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             provisioner: None,
         })
     }
@@ -826,7 +826,8 @@ impl Identity {
         if self.is_retired() {
             return Err(IdentityError::Retired);
         }
-        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        // Held through the rotation's writes: two rotations of this process write one at a time.
+        let current = self.current.write().unwrap_or_else(PoisonError::into_inner);
         if let Some(expected) = expected_epoch
             && expected != current.epoch
         {
@@ -903,15 +904,25 @@ impl Identity {
             suite,
             next,
         );
-        current.successions.push(succession.clone());
-        *current = Current {
+        let mut successions = current.successions.clone();
+        successions.push(succession.clone());
+        let rotated = Current {
             epoch: next,
             public: public.clone(),
             document,
             envelope,
-            successions: std::mem::take(&mut current.successions),
+            successions,
             last: Some(last),
         };
+        // Shown once the operation is kept: an attempt run again rotates from the epoch kept,
+        // and one undone leaves the identity as it was (decision X68).
+        drop(current);
+        let shown = Arc::clone(&self.current);
+        applying.on_end(move |kept| {
+            if kept {
+                *shown.write().unwrap_or_else(PoisonError::into_inner) = rotated;
+            }
+        });
         tracing::info!(
             event.name = "host.identity_rotated",
             component = "host",

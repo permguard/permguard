@@ -629,6 +629,8 @@ fn recovery_commits_what_the_domain_shows_and_fails_what_it_does_not() {
             &Applying {
                 operation_id: shown.operation_id,
                 unit: None,
+                attempt: next_attempt(),
+                ends: None,
                 _engine: PhantomData,
             },
             "z1",
@@ -702,6 +704,8 @@ fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
             &Applying {
                 operation_id: intent.operation_id,
                 unit: None,
+                attempt: next_attempt(),
+                ends: None,
                 _engine: PhantomData,
             },
             "z1",
@@ -1267,7 +1271,8 @@ impl Engine for UnitEngine {
         if self.lies {
             return Ok(Ended::Applied);
         }
-        let token = Applying::within(OperationId::from_bytes([9; 16]), &self.unit);
+        let ends = Ends::default();
+        let token = Applying::within(OperationId::from_bytes([9; 16]), &self.unit, &ends);
         let applied = apply(&token).map_err(|declined| match declined {
             Declined::Refused => Stopped::Refused,
             Declined::Indeterminate => Stopped::Indeterminate,

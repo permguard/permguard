@@ -677,9 +677,9 @@ pub struct Ring {
     serial: Mutex<()>,
     /// Set when a journal write failed: what reached the file is uncertain, so the ring takes no
     /// transition until it is opened again and the journal is read back.
-    stopped: AtomicBool,
+    stopped: Arc<AtomicBool>,
     /// Set when an identity reset retired the ring: it signs nothing more in this process.
-    retired: AtomicBool,
+    retired: Arc<AtomicBool>,
     /// Asked before a prepublished key takes over (WP-4.5); none lets every one take over.
     gate: RwLock<Option<Arc<dyn ActivationGate>>>,
     /// Asked before a background maintenance pass (BUG-0207); none never holds it.
@@ -700,28 +700,46 @@ impl Ring {
     /// 2026-10-10): it signs and transitions nothing more here; its public records (entries,
     /// view, bindings, public keys) are kept as the evidence of the retired Host; its entries go
     /// first, so the ring opens as a new one at the next start, bound to the new identity; then
-    /// every private key is destroyed through its provider and the rest removed. A crash after
-    /// the entries went leaves keys no entry names, which the next maintenance removes.
+    /// the rest is removed, and every private key is destroyed through its provider once the
+    /// reset is kept. A crash after the entries went leaves keys no entry names, which the next
+    /// maintenance removes.
     pub fn retire(&self, applying: &Applying<'_>, old_host_id: &[u8; 16]) -> Result<(), RingError> {
         let _serial = self.serial.lock().unwrap_or_else(PoisonError::into_inner);
         self.retired.store(true, Ordering::SeqCst);
         self.stopped.store(true, Ordering::SeqCst);
+        // An attempt the database undoes retired nothing: the ring signs again (decision X68).
+        let (retired, stopped) = (Arc::clone(&self.retired), Arc::clone(&self.stopped));
+        applying.on_end(move |kept| {
+            if !kept {
+                retired.store(false, Ordering::SeqCst);
+                stopped.store(false, Ordering::SeqCst);
+            }
+        });
         // Taken to write: the signings in flight end before anything is destroyed.
         let _state = self.write();
         self.store.retire(applying, old_host_id)?;
         self.store.forget_entries()?;
-        for slot in self.provider.slots()? {
-            if let Err(error) = self.provider.destroy(&slot) {
-                tracing::warn!(
-                    event.name = "host.keys.retired_key_kept",
-                    component = "host",
-                    ring = self.id,
-                    error = %error,
-                    "a retired ring key could not be destroyed; the next maintenance removes it"
-                );
-            }
-        }
+        let slots = self.provider.slots()?;
         self.store.clear()?;
+        // A key a custody outside the database destroys is not undone with it: destroyed once
+        // the reset is kept.
+        let (provider, ring) = (Arc::clone(&self.provider), self.id);
+        applying.on_end(move |kept| {
+            if !kept {
+                return;
+            }
+            for slot in slots {
+                if let Err(error) = provider.destroy(&slot) {
+                    tracing::warn!(
+                        event.name = "host.keys.retired_key_kept",
+                        component = "host",
+                        ring,
+                        error = %error,
+                        "a retired ring key could not be destroyed; the next maintenance removes it"
+                    );
+                }
+            }
+        });
         tracing::warn!(
             event.name = "host.keys.retired",
             component = "host",
@@ -804,8 +822,8 @@ impl Ring {
             state: RwLock::new(state),
             binding: RwLock::new(binding),
             serial: Mutex::new(()),
-            stopped: AtomicBool::new(false),
-            retired: AtomicBool::new(false),
+            stopped: Arc::new(AtomicBool::new(false)),
+            retired: Arc::new(AtomicBool::new(false)),
             gate: RwLock::new(None),
             hold: RwLock::new(None),
         };

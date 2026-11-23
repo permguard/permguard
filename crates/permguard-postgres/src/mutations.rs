@@ -44,8 +44,8 @@ use std::time::Duration;
 use permguard_core::{AuditEvent, AuditOutcome, AuditPhase, Subject};
 use permguard_host::operations::journal::{Initiator, OperationId};
 use permguard_host::operations::mutation::{
-    AppliedBytes, Applying, Begin, Declined, Domain, Ended, Engine, Projection, Recovered, Stopped,
-    Subsystem,
+    AppliedBytes, Applying, Begin, Declined, Domain, Ended, Ends, Engine, Projection, Recovered,
+    Stopped, Subsystem,
 };
 use postgres::error::SqlState;
 
@@ -283,7 +283,10 @@ impl PostgresMutations {
                 intent: false,
             });
         });
-        let answered = apply(&Applying::within(operation_id, unit.as_ref()));
+        // What the domain write asks done when the attempt ends: told `true` after the commit,
+        // and `false`, by its drop, on any other way out of the attempt.
+        let ends = Ends::default();
+        let answered = apply(&Applying::within(operation_id, unit.as_ref(), &ends));
         let intent_written = RUNNING
             .with(|running| running.borrow_mut().take())
             .is_some_and(|running| running.intent);
@@ -358,7 +361,10 @@ impl PostgresMutations {
             applied.target.as_deref().or(begin.target.as_deref()),
         )?;
         match unit.commit() {
-            Ok(()) => Ok(Ended::Applied),
+            Ok(()) => {
+                ends.end(true);
+                Ok(Ended::Applied)
+            }
             // The database answered the commit with an error of its own: it kept nothing.
             Err(error) if error.code().is_some() => Err(error.into()),
             // No answer: the connection went before the database said what it did, and the

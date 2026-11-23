@@ -91,14 +91,10 @@ pub(crate) fn import(
     server_config: Option<&Path>,
     trace: &crate::trace::Trace,
 ) -> Result<Imported, Failure> {
-    let config = config_of(server_config)?;
-    if config.storage_backend().has_volume() {
-        return Err(Failure::usage(format!(
-            "the configuration keeps its state on a volume, `{}`: name the server's configuration \
-             on `postgresql-s3`",
-            config.storage_backend().as_str()
-        )));
-    }
+    let config = shared_config(
+        server_config,
+        "name the server's configuration on `postgresql-s3`",
+    )?;
     let same = |path: &Path| std::fs::canonicalize(path).ok();
     if same(volume).is_none() || same(volume) != same(config.working_dir()) {
         return Err(Failure::usage(format!(
@@ -132,12 +128,7 @@ fn imported(
     let sealer = custodian
         .sealer(host_id)
         .map_err(|error| Failure::usage(format!("the custody of the secrets: {error}")))?;
-    let secrets = permguard_offline::factories::secret_store_for(config)
-        .map_err(|error| Failure::usage(format!("the secret store: {error:#}")))?;
-    let connected =
-        permguard_s3::backend::connect(config, secrets.as_deref()).map_err(|error| {
-            Failure::unavailable(format!("opening the `postgresql-s3` backend: {error:#}"))
-        })?;
+    let connected = connected(config)?;
     let imported =
         permguard_s3::import::volume(config, &held, &connected, std::sync::Arc::new(sealer))
             .map_err(|error| Failure::unavailable(format!("importing the volume: {error:#}")))?;
@@ -161,5 +152,177 @@ fn imported(
     _volume: &Path,
     _trace: &crate::trace::Trace,
 ) -> Result<Imported, Failure> {
+    Err(unsupported(config))
+}
+
+/// The configuration of an offline command on the shared backend: `--server-config`, refused when
+/// it keeps its state on a volume, where `on_files` says what to do instead.
+fn shared_config(
+    server_config: Option<&Path>,
+    on_files: &str,
+) -> Result<permguard_core::Config, Failure> {
+    let config = config_of(server_config)?;
+    if config.storage_backend().has_volume() {
+        return Err(Failure::usage(format!(
+            "the configuration keeps its state on a volume, `{}`: {on_files}",
+            config.storage_backend().as_str()
+        )));
+    }
+    Ok(config)
+}
+
+/// The database and the bucket `config` names, connected and checked as a start checks them.
+#[cfg(feature = "shared-backend")]
+fn connected(config: &permguard_core::Config) -> Result<permguard_s3::backend::Connected, Failure> {
+    let secrets = permguard_offline::factories::secret_store_for(config)
+        .map_err(|error| Failure::usage(format!("the secret store: {error:#}")))?;
+    permguard_s3::backend::connect(config, secrets.as_deref()).map_err(|error| {
+        Failure::unavailable(format!("opening the `postgresql-s3` backend: {error:#}"))
+    })
+}
+
+/// What `host audit copy` answers.
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct AuditCopied {
+    trails: usize,
+    /// The directory `audit verify --directory` reads.
+    directory: String,
+    /// The `host.operations` keys, the JWKS `audit verify --keys` reads.
+    keys: String,
+}
+
+impl crate::output::Report for AuditCopied {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "Copied {} trail(s)", self.trails)?;
+        writeln!(out, "trails  {}", self.directory)?;
+        writeln!(out, "keys    {}", self.keys)
+    }
+}
+
+/// `permguard host audit copy --out <dir>` (iteration 03, WP-28.1, decision X101): the trails a
+/// stopped server keeps on `postgresql-s3`, laid out as on files, and the keys of the ring that
+/// signs their checkpoints, for the server binary's `audit verify`.
+pub(crate) fn audit_copy(
+    globals: &crate::args::Globals,
+    server_config: Option<&Path>,
+    out: &Path,
+    trace: &crate::trace::Trace,
+) -> Result<std::process::ExitCode, Failure> {
+    let config = shared_config(
+        server_config,
+        "`audit verify --directory <volume>` reads its trails where they are",
+    )?;
+    let out = super::host::rooted_file(globals, out);
+    if std::fs::symlink_metadata(&out).is_ok() {
+        return Err(Failure::usage(format!(
+            "{} exists: name a new directory",
+            out.display()
+        )));
+    }
+    let copied = audit_copied(&config, &out)?;
+    crate::session::render(&copied, globals.output, trace)?;
+    Ok(std::process::ExitCode::SUCCESS)
+}
+
+#[cfg(feature = "shared-backend")]
+fn audit_copied(config: &permguard_core::Config, out: &Path) -> Result<AuditCopied, Failure> {
+    use permguard_host::storage::Dir;
+
+    let connected = connected(config)?;
+    let (trails, ring) = permguard_s3::backend::audit(&connected);
+    let written = |what: &str, error: &dyn std::fmt::Display| {
+        Failure::unavailable(format!("writing {what} to {}: {error}", out.display()))
+    };
+    let root = Dir::create_root(out).map_err(|error| written("the copy", &error))?;
+    let directory = root
+        .subdir("trails", true)
+        .map_err(|error| written("the trails", &error))?;
+    let copied = permguard_host::audit::store::export(trails.as_ref(), &directory)
+        .map_err(|error| Failure::unavailable(format!("copying the trails: {error}")))?;
+    let keys = permguard_host::keys::ring::export_of(
+        ring.as_ref(),
+        "the database's `host.operations` ring",
+    )
+    .map_err(|error| {
+        Failure::unavailable(format!("reading the `host.operations` keys: {error}"))
+    })?;
+    permguard_host::storage::write::replace_bytes(&root, KEYS_FILE, keys.as_bytes())
+        .map_err(|error| written("the keys", &error))?;
+    Ok(AuditCopied {
+        trails: copied,
+        directory: directory.path().display().to_string(),
+        keys: root.child_path(KEYS_FILE).display().to_string(),
+    })
+}
+
+#[cfg(not(feature = "shared-backend"))]
+fn audit_copied(config: &permguard_core::Config, _out: &Path) -> Result<AuditCopied, Failure> {
+    Err(unsupported(config))
+}
+
+/// The file the copy keeps the `host.operations` keys in, beside its trails.
+#[cfg(feature = "shared-backend")]
+const KEYS_FILE: &str = "host.operations.keys.json";
+
+/// What `evidence rotate-cursor-root` answers.
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct CursorRootRotated {
+    store: String,
+    /// Whether the store held a root to rotate; none issues until the next ask mints one.
+    rotated: bool,
+}
+
+impl crate::output::Report for CursorRootRotated {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        if self.rotated {
+            writeln!(
+                out,
+                "The cursor root of `{}` rotated: the previous is still accepted",
+                self.store
+            )
+        } else {
+            writeln!(
+                out,
+                "`{}` holds no issuing root: nothing rotated, the next ask mints one",
+                self.store
+            )
+        }
+    }
+}
+
+/// `permguard evidence rotate-cursor-root --store <store>` (iteration 03, WP-28.1, decision
+/// X110), offline, the servers stopped.
+pub(crate) fn rotate_cursor_root(
+    globals: &crate::args::Globals,
+    server_config: Option<&Path>,
+    store: &str,
+    trace: &crate::trace::Trace,
+) -> Result<std::process::ExitCode, Failure> {
+    let config = shared_config(
+        server_config,
+        "on files the rotation is the move of `CURSOR_KEY` to `CURSOR_KEY.previous` beside the \
+         store",
+    )?;
+    let rotated = rotated(&config, store)?;
+    crate::session::render(
+        &CursorRootRotated {
+            store: store.to_owned(),
+            rotated,
+        },
+        globals.output,
+        trace,
+    )?;
+    Ok(std::process::ExitCode::SUCCESS)
+}
+
+#[cfg(feature = "shared-backend")]
+fn rotated(config: &permguard_core::Config, store: &str) -> Result<bool, Failure> {
+    permguard_s3::backend::rotate_cursor_root(&connected(config)?, store).map_err(|error| {
+        Failure::unavailable(format!("rotating the cursor root of `{store}`: {error:#}"))
+    })
+}
+
+#[cfg(not(feature = "shared-backend"))]
+fn rotated(config: &permguard_core::Config, _store: &str) -> Result<bool, Failure> {
     Err(unsupported(config))
 }

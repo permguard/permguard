@@ -58,21 +58,10 @@ impl PostgresCursorRoots {
 
     /// Rotates the root: the one issuing becomes the previous, accepted while it is kept, and
     /// the next ask mints a new one. A root already moved to the previous is replaced by the
-    /// one issuing: offsets issued under the oldest are refused from then on.
-    pub fn rotate(&self) -> Result<()> {
-        self.database
-            .write(|unit| {
-                unit.execute(
-                    "UPDATE permguard_cursor_roots
-                     SET previous_kek_ref = kek_ref, previous_kek_version = kek_version,
-                         previous_wrap_algorithm = wrap_algorithm, previous_wrapped = wrapped,
-                         kek_ref = NULL, kek_version = NULL, wrap_algorithm = NULL, wrapped = NULL
-                     WHERE store = $1 AND wrapped IS NOT NULL",
-                    &[&self.store],
-                )
-            })
-            .map_err(|error| anyhow!("rotating the cursor root of `{}`: {error}", self.store))?;
-        Ok(())
+    /// one issuing: offsets issued under the oldest are refused from then on. Answers whether
+    /// the store held a root to rotate.
+    pub fn rotate(&self) -> Result<bool> {
+        rotate(&self.database, &self.store)
     }
 
     /// Keeps `roots`, as another backend held them, sealed: the import of a volume (iteration
@@ -192,6 +181,26 @@ impl CursorRoots for PostgresCursorRoots {
     }
 }
 
+/// Rotates the cursor root of the evidence store `store` kept in `database`, as
+/// [`PostgresCursorRoots::rotate`] does: the sealed bytes move as they are, so no key opens them.
+/// What the operator's command runs, with the servers stopped: an instance reads the roots at its
+/// start, and issues under the root it read until it starts again.
+pub fn rotate(database: &Database, store: &str) -> Result<bool> {
+    let rotated = database
+        .write(|unit| {
+            unit.execute(
+                "UPDATE permguard_cursor_roots
+                 SET previous_kek_ref = kek_ref, previous_kek_version = kek_version,
+                     previous_wrap_algorithm = wrap_algorithm, previous_wrapped = wrapped,
+                     kek_ref = NULL, kek_version = NULL, wrap_algorithm = NULL, wrapped = NULL
+                 WHERE store = $1 AND wrapped IS NOT NULL",
+                &[&store],
+            )
+        })
+        .map_err(|error| anyhow!("rotating the cursor root of `{store}`: {error}"))?;
+    Ok(rotated == 1)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -229,7 +238,10 @@ mod tests {
         let store = PostgresCursorRoots::new(database.clone(), sealer(), "decisions");
         let first = store.roots().expect("minted");
         assert!(first.previous.is_none());
-        store.rotate().expect("rotated");
+        assert!(store.rotate().expect("rotated"));
+        // Nothing issues until the next ask mints a root: a second rotation has nothing to move,
+        // and keeps the previous one.
+        assert!(!rotate(&database, "decisions").expect("answered"));
         let second = store.roots().expect("minted again");
         assert_ne!(second.issuing.as_slice(), first.issuing.as_slice());
         assert_eq!(

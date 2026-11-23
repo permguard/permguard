@@ -365,6 +365,48 @@ fn a_volume_is_imported_whole_and_read_as_a_process_reads_it() {
         }
     }
     assert_eq!(read_runs, kept_runs);
+
+    // What the offline verification reads (X101): the trails laid out as on files, one chain each,
+    // and the keys of the ring that signs their checkpoints, read without minting anything.
+    let (trails, operations) = permguard_s3::backend::audit(&connected);
+    let copy = Dir::create_root(&root.join("copy")).expect("a directory");
+    assert_eq!(
+        permguard_host::audit::store::export(trails.as_ref(), &copy).expect("copied"),
+        1
+    );
+    let copied = trail::directory(&copy, Class::Security, HOST, false).expect("copied");
+    assert!(
+        copied.read(trail::META).expect("read").is_some(),
+        "the trail's META"
+    );
+    assert!(
+        copied
+            .names()
+            .expect("listed")
+            .iter()
+            .any(|name| name.ends_with(".cborseq")),
+        "the trail's day"
+    );
+    assert_eq!(
+        operations.entries().expect("read"),
+        ring.entries().expect("read")
+    );
+    // A cursor root rotates once; with none issuing there is nothing to move (X110).
+    assert!(
+        permguard_s3::backend::rotate_cursor_root(
+            &connected,
+            permguard_control_plane::plane::DECISIONS_API
+        )
+        .expect("rotated")
+    );
+    assert!(
+        !permguard_s3::backend::rotate_cursor_root(
+            &connected,
+            permguard_control_plane::plane::DECISIONS_API
+        )
+        .expect("answered")
+    );
+    assert!(permguard_s3::backend::rotate_cursor_root(&connected, "ledgers").is_err());
     let _ = std::fs::remove_dir_all(root);
 }
 

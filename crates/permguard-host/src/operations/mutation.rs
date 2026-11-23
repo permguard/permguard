@@ -219,12 +219,59 @@ pub trait Domain {
     ) -> Result<Option<Observed>, String>;
 }
 
+/// The attempts to apply an operation, numbered: an attempt is told from the one run before it.
+static ATTEMPTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_attempt() -> u64 {
+    ATTEMPTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A step a domain write asks done when its attempt ends, told whether the operation was kept.
+type EndStep = Box<dyn FnOnce(bool) + Send>;
+
+/// What one attempt to apply an operation asks done when it ends (decision X68 of iteration 03):
+/// what a domain write changes outside the stores, a state it holds in memory or a key it
+/// destroys, waits to be told whether the operation was kept. An engine whose unit of work may be
+/// run again or undone ends the attempt once it knows; one that is dropped unended was not kept.
+#[derive(Default)]
+pub struct Ends(Mutex<Vec<EndStep>>);
+
+impl Ends {
+    /// Runs every step the attempt asked, in the order it asked, told whether it was `kept`.
+    pub fn end(self, kept: bool) {
+        self.run(kept);
+    }
+
+    fn run(&self, kept: bool) {
+        let steps = std::mem::take(&mut *self.0.lock().unwrap_or_else(PoisonError::into_inner));
+        for step in steps {
+            step(kept);
+        }
+    }
+}
+
+impl Drop for Ends {
+    fn drop(&mut self) {
+        self.run(false);
+    }
+}
+
+impl std::fmt::Debug for Ends {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ends").finish_non_exhaustive()
+    }
+}
+
 /// The proof that the engine is applying an operation: a domain mutator takes one, and only this
 /// module builds one.
 pub struct Applying<'a> {
     operation_id: OperationId,
     /// The unit of work the operation runs in, on an engine that has one.
     unit: Option<&'a (dyn std::any::Any + Send + Sync)>,
+    /// This attempt, among every attempt of every operation of the process.
+    attempt: u64,
+    /// What the attempt asks done when it ends, on an engine that may run it again or undo it.
+    ends: Option<&'a Ends>,
     _engine: PhantomData<&'a Mutations>,
 }
 
@@ -243,14 +290,42 @@ impl<'a> Applying<'a> {
         self.unit.and_then(|unit| unit.downcast_ref())
     }
 
+    /// This attempt: what a domain keeps a change it has not seen kept under, so a second write
+    /// of the same attempt follows the first and an attempt run again starts from what is kept.
+    pub fn attempt(&self) -> u64 {
+        self.attempt
+    }
+
+    /// Runs `ended` when this attempt ends, told whether the operation was kept (decision X68 of
+    /// iteration 03): what a domain write changes outside the stores waits for it. An engine
+    /// that may run the attempt again or undo it, PostgreSQL's, answers `true` after its commit
+    /// and `false` otherwise; the file engine, which keeps a write as it is made, answers `true`
+    /// at once.
+    pub fn on_end(&self, ended: impl FnOnce(bool) + Send + 'static) {
+        match self.ends {
+            Some(ends) => ends
+                .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(Box::new(ended)),
+            None => ended(true),
+        }
+    }
+
     /// The token of `operation_id` applied inside `unit`. An engine's alone: it is the proof a
     /// domain mutator takes that an engine is applying the operation, and
     /// `task check:mutations` finds any file that asks for one and is not an engine
     /// `mutations.json` names.
-    pub fn within(operation_id: OperationId, unit: &'a (dyn std::any::Any + Send + Sync)) -> Self {
+    pub fn within(
+        operation_id: OperationId,
+        unit: &'a (dyn std::any::Any + Send + Sync),
+        ends: &'a Ends,
+    ) -> Self {
         Self {
             operation_id,
             unit: Some(unit),
+            attempt: next_attempt(),
+            ends: Some(ends),
             _engine: PhantomData,
         }
     }
@@ -263,6 +338,8 @@ impl Applying<'static> {
         Self {
             operation_id: OperationId::from_bytes([byte; 16]),
             unit: None,
+            attempt: next_attempt(),
+            ends: None,
             _engine: PhantomData,
         }
     }
@@ -1491,6 +1568,8 @@ impl Mutations {
         let token = Applying {
             operation_id,
             unit: None,
+            attempt: next_attempt(),
+            ends: None,
             _engine: PhantomData,
         };
         let applied = match apply(&token) {

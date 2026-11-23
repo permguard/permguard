@@ -46,6 +46,9 @@ data:
     {{- else }}
     {{- $_ := set $config "runtime" (dict "planes" (list "control")) }}
     {{- end }}
+    {{- with (include "permguard.storageConfig" $plane.storage | fromYaml) }}
+    {{- $config = mergeOverwrite $config . }}
+    {{- end }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
     {{- $merged = mergeOverwrite (include "permguard.hostControlsConfig" $ | fromYaml) $merged }}
     {{- $merged = mergeOverwrite $merged (include "permguard.assuranceConfig" (include "permguard.planeAssurance" $plane | fromJson) | fromYaml) }}

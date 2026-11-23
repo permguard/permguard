@@ -10,6 +10,8 @@
 #                                           certificate, serve
 #   permguard-lab import <binary> <config>  the stopped Host's volume moved to the `postgresql-s3`
 #                                           backend its configuration names
+#   permguard-lab offline <binary> <config> the offline commands on that backend, the Host stopped:
+#                                           its trails copied and verified, a cursor root rotated
 #   permguard-lab catalog <profile>         the zones, ledgers and policies a profile serves
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
@@ -243,6 +245,26 @@ cmd_import() {
     jq -e '.stores | length > 0' >/dev/null <<<"${imported}" || fail "${host}: the import said nothing"
     log "${host}: its volume imported into postgresql-s3, deployment $(jq -r '.deployment' <<<"${imported}"):" \
         "$(jq -r '[.stores[] | select(.records > 0) | "\(.store) \(.records)"] | join(", ")' <<<"${imported}")"
+}
+
+# `offline <binary> <config>`: what an operator does on the `postgresql-s3` backend with the Host
+# stopped (iteration 03, WP-28.1): the trails copied out of the database and the bucket and checked
+# by the server binary's own verification, then the decision store's cursor root rotated.
+cmd_offline() {
+    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}" copy copied rotated
+    [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ] ||
+        fail "the offline commands' configuration names no postgresql-s3 backend"
+    listener_env "${host}" "${binary}"
+    copy="$(mktemp -d)/audit"
+    copied="$(permguard -o json host audit copy --server-config "${config}" --out "${copy}")" ||
+        fail "${host}: its trails were not copied"
+    jq -e '.trails > 0' >/dev/null <<<"${copied}" || fail "${host}: no trail was copied: ${copied}"
+    "${binary}" audit verify --directory "${copy}/trails" --keys "${copy}/host.operations.keys.json" >&2 ||
+        fail "${host}: the trails copied out of postgresql-s3 do not verify"
+    log "${host}: $(jq -r '.trails' <<<"${copied}") trails copied out of postgresql-s3 verify under its host.operations keys"
+    rotated="$(permguard -o json evidence rotate-cursor-root --store decisions --server-config "${config}")" ||
+        fail "${host}: the decision store's cursor root did not rotate"
+    log "${host}: the decision store's cursor root rotated: $(jq -r '.rotated' <<<"${rotated}")"
 }
 
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
@@ -1471,6 +1493,7 @@ case "${command}" in
 pki) cmd_pki "$@" ;;
 serve) cmd_serve "$@" ;;
 import) cmd_import "$@" ;;
+offline) cmd_offline "$@" ;;
 catalog) cmd_catalog "$@" ;;
 enroll) cmd_enroll "$@" ;;
 assert) cmd_assert "$@" ;;

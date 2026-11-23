@@ -64,6 +64,9 @@ pub fn host_command(
         HostAction::Members { action } => members(globals, action, trace),
         HostAction::Streams { action } => streams(globals, action, trace),
         HostAction::Keys { action } => super::host_ops::keys(globals, action, trace),
+        HostAction::Audit {
+            action: crate::args::AuditAction::Copy { out },
+        } => super::shared::audit_copy(globals, server_config, &out, trace),
         HostAction::Audit { action } => super::host_ops::audit(globals, action, trace),
         HostAction::Config { action } => super::host_ops::config(globals, action, trace),
         HostAction::Status => super::host_ops::status(globals, trace),

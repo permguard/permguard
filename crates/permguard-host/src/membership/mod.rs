@@ -487,7 +487,11 @@ struct State {
 /// The membership store of one Host.
 pub struct Store {
     store: Arc<dyn MemberStore>,
-    state: RwLock<State>,
+    /// The state of the entries kept: what every reader is answered.
+    state: Arc<RwLock<State>>,
+    /// The state an attempt wrote and has not seen kept, by attempt (decision X68 of iteration
+    /// 03): its next entry follows it, and it shows once the operation is kept.
+    pending: Arc<Mutex<BTreeMap<u64, State>>>,
     /// Serializes appends: the chain is a function of the order.
     writing: Mutex<()>,
     /// Set by an identity reset once it starts settling: no invitation, enrollment, approval or
@@ -1182,6 +1186,24 @@ pub struct Offered<'a> {
     pub principal: &'a str,
 }
 
+/// The state of the entries `store` keeps, their chain checked.
+fn replay(store: &dyn MemberStore) -> Result<State, MembershipError> {
+    let entries = store.entries()?;
+    if entries.len() > MAX_ENTRIES {
+        return Err(MembershipError::Storage(
+            "the journal is beyond its bound".to_owned(),
+        ));
+    }
+    let mut state = State::default();
+    for item in entries {
+        let bytes =
+            cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
+        let entry = Entry::decode(&bytes)?;
+        apply(&mut state, &entry, &bytes)?;
+    }
+    Ok(state)
+}
+
 impl Store {
     /// Opens the memberships `store` keeps and replays their entries, checking their chain.
     /// `restored` is the `dr` restore of where they are kept, when it was restored.
@@ -1189,22 +1211,11 @@ impl Store {
         store: Arc<dyn MemberStore>,
         restored: Option<record::RestoreAnchor>,
     ) -> Result<Arc<Self>, MembershipError> {
-        let entries = store.entries()?;
-        if entries.len() > MAX_ENTRIES {
-            return Err(MembershipError::Storage(
-                "the journal is beyond its bound".to_owned(),
-            ));
-        }
-        let mut state = State::default();
-        for item in entries {
-            let bytes =
-                cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
-            let entry = Entry::decode(&bytes)?;
-            apply(&mut state, &entry, &bytes)?;
-        }
+        let state = replay(store.as_ref())?;
         Ok(Arc::new(Self {
             store,
-            state: RwLock::new(state),
+            state: Arc::new(RwLock::new(state)),
+            pending: Arc::new(Mutex::new(BTreeMap::new())),
             writing: Mutex::new(()),
             fenced: std::sync::atomic::AtomicBool::new(false),
             windows: Mutex::new(BTreeMap::new()),
@@ -1304,10 +1315,16 @@ impl Store {
         detail: Option<Vec<u8>>,
         statements: Vec<RingStatement>,
     ) -> Result<Entry, MembershipError> {
-        let (seq, previous) = {
-            let state = self.read();
-            (state.seq + 1, chain(state.last.as_deref()))
-        };
+        // What this attempt wrote before, or what is kept: an attempt run again starts from what
+        // is kept, never from what a lost attempt wrote (decision X68).
+        let base = self
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&applying.attempt())
+            .cloned()
+            .unwrap_or_else(|| self.read().clone());
+        let (seq, previous) = (base.seq + 1, chain(base.last.as_deref()));
         let entry = Entry {
             seq,
             kind,
@@ -1324,12 +1341,43 @@ impl Store {
         // or one the history does not take never reaches the journal.
         Entry::decode(&bytes)
             .map_err(|error| MembershipError::Invalid(format!("the entry: {}", error.0)))?;
-        let mut next = self.read().clone();
+        let mut next = base;
         apply(&mut next, &entry, &bytes).map_err(|error| {
             MembershipError::Invalid(format!("the history does not take the entry: {error}"))
         })?;
-        self.store.append(entry.seq, &bytes)?;
-        *self.state.write().unwrap_or_else(PoisonError::into_inner) = next;
+        if let Err(error) = self.store.append(entry.seq, &bytes) {
+            if matches!(error, MembershipError::Conflict { .. }) {
+                // The entries kept moved past this process's: once the attempt ends, it reads
+                // them again, so the next operation follows what is kept.
+                let (store, state) = (Arc::clone(&self.store), Arc::clone(&self.state));
+                applying.on_end(move |_| match replay(store.as_ref()) {
+                    Ok(read) => *state.write().unwrap_or_else(PoisonError::into_inner) = read,
+                    Err(error) => tracing::warn!(
+                        event.name = "host.membership.state_unread",
+                        component = "host",
+                        error = %error,
+                        "the memberships could not be read again after a conflict"
+                    ),
+                });
+            }
+            return Err(error);
+        }
+        // Shown once the operation is kept; a later entry of this attempt follows it.
+        let attempt = applying.attempt();
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(attempt, next);
+        let (pending, state) = (Arc::clone(&self.pending), Arc::clone(&self.state));
+        applying.on_end(move |kept| {
+            let written = pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&attempt);
+            if let (true, Some(written)) = (kept, written) {
+                *state.write().unwrap_or_else(PoisonError::into_inner) = written;
+            }
+        });
         // The views follow the journal, best effort: the journal is authoritative.
         if let (Kind::Manifest, Some(envelope), Some(epoch)) =
             (kind, entry.detail.as_deref(), epoch)

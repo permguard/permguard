@@ -338,6 +338,12 @@ pub(super) fn audit(
                 trace,
             )?;
         }
+        // Offline, on the backend's own stores: `host` dispatches it before any listener opens.
+        AuditAction::Copy { .. } => {
+            return Err(Failure::usage(
+                "`host audit copy` reads the backend offline, through no Host listener",
+            ));
+        }
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -690,7 +696,12 @@ pub fn evidence_command(
     use crate::args::EvidenceAction;
     use permguard_client::host::StreamName;
 
-    let EvidenceAction::Anchors { zone, ledger } = action;
+    // The rotation is offline, on the backend's own store: the shell dispatches it apart.
+    let EvidenceAction::Anchors { zone, ledger } = action else {
+        return Err(Failure::usage(
+            "`evidence rotate-cursor-root` reads the backend offline, through no Host listener",
+        ));
+    };
     // The Host keys its streams by id: a name would read as a ledger it does not hold (BUG-0297).
     if let Some(name) = [&zone, &ledger].into_iter().find(|text| !catalog_id(text)) {
         return Err(Failure::usage(format!(
