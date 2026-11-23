@@ -3645,3 +3645,124 @@ fn the_file_backend_keeps_each_document_in_the_file_it_always_was() {
         );
     }
 }
+
+/// The file store of a volume, read as a store other instances share: what a second instance of
+/// a coordinator reads in the tests of WP-28.6.
+struct SharedView(files::FileMembers);
+
+impl MemberStore for SharedView {
+    fn entries(&self) -> Result<Vec<permguard_objects::cbor::Value>, MembershipError> {
+        self.0.entries()
+    }
+    fn shared(&self) -> bool {
+        true
+    }
+    fn append(&self, seq: u64, entry: &[u8]) -> Result<(), MembershipError> {
+        self.0.append(seq, entry)
+    }
+    fn replace_summary(&self, summary: &[u8]) -> Result<(), MembershipError> {
+        self.0.replace_summary(summary)
+    }
+    fn keep_manifest(
+        &self,
+        membership: &[u8; 16],
+        epoch: u64,
+        digest: &str,
+        envelope: &[u8],
+    ) -> Result<(), MembershipError> {
+        self.0.keep_manifest(membership, epoch, digest, envelope)
+    }
+    fn keep_invitation(&self, invite: &[u8; 16], invitation: &[u8]) -> Result<(), MembershipError> {
+        self.0.keep_invitation(invite, invitation)
+    }
+    fn doc(&self, doc: &Doc<'_>) -> Result<Option<Vec<u8>>, MembershipError> {
+        self.0.doc(doc)
+    }
+    fn keep(&self, doc: &Doc<'_>, bytes: &[u8]) -> Result<(), MembershipError> {
+        self.0.keep(doc, bytes)
+    }
+    fn change(&self, doc: &Doc<'_>, change: store::Change<'_>) -> Result<(), MembershipError> {
+        self.0.change(doc, change)
+    }
+    fn remove(&self, doc: &Doc<'_>) -> Result<bool, MembershipError> {
+        self.0.remove(doc)
+    }
+    fn list(&self, listing: &store::Listing<'_>) -> Result<Vec<store::Listed>, MembershipError> {
+        self.0.list(listing)
+    }
+    fn checkpoint(
+        &self,
+        membership: &[u8; 16],
+        trail: &str,
+        count: u64,
+    ) -> Result<Option<Vec<u8>>, MembershipError> {
+        self.0.checkpoint(membership, trail, count)
+    }
+    fn publish_checkpoint(
+        &self,
+        membership: &[u8; 16],
+        trail: &str,
+        count: u64,
+        envelope: &[u8],
+    ) -> Result<(), MembershipError> {
+        self.0
+            .publish_checkpoint(membership, trail, count, envelope)
+    }
+}
+
+/// WP-28.6: a member joins through another instance of its coordinator than the one that issued
+/// its invitation a moment ago, well within the bound a read of the memberships may lag: the
+/// enrollment reads the invitation as the store holds it, and checks.
+#[test]
+fn an_enrollment_finds_an_invitation_another_instance_just_issued() {
+    let c = Host::new("shared-enroll-c");
+    let m = Host::new("shared-enroll-m");
+    let other = Store::open_in(
+        Arc::new(SharedView(
+            files::FileMembers::open(c.volume()).expect("the volume's store"),
+        )),
+        None,
+    )
+    .expect("the other instance opens");
+    assert!(
+        other
+            .invitations(permguard_core::time::unix_now())
+            .is_empty()
+    );
+    let (invitation, token) = invite(&c, Some(m.identity.first_fingerprint().to_owned()));
+    let request = request(&c, &m, &invitation, &token, &EXPORTER);
+    let verified = m.verified();
+    let pending = other
+        .check_enroll(
+            &c.coordinator(),
+            &Enrolling {
+                peer: &verified,
+                presentation: &m.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &request,
+            permguard_core::time::unix_now(),
+        )
+        .expect("the other instance finds the invitation at once");
+    assert_eq!(pending.invite_id, invitation.invite_id);
+}
+
+/// WP-28.6: a member's next session reaches another instance than the one its enrollment made
+/// the membership on, a moment later: the membership is read at once, not within the bound.
+#[test]
+fn a_membership_another_instance_just_made_is_found_at_once() {
+    let c = Host::new("shared-found-c");
+    let m = Host::new("shared-found-m");
+    let other = Store::open_in(
+        Arc::new(SharedView(
+            files::FileMembers::open(c.volume()).expect("the volume's store"),
+        )),
+        None,
+    )
+    .expect("the other instance opens");
+    assert!(other.memberships().is_empty());
+    let id = enroll(&c, &m).membership_id;
+    let held = other.membership(&id).expect("found at once");
+    assert_eq!(held.status, Status::Pending);
+}

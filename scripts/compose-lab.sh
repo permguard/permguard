@@ -19,7 +19,9 @@
 # run also proves the Authority Plane: a service account, its key and scopes over HTTPS and gRPC, a
 # token revoked and the token keys rotated. BACKEND=postgresql-s3 runs the split-plane profile with
 # its Control Plane on PostgreSQL and S3 (`docker-compose.lab.postgresql-s3.yml`, iteration 03,
-# WP-28.1): the Data Plane on files, as always. BACKEND=import runs it with its Control Plane on
+# WP-28.1): the Data Plane on files, as always. Two Control Plane instances serve it behind one
+# address (`docker-compose.lab.replicas.yml`, WP-28.6), and the profile is proved again with each
+# of them stopped in turn. BACKEND=import runs it with its Control Plane on
 # files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
 # S3 with `permguard migrate import`, serves it from there and proves the profile again.
 set -euo pipefail
@@ -65,6 +67,7 @@ run_profile() {
             exit 64
         }
         files+=(-f docker-compose.lab.postgresql-s3.yml)
+        [ "${BACKEND}" != postgresql-s3 ] || files+=(-f docker-compose.lab.replicas.yml)
         ;;
     *)
         echo "compose-lab: no backend ${BACKEND}; one of files, postgresql-s3, import" >&2
@@ -119,6 +122,17 @@ run_profile() {
 
     step "${profile}: what it must prove"
     dc run --rm lab assert "${profile}" || failed "an assertion failed"
+    if [ "${BACKEND:-files}" = postgresql-s3 ]; then
+        step "${profile}: two Control Plane instances behind one address"
+        dc run --rm lab assert "${profile}" replicas || failed "the instances are not one Control Plane"
+        local instance
+        for instance in control-plane control-plane-2; do
+            step "${profile}: ${instance} stopped, the other instance serves"
+            dc stop "${instance}" >/dev/null 2>&1 || failed "${instance} did not stop"
+            dc run --rm lab assert "${profile}" || failed "an assertion failed with ${instance} stopped"
+            dc up -d --no-deps --wait "${instance}" 2>/dev/null || failed "${instance} did not serve again"
+        done
+    fi
     if [ "${BACKEND:-files}" = import ]; then
         step "${profile}: the Control Plane's volume imported into postgresql-s3"
         dc run --rm lab assert "${profile}" before-import || failed "the identity on files was not read"

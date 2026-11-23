@@ -1496,6 +1496,60 @@ fn an_export_keeps_its_frontier_while_records_arrive() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// WP-28.6: the next page of a query reaches another instance of the Host. Under a key drawn for
+/// the process the other refuses the cursor; under the key a root every instance holds derives,
+/// it answers the next page.
+#[test]
+fn a_cursor_opens_at_another_instance_under_the_shared_root() {
+    let root = scratch("shared-cursors");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let one = |cursor: Option<String>| query::Query {
+        limit: Some(1),
+        cursor,
+        ..query::Query::default()
+    };
+    let first = {
+        let engine = open_engine(&volume, Arc::clone(&time));
+        for _ in 0..3 {
+            start(&engine);
+        }
+        engine
+            .export(Class::Operations, HOST, &one(None))
+            .expect("exported")
+    };
+    let other = open_engine(&volume, Arc::clone(&time));
+    assert!(
+        matches!(
+            other.export(Class::Operations, HOST, &one(first.next.clone())),
+            Err(query::QueryError::Cursor(_))
+        ),
+        "a key drawn for each process"
+    );
+    let shared_root = [7u8; 32];
+    let issued = {
+        let engine = open_engine(&volume, Arc::clone(&time));
+        engine.cursors_from_root(&shared_root).expect("keyed");
+        engine
+            .export(Class::Operations, HOST, &one(None))
+            .expect("exported")
+    };
+    let other = open_engine(&volume, Arc::clone(&time));
+    other.cursors_from_root(&shared_root).expect("keyed");
+    let next = other
+        .export(Class::Operations, HOST, &one(issued.next.clone()))
+        .expect("the next page, at the other instance");
+    assert_eq!(next.records[0].seq, issued.records[0].seq + 1);
+    // Another root is another key: its cursors open nowhere else.
+    let elsewhere = open_engine(&volume, time);
+    elsewhere.cursors_from_root(&[8u8; 32]).expect("keyed");
+    assert!(matches!(
+        elsewhere.export(Class::Operations, HOST, &one(issued.next)),
+        Err(query::QueryError::Cursor(_))
+    ));
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn a_read_states_records_missing_from_the_day_files() {
     let root = scratch("missing");

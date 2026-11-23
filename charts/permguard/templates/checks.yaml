@@ -35,15 +35,28 @@ no volume layout changes that:
     created through one pod is missing when the next request lands on the other.
 
 The second is the quieter mistake, and it is why this refuses replicas rather than refusing shared
-storage. Until a control plane can elect a leader or keep its catalog in something that arbitrates,
-it is one replica — and an all-in-one IS a control plane.
+storage. On a volume a control plane is one replica — and an all-in-one IS a control plane.
 
 A data plane holds no authority: it mirrors a ledger and answers from it, and each replica of a
 group keeps its own volume (`templates/data-plane-groups.yaml`), so its groups may be replicated.
+
+A control plane on the `postgresql-s3` backend keeps its state in what arbitrates (iteration 03,
+WP-28.6): its replicas serve one catalog, one identity and one set of memberships behind one
+Service, its single jobs under leases, so it may run several and autoscale. An all-in-one runs a
+data plane, which stays on its volume, and stays at one.
 */ -}}
-{{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1 until the state lives in something that arbitrates." }}
+{{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1, or keep its state on `postgresql-s3` (controlPlane.storage.backend)." }}
+{{- $sharedControlPlane := eq (toString (dig "backend" "files" (.Values.controlPlane.storage | default dict))) "postgresql-s3" }}
+{{- /*
+Several instances share their secrets: what `autogenerate` mints is one instance's own, and the
+database, which records the material a secret's version was first seen with, refuses another's.
+They come from one Secret mounted in every instance.
+*/ -}}
+{{- if and $sharedControlPlane .Values.controlPlane.enabled .Values.autogenerate (or (gt (int .Values.controlPlane.replicaCount) 1) (and .Values.controlPlane.autoscaling .Values.controlPlane.autoscaling.enabled)) }}
+{{- fail "controlPlane on postgresql-s3 with several replicas and autogenerate=true: each instance would mint its own secrets, which the others refuse. Mount one Secret in every instance and set autogenerate=false" }}
+{{- end }}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
-{{- if $plane.enabled }}
+{{- if and $plane.enabled (not (and (eq $component "controlPlane") $sharedControlPlane)) }}
 {{- if gt (int $plane.replicaCount) 1 }}
 {{- fail (printf "%s.replicaCount=%v: %s" $component $plane.replicaCount $authority) }}
 {{- end }}

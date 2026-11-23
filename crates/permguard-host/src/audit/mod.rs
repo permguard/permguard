@@ -82,6 +82,9 @@ pub const CHECKPOINT_CAPABILITY: &str = "audit_checkpoint";
 pub const WITNESS_CAPABILITY: &str = "audit_witness";
 /// How many `access` records may wait for the writer before new ones are dropped.
 pub const ACCESS_QUEUE: usize = 4096;
+/// The name the cursors of the audit queries are issued under on a backend other instances
+/// share: of the root that backend keeps for them, and of the key derived from it (WP-28.6).
+pub const QUERY_CURSORS: &str = "audit";
 
 /// The resource roots the Host assigns: its own actions, and each Plane's.
 pub const HOST: &str = "host";
@@ -740,7 +743,10 @@ struct Inner {
     retention_security: OnceLock<std::time::Duration>,
     signer: OnceLock<Arc<dyn CheckpointSigner>>,
     witness: OnceLock<Arc<dyn CheckpointWitness>>,
+    /// The key the cursors of the queries are issued under, drawn for the process...
     cursors: CursorKey,
+    /// ...unless a root every instance holds gave one (WP-28.6).
+    shared_cursors: OnceLock<CursorKey>,
     /// The trails whose last seal failed: `audit_checkpoint` is restored once none is left.
     unsealed: Mutex<std::collections::BTreeSet<(Class, String)>>,
     /// The trails the witness left a checkpoint of unanswered: `audit_witness` likewise.
@@ -818,6 +824,27 @@ impl Engine {
     /// the seal that closes it was acknowledged, while a required task exports its trail.
     pub fn gate_retention_with(&self, egress: Arc<dyn EgressFloor>) {
         let _ = self.inner.egress.set(egress);
+    }
+
+    /// Issues and opens the cursors of its queries under the key `root` derives for this Host,
+    /// from now on: on a backend other instances share, the root every instance reads, so a
+    /// cursor one instance issued opens at another, wherever the next page is asked (iteration
+    /// 03, WP-28.6). Without it a cursor is issued under a key drawn for the process, and dies
+    /// with it. Set once, before the engine answers a query; a second root changes nothing.
+    pub fn cursors_from_root(&self, root: &[u8]) -> Result<(), Refused> {
+        let refused = |error: crate::secrets::SecretsError| {
+            Refused::Storage(format!("the root of the audit queries' cursors: {error}"))
+        };
+        let version = crate::secrets::KeyVersion::new(1)
+            .ok_or_else(|| Refused::Storage("the cursor key version".to_owned()))?;
+        let key = crate::secrets::HostLocal::new(
+            crate::secrets::Root::from_material(root, version).map_err(refused)?,
+            self.inner.stamp.host_id,
+        )
+        .key(crate::secrets::HostPurpose::StreamCursor, QUERY_CURSORS)
+        .map_err(refused)?;
+        let _ = self.inner.shared_cursors.set(CursorKey::from_key(&key));
+        Ok(())
     }
 
     /// Seals every ended day of every trail with `signer` from now on.
@@ -901,6 +928,7 @@ impl Engine {
             cursors: CursorKey::draw().ok_or_else(|| {
                 Refused::Storage("the system has no source of randomness".to_owned())
             })?,
+            shared_cursors: OnceLock::new(),
             unsealed: Mutex::new(std::collections::BTreeSet::new()),
             unwitnessed: Mutex::new(std::collections::BTreeSet::new()),
         });
@@ -1234,7 +1262,10 @@ impl Engine {
             )
             .map_err(QueryError::Storage)?;
         query::page(
-            &self.inner.cursors,
+            self.inner
+                .shared_cursors
+                .get()
+                .unwrap_or(&self.inner.cursors),
             dir.as_ref(),
             class,
             resource,

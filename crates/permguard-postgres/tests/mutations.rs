@@ -1020,4 +1020,10 @@ fn a_membership_changed_on_one_instance_is_read_on_another() {
     std::thread::sleep(permguard_host::membership::FRESH_FOR);
     assert_eq!(one.seq(), 2);
     assert_eq!(one.invitations(now).len(), 2);
+    // WP-28.6: an operator's request reads what the store holds at once, not within the bound.
+    invite(&other).expect("a third, on the other");
+    assert_eq!(one.invitations(now).len(), 2, "read within the bound");
+    one.catch_up();
+    assert_eq!(one.seq(), 3, "caught up at once");
+    assert_eq!(one.invitations(now).len(), 3);
 }

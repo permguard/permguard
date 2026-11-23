@@ -71,13 +71,14 @@ access_key_of() { sed -n 's/^access_key: //p' "$1"; }
 coordinators="${LAB_COORDINATORS:-/coordinators}"
 
 # The coordinator that runs the Authority Plane and `admin`'s key file on its volume, once its first
-# start wrote it: `<host> <file>`.
+# start wrote it: `<host> <file>`. With two Control Plane instances (WP-28.6) the one that made
+# `admin` wrote it, and either is reached at the one address, `control-plane`.
 admin_key() {
-    local host key
-    for host in all-in-one control-plane; do
-        key="${coordinators}/${host}/volume/planes/authority/admin.key"
+    local instance key
+    for instance in all-in-one control-plane control-plane-2; do
+        key="${coordinators}/${instance}/volume/planes/authority/admin.key"
         if [ -s "${key}" ]; then
-            printf '%s %s\n' "${host}" "${key}"
+            printf '%s %s\n' "${instance%-2}" "${key}"
             return 0
         fi
     done
@@ -176,8 +177,13 @@ cmd_pki() {
             head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/postgres-password"
             head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/s3-secret"
             head -c 32 /dev/urandom >"${backend}/kek"
+            # The Host's own secrets, written once for every instance (WP-28.6): material an
+            # instance generated would be its own, and the database refuses another's.
+            for name in audit-pseudonym zone-root; do
+                head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/${name}"
+            done
         )
-        log "the lab authority wrote the postgresql-s3 backend's secrets and its bucket"
+        log "the lab authority wrote the postgresql-s3 backend's secrets, the Host's and its bucket"
     fi
 }
 
@@ -222,12 +228,14 @@ listener_env() {
 }
 
 # The `postgresql-s3` backend's secrets the lab's authority wrote, installed as files of this
-# instance, beside its configuration: the database's password, the bucket's secret, the KEK.
+# instance, beside its configuration: the database's password, the bucket's secret, the KEK, and
+# the Host's pseudonymisation key and coordinator root, the same in every instance, as one Secret
+# mounted in each.
 backend_secrets() {
     local secrets="${volume}/operations/secrets" name
     mkdir -p "${secrets}"
     chmod 0700 "${volume}" "${volume}/operations" "${secrets}"
-    for name in postgres-password s3-secret kek; do
+    for name in postgres-password s3-secret kek audit-pseudonym zone-root; do
         install -m 0600 "${backend}/${name}" "${secrets}/${name}"
     done
 }
@@ -606,8 +614,17 @@ membership() {
         jq -er --arg id "${id}" '.members[] | select(.membership_id == $id) | .revision')"
     pg --host-endpoint "$(host_endpoint "${coordinator}")" host members approve "${id}" \
         --expected-revision "${revision}" >/dev/null
-    status="$(pg --host-endpoint "$(host_endpoint "${member}")" host members sync "${id}" | jq -r '.status')"
-    [ "${status}" = active ] || fail "${member}: the membership ${id} is ${status} after its sync"
+    # A member's session reads its coordinator's memberships within 5 s of a change, on any of
+    # its instances (WP-28.4): a sync that reaches another instance than the approval may read the
+    # membership pending a moment longer, and the next one reads it active.
+    local deadline=$((SECONDS + 15))
+    while :; do
+        status="$(pg --host-endpoint "$(host_endpoint "${member}")" host members sync "${id}" | jq -r '.status')"
+        [ "${status}" = active ] && break
+        [ "${status}" = pending ] && [ "${SECONDS}" -lt "${deadline}" ] ||
+            fail "${member}: the membership ${id} is ${status} after its sync"
+        sleep 2
+    done
     log "${member}: member of ${coordinator} for ${selector} (${id}; ${member_fp} approved, ${coordinator_fp} pinned)"
 }
 
@@ -713,6 +730,7 @@ cmd_assert() {
         case "${phase}" in
         "") assert_split_plane ;;
         before-import | imported) assert_import "${phase}" ;;
+        replicas) assert_replicas ;;
         *) drill_restore "${phase}" ;;
         esac
         ;;
@@ -982,6 +1000,31 @@ assert_import() {
         log "the Control Plane served from postgresql-s3 is the Host it was on files, $(jq -r '.host_id' <<<"${identity}")"
         ;;
     esac
+}
+
+# Two Control Plane instances behind one address (iteration 03, WP-28.6), each reached by its own
+# name and checked against the certificate of the address: one Host, one catalog.
+assert_replicas() {
+    local instances=(control-plane control-plane-2) instance identity seen="" zones
+    step "split-plane: two Control Plane instances, one Host"
+    for instance in "${instances[@]}"; do
+        identity="$(pg --tls-server-name control-plane --host-endpoint "$(host_endpoint "${instance}")" \
+            host identity show | jq -c '{host_id, fingerprint}')" ||
+            fail "${instance} did not answer its identity"
+        [ -z "${seen}" ] || [ "${identity}" = "${seen}" ] ||
+            fail "${instance} is ${identity}, not ${seen}"
+        seen="${identity}"
+    done
+    log "both instances are the Host $(jq -r '.host_id' <<<"${seen}")"
+
+    step "split-plane: a zone made through one instance, read through the other"
+    pg --tls-server-name control-plane --control-endpoint "$(control_endpoint control-plane-2)" \
+        zones create replicated >/dev/null || fail "control-plane-2 did not make the zone"
+    zones="$(pg --tls-server-name control-plane --control-endpoint "$(control_endpoint control-plane)" \
+        zones list)" || fail "control-plane did not list the zones"
+    jq -e '[.zones[].name] | index("replicated") != null and index("acme") != null' <<<"${zones}" >/dev/null ||
+        fail "control-plane does not hold the zone control-plane-2 made"
+    log "the zone made through control-plane-2 is read through control-plane at once"
 }
 
 # The restore drill (WP-7.7, `scripts/drill-restore.sh`), in four phases on the split-plane lab:

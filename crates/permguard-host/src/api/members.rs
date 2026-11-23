@@ -1270,6 +1270,14 @@ fn failure(error: MembershipError) -> Failure<Refusal> {
 }
 
 impl HostApi {
+    /// The memberships, as the store holds them now: what an operator's request reads, on a
+    /// store other instances share as on a volume (WP-28.6).
+    pub(super) fn memberships_now(&self) -> Result<&MembershipService, Refusal> {
+        let memberships = self.memberships()?;
+        memberships.store.catch_up();
+        Ok(memberships)
+    }
+
     pub(super) fn memberships(&self) -> Result<&MembershipService, Refusal> {
         self.memberships.as_deref().ok_or_else(|| {
             Refusal::new(
@@ -1458,7 +1466,7 @@ impl HostApi {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
         // A retired identity offers nothing more.
         self.host_identity()?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         if invite.max_uses != 1 {
             return Err(invalid("`max_uses` is 1: an invitation is used once"));
         }
@@ -1551,7 +1559,7 @@ impl HostApi {
         let now = self.time.now_secs();
         Ok(Invites {
             invites: self
-                .memberships()?
+                .memberships_now()?
                 .store
                 .invitations(now)
                 .iter()
@@ -1568,7 +1576,7 @@ impl HostApi {
         request_id: String,
     ) -> Result<InviteDeleted, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let invite_id = id_of(id)?;
         let mutation = Mutation {
             request_id,
@@ -1621,7 +1629,7 @@ impl HostApi {
                     .map_err(|_| invalid(format!("`{text}` is not a membership status")))
             })
             .transpose()?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let viewing = self.viewing(memberships);
         Ok(Members {
             members: memberships
@@ -1637,7 +1645,7 @@ impl HostApi {
     /// `GET /host/v1/members/{id}`.
     pub fn member(&self, actor: &Actor, id: &str) -> Result<MemberView, Refusal> {
         let _admitted = self.admit(actor, operations::MEMBERSHIP_READ)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let held = memberships
             .store
             .membership(&id_of(id)?)
@@ -1806,7 +1814,7 @@ impl HostApi {
     /// coordinates, with the boot ids a clone alarm names (WP-4.3).
     pub fn member_sessions(&self, actor: &Actor, id: &str) -> Result<MemberSessions, Refusal> {
         let _admitted = self.admit(actor, operations::MEMBERSHIP_READ)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let membership_id = id_of(id)?;
         memberships
             .store
@@ -1850,7 +1858,7 @@ impl HostApi {
         approve: ApproveMember,
     ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         let mut narrow = approve
@@ -2012,7 +2020,7 @@ impl HostApi {
         action: &'static str,
     ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         if change
@@ -2085,7 +2093,7 @@ impl HostApi {
         change: ChangeMemberRecord,
     ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         if change.name.is_none() && change.groups.is_none() {
@@ -2214,7 +2222,7 @@ impl HostApi {
         // Admitted before anything of the membership is read.
         let _admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
         let held = self
-            .memberships()?
+            .memberships_now()?
             .store
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
@@ -2238,7 +2246,7 @@ impl HostApi {
         // Admitted before anything of the membership is read.
         let _admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
         let held = self
-            .memberships()?
+            .memberships_now()?
             .store
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
@@ -2261,7 +2269,7 @@ impl HostApi {
         appraise: AppraiseMember,
     ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         if let Some(revoke) = &appraise.revoke {
@@ -2331,7 +2339,7 @@ impl HostApi {
         plan: PlanMemberRevoke,
     ) -> Result<Planned, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         if plan.reason.is_empty()
@@ -2454,7 +2462,7 @@ impl HostApi {
         run: RunMemberRevoke,
     ) -> Result<MemberChanged, Refusal> {
         let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let coordinator = self.coordinator()?;
         let membership_id = id_of(id)?;
         let now = self.time.now_secs();
@@ -3497,7 +3505,7 @@ impl HostApi {
         };
         mutation.validated()?;
         let membership_id = id_of(id)?;
-        let memberships = self.memberships()?;
+        let memberships = self.memberships_now()?;
         let held = memberships
             .store
             .membership(&membership_id)

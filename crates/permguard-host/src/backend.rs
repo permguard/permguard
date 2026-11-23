@@ -49,6 +49,12 @@ pub type Mutations = Box<dyn Fn(Arc<dyn Projection>) -> Arc<dyn Engine> + Send +
 /// identity is open, since the seal binds its `host_id`.
 pub type Delivered = Box<dyn Fn(Arc<Sealer>) -> Arc<dyn DeliveredKeys> + Send + Sync>;
 
+/// The root the cursors of the Host's audit queries are issued under, sealed by what seals the
+/// Host's secrets: one root every instance reads, minted once, so a cursor one instance issued
+/// opens at another (iteration 03, WP-28.6).
+pub type AuditCursorRoot =
+    Box<dyn Fn(Arc<Sealer>) -> Result<zeroize::Zeroizing<Vec<u8>>, String> + Send + Sync>;
+
 /// Every store of a Host on a shared backend, and the connection a Plane's server composes its
 /// own stores over.
 pub struct Shared {
@@ -71,6 +77,7 @@ pub struct Shared {
     pub holds: Arc<dyn HoldStore>,
     pub plans: Arc<dyn ReplayStore>,
     pub trails: Arc<dyn Trails>,
+    pub audit_cursor_root: AuditCursorRoot,
     /// The catalog of zones and ledgers the Control Plane serves.
     pub catalog: Arc<dyn permguard_core::catalog::Catalog>,
     pub mutations: Mutations,

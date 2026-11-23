@@ -69,11 +69,11 @@ controlPlane:
   repository: control-plane
   # The image's digest, `sha256:<hex>`: what `imageVerification` verifies and the Pod runs.
   digest: ""
-  # One. A control plane's catalog, refs and key ring have a single maintaining process, so two
-  # replicas either fight over one volume or diverge behind one Service — a zone created through
-  # one pod missing from the other. `templates/checks.yaml` refuses more, rather than letting a
-  # cluster discover it. Availability comes from a PodDisruptionBudget and a fast restart until the
-  # catalog lives in something that arbitrates.
+  # One on a volume. A control plane's catalog, refs and key ring on files have a single
+  # maintaining process, so two replicas either fight over one volume or diverge behind one
+  # Service; `templates/checks.yaml` refuses more. On `storage.backend: postgresql-s3` the state is
+  # in what arbitrates, and several replicas serve behind the one Service, `autoscaling` included
+  # (iteration 03, WP-28.6).
   replicaCount: 1
   # The serving floor of this Host, as for a data plane group: see `dataPlane.groupDefaults.assurance`.
   assurance:

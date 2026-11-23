@@ -2908,3 +2908,41 @@ fn from_production_a_control_plane_on_postgresql_s3_makes_its_identity_in_the_da
                 && env["value"] == witness.as_str())
     );
 }
+
+/// On `postgresql-s3` a control plane runs several replicas behind its one Service, and
+/// autoscales: its state is in what arbitrates (WP-28.6). On a volume, and for an all-in-one, one.
+#[test]
+fn a_control_plane_on_postgresql_s3_runs_several_replicas() {
+    let rendered = render(&format!(
+        "{SHARED_BACKEND}  replicaCount: 3\n  autoscaling: {{ enabled: true, minReplicas: 2, maxReplicas: 6 }}\n"
+    ));
+    let workload = rendered.get("Deployment", "permguard-control-plane");
+    assert!(
+        workload["spec"]["replicas"].is_null(),
+        "the autoscaler owns the count"
+    );
+    let autoscaler = rendered.get("HorizontalPodAutoscaler", "permguard-control-plane");
+    assert_eq!(autoscaler["spec"]["maxReplicas"], 6);
+    let fixed = render(&format!("{SHARED_BACKEND}  replicaCount: 3\n"));
+    assert_eq!(
+        fixed.get("Deployment", "permguard-control-plane")["spec"]["replicas"],
+        3
+    );
+    // On a volume the refusal stands.
+    refused(
+        "controlPlane:\n  replicaCount: 2\n",
+        "controlPlane.replicaCount=2",
+    );
+    // Several instances share their secrets: none mints its own.
+    refused(
+        &format!("autogenerate: true\n{SHARED_BACKEND}  replicaCount: 2\n"),
+        "each instance would mint its own secrets",
+    );
+    refused(
+        &format!(
+            "autogenerate: true\n{SHARED_BACKEND}  autoscaling: {{ enabled: true, minReplicas: 2, maxReplicas: 4 }}\n"
+        ),
+        "each instance would mint its own secrets",
+    );
+    render(&format!("autogenerate: true\n{SHARED_BACKEND}"));
+}

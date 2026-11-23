@@ -1,0 +1,65 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Two Control Plane instances behind one address (iteration 03, WP-28.6): beside the first,
+# `control-plane-2` serves the same database and bucket under the same name, `control-plane`,
+# which the lab's network resolves to both, as a cluster's Service does. They start together, so
+# what the first start makes is raced for. Each keeps a working directory of its own and nothing
+# else. Added by `BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane` beside
+# `docker-compose.lab.postgresql-s3.yml`, never on its own.
+
+x-lab: &lab
+  image: ${PERMGUARD_LAB_IMAGE:-permguard/lab:local}
+  entrypoint: ["bash", "/opt/permguard/lab/permguard-lab.sh"]
+  user: "65532:65532"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  control-plane-2:
+    <<: *lab
+    profiles: [split-plane]
+    command: ["serve", "permguard-control-plane", "/opt/permguard/lab/control-plane.yml"]
+    networks:
+      default: { aliases: [control-plane] }
+    environment:
+      # The first instance's name, its certificate and the address its clients use.
+      LAB_HOST: control-plane
+      PERMGUARD_STORAGE_BACKEND: postgresql-s3
+      PERMGUARD_STORAGE_POSTGRESQL_HOST: lab-postgres
+      PERMGUARD_STORAGE_POSTGRESQL_DATABASE: permguard
+      PERMGUARD_STORAGE_POSTGRESQL_USER: permguard
+      PERMGUARD_STORAGE_POSTGRESQL_PASSWORD_REF: postgres-password
+      PERMGUARD_STORAGE_POSTGRESQL_CA: /lab/pki/ca.crt
+      PERMGUARD_STORAGE_S3_ENDPOINT: https://lab-s3:7070
+      PERMGUARD_STORAGE_S3_REGION: us-east-1
+      PERMGUARD_STORAGE_S3_BUCKET: permguard
+      PERMGUARD_STORAGE_S3_ACCESS_KEY: permguard-lab
+      PERMGUARD_STORAGE_S3_SECRET_REF: s3-secret
+      PERMGUARD_STORAGE_S3_CA: /lab/pki/ca.crt
+      PERMGUARD_STORAGE_S3_ENCRYPTION: none
+      PERMGUARD_KEYS_CUSTODY: file
+      PERMGUARD_KEYS_KEK_REF: kek
+    volumes: ["lab:/lab:ro", "./lab/compose:/opt/permguard/lab:ro", "control-plane-2-state:/var/lib/permguard"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:5443/.well-known/server-configuration"]
+      interval: 2s
+      timeout: 2s
+      retries: 90
+    depends_on:
+      lab-pki: { condition: service_completed_successfully }
+      lab-postgres: { condition: service_healthy }
+      lab-s3: { condition: service_started }
+
+  # The catalog is written once both serve; whichever instance made `admin` wrote its key.
+  lab-catalog:
+    volumes: ["control-plane-2-state:/coordinators/control-plane-2:ro"]
+    depends_on:
+      control-plane-2: { condition: service_healthy }
+  lab-enroll:
+    volumes: ["control-plane-2-state:/coordinators/control-plane-2:ro"]
+  lab:
+    volumes: ["control-plane-2-state:/coordinators/control-plane-2:ro"]
+
+volumes:
+  control-plane-2-state:

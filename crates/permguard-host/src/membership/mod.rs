@@ -1263,6 +1263,25 @@ impl Store {
         let Ok(mut state) = self.state.try_write() else {
             return;
         };
+        self.follow(&mut state);
+    }
+
+    /// Adds to the state, now, the entries another instance added since it was read, on a store
+    /// other instances share, waiting for the readers of the state to finish: what an operator's
+    /// request reads before it answers or changes anything (WP-28.6), so a membership another
+    /// instance made a moment ago is found and its revision is the one the store holds. Called with
+    /// no reading of the state held by this thread. A store that does not answer leaves the state
+    /// as it was.
+    pub fn catch_up(&self) {
+        if !self.store.shared() {
+            return;
+        }
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        self.follow(&mut state);
+    }
+
+    /// Applies to `state` the entries the store holds after it.
+    fn follow(&self, state: &mut State) {
         let added = match self.store.entries_after(state.seq) {
             Ok(added) => added,
             Err(error) => {
@@ -1575,6 +1594,12 @@ impl Store {
     }
 
     pub fn membership(&self, id: &[u8; 16]) -> Option<Held> {
+        let found = self.read().memberships.get(id).cloned();
+        if found.is_some() {
+            return found;
+        }
+        // One another instance made a moment ago is read at once, not within the bound (WP-28.6).
+        self.current(true);
         self.read().memberships.get(id).cloned()
     }
 
@@ -1918,7 +1943,8 @@ impl Store {
     }
 
     /// Checks an enrollment without writing: the invitation, the proof, the peer, the request.
-    /// Answers the pending membership the enrollment would create.
+    /// Answers the pending membership the enrollment would create. The invitation is read as the
+    /// store holds it: one another instance issued a moment ago is found (WP-28.6).
     pub fn check_enroll(
         &self,
         coordinator: &Coordinator<'_>,
@@ -1927,6 +1953,7 @@ impl Store {
         now: u64,
     ) -> Result<Pending, MembershipError> {
         let refused = |detail: &str| MembershipError::Enrollment(detail.to_owned());
+        self.catch_up();
         let (invitation, state) = self
             .read()
             .invites
@@ -2789,6 +2816,11 @@ impl Store {
         held_epoch: Option<u64>,
     ) -> Result<record::MembershipAnswer, MembershipError> {
         let _ = coordinator;
+        // A membership another instance made a moment ago is read at once (WP-28.6).
+        let known = self.read().memberships.contains_key(id);
+        if !known {
+            self.current(true);
+        }
         // One reading of the state: the status, the manifests and their statements agree.
         let state = self.read();
         let held = state.memberships.get(id).ok_or_else(|| {

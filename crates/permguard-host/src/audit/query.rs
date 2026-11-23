@@ -149,6 +149,12 @@ impl std::fmt::Debug for CursorKey {
 }
 
 impl CursorKey {
+    /// The key `key` is: one a root every instance of the Host holds derives, so a cursor one
+    /// instance issued opens at another (iteration 03, WP-28.6).
+    pub fn from_key(key: &[u8; 32]) -> Self {
+        Self(*key)
+    }
+
     /// A key drawn from the system's randomness.
     pub fn draw() -> Option<Self> {
         use ring::rand::SecureRandom as _;

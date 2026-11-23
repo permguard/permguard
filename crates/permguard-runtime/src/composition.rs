@@ -1960,6 +1960,22 @@ impl Composition {
                 .context("opening the audit trails")?,
             )
         };
+        // On a shared backend the cursors of an audit query are issued under one root every
+        // instance holds, sealed by the `file` custody's key-encryption key bound to this Host: the
+        // next page is answered by whichever instance it reaches (WP-28.6).
+        if let Some(shared) = &shared {
+            let sealer = custodian
+                .sealer(host_identity.host_id())
+                .map_err(anyhow::Error::msg)
+                .context("sealing the audit queries' cursor root")?;
+            let root = (shared.audit_cursor_root)(Arc::new(sealer))
+                .map_err(anyhow::Error::msg)
+                .context("reading the audit queries' cursor root")?;
+            audit_engine
+                .cursors_from_root(&root)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("keying the audit queries' cursors")?;
+        }
         // Sealed `access` and `operations` days older than `audit.retention` go; sealed
         // `security` ones only past `audit.retention_security`, kept for ever when it is unset
         // (owner decisions of 2026-10-07 and 2026-10-11).

@@ -413,6 +413,20 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
             pg::audit::PostgresTrails::new(database.clone())
                 .with_objects(Arc::new(connected.bucket.clone())),
         ),
+        audit_cursor_root: {
+            let database = database.clone();
+            Box::new(move |sealer| {
+                use permguard_control_plane::decisions::cursorkey::CursorRoots as _;
+                permguard_control_plane::decisions::cursorkey::postgres::PostgresCursorRoots::new(
+                    database.clone(),
+                    sealer,
+                    permguard_host::audit::QUERY_CURSORS,
+                )
+                .roots()
+                .map(|roots| roots.issuing)
+                .map_err(|error| error.to_string())
+            })
+        },
         catalog: Arc::new(pg::catalog::PostgresCatalog::new(database.clone())),
         mutations: Box::new(move |projection| {
             Arc::new(pg::mutations::PostgresMutations::new(

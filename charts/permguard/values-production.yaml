@@ -22,9 +22,9 @@ controlPlane:
   # ingress or a mesh sidecar that terminates TLS, `terminatedUpstream: true` instead.
   tls:
     secretName: permguard-control-plane-tls
-  # One, and not a compromise: see the note beside `controlPlane.replicaCount` in values.yaml. The
-  # budget below and a fast restart are what availability means here until the catalog lives in
-  # something that arbitrates.
+  # One on a volume, and not a compromise: see the note beside `controlPlane.replicaCount` in
+  # values.yaml. The budget below and a fast restart are what availability means there; on
+  # `storage.backend: postgresql-s3` the state is in what arbitrates and several replicas serve.
   replicaCount: 1
   resources:
     requests:
