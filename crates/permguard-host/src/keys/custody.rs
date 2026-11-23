@@ -166,7 +166,7 @@ pub struct Prepared {
 
 /// Whether `bytes` are a plaintext PKCS#8 document rather than a sealed key: DER starts with a
 /// SEQUENCE, a sealed key with an eight-member CBOR map.
-fn is_plaintext(bytes: &[u8]) -> bool {
+pub(crate) fn is_plaintext(bytes: &[u8]) -> bool {
     bytes.first() == Some(&0x30)
 }
 

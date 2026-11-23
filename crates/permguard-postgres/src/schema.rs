@@ -603,6 +603,15 @@ pub const MIGRATIONS: &[Migration] = &[
         );
     ",
     },
+    Migration {
+        version: 21,
+        name: "an import under way",
+        // The import of a volume writes the deployment first, as importing, and clears it last:
+        // a start refuses a database an import did not complete (iteration 03, WP-28.1).
+        statements: "
+        ALTER TABLE permguard_deployment ADD COLUMN importing boolean NOT NULL DEFAULT false;
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

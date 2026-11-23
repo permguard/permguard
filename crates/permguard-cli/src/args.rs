@@ -2870,6 +2870,15 @@ Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audi
         after_help = "Examples:\n  permguard migrate status --volume /var/lib/permguard\n  permguard migrate status --volume ./volume -o json"
     )]
     Status,
+    /// Import a stopped server's volume into the `postgresql-s3` backend its configuration names.
+    ///
+    /// Every store a Control Plane or an Authority Plane keeps, as the volume kept it.
+    #[command(
+        after_help = "The configuration is the server's on the backend, its working directory the volume. The database must hold nothing: a server never started on it. An import that does not complete leaves the database refused at start; empty its schema and the bucket's prefix, then import again.
+
+Examples:\n  permguard migrate import --volume /var/lib/permguard --server-config /etc/permguard/server.yaml\n  permguard migrate import --volume ./volume --server-config server.yaml -o json"
+    )]
+    Import,
     /// Return a committed migration to its old generation, when the new one is as the commit
     /// left it.
     #[command(

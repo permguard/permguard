@@ -28,6 +28,8 @@ pub mod audit;
 pub mod backend;
 #[cfg(feature = "control-plane")]
 pub mod control_plane;
+#[cfg(feature = "backend")]
+pub mod import;
 mod listing;
 mod sign;
 #[cfg(feature = "streams")]

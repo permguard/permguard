@@ -213,6 +213,10 @@
       "reason": "the file backend's quota, measured from the volume's directories"
     },
     {
+      "path": "crates/permguard-s3/src/import.rs",
+      "reason": "the import of a volume into the `postgresql-s3` backend: reads the volume's layout, where its rings, streams and Planes' directories are, and its stores through their file implementations"
+    },
+    {
       "path": "crates/permguard-s3/src/streams.rs",
       "reason": "a stream consumer's runs on PostgreSQL and S3: the other implementation of `consumer::store::Runs`, whose errors are the storage library's; it names the error type and reaches no file"
     },

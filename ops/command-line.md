@@ -233,6 +233,7 @@ A secret key is written once to a new file only its owner reads, and never print
 | `migrate run`          | recovery operator | present |     |
 | `migrate status`       | recovery operator | present |     |
 | `migrate rollback`     | recovery operator | present |     |
+| `migrate import`       | recovery operator | present |     |
 | `ledgers export`       | `catalog.read`    | present |     |
 | `ledgers import`       | `policy.push`     | present |     |
 | `zones export`         | `catalog.read`    | present |     |

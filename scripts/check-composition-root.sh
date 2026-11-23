@@ -29,6 +29,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-postgres/src/testing.rs"
     "crates/permguard-s3/src/testing.rs"
     "crates/permguard-s3/src/backend.rs"
+    "crates/permguard-s3/src/import.rs"
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"

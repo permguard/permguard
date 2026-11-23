@@ -19,7 +19,9 @@
 # run also proves the Authority Plane: a service account, its key and scopes over HTTPS and gRPC, a
 # token revoked and the token keys rotated. BACKEND=postgresql-s3 runs the split-plane profile with
 # its Control Plane on PostgreSQL and S3 (`docker-compose.lab.postgresql-s3.yml`, iteration 03,
-# WP-28.1): the Data Plane on files, as always.
+# WP-28.1): the Data Plane on files, as always. BACKEND=import runs it with its Control Plane on
+# files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
+# S3 with `permguard migrate import`, serves it from there and proves the profile again.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -55,17 +57,28 @@ fi
 run_profile() {
     local profile="$1" project="permguard-lab-$1"
     local files=(-f docker-compose.lab.yml)
-    if [ "${BACKEND:-files}" = postgresql-s3 ]; then
+    case "${BACKEND:-files}" in
+    files) ;;
+    postgresql-s3 | import)
         [ "${profile}" = split-plane ] || {
-            echo "compose-lab: BACKEND=postgresql-s3 runs the split-plane profile alone" >&2
+            echo "compose-lab: BACKEND=${BACKEND} runs the split-plane profile alone" >&2
             exit 64
         }
         files+=(-f docker-compose.lab.postgresql-s3.yml)
-    fi
+        ;;
+    *)
+        echo "compose-lab: no backend ${BACKEND}; one of files, postgresql-s3, import" >&2
+        exit 64
+        ;;
+    esac
+    # What serves after an import: the backend, without the phase on files before it.
+    local served=("${files[@]}")
+    [ "${BACKEND:-files}" != import ] || files+=(-f docker-compose.lab.import.yml)
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         files+=(-f docker-compose.lab.rotation.yml)
     fi
     dc() { COMPOSE_PROFILES="${profile}" docker compose "${files[@]}" -p "${project}" "$@"; }
+    dc_served() { COMPOSE_PROFILES="${profile}" docker compose "${served[@]}" -p "${project}" "$@"; }
     failed() {
         dc ps -a >"${artifacts}/${profile}.ps" 2>&1 || true
         dc logs --no-color --timestamps >"${artifacts}/${profile}.log" 2>&1 || true
@@ -106,6 +119,23 @@ run_profile() {
 
     step "${profile}: what it must prove"
     dc run --rm lab assert "${profile}" || failed "an assertion failed"
+    if [ "${BACKEND:-files}" = import ]; then
+        step "${profile}: the Control Plane's volume imported into postgresql-s3"
+        dc run --rm lab assert "${profile}" before-import || failed "the identity on files was not read"
+        dc stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
+        dc_served run --rm --no-deps control-plane import permguard-control-plane \
+            /opt/permguard/lab/control-plane.yml || failed "the import of the volume failed"
+        dc_served up -d --no-deps --wait control-plane 2>/dev/null ||
+            failed "the Control Plane did not serve from postgresql-s3"
+        # Read whole first: `grep -q` stopping the pipe early would fail it under `pipefail`.
+        local served_log
+        served_log="$(dc_served logs --no-color control-plane 2>/dev/null)" || true
+        grep -q '"storage.database_ready"' <<<"${served_log}" ||
+            failed "the Control Plane did not open the database"
+        step "${profile}: what it must prove, served from postgresql-s3"
+        dc_served run --rm lab assert "${profile}" imported || failed "the imported identity differs"
+        dc_served run --rm lab assert "${profile}" || failed "an assertion failed after the import"
+    fi
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         step "${profile}: decisions across key rotations"
         dc run --rm lab assert "${profile}" rotation || failed "an assertion failed across rotations"

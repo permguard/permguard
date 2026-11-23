@@ -30,6 +30,7 @@ backend = [
     "streams",
     "dep:anyhow",
     "dep:permguard-host",
+    "dep:permguard-std",
     "dep:ring",
     "dep:rustls-native-certs",
     "dep:tracing",
@@ -62,6 +63,7 @@ permguard-host = { workspace = true, optional = true }
 permguard-notp = { workspace = true, optional = true }
 permguard-objects = { workspace = true, optional = true }
 permguard-postgres = { workspace = true, optional = true }
+permguard-std = { workspace = true, optional = true, features = ["catalog"] }
 permguard-stream = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -103,3 +105,7 @@ required-features = ["streams"]
 [[test]]
 name = "import"
 required-features = ["control-plane", "streams"]
+
+[[test]]
+name = "import_volume"
+required-features = ["backend"]

@@ -8,6 +8,8 @@
 #                                           and the operator's, once
 #   permguard-lab serve <binary> <config>   one Host: claim its volume, bootstrap the operator's
 #                                           certificate, serve
+#   permguard-lab import <binary> <config>  the stopped Host's volume moved to the `postgresql-s3`
+#                                           backend its configuration names
 #   permguard-lab catalog <profile>         the zones, ledgers and policies a profile serves
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
@@ -217,6 +219,32 @@ listener_env() {
     done
 }
 
+# The `postgresql-s3` backend's secrets the lab's authority wrote, installed as files of this
+# instance, beside its configuration: the database's password, the bucket's secret, the KEK.
+backend_secrets() {
+    local secrets="${volume}/operations/secrets" name
+    mkdir -p "${secrets}"
+    chmod 0700 "${volume}" "${volume}/operations" "${secrets}"
+    for name in postgres-password s3-secret kek; do
+        install -m 0600 "${backend}/${name}" "${secrets}/${name}"
+    done
+}
+
+# `import <binary> <config>`: the stopped Host's volume moved into the `postgresql-s3` backend its
+# configuration names (iteration 03, WP-28.1), offline, between its last start on files and its
+# first on the backend, as an operator runs it.
+cmd_import() {
+    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}" imported
+    [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ] ||
+        fail "the import's configuration names no postgresql-s3 backend"
+    listener_env "${host}" "${binary}"
+    imported="$(permguard -o json migrate import --volume "${volume}" --server-config "${config}")" ||
+        fail "${host}: the import of its volume failed"
+    jq -e '.stores | length > 0' >/dev/null <<<"${imported}" || fail "${host}: the import said nothing"
+    log "${host}: its volume imported into postgresql-s3, deployment $(jq -r '.deployment' <<<"${imported}"):" \
+        "$(jq -r '[.stores[] | select(.records > 0) | "\(.store) \(.records)"] | join(", ")' <<<"${imported}")"
+}
+
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
 # The claim moves forward on every start (TD-1); the operator's certificate is bootstrapped once,
 # offline, before the Host first serves; the listeners carry the certificate the lab's authority
@@ -228,12 +256,7 @@ cmd_serve() {
     if [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ]; then
         # No volume: the Host's state is the database's and the bucket's. Its secrets are files of
         # this instance, beside its configuration, and the bootstrap is the database's.
-        local secrets="${volume}/operations/secrets"
-        mkdir -p "${secrets}"
-        chmod 0700 "${volume}" "${volume}/operations" "${secrets}"
-        for name in postgres-password s3-secret kek; do
-            install -m 0600 "${backend}/${name}" "${secrets}/${name}"
-        done
+        backend_secrets
         if [ ! -f /var/lib/permguard/.lab-operator ]; then
             permguard -o json host grants bootstrap --server-config "${config}" \
                 --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
@@ -242,6 +265,9 @@ cmd_serve() {
         fi
     else
         "${binary}" volume claim --volume "${volume}" --next --create
+        # Before an import, the Host on files keeps its keys sealed under the key-encryption key
+        # it keeps on the backend after it, and reads the backend's secrets as the import does.
+        [ ! -d "${backend}" ] || backend_secrets
         if [ ! -f /var/lib/permguard/.lab-operator ]; then
             permguard -o json host grants bootstrap --volume "${volume}" \
                 --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
@@ -656,6 +682,7 @@ cmd_assert() {
     split-plane)
         case "${phase}" in
         "") assert_split_plane ;;
+        before-import | imported) assert_import "${phase}" ;;
         *) drill_restore "${phase}" ;;
         esac
         ;;
@@ -903,6 +930,28 @@ assert_split_plane() {
     # `crates/permguard-conformance/tests/compose.rs`): what verified the batches is the ring the
     # membership pinned.
     log "the coordinator holds all ${recorded} records of ${producer}, verified under its pinned data.attest ring"
+}
+
+# The import of the Control Plane's volume (iteration 03, WP-28.1), around `BACKEND=import`:
+#
+#   before-import  on files: the Control Plane's identity, kept under the lab's state
+#   imported       on postgresql-s3: the same identity, served from the database and the bucket
+assert_import() {
+    local kept="${state}/import" identity
+    identity="$(pg --host-endpoint "$(host_endpoint control-plane)" host identity show |
+        jq -c '{host_id, fingerprint}')"
+    case "$1" in
+    before-import)
+        mkdir -p "${kept}"
+        printf '%s\n' "${identity}" >"${kept}/identity"
+        log "the Control Plane on files is $(jq -r '.host_id' <<<"${identity}")"
+        ;;
+    imported)
+        [ "${identity}" = "$(cat "${kept}/identity")" ] ||
+            fail "the Control Plane served from postgresql-s3 is ${identity}, not $(cat "${kept}/identity")"
+        log "the Control Plane served from postgresql-s3 is the Host it was on files, $(jq -r '.host_id' <<<"${identity}")"
+        ;;
+    esac
 }
 
 # The restore drill (WP-7.7, `scripts/drill-restore.sh`), in four phases on the split-plane lab:
@@ -1421,6 +1470,7 @@ shift || true
 case "${command}" in
 pki) cmd_pki "$@" ;;
 serve) cmd_serve "$@" ;;
+import) cmd_import "$@" ;;
 catalog) cmd_catalog "$@" ;;
 enroll) cmd_enroll "$@" ;;
 assert) cmd_assert "$@" ;;

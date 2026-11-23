@@ -11,6 +11,7 @@
 //! | `migrate run`      | checks the plan against the volume and its claim, spends it, migrates    |
 //! | `migrate status`   | every subsystem laid out, its version, generation and phase              |
 //! | `migrate rollback` | a committed migration back to its old generation                         |
+//! | `migrate import`   | the volume into the `postgresql-s3` backend, store by store              |
 //!
 //! The migrations are the server binary's own (`permguard_offline::migrate`,
 //! `legacy_events::migrate_events`): one implementation, reached from both.
@@ -299,6 +300,10 @@ pub fn migrate_command(
             &rooted_file(globals, &out),
             trace,
         )?,
+        MigrateAction::Import => {
+            let imported = super::shared::import(&volume, server_config, trace)?;
+            render(&imported, globals.output, trace)?;
+        }
         MigrateAction::Run { confirm_file } => {
             run(
                 globals,

@@ -68,3 +68,32 @@ pub trait SlotStore: Send + Sync {
     /// Where the slot is kept, for a refusal an operator reads.
     fn place(&self, kind: Kind, slot: &str) -> String;
 }
+
+/// Fills `to` with every slot `from` holds, of each kind, the bytes as the custody put them: the
+/// import of a volume into another backend (iteration 03, WP-28.1), into slots that hold
+/// nothing. A key in the clear refuses before anything is written: the backend keeps a sealed
+/// key or a reference, never PKCS#8 (decision X108), and a start under the `file` custody seals
+/// it on the volume first. Answers how many slots it filled.
+pub fn copy_into(from: &dyn SlotStore, to: &dyn SlotStore) -> Result<usize, KeyError> {
+    let mut held = Vec::new();
+    for kind in [Kind::Key, Kind::Reference] {
+        for slot in from.slots(kind)? {
+            let Some(bytes) = from.read(kind, &slot)? else {
+                continue;
+            };
+            let bytes = zeroize::Zeroizing::new(bytes);
+            if kind == Kind::Key && super::custody::is_plaintext(&bytes) {
+                return Err(KeyError::Malformed(format!(
+                    "{} holds a key in the clear: start the server on files once under the `file` \
+                     custody, so it seals it, then import",
+                    from.place(kind, &slot)
+                )));
+            }
+            held.push((kind, slot, bytes));
+        }
+    }
+    for (kind, slot, bytes) in &held {
+        to.fill(*kind, slot, bytes)?;
+    }
+    Ok(held.len())
+}

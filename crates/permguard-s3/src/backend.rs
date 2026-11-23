@@ -32,6 +32,14 @@ const DATABASE_WAIT: Duration = Duration::from_secs(10);
 /// How long one request to the bucket may take.
 const BUCKET_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The scope the Host's clock mark is kept under.
+pub(crate) const CLOCK_MARK: &str = "host";
+
+/// The name a stream consumer's runs are kept under: its descriptor's `plane/type/version`.
+pub(crate) fn consumer(plane: &str, stream_type: &str, version: &str) -> String {
+    format!("{plane}/{stream_type}/{version}")
+}
+
 /// The one database and the one bucket of a process.
 #[derive(Debug, Clone)]
 pub struct Connected {
@@ -239,7 +247,14 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
     use permguard_postgres as pg;
 
     let database = connected.database.clone();
-    let home = pg::deployment::home(&database).context("reading the deployment's id")?;
+    let deployment = pg::deployment::home(&database).context("reading the deployment's id")?;
+    if deployment.importing {
+        bail!(
+            "the import of a volume began on this database and did not complete: no start serves \
+             what it left; empty the database's schema and the bucket's prefix, then import again"
+        );
+    }
+    let home = deployment.id;
     let delivered = database.clone();
     let mutations = database.clone();
     Ok(Shared {
@@ -247,7 +262,7 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
         home,
         clock_mark: Arc::new(pg::time::PostgresClockMark::new(
             Arc::new(database.clone()),
-            "host",
+            CLOCK_MARK,
         )),
         identity: Arc::new(pg::identity::PostgresIdentity::new(database.clone())),
         identity_slots: Arc::new(pg::slots::PostgresSlots::new(
@@ -324,9 +339,10 @@ fn consumer_runs(connected: &Connected) -> permguard_stream::engine::consumer::s
         Arc::new(crate::streams::PostgresRuns::new(
             connected.database.clone(),
             connected.bucket.clone(),
-            &format!(
-                "{}/{}/{}",
-                descriptor.plane, descriptor.stream_type, descriptor.version
+            &consumer(
+                &descriptor.plane,
+                &descriptor.stream_type,
+                &descriptor.version.to_string(),
             ),
         ))
     }))

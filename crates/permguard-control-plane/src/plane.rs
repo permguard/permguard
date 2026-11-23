@@ -360,6 +360,12 @@ pub type SharedCursorRoots = Box<
         + Sync,
 >;
 
+/// The decision store's API: the name its cursor keys are derived for, and its cursor roots are
+/// kept under on a backend that is not a volume.
+pub const DECISIONS_API: &str = "decisions";
+/// The event store's API, as [`DECISIONS_API`] is the decision store's.
+pub const EVENTS_API: &str = "events";
+
 /// The Control Plane's evidence on a backend that is not a volume (iteration 03, WP-28.1): what
 /// the composition hands it. No legacy store is kept there (decision X125): the evidence arrives
 /// over the Host's ship tasks, and every read is the consumer's.
@@ -434,7 +440,7 @@ fn build_event_facade(
         .ok_or_else(|| {
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
-        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, "events"))
+        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, EVENTS_API))
         .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
@@ -509,7 +515,7 @@ fn build_decision_facade(
         .ok_or_else(|| {
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
-        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, "decisions"))
+        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, DECISIONS_API))
         .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
