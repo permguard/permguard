@@ -684,7 +684,16 @@ pub struct Ring {
     gate: RwLock<Option<Arc<dyn ActivationGate>>>,
     /// Asked before a background maintenance pass (BUG-0207); none never holds it.
     hold: RwLock<Option<Arc<dyn MaintenanceHold>>>,
+    /// When the store was last read whole, on a store other instances share (WP-28.3).
+    read_at: Mutex<std::time::Instant>,
+    /// How old that reading may be when the ring signs or publishes: [`FRESH_FOR`].
+    fresh_for: Duration,
 }
+
+/// How long a ring on a store other instances share signs and publishes from what it read before
+/// it reads the store again (iteration 03, WP-28.3): a key revoked or rotated on one instance
+/// stops signing on every instance within this bound of the change's commit.
+pub const FRESH_FOR: Duration = Duration::from_secs(5);
 
 impl fmt::Debug for Ring {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -819,6 +828,8 @@ impl Ring {
             retired: Arc::new(AtomicBool::new(false)),
             gate: RwLock::new(None),
             hold: RwLock::new(None),
+            read_at: Mutex::new(std::time::Instant::now()),
+            fresh_for: FRESH_FOR,
         };
         Ok(opened)
     }
@@ -870,6 +881,7 @@ impl Ring {
     /// The epoch the active key was prepublished at, from the journal: what tells a key a pin's
     /// set published from one a later rotation added (BUG-0104). `None` without an active key.
     pub fn active_published_epoch(&self) -> Result<Option<u64>, RingError> {
+        self.current()?;
         let Some(active) = self.read().active().map(|key| key.kid.clone()) else {
             return Ok(None);
         };
@@ -928,11 +940,49 @@ impl Ring {
         *self.write() = state;
         *self.binding.write().unwrap_or_else(PoisonError::into_inner) = binding;
         self.stopped.store(false, Ordering::SeqCst);
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
         Ok(())
+    }
+
+    /// The ring as another bound than [`FRESH_FOR`] keeps it fresh: what a test waits for.
+    #[must_use]
+    pub fn fresh_for(mut self, bound: Duration) -> Self {
+        self.fresh_for = bound;
+        self
+    }
+
+    /// Reads the store again when the ring signs or publishes from a reading older than its
+    /// bound, on a store other instances share (WP-28.3). A store that cannot be read past the
+    /// bound is a ring that signs nothing: a key revoked elsewhere is never signed with past it.
+    /// While a transition holds the serial lock, this one or another thread's, the store was read
+    /// under it as the transition began, and is not read again: the transition's own reads of the
+    /// view never wait on the lock it holds.
+    fn current(&self) -> Result<(), RingError> {
+        if !self.store.shared() || self.retired.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let stale = self
+            .read_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed()
+            >= self.fresh_for;
+        if !stale {
+            return Ok(());
+        }
+        match self.serial.try_lock() {
+            Ok(_serial) => self.reload(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                let _serial = poisoned.into_inner();
+                self.reload()
+            }
+            Err(std::sync::TryLockError::WouldBlock) => Ok(()),
+        }
     }
 
     /// The materialized view of the journal.
     pub fn view(&self) -> Result<View, RingError> {
+        self.current()?;
         let state = self.read();
         let (suite, key_set_digest) = match state.statement(self.id) {
             Ok((suite, digest, _)) => (suite, digest),
@@ -951,6 +1001,7 @@ impl Ring {
     /// The public statement: the published set, its epoch and digest, and the binding of this
     /// epoch when the identity signed one.
     pub fn statement(&self) -> Result<Statement, RingError> {
+        self.current()?;
         let state = self.read();
         let (suite, key_set_digest, keys) = state.statement(self.id)?;
         let binding = self
@@ -1661,6 +1712,7 @@ impl Ring {
 
 impl permguard_core::keys::Sign for Ring {
     fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+        self.current().map_err(core_error)?;
         self.read()
             .active()
             .map(|key| KeyId::new(key.kid.clone()))
@@ -1679,6 +1731,7 @@ impl permguard_core::keys::Sign for Ring {
                 self.id
             )));
         }
+        self.current().map_err(core_error)?;
         // Held across the signing: a retirement waits for it before destroying the key.
         let state = self.read();
         let kid = state.active().map(|key| key.kid.clone()).ok_or_else(|| {
@@ -1700,6 +1753,7 @@ impl permguard_core::keys::Sign for Ring {
 impl permguard_core::keys::PublicSet for Ring {
     /// The published set; never an empty one: a ring with no key is not ready.
     fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
+        self.current().map_err(core_error)?;
         self.read()
             .statement(self.id)
             .map(|(_, _, keys)| keys)
@@ -1708,6 +1762,7 @@ impl permguard_core::keys::PublicSet for Ring {
 
     /// The epoch, the set's digest and the suite's algorithm, read together (WP-7.1).
     fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        self.current().map_err(core_error)?;
         let state = self.read();
         let (suite, digest, _) = state.statement(self.id).map_err(core_error)?;
         Ok(permguard_core::keys::KeySetView {

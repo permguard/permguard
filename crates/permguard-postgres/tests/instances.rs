@@ -465,3 +465,104 @@ fn instances_read_again_the_ring_another_maintained_on_postgresql() {
         .expect("read");
     assert!(slots >= 1, "the keys the holder made are held");
 }
+
+/// A key revoked on one instance stops signing on every instance within the stated bound
+/// (WP-28.3): the other instance, which signed with it, reads the database again once its
+/// reading is older than the bound, and from then on signs with the key that replaced it and
+/// publishes a set without the revoked one.
+#[test]
+fn a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql() {
+    use permguard_core::KeyManager as _;
+    use permguard_core::keys::{PublicSet as _, Sign as _};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{
+        AUDIT_REVOKED, DATA_ATTEST, DOMAIN, Policy, REVOKE_RUN, Ring,
+    };
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, run_checked_on};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) =
+        server("a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    const BOUND: std::time::Duration = std::time::Duration::from_millis(300);
+    let rings = instances(&server, &scratch.schema, |database| {
+        Ring::open_with(
+            Arc::new(PostgresRing::new(database.clone(), DATA_ATTEST)),
+            Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+                database,
+                DATA_ATTEST,
+            )))),
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            Policy {
+                publish_ahead: std::time::Duration::from_secs(3_600),
+                rotate_every: std::time::Duration::from_secs(86_400),
+                retain: std::time::Duration::from_secs(86_400),
+            },
+            Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
+        )
+        .expect("opens")
+        .fresh_for(BOUND)
+    });
+    let (revoking, other) = (&rings[0], &rings[1]);
+    revoking.maintain().expect("maintained");
+    std::thread::sleep(BOUND);
+    let revoked = other
+        .sign(b"before")
+        .expect("signs")
+        .key_id()
+        .as_str()
+        .to_owned();
+    let epoch = revoking.check_revocable(&revoked).expect("revocable");
+    run_checked_on::<(), String>(
+        &permguard_postgres::testing::engine(Database::clone(&scratch.database)),
+        Begin {
+            domain: DOMAIN,
+            operation: REVOKE_RUN,
+            action: AUDIT_REVOKED,
+            initiator: Initiator::System("test".to_owned()),
+            request: None,
+            target: Some(revoked.clone()),
+        },
+        || Ok(()),
+        |applying| {
+            revoking
+                .revoke(applying, &revoked, "compromised", None, epoch)
+                .map_err(|error| {
+                    permguard_host::operations::mutation::Failure::Refused(error.to_string())
+                })?;
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: (),
+            })
+        },
+    )
+    .expect("revoked");
+    assert_ne!(
+        revoking.sign(b"after").expect("signs").key_id().as_str(),
+        revoked,
+        "the revoking instance at once"
+    );
+    std::thread::sleep(BOUND + std::time::Duration::from_millis(50));
+    let signed = other.sign(b"after").expect("signs with the replacement");
+    assert_ne!(
+        signed.key_id().as_str(),
+        revoked,
+        "the other within the bound"
+    );
+    assert!(
+        other
+            .public_keys()
+            .expect("published")
+            .iter()
+            .all(|key| key.kid != revoked),
+        "and publishes no revoked key"
+    );
+}

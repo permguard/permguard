@@ -794,6 +794,8 @@ sections:
       - crates/permguard-offline/src/custody/pkcs11.rs
       - crates/permguard-offline/src/custody/transit.rs
     tests:
+      - crates/permguard-postgres/tests/instances.rs::a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_read_again_the_ring_another_maintained_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_key_slots_keep_their_contract_on_postgresql
       - crates/permguard-postgres/tests/instances.rs::instances_sign_with_one_sealed_key_on_postgresql
       - crates/permguard-postgres/tests/host_stores.rs::the_delivered_keys_keep_their_contract_sealed_on_postgresql
