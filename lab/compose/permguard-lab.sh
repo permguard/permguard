@@ -156,7 +156,13 @@ cmd_pki() {
             rm -f "$1.csr" "$1.ext"
         }
         for host in "${hosts[@]}"; do
-            issue "${host}" "DNS:${host},URI:${trust_domain}/${host}" "serverAuth,clientAuth"
+            local names="DNS:${host}"
+            # On postgresql-s3 the second Control Plane instance serves under the same certificate,
+            # reached by its own name too, an endpoint a Data Plane names (WP-28.7).
+            if [ "${host}" = control-plane ] && [ "${LAB_BACKEND:-files}" = postgresql-s3 ]; then
+                names="${names},DNS:control-plane-2"
+            fi
+            issue "${host}" "${names},URI:${trust_domain}/${host}" "serverAuth,clientAuth"
         done
         issue operator "URI:${trust_domain}/operator" "clientAuth"
         # Each certificate's principal on a Host: the fingerprint of its certificate.
@@ -323,8 +329,17 @@ cmd_serve() {
         export "PERMGUARD_HOST_JOIN_GROUPS=$(cat "${invited}/group")"
         log "${host}: joins its coordinator by itself from ${invited}"
     fi
+    # WP-28.7: the Control Plane's instances a member names besides its memberships' address, by
+    # the Host they serve, which discovery states.
+    if [ -n "${LAB_COORDINATOR_ENDPOINTS:-}" ]; then
+        local coordinator
+        coordinator="$(curl -fsS http://control-plane:5443/.well-known/server-configuration |
+            jq -er '.host_id')" || fail "${host}: the Control Plane states no Host id"
+        export "PERMGUARD_HOST_COORDINATOR_ENDPOINTS=${coordinator} ${LAB_COORDINATOR_ENDPOINTS}"
+        log "${host}: reaches ${coordinator} at ${LAB_COORDINATOR_ENDPOINTS}"
+    fi
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
-    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES
+    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES LAB_COORDINATOR_ENDPOINTS
     exec "${binary}" "${config}"
 }
 

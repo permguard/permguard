@@ -31,8 +31,9 @@ use crate::config::{
     SETTING_AUDIT_RETENTION, SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK,
     SETTING_AUTOGENERATE, SETTING_BACKUP_DESTRUCTION, SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_BACKUP_RECOVERY_KEY, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_BACKUP_RETENTION,
-    SETTING_DEVELOPMENT_MODE, SETTING_DUAL_CONTROL_APPROVAL_TTL, SETTING_HOST_IDENTITY_SUITE,
-    SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
+    SETTING_DEVELOPMENT_MODE, SETTING_DUAL_CONTROL_APPROVAL_TTL,
+    SETTING_HOST_COORDINATOR_ENDPOINTS, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
+    SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_JOIN_INVITATION_FILE, SETTING_HOST_JOIN_NAME, SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY,
     SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER,
@@ -947,6 +948,15 @@ struct PeerPinSection {
     fingerprint: String,
 }
 
+/// One `host.coordinator_endpoints[]` entry (WP-28.7): where a coordinator is reached besides
+/// the address its memberships name.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoordinatorEndpointsSection {
+    host_id: String,
+    endpoints: Vec<String>,
+}
+
 /// Listener address for the telemetry surface.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -962,6 +972,9 @@ struct TelemetrySection {
     /// The peer Hosts this one opens sessions with (WP-2.3).
     #[serde(default)]
     peers: Vec<PeerPinSection>,
+    /// Where each coordinator is reached besides its memberships' address (WP-28.7).
+    #[serde(default)]
+    coordinator_endpoints: Vec<CoordinatorEndpointsSection>,
     /// The join a Data Plane Host makes by itself at start (TD-5).
     #[serde(default)]
     join: JoinSection,
@@ -1379,6 +1392,20 @@ impl ConfigFile {
                 .collect::<Vec<_>>()
                 .join("\n")
         });
+        let coordinator_endpoints = (!self.host.coordinator_endpoints.is_empty()).then(|| {
+            self.host
+                .coordinator_endpoints
+                .iter()
+                .map(|coordinator| {
+                    format!(
+                        "{} {}",
+                        coordinator.host_id,
+                        coordinator.endpoints.join(" ")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
         let added_controls = (!self.assurance.added_controls.is_empty())
             .then(|| self.assurance.added_controls.join(","));
         let appraisal_controls = (!self.membership.appraisal.controls.is_empty()).then(|| {
@@ -1429,6 +1456,10 @@ impl ConfigFile {
             (SETTING_ISSUER, self.public.url.as_ref()),
             (SETTING_ADMIN_ALLOW, allow.as_ref()),
             (SETTING_HOST_PEERS, peers.as_ref()),
+            (
+                SETTING_HOST_COORDINATOR_ENDPOINTS,
+                coordinator_endpoints.as_ref(),
+            ),
             (
                 SETTING_ADMIN_PEER_SESSIONS,
                 self.admin.peer_sessions.as_ref(),
@@ -2627,6 +2658,28 @@ mod tests {
         assert!(
             ConfigFile::parse("host:\n  peers:\n    - host_id: x\n      key: y\n").is_err(),
             "a pin has exactly its two members"
+        );
+    }
+
+    #[test]
+    fn test_the_coordinator_endpoints_reach_their_setting() {
+        // WP-28.7: `host.coordinator_endpoints[]` as lines `<host_id> <endpoint> ...`.
+        let settings = settings_of(
+            "host:\n  coordinator_endpoints:\n    - host_id: 0198f2aa-0000-7000-8000-000000000001\n      endpoints: [\"https://cp-1:5444\", \"https://cp-2:5444\"]\n",
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .find(|(name, _)| name == SETTING_HOST_COORDINATOR_ENDPOINTS)
+                .map(|(_, value)| value.as_str()),
+            Some("0198f2aa-0000-7000-8000-000000000001 https://cp-1:5444 https://cp-2:5444")
+        );
+        assert!(
+            ConfigFile::parse(
+                "host:\n  coordinator_endpoints:\n    - host_id: x\n      address: y\n"
+            )
+            .is_err(),
+            "an entry has exactly its two members"
         );
     }
 

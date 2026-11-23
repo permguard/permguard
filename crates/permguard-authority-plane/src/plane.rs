@@ -28,6 +28,8 @@ use crate::{accounts, admin, tokens};
 
 /// How often the lists are signed again and handed to this Host: well within their `ttl`.
 const FEED_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+/// How often a token's want of a list or a key is looked for between two feeds (BUG-0336).
+const WANTED_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// How often the lists whose tokens all expired are retired.
 const RETIRE_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 /// The single job the retirement of expired lists is (WP-28.2).
@@ -417,7 +419,15 @@ impl PlaneTask for ListsService {
             let task = tokio::spawn(async move {
                 let mut retired_at = std::time::Instant::now();
                 loop {
-                    tokio::time::sleep(FEED_EVERY).await;
+                    // At the latest every FEED_EVERY; at once when a token named a list or a key
+                    // this Host does not hold, as one another instance issued does (WP-28.7).
+                    let due = std::time::Instant::now() + FEED_EVERY;
+                    while std::time::Instant::now() < due {
+                        tokio::time::sleep(WANTED_POLL).await;
+                        if authority.trust_wanted() {
+                            break;
+                        }
+                    }
                     let (feeding, jobs) = (Arc::clone(&authority), jobs.clone());
                     let retire = retired_at.elapsed() >= RETIRE_EVERY;
                     if retire {

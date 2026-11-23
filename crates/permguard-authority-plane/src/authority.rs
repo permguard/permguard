@@ -867,6 +867,18 @@ impl Authority {
         Ok(Some(compact))
     }
 
+    /// Whether a token asked this Host for a list or a key it does not hold since the last call:
+    /// the feed is then due at once, as the refresh from a remote Authority Plane is (BUG-0336).
+    /// On several instances a token another instance issued names a list it opened a moment ago,
+    /// and this instance's feed hands it over within a quarter of a second (WP-28.7).
+    pub fn trust_wanted(&self) -> bool {
+        self.trust.as_ref().is_some_and(|trust| {
+            let lists = trust.take_lists_wanted();
+            let keys = trust.take_keys_wanted();
+            lists || keys
+        })
+    }
+
     /// Hands this Host the key set and every list as they stand: what a change or a tick of the
     /// plane calls, so the Planes in this process verify with what was just decided.
     pub fn feed_trust(&self) {

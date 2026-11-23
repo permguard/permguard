@@ -16,7 +16,9 @@ use crate::config_section::{AnyConfigSection, ConfigSection};
 use crate::keys::KEY_SET_MAX_AGE;
 use crate::limits::{Limits, PeerBlock};
 use crate::logging::{LogFormat, LogLevel};
-use crate::peer::{AllowedPeer, PeerSessions, PeerSessionsReport, PinnedPeer};
+use crate::peer::{
+    AllowedPeer, CoordinatorEndpoints, PeerSessions, PeerSessionsReport, PinnedPeer,
+};
 use crate::realm::{
     EXCHANGE_ON_UNMATCHED_SCOPE_REJECT, EXCHANGE_SOURCE_FORMAT_JWT,
     EXCHANGE_SOURCE_OAUTH_ACCESS_TOKEN, ExchangeProfileConfig, RealmConfig, RealmInput,
@@ -112,6 +114,12 @@ pub const SETTING_HOST_IDENTITY_WITNESS_FILE: &str = "PERMGUARD_HOST_IDENTITY_WI
 /// Runtime setting key for the peer Hosts this one opens sessions with (WP-2.3): one
 /// `<host_id> sha256:<first fingerprint>` per line, each pinned out of band.
 pub const SETTING_HOST_PEERS: &str = "PERMGUARD_HOST_PEERS";
+
+/// Runtime setting key for where a member reaches each of its coordinators besides the address
+/// its memberships name (iteration 03, WP-28.7): one `<host_id> <endpoint> [<endpoint> ...]` per
+/// line, the instances of one Control Plane; a session opens on one and moves to the next when it
+/// cannot connect.
+pub const SETTING_HOST_COORDINATOR_ENDPOINTS: &str = "PERMGUARD_HOST_COORDINATOR_ENDPOINTS";
 
 /// The Server Host role port every deployment answers on unless told otherwise.
 ///
@@ -1528,6 +1536,7 @@ pub struct Config {
     host_identity_witness: Option<String>,
     host_identity_witness_file: Option<PathBuf>,
     host_peers: Vec<PinnedPeer>,
+    host_coordinator_endpoints: Vec<CoordinatorEndpoints>,
     admin_peer_sessions: Option<PeerSessions>,
     /// Relaxations the Host's own state imposes, added at start (WP-2.2).
     host_relaxations: Vec<crate::assurance::Relaxation>,
@@ -1763,6 +1772,7 @@ impl Default for Config {
             host_identity_witness: None,
             host_identity_witness_file: None,
             host_peers: Vec::new(),
+            host_coordinator_endpoints: Vec::new(),
             admin_peer_sessions: None,
             host_relaxations: Vec::new(),
             admin_addr: None,
@@ -2694,6 +2704,15 @@ produce: use `EdDSA` or `ES256`"
                 bail!("`host.peers` pins the Host `{peer}` twice: one pin per Host");
             }
         }
+        let mut named = BTreeSet::new();
+        for coordinator in &self.host_coordinator_endpoints {
+            if !named.insert(coordinator.host_id()) {
+                bail!(
+                    "`host.coordinator_endpoints` names the coordinator of `{coordinator}` twice: \
+                     one line per coordinator"
+                );
+            }
+        }
         if self.admin_peer_sessions == Some(PeerSessions::EndToEnd)
             && !self.admin_tls.as_ref().is_some_and(TlsSettings::is_mutual)
         {
@@ -3574,6 +3593,12 @@ produce: use `EdDSA` or `ES256`"
     /// The peer Hosts this one opens sessions with, pinned by their first fingerprint (WP-2.3).
     pub fn host_peers(&self) -> &[PinnedPeer] {
         &self.host_peers
+    }
+
+    /// Where this Host reaches each of its coordinators besides the address its memberships
+    /// name (WP-28.7).
+    pub fn host_coordinator_endpoints(&self) -> &[CoordinatorEndpoints] {
+        &self.host_coordinator_endpoints
     }
 
     /// Whether the Host listener serves peer sessions, as stated or by default: `end_to_end` on
@@ -4997,6 +5022,11 @@ produce: use `EdDSA` or `ES256`"
                 .as_ref()
                 .map(|path| path.display().to_string()),
             SETTING_HOST_PEERS => lines(self.host_peers.iter().map(ToString::to_string)),
+            SETTING_HOST_COORDINATOR_ENDPOINTS => lines(
+                self.host_coordinator_endpoints
+                    .iter()
+                    .map(ToString::to_string),
+            ),
             SETTING_ADMIN_PEER_SESSIONS => Some(self.admin_peer_sessions().as_str().to_owned()),
             SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
             SETTING_PUBLIC_DISCLOSE_BUILD => b(self.disclose_build),
@@ -5595,6 +5625,16 @@ produce: use `EdDSA` or `ES256`"
                 .map(str::parse)
                 .collect::<Result<_>>()
                 .with_context(|| format!("reading {SETTING_HOST_PEERS}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_HOST_COORDINATOR_ENDPOINTS) {
+            self.host_coordinator_endpoints = value
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::parse)
+                .collect::<Result<_>>()
+                .with_context(|| format!("reading {SETTING_HOST_COORDINATOR_ENDPOINTS}"))?;
         }
 
         if let Some(value) = settings.get(SETTING_ADMIN_PEER_SESSIONS) {
@@ -7271,6 +7311,7 @@ struct HostJoinParts {
 /// restricted to, so a layer's stray pair — the process environment is a layer — is never
 /// recorded as a setting (WP-2.5). A build's extra settings are declared beside them.
 const CORE_SETTINGS: &[&str] = &[
+    SETTING_HOST_COORDINATOR_ENDPOINTS,
     SETTING_HOST_JOIN_INVITATION_FILE,
     SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_JOIN_NAME,

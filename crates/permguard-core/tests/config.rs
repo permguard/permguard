@@ -2099,6 +2099,74 @@ fn test_pinned_peers_are_read_checked_and_pinned_once() {
     }
 }
 
+/// WP-28.7: `host.coordinator_endpoints` names each coordinator once, by a lowercase UUIDv7 and
+/// its endpoints, each `https://<host>:<port>` once, in canonical form.
+#[test]
+fn test_coordinator_endpoints_are_read_checked_and_named_once() {
+    let lines =
+        format!("{PEER_A} https://cp-1:5444 grpcs://cp-2:5444/\n{PEER_B} https://cp.example:5444");
+    let named = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_COORDINATOR_ENDPOINTS, &lines),
+        ],
+        &[],
+        &[],
+    );
+    named.validate().expect("two coordinators validate");
+    let coordinators = named.host_coordinator_endpoints();
+    assert_eq!(coordinators.len(), 2);
+    assert_eq!(
+        coordinators[0].endpoints(),
+        ["https://cp-1:5444", "https://cp-2:5444"],
+        "in canonical form, in the order written"
+    );
+    assert_eq!(
+        coordinators[0].to_string(),
+        format!("{PEER_A} https://cp-1:5444 https://cp-2:5444")
+    );
+
+    let twice = format!("{PEER_A} https://cp-1:5444\n{PEER_A} https://cp-2:5444");
+    let doubled = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_COORDINATOR_ENDPOINTS, &twice),
+        ],
+        &[],
+        &[],
+    );
+    let error = doubled
+        .validate()
+        .expect_err("one line per coordinator")
+        .to_string();
+    assert!(error.contains("twice"), "{error}");
+
+    let many = (0..17)
+        .map(|at| format!("https://cp-{at}:5444"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    for malformed in [
+        PEER_A.to_owned(),
+        format!("{} https://cp-1:5444", PEER_A.to_uppercase()),
+        "0198f2aa-0000-4000-8000-000000000001 https://cp-1:5444".to_owned(),
+        format!("{PEER_A} http://cp-1:5444"),
+        format!("{PEER_A} https://cp-1"),
+        format!("{PEER_A} https://cp-1:5444/path"),
+        format!("{PEER_A} https://cp-1:5444 https://cp-1:5444/"),
+        format!("{PEER_A} {many}"),
+    ] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(&[(SETTING_HOST_COORDINATOR_ENDPOINTS, &malformed)])),
+            )
+            .is_err(),
+            "`{malformed}` names no coordinator's endpoints"
+        );
+    }
+}
+
 /// WP-2.3: peer sessions default to `end_to_end` only on a mutual-TLS listener, and stating
 /// `end_to_end` for one without a client CA is refused.
 #[test]

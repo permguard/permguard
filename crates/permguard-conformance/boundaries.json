@@ -1603,6 +1603,11 @@
       "reason": "a configuration value the operator sets: `admin.peer_sessions` (WP-2.3)"
     },
     {
+      "source": "crates/permguard-core/src/peer.rs",
+      "item": "CoordinatorEndpoints::from_str",
+      "reason": "a configuration value the operator sets: `host.coordinator_endpoints[]` (iteration 03, WP-28.7), each endpoint in the grammar of a membership's address"
+    },
+    {
       "source": "crates/permguard-host/src/session/record.rs",
       "item": "Operation::from_str",
       "reason": "a text member already read by `Hello::decode` or `Transcript::decode`, which are the boundary"

@@ -104,6 +104,8 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_BACKUP_RECOVERY_KEY,
             SETTING_BACKUP_RECOVERY_KEY_ID,
             SETTING_BACKUP_RETENTION,
+            // Unset: the address each membership names, alone (WP-28.7).
+            SETTING_HOST_COORDINATOR_ENDPOINTS,
             SETTING_HOST_IDENTITY_SUITE,
             SETTING_HOST_IDENTITY_WITNESS,
             SETTING_HOST_IDENTITY_WITNESS_FILE,

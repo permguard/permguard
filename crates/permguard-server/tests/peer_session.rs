@@ -576,6 +576,9 @@ struct Side {
     audit: Arc<permguard_host::audit::Engine>,
     /// The authorization every route decides with: the callers' access tokens alone.
     authorization: Arc<Authorization>,
+    /// What its peer sessions initiate with, and its listener's TLS: another connector's makings.
+    context: Context,
+    settings: TlsSettings,
 }
 
 /// The decision log's producer, as the server registers it.
@@ -888,7 +891,7 @@ async fn side_with(
         time: Arc::clone(&host.time),
         peer_sessions: PeerSessions {
             report: SERVED,
-            context: Some(context),
+            context: Some(context.clone()),
         },
         listeners: Vec::new(),
         audit: Some(Arc::clone(&audit)),
@@ -930,6 +933,8 @@ async fn side_with(
         producer: engine.map(|(producer, _)| producer),
         audit,
         authorization,
+        context,
+        settings,
     }
 }
 
@@ -978,6 +983,122 @@ fn join_of(
         groups: None,
         name: None,
     }
+}
+
+/// WP-28.7: a member reaches its coordinator at the endpoints its configuration names besides
+/// the address its membership holds. An endpoint that cannot connect, an instance that stopped,
+/// passes to the next, where the coordinator proves the pinned identity; another Host at an
+/// endpoint is refused, never passed over; none reachable is said.
+#[tokio::test]
+async fn a_member_reaches_its_coordinator_at_the_next_endpoint_when_one_cannot_connect() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::member::{Connector as _, Target};
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("endpoints");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let stranger = side(
+        &root.join("stranger"),
+        &pki,
+        "stranger",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    // Ports nothing listens on: instances that stopped.
+    let stopped = || {
+        let bound = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        format!(
+            "https://127.0.0.1:{}",
+            bound.local_addr().expect("its address").port()
+        )
+    };
+    let (first, second) = (stopped(), stopped());
+    let live = format!(
+        "https://127.0.0.1:{}",
+        coordinator.listener.address().port()
+    );
+    let elsewhere = format!("https://127.0.0.1:{}", stranger.listener.address().port());
+    let connector = |endpoints: &[&str]| {
+        let named: Vec<permguard_core::peer::CoordinatorEndpoints> = (!endpoints.is_empty())
+            .then(|| {
+                format!(
+                    "{} {}",
+                    coordinator.host.identity.host_id_text(),
+                    endpoints.join(" ")
+                )
+                .parse()
+                .expect("the coordinator's endpoints")
+            })
+            .into_iter()
+            .collect();
+        permguard_server::host_api::peer::PeerConnector::new(
+            member.context.clone(),
+            permguard_server::host_api::peer::member_client(Some(&member.settings))
+                .expect("the peer client")
+                .expect("a client CA"),
+        )
+        .with_endpoints(&named)
+    };
+    let target = |address: &str| Target {
+        address: address.to_owned(),
+        host_id: coordinator.host.identity.host_id(),
+        fingerprint: coordinator.host.identity.first_fingerprint().to_owned(),
+    };
+
+    // The address a membership holds, alone, where the instance stopped: unreachable.
+    let alone = connector(&[])
+        .prove(target(&first))
+        .await
+        .expect_err("nothing listens");
+    assert_eq!(alone.code, permguard_core::codes::common::UNAVAILABLE);
+    // Named with the live instance: the session opens on the next, which proves the pin.
+    let failing_over = connector(&[&first, &live]);
+    for _ in 0..2 {
+        let proved = failing_over
+            .prove(target(&first))
+            .await
+            .expect("proved at the next endpoint");
+        assert_eq!(proved.host_id, coordinator.host.identity.host_id());
+        assert_eq!(
+            proved.first_fingerprint,
+            coordinator.host.identity.first_fingerprint()
+        );
+    }
+    // Another Host at an endpoint answers for itself, and the pin refuses it: never passed over.
+    let refused = connector(&[&elsewhere, &live])
+        .prove(target(&elsewhere))
+        .await
+        .expect_err("another Host than the pinned one");
+    assert_ne!(refused.code, permguard_core::codes::common::UNAVAILABLE);
+    // None that connects: said, with how many were tried.
+    let none = connector(&[&first, &second])
+        .prove(target(&first))
+        .await
+        .expect_err("none reachable");
+    assert_eq!(none.code, permguard_core::codes::common::UNAVAILABLE);
+    assert!(
+        none.reason
+            .contains("none of the coordinator's 2 endpoints could be reached"),
+        "{}",
+        none.reason
+    );
 }
 
 fn code(refusal: &permguard_host::api::Refusal) -> &str {
@@ -1353,6 +1474,8 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         producer,
         audit,
         authorization,
+        context,
+        settings: _,
     } = member;
     listener.stop(Duration::from_secs(5)).await.expect("stops");
     // Everything of the old process goes, the volume's lock with it.
@@ -1367,6 +1490,7 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
         producer,
         audit,
         authorization,
+        context,
     ));
     let member = side(
         &root.join("member"),
@@ -2571,6 +2695,8 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         producer: _,
         audit,
         authorization,
+        context,
+        settings: _,
     } = member;
     drop(producer);
     listener.stop(Duration::from_secs(5)).await.expect("stops");
@@ -2584,6 +2710,7 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
         tasks,
         audit,
         authorization,
+        context,
     ));
     let member = streaming_side(
         &root.join("member"),
@@ -3654,7 +3781,11 @@ async fn an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to
             ))
         })
         .with_peer_connector(|config, session| {
-            permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+            permguard_client::peer::connector(
+                config.admin_tls().as_ref(),
+                session,
+                config.host_coordinator_endpoints(),
+            )
         })
         // The rings' upkeep, which gives each its first key, as an embedded Host composes it.
         .with_service(Box::new(permguard_std::keys::KeyService::new()))

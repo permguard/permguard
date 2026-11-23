@@ -96,7 +96,11 @@ impl App {
                 // own certificate, verifying them against its client CA; without one, a join is
                 // refused.
                 .with_peer_connector(|config, session| {
-                    permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+                    permguard_client::peer::connector(
+                        config.admin_tls().as_ref(),
+                        session,
+                        config.host_coordinator_endpoints(),
+                    )
                 })
                 // Every listener and what it demands of its clients (WP-2.11).
                 .with_listeners(crate::plane::listeners::listeners),

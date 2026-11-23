@@ -5,7 +5,7 @@
 # `control-plane-2` serves the same database and bucket under the same name, `control-plane`,
 # which the lab's network resolves to both, as a cluster's Service does. They start together, so
 # what the first start makes is raced for. Each keeps a working directory of its own and nothing
-# else. Added by `BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane` beside
+# else. The Data Plane names both, `control-plane-2` first (WP-28.7). Added by `BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane` beside
 # `docker-compose.lab.postgresql-s3.yml`, never on its own.
 
 x-lab: &lab
@@ -50,6 +50,12 @@ services:
       lab-pki: { condition: service_completed_successfully }
       lab-postgres: { condition: service_healthy }
       lab-s3: { condition: service_started }
+
+  # The Data Plane names both instances besides its memberships' address (WP-28.7): its
+  # sessions open on `control-plane-2` while it serves, and on the next when it stops.
+  data-plane:
+    environment:
+      LAB_COORDINATOR_ENDPOINTS: "https://control-plane-2:5444 https://control-plane:5444"
 
   # The catalog is written once both serve; whichever instance made `admin` wrote its key.
   lab-catalog:
