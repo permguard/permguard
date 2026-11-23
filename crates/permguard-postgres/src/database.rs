@@ -43,6 +43,11 @@ pub const RETRIES: Metric = Metric::counter(
 /// longest it waits before running it again. The wait doubles from a millisecond and is spread
 /// at random, so the transactions that collided do not collide again in step.
 pub const ATTEMPTS: u32 = 16;
+/// How many attempts a unit of work, or an operation, makes racing the others before it queues
+/// (X113).
+pub const OPTIMISTIC: u32 = 3;
+/// The scope a unit of work that keeps losing queues on, across the instances.
+const QUEUE: &str = "unit-of-work/queue";
 const LONGEST_WAIT: Duration = Duration::from_millis(200);
 
 /// How long the attempt `attempt`, counted from 1, waits before the next: between half of its
@@ -926,6 +931,10 @@ impl Database {
         }
         {
             let mut last = None;
+            // As an operation does (X113): a unit of work that keeps losing to others stops
+            // racing them and queues, in this process first, then across the instances, for
+            // the attempts it has left; a scoped one waits on its scope already.
+            let mut queued = None;
             for attempt in 1..=ATTEMPTS {
                 let attempted = (|| {
                     let unit = Arc::new(Unit::begin(
@@ -966,7 +975,11 @@ impl Database {
                     Err(Failure::Db(error)) if again(&error) => {
                         self.retried();
                         last = Some(error);
-                        std::thread::sleep(pause(attempt));
+                        if scope.is_none() && attempt >= OPTIMISTIC && queued.is_none() {
+                            queued = Some(self.hold_queued(QUEUE)?);
+                        } else {
+                            std::thread::sleep(pause(attempt));
+                        }
                     }
                     Err(Failure::Db(error)) => {
                         self.ended("failed");

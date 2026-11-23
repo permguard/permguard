@@ -17,7 +17,8 @@ use super::store::{DecisionStore, Scope};
 #[derive(Clone)]
 pub struct DecisionFacade {
     /// Where records are kept.
-    pub store: Arc<DecisionStore>,
+    /// The legacy store; `None` on a backend with no volume, which keeps none (decision X125).
+    pub store: Option<Arc<DecisionStore>>,
     /// What a record may carry in clear to be kept here: `None` leaves it to the producers'
     /// inclusion (see [`permguard_core::Config::decision_ceiling`]).
     pub ceiling: Option<permguard_core::decisions::IncludeSection>,
@@ -88,16 +89,20 @@ impl DecisionFacade {
         // A stream this store never held is a `404`, not an empty manifest: an empty answer
         // reads as "held, nothing signed yet", and a typo in a producer name must not read as
         // that.
-        let exists = self
-            .store
-            .stream_exists(pdp_id, instance)
-            .map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    error.to_string(),
-                )
-            })?;
+        let Some(store) = &self.store else {
+            return Err(ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::STREAM_UNKNOWN,
+                format!("this store holds no stream for `{pdp_id}/{instance}`"),
+            ));
+        };
+        let exists = store.stream_exists(pdp_id, instance).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
+                error.to_string(),
+            )
+        })?;
         if !exists {
             return Err(ApiError::new(
                 ErrorClass::NotFound,
@@ -107,14 +112,14 @@ impl DecisionFacade {
         }
 
         let until = if until_seq == 0 { u64::MAX } else { until_seq };
-        let state = self.store.stream_state(pdp_id, instance).map_err(|error| {
+        let state = store.stream_state(pdp_id, instance).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
                 permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
             )
         })?;
-        let signers = self.store.signers(pdp_id, instance).map_err(|error| {
+        let signers = store.signers(pdp_id, instance).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
                 permguard_core::codes::stream::STORE_UNAVAILABLE,
@@ -207,7 +212,7 @@ impl DecisionFacade {
     pub fn read(&self, scope: &Scope, window: &Window) -> Result<read::Page, read::ReadError> {
         read::read_with(
             &read::Sources {
-                store: &self.store,
+                store: self.store.as_deref(),
                 host: self.host.as_ref(),
                 catalog: self.catalog.as_ref(),
             },
@@ -230,7 +235,7 @@ impl DecisionFacade {
 
         evidence::admitted(&self.authorization, actor).map_err(Gated::Denied)?;
         let sources = read::Sources {
-            store: &self.store,
+            store: self.store.as_deref(),
             host: self.host.as_ref(),
             catalog: self.catalog.as_ref(),
         };

@@ -18,7 +18,8 @@ use super::store::{EventStore, Scope};
 #[derive(Clone)]
 pub struct EventFacade {
     /// Where events are kept.
-    pub store: Arc<EventStore>,
+    /// The legacy store; `None` on a backend with no volume, which keeps none (decision X125).
+    pub store: Option<Arc<EventStore>>,
     /// The Host's consumer of the event stream, which the public reads answer from beside the
     /// store (WP-6.2b); `None` when no engine consumes it.
     pub host: Option<permguard_host::composition::StreamConsumer>,
@@ -96,7 +97,7 @@ impl EventFacade {
     /// Where its reads find their events: the store, and the Host's consumer (WP-6.2b).
     pub fn sources(&self) -> read::Sources<'_> {
         read::Sources {
-            store: &self.store,
+            store: self.store.as_deref(),
             host: self.host.as_ref(),
         }
     }
@@ -108,10 +109,10 @@ impl EventFacade {
     /// then.
     pub fn verification_keys(&self) -> Result<Vec<Jwk>, String> {
         let mut keys: Vec<Jwk> = Vec::new();
-        let archived = self
-            .store
-            .archived_keys()
-            .map_err(|error| error.to_string())?;
+        let archived = match &self.store {
+            Some(store) => store.archived_keys().map_err(|error| error.to_string())?,
+            None => Vec::new(),
+        };
         for key in archived {
             // A key id is scoped to its producer. Two producers may legitimately publish
             // different material under the same label, and a verifier must try both.
@@ -199,63 +200,66 @@ impl EventFacade {
         };
         let until = if until_seq == 0 { u64::MAX } else { until_seq };
 
-        let page = self
-            .store
-            .producer_streams_page(
-                &zone,
-                &ledger,
-                ask.producer_class.as_deref(),
-                ask.producer.as_deref(),
-                ask.instance.as_deref(),
-                ask.after
-                    .as_ref()
-                    .map(permguard_stream::StreamPosition::as_tuple),
-                SIGNERS_STREAM_CEILING,
-            )
-            .map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    error.to_string(),
+        // The legacy producer streams, where a legacy store is kept (decision X125).
+        let mut truncated = false;
+        let mut answered = Vec::new();
+        if let Some(store) = &self.store {
+            let page = store
+                .producer_streams_page(
+                    &zone,
+                    &ledger,
+                    ask.producer_class.as_deref(),
+                    ask.producer.as_deref(),
+                    ask.instance.as_deref(),
+                    ask.after
+                        .as_ref()
+                        .map(permguard_stream::StreamPosition::as_tuple),
+                    SIGNERS_STREAM_CEILING,
                 )
-            })?;
-        let mut truncated = page.truncated;
-        let mut answered = Vec::with_capacity(page.streams.len());
-        for stream in page.streams {
-            let state = self.store.stream_state(&stream).map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    error.to_string(),
-                )
-            })?;
-            let signers = self.store.signers(&stream).map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    error.to_string(),
-                )
-            })?;
+                .map_err(|error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        permguard_core::codes::stream::STORE_UNAVAILABLE,
+                        error.to_string(),
+                    )
+                })?;
+            truncated = page.truncated;
+            for stream in page.streams {
+                let state = store.stream_state(&stream).map_err(|error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        permguard_core::codes::stream::STORE_UNAVAILABLE,
+                        error.to_string(),
+                    )
+                })?;
+                let signers = store.signers(&stream).map_err(|error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        permguard_core::codes::stream::STORE_UNAVAILABLE,
+                        error.to_string(),
+                    )
+                })?;
 
-            let spans = signers.covering(from_seq, until);
-            if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
-                return Err(Gated::Refused(ApiError::new(
-                    ErrorClass::Validation,
-                    permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
-                    format!(
-                        "this range crosses more than {} signing-key spans; narrow `from_seq` and \
-                         `until_seq`",
-                        permguard_stream::MAX_SIGNER_SPANS
-                    ),
-                )));
+                let spans = signers.covering(from_seq, until);
+                if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+                    return Err(Gated::Refused(ApiError::new(
+                        ErrorClass::Validation,
+                        permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
+                        format!(
+                            "this range crosses more than {} signing-key spans; narrow `from_seq` and \
+                             `until_seq`",
+                            permguard_stream::MAX_SIGNER_SPANS
+                        ),
+                    )));
+                }
+                answered.push(StreamSignersView {
+                    producer_class: stream.producer.class,
+                    producer: stream.producer.id,
+                    instance: stream.producer.instance,
+                    acked: state.acked,
+                    spans: spans.to_vec(),
+                });
             }
-            answered.push(StreamSignersView {
-                producer_class: stream.producer.class,
-                producer: stream.producer.id,
-                instance: stream.producer.instance,
-                acked: state.acked,
-                spans: spans.to_vec(),
-            });
         }
 
         // The Host consumer's runs of the ledger beside the legacy streams (WP-6.2b), in the same

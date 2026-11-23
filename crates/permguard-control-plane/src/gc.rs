@@ -176,7 +176,7 @@ impl PlaneTask for GcService {
 
             let sweep = Sweep {
                 catalog,
-                ledgers: self.ledgers.under(config).ledgers,
+                ledgers: self.ledgers.under(context).ledgers,
                 grace: config.gc_grace(),
                 metrics: context.metrics().clone(),
                 recorder: crate::handles::audit(context),

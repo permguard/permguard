@@ -153,7 +153,8 @@ pub fn refusal(error: &ReadError) -> (permguard_core::ErrorClass, &'static str) 
 /// stream when one is composed (WP-6.1b).
 #[derive(Clone, Copy)]
 pub struct Sources<'a> {
-    pub store: &'a DecisionStore,
+    /// The legacy store; `None` on a backend with no volume, which keeps none (decision X125).
+    pub store: Option<&'a DecisionStore>,
     pub host: Option<&'a StreamConsumer>,
     /// What turns a tenant route's names into the ids the consumer's streams are keyed by.
     pub catalog: Option<&'a std::sync::Arc<dyn permguard_core::catalog::Catalog>>,
@@ -294,7 +295,7 @@ pub fn read(
 ) -> Result<Page, ReadError> {
     read_with(
         &Sources {
-            store,
+            store: Some(store),
             host: None,
             catalog: None,
         },
@@ -329,15 +330,20 @@ pub fn read_with(
     // A stream nobody held is not an empty one (WP-6.3c, after the review).
     if let Scope::Stream { pdp_id, instance } = scope
         && legacy
-        && !store
-            .stream_exists(pdp_id, instance)
-            .map_err(|error| ReadError::Unavailable(error.to_string()))?
+        && !match store {
+            Some(store) => store
+                .stream_exists(pdp_id, instance)
+                .map_err(|error| ReadError::Unavailable(error.to_string()))?,
+            None => false,
+        }
     {
         return Err(ReadError::NotHeld(format!(
             "this store holds no stream for `{pdp_id}/{instance}`"
         )));
     }
-    let segments = if legacy {
+    // Without a legacy store there is nothing legacy to read: only the consumer's runs.
+    let store = store.filter(|_| legacy);
+    let segments = if let Some(store) = store {
         store
             .segments(scope)
             .map_err(|error| ReadError::Unavailable(error.to_string()))?
@@ -348,7 +354,7 @@ pub fn read_with(
     // rolls back: none is ever read, so a tail never shows a record that later disappears
     // (WP-6.3a).
     let acked = match scope {
-        Scope::Stream { pdp_id, instance } if legacy => {
+        Scope::Stream { pdp_id, instance } if let Some(store) = store => {
             store
                 .stream_state(pdp_id, instance)
                 .map_err(|error| ReadError::Unavailable(error.to_string()))?
@@ -421,7 +427,7 @@ pub fn read_with(
     let mut bound_by_bytes = false;
     let mut end = Frontier::empty();
 
-    if legacy {
+    if let Some(store) = store {
         let mut position = cursor.position(&stream);
         if position.segment == 0 {
             position.segment = oldest_segment;
@@ -577,7 +583,10 @@ pub fn read_with(
     let (proof, inclusion) = if window.proof {
         // One source a page: a legacy stream's or the consumer's runs (WP-6.3a), so paths never
         // pair across the two.
-        let (mut proof, mut inclusion) = legacy_proof(store, &records, &origins)?;
+        let (mut proof, mut inclusion) = match store {
+            Some(store) => legacy_proof(store, &records, &origins)?,
+            None => (Vec::new(), Vec::new()),
+        };
         let (host_proof, host_inclusion) = host_proof(
             sources.host,
             &host_runs,
@@ -1162,7 +1171,7 @@ mod host_reads {
         fn read(&self, scope: &Scope, window: &Window) -> Result<Page, ReadError> {
             read_with(
                 &Sources {
-                    store: &self.store,
+                    store: Some(&self.store),
                     host: Some(&self.consumer),
                     catalog: Some(&self.catalog),
                 },

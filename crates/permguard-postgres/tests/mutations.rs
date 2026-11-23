@@ -681,3 +681,59 @@ fn operations_that_all_change_one_row_are_all_applied() {
         (THREADS * EACH) as i64
     );
 }
+
+/// X113, for a unit of work outside any operation: units that all change one row, each holding
+/// it a while, are all applied, the ones that keep losing queued rather than given up on.
+#[test]
+fn units_of_work_that_all_change_one_row_are_all_applied() {
+    let Some(server) = server("units_of_work_that_all_change_one_row_are_all_applied") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    database
+        .write(|unit| {
+            unit.batch_execute(
+                "CREATE TABLE counter (id integer PRIMARY KEY, value bigint NOT NULL);
+                 INSERT INTO counter VALUES (1, 0);",
+            )
+        })
+        .expect("the table");
+    const THREADS: usize = 40;
+    const EACH: usize = 4;
+    let together = Barrier::new(THREADS);
+    let answers: Vec<bool> = std::thread::scope(|scope| {
+        let running: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let together = &together;
+                scope.spawn(move || {
+                    together.wait();
+                    (0..EACH)
+                        .map(|_| {
+                            database
+                                .write(|unit| {
+                                    unit.batch_execute(
+                                        "UPDATE counter SET value = value + 1 WHERE id = 1;
+                                         SELECT pg_sleep(0.03);",
+                                    )
+                                })
+                                .is_ok()
+                        })
+                        .collect::<Vec<bool>>()
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("the thread"))
+            .collect()
+    });
+    assert!(
+        answers.iter().all(|applied| *applied),
+        "a unit of work gave up"
+    );
+    let value: i64 = database
+        .write(|unit| Ok(unit.query_one("SELECT value FROM counter", &[])?.get(0)))
+        .expect("read");
+    assert_eq!(value, i64::try_from(THREADS * EACH).expect("small"));
+}

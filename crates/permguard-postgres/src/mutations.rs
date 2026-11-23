@@ -49,13 +49,10 @@ use permguard_host::operations::mutation::{
 };
 use postgres::error::SqlState;
 
-use crate::database::{ATTEMPTS, Database, SqlError, Unit, again, pause};
+use crate::database::{ATTEMPTS, Database, OPTIMISTIC, SqlError, Unit, again, pause};
 
 /// How long an applied answer is kept for a retry: the file engine's window.
 pub const WINDOW: Duration = permguard_host::operations::mutation::WINDOW;
-
-/// How many attempts an operation makes racing the others of its domain before it queues.
-const OPTIMISTIC: u32 = 3;
 
 /// The operation this thread is applying, while its write runs: what a record of its own facts
 /// is written beside.

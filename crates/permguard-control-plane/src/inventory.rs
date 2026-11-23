@@ -118,7 +118,7 @@ impl PlaneTask for InventoryService {
 
                 return Ok(());
             };
-            let ledgers = self.ledgers.under(context.config()).ledgers;
+            let ledgers = self.ledgers.under(context).ledgers;
             let metrics = context.metrics().clone();
             let every = self.every;
 

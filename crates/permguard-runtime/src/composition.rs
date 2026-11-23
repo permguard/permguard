@@ -2313,6 +2313,14 @@ impl Composition {
             for handle in &shared.handles {
                 context = context.with_extension(Arc::clone(handle));
             }
+            // What seals the secrets the Planes keep there, their cursor roots: the `file`
+            // custody's key-encryption key, bound to this Host.
+            context = context.with_extension(Arc::new(
+                custodian
+                    .sealer(host_identity.host_id())
+                    .map_err(anyhow::Error::msg)
+                    .context("sealing the Planes' secrets")?,
+            ));
         }
         // An `operations` record the engine could not write degrades the Host's readiness.
         audit_engine.observe(context.health().clone());

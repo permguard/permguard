@@ -243,7 +243,7 @@ impl Fixture {
 
     fn sources(&self) -> Sources<'_> {
         Sources {
-            store: self.store.as_ref(),
+            store: Some(self.store.as_ref()),
             host: Some(&self.consumer),
         }
     }
@@ -531,7 +531,7 @@ fn the_legacy_store_is_read_first_and_its_proof_entry_names_its_format() {
 fn facade(fixture: &Fixture) -> crate::events::facade::EventFacade {
     crate::events::facade::EventFacade {
         members: None,
-        store: Arc::clone(&fixture.store),
+        store: Some(Arc::clone(&fixture.store)),
         host: Some(fixture.consumer.clone()),
         cursor_key: fixture.keys.clone(),
         catalog: None,
@@ -628,7 +628,7 @@ fn a_lookup_past_the_examination_bound_finds_the_record_and_more_holds() {
     let consumer = StreamConsumer::over(Arc::clone(&held) as Arc<dyn StreamConsumerReads>);
     let keys = CursorKeys::from_root(ROOT, [1; 16], "events").expect("a cursor key");
     let sources = Sources {
-        store: store.as_ref(),
+        store: Some(store.as_ref()),
         host: Some(&consumer),
     };
     let last = format!("h-1-7-{count}");
@@ -811,7 +811,7 @@ fn an_export_reads_a_run_longer_than_two_examination_bounds_to_its_end() {
     let consumer = StreamConsumer::over(Arc::clone(&held) as Arc<dyn StreamConsumerReads>);
     let keys = CursorKeys::from_root(ROOT, [1; 16], "events").expect("a cursor key");
     let sources = Sources {
-        store: store.as_ref(),
+        store: Some(store.as_ref()),
         host: Some(&consumer),
     };
     let last = format!("h-1-7-{count}");

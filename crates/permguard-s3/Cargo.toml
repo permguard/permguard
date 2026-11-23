@@ -25,6 +25,8 @@ audit = ["dep:permguard-postgres"]
 # from the configuration, and every store of the Host over them.
 backend = [
     "audit",
+    "authority-plane",
+    "control-plane",
     "streams",
     "dep:anyhow",
     "dep:permguard-host",
@@ -36,6 +38,8 @@ backend = [
 streams = ["dep:permguard-host", "dep:permguard-postgres", "dep:permguard-stream"]
 # The Control Plane's stores whose objects this bucket keeps: a ledger's, and the archives. They
 # live here and not in the Control Plane's own package, whose domain links no network client.
+# The Authority Plane's stores on the backend: its accounts, tokens and marks.
+authority-plane = ["dep:permguard-authority-plane", "dep:permguard-postgres"]
 control-plane = [
     "dep:permguard-control-plane",
     "dep:permguard-host",
@@ -52,6 +56,7 @@ anyhow = { workspace = true, optional = true }
 ring = { workspace = true, optional = true }
 rustls-native-certs = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+permguard-authority-plane = { workspace = true, optional = true }
 permguard-control-plane = { workspace = true, optional = true }
 permguard-host = { workspace = true, optional = true }
 permguard-notp = { workspace = true, optional = true }

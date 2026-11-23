@@ -91,6 +91,12 @@ fn resolved(
     ))
 }
 
+/// Opens the backend `config` names and makes every store over it: what a build registers as
+/// its shared backend.
+pub fn open(config: &Config, secrets: Option<&dyn SecretStore>) -> Result<Shared> {
+    shared(&connect(config, secrets)?)
+}
+
 /// Opens the database and the bucket `config` names, the schema brought to this build's and the
 /// bucket proven to refuse a replacement. Refused, before anything is written, when either is
 /// unreachable, misconfigured, or a store that would overwrite in silence.
@@ -279,6 +285,34 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
         handles: vec![
             Arc::new(connected.clone()),
             Arc::new(consumer_runs(connected)),
+            Arc::new(permguard_control_plane::plane::ZoneStores {
+                ledgers: Arc::new(crate::control_plane::PostgresLedgers::new(
+                    database.clone(),
+                    connected.bucket.clone(),
+                )),
+                archives: Arc::new(crate::control_plane::PostgresArchives::new(
+                    database.clone(),
+                    connected.bucket.clone(),
+                )),
+            }),
+            Arc::new(evidence(&database)),
+            Arc::new(permguard_authority_plane::plane::AuthorityStores {
+                accounts: Arc::new(
+                    permguard_authority_plane::accounts::postgres::PostgresAccounts::new(
+                        database.clone(),
+                    ),
+                ),
+                tokens: Arc::new(
+                    permguard_authority_plane::tokens::postgres::PostgresTokens::new(
+                        database.clone(),
+                    ),
+                ),
+                marks: Arc::new(
+                    permguard_authority_plane::tokens::postgres::PostgresMarks::new(
+                        database.clone(),
+                    ),
+                ),
+            }),
         ],
     })
 }
@@ -340,5 +374,22 @@ impl permguard_host::keys::registry::Home for PostgresRings {
                 ring,
             )),
         })
+    }
+}
+
+/// The Control Plane's evidence over `database`: the cursor roots of each evidence store, a row
+/// each, sealed.
+fn evidence(database: &Database) -> permguard_control_plane::plane::SharedEvidence {
+    let database = database.clone();
+    permguard_control_plane::plane::SharedEvidence {
+        cursor_roots: Box::new(move |sealer, store| {
+            Arc::new(
+                permguard_control_plane::decisions::cursorkey::postgres::PostgresCursorRoots::new(
+                    database.clone(),
+                    sealer,
+                    store,
+                ),
+            )
+        }),
     }
 }

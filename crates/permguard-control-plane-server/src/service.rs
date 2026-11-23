@@ -692,12 +692,16 @@ mod tests {
             .event_facade(&context)
             .expect("the store opens");
 
+        let (http, grpc) = (
+            http.store.expect("a legacy store on files"),
+            grpc.store.expect("a legacy store on files"),
+        );
         assert!(
-            std::sync::Arc::ptr_eq(&http.store, &grpc.store),
+            std::sync::Arc::ptr_eq(&http, &grpc),
             "the two surfaces composed two stores over one directory"
         );
         assert!(
-            std::sync::Arc::ptr_eq(&http.store.gate(&stream()), &grpc.store.gate(&stream())),
+            std::sync::Arc::ptr_eq(&http.gate(&stream()), &grpc.gate(&stream())),
             "one stream's write gate is not shared, so the two surfaces do not exclude each other"
         );
     }
@@ -720,7 +724,10 @@ mod tests {
             module.composition.decision_facade(&context),
         ) {
             (Some(http), Some(grpc)) => assert!(
-                std::sync::Arc::ptr_eq(&http.store, &grpc.store),
+                std::sync::Arc::ptr_eq(
+                    &http.store.expect("a legacy store on files"),
+                    &grpc.store.expect("a legacy store on files")
+                ),
                 "the two surfaces composed two decision stores over one directory"
             ),
             (None, None) => {

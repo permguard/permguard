@@ -174,7 +174,7 @@ impl PlaneTask for ReadinessService {
             let checks = Arc::new(Checks {
                 health: context.health(),
                 catalog,
-                ledgers: self.ledgers.under(context.config()).ledgers,
+                ledgers: self.ledgers.under(context).ledgers,
                 signer,
                 said: Mutex::new(None),
             });

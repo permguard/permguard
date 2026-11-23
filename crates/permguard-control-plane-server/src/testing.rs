@@ -659,7 +659,7 @@ pub mod events {
     pub fn facade(fixture: &Fixture) -> permguard_control_plane::events::facade::EventFacade {
         permguard_control_plane::events::facade::EventFacade {
             members: None,
-            store: Arc::clone(&fixture.store),
+            store: Some(Arc::clone(&fixture.store)),
             host: Some(fixture.consumer.clone()),
             cursor_key: fixture.keys.clone(),
             catalog: None,

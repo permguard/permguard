@@ -21,6 +21,8 @@ async fn main() -> ExitCode {
     );
 
     PlaneServer::new(identity, build_settings(build::VERSION))
+        // The postgresql-s3 backend, when the configuration names it (iteration 03, WP-28.1).
+        .with_shared_backend(permguard_s3::backend::open)
         .with_plane(
             permguard_authority_plane_server::module(),
             addresses_for_plane("authority").expect("authority plane addresses are known"),
