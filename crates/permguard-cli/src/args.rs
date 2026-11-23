@@ -3268,7 +3268,9 @@ pub enum HostGrantsAction {
     #[command(
         after_help = "It holds the per-Host operations on its own Host API, presented by that certificate. Written once: a second bootstrap naming the same fingerprint is the first, one naming another is refused.
 
-Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
+On the postgresql-s3 backend the stopped server's configuration names where it is, in place of a volume: --server-config <file>.
+
+Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json\n  permguard host grants bootstrap --server-config /etc/permguard/control-plane.yml --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
     )]
     Bootstrap {
         /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.

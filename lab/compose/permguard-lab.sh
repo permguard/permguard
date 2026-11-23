@@ -35,7 +35,11 @@ trust_domain=spiffe://permguard-lab
 
 # Every Host a profile may run, by service name: each gets its certificate whatever the profile.
 hosts=(control-plane all-in-one data-plane data-plane-a data-plane-b data-plane-acme data-plane-beta
-    temporal-a temporal-b)
+    temporal-a temporal-b lab-postgres lab-s3)
+
+# Where the lab's authority writes the `postgresql-s3` backend's secrets: the database's password,
+# the bucket's secret and the key-encryption key that seals the Host's keys there.
+backend="${lab}/backend"
 
 # The CLI keeps its configuration under HOME, which the lab's user does not have.
 export HOME="${HOME:-/tmp}"
@@ -161,6 +165,16 @@ cmd_pki() {
     rm -rf "${pki}"
     mv "${work}" "${pki}"
     log "the lab authority issued ${#hosts[@]} Host certificates and the operator's"
+    if [ "${LAB_BACKEND:-files}" = postgresql-s3 ]; then
+        (
+            umask 077
+            mkdir -p "${backend}" "${lab}/s3/permguard"
+            head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/postgres-password"
+            head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/s3-secret"
+            head -c 32 /dev/urandom >"${backend}/kek"
+        )
+        log "the lab authority wrote the postgresql-s3 backend's secrets and its bucket"
+    fi
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -210,14 +224,31 @@ listener_env() {
 cmd_serve() {
     local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}"
     [ -f "${pki}/${host}.crt" ] || fail "the lab authority issued no certificate to ${host}"
-    "${binary}" volume claim --volume "${volume}" --next --create
-    if [ ! -f /var/lib/permguard/.lab-operator ]; then
-        permguard -o json host grants bootstrap --volume "${volume}" \
-            --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
-        touch /var/lib/permguard/.lab-operator
-        log "${host}: the lab operator's certificate is this volume's bootstrap principal"
-    fi
     listener_env "${host}" "${binary}"
+    if [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ]; then
+        # No volume: the Host's state is the database's and the bucket's. Its secrets are files of
+        # this instance, beside its configuration, and the bootstrap is the database's.
+        local secrets="${volume}/operations/secrets"
+        mkdir -p "${secrets}"
+        chmod 0700 "${volume}" "${volume}/operations" "${secrets}"
+        for name in postgres-password s3-secret kek; do
+            install -m 0600 "${backend}/${name}" "${secrets}/${name}"
+        done
+        if [ ! -f /var/lib/permguard/.lab-operator ]; then
+            permguard -o json host grants bootstrap --server-config "${config}" \
+                --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
+            touch /var/lib/permguard/.lab-operator
+            log "${host}: the lab operator's certificate is the database's bootstrap principal"
+        fi
+    else
+        "${binary}" volume claim --volume "${volume}" --next --create
+        if [ ! -f /var/lib/permguard/.lab-operator ]; then
+            permguard -o json host grants bootstrap --volume "${volume}" \
+                --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
+            touch /var/lib/permguard/.lab-operator
+            log "${host}: the lab operator's certificate is this volume's bootstrap principal"
+        fi
+    fi
     # TD-5: a member whose invitations the catalog step wrote joins its coordinator by itself, its
     # coordinator pinned apart from them; the enroll step then approves the fingerprint it expects.
     local invited="${state}/join/${host}"

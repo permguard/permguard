@@ -81,6 +81,26 @@ pub struct Shared {
 }
 
 impl Shared {
+    /// The mutation engine of an offline command on this backend, the server stopped: its
+    /// records written by an audit engine over the backend's trails, under a start of its own
+    /// drawn for its Host, as an offline command on files draws one.
+    pub fn offline_engine(&self, build: &str) -> Result<Arc<dyn Engine>, String> {
+        let time = Arc::new(crate::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        ));
+        let revision = crate::audit::config_revision(std::iter::empty());
+        // The Host the records are of: the identity's, once one is provisioned.
+        let host = crate::identity::provisioned_in(self.identity.as_ref(), &self.home)
+            .map_err(|error| error.to_string())?
+            .map_or(self.home, |provisioned| provisioned.host_id);
+        let stamp =
+            crate::audit::Stamp::draw(host, build, revision).map_err(|error| error.to_string())?;
+        let audit =
+            crate::audit::Engine::over(Arc::clone(&self.trails), Vec::new(), stamp, time, None)
+                .map_err(|error| error.to_string())?;
+        Ok((self.mutations)(Arc::new(audit)))
+    }
+
     /// The handle of type `T`, when the backend made one.
     pub fn handle<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         self.handles

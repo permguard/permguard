@@ -17,7 +17,9 @@
 # the all-in-one with keys replaced every two minutes (`docker-compose.lab.rotation.yml`) and proves
 # its decisions keep reaching its Control Plane across the rotations (BUG-0195). Every all-in-one
 # run also proves the Authority Plane: a service account, its key and scopes over HTTPS and gRPC, a
-# token revoked and the token keys rotated.
+# token revoked and the token keys rotated. BACKEND=postgresql-s3 runs the split-plane profile with
+# its Control Plane on PostgreSQL and S3 (`docker-compose.lab.postgresql-s3.yml`, iteration 03,
+# WP-28.1): the Data Plane on files, as always.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -53,6 +55,13 @@ fi
 run_profile() {
     local profile="$1" project="permguard-lab-$1"
     local files=(-f docker-compose.lab.yml)
+    if [ "${BACKEND:-files}" = postgresql-s3 ]; then
+        [ "${profile}" = split-plane ] || {
+            echo "compose-lab: BACKEND=postgresql-s3 runs the split-plane profile alone" >&2
+            exit 64
+        }
+        files+=(-f docker-compose.lab.postgresql-s3.yml)
+    fi
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         files+=(-f docker-compose.lab.rotation.yml)
     fi

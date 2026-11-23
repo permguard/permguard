@@ -1589,7 +1589,7 @@ impl Composition {
                 permguard_core::volume::Backend::Files.as_str()
             );
         }
-        if !on_volume && permguard_core::planes::discovery::plane_enabled(config, "data") {
+        if !on_volume && self.runs_plane(config, "data") {
             anyhow::bail!(
                 "storage.backend is `{}`, and a process that runs the Data Plane keeps its state \
                  on `{}`: run the Data Plane in a process of its own",

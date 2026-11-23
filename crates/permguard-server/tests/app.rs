@@ -236,6 +236,48 @@ async fn test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_co
     assert!(!volume.exists(), "nothing was claimed or created");
 }
 
+/// Iteration 03, X111: with the backend's adapter registered, a process that serves the Data
+/// Plane is refused on `postgresql-s3`, before anything is opened: the Data Plane keeps its state
+/// on files. One that serves no Data Plane goes on to open the backend.
+#[tokio::test]
+async fn test_a_process_that_serves_the_data_plane_is_refused_on_the_shared_backend() {
+    use permguard_host::composition::Declaration;
+
+    let path = config_file(
+        "shared-data-plane",
+        &format!(
+            "{SERVABLE}storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    database: permguard\n    user: permguard\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    access_key: AKIA\n    secret_ref: s3-secret\noperations:\n  keys:\n    custody: file\n    kek_ref: kek\n"
+        ),
+    );
+    let adapter = |_: &permguard_core::Config,
+                   _: Option<&dyn permguard_core::secrets::SecretStore>|
+     -> anyhow::Result<permguard_host::backend::Shared> {
+        anyhow::bail!("the adapter was asked to open the backend")
+    };
+    let refused = app()
+        .with_shared_backend(adapter)
+        .with_plane_declaration(|_| Some(("data", true, Declaration::new("data"))))
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the Data Plane keeps its state on files");
+    let said = format!("{refused:#}");
+    assert!(
+        said.contains("run the Data Plane in a process of its own"),
+        "{said}"
+    );
+
+    let opened = app()
+        .with_shared_backend(adapter)
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the adapter refuses");
+    let said = format!("{opened:#}");
+    assert!(
+        said.contains("the adapter was asked to open the backend"),
+        "{said}"
+    );
+}
+
 #[tokio::test]
 async fn test_volume_claim_moves_the_generation_forward_and_never_back() {
     let volume = env::temp_dir().join(format!(

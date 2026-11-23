@@ -81,10 +81,34 @@ fn grants_bootstrap(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     let now = permguard_core::time::unix_now();
-    let volume = volume_of(globals)?;
-    let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-    let (commitment, written) =
-        grants::bootstrap(&mutations, store.as_ref(), fingerprint, now).map_err(refused)?;
+    // Without --volume, on the `postgresql-s3` backend the server's configuration names: the
+    // commitment its database keeps (iteration 03, WP-28.1).
+    let (commitment, written) = match (&globals.volume, server_config) {
+        (None, Some(path)) => {
+            let config = super::shared::config_of(Some(path))?;
+            let Some(shared) = super::shared::open(&config)? else {
+                return Err(Failure::usage(
+                    "the configuration keeps its state on a volume: name it with --volume <dir>",
+                ));
+            };
+            trace.say(format!("backend: {}", shared.backend));
+            let mutations = shared
+                .offline_engine(permguard_core::build::VERSION)
+                .map_err(Failure::unavailable)?;
+            grants::bootstrap(
+                mutations.as_ref(),
+                shared.bootstrap.as_ref(),
+                fingerprint,
+                now,
+            )
+            .map_err(refused)?
+        }
+        _ => {
+            let volume = volume_of(globals)?;
+            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
+            grants::bootstrap(&mutations, store.as_ref(), fingerprint, now).map_err(refused)?
+        }
+    };
     render(
         &BootstrapReport {
             principal: commitment.principal.to_string(),
