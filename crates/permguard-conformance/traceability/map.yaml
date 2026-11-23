@@ -1388,6 +1388,24 @@ sections:
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/3-architecture-server-host-membership.md#several-instances":
+    paths:
+      - crates/permguard-host/src/membership/mod.rs
+      - crates/permguard-host/src/membership/replay.rs
+      - crates/permguard-host/src/membership/task.rs
+      - crates/permguard-host/src/membership/watch.rs
+      - crates/permguard-postgres/src/members.rs
+      - crates/permguard-postgres/src/sessions.rs
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-s3/src/backend.rs
+    tests:
+      - crates/permguard-postgres/tests/mutations.rs::a_membership_changed_on_one_instance_is_read_on_another
+      - crates/permguard-postgres/src/sessions.rs::the_open_sessions_are_every_instances_on_postgresql
+      - crates/permguard-postgres/tests/foundations.rs::a_notification_reaches_a_listener_when_its_unit_commits_on_postgresql
+      - crates/permguard-host/src/membership/watch.rs::a_published_hint_is_relayed_and_a_delivered_one_is_not
+      - crates/permguard-s3/src/backend.rs::a_hint_travels_whole_to_the_other_instances
+    gaps:
+      - "open (code): the PostgreSQL tests are skipped without a server; `scripts/test-postgres.sh` and the `postgres` job of CI run them. Several instances behind one address in the lab are WP-29.1's"
   "1-architecture/8-architecture-storage-operations.md#single-jobs":
     paths:
       - crates/permguard-host/src/jobs.rs

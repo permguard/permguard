@@ -930,3 +930,94 @@ fn an_undone_membership_entry_is_never_shown() {
         2
     );
 }
+
+/// WP-28.4: the memberships two instances keep in one database: a change made through one is
+/// read by the other, which makes its own change after it rather than over it.
+#[test]
+fn a_membership_changed_on_one_instance_is_read_on_another() {
+    use permguard_host::membership::record::{Limits, Task, TaskType};
+    use permguard_host::membership::{NewInvite, Store};
+
+    let Some(server) = server("a_membership_changed_on_one_instance_is_read_on_another") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
+    let instance = || {
+        Store::open_in(
+            std::sync::Arc::new(permguard_postgres::members::PostgresMembers::new(
+                Database::clone(database),
+            )),
+            None,
+        )
+        .expect("opens")
+    };
+    let (one, other) = (instance(), instance());
+    let new = || NewInvite {
+        selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![Task {
+            version: 1,
+            task_id: "decisions".to_owned(),
+            task_type: TaskType::DecisionsShip,
+            selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+            resource_types: vec!["decision".to_owned()],
+            required: true,
+            limits: Limits {
+                max_body_bytes: 1 << 20,
+                max_concurrency: 4,
+                max_rate_per_minute: 600,
+                max_batch_records: 1000,
+                retention_seconds: 30 * 86_400,
+            },
+            assurance_requirements: Vec::new(),
+        }],
+        expires: None,
+        expected_fingerprint: None,
+        min_assurance: None,
+        groups: None,
+        name: None,
+    };
+    let invite = |store: &Store| {
+        run_checked_on::<(), String>(
+            &engine,
+            Begin {
+                domain: permguard_host::membership::DOMAIN,
+                operation: permguard_host::membership::INVITE,
+                action: permguard_host::membership::AUDIT_INVITED,
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: None,
+            },
+            || Ok(()),
+            |applying| {
+                store
+                    .invite(
+                        applying,
+                        new(),
+                        "operator",
+                        permguard_core::time::unix_now(),
+                    )
+                    .map_err(|error| Failure::Refused(error.to_string()))?;
+                Ok(Applied {
+                    revision: 1,
+                    target: None,
+                    value: (),
+                })
+            },
+        )
+    };
+    invite(&one).expect("invited on the first instance");
+    invite(&other).expect("invited on the other, after the first's entry");
+    assert_eq!(other.seq(), 2);
+    let now = permguard_core::time::unix_now();
+    assert_eq!(
+        other.invitations(now).len(),
+        2,
+        "the other reads the first's invitation"
+    );
+    // The first reads the other's within the bound.
+    std::thread::sleep(permguard_host::membership::FRESH_FOR);
+    assert_eq!(one.seq(), 2);
+    assert_eq!(one.invitations(now).len(), 2);
+}

@@ -145,8 +145,14 @@ impl Store {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let key = (*id, task_id.to_owned());
-        if !windows.contains_key(&key) {
-            let read = self.read_window(id, task_id)?;
+        // On a store other instances share, the member may have been answered by another since
+        // this window was read (WP-28.4): it is read again at every message, keeping what this
+        // process is answering now.
+        if self.store.shared() || !windows.contains_key(&key) {
+            let mut read = self.read_window(id, task_id)?;
+            if let Some(held) = windows.get(&key) {
+                read.in_flight.clone_from(&held.in_flight);
+            }
             windows.insert(key.clone(), read);
         }
         let window = windows

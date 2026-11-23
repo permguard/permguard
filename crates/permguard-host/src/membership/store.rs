@@ -116,6 +116,22 @@ pub trait MemberStore: Send + Sync {
     /// Every entry, oldest first, each as the CBOR item it was added as.
     fn entries(&self) -> Result<Vec<Value>, MembershipError>;
 
+    /// The entries after the entry `seq`, oldest first: what was added since a reader read up to
+    /// it (iteration 03, WP-28.4).
+    fn entries_after(&self, seq: u64) -> Result<Vec<Value>, MembershipError> {
+        Ok(self
+            .entries()?
+            .into_iter()
+            .skip(usize::try_from(seq).unwrap_or(usize::MAX))
+            .collect())
+    }
+
+    /// Whether other instances share what this store keeps: the memberships are then read again
+    /// before a change and while they are read (WP-28.4). A volume's store is one process's.
+    fn shared(&self) -> bool {
+        false
+    }
+
     /// Adds `entry` as the entry `seq`, which is the one after the last held, the first being 1:
     /// any other sequence is refused with [`MembershipError::Conflict`] and nothing is added, so
     /// of the transitions that read the same memberships and arrive together one is added and

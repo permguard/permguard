@@ -2440,6 +2440,15 @@ impl Composition {
         // (WP-6.2c1).
         let import_slot = Arc::new(permguard_host::membership::task::Deferred::default());
         let watch_hub = Arc::new(permguard_host::membership::watch::Hub::default());
+        // On a backend other instances share, a hint published here reaches the watches they
+        // hold, and theirs the ones held here (WP-28.4); the listening lasts as the Host serves.
+        let _hints = shared
+            .as_ref()
+            .and_then(|shared| shared.handle::<permguard_host::membership::watch::Relayed>())
+            .map(|relayed| {
+                watch_hub.relay_to(Arc::clone(&relayed.0));
+                relayed.0.listen(Arc::downgrade(&watch_hub))
+            });
         // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
         let mut local_shipper: Option<Arc<permguard_host::membership::local::LocalShipping>> = None;
         let mut repinning_coordinator: Option<
@@ -2612,7 +2621,20 @@ impl Composition {
                     )
                 })
                 .map_err(|error| anyhow::anyhow!("{error}"))?;
+            // On a backend other instances share, the open sessions are every instance's: the clone
+            // alarm meets an incarnation another instance holds (WP-28.4).
+            let live = shared
+                .as_ref()
+                .and_then(|shared| {
+                    shared.handle::<permguard_host::membership::task::SharedSessions>()
+                })
+                .map_or_else(Arc::default, |sessions| {
+                    Arc::new(permguard_host::membership::task::LiveSessions::shared(
+                        Arc::clone(&sessions.0),
+                    ))
+                });
             let tasks = Arc::new(permguard_host::membership::task::Tasks {
+                live,
                 appraisal: Arc::new(appraisal.clone()),
                 handlers,
                 hub: Arc::clone(&watch_hub),

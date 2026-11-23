@@ -597,3 +597,57 @@ fn a_database_that_does_not_answer_is_unavailable() {
         Err(DbError::Unavailable(_))
     ));
 }
+
+/// A notification made on one connection reaches a listener on another, when the unit of work
+/// that makes it commits and not when it is undone (iteration 03, WP-28.4).
+#[test]
+fn a_notification_reaches_a_listener_when_its_unit_commits_on_postgresql() {
+    let Some(server) =
+        server("a_notification_reaches_a_listener_when_its_unit_commits_on_postgresql")
+    else {
+        return;
+    };
+    let database = Database::connect(config(&server, None, 2)).expect("connects");
+    let (sender, heard) = std::sync::mpsc::channel::<String>();
+    let sender = std::sync::Mutex::new(sender);
+    let _listening = database
+        .listen(
+            "permguard_test_hints",
+            Box::new(move |payload| {
+                let _ = sender.lock().expect("held").send(payload.to_owned());
+            }),
+            Box::new(|_| {}),
+        )
+        .expect("listening");
+    let notify = |payload: &'static str| {
+        database.write(|unit| {
+            unit.execute("SELECT pg_notify('permguard_test_hints', $1)", &[&payload])
+                .map(|_| ())
+        })
+    };
+    // The listener needs a moment to be listening.
+    let wait = std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        notify("ready").expect("notified");
+        if let Ok(payload) = heard.recv_timeout(std::time::Duration::from_millis(200)) {
+            assert_eq!(payload, "ready");
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "never heard");
+    }
+    while heard.try_recv().is_ok() {}
+    // Undone: not heard.
+    let undone: Result<Result<(), String>, _> = database.transaction(|unit| {
+        unit.execute("SELECT pg_notify('permguard_test_hints', 'undone')", &[])?;
+        Err(permguard_postgres::Failure::Refused("undone".to_owned()))
+    });
+    assert!(matches!(undone, Ok(Err(_))));
+    notify("kept").expect("notified");
+    assert_eq!(heard.recv_timeout(wait).expect("heard"), "kept");
+    assert!(
+        heard
+            .recv_timeout(std::time::Duration::from_millis(300))
+            .is_err()
+    );
+}

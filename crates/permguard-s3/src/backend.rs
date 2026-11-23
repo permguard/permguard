@@ -235,6 +235,122 @@ fn refuses_a_replacement(bucket: &Bucket) -> Result<()> {
     Ok(())
 }
 
+/// The channel the hints of the watches travel on between instances.
+const HINTS: &str = "permguard_hints";
+
+/// The hints of one instance to the others, over the database's notifications (iteration 03,
+/// WP-28.4, decision E9): a hint published on one instance reaches a watch another holds. A
+/// notification is sent when the unit of work it is made in commits, and not at all when it is
+/// undone.
+struct PostgresRelay {
+    database: Database,
+    /// This instance: what it sent itself is not delivered twice.
+    origin: String,
+}
+
+impl permguard_host::membership::watch::Relay for PostgresRelay {
+    fn send(
+        &self,
+        task_type: permguard_host::membership::record::TaskType,
+        resource: &permguard_core::authz::Resource,
+        hint: &permguard_host::membership::record::WatchHint,
+    ) {
+        let payload = hint_payload(&self.origin, task_type, resource, hint);
+        let sent = self.database.write(|unit| {
+            unit.execute("SELECT pg_notify($1, $2)", &[&HINTS, &payload])
+                .map(|_| ())
+        });
+        if let Err(error) = sent {
+            tracing::warn!(
+                event.name = "host.membership.hint_unrelayed",
+                component = "host",
+                error = %error,
+                "a hint did not reach the other instances: their members run their ordinary round"
+            );
+        }
+    }
+
+    fn listen(
+        &self,
+        hub: std::sync::Weak<permguard_host::membership::watch::Hub>,
+    ) -> Box<dyn std::any::Any + Send + Sync> {
+        let origin = self.origin.clone();
+        let heard = move |payload: &str| {
+            if let Some((task_type, resource, hint)) = hint_of(payload, &origin)
+                && let Some(hub) = hub.upgrade()
+            {
+                hub.deliver(task_type, &resource, &hint);
+            }
+        };
+        let lost = |error: &permguard_postgres::DbError| {
+            tracing::warn!(
+                event.name = "host.membership.hints_unheard",
+                component = "host",
+                error = %error,
+                "the other instances' hints are not heard: listening again"
+            );
+        };
+        match self.database.listen(HINTS, Box::new(heard), Box::new(lost)) {
+            Ok(listening) => Box::new(listening),
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "host.membership.hints_unheard",
+                    component = "host",
+                    error = %error,
+                    "the other instances' hints are not heard: members run their ordinary round"
+                );
+                Box::new(())
+            }
+        }
+    }
+}
+
+/// What a hint travels as between instances: JSON, with the instance that sent it.
+fn hint_payload(
+    origin: &str,
+    task_type: permguard_host::membership::record::TaskType,
+    resource: &permguard_core::authz::Resource,
+    hint: &permguard_host::membership::record::WatchHint,
+) -> String {
+    serde_json::json!({
+        "origin": origin,
+        "task": task_type.as_str(),
+        "resource": resource.to_string(),
+        "key": hint.key,
+        "head": hint.head,
+        "counter": hint.counter,
+    })
+    .to_string()
+}
+
+/// The hint `payload` carries, unless this instance, `origin`, sent it or it does not read.
+fn hint_of(
+    payload: &str,
+    origin: &str,
+) -> Option<(
+    permguard_host::membership::record::TaskType,
+    permguard_core::authz::Resource,
+    permguard_host::membership::record::WatchHint,
+)> {
+    use permguard_host::membership::record::{TaskType, WatchHint};
+
+    let hint = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if hint["origin"].as_str() == Some(origin) {
+        return None;
+    }
+    Some((
+        TaskType::ALL
+            .into_iter()
+            .find(|task| Some(task.as_str()) == hint["task"].as_str())?,
+        permguard_core::authz::Resource::parse(hint["resource"].as_str()?).ok()?,
+        WatchHint {
+            key: hint["key"].as_str()?.to_owned(),
+            head: hint["head"].as_str()?.to_owned(),
+            counter: hint["counter"].as_u64()?,
+        },
+    ))
+}
+
 /// This instance, as the leases it holds name it: drawn once a process.
 fn holder() -> Result<String> {
     let mut drawn = [0_u8; 16];
@@ -306,6 +422,17 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
         }),
         handles: vec![
             Arc::new(connected.clone()),
+            // The task sessions every instance holds, for the clone alarm (WP-28.4).
+            Arc::new(permguard_host::membership::task::SharedSessions(Arc::new(
+                pg::sessions::PostgresSessions::new(database.clone()),
+            ))),
+            // The hints this instance publishes reach the watches the others hold (WP-28.4).
+            Arc::new(permguard_host::membership::watch::Relayed(Arc::new(
+                PostgresRelay {
+                    database: database.clone(),
+                    origin: holder()?,
+                },
+            ))),
             // The single jobs of this instance, each run by the holder of its lease (WP-28.2).
             Arc::new(permguard_host::jobs::Jobs(Arc::new(
                 pg::jobs::PostgresJobs::new(database.clone(), holder()?),
@@ -454,5 +581,32 @@ fn evidence(database: &Database) -> permguard_control_plane::plane::SharedEviden
                 ),
             )
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use permguard_host::membership::record::{TaskType, WatchHint};
+
+    /// A hint read back as it was sent, by another instance; the one that sent it reads nothing.
+    #[test]
+    fn a_hint_travels_whole_to_the_other_instances() {
+        let resource =
+            permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");
+        let hint = WatchHint {
+            key: "ledger/l1".to_owned(),
+            head: "sha256:ab".to_owned(),
+            counter: 7,
+        };
+        let payload = hint_payload("one", TaskType::PolicyMirror, &resource, &hint);
+        assert_eq!(
+            hint_of(&payload, "other"),
+            Some((TaskType::PolicyMirror, resource, hint))
+        );
+        assert_eq!(hint_of(&payload, "one"), None);
+        assert_eq!(hint_of("not json", "other"), None);
     }
 }

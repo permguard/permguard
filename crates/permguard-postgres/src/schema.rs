@@ -612,6 +612,25 @@ pub const MIGRATIONS: &[Migration] = &[
         ALTER TABLE permguard_deployment ADD COLUMN importing boolean NOT NULL DEFAULT false;
     ",
     },
+    Migration {
+        version: 22,
+        name: "the open task sessions",
+        // Every instance's open task sessions, so the clone alarm sees one another instance
+        // holds (iteration 03, WP-28.4): a row a session, gone when it closes or past its lease.
+        statements: "
+        CREATE TABLE permguard_task_sessions (
+            membership bytea NOT NULL CHECK (octet_length(membership) = 16),
+            session text NOT NULL,
+            task_id text NOT NULL,
+            epoch bigint NOT NULL,
+            member_boot_id bytea NOT NULL CHECK (octet_length(member_boot_id) = 16),
+            coordinator_boot_id bytea NOT NULL CHECK (octet_length(coordinator_boot_id) = 16),
+            opened_at bigint NOT NULL,
+            expires_at bigint NOT NULL,
+            PRIMARY KEY (membership, session)
+        );
+    ",
+    },
 ];
 
 /// The version this build's schema is at.

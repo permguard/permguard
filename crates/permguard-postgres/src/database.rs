@@ -315,6 +315,22 @@ impl Drop for Fenced {
     }
 }
 
+/// A channel listened on ([`Database::listen`]); dropping it stops listening.
+pub struct Listening {
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        self.stopped
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
 /// A unit of work made the thread's own until this is dropped ([`Database::enter`]).
 pub struct Entered {
     pool: usize,
@@ -766,6 +782,63 @@ impl Database {
     }
 
     /// A connection: a free one, a new one while the pool has room, or the next given back.
+    /// Listens on `channel` on a connection of its own, and hands `heard` each payload the
+    /// database notifies on it, until the answer is dropped (iteration 03, WP-28.4). A lost
+    /// connection is told to `lost` and opened again after a pause: what was notified meanwhile
+    /// is not heard, so what listens holds nothing that only a notification would bring.
+    pub fn listen(
+        &self,
+        channel: &str,
+        heard: Box<dyn Fn(&str) + Send + Sync>,
+        lost: Box<dyn Fn(&DbError) + Send + Sync>,
+    ) -> Result<Listening, DbError> {
+        if channel.is_empty()
+            || !channel
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Err(DbError::Unavailable(format!(
+                "`{channel}` is no channel name: lowercase letters, digits and `_`"
+            )));
+        }
+        let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (database, channel, stopping) =
+            (self.clone(), channel.to_owned(), Arc::clone(&stopped));
+        let thread = std::thread::Builder::new()
+            .name(format!("pg-listen-{channel}"))
+            .spawn(move || {
+                let stopped = || stopping.load(std::sync::atomic::Ordering::SeqCst);
+                while !stopped() {
+                    let listened = database.open().and_then(|mut client| {
+                        client
+                            .batch_execute(&format!("LISTEN {channel}"))
+                            .map_err(|error| DbError::Unavailable(error.to_string()))?;
+                        while !stopped() {
+                            let mut notifications = client.notifications();
+                            let mut waiting =
+                                notifications.timeout_iter(std::time::Duration::from_millis(500));
+                            while let Some(notification) =
+                                postgres::fallible_iterator::FallibleIterator::next(&mut waiting)
+                                    .map_err(|error| DbError::Unavailable(error.to_string()))?
+                            {
+                                heard(notification.payload());
+                            }
+                        }
+                        Ok(())
+                    });
+                    if let Err(error) = listened {
+                        lost(&error);
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    }
+                }
+            })
+            .map_err(|error| DbError::Unavailable(format!("a listening thread: {error}")))?;
+        Ok(Listening {
+            stopped,
+            thread: Some(thread),
+        })
+    }
+
     fn take(&self) -> Result<Held, DbError> {
         let pool = &self.pool;
         let deadline = Instant::now() + pool.config.wait;

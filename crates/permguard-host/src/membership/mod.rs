@@ -505,7 +505,14 @@ pub struct Store {
     /// The `dr` restore of this volume, when it was restored: what a coordinator's first revision
     /// of a membership it held before re-anchors the chain on (BUG-0199).
     restored: Option<record::RestoreAnchor>,
+    /// When the entries were last read from a store other instances share (WP-28.4).
+    read_at: Mutex<std::time::Instant>,
 }
+
+/// How old the reading of the memberships may be while they are read, on a store other instances
+/// share (iteration 03, WP-28.4): a change made through one instance is seen by every instance
+/// within this bound; a change is always made on the entries as the store holds them.
+pub const FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl fmt::Debug for Store {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1221,6 +1228,7 @@ impl Store {
             windows: Mutex::new(BTreeMap::new()),
             root_version: std::sync::atomic::AtomicU64::new(0),
             restored,
+            read_at: Mutex::new(std::time::Instant::now()),
         }))
     }
 
@@ -1236,7 +1244,57 @@ impl Store {
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {
+        self.current(false);
         self.state.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Adds to the state the entries another instance added since it was read, on a store other
+    /// instances share (WP-28.4): when the reading is older than [`FRESH_FOR`], or `now`. A state
+    /// held by a reader of this thread or another is not waited for: it is caught up at the next
+    /// read. A store that does not answer leaves the state as it was, and the next read asks it.
+    fn current(&self, now: bool) {
+        if !self.store.shared() {
+            return;
+        }
+        let read_at = *self.read_at.lock().unwrap_or_else(PoisonError::into_inner);
+        if !now && read_at.elapsed() < FRESH_FOR {
+            return;
+        }
+        let Ok(mut state) = self.state.try_write() else {
+            return;
+        };
+        let added = match self.store.entries_after(state.seq) {
+            Ok(added) => added,
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "host.membership.state_unread",
+                    component = "host",
+                    error = %error,
+                    "the memberships other instances changed could not be read: the next read asks again"
+                );
+                return;
+            }
+        };
+        let mut next = state.clone();
+        for item in added {
+            let applied = cbor::encode(&item)
+                .map_err(|error| MembershipError::Storage(error.to_string()))
+                .and_then(|bytes| {
+                    let entry = Entry::decode(&bytes)?;
+                    apply(&mut next, &entry, &bytes)
+                });
+            if let Err(error) = applied {
+                tracing::error!(
+                    event.name = "host.membership.state_unread",
+                    component = "host",
+                    error = %error,
+                    "an entry another instance added does not follow the memberships read: they stay as read"
+                );
+                return;
+            }
+        }
+        *state = next;
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
     }
 
     /// Appends `entry` (its `seq` and `previous` filled here), then applies it: the journal is
@@ -1317,13 +1375,23 @@ impl Store {
     ) -> Result<Entry, MembershipError> {
         // What this attempt wrote before, or what is kept: an attempt run again starts from what
         // is kept, never from what a lost attempt wrote (decision X68).
-        let base = self
+        let pending = self
             .pending
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .get(&applying.attempt())
-            .cloned()
-            .unwrap_or_else(|| self.read().clone());
+            .cloned();
+        let base = match pending {
+            Some(pending) => pending,
+            None => {
+                // A change follows every entry the store holds, another instance's included.
+                self.current(true);
+                self.state
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone()
+            }
+        };
         let (seq, previous) = (base.seq + 1, chain(base.last.as_deref()));
         let entry = Entry {
             seq,

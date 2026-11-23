@@ -41,6 +41,7 @@ pub mod peers;
 pub mod replay;
 pub mod ring;
 pub mod schema;
+pub mod sessions;
 pub mod slots;
 #[cfg(feature = "test-support")]
 pub mod testing;

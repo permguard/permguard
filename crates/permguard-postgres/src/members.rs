@@ -156,6 +156,29 @@ fn hex(bytes: &[u8; 16]) -> String {
 }
 
 impl MemberStore for PostgresMembers {
+    fn shared(&self) -> bool {
+        true
+    }
+
+    fn entries_after(&self, seq: u64) -> Result<Vec<Value>, MembershipError> {
+        self.unit(|unit| {
+            let after = number(seq)?;
+            unit.query(
+                "SELECT entry FROM permguard_member_entries WHERE seq > $1 ORDER BY seq",
+                &[&after],
+            )?
+            .into_iter()
+            .map(|row| {
+                cbor::decode_canonical(&row.get::<_, Vec<u8>>(0)).map_err(|error| {
+                    Failure::Refused(MembershipError::Storage(format!(
+                        "an entry held does not read: {error:?}"
+                    )))
+                })
+            })
+            .collect()
+        })
+    }
+
     fn entries(&self) -> Result<Vec<Value>, MembershipError> {
         self.unit(|unit| {
             unit.query(
