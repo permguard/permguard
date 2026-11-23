@@ -392,3 +392,76 @@ fn instances_sign_with_one_sealed_key_on_postgresql() {
     });
     assert_eq!(generated.iter().filter(|answer| answer.is_ok()).count(), 1);
 }
+
+/// One ring over one database read by two instances (WP-28.2): the one that holds the ring's job
+/// maintains it, the other reads again what it made and signs with it; and a transition made on
+/// an instance whose view is behind the database reads the database first, so it destroys no key
+/// the other made and writes after the last entry.
+#[test]
+fn instances_read_again_the_ring_another_maintained_on_postgresql() {
+    use permguard_core::KeyManager as _;
+    use permguard_core::keys::Sign as _;
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{DATA_ATTEST, Policy, Ring};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_read_again_the_ring_another_maintained_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let policy = Policy {
+        publish_ahead: std::time::Duration::ZERO,
+        rotate_every: std::time::Duration::from_secs(1),
+        retain: std::time::Duration::from_secs(60),
+    };
+    let rings = instances(&server, &scratch.schema, |database| {
+        Ring::open_with(
+            Arc::new(PostgresRing::new(database.clone(), DATA_ATTEST)),
+            Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+                database,
+                DATA_ATTEST,
+            )))),
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            policy,
+            Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
+        )
+        .expect("opens")
+    });
+    let (holder, other) = (&rings[0], &rings[1]);
+    holder.maintain().expect("maintained");
+    other.refresh().expect("read again");
+    assert_eq!(
+        other.statement().expect("a statement"),
+        holder.statement().expect("a statement")
+    );
+    // The holder rotates; the other, behind, maintains: it reads the database first.
+    std::thread::sleep(std::time::Duration::from_millis(1_200));
+    holder.maintain().expect("rotated");
+    let rotated = holder.statement().expect("a statement");
+    other
+        .maintain()
+        .expect("a transition behind the database reads it first");
+    assert_eq!(other.statement().expect("a statement"), rotated);
+    let signature = other
+        .sign(b"payload")
+        .expect("signs with the key the holder made, which is kept");
+    assert!(
+        rotated
+            .keys
+            .iter()
+            .any(|key| key.kid == signature.key_id().as_str())
+    );
+    let slots = scratch
+        .database
+        .write(|unit| {
+            Ok(unit
+                .query_one("SELECT count(*) FROM permguard_key_slots", &[])?
+                .get::<_, i64>(0))
+        })
+        .expect("read");
+    assert!(slots >= 1, "the keys the holder made are held");
+}

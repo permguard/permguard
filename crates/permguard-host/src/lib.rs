@@ -24,6 +24,7 @@ pub mod gc;
 pub mod hardening;
 pub mod holds;
 pub mod identity;
+pub mod jobs;
 pub mod keys;
 pub mod membership;
 pub mod operations;

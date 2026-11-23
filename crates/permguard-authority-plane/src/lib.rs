@@ -23,6 +23,8 @@ mod bench;
 pub mod cbor;
 pub mod completion;
 mod handles;
+#[cfg(test)]
+mod instances;
 pub mod marks;
 pub mod plane;
 pub mod tokens;

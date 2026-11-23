@@ -30,6 +30,8 @@ use crate::{accounts, admin, tokens};
 const FEED_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 /// How often the lists whose tokens all expired are retired.
 const RETIRE_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+/// The single job the retirement of expired lists is (WP-28.2).
+const RETIRE_JOB: &str = "authority/retire-lists";
 
 /// The facade, composed once from the Host's handles and shared by whatever serves it and by the
 /// plane's pass: `None` when the plane is dormant or could not compose, as the log says why.
@@ -72,6 +74,10 @@ pub struct AuthorityStores {
     pub accounts: Arc<dyn accounts::AccountStore>,
     pub tokens: Arc<dyn tokens::TokenStore>,
     pub marks: Arc<dyn crate::marks::MarkStore>,
+    /// The database the three are kept in: what a start completes of the tokens reads the
+    /// accounts and writes the tokens in one of its units, so an instance that changes them
+    /// meanwhile has the unit run again rather than its change read as gone (WP-28.2).
+    pub database: permguard_postgres::Database,
 }
 
 fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
@@ -182,27 +188,43 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         config.time_max_clock_skew(),
     ));
     // What a change of an account left to do of its tokens is done before anything is served.
-    let completed =
-        match crate::completion::complete_tokens(&*accounts, &*registry, time.now_secs()) {
-            Ok(completed) if completed.is_empty() => None,
-            Ok(completed) => {
-                tracing::warn!(
-                    event.name = "authority.tokens_completed",
-                    component = crate::COMPONENT,
-                    invalidated = completed.invalidated,
-                    suspended = completed.suspended,
-                    "tokens a change of their account had left as they were now are as it says"
-                );
-                Some(completed)
-            }
-            Err(error) => {
-                fail(
-                    "the tokens a change of their account left to revoke are not completed",
-                    &error,
-                );
-                return None;
-            }
-        };
+    let now = time.now_secs();
+    let completing = || crate::completion::complete_tokens(&*accounts, &*registry, now);
+    let completion = match &shared {
+        Some(stores) => stores
+            .database
+            // A statement the database failed, one it could not serialize among them, is the
+            // unit's failure, so the unit is run again; only the completion's own refusal is one.
+            .transaction(|unit| {
+                completing().map_err(|refusal| match unit.failure() {
+                    Some(failed) => permguard_postgres::Failure::Db(failed),
+                    None => permguard_postgres::Failure::Refused(refusal),
+                })
+            })
+            .map_err(|error| error.to_string())
+            .and_then(|completed| completed),
+        None => completing(),
+    };
+    let completed = match completion {
+        Ok(completed) if completed.is_empty() => None,
+        Ok(completed) => {
+            tracing::warn!(
+                event.name = "authority.tokens_completed",
+                component = crate::COMPONENT,
+                invalidated = completed.invalidated,
+                suspended = completed.suspended,
+                "tokens a change of their account had left as they were now are as it says"
+            );
+            Some(completed)
+        }
+        Err(error) => {
+            fail(
+                "the tokens a change of their account left to revoke are not completed",
+                &error,
+            );
+            return None;
+        }
+    };
     match admin::ensure(&*accounts, dir.path(), time.now_secs()) {
         Ok(Some(access_key)) => tracing::warn!(
             event.name = "authority.admin_created",
@@ -385,23 +407,36 @@ impl PlaneTask for ListsService {
             let Some(authority) = self.composition.authority(context) else {
                 return Ok(());
             };
+            // The retirement of expired lists is one instance's at a time (WP-28.2); what every
+            // instance verifies with is fed by each.
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             let task = tokio::spawn(async move {
                 let mut retired_at = std::time::Instant::now();
                 loop {
                     tokio::time::sleep(FEED_EVERY).await;
-                    let feeding = Arc::clone(&authority);
+                    let (feeding, jobs) = (Arc::clone(&authority), jobs.clone());
                     let retire = retired_at.elapsed() >= RETIRE_EVERY;
                     if retire {
                         retired_at = std::time::Instant::now();
                     }
                     let _ = tokio::task::spawn_blocking(move || {
-                        if retire && let Err(refusal) = feeding.retire_expired() {
-                            tracing::warn!(
-                                event.name = "authority.retire_failed",
-                                component = crate::COMPONENT,
-                                refusal = ?refusal,
-                                "the expired status lists could not be retired"
-                            );
+                        if retire {
+                            jobs.run(RETIRE_JOB, RETIRE_EVERY, &mut || {
+                                let retired = feeding.retire_expired();
+                                if let Err(refusal) = &retired {
+                                    tracing::warn!(
+                                        event.name = "authority.retire_failed",
+                                        component = crate::COMPONENT,
+                                        refusal = ?refusal,
+                                        "the expired status lists could not be retired"
+                                    );
+                                }
+                                retired.is_ok()
+                            });
                         }
                         feeding.feed_trust();
                     })

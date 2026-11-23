@@ -30,6 +30,9 @@ pub const EVERY: Duration = Duration::from_secs(10 * 60);
 /// The share of objects one pass reads, per thousand: twenty passes read them all.
 pub const PER_MILLE: u16 = 50;
 
+/// The single job a pass is (WP-28.2).
+pub const JOB: &str = "objects/verification";
+
 /// The bytes one pass may read.
 pub const BUDGET_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -85,6 +88,85 @@ pub fn pass(zones: &Path, mode: Mode, budget: &mut Budget) -> Report {
     report
 }
 
+/// One sampled pass over the objects the ledgers' stores keep, on a backend that is not a volume
+/// (iteration 03, WP-28.2): each selected object read through its store, which refuses one that
+/// does not hold what its digest names. A finding is named by the object's place, never repaired.
+pub fn pass_stores(
+    catalog: &dyn permguard_core::catalog::Catalog,
+    ledgers: &dyn crate::store::Ledgers,
+    mode: Mode,
+    budget: &mut Budget,
+) -> Report {
+    use permguard_core::catalog::Selector;
+
+    let mut report = Report::new();
+    let incomplete = |report: &mut Report, error: &dyn std::fmt::Display| {
+        warn!(
+            event.name = "verify.failed",
+            component = COMPONENT,
+            error = %error,
+            "the objects could not all be listed: this pass is incomplete"
+        );
+        report.complete = false;
+    };
+    let zones = match catalog.list_zones() {
+        Ok(zones) => zones,
+        Err(error) => {
+            incomplete(&mut report, &error);
+            return report;
+        }
+    };
+    for zone in zones {
+        let held = match catalog.list_ledgers(&Selector::Id(zone.id.clone())) {
+            Ok(held) => held,
+            Err(error) => {
+                incomplete(&mut report, &error);
+                continue;
+            }
+        };
+        for ledger in held {
+            let store = ledgers.ledger(&zone.id, &ledger.id);
+            let objects = match store.list_objects() {
+                Ok(objects) => objects,
+                Err(error) => {
+                    incomplete(&mut report, &error);
+                    continue;
+                }
+            };
+            for object in objects {
+                let place = std::path::PathBuf::from(format!(
+                    "zones/{}/ledgers/{}/{}",
+                    zone.id, ledger.id, object.digest
+                ));
+                if !mode.selects(&place) {
+                    continue;
+                }
+                if !budget.spend(object.bytes) {
+                    report.complete = false;
+                    return report;
+                }
+                match store.get_object(&object.digest) {
+                    Ok(Some(bytes)) => {
+                        report.files_checked += 1;
+                        report.bytes_read += bytes.len() as u64;
+                    }
+                    // Collected since it was listed.
+                    Ok(None) => {}
+                    Err(crate::store::StoreError::Corrupt { .. }) => {
+                        report.files_checked += 1;
+                        report.findings.push(verify::Finding {
+                            path: place,
+                            what: "the object does not hold what its digest names".to_owned(),
+                        });
+                    }
+                    Err(error) => incomplete(&mut report, &error),
+                }
+            }
+        }
+    }
+    report
+}
+
 impl PlaneTask for VerifyService {
     fn name(&self) -> &'static str {
         "verify"
@@ -94,12 +176,35 @@ impl PlaneTask for VerifyService {
         Box::pin(async move {
             let zones = context.config().zones_directory();
             let metrics = context.metrics().clone();
-            let pass_over = zones.clone();
+            // On a backend with no volume the objects are the ledgers' stores', not files below
+            // the zones directory (WP-28.2).
+            let shared = context
+                .extension::<crate::plane::ZoneStores>()
+                .zip(context.catalog().cloned());
+            // One instance spends a pass's budget: the job's lease (WP-28.2).
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
+            let every = self.every;
             let background = Background::spawn(
                 self.every,
                 PER_MILLE,
                 BUDGET_BYTES,
-                Arc::new(move |mode, budget: &mut Budget| pass(&pass_over, mode, budget)),
+                Arc::new(move |mode, budget: &mut Budget| {
+                    let mut report = Report::new();
+                    jobs.run(JOB, every, &mut || {
+                        report = match &shared {
+                            Some((stores, catalog)) => {
+                                pass_stores(catalog.as_ref(), stores.ledgers.as_ref(), mode, budget)
+                            }
+                            None => pass(&zones, mode, budget),
+                        };
+                        true
+                    });
+                    report
+                }),
                 Arc::new(move |report: &Report| {
                     for finding in &report.findings {
                         error!(

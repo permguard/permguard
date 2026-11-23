@@ -58,6 +58,12 @@ pub trait RingStore: Send + Sync {
     /// Every entry, oldest first, each as the CBOR item it was added as.
     fn entries(&self) -> Result<Vec<Value>, RingError>;
 
+    /// Whether other instances share what this store keeps: a ring then reads it again before
+    /// each of its transitions (iteration 03, WP-28.2). A volume's store is one process's.
+    fn shared(&self) -> bool {
+        false
+    }
+
     /// Adds `entry` as the entry `seq`, which is the one after the last held, the first being 1:
     /// any other sequence is refused with [`RingError::Refused`] and nothing is added, so of the
     /// transitions that read the same ring and arrive together one is added and the others learn

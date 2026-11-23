@@ -13,6 +13,8 @@ use permguard_host::audit::Engine;
 
 /// How often the sweep runs; the first run is at start.
 pub const SWEEP: Duration = Duration::from_secs(3600);
+/// The single job the sweep is (WP-28.2).
+pub const JOB: &str = "audit/sweep";
 
 /// The periodic sweep, stopped when this is dropped.
 pub struct Sweeping(tokio::task::JoinHandle<()>);
@@ -24,14 +26,24 @@ impl Drop for Sweeping {
 }
 
 /// Sweeps `engine` now and every [`SWEEP`] until the handle is dropped.
-pub fn sweep(engine: Arc<Engine>) -> Sweeping {
+pub fn sweep(engine: Arc<Engine>, jobs: permguard_host::jobs::Jobs) -> Sweeping {
     Sweeping(tokio::spawn(async move {
         let mut interval = tokio::time::interval(SWEEP);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
-            let engine = Arc::clone(&engine);
-            match tokio::task::spawn_blocking(move || engine.sweep()).await {
+            let (engine, jobs) = (Arc::clone(&engine), jobs.clone());
+            // One instance sweeps the trails an hour: the job's lease (WP-28.2).
+            match tokio::task::spawn_blocking(move || {
+                let mut swept = Ok(Vec::new());
+                jobs.run(JOB, SWEEP, &mut || {
+                    swept = engine.sweep();
+                    swept.is_ok()
+                });
+                swept
+            })
+            .await
+            {
                 Ok(Ok(written)) if !written.is_empty() => tracing::info!(
                     event.name = "audit.swept",
                     component = "host",

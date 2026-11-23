@@ -1727,6 +1727,14 @@ impl Composition {
                 (None, time, None, None, Some(shared))
             }
         };
+        // The single jobs (WP-28.2): on a volume this process runs them all; on the shared
+        // backend the holder of each job's lease does.
+        let jobs = shared
+            .as_ref()
+            .and_then(|shared| shared.handle::<permguard_host::jobs::Jobs>())
+            .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                permguard_host::jobs::Jobs::clone(&jobs)
+            });
         // The backups' recovery key (TS-5): resolved, its id its fingerprint, which every snapshot
         // manifest binds from here on; from `production` the whole backup policy is declared. A
         // backend with no volume takes no snapshot: its database's and bucket's own mechanisms.
@@ -2814,7 +2822,7 @@ impl Composition {
         )));
         let _ticking = crate::time::tick(Arc::clone(&time));
         // The ended days a stopped process left unsealed, sealed now and every hour after.
-        let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
+        let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine), jobs.clone());
         // Readiness held while a measured lag or headroom is past its objective's margin (TS-5).
         let _objectives = crate::objectives::drive(
             objectives.clone(),
@@ -2854,8 +2862,12 @@ impl Composition {
             crate::storage_quota::watch(quota, context.health().clone(), context.metrics().clone())
         });
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
-        let _pruning =
-            crate::stream_gc::drive(prunables, Arc::clone(&audit_engine), Arc::clone(&time));
+        let _pruning = crate::stream_gc::drive(
+            prunables,
+            Arc::clone(&audit_engine),
+            Arc::clone(&time),
+            jobs.clone(),
+        );
         // The Authority Plane's key set and lists, fetched from `authority.endpoint`, else from
         // `authority.url`, off the request path, when the Authority Plane runs in another process
         // (`2-security/8` Keys and lists on a Plane), over the transport its scheme names. Beside
@@ -2918,7 +2930,7 @@ impl Composition {
         // Members silent past their thresholds suspended, then revoked (WP-4.6).
         let _dormancy = repinning_coordinator
             .as_ref()
-            .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
+            .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating), jobs.clone()));
         // The zone keys this Host's memberships as a member grant, received and confirmed (WP-4.7).
         let zone_keys = Arc::new(match (&volume, &shared) {
             (Some(volume), _) => permguard_host::secrets::ZoneKeys::open(volume)
@@ -2984,6 +2996,7 @@ impl Composition {
                     max_lag: config.audit_checkpoints_max_lag(),
                 },
                 !shared_bounded,
+                jobs.clone(),
             )),
             _ => None,
         };

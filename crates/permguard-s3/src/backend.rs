@@ -235,6 +235,13 @@ fn refuses_a_replacement(bucket: &Bucket) -> Result<()> {
     Ok(())
 }
 
+/// This instance, as the leases it holds name it: drawn once a process.
+fn holder() -> Result<String> {
+    let mut drawn = [0_u8; 16];
+    getrandom(&mut drawn)?;
+    Ok(drawn.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 fn getrandom(bytes: &mut [u8]) -> Result<()> {
     use ring::rand::SecureRandom as _;
     ring::rand::SystemRandom::new()
@@ -299,6 +306,10 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
         }),
         handles: vec![
             Arc::new(connected.clone()),
+            // The single jobs of this instance, each run by the holder of its lease (WP-28.2).
+            Arc::new(permguard_host::jobs::Jobs(Arc::new(
+                pg::jobs::PostgresJobs::new(database.clone(), holder()?),
+            ))),
             Arc::new(consumer_runs(connected)),
             Arc::new(permguard_control_plane::plane::ZoneStores {
                 ledgers: Arc::new(crate::control_plane::PostgresLedgers::new(
@@ -327,6 +338,7 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
                         database.clone(),
                     ),
                 ),
+                database: database.clone(),
             }),
         ],
     })

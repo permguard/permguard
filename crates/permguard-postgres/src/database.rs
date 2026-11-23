@@ -135,6 +135,9 @@ pub enum DbError {
     SchemaNewer { found: i32, known: i32 },
     /// The database answered something this build does not read as it expects.
     Record(String),
+    /// The work runs under a lease that is no longer this instance's (decision E27): it expired
+    /// and another took it, so nothing is written under it.
+    Fenced(String),
 }
 
 impl std::fmt::Display for DbError {
@@ -149,6 +152,10 @@ impl std::fmt::Display for DbError {
             Self::Record(detail) => {
                 write!(formatter, "PostgreSQL holds what does not read: {detail}")
             }
+            Self::Fenced(lease) => write!(
+                formatter,
+                "the lease `{lease}` is no longer this instance's: nothing is written under it"
+            ),
         }
     }
 }
@@ -282,6 +289,30 @@ thread_local! {
     /// The units of work open on this thread, the innermost last, each with the pool it is on.
     static OPEN: std::cell::RefCell<Vec<(usize, Arc<Unit>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// The leases the work of this thread runs under, each with the pool it is on: every unit of
+    /// work the thread opens on that pool checks it first (decision E27).
+    static FENCES: std::cell::RefCell<Vec<(usize, crate::lease::Lease)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A lease made the fence of this thread's units of work until this is dropped
+/// ([`Database::fenced`]).
+pub struct Fenced {
+    pool: usize,
+}
+
+impl Drop for Fenced {
+    fn drop(&mut self) {
+        FENCES.with(|fences| {
+            let mut fences = fences.borrow_mut();
+            if let Some(at) = fences.iter().rposition(|(pool, _)| *pool == self.pool) {
+                fences.remove(at);
+            }
+        });
+    }
 }
 
 /// A unit of work made the thread's own until this is dropped ([`Database::enter`]).
@@ -798,19 +829,48 @@ impl Database {
     /// Opens one `SERIALIZABLE` unit of work for a caller that ends it itself: the mutation
     /// engine, which commits the unit a domain wrote in.
     pub fn begin(&self) -> Result<Arc<Unit>, DbError> {
-        Ok(Arc::new(Unit::begin(
-            self.take()?,
-            Isolation::Serializable,
-        )?))
+        let unit = Arc::new(Unit::begin(self.take()?, Isolation::Serializable)?);
+        self.fence(&unit)?;
+        Ok(unit)
     }
 
     /// Opens one `READ COMMITTED` unit of work for a caller that ends it itself: a subsystem's
     /// gate, whose holder waits for the one before it and then reads what that one committed.
     pub fn begin_read_committed(&self) -> Result<Arc<Unit>, DbError> {
-        Ok(Arc::new(Unit::begin(
-            self.take()?,
-            Isolation::ReadCommitted,
-        )?))
+        let unit = Arc::new(Unit::begin(self.take()?, Isolation::ReadCommitted)?);
+        self.fence(&unit)?;
+        Ok(unit)
+    }
+
+    /// Makes `lease` the fence of every unit of work this thread opens on this database until
+    /// the answer is dropped (decision E27): each checks, first, that the lease is still this
+    /// holding, and keeps it so until it ends, so a unit commits only while the lease was held.
+    /// What a single job does on its own thread is written under its lease, or not at all.
+    #[must_use]
+    pub fn fenced(&self, lease: crate::lease::Lease) -> Fenced {
+        let pool = self.identity();
+        FENCES.with(|fences| fences.borrow_mut().push((pool, lease)));
+        Fenced { pool }
+    }
+
+    /// Checks, in `unit`, the lease this thread's work runs under on this database, if any.
+    fn fence(&self, unit: &Unit) -> Result<(), DbError> {
+        let pool = self.identity();
+        let Some(lease) = FENCES.with(|fences| {
+            fences
+                .borrow()
+                .iter()
+                .rev()
+                .find(|(of, _)| *of == pool)
+                .map(|(_, lease)| lease.clone())
+        }) else {
+            return Ok(());
+        };
+        match crate::lease::held(unit, &lease, ()) {
+            Ok(()) => Ok(()),
+            Err(Failure::Refused(())) => Err(DbError::Fenced(lease.name)),
+            Err(Failure::Db(error)) => Err(error.into()),
+        }
     }
 
     /// Takes the scope `scope` on a connection of its own and holds it until the answer is
@@ -947,6 +1007,9 @@ impl Database {
                             &[&scope],
                         )?;
                     }
+                    // Under a lease, the unit is written only while the lease is this holding.
+                    self.fence(&unit)
+                        .map_err(|error| Failure::Refused(Err(error)))?;
                     // The unit is this thread's while the work runs: a store the work calls
                     // reads and writes in it, on its connection, and is kept or not with it.
                     let inside = self.enter(&unit);

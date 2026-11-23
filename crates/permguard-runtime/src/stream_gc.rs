@@ -19,6 +19,8 @@ use permguard_stream::engine::retention::{Prunable, Pruned, RetentionSource};
 
 /// How often a pass runs; the first is at start.
 pub const PASS: Duration = Duration::from_secs(3600);
+/// The single job the pass is (WP-28.2).
+pub const JOB: &str = "streams/collection";
 
 /// The audit action of a pass over one stream.
 pub const AUDIT_PRUNED: &str = "host.stream.pruned";
@@ -85,15 +87,30 @@ pub fn drive(
     prunables: Vec<Arc<dyn Prunable>>,
     engine: Arc<Engine>,
     time: Arc<TimeGuard>,
+    jobs: permguard_host::jobs::Jobs,
 ) -> Pruning {
     Pruning(tokio::spawn(async move {
         let mut interval = tokio::time::interval(PASS);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
-            let (prunables, engine, now) =
-                (prunables.clone(), Arc::clone(&engine), time.now_secs());
-            match tokio::task::spawn_blocking(move || pass(&prunables, &engine, now)).await {
+            let (prunables, engine, now, jobs) = (
+                prunables.clone(),
+                Arc::clone(&engine),
+                time.now_secs(),
+                jobs.clone(),
+            );
+            // One instance collects the streams an hour: the job's lease (WP-28.2).
+            match tokio::task::spawn_blocking(move || {
+                let mut deleted = Vec::new();
+                jobs.run(JOB, PASS, &mut || {
+                    deleted = pass(&prunables, &engine, now);
+                    true
+                });
+                deleted
+            })
+            .await
+            {
                 Ok(deleted) => {
                     let batches: u64 = deleted.iter().map(|pruned| pruned.batches).sum();
                     if batches > 0 {

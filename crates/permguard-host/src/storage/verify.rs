@@ -44,7 +44,8 @@ pub enum Mode {
 }
 
 impl Mode {
-    fn selects(&self, path: &Path) -> bool {
+    /// Whether the pass reads `path`: a file's path, or the place a store names an object by.
+    pub fn selects(&self, path: &Path) -> bool {
         match *self {
             Self::Full => true,
             Self::Sample { per_mille, seed } => {
@@ -78,7 +79,7 @@ impl Budget {
     }
 
     /// Spends `bytes`; `false` when they do not fit, and nothing is spent.
-    fn spend(&mut self, bytes: u64) -> bool {
+    pub fn spend(&mut self, bytes: u64) -> bool {
         match &mut self.0 {
             None => true,
             Some(left) if *left >= bytes => {

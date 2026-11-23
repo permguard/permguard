@@ -1377,3 +1377,28 @@ fn the_file_backend_opened_to_read_writes_nothing() {
         "nothing was made in the directory"
     );
 }
+
+/// Two rings over one store, as two instances over one database (iteration 03, WP-28.2): what
+/// one maintains the other reads again and signs with, its rotation included. The refusal of a
+/// write from a view behind the store is the shared backend's, proven there.
+#[test]
+fn a_ring_reads_again_what_another_maintained() {
+    let fixture = Fixture::new("refresh");
+    let (holder, other) = (fixture.ring(), fixture.ring());
+    holder.maintain().expect("maintained");
+    let active = holder.statement().expect("a statement").keys[0].kid.clone();
+    assert!(other.statement().is_err(), "the other has not read it yet");
+    other.refresh().expect("read again");
+    assert_eq!(other.statement().expect("a statement").keys[0].kid, active);
+    let signature = other
+        .sign(b"payload")
+        .expect("signs with the key the holder made");
+    assert_eq!(signature.key_id().as_str(), active);
+    fixture.advance(ROTATE + AHEAD + 1);
+    holder.maintain().expect("rotated");
+    other.refresh().expect("read again");
+    assert_eq!(
+        other.statement().expect("a statement"),
+        holder.statement().expect("a statement")
+    );
+}

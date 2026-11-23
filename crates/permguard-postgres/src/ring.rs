@@ -158,6 +158,10 @@ impl PostgresRing {
 }
 
 impl RingStore for PostgresRing {
+    fn shared(&self) -> bool {
+        true
+    }
+
     fn entries(&self) -> Result<Vec<Value>, RingError> {
         self.unit(|unit| {
             unit.query(

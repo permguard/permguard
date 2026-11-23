@@ -77,6 +77,39 @@ impl PostgresArchives {
 }
 
 impl ArchiveStore for PostgresArchives {
+    fn sweep_unnamed(
+        &self,
+        zone: &str,
+        older_than: std::time::Duration,
+    ) -> Result<usize, ArchiveError> {
+        let prefix = format!("zones/{zone}/archives/");
+        let named: std::collections::BTreeSet<String> = self.unit(|unit| {
+            Ok(unit
+                .query(
+                    "SELECT id FROM permguard_archives WHERE zone = $1",
+                    &[&zone],
+                )?
+                .into_iter()
+                .map(|row| row.get::<_, String>(0))
+                .collect())
+        })?;
+        let before = permguard_core::time::unix_now().saturating_sub(older_than.as_secs());
+        let mut removed = 0;
+        for listed in self.bucket.list(&prefix).map_err(unavailable)? {
+            let Some(id) = listed.key.strip_prefix(&prefix) else {
+                continue;
+            };
+            // A keeping under way publishes its bytes, then writes its record: bytes younger
+            // than the grace may be one, and stay.
+            if named.contains(id) || listed.modified >= before {
+                continue;
+            }
+            self.bucket.delete(&listed.key).map_err(unavailable)?;
+            removed += 1;
+        }
+        Ok(removed)
+    }
+
     fn archived(&self, zone: &str) -> Result<Vec<ArchiveRecord>, ArchiveError> {
         self.unit(|unit| {
             Ok(kept(unit, zone, None)?

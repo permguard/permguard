@@ -149,3 +149,135 @@ fn bytes_no_row_names_give_way_on_postgresql_and_s3() {
     );
     assert_eq!(store.archived("z1").expect("listed").len(), 1);
 }
+
+/// The deep verification on PostgreSQL and S3 reads each object through its ledger's store
+/// (WP-28.2): an object whose bytes are not what its digest names is found, named by its place,
+/// and left as it is; the others are read.
+#[test]
+fn the_deep_verification_finds_an_object_altered_in_the_bucket() {
+    use permguard_core::catalog::{Catalog as _, Selector};
+    use permguard_host::storage::verify::{Budget, Mode};
+
+    let test = "the_deep_verification_finds_an_object_altered_in_the_bucket";
+    let (Some(server), Some(bucket)) = (server(test), scratch(test)) else {
+        return;
+    };
+    let cases = Cases::new(server);
+    let database = cases.next();
+    let catalog = permguard_postgres::catalog::PostgresCatalog::new(database.clone());
+    let zone = catalog.create_zone("payments").expect("created");
+    let ledger = catalog
+        .create_ledger(&Selector::Id(zone.id.clone()), "orders")
+        .expect("created");
+    let ledgers = PostgresLedgers::new(database, bucket.clone());
+    let store = ledgers.ledger(&zone.id, &ledger.id);
+    let digests: Vec<_> = ["one", "two", "three"]
+        .iter()
+        .map(|text| {
+            store
+                .put_object(
+                    &permguard_objects::object::Blob {
+                        media_type: permguard_core::domains::media::POLICY_CEDAR.to_owned(),
+                        data: text.as_bytes().to_vec(),
+                    }
+                    .encode()
+                    .expect("a blob"),
+                )
+                .expect("landed")
+                .0
+        })
+        .collect();
+    // The bytes of one object replaced in the bucket, behind the store.
+    let hex = digests[1]
+        .to_string()
+        .trim_start_matches("sha256:")
+        .to_owned();
+    let (fan, rest) = hex.split_at(2);
+    let key = format!(
+        "zones/{}/ledgers/{}/objects/{fan}/{rest}",
+        zone.id, ledger.id
+    );
+    bucket.delete(&key).expect("removed");
+    bucket
+        .put_new(&key, b"not what the digest names")
+        .expect("put");
+
+    let report = permguard_control_plane::verify::pass_stores(
+        &catalog,
+        &ledgers,
+        Mode::Full,
+        &mut Budget::unbounded(),
+    );
+    assert!(report.complete);
+    assert_eq!(report.files_checked, 3);
+    assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
+    assert!(
+        report.findings[0]
+            .path
+            .to_string_lossy()
+            .ends_with(&digests[1].to_string()),
+        "{:?}",
+        report.findings
+    );
+    // Left as it is: the store still refuses it.
+    assert!(store.get_object(&digests[1]).is_err());
+}
+
+/// The bytes a keeping of an archive left without its record are removed past the grace, and
+/// those of an archive kept stay (WP-28.2).
+#[test]
+fn the_bytes_no_archive_record_names_are_swept() {
+    let test = "the_bytes_no_archive_record_names_are_swept";
+    let (Some(server), Some(bucket)) = (server(test), scratch(test)) else {
+        return;
+    };
+    let cases = Cases::new(server);
+    let archives = PostgresArchives::new(cases.next(), bucket.clone());
+    let zone = "01a00000-0000-7000-8000-00000000000a";
+    let record = ArchiveRecord {
+        id: "01c00000-0000-7000-8000-000000000001".to_owned(),
+        name: "kept".to_owned(),
+        imported_at: 1_800_000_000,
+        manifest_digest: format!("sha256:{}", "ab".repeat(32)),
+        source_host_id: "11".repeat(16),
+        source_zone_id: "01d00000-0000-7000-8000-00000000000a".to_owned(),
+        source_zone_name: "delivery".to_owned(),
+        ledgers: Vec::new(),
+    };
+    let asked = Requested {
+        request_id: "request-1".to_owned(),
+        name: record.name.clone(),
+        manifest_digest: record.manifest_digest.clone(),
+    };
+    assert_eq!(
+        archives
+            .keep(zone, b"a kept archive", &asked, &record)
+            .expect("kept"),
+        Keeping::Kept
+    );
+    let orphan = format!("zones/{zone}/archives/01c00000-0000-7000-8000-000000000002");
+    bucket
+        .put_new(&orphan, b"left by a keeping that stopped")
+        .expect("put");
+    // Within the grace a keeping may still be writing its record: nothing goes.
+    assert_eq!(
+        archives
+            .sweep_unnamed(zone, std::time::Duration::from_secs(3_600))
+            .expect("swept"),
+        0
+    );
+    std::thread::sleep(std::time::Duration::from_millis(1_100));
+    assert_eq!(
+        archives
+            .sweep_unnamed(zone, std::time::Duration::ZERO)
+            .expect("swept"),
+        1
+    );
+    assert_eq!(bucket.get(&orphan, 1024).expect("read"), None);
+    assert_eq!(
+        bucket
+            .get(&format!("zones/{zone}/archives/{}", record.id), 1024)
+            .expect("read"),
+        Some(b"a kept archive".to_vec())
+    );
+}

@@ -80,6 +80,9 @@ use crate::store::{LedgerStore, Ledgers};
 
 const COMPONENT: &str = "control-plane";
 
+/// The single job a pass is (WP-28.2).
+pub const JOB: &str = "objects/collection";
+
 /// Objects removed, by zone and ledger.
 pub const REMOVED: Metric = Metric::counter(
     "permguard_gc_objects_removed_total",
@@ -174,9 +177,11 @@ impl PlaneTask for GcService {
                 return Ok(());
             };
 
+            let stores = self.ledgers.under(context);
             let sweep = Sweep {
                 catalog,
-                ledgers: self.ledgers.under(context).ledgers,
+                ledgers: stores.ledgers,
+                archives: Some(stores.archives),
                 grace: config.gc_grace(),
                 metrics: context.metrics().clone(),
                 recorder: crate::handles::audit(context),
@@ -211,6 +216,12 @@ impl PlaneTask for GcService {
                 "unreferenced objects older than the grace period will be reclaimed"
             );
 
+            // One instance collects the ledgers an interval: the job's lease (WP-28.2).
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             let (stop, mut stopped) = watch::channel(false);
             let task = tokio::spawn(async move {
                 loop {
@@ -219,13 +230,17 @@ impl PlaneTask for GcService {
                         // a plane that has just come up is the worst moment to
                         // spend a directory walk, and nothing is urgent here.
                         _ = tokio::time::sleep(every) => {
-                            let sweep = sweep.clone();
+                            let (sweep, jobs) = (sweep.clone(), jobs.clone());
                             let outcome = tokio::task::spawn_blocking(move || {
-                                let outcome = sweep.run();
+                                let mut outcome = None;
+                                jobs.run(JOB, every, &mut || {
+                                    outcome = Some(sweep.run());
+                                    true
+                                });
                                 (sweep, outcome)
                             })
                             .await;
-                            if let Ok((sweep, outcome)) = outcome {
+                            if let Ok((sweep, Some(outcome))) = outcome {
                                 sweep.report(&outcome).await;
                             }
                         }
@@ -269,6 +284,9 @@ struct Sweep {
     /// The ledgers' stores, the ones every push goes through: a sweep and a push meet in a
     /// ledger's holds.
     ledgers: Arc<dyn Ledgers>,
+    /// The zones' archives: the bytes a keeping that stopped left are the background pass's to
+    /// remove too (WP-28.2).
+    archives: Option<Arc<dyn crate::catalog::archives::ArchiveStore>>,
     grace: Duration,
     metrics: Metrics,
     recorder: Option<crate::handles::Audit>,
@@ -384,7 +402,45 @@ impl Outcome {
 impl Sweep {
     /// One background pass over every ledger of every zone.
     fn run(&self) -> Outcome {
-        self.pass(&Scope::All, Act::Sweep, false).outcome
+        let outcome = self.pass(&Scope::All, Act::Sweep, false).outcome;
+        self.sweep_archives();
+        outcome
+    }
+
+    /// Removes the archives' bytes no record names, past the grace, zone by zone.
+    fn sweep_archives(&self) {
+        let Some(archives) = &self.archives else {
+            return;
+        };
+        let zones = match self.catalog.list_zones() {
+            Ok(zones) => zones,
+            Err(error) => {
+                warn!(
+                    event.name = "gc.archives_unswept",
+                    component = COMPONENT,
+                    error = %error,
+                    "the zones could not be listed: no archive's bytes are swept this round"
+                );
+                return;
+            }
+        };
+        for zone in zones {
+            match archives.sweep_unnamed(&zone.id, self.grace) {
+                Ok(0) => {}
+                Ok(removed) => info!(
+                    event.name = "gc.archives_swept",
+                    component = COMPONENT,
+                    removed,
+                    "bytes a keeping of an archive left without its record were removed"
+                ),
+                Err(error) => warn!(
+                    event.name = "gc.archives_unswept",
+                    component = COMPONENT,
+                    error = %error,
+                    "a zone's archives could not be swept: the next round tries again"
+                ),
+            }
+        }
     }
 
     /// One pass over the ledgers `scope` covers. `listing` keeps, for an operator's report, what
@@ -1165,6 +1221,7 @@ mod tests {
             sweep: Sweep {
                 catalog,
                 ledgers: files,
+                archives: None,
                 grace: Duration::from_secs(60),
                 metrics: Metrics::none(),
                 recorder: None,

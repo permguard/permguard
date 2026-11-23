@@ -312,6 +312,13 @@ pub trait KeyManager: SigningRing + Send + Sync {
     /// Called at startup and on a timer. It is idempotent: calling it twice in a row does nothing the
     /// second time, which is what makes it safe to call from both.
     fn maintain(&self) -> Result<Maintenance>;
+
+    /// Reads the keys again from where they are kept: what another process that shares them
+    /// changed is then this one's to sign and publish with. A manager no other process shares
+    /// has nothing to read.
+    fn refresh(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -795,11 +795,18 @@ impl Authority {
         {
             return Ok(Some(held.compact.clone()));
         }
-        let Some(view) = self.registry.list(list_id).map_err(unavailable)? else {
-            return Ok(None);
-        };
         // A change is signed at once, so a revocation holds here at once; `iat` grows strictly.
         let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
+        // The marks as the store holds them now: another instance may have signed lists past
+        // what this one read at its start, and keeping a mark below one of them would be refused
+        // (X84). Each is taken where it is higher.
+        if let Some(store) = &self.mark_store {
+            for (id, kept) in store.held() {
+                if marks.get(&id).is_none_or(|held| *held < kept) {
+                    marks.insert(id, kept);
+                }
+            }
+        }
         let iat = next_iat(
             signed.get(list_id).map(|held| held.iat),
             marks.get(list_id).copied(),
@@ -824,6 +831,11 @@ impl Authority {
             }
         }
         drop(marks);
+        // The list read once its mark is kept: an instance that signed it below that mark had
+        // kept it first, and read the list before, so whatever it signed is in what is read now.
+        let Some(view) = self.registry.list(list_id).map_err(unavailable)? else {
+            return Ok(None);
+        };
         let lst = view.list.encode().map_err(unavailable)?;
         let payload = serde_json::json!({
             "iss": self.issuer,

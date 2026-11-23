@@ -43,6 +43,9 @@ use crate::store::{LedgerStore, Ledgers};
 
 const COMPONENT: &str = "control-plane";
 
+/// The single job a pass is (WP-28.2).
+pub const JOB: &str = "objects/inventory";
+
 /// How often the store is measured. Not configurable on purpose: it is cheap,
 /// and a knob whose only effect is the freshness of a gauge is a knob nobody
 /// should have to reason about.
@@ -122,9 +125,19 @@ impl PlaneTask for InventoryService {
             let metrics = context.metrics().clone();
             let every = self.every;
 
+            // One instance measures an interval, a walk of every store being what it costs: the
+            // job's lease (WP-28.2). The gauges are that instance's.
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             // Once at start, so a plane that has just come up already reports
             // what it holds rather than waiting out the first interval.
-            measure(&catalog, ledgers.as_ref(), &metrics);
+            jobs.run(JOB, every, &mut || {
+                measure(&catalog, ledgers.as_ref(), &metrics);
+                true
+            });
 
             let (stop, mut stopped) = watch::channel(false);
             let task = tokio::spawn(async move {
@@ -134,10 +147,14 @@ impl PlaneTask for InventoryService {
                             let catalog = Arc::clone(&catalog);
                             let ledgers = Arc::clone(&ledgers);
                             let metrics = metrics.clone();
+                            let jobs = jobs.clone();
                             // A directory walk is blocking work; it does not
                             // belong on a runtime thread that answers requests.
                             let _ = tokio::task::spawn_blocking(move || {
-                                measure(&catalog, ledgers.as_ref(), &metrics);
+                                jobs.run(JOB, every, &mut || {
+                                    measure(&catalog, ledgers.as_ref(), &metrics);
+                                    true
+                                });
                             })
                             .await;
                         }

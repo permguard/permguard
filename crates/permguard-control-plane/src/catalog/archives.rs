@@ -92,4 +92,16 @@ pub trait ArchiveStore: Send + Sync {
         asked: &Requested,
         record: &ArchiveRecord,
     ) -> Result<Keeping, ArchiveError>;
+
+    /// Removes what a keeping that stopped between publishing an archive's bytes and writing its
+    /// record left in `zone`, older than `older_than`: bytes no record names. Answers how many
+    /// archives' bytes it removed. A backend that keeps the bytes and the record together has
+    /// none to remove (iteration 03, WP-28.2).
+    fn sweep_unnamed(
+        &self,
+        _zone: &str,
+        _older_than: std::time::Duration,
+    ) -> Result<usize, ArchiveError> {
+        Ok(0)
+    }
 }

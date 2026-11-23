@@ -1386,6 +1386,33 @@ sections:
       - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
     gaps:
       - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/8-architecture-storage-operations.md#single-jobs":
+    paths:
+      - crates/permguard-host/src/jobs.rs
+      - crates/permguard-postgres/src/jobs.rs
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-runtime/src/repin.rs
+      - crates/permguard-runtime/src/dormancy.rs
+      - crates/permguard-runtime/src/checkpoints.rs
+      - crates/permguard-runtime/src/stream_gc.rs
+      - crates/permguard-std/src/keys/service.rs
+      - crates/permguard-authority-plane/src/plane.rs
+      - crates/permguard-control-plane/src/gc.rs
+      - crates/permguard-control-plane/src/inventory.rs
+      - crates/permguard-control-plane/src/verify.rs
+      - crates/permguard-host/src/keys/ring.rs
+    tests:
+      - crates/permguard-postgres/src/jobs.rs::one_instance_runs_a_job_a_cadence_on_postgresql
+      - crates/permguard-postgres/src/jobs.rs::a_job_writes_only_while_it_holds_its_lease_on_postgresql
+      - crates/permguard-postgres/src/jobs.rs::a_holder_whose_work_failed_gives_the_job_up_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_read_again_the_ring_another_maintained_on_postgresql
+      - crates/permguard-host/src/keys/ring/tests.rs::a_ring_reads_again_what_another_maintained
+      - crates/permguard-authority-plane/src/instances.rs::an_instance_behind_on_another_list_still_signs_on_postgresql
+      - crates/permguard-authority-plane/src/instances.rs::instances_sign_one_list_past_each_other_and_lose_no_revocation_on_postgresql
+      - crates/permguard-s3/tests/control_plane.rs::the_deep_verification_finds_an_object_altered_in_the_bucket
+      - crates/permguard-s3/tests/control_plane.rs::the_bytes_no_archive_record_names_are_swept
+    gaps:
+      - "open (code): the tests need a PostgreSQL and an S3 server and are skipped without them; `scripts/test-s3.sh --then scripts/test-postgres.sh` and the `postgres` job of CI run them"
   "1-architecture/8-architecture-storage-operations.md#connection-settings":
     paths:
       - crates/permguard-core/src/config.rs

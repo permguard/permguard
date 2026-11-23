@@ -802,14 +802,7 @@ impl Ring {
                  transition is explicit, and this build makes none"
             )));
         }
-        let binding = match store.binding()? {
-            Some(bytes) => Sign1::decode(&bytes)
-                .ok()
-                .and_then(|sign1| Binding::decode(sign1.payload_unverified()).ok())
-                .filter(|binding| binding.ring == ring)
-                .map(|binding| (binding, bytes)),
-            None => None,
-        };
+        let binding = binding_of(store.as_ref(), ring)?;
         let opened = Self {
             id: ring,
             suite,
@@ -896,6 +889,46 @@ impl Ring {
 
     fn write(&self) -> std::sync::RwLockWriteGuard<'_, Materialized> {
         self.state.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Reads the ring's entries and binding again from its store (iteration 03, WP-28.2): what
+    /// another instance that shares the store appended, a rotation its holder of the ring's job
+    /// made, is then this ring's view to sign and publish with. A retired ring stays as it is.
+    pub fn refresh(&self) -> Result<(), RingError> {
+        if self.retired.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let _serial = self.serial();
+        self.reload()
+    }
+
+    /// The lock every transition is made under. On a store other instances share, the ring is
+    /// read again under it first (WP-28.2): a transition decided from a view behind the store
+    /// would take a key the store holds and the view does not know for one never recorded, and
+    /// destroy it.
+    fn writing(&self) -> Result<std::sync::MutexGuard<'_, ()>, RingError> {
+        let serial = self.serial();
+        if self.store.shared() && !self.retired.load(Ordering::SeqCst) {
+            self.reload()?;
+        }
+        Ok(serial)
+    }
+
+    /// The view and the binding as the store holds them, under the serial lock. A ring stopped
+    /// by a write the store refused takes transitions again: it now reads what the store holds.
+    fn reload(&self) -> Result<(), RingError> {
+        let mut state = Materialized::default();
+        for item in self.store.entries()? {
+            let entry = Entry::decode(item)?;
+            state
+                .apply(self.id, &entry)
+                .map_err(|detail| RingError::Corrupt(format!("{}: {detail}", self.id)))?;
+        }
+        let binding = binding_of(self.store.as_ref(), self.id)?;
+        *self.write() = state;
+        *self.binding.write().unwrap_or_else(PoisonError::into_inner) = binding;
+        self.stopped.store(false, Ordering::SeqCst);
+        Ok(())
     }
 
     /// The materialized view of the journal.
@@ -1169,7 +1202,7 @@ impl Ring {
     /// prepublished `publish_ahead` before the active key's turn ends; a retired key past
     /// `retain` is archived; the binding is issued for a new epoch and before it ends.
     pub fn maintain_now(&self) -> Result<Maintenance, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         let now = self.time.now_secs();
         let mut report = Maintenance::default();
         let ahead = self.policy.publish_ahead.as_secs();
@@ -1455,7 +1488,7 @@ impl Ring {
         applying: &Applying<'_>,
         expected_epoch: u64,
     ) -> Result<Transition, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_rotatable()?;
         let now = self.time.now_secs();
@@ -1518,7 +1551,7 @@ impl Ring {
         compromised_at: Option<u64>,
         expected_epoch: u64,
     ) -> Result<Transition, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_revocable(kid)?;
         if reason.is_empty() || reason.len() > MAX_REASON_BYTES {
@@ -1593,7 +1626,7 @@ impl Ring {
     /// Journals what the custody did to private halves at Bootstrap (WP-3.2): each slot in
     /// `slots`, sealed in place or rewrapped, an entry of `kind`.
     pub fn note_custody(&self, kind: Kind, slots: &[String]) -> Result<(), RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         let now = self.time.now_secs();
         for slot in slots {
             let kid = thumbprint::kid(self.id, slot);
@@ -1710,6 +1743,22 @@ impl permguard_core::KeyManager for Ring {
         }
         self.maintain_now().map_err(core_error)
     }
+
+    fn refresh(&self) -> permguard_core::keys::Result<()> {
+        Ring::refresh(self).map_err(core_error)
+    }
+}
+
+/// The binding `store` keeps for `ring`, with its bytes, when it holds one of this ring.
+fn binding_of(store: &dyn RingStore, ring: &str) -> Result<Option<(Binding, Vec<u8>)>, RingError> {
+    Ok(match store.binding()? {
+        Some(bytes) => Sign1::decode(&bytes)
+            .ok()
+            .and_then(|sign1| Binding::decode(sign1.payload_unverified()).ok())
+            .filter(|binding| binding.ring == ring)
+            .map(|binding| (binding, bytes)),
+        None => None,
+    })
 }
 
 /// The rings, as the mutation engine asks them about an operation: the domain [`DOMAIN`],

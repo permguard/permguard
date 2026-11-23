@@ -33,6 +33,7 @@ pub mod gate;
 pub mod held;
 pub mod holds;
 pub mod identity;
+pub mod jobs;
 pub mod lease;
 pub mod members;
 pub mod mutations;
