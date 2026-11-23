@@ -409,6 +409,10 @@ impl SealedFileKeyProvider {
 }
 
 impl KeyProvider for SealedFileKeyProvider {
+    fn forget(&self, slot: &str) {
+        self.cache().remove(slot);
+    }
+
     fn name(&self) -> &'static str {
         "file"
     }

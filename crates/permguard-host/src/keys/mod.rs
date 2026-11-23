@@ -115,6 +115,12 @@ pub trait KeyProvider: Send + Sync {
     fn sign(&self, slot: &str, suite: Suite, message: &[u8]) -> Result<Vec<u8>, KeyError>;
     /// Destroys the key in `slot`.
     fn destroy(&self, slot: &str) -> Result<(), KeyError>;
+
+    /// Forgets what this process holds of the key in `slot`, so the next use reads the slot
+    /// again: a key another instance put there, or one an undone attempt made, is never used
+    /// from memory (iteration 03, WP-28.5). A provider that holds nothing in memory forgets
+    /// nothing.
+    fn forget(&self, _slot: &str) {}
 }
 
 /// Keys as PKCS#8 in the clear, each the key of its slot.

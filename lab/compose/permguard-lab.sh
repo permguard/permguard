@@ -279,6 +279,14 @@ cmd_serve() {
         # No volume: the Host's state is the database's and the bucket's. Its secrets are files of
         # this instance, beside its configuration, and the bootstrap is the database's.
         backend_secrets
+        # The identity made in the database before the first start, as the chart's `identity`
+        # init container makes it (WP-28.5); a database that holds one is said so.
+        local provisioned
+        provisioned="$(permguard -o json host identity provision --if-missing --server-config "${config}")" ||
+            fail "${host}: the identity could not be made in the database"
+        if [ "$(jq -r '.provisioned' <<<"${provisioned}")" != false ]; then
+            log "${host}: the identity is made in the database, $(jq -r '.host_id' <<<"${provisioned}")"
+        fi
         if [ ! -f /var/lib/permguard/.lab-operator ]; then
             permguard -o json host grants bootstrap --server-config "${config}" \
                 --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null

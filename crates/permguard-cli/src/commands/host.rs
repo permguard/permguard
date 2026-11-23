@@ -652,6 +652,13 @@ fn identity(
     let now = permguard_core::time::unix_now();
     match action {
         IdentityAction::Provision { suite, if_missing } => {
+            // Without --volume, in the `postgresql-s3` backend the server's configuration names:
+            // the identity every instance opens, made before the first starts (WP-28.5).
+            if globals.volume.is_none()
+                && let Some(path) = server_config
+            {
+                return provision_shared(globals, path, &suite, if_missing, trace);
+            }
             let volume = volume_of(globals)?;
             let suite = Suite::from_name(&suite).ok_or_else(|| {
                 Failure::usage(format!(
@@ -2140,6 +2147,101 @@ struct IdentityReport {
     custody: Option<&'static str>,
     #[serde(skip)]
     provisioned: bool,
+}
+
+/// `host identity provision --server-config <file>` on the `postgresql-s3` backend (iteration
+/// 03, WP-28.5): the identity made in the database, in the custody the configuration names, before
+/// any instance starts; its witness printed once, as on a volume.
+fn provision_shared(
+    globals: &Globals,
+    server_config: &Path,
+    suite: &str,
+    if_missing: bool,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use permguard_host::identity::{self, Home, Identity};
+    use permguard_host::keys::ring::HOST_IDENTITY;
+
+    let suite = identity::Suite::from_name(suite).ok_or_else(|| {
+        Failure::usage(format!(
+            "`{suite}` is not a suite: pg-ed25519-sha256-v1 or pg-p256-sha256-v1"
+        ))
+    })?;
+    let config = super::shared::config_of(Some(server_config))?;
+    let Some(shared) = super::shared::open(&config)? else {
+        return Err(Failure::usage(
+            "the configuration keeps its state on a volume: name it with --volume <dir>",
+        ));
+    };
+    trace.say(format!("backend: {}", shared.backend));
+    if if_missing
+        && identity::provisioned_in(shared.identity.as_ref(), &shared.home)
+            .map_err(|error| Failure::unavailable(format!("the identity: {error}")))?
+            .is_some()
+    {
+        render_json(
+            &serde_json::json!({
+                "provisioned": false,
+                "reason": "the database holds its identity already: its witness was printed when it was provisioned",
+            }),
+            globals,
+            trace,
+        )?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let secrets = permguard_offline::factories::secret_store_for(&config)
+        .map_err(|error| Failure::usage(format!("the secret store: {error:#}")))?;
+    let custodian = permguard_offline::keys::custodian_for(
+        &config,
+        secrets.as_deref(),
+        &permguard_host::secrets::Witnesses::new(std::sync::Arc::clone(&shared.witnesses)),
+    )
+    .map_err(|error| Failure::usage(format!("the custody of the keys: {error:#}")))?;
+    let now = permguard_core::time::unix_now();
+    let opened = Identity::provision_in(
+        std::sync::Arc::clone(&shared.identity),
+        Home {
+            id: shared.home,
+            generation: 0,
+        },
+        |host_id| {
+            custodian
+                .provider(
+                    HOST_IDENTITY,
+                    *host_id,
+                    std::sync::Arc::clone(&shared.identity_slots),
+                    identity::stored_public_in(std::sync::Arc::clone(&shared.identity)),
+                    suite,
+                )
+                .map(|(provider, _)| provider)
+                .map_err(identity::IdentityError::from)
+        },
+        suite,
+        now,
+        now.saturating_mul(1000),
+    )
+    .map_err(|error| match error {
+        identity::IdentityError::Provisioned => Failure::usage(error),
+        other => Failure::unavailable(other),
+    })?;
+    shared
+        .offline_engine(permguard_core::build::VERSION)
+        .map_err(Failure::unavailable)?
+        .project(
+            &permguard_core::AuditEvent::new(
+                identity::AUDIT_PROVISIONED,
+                permguard_core::Subject::System(INITIATOR),
+            )
+            .on(&opened.host_id_text()),
+        )
+        .map_err(|error| Failure::unavailable(format!("recording the provisioning: {error}")))?;
+    let custody = custodian.custody_of(HOST_IDENTITY).as_str();
+    render(
+        &identity_report(&opened, true, Some(custody)),
+        globals.output,
+        trace,
+    )?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn identity_report(

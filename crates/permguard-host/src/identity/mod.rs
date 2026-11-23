@@ -153,6 +153,18 @@ struct Current {
     last: Option<Digest>,
 }
 
+/// The identity as a peer is presented it, read together.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Presented {
+    pub epoch: u64,
+    /// The fingerprint of the epoch's key.
+    pub fingerprint: String,
+    /// The signed document of the epoch.
+    pub document: Vec<u8>,
+    /// Every succession record, oldest first.
+    pub successions: Vec<Vec<u8>>,
+}
+
 /// What a rotation produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rotated {
@@ -176,6 +188,8 @@ pub struct Identity {
     retired: Arc<std::sync::atomic::AtomicBool>,
     /// Set while a reset of this identity runs: a second one is refused before it writes.
     resetting: Arc<std::sync::atomic::AtomicBool>,
+    /// When the identity was last read from a store other instances share (WP-28.5).
+    read_at: std::sync::Mutex<std::time::Instant>,
     /// Makes the provider of the identity a reset provisions, for its `host_id`.
     provisioner: Option<reset::Provisioner>,
 }
@@ -468,6 +482,8 @@ impl Identity {
         now: u64,
         now_millis: u64,
     ) -> Result<Arc<dyn KeyProvider>, IdentityError> {
+        // One provisioning at a time, on any instance: the second finds the first's INIT.
+        let _provisioning = store.provisioning()?;
         if store.init()?.is_some() {
             return Err(IdentityError::Provisioned);
         }
@@ -490,6 +506,12 @@ impl Identity {
         store.clear()?;
         let host_id = record::uuid_v7(now_millis, random()?);
         let provider = provider(&host_id)?;
+        // An interrupted provisioning may have left its key in the slot of epoch 1, which a
+        // custody fills once: it is no identity's, and goes before the new key takes the slot.
+        match provider.destroy(&slot(1)) {
+            Ok(()) | Err(crate::keys::KeyError::Absent(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
         let public = provider.generate(&slot(1), suite)?;
         store.publish_public(1, &public.bytes)?;
         // The self-test: the key signs a fresh challenge and its public half verifies it.
@@ -727,6 +749,7 @@ impl Identity {
             retired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             resetting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             provisioner: None,
+            read_at: std::sync::Mutex::new(std::time::Instant::now()),
         })
     }
 
@@ -784,6 +807,57 @@ impl Identity {
         self.read().successions.clone()
     }
 
+    /// The signed document and every succession, read together, as a peer is presented them.
+    /// On a store other instances share they are read again first (iteration 03, WP-28.5): a
+    /// member that moved between instances is never presented an epoch before one it was shown.
+    /// A store that does not answer refuses the presentation.
+    pub fn presented(&self) -> Result<Presented, IdentityError> {
+        let of = |current: &Current| Presented {
+            epoch: current.epoch,
+            fingerprint: current.public.fingerprint(),
+            document: current.envelope.clone(),
+            successions: current.successions.clone(),
+        };
+        if self.store.shared() && !self.is_retired() {
+            let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+            self.caught_up(&mut current)?;
+            return Ok(of(&current));
+        }
+        Ok(of(&self.read()))
+    }
+
+    /// Signs `payload` with the key of `epoch`, the epoch a presentation named: the current one,
+    /// or the one before it, whose key verifies in-flight work until the next rotation.
+    pub fn sign_at(
+        &self,
+        epoch: u64,
+        content_type: &str,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, IdentityError> {
+        if self.is_retired() {
+            return Err(IdentityError::Retired);
+        }
+        if !SIGNS_FOR_OTHERS.contains(&content_type) {
+            return Err(IdentityError::Refused(format!(
+                "the identity key does not sign `{content_type}`"
+            )));
+        }
+        let current = self.read();
+        if epoch != current.epoch && epoch.saturating_add(1) != current.epoch {
+            return Err(IdentityError::Refused(format!(
+                "the identity is at epoch {} and holds no key of epoch {epoch} to sign with",
+                current.epoch
+            )));
+        }
+        sign(
+            self.provider.as_ref(),
+            epoch,
+            current.public.suite,
+            content_type,
+            payload,
+        )
+    }
+
     /// The external witness of this identity.
     pub fn witness(&self) -> String {
         record::witness(&self.init_bytes, &self.volume_id, &self.init.fingerprint)
@@ -827,7 +901,12 @@ impl Identity {
             return Err(IdentityError::Retired);
         }
         // Held through the rotation's writes: two rotations of this process write one at a time.
-        let current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        // A rotation follows every one the store holds, another instance's included: one decided
+        // on an epoch another instance moved past would fork the chain (WP-28.5).
+        if self.store.shared() {
+            self.caught_up(&mut current)?;
+        }
         if let Some(expected) = expected_epoch
             && expected != current.epoch
         {
@@ -918,9 +997,17 @@ impl Identity {
         // and one undone leaves the identity as it was (decision X68).
         drop(current);
         let shown = Arc::clone(&self.current);
+        // A key generated by an attempt the database undoes is never used from memory.
+        let (provider, generated) = (Arc::clone(&self.provider), slot(next));
         applying.on_end(move |kept| {
             if kept {
-                *shown.write().unwrap_or_else(PoisonError::into_inner) = rotated;
+                let mut current = shown.write().unwrap_or_else(PoisonError::into_inner);
+                // Another reading may already hold this rotation, or one after it.
+                if rotated.successions.len() > current.successions.len() {
+                    *current = rotated;
+                }
+            } else {
+                provider.forget(&generated);
             }
         });
         tracing::info!(
@@ -938,9 +1025,162 @@ impl Identity {
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, Current> {
+        self.fresh();
         self.current.read().unwrap_or_else(PoisonError::into_inner)
     }
+
+    /// Reads the identity again when the reading is older than [`FRESH_FOR`], on a store other
+    /// instances share (iteration 03, WP-28.5): a rotation another instance made is then this
+    /// one's to sign with. The store is read and the chain verified outside the lock; what verifies
+    /// replaces the state when it is still ahead of it, and a reader of this thread or another is
+    /// not waited for. A store that does not answer, or answers what does not verify, is asked
+    /// again one bound later, never at every read.
+    fn fresh(&self) {
+        if !self.store.shared() || self.is_retired() {
+            return;
+        }
+        {
+            let mut read_at = self.read_at.lock().unwrap_or_else(PoisonError::into_inner);
+            if read_at.elapsed() < FRESH_FOR {
+                return;
+            }
+            *read_at = std::time::Instant::now();
+        }
+        let held = self
+            .current
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        match self.verified_after(&held) {
+            Ok(Some(next)) => {
+                if let Ok(mut current) = self.current.try_write()
+                    && next.successions.len() >= current.successions.len()
+                {
+                    *current = next;
+                }
+            }
+            Ok(None) => {}
+            Err(error) => tracing::error!(
+                event.name = "host.identity_unread",
+                component = "host",
+                error = %error,
+                "the identity another instance changed does not verify: it stays as read"
+            ),
+        }
+    }
+
+    /// Brings `current` to what the store holds, verified: what a presentation and a rotation
+    /// do before they act, holding the state to write.
+    fn caught_up(&self, current: &mut Current) -> Result<(), IdentityError> {
+        if let Some(next) = self.verified_after(current)? {
+            *current = next;
+        }
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// The identity as the store holds it past `held`, verified as an open verifies it: each
+    /// succession another instance appended under the key of the epoch before, its public key the
+    /// one the store keeps, the document they lead to under the last key, and possession of that
+    /// key; `None` when the store holds what `held` does. The successions and the document are
+    /// read in one reading. Fewer successions than held is a store put back, refused; nothing is
+    /// written.
+    fn verified_after(&self, held: &Current) -> Result<Option<Current>, IdentityError> {
+        let (all, envelope) = self.store.chain()?;
+        let envelope = envelope.ok_or_else(|| corrupt("identity.cose vanished"))?;
+        let count = held.successions.len();
+        if all.len() < count {
+            return Err(corrupt(format!(
+                "the store holds {} successions and this instance read {count}: a store put back",
+                all.len()
+            )));
+        }
+        if all.len() == count && envelope == held.envelope {
+            return Ok(None);
+        }
+        let suite = held.public.suite;
+        let (mut key, mut epoch, mut last) = (held.public.clone(), held.epoch, held.last.clone());
+        let mut successions = held.successions.clone();
+        for item in all.into_iter().skip(count) {
+            let succession = Sign1::from_value(item).map_err(corrupt)?;
+            let bytes = succession.encode().map_err(corrupt)?;
+            check_kid(&succession, epoch)?;
+            let payload = succession
+                .verify(suite, &key.bytes, protected::HOST_SUCCESSION)
+                .map_err(|error| corrupt(format!("succession to epoch {}: {error}", epoch + 1)))?;
+            let record = Succession::decode(payload)?;
+            let next = PublicKey {
+                suite,
+                bytes: record.public_key.clone(),
+            };
+            if record.host_id != self.init.host_id
+                || record.from_epoch != epoch
+                || record.to_epoch != epoch + 1
+                || record.previous != last.clone().unwrap_or_else(record::zero_digest)
+                || record.fingerprint != next.fingerprint()
+            {
+                return Err(corrupt(format!(
+                    "the succession to epoch {} does not continue the chain",
+                    epoch + 1
+                )));
+            }
+            if self.store.public(record.to_epoch)?.as_deref() != Some(record.public_key.as_slice())
+            {
+                return Err(corrupt(format!(
+                    "the public key of epoch {} is not the one its succession names",
+                    record.to_epoch
+                )));
+            }
+            last = Some(record::succession_digest(&bytes));
+            successions.push(bytes);
+            key = next;
+            epoch += 1;
+        }
+        let sign1 = Sign1::decode(&envelope).map_err(corrupt)?;
+        check_kid(&sign1, epoch)?;
+        let document = Document::decode(
+            sign1
+                .verify(suite, &key.bytes, protected::HOST_IDENTITY)
+                .map_err(|error| corrupt(format!("the identity document: {error}")))?,
+        )?;
+        if document.host_id != self.init.host_id
+            || document.subject != record::subject(&self.init.host_id)
+            || document.epoch != epoch
+            || document.public_key != key.bytes
+            || document.fingerprint != key.fingerprint()
+            || document.last_succession != last
+            || document.suite != suite
+            || document.revision < held.document.revision
+        {
+            return Err(corrupt(
+                "the document does not name the key and chain the store holds",
+            ));
+        }
+        // Possession, proven as an open proves it: what this process held of the keys of the
+        // epochs taken on is forgotten first, so a key an undone attempt made is never used.
+        for adopted in held.epoch + 1..=epoch {
+            self.provider.forget(&slot(adopted));
+        }
+        let challenge = random()?;
+        let proof = self.provider.sign(&slot(epoch), suite, &challenge)?;
+        suite
+            .verify(&key.bytes, &challenge, &proof)
+            .map_err(|_| corrupt("the provider's key does not match the document's"))?;
+        Ok(Some(Current {
+            epoch,
+            public: key,
+            document,
+            envelope,
+            successions,
+            last,
+        }))
+    }
 }
+
+/// How old the reading of the identity may be when it signs or is read, on a store other
+/// instances share (iteration 03, WP-28.5): a rotation on one instance is signed with on every
+/// instance within this bound.
+pub const FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Rotates `identity` as `initiator`, with no request id: the offline CLI. `expected_epoch` is
 /// the epoch the operator read.

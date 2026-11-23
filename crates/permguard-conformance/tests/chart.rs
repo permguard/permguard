@@ -2831,17 +2831,12 @@ fn a_control_plane_on_postgresql_s3_keeps_no_volume() {
 }
 
 /// What the server refuses on `postgresql-s3` the chart refuses first: a volume it would not use,
-/// a profile above `development` before the identity can be made in the database, a connection
-/// stated in part, and a backend that is none.
+/// a connection stated in part, and a backend that is none.
 #[test]
 fn a_control_plane_on_postgresql_s3_is_refused_what_its_server_refuses() {
     refused(
         &SHARED_BACKEND.replace("enabled: false", "enabled: true"),
         "set controlPlane.persistence.enabled=false",
-    );
-    refused(
-        &SHARED_BACKEND.replace("profile: development", "profile: production"),
-        "serves under the `development` profile alone",
     );
     refused(
         &SHARED_BACKEND.replace("bucket: permguard, ", ""),
@@ -2854,5 +2849,62 @@ fn a_control_plane_on_postgresql_s3_is_refused_what_its_server_refuses() {
     refused(
         &SHARED_BACKEND.replace("backend: postgresql-s3", "backend: mysql"),
         "controlPlane.storage.backend=mysql is no backend",
+    );
+}
+
+/// From `production` a Control Plane on `postgresql-s3` makes its identity offline in the
+/// database (WP-28.5): the `identity` init container provisions it with the server's
+/// configuration and no volume, and the Host starts on the recorded witness.
+#[test]
+fn from_production_a_control_plane_on_postgresql_s3_makes_its_identity_in_the_database() {
+    let witness = format!("sha256:{}", "ab".repeat(32));
+    let rendered = render(
+        &SHARED_BACKEND
+            .replace("profile: development", "profile: production")
+            .replace(
+                "  persistence: { enabled: false }\n",
+                &format!("  persistence: {{ enabled: false }}\n  identity: {{ witness: \"{witness}\" }}\n"),
+            ),
+    );
+    let spec = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    let identity = spec["initContainers"]
+        .as_array()
+        .expect("init containers")
+        .iter()
+        .find(|c| c["name"] == "identity")
+        .expect("an identity container");
+    let args: Vec<&str> = identity["args"]
+        .as_array()
+        .expect("args")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        args,
+        vec![
+            "host",
+            "identity",
+            "provision",
+            "--if-missing",
+            "--server-config",
+            "/etc/permguard/config.yml"
+        ]
+    );
+    assert!(
+        spec["initContainers"]
+            .as_array()
+            .expect("init containers")
+            .iter()
+            .all(|c| c["name"] != "claim"),
+        "no claim on a volume it does not keep"
+    );
+    let server = &spec["containers"][0]["env"];
+    assert!(
+        server
+            .as_array()
+            .expect("env")
+            .iter()
+            .any(|env| env["name"] == "PERMGUARD_HOST_IDENTITY_WITNESS"
+                && env["value"] == witness.as_str())
     );
 }

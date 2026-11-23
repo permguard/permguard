@@ -407,6 +407,8 @@ sections:
       - crates/permguard-host/src/identity/mod.rs
       - crates/permguard-host/src/identity/reset.rs
     tests:
+      - crates/permguard-postgres/tests/instances.rs::one_identity_is_every_instances_and_never_goes_back_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_provision_together_make_one_identity_on_postgresql
       - crates/permguard-host/src/identity/tests.rs::the_file_backend_keeps_the_contract
       - crates/permguard-host/src/identity/tests.rs::the_file_backend_tells_the_keys_it_holds_by_their_files
       - crates/permguard-host/tests/crash_points.rs::a_rotation_killed_between_its_writes_is_at_one_epoch_or_the_next

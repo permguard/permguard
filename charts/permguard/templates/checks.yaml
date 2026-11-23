@@ -659,17 +659,14 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- /*
 The Control Plane on the `postgresql-s3` backend (iteration 03, WP-28.1): its state is the
 database's and the bucket's, so it keeps no volume, and what the server refuses at start is refused
-here first. Above `development` a Host's identity is made offline before its first start, and the
-command that makes it in the database arrives with one identity across instances (WP-28.5).
+here first. Above `development` its identity is made offline in the database by the `identity`
+init container, the same for every instance (WP-28.5).
 */ -}}
 {{- $cpStorage := .Values.controlPlane.storage | default dict }}
 {{- $cpBackend := toString ($cpStorage.backend | default "files") }}
 {{- if and .Values.controlPlane.enabled (eq $cpBackend "postgresql-s3") }}
 {{- if include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane) }}
 {{- fail "controlPlane.storage.backend=postgresql-s3 keeps the Host's state in the database and the bucket, and no volume: set controlPlane.persistence.enabled=false." }}
-{{- end }}
-{{- if include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance) }}
-{{- fail "controlPlane.storage.backend=postgresql-s3 serves under the `development` profile alone until the Host's identity can be made offline in the database (WP-28.5): set controlPlane.assurance.profile=development." }}
 {{- end }}
 {{- range $key := list "host" "database" "user" }}
 {{- if not (get ($cpStorage.postgresql | default dict) $key) }}
@@ -691,7 +688,7 @@ only, so the identity must outlive its Pod. A Host on an emptyDir would make a n
 whose witness nobody could record before it starts. A group is refused that already, by the evidence
 it records from `production`.
 */ -}}
-{{- if and .Values.controlPlane.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane))) }}
+{{- if and .Values.controlPlane.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane))) (ne $cpBackend "postgresql-s3") }}
 {{- fail "controlPlane: from `production` the Host starts only on the witness of an identity made offline, which must outlive its Pod: set persistence.enabled (or controlPlane.persistence.enabled)." }}
 {{- end }}
 {{- if and .Values.allInOne.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.allInOne.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.allInOne))) }}

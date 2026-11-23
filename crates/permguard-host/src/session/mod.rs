@@ -246,14 +246,21 @@ pub struct Context {
 }
 
 impl Context {
-    fn presentation(&self) -> Result<Vec<u8>, Refusal> {
-        Presentation {
-            document: self.identity.document(),
-            successions: self.identity.successions(),
+    /// This Host's presentation and the epoch it presents, read together: what a challenge or a
+    /// hello names and the proof is signed at (WP-28.5).
+    fn presentation(&self) -> Result<(Vec<u8>, u64), Refusal> {
+        let presented = self
+            .identity
+            .presented()
+            .map_err(|error| Refusal::unavailable(error.to_string()))?;
+        let bytes = Presentation {
+            document: presented.document,
+            successions: presented.successions,
             first_public_key: self.identity.first_public_key().to_vec(),
         }
         .encode()
-        .map_err(|error| Refusal::unavailable(error.to_string()))
+        .map_err(|error| Refusal::unavailable(error.to_string()))?;
+        Ok((bytes, presented.epoch))
     }
 
     /// Verifies a peer's presentation: an enrolling member from its own chain, any other peer
@@ -284,12 +291,13 @@ impl Context {
         Ok(verified)
     }
 
-    fn prove(&self, transcript: &Transcript) -> Result<Vec<u8>, Refusal> {
+    /// Signs `transcript` with this Host's key of `epoch`, the one its presentation named.
+    fn prove(&self, transcript: &Transcript, epoch: u64) -> Result<Vec<u8>, Refusal> {
         let bytes = transcript
             .encode()
             .map_err(|error| Refusal::unavailable(error.to_string()))?;
         self.identity
-            .sign(protected::HOST_PROOF, bytes)
+            .sign_at(epoch, protected::HOST_PROOF, bytes)
             .map_err(|error| Refusal::unavailable(error.to_string()))
     }
 
@@ -611,9 +619,10 @@ impl Responder {
                     .time
                     .lease_now()
                     .map_err(|anomaly| Refusal::unavailable(anomaly.to_string()))?;
+                let (ours, epoch) = self.context.presentation()?;
                 let challenge = Challenge {
                     host: self.context.identity.host_id(),
-                    epoch: self.context.identity.epoch(),
+                    epoch,
                     declared_assurance: self.context.declared_assurance,
                     nonce: nonce()?,
                     expires: u64::try_from(now).unwrap_or(0) + NONCE_LIFETIME.as_secs(),
@@ -622,7 +631,7 @@ impl Responder {
                     .encode()
                     .map_err(|error| Refusal::unavailable(error.0))?;
                 let frames = vec![
-                    Frame::Identity(self.context.presentation()?),
+                    Frame::Identity(ours),
                     Frame::Challenge(challenge_bytes.clone()),
                 ];
                 Ok((
@@ -678,7 +687,9 @@ impl Responder {
                     .map_err(|error| Refusal::unavailable(error.0))?;
                 verify_proof(&peer, &bytes, &expected)?;
                 transcript.signer = Role::Responder;
-                let proof = self.context.prove(&transcript)?;
+                let proof = self
+                    .context
+                    .prove(&transcript, transcript.responder_epoch)?;
                 let session = Session {
                     role: Role::Responder,
                     peer: peer.host_id,
@@ -867,10 +878,11 @@ impl Initiator {
             return Err(refusal);
         }
         let opening = (|| {
+            let (presentation, epoch) = self.context.presentation()?;
             let hello = Hello {
                 version: VERSION,
                 host: self.context.identity.host_id(),
-                epoch: self.context.identity.epoch(),
+                epoch,
                 declared_assurance: self.context.declared_assurance,
                 nonce: nonce()?,
                 operation: self.request.operation,
@@ -881,9 +893,9 @@ impl Initiator {
             let bytes = hello
                 .encode()
                 .map_err(|error| Refusal::unavailable(error.0))?;
-            Ok((hello, bytes))
+            Ok((hello, bytes, presentation))
         })();
-        let (hello, bytes) = match opening {
+        let (hello, bytes, identity) = match opening {
             Ok(opening) => opening,
             Err(refusal) => {
                 self.context.refused(Role::Initiator, &self.known, &refusal);
@@ -891,7 +903,6 @@ impl Initiator {
                 return Err(refusal);
             }
         };
-        let identity = self.context.presentation()?;
         self.state = Initiating::Identity {
             hello_digest: hello_digest(&bytes),
             hello,
@@ -992,7 +1003,9 @@ impl Initiator {
                     signer: Role::Initiator,
                     request_digest: hello.request_digest.clone(),
                 };
-                let proof = self.context.prove(&transcript)?;
+                let proof = self
+                    .context
+                    .prove(&transcript, transcript.initiator_epoch)?;
                 transcript.signer = Role::Responder;
                 let expected = transcript
                     .encode()

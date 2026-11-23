@@ -153,6 +153,27 @@ impl PostgresIdentity {
 }
 
 impl IdentityStore for PostgresIdentity {
+    fn shared(&self) -> bool {
+        true
+    }
+
+    fn chain(&self) -> Result<(Vec<Value>, Option<Vec<u8>>), IdentityError> {
+        // One unit of work: the successions and the document of one moment, never a rotation
+        // between them.
+        self.unit(|_| {
+            Ok((
+                self.successions().map_err(Failure::Refused)?,
+                self.document().map_err(Failure::Refused)?,
+            ))
+        })
+    }
+
+    fn provisioning(&self) -> Result<Box<dyn std::any::Any + Send>, IdentityError> {
+        Ok(Box::new(
+            self.database.hold("permguard/identity/provisioning")?,
+        ))
+    }
+
     fn init(&self) -> Result<Option<Vec<u8>>, IdentityError> {
         self.unit(|unit| record(unit, INIT))
     }

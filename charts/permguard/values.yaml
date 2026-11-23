@@ -87,8 +87,8 @@ controlPlane:
     witness: ""
   # Where this Host keeps its state (iteration 03, WP-28.1). `files`, the default: its volume,
   # `persistence` below. `postgresql-s3`: a PostgreSQL database and an S3 bucket, and no volume,
-  # so `persistence` stays off; one instance, under the `development` profile until its identity
-  # can be made offline in the database (WP-28.5). The `*Ref` values name secrets the Host's
+  # so `persistence` stays off. Above `development` the `identity` init container makes the
+  # identity in the database before the first start, as on a volume. The `*Ref` values name secrets the Host's
   # secret store resolves (`extraConfig.operations.secrets`, mounted through `extraVolumes`), and
   # the `file` custody seals its keys under a key-encryption key named the same way:
   #

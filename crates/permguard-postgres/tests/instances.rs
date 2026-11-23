@@ -566,3 +566,187 @@ fn a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql(
         "and publishes no revoked key"
     );
 }
+
+/// One Host identity across instances (WP-28.5): each instance starts with a boot id of its own;
+/// a rotation made on one is presented by the other at once, so a member that moves between them
+/// never sees an epoch go back; and a rotation asked of an instance behind the store follows the
+/// one the store holds rather than forking the chain.
+#[test]
+fn one_identity_is_every_instances_and_never_goes_back_on_postgresql() {
+    use permguard_host::identity::{Home, Identity, IdentityError};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::HOST_IDENTITY;
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::MutationError;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("one_identity_is_every_instances_and_never_goes_back_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let home = Home {
+        id: [5; 16],
+        generation: 0,
+    };
+    let databases = instances(&server, &scratch.schema, |database| database);
+    let provider = |database: &Database| -> Arc<dyn permguard_host::keys::KeyProvider> {
+        Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+            database.clone(),
+            HOST_IDENTITY,
+        ))))
+    };
+    let now = permguard_core::time::unix_now();
+    let one = Identity::provision_in(
+        Arc::new(PostgresIdentity::new(databases[0].clone())),
+        home,
+        |_| Ok(provider(&databases[0])),
+        Suite::Ed25519Sha256V1,
+        now,
+        now * 1_000,
+    )
+    .expect("provisioned");
+    let other = Identity::open_in(
+        Arc::new(PostgresIdentity::new(databases[1].clone())),
+        home,
+        provider(&databases[1]),
+    )
+    .expect("opened");
+    assert_eq!(other.host_id(), one.host_id(), "one identity");
+    assert_ne!(other.boot_id(), one.boot_id(), "a boot id an instance");
+
+    // The engine over the first instance's pool: a rotation's writes are its one transaction.
+    let engine = permguard_postgres::testing::engine(databases[0].clone());
+    let rotated = permguard_host::identity::rotate(
+        &engine,
+        &one,
+        Initiator::System("test".to_owned()),
+        1,
+        now,
+    )
+    .expect("rotated on the first instance");
+    assert_eq!(rotated.epoch, 2);
+    // Within the bound an ordinary read may still be the epoch read; past it, the one held.
+    std::thread::sleep(permguard_host::identity::FRESH_FOR);
+    assert_eq!(
+        other.epoch(),
+        2,
+        "an ordinary read follows within the bound"
+    );
+
+    // A rotation asked of an instance behind the store reads it first: the store's epoch answers.
+    let behind = Identity::open_in(
+        Arc::new(PostgresIdentity::new(databases[2].clone())),
+        home,
+        provider(&databases[2]),
+    )
+    .expect("opened");
+    permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[0].clone()),
+        &one,
+        Initiator::System("test".to_owned()),
+        2,
+        now,
+    )
+    .expect("rotated again on the first instance");
+    let stale = permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[2].clone()),
+        &behind,
+        Initiator::System("test".to_owned()),
+        2,
+        now,
+    );
+    assert!(
+        matches!(
+            stale,
+            Err(MutationError::Refused(IdentityError::Conflict {
+                current: 3,
+                ..
+            }))
+        ),
+        "{stale:?}"
+    );
+    // Presented at once, whatever the reading's age, by every instance.
+    let presented = other.presented().expect("presented");
+    assert_eq!(presented.document, one.document());
+    assert_eq!(presented.successions, one.successions());
+    assert_eq!(presented.epoch, 3);
+    permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[1].clone()),
+        &other,
+        Initiator::System("test".to_owned()),
+        3,
+        now,
+    )
+    .expect("rotated on the other, after the first's");
+    let presented = one.presented().expect("presented");
+    assert_eq!(presented.document, other.document());
+    assert_eq!(presented.epoch, 4);
+    assert_eq!(one.epoch(), 4);
+}
+
+/// Instances that provision one identity together make one (WP-28.5): one provisions, the others
+/// find it provisioned, and the identity opens whole on every instance.
+#[test]
+fn instances_that_provision_together_make_one_identity_on_postgresql() {
+    use permguard_host::identity::{Home, Identity, IdentityError};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::HOST_IDENTITY;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_that_provision_together_make_one_identity_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let home = Home {
+        id: [6; 16],
+        generation: 0,
+    };
+    let databases = instances(&server, &scratch.schema, |database| database);
+    let provider = |database: &Database| -> Arc<dyn permguard_host::keys::KeyProvider> {
+        Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+            database.clone(),
+            HOST_IDENTITY,
+        ))))
+    };
+    let now = permguard_core::time::unix_now();
+    // Staggered: each provisioning arrives while the ones before are writing their records.
+    let answers = together(&databases, |instance, database| {
+        std::thread::sleep(std::time::Duration::from_millis(
+            4 * u64::try_from(instance).expect("small"),
+        ));
+        Identity::provision_in(
+            Arc::new(PostgresIdentity::new(database.clone())),
+            home,
+            |_| Ok(provider(database)),
+            Suite::Ed25519Sha256V1,
+            now,
+            now * 1_000,
+        )
+        .map(|identity| identity.host_id())
+    });
+    let made: Vec<_> = answers
+        .iter()
+        .filter_map(|answer| answer.as_ref().ok())
+        .collect();
+    assert_eq!(made.len(), 1, "{answers:?}");
+    assert!(
+        answers
+            .iter()
+            .filter(|answer| answer.is_err())
+            .all(|answer| matches!(answer, Err(IdentityError::Provisioned))),
+        "{answers:?}"
+    );
+    for database in &databases {
+        let opened = Identity::open_in(
+            Arc::new(PostgresIdentity::new(database.clone())),
+            home,
+            provider(database),
+        )
+        .expect("the one identity opens on every instance");
+        assert_eq!(&opened.host_id(), made[0]);
+    }
+}

@@ -319,7 +319,12 @@ is verified first, by its own `verify-cli` (TD-4).
 - name: identity
   image: {{ include "permguard.image" $cli }}
   imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+  {{- if .shared }}
+  # On `postgresql-s3` the identity is the database's, the same for every instance (WP-28.5).
+  args: ["host", "identity", "provision", "--if-missing", "--server-config", "/etc/permguard/config.yml"]
+  {{- else }}
   args: ["host", "identity", "provision", "--if-missing", "--volume", "/var/lib/permguard/volume", "--server-config", "/etc/permguard/config.yml"]
+  {{- end }}
   {{- with .extraEnv }}
   env:
     {{- toYaml . | nindent 4 }}

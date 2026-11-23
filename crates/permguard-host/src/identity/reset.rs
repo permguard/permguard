@@ -148,26 +148,20 @@ impl Identity {
             }
         });
         retire_rings(applying, rings, &old_host_id)?;
-        // Every private key this identity held, through the provider that holds it, once the
-        // reset is kept: a key a custody outside the database destroys is not undone with it. A
-        // key the provider could not destroy is reported and its file goes all the same.
-        let (provider, epochs) = (Arc::clone(&self.provider), self.epoch());
-        applying.on_end(move |kept| {
-            if !kept {
-                return;
+        // Every private key this identity held, through the provider that holds it, before the
+        // next identity is provisioned: its keys take the same slots, by epoch (X155). A key the
+        // provider could not destroy is reported and its file goes all the same.
+        for epoch in 1..=self.epoch() {
+            if let Err(error) = self.provider.destroy(&slot(epoch)) {
+                tracing::warn!(
+                    event.name = "host.identity_key_kept",
+                    component = "host",
+                    epoch,
+                    error = %error,
+                    "a reset identity key could not be destroyed"
+                );
             }
-            for epoch in 1..=epochs {
-                if let Err(error) = provider.destroy(&slot(epoch)) {
-                    tracing::warn!(
-                        event.name = "host.identity_key_kept",
-                        component = "host",
-                        epoch,
-                        error = %error,
-                        "a reset identity key could not be destroyed"
-                    );
-                }
-            }
-        });
+        }
         complete(
             self.store.as_ref(),
             self.volume_id,

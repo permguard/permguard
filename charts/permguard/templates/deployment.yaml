@@ -83,7 +83,7 @@ spec:
               mountPath: /var/lib/permguard
       {{- end }}
       {{- if $provisions }}
-        {{- include "permguard.identityInit" (dict "root" $ "resources" $plane.resources "extraEnv" $plane.extraEnv "extraVolumeMounts" $plane.extraVolumeMounts "publicTls" $plane.tls.secretName "hostTls" $plane.hostListener.enabled) | nindent 8 }}
+        {{- include "permguard.identityInit" (dict "root" $ "resources" $plane.resources "extraEnv" $plane.extraEnv "extraVolumeMounts" $plane.extraVolumeMounts "publicTls" $plane.tls.secretName "hostTls" $plane.hostListener.enabled "shared" (eq (toString (dig "backend" "files" ($plane.storage | default dict))) "postgresql-s3")) | nindent 8 }}
       {{- end }}
       containers:
         - name: {{ $component }}

@@ -765,17 +765,21 @@ impl Source<'_> {
         frontier: &Frontier,
         issued_at: u64,
     ) -> Result<Built, BundleError> {
-        if self.identity.epoch() != frontier.identity_epoch {
+        // One reading of the identity, as a peer is presented it (WP-28.5).
+        let presented = self
+            .identity
+            .presented()
+            .map_err(|error| BundleError::Unreproducible(error.to_string()))?;
+        if presented.epoch != frontier.identity_epoch {
             return Err(BundleError::Unreproducible(format!(
                 "the identity is at epoch {} and the frontier at {}",
-                self.identity.epoch(),
-                frontier.identity_epoch
+                presented.epoch, frontier.identity_epoch
             )));
         }
         let mut signer = None;
         let mut items = vec![Item::Identity {
-            document: self.identity.document(),
-            successions: self.identity.successions(),
+            document: presented.document,
+            successions: presented.successions,
             first_public_key: self.identity.first_public_key().to_vec(),
         }];
         for fixed in &frontier.rings {

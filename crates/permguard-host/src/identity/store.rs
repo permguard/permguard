@@ -83,6 +83,27 @@ pub struct Records {
 /// and [`Identity`](super::Identity) verifies them. A change made by a rotation or a reset runs
 /// inside one operation of the mutation engine, whose unit of work its calls share.
 pub trait IdentityStore: Send + Sync {
+    /// Whether other instances share what this store keeps: the identity is then read again,
+    /// a rotation another instance made among it, before it signs or rotates (iteration 03,
+    /// WP-28.5). A volume's store is one process's.
+    fn shared(&self) -> bool {
+        false
+    }
+
+    /// Every succession and the signed document, read in one reading: what an instance reads
+    /// again of the identity another instance rotated (WP-28.5). A store whose writer is one
+    /// process reads them one after the other.
+    fn chain(&self) -> Result<(Vec<Value>, Option<Vec<u8>>), IdentityError> {
+        Ok((self.successions()?, self.document()?))
+    }
+
+    /// Held while the identity is provisioned, so of two provisionings, on any instance, one
+    /// writes and the other finds it provisioned (WP-28.5). A volume is one process's, already
+    /// held.
+    fn provisioning(&self) -> Result<Box<dyn std::any::Any + Send>, IdentityError> {
+        Ok(Box::new(()))
+    }
+
     /// The provisioning record, when the identity is provisioned.
     fn init(&self) -> Result<Option<Vec<u8>>, IdentityError>;
 
