@@ -10,6 +10,34 @@ use permguard_core::assurance::AssuranceProfile;
 use permguard_core::{Secret, SecretError};
 
 use super::*;
+use crate::storage::volume::Volume;
+
+/// The file backends pass their contracts' suites, each case on a volume of its own.
+#[test]
+fn the_file_backends_keep_their_contracts() {
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let volumes = Mutex::new(Vec::new());
+    let volume = |kind: &str| {
+        let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Volume::claim(
+            &scratch(&format!("suite-{kind}-{case}")),
+            AssuranceProfile::Development,
+        )
+        .expect("claimed")
+    };
+    suite::run_witnesses(&|| {
+        let volume = volume("witness");
+        let store = Arc::new(files::FileWitnesses::open(&volume).expect("the witnesses open"));
+        volumes.lock().expect("lock").push(volume);
+        store
+    });
+    suite::run_delivered(&|| {
+        let volume = volume("delivered");
+        let store = Arc::new(files::FileDeliveredKeys::open(&volume).expect("the keys open"));
+        volumes.lock().expect("lock").push(volume);
+        store
+    });
+}
 
 fn scratch(tag: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(

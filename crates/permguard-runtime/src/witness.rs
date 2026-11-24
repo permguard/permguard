@@ -23,13 +23,13 @@
 //! needs the key; having it does not reveal the key, any more than any other pseudonym in the trail
 //! does. It is exactly as sensitive as the records it protects, and it is kept beside them.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 
 use permguard_core::{Config, Pseudonymizer, Realm};
-use permguard_host::identity::witness::{self, HostScope, Witnessed};
+use permguard_host::identity::witness::files::FileVersionWitnesses;
+use permguard_host::identity::witness::{self, HostScope, VersionWitnesses, Witnessed};
 
 /// The input every key is asked to pseudonymise, so that two keys can be told apart.
 ///
@@ -37,46 +37,46 @@ use permguard_host::identity::witness::{self, HostScope, Witnessed};
 /// human reading the file can see that it is not somebody's identifier.
 const WITNESS_INPUT: &str = "permguard:audit-pseudonym-key-witness";
 
-/// Where the witnesses are kept inside the volume.
-const WITNESS_FILE: &str = "operations/state/audit-pseudonym-versions";
-
-/// Returns where this deployment keeps its witnesses.
+/// Returns where a deployment on the file backend keeps its server's witnesses.
 pub fn witness_path(config: &Config) -> PathBuf {
-    config.resolve(WITNESS_FILE)
+    FileVersionWitnesses::path_below(config.working_dir(), None)
 }
 
 /// Refuses to start when the *server's* pseudonymisation key version now means a different key.
 ///
 /// Does nothing when pseudonymisation is off, and records the version the first time it sees it.
-pub fn check(config: &Config, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()> {
-    check_at(&witness_path(config), pseudonymizer, None)
+pub fn check(
+    witnesses: &dyn VersionWitnesses,
+    pseudonymizer: Option<&dyn Pseudonymizer>,
+) -> Result<()> {
+    check_in(witnesses, None, pseudonymizer, None)
 }
 
 /// [`check`] for the Host `scope` names (BUG-0079): a key version is witnessed per Host, so the
 /// new Host an identity reset provisions records its own derivation under the labels configured,
 /// and the retired one's stay its own.
 pub fn check_for(
-    config: &Config,
+    witnesses: &dyn VersionWitnesses,
     pseudonymizer: Option<&dyn Pseudonymizer>,
     scope: &HostScope,
 ) -> Result<()> {
-    check_at(&witness_path(config), pseudonymizer, Some(scope))
+    check_in(witnesses, None, pseudonymizer, Some(scope))
 }
 
-/// The same guard for one realm, against the realm's own witness under `realms/<name>/state`.
+/// The same guard for one realm, against the realm's own witness.
 ///
 /// A realm's key is its own, so its witness is its own too: a version that means one key in realm A
 /// and another in realm B is not a mismatch, and must not read as one. A realm whose key changed
 /// without its version changing refuses the start with the realm named — a mis-rotation that would
 /// silently corrupt a realm's trail is a configuration error to fix, not a fault to serve through.
-pub fn check_realm(config: &Config, realm: &Realm, scope: Option<&HostScope>) -> Result<()> {
-    let path = config.resolve(format!(
-        "realms/{}/operations/state/audit-pseudonym-versions",
-        realm.name()
-    ));
-
-    check_at(
-        &path,
+pub fn check_realm(
+    witnesses: &dyn VersionWitnesses,
+    realm: &Realm,
+    scope: Option<&HostScope>,
+) -> Result<()> {
+    check_in(
+        witnesses,
+        Some(realm.name()),
         realm.pseudonymizer().map(|policy| policy.as_ref()),
         scope,
     )
@@ -88,9 +88,11 @@ pub fn check_realm(config: &Config, realm: &Realm, scope: Option<&HostScope>) ->
     })
 }
 
-/// Refuses to start when a key version at `path` now means a different key than it did.
-fn check_at(
-    path: &Path,
+/// Refuses to start when a key version of `realm`, the server's own when `None`, now means a
+/// different key than it did.
+fn check_in(
+    witnesses: &dyn VersionWitnesses,
+    realm: Option<&str>,
     pseudonymizer: Option<&dyn Pseudonymizer>,
     scope: Option<&HostScope>,
 ) -> Result<()> {
@@ -101,11 +103,16 @@ fn check_at(
     let version = pseudonymizer.key_version().to_owned();
     let witness = pseudonymizer.pseudonymize(WITNESS_INPUT);
 
-    let mut recorded = read(path)?;
-    let (outcome, changed) =
-        witness::check(&mut recorded, &version, &witness, scope, |held, now| {
-            held == now
-        });
+    // Checked and recorded in one step of the store: two starts never both record a version.
+    let mut outcome = Witnessed::Holds;
+    witnesses
+        .update(realm, &mut |recorded| {
+            let (checked, changed) =
+                witness::check(recorded, &version, &witness, scope, |held, now| held == now);
+            outcome = checked;
+            changed
+        })
+        .context("reading the witnesses of the pseudonymisation key versions")?;
     if outcome == Witnessed::KeyChanged {
         bail!(
             "the audit pseudonymisation key changed but its version did not: version `{version}` \
@@ -115,67 +122,8 @@ fn check_at(
              per-Host, per-resource pseudonyms (WP-3.3) the key is the same and its derivation is \
              not: raise the version (`v2` after `v1`). If this has genuinely never written a \
              record under `{version}`, remove {} and start again.",
-            path.display()
+            witnesses.place(realm)
         );
     }
-    if changed {
-        write(path, &recorded)?;
-    }
-    Ok(())
-}
-
-/// Reads the versions this deployment has already recorded under.
-fn read(path: &Path) -> Result<Vec<(String, String)>> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => {
-            return Err(error).with_context(|| format!("reading {}", path.display()));
-        }
-    };
-
-    Ok(text
-        .lines()
-        .filter_map(|line| line.split_once('\t'))
-        .map(|(version, witness)| (version.to_owned(), witness.to_owned()))
-        .collect())
-}
-
-/// Records the versions seen, so the next start can compare against them.
-fn write(path: &Path, entries: &[(String, String)]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
-        restrict(parent, 0o700)?;
-    }
-
-    let text: String = entries
-        .iter()
-        .map(|(version, witness)| format!("{version}\t{witness}\n"))
-        .collect();
-
-    // Through the storage library (WP-1.11): atomic and flushed, so a crash never leaves a
-    // half-written witness that the next start would read as a key change.
-    let (parent, name) = path
-        .parent()
-        .zip(path.file_name().and_then(|name| name.to_str()))
-        .ok_or_else(|| anyhow::anyhow!("{} names no file", path.display()))?;
-    let dir = permguard_host::storage::Dir::create_root(parent)
-        .with_context(|| format!("opening {}", parent.display()))?;
-    permguard_host::storage::write::replace_bytes(&dir, name, text.as_bytes())
-        .with_context(|| format!("writing {}", path.display()))?;
-    restrict(path, 0o600)
-}
-
-/// Narrows permissions where the platform has them.
-#[cfg(unix)]
-fn restrict(path: &Path, mode: u32) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-        .with_context(|| format!("restricting {}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn restrict(_path: &Path, _mode: u32) -> Result<()> {
     Ok(())
 }

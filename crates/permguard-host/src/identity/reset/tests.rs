@@ -6,9 +6,11 @@
 use permguard_core::assurance::AssuranceProfile;
 
 use super::*;
-use crate::identity::Identities;
+use crate::identity::{DOCUMENT, INIT, Identities, directories};
 use crate::keys::FileKeyProvider;
 use crate::operations::mutation::Domain as _;
+use crate::storage::volume::Volume;
+use crate::storage::{Dir, write};
 
 const NOW: u64 = 1_800_000_000;
 
@@ -144,6 +146,7 @@ fn a_reset_retires_the_identity_keeps_its_public_evidence_and_provisions_another
             &applying.operation_id(),
             Some(&format!("reset:{}", record::uuid_text(&old))),
         )
+        .expect("the domain answers")
         .expect("observed");
     assert_eq!(
         observed.target,
@@ -155,6 +158,7 @@ fn a_reset_retires_the_identity_keeps_its_public_evidence_and_provisions_another
                 &Applying::for_tests(8).operation_id(),
                 Some(&format!("reset:{}", record::uuid_text(&old)))
             )
+            .expect("the domain answers")
             .is_none(),
         "another operation did not reset it"
     );
@@ -166,7 +170,7 @@ fn an_interrupted_reset_refuses_the_open_and_completes_when_run_again() {
     let (volume, identity) = provisioned(&root);
     let old = identity.host_id();
     drop(identity);
-    let (dir, keys) = directories(&volume).expect("directories");
+    let (dir, _) = directories(&volume).expect("directories");
     let resume_now = || {
         resume(
             &Applying::for_tests(3),
@@ -186,18 +190,14 @@ fn an_interrupted_reset_refuses_the_open_and_completes_when_run_again() {
         "nothing was removed"
     );
     // A reset that kept its evidence, wrote its marker and stopped.
-    let retired = dir
-        .subdir(RETIRED, true)
-        .expect("retired")
-        .subdir(&record::uuid_text(&old), true)
-        .expect("its directory");
-    keep_evidence(&dir, &keys, &retired).expect("kept");
-    write::replace_bytes(
-        &retired,
-        RESET,
-        &reset_record(&old, NOW, None).expect("a record"),
-    )
-    .expect("recorded");
+    crate::identity::files::FileIdentity::open(&volume)
+        .expect("the store")
+        .retire(
+            &Applying::for_tests(2),
+            &old,
+            &reset_record(&old, NOW, None).expect("a record"),
+        )
+        .expect("kept and recorded");
     let provider: Arc<dyn KeyProvider> = Arc::new(FileKeyProvider::new(
         directories(&volume).expect("directories").1,
     ));

@@ -35,10 +35,9 @@ pub use permguard_objects::crypto::seal::{Dek, KeyWrap as Wrap, SealedKey as Sea
 
 use permguard_core::config::KeyCustody;
 
+use super::slots::{Kind, SlotStore};
 use super::{Custody, FileKeyProvider, KeyError, KeyProvider, PublicKey};
 use crate::secrets::Root;
-use crate::storage::write::{Published, publish_immutable, replace_bytes};
-use crate::storage::{Dir, tombstone};
 
 /// The wrapping algorithm of a KEK held in the secret store (owner decision of 2026-10-08):
 /// AES-256-GCM under a fresh nonce, the wrap context as associated data, `nonce ‖ ciphertext ‖
@@ -167,13 +166,13 @@ pub struct Prepared {
 
 /// Whether `bytes` are a plaintext PKCS#8 document rather than a sealed key: DER starts with a
 /// SEQUENCE, a sealed key with an eight-member CBOR map.
-fn is_plaintext(bytes: &[u8]) -> bool {
+pub(crate) fn is_plaintext(bytes: &[u8]) -> bool {
     bytes.first() == Some(&0x30)
 }
 
-/// Private keys sealed in files below one directory, `0600` below `0700`.
+/// Private keys sealed, each the key of its slot.
 pub struct SealedFileKeyProvider {
-    dir: Dir,
+    slots: Arc<dyn SlotStore>,
     host_id: [u8; 16],
     ring: &'static str,
     keks: Keks,
@@ -185,7 +184,6 @@ pub struct SealedFileKeyProvider {
 impl fmt::Debug for SealedFileKeyProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SealedFileKeyProvider")
-            .field("dir", &self.dir.path())
             .field("ring", &self.ring)
             .field("keks", &self.keks)
             .finish_non_exhaustive()
@@ -193,16 +191,16 @@ impl fmt::Debug for SealedFileKeyProvider {
 }
 
 impl SealedFileKeyProvider {
-    /// Over `dir`, which the caller created `0700`, for `ring` of `host_id`.
+    /// Over the slots `slots` keeps, for `ring` of `host_id`.
     pub fn new(
-        dir: Dir,
+        slots: Arc<dyn SlotStore>,
         host_id: [u8; 16],
         ring: &'static str,
         keks: Keks,
         stored: StoredPublic,
     ) -> Self {
         Self {
-            dir,
+            slots,
             host_id,
             ring,
             keks,
@@ -219,10 +217,6 @@ impl SealedFileKeyProvider {
 
     fn cache(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Arc<SigningKey>>> {
         self.unsealed.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn file(slot: &str) -> Result<String, KeyError> {
-        FileKeyProvider::name_of(slot)
     }
 
     /// Seals `pkcs8` for `slot` under the current KEK.
@@ -256,17 +250,11 @@ impl SealedFileKeyProvider {
             None => thumbprint::jwk_thumbprint(suite, &public)
                 .map_err(|error| KeyError::Malformed(error.to_string()))?,
         };
-        let name = Self::file(&slot)?;
-        if self.dir.read(&name)?.is_some() {
+        if self.slots.read(Kind::Key, &slot)?.is_some() {
             return Err(KeyError::Exists(slot));
         }
         let sealed = self.seal(suite, &pkcs8, &public)?;
-        let readable = |bytes: &[u8]| SealedKey::decode(bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == sealed.as_slice();
-        match publish_immutable(&self.dir, &name, &sealed, &readable, &same)? {
-            Published::Written => {}
-            Published::AlreadyThere => return Err(KeyError::Exists(slot)),
-        }
+        self.slots.fill(Kind::Key, &slot, &sealed)?;
         self.cache().insert(slot.clone(), Arc::new(key));
         Ok((
             slot,
@@ -313,10 +301,9 @@ impl SealedFileKeyProvider {
         if let Some(key) = self.cache().get(slot) {
             return Ok(Arc::clone(key));
         }
-        let name = Self::file(slot)?;
         let bytes = self
-            .dir
-            .read(&name)?
+            .slots
+            .read(Kind::Key, slot)?
             .ok_or_else(|| KeyError::Absent(slot.to_owned()))?;
         if is_plaintext(&bytes) {
             return Err(KeyError::Malformed(format!(
@@ -361,8 +348,7 @@ impl SealedFileKeyProvider {
     fn walk(&self, suite: Suite, write: bool) -> Result<Prepared, KeyError> {
         let mut prepared = Prepared::default();
         for slot in self.slots()? {
-            let name = Self::file(&slot)?;
-            let Some(bytes) = self.dir.read(&name)? else {
+            let Some(bytes) = self.slots.read(Kind::Key, &slot)? else {
                 continue;
             };
             let bytes = Zeroizing::new(bytes);
@@ -383,7 +369,7 @@ impl SealedFileKeyProvider {
                 }
                 if write {
                     let sealed = self.seal(suite, &bytes, &public)?;
-                    replace_bytes(&self.dir, &name, &sealed)?;
+                    self.slots.replace(Kind::Key, &slot, &sealed)?;
                 }
                 prepared.sealed.push(slot.clone());
             } else {
@@ -412,7 +398,7 @@ impl SealedFileKeyProvider {
                             KeyError::Malformed(format!("rewrapping `{kid}`: {error}"))
                         })?;
                     if write {
-                        replace_bytes(&self.dir, &name, &rewrapped)?;
+                        self.slots.replace(Kind::Key, &slot, &rewrapped)?;
                     }
                     prepared.rewrapped.push(slot.clone());
                 }
@@ -423,6 +409,10 @@ impl SealedFileKeyProvider {
 }
 
 impl KeyProvider for SealedFileKeyProvider {
+    fn forget(&self, slot: &str) {
+        self.cache().remove(slot);
+    }
+
     fn name(&self) -> &'static str {
         "file"
     }
@@ -441,13 +431,7 @@ impl KeyProvider for SealedFileKeyProvider {
     }
 
     fn slots(&self) -> Result<Vec<String>, KeyError> {
-        Ok(self
-            .dir
-            .names()?
-            .into_iter()
-            .filter_map(|name| name.strip_suffix(".key").map(str::to_owned))
-            .filter(|slot| Self::file(slot).is_ok())
-            .collect())
+        self.slots.slots(Kind::Key)
     }
 
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
@@ -466,25 +450,32 @@ impl KeyProvider for SealedFileKeyProvider {
     }
 
     fn destroy(&self, slot: &str) -> Result<(), KeyError> {
-        let name = Self::file(slot)?;
         self.cache().remove(slot);
-        tombstone::delete(&self.dir, &name)?;
-        Ok(())
+        self.slots.empty(Kind::Key, slot)
     }
 }
 
 /// A provider of non-exportable keys a custody brings: the PKCS#11 token, the KMS.
 pub trait Remote: Send + Sync {
-    /// The provider holding `ring`'s keys, their references kept below `dir`.
-    fn provider(&self, ring: &'static str, dir: Dir) -> Result<Arc<dyn KeyProvider>, KeyError>;
+    /// The provider holding `ring`'s keys, their references kept in `slots`.
+    fn provider(
+        &self,
+        ring: &'static str,
+        slots: Arc<dyn SlotStore>,
+    ) -> Result<Arc<dyn KeyProvider>, KeyError>;
 }
 
 /// Chooses each ring's provider from its custody (WP-3.2, owner decisions of 2026-10-08).
-/// Refuses a remote custody over a directory that still holds key files: keys a `development` or
-/// `file` custody wrote — a volume provisioned without the server's configuration, a custody
-/// changed in place — which no token or KMS holds, and which would otherwise read as lost.
-fn no_files_left(dir: &Dir, ring: &str, custody: &str) -> Result<(), KeyError> {
-    if let Some(file) = dir.names()?.into_iter().find(|name| name.ends_with(".key")) {
+/// Refuses a remote custody over slots that still hold keys: keys a `development` or `file`
+/// custody wrote — a volume provisioned without the server's configuration, a custody changed in
+/// place — which no token or KMS holds, and which would otherwise read as lost.
+fn no_files_left(slots: &dyn SlotStore, ring: &str, custody: &str) -> Result<(), KeyError> {
+    if let Some(file) = slots
+        .slots(Kind::Key)?
+        .into_iter()
+        .next()
+        .map(|slot| format!("{slot}.key"))
+    {
         return Err(KeyError::Malformed(format!(
             "`{ring}` is on the `{custody}` custody and holds the key file `{file}`: it was \
              written by the `development` or `file` custody (a volume provisioned without the \
@@ -571,22 +562,35 @@ impl Custodian {
         self
     }
 
+    /// What seals the secrets a shared backend keeps for the Host `host_id`, its delivered zone
+    /// keys and its cursor roots (iteration 03, WP-27.5): the `file` custody's key-encryption key,
+    /// the current one and the one a rotation left. None is configured: refused, as a `file`
+    /// custody without one is.
+    pub fn sealer(&self, host_id: [u8; 16]) -> Result<crate::secrets::sealed::Sealer, String> {
+        let keks = self.keks.clone()?.ok_or_else(|| {
+            "the secrets of a shared backend are sealed under a key-encryption key, and none is \
+             configured: set `operations.keys.kek_ref`"
+                .to_owned()
+        })?;
+        Ok(crate::secrets::sealed::Sealer::new(keks, host_id))
+    }
+
     /// The custody of `ring`.
     pub fn custody_of(&self, ring: &str) -> KeyCustody {
         (self.custody_of)(ring)
     }
 
-    /// The provider of `ring` of `host_id`, over `dir`: a `file` custody seals what it finds in
+    /// The provider of `ring` of `host_id`, over `slots`: a `file` custody seals what it finds in
     /// plaintext and rewraps what the previous KEK wrapped before the provider is handed out.
     pub fn provider(
         &self,
         ring: &'static str,
         host_id: [u8; 16],
-        dir: Dir,
+        slots: Arc<dyn SlotStore>,
         stored: StoredPublic,
         suite: Suite,
     ) -> Result<(Arc<dyn KeyProvider>, Prepared), KeyError> {
-        let custodied = self.plan(ring, host_id, dir, stored, suite)?;
+        let custodied = self.plan(ring, host_id, slots, stored, suite)?;
         custodied.apply()?;
         Ok((custodied.provider, custodied.plan))
     }
@@ -597,7 +601,7 @@ impl Custodian {
         &self,
         ring: &'static str,
         host_id: [u8; 16],
-        dir: Dir,
+        slots: Arc<dyn SlotStore>,
         stored: StoredPublic,
         suite: Suite,
     ) -> Result<Custodied, KeyError> {
@@ -609,7 +613,7 @@ impl Custodian {
             })
         };
         match self.custody_of(ring) {
-            KeyCustody::Development => Ok(Custodied::held(Arc::new(FileKeyProvider::new(dir)))),
+            KeyCustody::Development => Ok(Custodied::held(Arc::new(FileKeyProvider::over(slots)))),
             KeyCustody::File => {
                 let keks = self
                     .keks
@@ -621,7 +625,9 @@ impl Custodian {
                              and none is configured: set `operations.keys.kek_ref`"
                         ))
                     })?;
-                let sealed = Arc::new(SealedFileKeyProvider::new(dir, host_id, ring, keks, stored));
+                let sealed = Arc::new(SealedFileKeyProvider::new(
+                    slots, host_id, ring, keks, stored,
+                ));
                 let plan = sealed.plan(suite)?;
                 Ok(Custodied {
                     provider: Arc::clone(&sealed) as Arc<dyn KeyProvider>,
@@ -630,15 +636,15 @@ impl Custodian {
                 })
             }
             KeyCustody::Pkcs11 => {
-                no_files_left(&dir, ring, "pkcs11")?;
+                no_files_left(slots.as_ref(), ring, "pkcs11")?;
                 Ok(Custodied::held(
-                    remote(&self.hsm, "pkcs11")?.provider(ring, dir)?,
+                    remote(&self.hsm, "pkcs11")?.provider(ring, slots)?,
                 ))
             }
             KeyCustody::Kms => {
-                no_files_left(&dir, ring, "kms")?;
+                no_files_left(slots.as_ref(), ring, "kms")?;
                 Ok(Custodied::held(
-                    remote(&self.kms, "kms")?.provider(ring, dir)?,
+                    remote(&self.kms, "kms")?.provider(ring, slots)?,
                 ))
             }
         }

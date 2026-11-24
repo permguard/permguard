@@ -2777,3 +2777,172 @@ dataPlane:
         "mirrors the Control Plane's ledgers",
     );
 }
+
+/// A Control Plane on the `postgresql-s3` backend (iteration 03, WP-28.1), as a test states it.
+const SHARED_BACKEND: &str = "\
+controlPlane:
+  assurance: { profile: development }
+  persistence: { enabled: false }
+  storage:
+    backend: postgresql-s3
+    postgresql: { host: db.internal, database: permguard, user: permguard, passwordRef: postgres-password }
+    s3: { endpoint: \"https://s3.internal:9000\", region: eu-west-1, bucket: permguard, accessKey: AKIA, secretRef: s3-secret }
+";
+
+/// On `postgresql-s3` the Control Plane keeps no volume: no claim, no init container that writes
+/// one, its working directory an emptyDir, and its configuration names the database and the bucket
+/// with references to their secrets, never the secrets.
+#[test]
+fn a_control_plane_on_postgresql_s3_keeps_no_volume() {
+    let rendered = render(SHARED_BACKEND);
+    assert!(
+        !rendered
+            .names()
+            .iter()
+            .any(|name| name.starts_with("PersistentVolumeClaim")),
+        "{:#?}",
+        rendered.names()
+    );
+    let spec = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    assert!(
+        spec["initContainers"]
+            .as_array()
+            .is_none_or(|init| init.iter().all(|c| c["name"] != "claim")),
+        "no claim on a volume it does not keep"
+    );
+    let state = spec["volumes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|volume| volume["name"] == "state")
+        .expect("the working directory");
+    assert_eq!(state["emptyDir"], json!({}));
+    let storage = &rendered.config("permguard-control-plane")["storage"];
+    assert_eq!(storage["backend"], "postgresql-s3");
+    assert_eq!(storage["postgresql"]["host"], "db.internal");
+    assert_eq!(storage["postgresql"]["password_ref"], "postgres-password");
+    assert_eq!(storage["s3"]["access_key"], "AKIA");
+    assert_eq!(storage["s3"]["secret_ref"], "s3-secret");
+    // The Data Plane stays on files: nothing of the backend reaches its configuration.
+    assert!(
+        rendered.config("permguard-data-plane-default")["storage"]["backend"].is_null(),
+        "the Data Plane keeps its volume"
+    );
+}
+
+/// What the server refuses on `postgresql-s3` the chart refuses first: a volume it would not use,
+/// a connection stated in part, and a backend that is none.
+#[test]
+fn a_control_plane_on_postgresql_s3_is_refused_what_its_server_refuses() {
+    refused(
+        &SHARED_BACKEND.replace("enabled: false", "enabled: true"),
+        "set controlPlane.persistence.enabled=false",
+    );
+    refused(
+        &SHARED_BACKEND.replace("bucket: permguard, ", ""),
+        "needs controlPlane.storage.s3.bucket",
+    );
+    refused(
+        &SHARED_BACKEND.replace("host: db.internal, ", ""),
+        "needs controlPlane.storage.postgresql.host",
+    );
+    refused(
+        &SHARED_BACKEND.replace("backend: postgresql-s3", "backend: mysql"),
+        "controlPlane.storage.backend=mysql is no backend",
+    );
+}
+
+/// From `production` a Control Plane on `postgresql-s3` makes its identity offline in the
+/// database (WP-28.5): the `identity` init container provisions it with the server's
+/// configuration and no volume, and the Host starts on the recorded witness.
+#[test]
+fn from_production_a_control_plane_on_postgresql_s3_makes_its_identity_in_the_database() {
+    let witness = format!("sha256:{}", "ab".repeat(32));
+    let rendered = render(
+        &SHARED_BACKEND
+            .replace("profile: development", "profile: production")
+            .replace(
+                "  persistence: { enabled: false }\n",
+                &format!("  persistence: {{ enabled: false }}\n  identity: {{ witness: \"{witness}\" }}\n"),
+            ),
+    );
+    let spec = &rendered.get("Deployment", "permguard-control-plane")["spec"]["template"]["spec"];
+    let identity = spec["initContainers"]
+        .as_array()
+        .expect("init containers")
+        .iter()
+        .find(|c| c["name"] == "identity")
+        .expect("an identity container");
+    let args: Vec<&str> = identity["args"]
+        .as_array()
+        .expect("args")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        args,
+        vec![
+            "host",
+            "identity",
+            "provision",
+            "--if-missing",
+            "--server-config",
+            "/etc/permguard/config.yml"
+        ]
+    );
+    assert!(
+        spec["initContainers"]
+            .as_array()
+            .expect("init containers")
+            .iter()
+            .all(|c| c["name"] != "claim"),
+        "no claim on a volume it does not keep"
+    );
+    let server = &spec["containers"][0]["env"];
+    assert!(
+        server
+            .as_array()
+            .expect("env")
+            .iter()
+            .any(|env| env["name"] == "PERMGUARD_HOST_IDENTITY_WITNESS"
+                && env["value"] == witness.as_str())
+    );
+}
+
+/// On `postgresql-s3` a control plane runs several replicas behind its one Service, and
+/// autoscales: its state is in what arbitrates (WP-28.6). On a volume, and for an all-in-one, one.
+#[test]
+fn a_control_plane_on_postgresql_s3_runs_several_replicas() {
+    let rendered = render(&format!(
+        "{SHARED_BACKEND}  replicaCount: 3\n  autoscaling: {{ enabled: true, minReplicas: 2, maxReplicas: 6 }}\n"
+    ));
+    let workload = rendered.get("Deployment", "permguard-control-plane");
+    assert!(
+        workload["spec"]["replicas"].is_null(),
+        "the autoscaler owns the count"
+    );
+    let autoscaler = rendered.get("HorizontalPodAutoscaler", "permguard-control-plane");
+    assert_eq!(autoscaler["spec"]["maxReplicas"], 6);
+    let fixed = render(&format!("{SHARED_BACKEND}  replicaCount: 3\n"));
+    assert_eq!(
+        fixed.get("Deployment", "permguard-control-plane")["spec"]["replicas"],
+        3
+    );
+    // On a volume the refusal stands.
+    refused(
+        "controlPlane:\n  replicaCount: 2\n",
+        "controlPlane.replicaCount=2",
+    );
+    // Several instances share their secrets: none mints its own.
+    refused(
+        &format!("autogenerate: true\n{SHARED_BACKEND}  replicaCount: 2\n"),
+        "each instance would mint its own secrets",
+    );
+    refused(
+        &format!(
+            "autogenerate: true\n{SHARED_BACKEND}  autoscaling: {{ enabled: true, minReplicas: 2, maxReplicas: 4 }}\n"
+        ),
+        "each instance would mint its own secrets",
+    );
+    render(&format!("autogenerate: true\n{SHARED_BACKEND}"));
+}

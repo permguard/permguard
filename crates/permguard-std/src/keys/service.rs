@@ -13,6 +13,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// How long a start waits for a ring another instance maintains to have an active key.
+const STARTUP_WAIT: Duration = Duration::from_secs(60);
+
 use anyhow::{Context, Result, anyhow};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -85,6 +88,54 @@ impl KeyService {
     /// record every minute saying that nothing rotated is how the one that mattered gets missed. Every
     /// record names the ring — `server`, or the realm — so one process maintaining many issuers stays
     /// readable in the log.
+    /// [`Self::pass`] as the single job of `ring` (WP-28.2): run by the instance that holds the
+    /// job's lease for `every`, so of several instances one advances a ring's lifecycle. Among
+    /// instances the ring is read again first: its holder maintains what the store holds, and
+    /// every other instance signs with what the holder made. Answers whether this instance ran
+    /// the pass.
+    fn held_pass(jobs: &permguard_host::jobs::Jobs, ring: &Ring, every: Duration) -> Result<bool> {
+        if jobs.shared() {
+            ring.keys
+                .refresh()
+                .with_context(|| format!("reading {} again", ring.label()))?;
+        }
+        let mut passed = Ok(());
+        let job = format!(
+            "keys/{}/{}",
+            ring.realm.as_deref().unwrap_or("server"),
+            ring.role
+        );
+        let ran = jobs.run(&job, every, &mut || {
+            passed = Self::pass(ring);
+            passed.is_ok()
+        });
+        passed.map(|()| ran)
+    }
+
+    /// [`Self::held_pass`] at the start: when another instance holds the ring's job and the ring
+    /// has no active key yet, what that instance prepares is waited for, read again every two
+    /// seconds for at most [`STARTUP_WAIT`]; a ring still without one is a ring not prepared.
+    async fn prepared(
+        jobs: &permguard_host::jobs::Jobs,
+        ring: &Ring,
+        every: Duration,
+    ) -> Result<()> {
+        let mut ran = Self::held_pass(jobs, ring, every)?;
+        let waiting = std::time::Instant::now();
+        while !ran && ring.keys.active_key_id().is_err() {
+            if waiting.elapsed() >= STARTUP_WAIT {
+                return Err(anyhow!(
+                    "{} has no active key: its maintenance is another instance's, which has not \
+                     prepared it",
+                    ring.label()
+                ));
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            ran = Self::held_pass(jobs, ring, every)?;
+        }
+        Ok(())
+    }
+
     fn pass(ring: &Ring) -> Result<()> {
         let report = ring
             .keys
@@ -211,12 +262,20 @@ impl Service for KeyService {
                 return Ok(());
             }
 
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
+            let tick = self
+                .tick
+                .unwrap_or_else(|| context.config().keys_maintenance_interval());
             // The startup pass. The server's ring failing is fatal — it is this server's identity and
             // it signs the system trail, so a deployment that cannot prepare it should fail while
             // somebody is watching. A realm's ring failing is loud but not fatal: a broken realm must
             // not keep the server and the other realms from starting.
             for ring in &rings {
-                if let Err(error) = Self::pass(ring) {
+                if let Err(error) = Self::prepared(&jobs, ring, tick).await {
                     match &ring.realm {
                         None => {
                             return Err(error).context("the server key ring could not be prepared");
@@ -252,9 +311,6 @@ impl Service for KeyService {
             }
 
             let (stop, mut stopped) = watch::channel(false);
-            let tick = self
-                .tick
-                .unwrap_or_else(|| context.config().keys_maintenance_interval());
             let metrics = context.metrics().clone();
 
             let task = tokio::spawn(async move {
@@ -271,7 +327,7 @@ impl Service for KeyService {
                             // stop the others being advanced. What is not acceptable is failing
                             // quietly.
                             for ring in &rings {
-                                if let Err(error) = Self::pass(ring) {
+                                if let Err(error) = Self::held_pass(&jobs, ring, tick) {
                                     warn!(
                                         event.name = "keys.maintenance_failed",
                                         component = COMPONENT,

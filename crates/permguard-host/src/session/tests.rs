@@ -88,7 +88,12 @@ fn context(host: &Host, pinned: &[&Identity], time: &Arc<TimeGuard>) -> Context 
     let pins: Vec<PinnedPeer> = pinned.iter().map(|identity| pin(identity)).collect();
     Context {
         identity: Arc::clone(&host.identity),
-        peers: Arc::new(Peers::open(&host.volume, &pins).expect("the peers")),
+        peers: Arc::new(Peers::new(
+            Arc::new(
+                crate::session::peers::files::FileSeen::open(&host.volume).expect("the peers"),
+            ),
+            &pins,
+        )),
         time: Arc::clone(time),
         declared_assurance: AssuranceProfile::Development,
         audit: None,
@@ -294,7 +299,7 @@ fn a_reflected_proof_is_refused_by_the_side_that_signed_it() {
     let transcript = Transcript::decode(proof_a.payload_unverified()).expect("a transcript");
     assert_eq!(transcript.signer, Role::Initiator);
     let reflected = context(&pair.b, &[&pair.a.identity], &pair.clocks.time)
-        .prove(&transcript)
+        .prove(&transcript, transcript.initiator_epoch)
         .expect("B signs the initiator's transcript");
     let refused = initiator
         .receive(Frame::Proof(reflected))
@@ -327,7 +332,9 @@ fn a_proof_for_the_same_transcript_with_the_other_role_is_refused() {
         request_digest: None,
     };
     let context = context(&pair.a, &[&pair.b.identity], &pair.clocks.time);
-    let proof = context.prove(&transcript).expect("signed");
+    let proof = context
+        .prove(&transcript, transcript.initiator_epoch)
+        .expect("signed");
     let verified = crate::identity::verify_published(
         &pair.a.identity.document(),
         &pair.a.identity.successions(),
@@ -381,7 +388,9 @@ fn an_unknown_key_share_fails_when_the_challenge_names_the_attacker() {
     let mut proof = None;
     for frame in to_initiator {
         let frame = match frame {
-            Frame::Identity(_) => Frame::Identity(c_context.presentation().expect("C's identity")),
+            Frame::Identity(_) => {
+                Frame::Identity(c_context.presentation().expect("C's identity").0)
+            }
             Frame::Challenge(bytes) => {
                 let mut challenge = Challenge::decode(&bytes).expect("decoded");
                 challenge.host = c.identity.host_id();
@@ -611,7 +620,8 @@ fn frames_out_of_order_and_a_peer_refusal_end_the_channel() {
 fn a_rotated_peer_is_accepted_through_its_succession_and_its_old_epoch_is_rollback() {
     let pair = pair("rotated");
     let old = Context::presentation(&context(&pair.a, &[&pair.b.identity], &pair.clocks.time))
-        .expect("A at epoch 1");
+        .expect("A at epoch 1")
+        .0;
     pair.a
         .identity
         .rotate(&Applying::for_tests(1), Some(1), NOW as u64 + 1)
@@ -968,7 +978,8 @@ fn copied_public_identity_documents_cannot_complete_a_live_proof_without_the_key
         .expect("the attacker answers with its own challenge");
     let copied = context(&pair.b, &[], &pair.clocks.time)
         .presentation()
-        .expect("the copied public document");
+        .expect("the copied public document")
+        .0;
     initiator
         .receive(Frame::Identity(copied))
         .expect("the pinned public chain itself is valid");

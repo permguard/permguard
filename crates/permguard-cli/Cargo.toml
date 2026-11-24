@@ -33,6 +33,8 @@ permguard-core.workspace = true
 permguard-authority-plane.workspace = true
 # The grant store of a volume, worked on offline by `host grants` (WP-2.4).
 permguard-host.workspace = true
+# The `postgresql-s3` backend's adapter, for the offline commands on it (`shared-backend`).
+permguard-s3 = { workspace = true, optional = true, features = ["backend"] }
 # The object trees the Control Plane declares, which `restore` scans as `volume verify` does (WP-7.9).
 permguard-control-plane = { workspace = true, optional = true }
 # The record, the chain and the signature — so `--verify` checks what the
@@ -72,7 +74,7 @@ rustix = { workspace = true, features = ["termios"] }
 # `default-features = false` and the languages it decides with; the argument parser stays the
 # library's, since such a program runs the same commands through it (`shell::run_captured`).
 default = ["cli-bin"]
-cli-bin = ["cedar", "dogwood", "rego", "volume-restore", "dep:clap_complete"]
+cli-bin = ["cedar", "dogwood", "rego", "volume-restore", "shared-backend", "dep:clap_complete"]
 # `restore`: the offline restore of a Server Host's volume, which scans the object trees the
 # Control Plane declares and so links its domain, with every language it validates.
 volume-restore = ["dep:permguard-control-plane"]
@@ -80,6 +82,8 @@ volume-restore = ["dep:permguard-control-plane"]
 cedar = ["permguard-languages/cedar"]
 dogwood = ["permguard-languages/dogwood"]
 rego = ["permguard-languages/rego"]
+# The offline commands on the `postgresql-s3` backend (iteration 03, WP-28.1): its adapter.
+shared-backend = ["dep:permguard-s3"]
 # The `pkcs11` custody of the offline commands, which reach it through `permguard-offline` (BUG-0342).
 pkcs11 = ["permguard-offline/pkcs11"]
 

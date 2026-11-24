@@ -27,6 +27,7 @@
 //! and runs on the Tokio runtime of whoever calls it. What reaches the network, the peer sessions,
 //! a KMS and the Authority Plane, is an adapter the build composes: the server's, in a server.
 
+pub mod backend_ready;
 pub mod banner;
 pub mod checkpoints;
 pub mod composition;

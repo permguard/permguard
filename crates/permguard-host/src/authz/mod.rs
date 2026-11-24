@@ -22,6 +22,7 @@
 pub mod access_tokens;
 pub mod authority;
 pub mod bootstrap;
+pub mod held;
 pub mod mapper;
 pub mod status_lists;
 pub mod store;

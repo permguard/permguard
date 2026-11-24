@@ -1729,6 +1729,12 @@
       "contract": "1-architecture/8-architecture-storage-operations.md",
       "kind": "log"
     },
+    "storage.BACKEND_UNSUPPORTED": {
+      "code": "storage_backend_unsupported",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "stream.ACK_AHEAD": {
       "code": "ack_ahead",
       "contract": "7-contracts/5-contract-stream-common.md",

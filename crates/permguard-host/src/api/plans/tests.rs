@@ -524,6 +524,71 @@ async fn an_offline_plan_under_dual_control_is_not_completed_by_one_approver() {
     assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
 }
 
+/// A receipt is its Host identity's: the plan an identity reset ran names the identity it
+/// retired, and after the restart it runs nothing on the one provisioned in its place, even when
+/// its consumption was lost and the new identity is at the same epoch.
+#[tokio::test]
+async fn a_receipt_of_another_host_identity_runs_nothing() {
+    let api = facade_with("plans-identity", vec![HOST_OPERATIONS]);
+    let signer = api
+        .keys
+        .rings()
+        .iter()
+        .find(|ring| ring.id() == HOST_OPERATIONS)
+        .cloned()
+        .expect("the operations ring");
+    let now = api.time.now_secs();
+    let planner = Principal::new("sa:planner").expect("a principal");
+    let this = api.identity.as_ref().expect("an identity").host_id();
+    let retired = {
+        let mut other = this;
+        other[15] ^= 1;
+        other
+    };
+    let issue = |host_id: [u8; 16]| {
+        let issued = sign_plan(
+            Some(signer.as_ref() as &dyn plan::PlanSigner),
+            Issue {
+                kind: plan::IDENTITY_RESET,
+                internal: plan::IDENTITY_RESET,
+                stored_target: "emergency\n".to_owned(),
+                target: "host".to_owned(),
+                revision: 1,
+                parameters: &[("mode", "emergency")],
+                principal: &planner,
+            },
+            host_id,
+            false,
+            now,
+        )
+        .expect("signed");
+        api.replay
+            .plan(
+                &crate::operations::mutation::Applying::for_tests(1),
+                issued.plan.clone(),
+            )
+            .expect("kept");
+        issued
+    };
+    let before_the_reset = issue(retired);
+    let refused = api
+        .presented_plan(&planner, &before_the_reset.receipt, now)
+        .expect_err("a receipt of the retired identity");
+    assert_eq!(code(&refused), codes::host::PLAN_UNKNOWN);
+    // The plan is held and would be presented, were the identity not compared.
+    held_plan(
+        &api.replay,
+        &planner,
+        &before_the_reset.envelope,
+        now,
+        &api.standing(),
+    )
+    .expect("held, unconsumed, complete");
+    let own = issue(this);
+    api.presented_plan(&planner, &own.receipt, now)
+        .expect("a receipt of this identity is presented");
+}
+
 /// The standing of every token the tests' bearers present, which a test revokes at will.
 #[derive(Default)]
 struct Tokens {

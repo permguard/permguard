@@ -1356,7 +1356,7 @@
   background: color-mix(in srgb, var(--brand) 7%, #191a1c);
 }
 
-/* Behind the hero: trust anchors and decision points, with policies travelling between them.
+/* Behind the hero: anchor points and decision points, with policies travelling between them.
    When a policy arrives, its point lights up for a moment. Faint and slow on purpose. */
 .pg-home {
   --mesh-line: rgba(15, 23, 32, 0.12);
@@ -1551,12 +1551,10 @@
 .VPNavBarMenuLink[href*="command-line"],
 .VPNavBarMenuLink[href*="control-plane"],
 .VPNavBarMenuLink[href*="data-plane"],
-.VPNavBarMenuLink[href*="trust-plane"],
 .VPNavScreenMenuLink[href$="/how-it-works"],
 .VPNavScreenMenuLink[href*="command-line"],
 .VPNavScreenMenuLink[href*="control-plane"],
-.VPNavScreenMenuLink[href*="data-plane"],
-.VPNavScreenMenuLink[href*="trust-plane"] {
+.VPNavScreenMenuLink[href*="data-plane"] {
   --pg-nav-icon: none;
   align-items: center;
   display: inline-flex;
@@ -1567,12 +1565,10 @@
 .VPNavBarMenuLink[href*="command-line"]::before,
 .VPNavBarMenuLink[href*="control-plane"]::before,
 .VPNavBarMenuLink[href*="data-plane"]::before,
-.VPNavBarMenuLink[href*="trust-plane"]::before,
 .VPNavScreenMenuLink[href$="/how-it-works"]::before,
 .VPNavScreenMenuLink[href*="command-line"]::before,
 .VPNavScreenMenuLink[href*="control-plane"]::before,
-.VPNavScreenMenuLink[href*="data-plane"]::before,
-.VPNavScreenMenuLink[href*="trust-plane"]::before {
+.VPNavScreenMenuLink[href*="data-plane"]::before {
   background: rgb(217 70 239 / 0.1) var(--pg-nav-icon) center / 22px 22px no-repeat;
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 4px;
@@ -1591,8 +1587,6 @@
 .VPNavScreenMenuLink[href*="control-plane"] { --pg-nav-icon: url("/permguard/icons/control_plane.svg"); }
 .VPNavBarMenuLink[href*="data-plane"],
 .VPNavScreenMenuLink[href*="data-plane"] { --pg-nav-icon: url("/permguard/icons/data_plane.svg"); }
-.VPNavBarMenuLink[href*="trust-plane"],
-.VPNavScreenMenuLink[href*="trust-plane"] { --pg-nav-icon: url("/permguard/icons/trust_plane.svg"); }
 
 .VPNavBarMenuLink[href$="/how-it-works"]:hover::before,
 .VPNavBarMenuLink[href*="-plane"]:hover::before,
@@ -1650,7 +1644,7 @@ html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
   border-color: rgb(217 70 239 / 0.55);
 }
 
-.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"], [href$="/trust-plane"]) {
+.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"]) {
   --pg-plane-icon: none;
   align-items: center;
   display: flex;
@@ -1660,7 +1654,7 @@ html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
   line-height: 1.3;
 }
 
-.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"], [href$="/trust-plane"])::before {
+.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"])::before {
   background: rgb(217 70 239 / 0.1) var(--pg-plane-icon) center / 24px 24px no-repeat;
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 6px;
@@ -1673,9 +1667,8 @@ html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
 .VPMenuLink .link[href$="/authority-plane"] { --pg-plane-icon: url("/permguard/icons/authority_plane.svg"); }
 .VPMenuLink .link[href$="/control-plane"] { --pg-plane-icon: url("/permguard/icons/control_plane.svg"); }
 .VPMenuLink .link[href$="/data-plane"] { --pg-plane-icon: url("/permguard/icons/data_plane.svg"); }
-.VPMenuLink .link[href$="/trust-plane"] { --pg-plane-icon: url("/permguard/icons/trust_plane.svg"); }
 
-.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"], [href$="/trust-plane"]) > span {
+.VPMenuLink .link:is([href$="/authority-plane"], [href$="/control-plane"], [href$="/data-plane"]) > span {
   display: flex;
   flex-direction: column;
   white-space: nowrap;
@@ -1737,7 +1730,6 @@ html:not(.dark) .VPNavScreenMenuLink[href*="-plane"]::before {
 .pg-current-plane[data-plane="authority-plane"] { --pg-nav-icon: url("/permguard/icons/authority_plane.svg"); }
 .pg-current-plane[data-plane="control-plane"] { --pg-nav-icon: url("/permguard/icons/control_plane.svg"); }
 .pg-current-plane[data-plane="data-plane"] { --pg-nav-icon: url("/permguard/icons/data_plane.svg"); }
-.pg-current-plane[data-plane="trust-plane"] { --pg-nav-icon: url("/permguard/icons/trust_plane.svg"); }
 
 html:not(.dark) .pg-current-plane::before { background-color: #2a2433; }
 

@@ -1,0 +1,13 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The phase before the import of a volume (iteration 03, WP-28.1): the split-plane profile of
+# `docker-compose.lab.postgresql-s3.yml` with its Control Plane still on files, its keys sealed
+# under the key-encryption key it keeps on the backend, so the volume it writes is the one
+# `permguard migrate import` moves. Added by `BACKEND=import scripts/compose-lab.sh split-plane`
+# beside that file for the first phase, never on its own.
+
+services:
+  control-plane:
+    environment:
+      PERMGUARD_STORAGE_BACKEND: files

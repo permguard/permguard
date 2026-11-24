@@ -76,9 +76,12 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use crate::store::FileObjectStore;
+use crate::store::{LedgerStore, Ledgers};
 
 const COMPONENT: &str = "control-plane";
+
+/// The single job a pass is (WP-28.2).
+pub const JOB: &str = "objects/collection";
 
 /// Objects removed, by zone and ledger.
 pub const REMOVED: Metric = Metric::counter(
@@ -115,6 +118,8 @@ pub const SWEEP_SECONDS: Metric = Metric::histogram(
 
 /// The service the control plane mounts.
 pub struct GcService {
+    /// The ledgers this plane composed, the ones a push goes through.
+    ledgers: crate::plane::ComposedStores,
     /// A cadence override, for a test that cannot wait six hours.
     every: Option<Duration>,
     running: Mutex<Option<Running>>,
@@ -125,16 +130,11 @@ struct Running {
     stop: watch::Sender<bool>,
 }
 
-impl Default for GcService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl GcService {
     /// The service; what it does comes from the configuration.
-    pub fn new() -> Self {
+    pub fn new(ledgers: crate::plane::ComposedStores) -> Self {
         Self {
+            ledgers,
             every: None,
             running: Mutex::new(None),
         }
@@ -177,9 +177,11 @@ impl PlaneTask for GcService {
                 return Ok(());
             };
 
+            let stores = self.ledgers.under(context);
             let sweep = Sweep {
                 catalog,
-                root: config.zones_directory(),
+                ledgers: stores.ledgers,
+                archives: Some(stores.archives),
                 grace: config.gc_grace(),
                 metrics: context.metrics().clone(),
                 recorder: crate::handles::audit(context),
@@ -214,6 +216,12 @@ impl PlaneTask for GcService {
                 "unreferenced objects older than the grace period will be reclaimed"
             );
 
+            // One instance collects the ledgers an interval: the job's lease (WP-28.2).
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             let (stop, mut stopped) = watch::channel(false);
             let task = tokio::spawn(async move {
                 loop {
@@ -222,13 +230,17 @@ impl PlaneTask for GcService {
                         // a plane that has just come up is the worst moment to
                         // spend a directory walk, and nothing is urgent here.
                         _ = tokio::time::sleep(every) => {
-                            let sweep = sweep.clone();
+                            let (sweep, jobs) = (sweep.clone(), jobs.clone());
                             let outcome = tokio::task::spawn_blocking(move || {
-                                let outcome = sweep.run();
+                                let mut outcome = None;
+                                jobs.run(JOB, every, &mut || {
+                                    outcome = Some(sweep.run());
+                                    true
+                                });
                                 (sweep, outcome)
                             })
                             .await;
-                            if let Ok((sweep, outcome)) = outcome {
+                            if let Ok((sweep, Some(outcome))) = outcome {
                                 sweep.report(&outcome).await;
                             }
                         }
@@ -269,13 +281,18 @@ impl PlaneTask for GcService {
 #[derive(Clone)]
 struct Sweep {
     catalog: Arc<dyn Catalog>,
-    root: std::path::PathBuf,
+    /// The ledgers' stores, the ones every push goes through: a sweep and a push meet in a
+    /// ledger's holds.
+    ledgers: Arc<dyn Ledgers>,
+    /// The zones' archives: the bytes a keeping that stopped left are the background pass's to
+    /// remove too (WP-28.2).
+    archives: Option<Arc<dyn crate::catalog::archives::ArchiveStore>>,
     grace: Duration,
     metrics: Metrics,
     recorder: Option<crate::handles::Audit>,
     /// The Host's holds (WP-7.3c): `Ok(None)` without a Host; an error when a Host registered the
     /// plane and handed it none, which sweeps nothing (after the review).
-    holds: std::result::Result<Option<Arc<permguard_host::holds::HoldStore>>, ()>,
+    holds: std::result::Result<Option<Arc<dyn permguard_host::holds::HoldStore>>, ()>,
     /// The most objects one pass removes (WP-7.11).
     max_removals: usize,
     /// The ledger, `<zone>/<ledger>`, the last pass stopped in at its bound: where the next starts.
@@ -385,7 +402,45 @@ impl Outcome {
 impl Sweep {
     /// One background pass over every ledger of every zone.
     fn run(&self) -> Outcome {
-        self.pass(&Scope::All, Act::Sweep, false).outcome
+        let outcome = self.pass(&Scope::All, Act::Sweep, false).outcome;
+        self.sweep_archives();
+        outcome
+    }
+
+    /// Removes the archives' bytes no record names, past the grace, zone by zone.
+    fn sweep_archives(&self) {
+        let Some(archives) = &self.archives else {
+            return;
+        };
+        let zones = match self.catalog.list_zones() {
+            Ok(zones) => zones,
+            Err(error) => {
+                warn!(
+                    event.name = "gc.archives_unswept",
+                    component = COMPONENT,
+                    error = %error,
+                    "the zones could not be listed: no archive's bytes are swept this round"
+                );
+                return;
+            }
+        };
+        for zone in zones {
+            match archives.sweep_unnamed(&zone.id, self.grace) {
+                Ok(0) => {}
+                Ok(removed) => info!(
+                    event.name = "gc.archives_swept",
+                    component = COMPONENT,
+                    removed,
+                    "bytes a keeping of an archive left without its record were removed"
+                ),
+                Err(error) => warn!(
+                    event.name = "gc.archives_unswept",
+                    component = COMPONENT,
+                    error = %error,
+                    "a zone's archives could not be swept: the next round tries again"
+                ),
+            }
+        }
     }
 
     /// One pass over the ledgers `scope` covers. `listing` keeps, for an operator's report, what
@@ -495,8 +550,8 @@ impl Sweep {
         for (zone, ledger) in &order {
             let outcome = &mut pass.outcome;
             outcome.ledgers += 1;
-            let directory = self.root.join(zone).join("ledgers").join(ledger);
-            let store = FileObjectStore::new(&directory);
+            let store = self.ledgers.ledger(zone, ledger);
+            let store = store.as_ref();
             if holds.iter().any(|hold| hold.keeps(zone, ledger, now)) {
                 outcome.held += 1;
                 if listing {
@@ -508,7 +563,7 @@ impl Sweep {
                 }
                 continue;
             }
-            match self.sweep_ledger_as(&store, zone, ledger, &mut budget, act) {
+            match self.sweep_ledger_as(store, zone, ledger, &mut budget, act) {
                 Ok(swept) => {
                     outcome.removed += swept.removed;
                     outcome.reclaimed += swept.reclaimed;
@@ -590,7 +645,7 @@ impl Sweep {
     #[cfg(test)]
     fn sweep_ledger(
         &self,
-        store: &FileObjectStore,
+        store: &dyn LedgerStore,
         zone: &str,
         ledger: &str,
         budget: &mut usize,
@@ -601,7 +656,7 @@ impl Sweep {
     /// [`Self::sweep_ledger`] as `act` does it: a plan removes nothing and leaves the metrics.
     fn sweep_ledger_as(
         &self,
-        store: &FileObjectStore,
+        store: &dyn LedgerStore,
         zone: &str,
         ledger: &str,
         budget: &mut usize,
@@ -618,7 +673,14 @@ impl Sweep {
                 Err(()) => Err(anyhow!("the Host handed this plane no holds")),
             }
         };
-        let swept = sweep_within(store, self.grace, budget, &held_now, act == Act::Plan)?;
+        let swept = sweep_within(
+            store,
+            &format!("{zone}/{ledger}"),
+            self.grace,
+            budget,
+            &held_now,
+            act == Act::Plan,
+        )?;
         if act == Act::Plan {
             return Ok(swept);
         }
@@ -909,17 +971,18 @@ pub struct Swept {
 /// The unit the service is built from, and the one a test can drive: no
 /// catalog, no clock but the filesystem's, no metrics. It answers what it did,
 /// or refuses — a store whose closure has a hole is left exactly as it was.
-pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
+pub fn sweep_once(store: &dyn LedgerStore, grace: Duration) -> Result<Swept> {
     let mut unbounded = usize::MAX;
-    sweep_within(store, grace, &mut unbounded, &|| Ok(false), false)
+    sweep_within(store, "", grace, &mut unbounded, &|| Ok(false), false)
 }
 
 /// [`sweep_once`], removing at most `budget` objects, and keeping the ledger whole when `held`
 /// answers that a hold keeps it, asked under the ledger's transfer lock before anything is
 /// removed (WP-7.11). A `plan` changes nothing: no session is closed, no temporary and no object
-/// removed, every candidate counted (WP-7.11b).
+/// removed, every candidate counted (WP-7.11b). `ledger` names the ledger in the log, by its ids.
 pub(crate) fn sweep_within(
-    store: &FileObjectStore,
+    store: &dyn LedgerStore,
+    ledger: &str,
     grace: Duration,
     budget: &mut usize,
     held: &dyn Fn() -> Result<bool>,
@@ -985,7 +1048,7 @@ pub(crate) fn sweep_within(
                 warn!(
                     event.name = "gc.temporaries_not_swept",
                     component = COMPONENT,
-                    ledger = %store.root().display(),
+                    ledger = ledger,
                     error = %error,
                     "the temporaries of interrupted writes could not be swept"
                 );
@@ -1046,7 +1109,7 @@ pub(crate) fn sweep_within(
 /// object a ref names and the store does not hold — stops the sweep for this
 /// ledger rather than being walked around: a store that cannot be fully read
 /// is not a store to delete from.
-pub fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
+pub fn reachable(store: &dyn LedgerStore) -> Result<BTreeSet<Digest>> {
     let refs = store.list_refs().map_err(|error| anyhow!("{error}"))?;
     // The roots a re-home kept reach the history it imported, whatever the refs say (BUG-0185).
     let roots = store.roots().map_err(|error| anyhow!("{error}"))?;
@@ -1058,7 +1121,7 @@ pub fn reachable(store: &FileObjectStore) -> Result<BTreeSet<Digest>> {
 
 /// Everything `heads` reach in `store`; a hole in the closure is an error, as for [`reachable`].
 pub fn reachable_from(
-    store: &FileObjectStore,
+    store: &dyn LedgerStore,
     heads: impl IntoIterator<Item = Digest>,
 ) -> Result<BTreeSet<Digest>> {
     let mut reached = BTreeSet::new();
@@ -1095,6 +1158,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::holds::files::FileHolds;
     use permguard_host::holds::{Deadline, HoldStore, NewHold};
     use permguard_host::operations::journal::Initiator;
     use permguard_host::operations::mutation::Mutations;
@@ -1103,14 +1167,16 @@ mod tests {
     use permguard_std::catalog::FileCatalog;
 
     use super::*;
+    use crate::store::{FileLedgers, FileObjectStore};
 
     /// Two ledgers of one zone, each holding one orphan old enough to go, and the volume's holds.
     struct Fixture {
         sweep: Sweep,
-        holds: Arc<HoldStore>,
+        holds: Arc<FileHolds>,
         mutations: Mutations,
         zone: String,
-        ledgers: Vec<(String, FileObjectStore, permguard_objects::Digest)>,
+        ledgers: Vec<(String, Arc<FileObjectStore>, permguard_objects::Digest)>,
+        root: std::path::PathBuf,
     }
 
     fn fixture(tag: &str) -> Fixture {
@@ -1122,17 +1188,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let catalog = Arc::new(FileCatalog::new(root.join("zones")));
         let zone = catalog.create_zone("delivery").expect("a zone");
+        // The sweep's own stores: a test reads and writes a ledger through the one it sweeps.
+        let files = Arc::new(FileLedgers::new(root.join("zones")));
         let mut ledgers = Vec::new();
         for name in ["policies", "rules"] {
             let ledger = catalog
                 .create_ledger(&Selector::Id(zone.id.clone()), name)
                 .expect("a ledger");
-            let store = FileObjectStore::new(
-                root.join("zones")
-                    .join(&zone.id)
-                    .join("ledgers")
-                    .join(&ledger.id),
-            );
+            let store = files.file(&zone.id, &ledger.id);
             let bytes = Blob {
                 media_type: "application/vnd.permguard.policy.cedar".to_owned(),
                 data: format!("permit (principal, action, resource); // {name}").into_bytes(),
@@ -1152,16 +1215,17 @@ mod tests {
         }
         let volume =
             Volume::claim(&root.join("volume"), AssuranceProfile::Development).expect("a volume");
-        let holds = Arc::new(HoldStore::open(&volume).expect("the holds"));
+        let holds = Arc::new(FileHolds::open(&volume).expect("the holds"));
         let mutations = Mutations::open_offline(&volume, "test").expect("the transaction");
         Fixture {
             sweep: Sweep {
                 catalog,
-                root: root.join("zones"),
+                ledgers: files,
+                archives: None,
                 grace: Duration::from_secs(60),
                 metrics: Metrics::none(),
                 recorder: None,
-                holds: Ok(Some(Arc::clone(&holds))),
+                holds: Ok(Some(Arc::clone(&holds) as Arc<dyn HoldStore>)),
                 max_removals: usize::MAX,
                 cursor: Arc::new(Mutex::new(None)),
                 serial: Arc::new(Mutex::new(())),
@@ -1170,13 +1234,14 @@ mod tests {
             mutations,
             zone: zone.id,
             ledgers,
+            root: root.join("zones"),
         }
     }
 
     fn hold(fixture: &Fixture, resource: String) -> String {
         permguard_host::holds::add(
             &fixture.mutations,
-            &fixture.holds,
+            &*fixture.holds,
             Initiator::System("test".to_owned()),
             NewHold {
                 resource,
@@ -1239,7 +1304,7 @@ mod tests {
 
         permguard_host::holds::release(
             &fixture.mutations,
-            &fixture.holds,
+            &*fixture.holds,
             Initiator::System("test".to_owned()),
             &id,
         )
@@ -1272,12 +1337,7 @@ mod tests {
                 fixture.zone, fixture.ledgers[0].0
             ),
         );
-        let volume = fixture
-            .sweep
-            .root
-            .parent()
-            .expect("the root")
-            .join("volume");
+        let volume = fixture.root.parent().expect("the root").join("volume");
         std::fs::remove_file(
             volume
                 .join("host")
@@ -1296,12 +1356,7 @@ mod tests {
     #[test]
     fn unreadable_holds_sweep_nothing() {
         let fixture = fixture("unreadable");
-        let volume = fixture
-            .sweep
-            .root
-            .parent()
-            .expect("the root")
-            .join("volume");
+        let volume = fixture.root.parent().expect("the root").join("volume");
         std::fs::write(
             volume
                 .join("host")
@@ -1380,7 +1435,7 @@ mod tests {
         let mut budget = usize::MAX;
         let swept = fixture
             .sweep
-            .sweep_ledger(store, &fixture.zone, ledger, &mut budget)
+            .sweep_ledger(store.as_ref(), &fixture.zone, ledger, &mut budget)
             .expect("swept");
         assert!(swept.held);
         assert_eq!((swept.removed, swept.temporaries), (0, 0));
@@ -1398,7 +1453,7 @@ mod tests {
             .expect("aged");
         let swept = fixture
             .sweep
-            .sweep_ledger(free, &fixture.zone, other, &mut budget)
+            .sweep_ledger(free.as_ref(), &fixture.zone, other, &mut budget)
             .expect("swept");
         assert_eq!((swept.held, swept.temporaries), (false, 1));
     }
@@ -1472,7 +1527,7 @@ mod tests {
         let mut budget = 0;
         let swept = fixture
             .sweep
-            .sweep_ledger(store, &fixture.zone, ledger, &mut budget)
+            .sweep_ledger(store.as_ref(), &fixture.zone, ledger, &mut budget)
             .expect("swept");
         assert!(swept.exhausted);
         assert_eq!(swept.removed, 0);
@@ -1620,7 +1675,7 @@ mod tests {
                 result: None,
             })
             .expect("an expired session");
-        let open = |store: &FileObjectStore| {
+        let open = |store: &dyn LedgerStore| {
             store
                 .transfers()
                 .expect("the transfers")
@@ -1631,7 +1686,7 @@ mod tests {
         };
         let ledger = ledger_resource(&fixture, 0);
         let planned = job(&fixture).plan(&ledger).expect("planned");
-        assert!(open(store), "a plan closes nothing");
+        assert!(open(store.as_ref()), "a plan closes nothing");
         assert_eq!(
             planned.entries[0].kept,
             vec![Kept {
@@ -1641,7 +1696,7 @@ mod tests {
         );
         assert_eq!(planned.entries[0].candidates, 0);
         job(&fixture).run(&ledger, "plan-4").expect("ran");
-        assert!(!open(store), "a run closes the expired session");
+        assert!(!open(store.as_ref()), "a run closes the expired session");
         assert!(store.has_object(digest), "whose pin lasts the grace after");
     }
 
@@ -1658,16 +1713,30 @@ mod tests {
             Ok(asked.get() > 1)
         };
         let mut budget = usize::MAX;
-        let swept =
-            sweep_within(store, Duration::from_secs(60), &mut budget, &held, false).expect("swept");
+        let swept = sweep_within(
+            store.as_ref(),
+            "",
+            Duration::from_secs(60),
+            &mut budget,
+            &held,
+            false,
+        )
+        .expect("swept");
         assert_eq!(asked.get(), 2);
         assert!(swept.held);
         assert_eq!((swept.removed, swept.held_objects), (0, 1));
         assert!(store.has_object(digest));
         // Found at the first ask: kept whole before any session is closed, counted the same.
         let first = || -> Result<bool> { Ok(true) };
-        let swept = sweep_within(store, Duration::from_secs(60), &mut budget, &first, false)
-            .expect("swept");
+        let swept = sweep_within(
+            store.as_ref(),
+            "",
+            Duration::from_secs(60),
+            &mut budget,
+            &first,
+            false,
+        )
+        .expect("swept");
         assert_eq!((swept.held, swept.held_objects), (true, 1));
     }
 

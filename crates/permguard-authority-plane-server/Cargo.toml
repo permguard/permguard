@@ -38,6 +38,8 @@ bin = [
     "permguard-server/authority-refresh",
     "permguard-server/otel",
     "permguard-server/kms",
+    # The postgresql-s3 backend's adapter (iteration 03, WP-28.1).
+    "dep:permguard-s3",
 ]
 
 [dependencies]
@@ -50,6 +52,7 @@ permguard-host.workspace = true
 # The server kit: this Plane's module is registered with it. What the binary owns beside the kit
 # is the `bin` feature's.
 permguard-server.workspace = true
+permguard-s3 = { workspace = true, optional = true, features = ["backend"] }
 # The actor a request carries, read where a route authorizes.
 permguard-transport.workspace = true
 # The contracts this package speaks, generated once for the workspace.

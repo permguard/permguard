@@ -60,6 +60,22 @@ fn crash(child: &str, point: &str, directory: &Path) -> bool {
 
 /// [`crash`] at the `hit`-th pass through `point`.
 fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
+    crash_with_hit(child, point, hit, directory, &[])
+}
+
+/// [`crash`], the child told what `variables` say beside the point.
+fn crash_with(child: &str, point: &str, directory: &Path, variables: &[(&str, &str)]) -> bool {
+    crash_with_hit(child, point, 1, directory, variables)
+}
+
+/// [`crash_at_hit`], the child told what `variables` say beside the point.
+fn crash_with_hit(
+    child: &str,
+    point: &str,
+    hit: u64,
+    directory: &Path,
+    variables: &[(&str, &str)],
+) -> bool {
     let status = Command::new(std::env::current_exe().expect("this binary names itself"))
         .args([
             "--ignored",
@@ -72,6 +88,7 @@ fn crash_at_hit(child: &str, point: &str, hit: u64, directory: &Path) -> bool {
         .env(CRASH_AT, point)
         .env(CRASH_HIT, hit.to_string())
         .env(DIRECTORY, directory)
+        .envs(variables.iter().copied())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -596,6 +613,12 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "volume.",
         "migrate.",
         "mutation.",
+        "audit.",
+        "holds.",
+        "identity.",
+        "slots.",
+        "ring.",
+        "members.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -888,13 +911,17 @@ mod mutating {
             DOMAIN
         }
 
-        fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
+        fn observe(
+            &self,
+            operation_id: &OperationId,
+            _target: Option<&str>,
+        ) -> Result<Option<Observed>, String> {
             let name = format!("note-{operation_id}");
             let held = self.records().contains(&name);
-            held.then_some(Observed {
+            Ok(held.then_some(Observed {
                 revision: 1,
                 target: Some(name),
-            })
+            }))
         }
     }
 
@@ -1049,5 +1076,1235 @@ mod mutating {
         assert!(matches!(retried, Outcome::Replayed(_)), "{retried:?}");
         assert_eq!(store.records().len(), 1);
         let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The audit trail (iteration 03, WP-26.2): a trail's directory and its name in the index.
+
+mod auditing {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_core::AuditEvent;
+    use permguard_host::audit::{self, Class, Engine, HOST, Stamp, index, trail};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::Digest;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn engine(volume: &volume::Volume) -> Engine {
+        Engine::open(
+            volume,
+            Stamp {
+                host_id: [1; 16],
+                boot_id: [2; 16],
+                build: "9.9.9".to_owned(),
+                config_revision: Digest::compute(b"settings"),
+            },
+            Arc::new(TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
+            None,
+        )
+        .expect("the engine opens")
+    }
+
+    /// One record of `security:host`, the first of which makes its trail.
+    fn record(engine: &Engine) {
+        engine
+            .append(
+                &AuditEvent::system(audit::AUDIT_TRAIL_LOST, "permguard").on("security:none"),
+                None,
+            )
+            .expect("recorded");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_first_record() {
+        let volume = claim_volume(&root());
+        record(&engine(&volume));
+    }
+
+    /// A Host that stops after a trail's directory exists and before the index names it has
+    /// lost nothing: no record was written, the next start finds no trail lost, and the trail
+    /// goes on from its first record.
+    #[test]
+    fn a_crash_between_a_trails_directory_and_its_name_loses_no_trail() {
+        let point = "audit.trail_created";
+        let path = scratch(point);
+        assert!(
+            crash("auditing::child_first_record", point, &path),
+            "{point}: the child died of the abort there"
+        );
+        let volume = claim_volume(&path);
+        let restarted = engine(&volume);
+        let audit_dir = volume
+            .host()
+            .subdir(audit::DIRECTORY, false)
+            .expect("the audit directory");
+        let index_dir = audit_dir
+            .subdir(index::DIRECTORY, false)
+            .expect("the index");
+        let entries = index::entries(&index_dir).expect("the index reads");
+        assert!(
+            entries.iter().all(|entry| entry.lost.is_none()),
+            "a trail that never held a record was recorded lost: {entries:?}"
+        );
+        record(&restarted);
+        let trails = audit_dir.subdir(audit::TRAILS, false).expect("the trails");
+        let dir = trail::directory(&trails, Class::Security, HOST, false).expect("security:host");
+        assert_eq!(
+            trail::verify(&dir).expect("the trail verifies"),
+            1,
+            "the record of this start is the trail's first"
+        );
+        let entries = index::entries(&index_dir).expect("the index reads");
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert!(entries[0].lost.is_none());
+        drop(restarted);
+        drop(volume);
+        let _ = std::fs::remove_dir_all(path);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Store contracts (iteration 03, WP-26.2, E30): an operation of a store killed before and after
+// its domain write.
+
+mod stores {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_core::authz::Principal;
+    use permguard_host::api::Replay;
+    use permguard_host::api::plans::{AUDIT_APPROVED, consume_plan};
+    use permguard_host::api::replay::files::FileReplay;
+    use permguard_host::api::replay::{self, Plan, PlanApproval};
+    use permguard_host::holds::files::FileHolds;
+    use permguard_host::holds::{self, Deadline, HoldStore as _, Holds, NewHold};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+    use permguard_host::storage::volume::Volume;
+
+    const ZONE: &str = "01a00000-0000-7000-8000-00000000000a";
+    const LEDGER: &str = "01a00000-0000-7000-8000-00000000000b";
+    const PLAN: &str = "p1";
+
+    /// The two points that tell an operation killed before its domain write from one killed
+    /// after it, before its commit.
+    const POINTS_OF_A_WRITE: [&str; 2] = ["mutation.intent_audited", "mutation.applied"];
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn now() -> u64 {
+        permguard_core::time::unix_now()
+    }
+
+    fn open_holds(path: &Path) -> (Volume, FileHolds, Mutations) {
+        let volume = claim_volume(path);
+        let store = FileHolds::open(&volume).expect("the holds open");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, store, mutations)
+    }
+
+    fn add_hold(store: &FileHolds, mutations: &Mutations) -> holds::Hold {
+        holds::add(
+            mutations,
+            store,
+            Initiator::System("test".to_owned()),
+            NewHold {
+                resource: format!("plane/control/zone/{ZONE}/ledger/{LEDGER}"),
+                owner: "legal@acme".to_owned(),
+                reason: "litigation 2026-17".to_owned(),
+                deadline: Deadline::Review(now() + 86_400),
+            },
+            now(),
+        )
+        .expect("added")
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_hold_add() {
+        let (_volume, store, mutations) = open_holds(&root());
+        add_hold(&store, &mutations);
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_hold_release() {
+        let (_volume, store, mutations) = open_holds(&root());
+        let held = store.list().expect("the holds read");
+        holds::release(
+            &mutations,
+            &store,
+            Initiator::System("test".to_owned()),
+            &held[0].id,
+        )
+        .expect("released");
+    }
+
+    /// An add killed before its write leaves no hold and a failed operation; killed after it,
+    /// the hold with its record and an operation recovery commits.
+    #[test]
+    fn a_hold_add_killed_midway_is_whole_or_absent() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("hold-add-{point}"));
+            assert!(
+                crash("stores::child_hold_add", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, mutations) = open_holds(&path);
+            let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.list().expect("the holds read");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert_eq!(held.len(), 1, "{point}: the hold is held");
+                assert!(store.keeps(ZONE, LEDGER, now()).expect("read"), "{point}");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(held.is_empty(), "{point}: nothing was written");
+            }
+            assert!(
+                store.verify().expect("the holds read").is_empty(),
+                "{point}: every hold has its record"
+            );
+            drop((mutations, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A release killed before its write leaves the hold keeping; killed after it, no hold and
+    /// an operation recovery commits.
+    #[test]
+    fn a_hold_release_killed_midway_keeps_or_ends_the_hold() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("hold-release-{point}"));
+            {
+                let (_volume, store, mutations) = open_holds(&path);
+                add_hold(&store, &mutations);
+            }
+            assert!(
+                crash("stores::child_hold_release", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, mutations) = open_holds(&path);
+            let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.list().expect("the holds read");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert!(held.is_empty(), "{point}: the hold is released");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert_eq!(held.len(), 1, "{point}: the hold still keeps");
+                assert!(store.keeps(ZONE, LEDGER, now()).expect("read"), "{point}");
+            }
+            assert!(
+                store.verify().expect("the holds read").is_empty(),
+                "{point}"
+            );
+            drop((mutations, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// What `verify` names a hold by whose file the index does not record.
+    const UNRECORDED: &str = "has a file the index does not record";
+
+    /// An add killed between its file and its entry in the index: the hold is held and keeps,
+    /// recovery commits the operation its file names, the hold is named unrecorded, and the
+    /// next operation records it. The index never names a hold whose file is not there.
+    #[test]
+    fn a_hold_add_killed_between_its_file_and_its_entry_keeps_the_hold() {
+        let point = "holds.file_written";
+        let path = scratch("hold-add-between");
+        assert!(
+            crash("stores::child_hold_add", point, &path),
+            "the child died of the abort there"
+        );
+        let (volume, store, mutations) = open_holds(&path);
+        let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+        assert_eq!(
+            recovered.reconciled.len(),
+            1,
+            "its file names the operation"
+        );
+        assert!(mutations.open_intents().is_empty());
+        assert_eq!(store.list().expect("the holds read").len(), 1);
+        assert!(store.keeps(ZONE, LEDGER, now()).expect("read"));
+        let found = store.verify().expect("the holds read");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains(UNRECORDED), "{found:?}");
+        // An operation records it with its own hold.
+        add_hold(&store, &mutations);
+        assert_eq!(store.list().expect("the holds read").len(), 2);
+        assert!(store.verify().expect("the holds read").is_empty());
+        drop((mutations, store, volume));
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    /// A release killed between its entry and its file: the hold still keeps, the operation is
+    /// recorded failed, the hold is named unrecorded, and the release run again ends it.
+    #[test]
+    fn a_hold_release_killed_between_its_entry_and_its_file_keeps_the_hold() {
+        let point = "holds.entry_removed";
+        let path = scratch("hold-release-between");
+        let held = {
+            let (_volume, store, mutations) = open_holds(&path);
+            add_hold(&store, &mutations)
+        };
+        assert!(
+            crash("stores::child_hold_release", point, &path),
+            "the child died of the abort there"
+        );
+        let (volume, store, mutations) = open_holds(&path);
+        let recovered = mutations.recover(&Holds(&store)).expect("recovers");
+        assert_eq!(recovered.failed.len(), 1, "the hold is still there");
+        assert!(mutations.open_intents().is_empty());
+        assert_eq!(store.list().expect("the holds read"), vec![held.clone()]);
+        assert!(store.keeps(ZONE, LEDGER, now()).expect("read"));
+        let found = store.verify().expect("the holds read");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains(UNRECORDED), "{found:?}");
+        holds::release(
+            &mutations,
+            &store,
+            Initiator::System("test".to_owned()),
+            &held.id,
+        )
+        .expect("released when run again");
+        assert!(store.list().expect("the holds read").is_empty());
+        assert!(!store.keeps(ZONE, LEDGER, now()).expect("read"));
+        assert!(store.verify().expect("the holds read").is_empty());
+        drop((mutations, store, volume));
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    fn open_plans(path: &Path) -> (Volume, Arc<FileReplay>, Replay, Mutations) {
+        let volume = claim_volume(path);
+        let (store, _) = FileReplay::open(&volume, now()).expect("the replay opens");
+        let store = Arc::new(store);
+        let replay = Replay::new(Arc::clone(&store) as Arc<dyn replay::ReplayStore>);
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, store, replay, mutations)
+    }
+
+    fn plan() -> Plan {
+        Plan {
+            plan_id: PLAN.to_owned(),
+            operation: "host.keys.revoke".to_owned(),
+            target: "host.operations/kid-1".to_owned(),
+            revision: 7,
+            digest: "sha256:00".to_owned(),
+            expires: now() + 600,
+            principal: "sa:alice".to_owned(),
+            kind: "keys.revoke".to_owned(),
+            receipt: "cmVjZWlwdA".to_owned(),
+            approvals_required: 1,
+            approvals: Vec::new(),
+            created_at: now(),
+        }
+    }
+
+    /// One operation of the plans' domain on `target`, as the Host API begins it.
+    fn begin(operation: &'static str, target: &str) -> Begin {
+        Begin {
+            domain: replay::DOMAIN,
+            operation,
+            action: AUDIT_APPROVED,
+            initiator: Initiator::System("test".to_owned()),
+            request: None,
+            target: Some(target.to_owned()),
+        }
+    }
+
+    fn seed_plan(path: &Path) {
+        let (_volume, _store, replay, mutations) = open_plans(path);
+        mutations
+            .run(begin("plan.make", "seed"), |applying| {
+                replay
+                    .plan(applying, plan())
+                    .map_err(|_| Failure::Refused("the plan could not be written".to_owned()))?;
+                Ok::<_, Failure<String>>(Applied {
+                    revision: 7,
+                    target: None,
+                    value: (),
+                })
+            })
+            .expect("planned");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_plan_approve() {
+        let (_volume, _store, replay, mutations) = open_plans(&root());
+        mutations
+            .run(begin("plan.approve", PLAN), |applying| {
+                replay
+                    .approve(applying, PLAN, &|_, _| {
+                        Ok(PlanApproval {
+                            principal: "sa:bob".to_owned(),
+                            approved_at: now(),
+                            envelope: "ZW52ZWxvcGU".to_owned(),
+                            operation_id: applying.operation_id().to_string(),
+                            token: None,
+                        })
+                    })
+                    .map_err(|_| Failure::Refused("the approval was refused".to_owned()))?;
+                Ok::<_, Failure<String>>(Applied {
+                    revision: 7,
+                    target: Some(PLAN.to_owned()),
+                    value: (),
+                })
+            })
+            .expect("approved");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_plan_consume() {
+        let (_volume, _store, replay, mutations) = open_plans(&root());
+        let planner = Principal::new("sa:alice").expect("a principal");
+        consume_plan(&mutations, &replay, &planner, &plan()).expect("consumed");
+    }
+
+    /// An approval killed before its write leaves the plan without it; killed after it, the
+    /// approval on the plan and an operation recovery commits.
+    #[test]
+    fn a_plan_approval_killed_midway_is_recorded_or_absent() {
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("plan-approve-{point}"));
+            seed_plan(&path);
+            assert!(
+                crash("stores::child_plan_approve", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, replay, mutations) = open_plans(&path);
+            let recovered = mutations.recover(&replay).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let (held, consumed) = replay
+                .find(PLAN)
+                .expect("the plan reads")
+                .expect("the plan is held");
+            assert!(!consumed, "{point}");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert_eq!(held.approvals.len(), 1, "{point}: the approval is held");
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(held.approvals.is_empty(), "{point}: nothing was written");
+            }
+            drop((mutations, replay, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A consumption killed before its write leaves the plan to run; killed after it, the plan
+    /// spent, an operation recovery commits, and a second consumption refused.
+    #[test]
+    fn a_plan_consumption_killed_midway_spends_the_plan_once_or_not_at_all() {
+        let planner = Principal::new("sa:alice").expect("a principal");
+        for point in POINTS_OF_A_WRITE {
+            let path = scratch(&format!("plan-consume-{point}"));
+            seed_plan(&path);
+            assert!(
+                crash("stores::child_plan_consume", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, replay, mutations) = open_plans(&path);
+            let recovered = mutations.recover(&replay).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let (held, consumed) = replay
+                .find(PLAN)
+                .expect("the plan reads")
+                .expect("the plan is held");
+            if point == "mutation.applied" {
+                assert_eq!(recovered.reconciled.len(), 1, "{point}");
+                assert!(consumed, "{point}: the plan is spent");
+                assert!(
+                    consume_plan(&mutations, &replay, &planner, &held).is_err(),
+                    "{point}: a plan is spent once"
+                );
+            } else {
+                assert_eq!(recovered.failed.len(), 1, "{point}");
+                assert!(!consumed, "{point}: the plan was not spent");
+                consume_plan(&mutations, &replay, &planner, &held).expect("spent now");
+            }
+            drop((mutations, replay, store, volume));
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Host identity's records (`1-architecture/2` Stores): a rotation and a reset killed between
+// their writes, and the recovery principal's commitment killed around its one.
+
+mod identifying {
+    use super::*;
+    use std::sync::Arc;
+
+    use permguard_host::authz::BootstrapStore as _;
+    use permguard_host::authz::store::files::FileBootstrap;
+    use permguard_host::identity::reset::{self, Provisioner};
+    use permguard_host::identity::{self, Identities, Identity, IdentityError, Suite};
+    use permguard_host::keys::{FileKeyProvider, KeyProvider};
+    use permguard_host::operations::grants::{self, Grants};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::Mutations;
+    use permguard_host::storage::volume::Volume;
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    fn provider(volume: &Volume) -> Arc<dyn KeyProvider> {
+        let (_, keys) = identity::directories(volume).expect("the directories");
+        Arc::new(FileKeyProvider::new(keys))
+    }
+
+    fn provisioner(volume: &Volume) -> Provisioner {
+        let (_, keys) = identity::directories(volume).expect("the directories");
+        let path = keys.path().to_path_buf();
+        Arc::new(move |_| {
+            Ok(Arc::new(FileKeyProvider::new(Dir::open(&path)?)) as Arc<dyn KeyProvider>)
+        })
+    }
+
+    /// Provisions an identity at `path` and answers its `host_id`.
+    fn provision(path: &Path) -> [u8; 16] {
+        let volume = claim_volume(path);
+        Identity::provision(
+            &volume,
+            provider(&volume),
+            Suite::Ed25519Sha256V1,
+            NOW,
+            NOW * 1000,
+        )
+        .expect("provisioned")
+        .host_id()
+    }
+
+    fn open(path: &Path) -> (Volume, Result<Identity, IdentityError>, Mutations) {
+        let volume = claim_volume(path);
+        let identity = Identity::open(&volume, provider(&volume))
+            .map(|identity| identity.with_provisioner(provisioner(&volume)));
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, identity, mutations)
+    }
+
+    fn system() -> Initiator {
+        Initiator::System("test".to_owned())
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_rotate() {
+        let (_volume, identity, mutations) = open(&root());
+        let identity = identity.expect("opened");
+        identity::rotate(&mutations, &identity, system(), 1, NOW + 1).expect("rotated");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_reset() {
+        let (_volume, identity, mutations) = open(&root());
+        let identity = identity.expect("opened");
+        reset::run(&mutations, &identity, &[], system(), NOW + 1).expect("reset");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_bootstrap() {
+        let volume = claim_volume(&root());
+        let store = FileBootstrap::open(&volume).expect("the store opens");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        grants::bootstrap(&mutations, &store, &"ab".repeat(32), NOW).expect("committed");
+    }
+
+    /// A rotation killed after each of its three writes: the identity opens again, at the epoch
+    /// it was at while no succession names the next, at the next once one does, its document
+    /// issued by the start that finds it missing; and the next rotation is taken either way.
+    #[test]
+    fn a_rotation_killed_between_its_writes_is_at_one_epoch_or_the_next() {
+        for (point, epoch) in [
+            ("identity.public_published", 1),
+            ("identity.succession_added", 2),
+            ("identity.document_replaced", 2),
+        ] {
+            let path = scratch(&format!("rotate-{point}"));
+            let host_id = provision(&path);
+            assert!(
+                crash("identifying::child_rotate", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, identity, mutations) = open(&path);
+            let identity = identity.unwrap_or_else(|error| panic!("{point}: opens, not {error}"));
+            assert_eq!(identity.host_id(), host_id, "{point}");
+            assert_eq!(identity.epoch(), epoch, "{point}");
+            assert_eq!(
+                identity.successions().len() as u64,
+                epoch - 1,
+                "{point}: a succession for every epoch after the first"
+            );
+            let recovered = mutations.recover(&Identities(&identity)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if epoch == 2 { (1, 0) } else { (0, 1) },
+                "{point}: the rotation is committed when its succession is durable"
+            );
+            // A key the killed rotation left without a succession is replaced, not kept.
+            let rotated = identity::rotate(&mutations, &identity, system(), epoch, NOW + 2)
+                .unwrap_or_else(|error| panic!("{point}: the next rotation, not {error}"));
+            assert_eq!(rotated.epoch, epoch + 1, "{point}");
+            drop((identity, mutations, volume));
+            let (_volume, reopened, _mutations) = open(&path);
+            assert_eq!(reopened.expect("reopens").epoch(), epoch + 1, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A reset killed after each of its writes. Before its mark is durable the identity is the
+    /// one it was, and the reset failed; from its mark on the open refuses, and the reset run
+    /// again provisions the next identity, the retired one's evidence kept.
+    #[test]
+    fn a_reset_killed_between_its_writes_keeps_the_identity_or_completes_when_run_again() {
+        // The provisioning of the next identity publishes its key, its document and its record:
+        // the first pass through each of those points in the child.
+        for (point, marked) in [
+            ("identity.retired", false),
+            ("identity.reset_marked", true),
+            ("identity.init_removed", true),
+            ("identity.public_published", true),
+            ("identity.document_replaced", true),
+            ("identity.init_published", true),
+        ] {
+            let path = scratch(&format!("reset-{point}"));
+            let old = provision(&path);
+            assert!(
+                crash("identifying::child_reset", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, identity, mutations) = open(&path);
+            if !marked {
+                let identity = identity.unwrap_or_else(|error| panic!("{point}: opens: {error}"));
+                assert_eq!(identity.host_id(), old, "{point}: the identity it was");
+                let recovered = mutations.recover(&Identities(&identity)).expect("recovers");
+                assert_eq!(recovered.failed.len(), 1, "{point}: nothing was reset");
+                // The evidence a killed reset kept names no reset of this identity as done.
+                assert!(identity.was_reset().expect("reads"), "{point}");
+                reset::run(&mutations, &identity, &[], system(), NOW + 2)
+                    .unwrap_or_else(|error| panic!("{point}: the reset run again: {error}"));
+            } else {
+                assert!(
+                    matches!(identity, Err(IdentityError::ResetIncomplete)),
+                    "{point}: an open refuses while a reset is under way"
+                );
+                assert_eq!(reset::marked(&volume).expect("reads"), Some(old), "{point}");
+                let resumed = reset::resume_run(
+                    &mutations,
+                    &volume,
+                    &provisioner(&volume),
+                    &[],
+                    Suite::Ed25519Sha256V1,
+                    system(),
+                    NOW + 2,
+                )
+                .unwrap_or_else(|error| panic!("{point}: the reset run again: {error}"))
+                .expect("a reset was under way");
+                assert_eq!(resumed.old_host_id, old, "{point}");
+            }
+            drop((mutations, volume));
+            let (volume, next, mutations) = open(&path);
+            let next = next.unwrap_or_else(|error| panic!("{point}: the next identity: {error}"));
+            assert_ne!(next.host_id(), old, "{point}: another Host");
+            assert_eq!(next.epoch(), 1, "{point}");
+            assert!(next.was_reset().expect("reads"), "{point}");
+            assert_eq!(reset::marked(&volume).expect("reads"), None, "{point}");
+            // Whatever the killed reset left open is resolved against the identity that stands.
+            mutations.recover(&Identities(&next)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A commitment to the recovery principal killed before its write leaves none and a failed
+    /// operation; killed after it, the commitment and an operation recovery commits.
+    #[test]
+    fn a_bootstrap_killed_midway_is_committed_or_absent() {
+        // Its one write is an immutable publish, whose own crash points are proven above.
+        for (point, written) in [
+            ("mutation.intent_audited", false),
+            ("mutation.applied", true),
+        ] {
+            let path = scratch(&format!("bootstrap-{point}"));
+            drop(claim_volume(&path));
+            assert!(
+                crash("identifying::child_bootstrap", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let store = FileBootstrap::open(&volume).expect("the store opens");
+            let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+            let recovered = mutations.recover(&Grants(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            let held = store.bootstrap().expect("the commitment reads");
+            assert_eq!(held.is_some(), written, "{point}: whole or absent");
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if written { (1, 0) } else { (0, 1) },
+                "{point}"
+            );
+            // Committed again, to the same certificate: the first when it was written.
+            let (again, wrote) =
+                grants::bootstrap(&mutations, &store, &"ab".repeat(32), NOW + 1).expect("again");
+            assert_eq!(wrote, !written, "{point}");
+            assert_eq!(held.unwrap_or_else(|| again.clone()), again, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// A ring's records and the slots of its keys (`1-architecture/4` Stores): a prepublication, a
+// hand-over, a sealing and a retirement killed between their writes.
+
+mod ringing {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use permguard_core::KeyManager as _;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::config::KeyCustody;
+    use permguard_core::keys::{PublicSet as _, Sign as _};
+    use permguard_host::keys::custody::{Custodian, Keks, SecretKek, Wrap};
+    use permguard_host::keys::migration::VolumeHome;
+    use permguard_host::keys::record::State;
+    use permguard_host::keys::registry::Opener;
+    use permguard_host::keys::ring::{DATA_ATTEST, Policy, Ring};
+    use permguard_host::keys::slots::files::FileSlots;
+    use permguard_host::keys::slots::{Kind, SlotStore as _};
+    use permguard_host::secrets::{KeyVersion, Root};
+    use permguard_host::storage::volume::Volume;
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+
+    const START: u64 = 1_800_000_000;
+    const AHEAD: u64 = 600;
+    const ROTATE: u64 = 3_600;
+    const RETAIN: u64 = 7_200;
+    /// When a successor is due to be prepublished, and when it takes over.
+    const PREPUBLISH_AT: u64 = START + ROTATE - AHEAD;
+    const HAND_OVER_AT: u64 = START + ROTATE;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    /// The moment the child of a test runs at, which its parent names.
+    const AT: &str = "PERMGUARD_CRASH_RING_AT";
+
+    fn policy() -> Policy {
+        Policy {
+            publish_ahead: Duration::from_secs(AHEAD),
+            rotate_every: Duration::from_secs(ROTATE),
+            retain: Duration::from_secs(RETAIN),
+        }
+    }
+
+    /// The ring of `volume` at the moment `at`, its keys in the clear.
+    fn ring_at(volume: &Volume, at: u64) -> Ring {
+        Ring::open(
+            volume,
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            policy(),
+            Arc::new(TimeGuard::fixed(at)),
+        )
+        .expect("the ring opens")
+    }
+
+    /// The slots that hold a private key of the ring of `volume`.
+    fn held(volume: &Volume) -> Vec<String> {
+        let private = volume
+            .host()
+            .subdir("keys", false)
+            .and_then(|keys| keys.subdir(DATA_ATTEST, false))
+            .and_then(|ring| ring.subdir("private", false))
+            .expect("the ring's private directory");
+        let mut slots = FileSlots::new(private)
+            .slots(Kind::Key)
+            .expect("the slots read");
+        slots.sort();
+        slots
+    }
+
+    /// The states of the ring's keys, in the order it lists them.
+    fn states(ring: &Ring) -> Vec<State> {
+        ring.view()
+            .expect("the view")
+            .keys
+            .iter()
+            .map(|key| key.state)
+            .collect()
+    }
+
+    /// A ring whose first key signs since `START`.
+    fn started(path: &Path) {
+        let volume = claim_volume(path);
+        ring_at(&volume, START).maintain().expect("the first key");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_maintain() {
+        let at: u64 = std::env::var(AT)
+            .expect("the parent names the moment")
+            .parse()
+            .expect("seconds");
+        let volume = claim_volume(&root());
+        ring_at(&volume, at).maintain().expect("maintained");
+    }
+
+    /// The child `child_maintain` at the moment `at`, killed at `point`.
+    fn crash_maintaining(at: u64, point: &str, path: &Path) -> bool {
+        crash_with(
+            "ringing::child_maintain",
+            point,
+            path,
+            &[(AT, &at.to_string())],
+        )
+    }
+
+    /// A prepublication killed after each of its writes: the ring opens again, and one
+    /// maintenance leaves it with its active key and one successor, every slot a key an entry
+    /// names. A key generated and never recorded is removed and never signs; its public key,
+    /// when it was published before the kill, stays among the public keys the ring keeps for
+    /// good, named by no entry and in no key set.
+    #[test]
+    fn a_prepublication_killed_between_its_writes_leaves_one_successor() {
+        for point in ["slots.filled", "ring.public_published", "ring.entry_added"] {
+            let path = scratch(&format!("ring-prepublish-{point}"));
+            started(&path);
+            assert!(
+                crash_maintaining(PREPUBLISH_AT, point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, PREPUBLISH_AT);
+            let signer = ring.active_key_id().expect("the active key still signs");
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            assert_eq!(
+                states(&ring),
+                vec![State::Active, State::Prepublished],
+                "{point}"
+            );
+            assert_eq!(ring.active_key_id().expect("active"), signer, "{point}");
+            assert_eq!(
+                held(&volume).len(),
+                2,
+                "{point}: a private key for each key the ring names, and no other"
+            );
+            ring.sign(b"after the crash").expect("signs");
+            assert_eq!(ring.public_keys().expect("the set").len(), 2, "{point}");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A hand-over killed after each entry it adds and after the retired key's slot is emptied:
+    /// the ring opens again with one active key, the successor, and one maintenance leaves the
+    /// retired key without its private half.
+    #[test]
+    fn a_hand_over_killed_between_its_writes_leaves_the_successor_signing() {
+        for (point, hit) in [
+            ("ring.entry_added", 1),
+            ("ring.entry_added", 2),
+            ("slots.emptied", 1),
+        ] {
+            let path = scratch(&format!("ring-hand-over-{point}-{hit}"));
+            started(&path);
+            {
+                let volume = claim_volume(&path);
+                ring_at(&volume, PREPUBLISH_AT)
+                    .maintain()
+                    .expect("a successor prepublished");
+            }
+            let died = crash_with_hit(
+                "ringing::child_maintain",
+                point,
+                hit,
+                &path,
+                &[(AT, &HAND_OVER_AT.to_string())],
+            );
+            assert!(died, "{point} ({hit}): the child died of the abort there");
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, HAND_OVER_AT);
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            let states = states(&ring);
+            assert_eq!(
+                states
+                    .iter()
+                    .filter(|state| **state == State::Active)
+                    .count(),
+                1,
+                "{point} ({hit}): exactly one key signs: {states:?}"
+            );
+            assert_eq!(
+                states,
+                vec![State::RetiredPublic, State::Active],
+                "{point} ({hit})"
+            );
+            assert_eq!(
+                held(&volume).len(),
+                1,
+                "{point} ({hit}): the retired key's private half is destroyed"
+            );
+            ring.sign(b"after the crash").expect("signs");
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// The ring of `volume` at `at`, bound by the identity of the volume.
+    fn bound_ring(volume: &Volume, at: u64) -> Ring {
+        use permguard_host::identity::{self, Identity};
+        use permguard_host::keys::FileKeyProvider;
+
+        let (_, keys) = identity::directories(volume).expect("the identity's directories");
+        let provider = Arc::new(FileKeyProvider::new(keys));
+        let identity = if identity::is_provisioned(volume).expect("reads") {
+            Identity::open(volume, provider).expect("the identity opens")
+        } else {
+            Identity::provision(
+                volume,
+                provider,
+                Suite::Ed25519Sha256V1,
+                START,
+                START * 1000,
+            )
+            .expect("provisioned")
+        };
+        ring_at(volume, at).with_binder(Arc::new(identity))
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_bind() {
+        let volume = claim_volume(&root());
+        bound_ring(&volume, START + 1)
+            .maintain()
+            .expect("maintained");
+    }
+
+    /// A binding killed once its entry is added and before it replaces the current one: the
+    /// ring opens again, one maintenance leaves it bound, and the next adds nothing, even beside
+    /// a file among its kept bindings that does not read.
+    #[test]
+    fn a_binding_killed_between_its_entry_and_its_file_is_issued_once_more_and_no_more() {
+        let point = "ring.entry_added";
+        let path = scratch("ring-bind");
+        started(&path);
+        assert!(
+            crash("ringing::child_bind", point, &path),
+            "the child died of the abort there"
+        );
+        let volume = claim_volume(&path);
+        std::fs::write(
+            path.join("host/keys")
+                .join(DATA_ATTEST)
+                .join("bindings/.tmp-stopped"),
+            b"",
+        )
+        .expect("a temporary a write that stopped left");
+        let ring = bound_ring(&volume, START + 2);
+        ring.maintain().expect("maintained");
+        let statement = ring.statement().expect("the statement");
+        assert!(statement.binding.is_some(), "the ring is bound");
+        let frontier = ring.frontier().expect("the frontier");
+        ring.maintain().expect("and again");
+        ring.maintain().expect("and again");
+        assert_eq!(
+            ring.frontier().expect("the frontier"),
+            frontier,
+            "a ring that is bound is not bound again at every maintenance"
+        );
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    fn kek() -> Arc<dyn Wrap> {
+        let root = Root::from_material(&[9; 32], KeyVersion::new(1).expect("v1")).expect("a root");
+        Arc::new(SecretKek::from_root("kek-a", &root).expect("a KEK"))
+    }
+
+    /// The ring of `volume` through the `file` custody, which seals what it finds in the clear.
+    fn sealed_ring(volume: &Volume) -> Arc<Ring> {
+        let time = Arc::new(TimeGuard::fixed(START + 1));
+        Opener {
+            home: Box::new(VolumeHome {
+                volume,
+                profile: AssuranceProfile::Development,
+                time: Arc::clone(&time),
+            }),
+            host_id: [4; 16],
+            custodian: Arc::new(Custodian::new(
+                |_| KeyCustody::File,
+                Ok(Some(Keks {
+                    current: kek(),
+                    previous: None,
+                })),
+            )),
+            time,
+            binder: None,
+            recorder: None,
+        }
+        .open(DATA_ATTEST, Suite::Ed25519Sha256V1, policy(), None)
+        .expect("the ring opens through the file custody")
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_seal() {
+        let volume = claim_volume(&root());
+        sealed_ring(&volume);
+    }
+
+    /// A sealing killed after its entry and before its key is sealed, or after the key is: the
+    /// next start seals what is still in the clear, records it, and the key signs as before.
+    #[test]
+    fn a_sealing_killed_between_its_entry_and_its_key_seals_at_the_next_start() {
+        for point in ["ring.entry_added", "slots.replaced"] {
+            let path = scratch(&format!("ring-seal-{point}"));
+            started(&path);
+            let signer = {
+                let volume = claim_volume(&path);
+                ring_at(&volume, START + 1).active_key_id().expect("active")
+            };
+            assert!(
+                crash("ringing::child_seal", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = sealed_ring(&volume);
+            assert_eq!(ring.active_key_id().expect("active"), signer, "{point}");
+            ring.sign(b"after the crash").expect("the sealed key signs");
+            let slot = held(&volume).pop().expect("one key");
+            let private = volume
+                .host()
+                .subdir("keys", false)
+                .and_then(|keys| keys.subdir(DATA_ATTEST, false))
+                .and_then(|ring| ring.subdir("private", false))
+                .expect("the private directory");
+            let bytes = FileSlots::new(private)
+                .read(Kind::Key, &slot)
+                .expect("reads")
+                .expect("held");
+            assert_ne!(
+                bytes.first(),
+                Some(&0x30),
+                "{point}: no key is left in the clear"
+            );
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_retire() {
+        use permguard_host::operations::journal::Initiator;
+        use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+        let volume = claim_volume(&root());
+        let ring = ring_at(&volume, START + 1);
+        // Retired as an identity reset retires it: inside one operation of the engine.
+        Mutations::open_offline(&volume, "test")
+            .expect("the journal opens")
+            .run(
+                Begin {
+                    domain: permguard_host::identity::DOMAIN,
+                    operation: permguard_host::identity::reset::RESET_RUN,
+                    action: permguard_host::identity::reset::AUDIT_RESET,
+                    initiator: Initiator::System("test".to_owned()),
+                    request: None,
+                    target: Some("reset:test".to_owned()),
+                },
+                |applying| {
+                    ring.retire(applying, &[0x0a; 16])
+                        .map_err(|error| Failure::Indeterminate(error.to_string()))?;
+                    Ok(Applied {
+                        revision: 1,
+                        target: None,
+                        value: (),
+                    })
+                },
+            )
+            .expect("retired");
+    }
+
+    /// A retirement killed once its entries are gone, or once its key is destroyed: the ring
+    /// opens as a new one, with a key of its own, and the retired ring's records are kept.
+    #[test]
+    fn a_retirement_killed_between_its_writes_opens_as_a_new_ring() {
+        for point in ["ring.entries_forgotten", "slots.emptied"] {
+            let path = scratch(&format!("ring-retire-{point}"));
+            started(&path);
+            let retired = {
+                let volume = claim_volume(&path);
+                ring_at(&volume, START + 1).active_key_id().expect("active")
+            };
+            assert!(
+                crash("ringing::child_retire", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let ring = ring_at(&volume, START + 2);
+            assert_eq!(ring.epoch(), 0, "{point}: a ring with no entry");
+            ring.maintain().expect("maintained");
+            ring.maintain().expect("and again, with nothing left to do");
+            let signer = ring.active_key_id().expect("a key of its own");
+            assert_ne!(signer, retired, "{point}: never the retired ring's key");
+            assert_eq!(states(&ring), vec![State::Active], "{point}");
+            assert_eq!(
+                held(&volume).len(),
+                1,
+                "{point}: no private key of the retired ring is left"
+            );
+            let kept = path
+                .join("host/keys/retired")
+                .join(permguard_host::identity::record::uuid_text(&[0x0a; 16]))
+                .join(DATA_ATTEST)
+                .join("journal.cborseq");
+            assert!(
+                kept.is_file(),
+                "{point}: the retired ring's entries are kept"
+            );
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The memberships (`1-architecture/3` Stores): a transition killed once its entry is added.
+
+mod membering {
+    use super::*;
+
+    use permguard_core::authz::Selector;
+    use permguard_host::membership::record::{Limits, Task, TaskType};
+    use permguard_host::membership::{self, Memberships, NewInvite, Store};
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the volume"))
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_invite() {
+        let volume = claim_volume(&root());
+        let store = Store::open(&volume).expect("the memberships open");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        mutations
+            .run(
+                Begin {
+                    domain: membership::DOMAIN,
+                    operation: "members.invite",
+                    action: "host.membership.invited",
+                    initiator: Initiator::System("test".to_owned()),
+                    request: None,
+                    target: None,
+                },
+                |applying| {
+                    let (invitation, _) = store
+                        .invite(
+                            applying,
+                            NewInvite {
+                                selector: Selector::parse("plane/data/*").expect("a selector"),
+                                tasks: vec![Task {
+                                    version: 1,
+                                    task_id: "decisions".to_owned(),
+                                    task_type: TaskType::DecisionsShip,
+                                    selector: Selector::parse("plane/data/*").expect("a selector"),
+                                    resource_types: vec!["decision".to_owned()],
+                                    required: true,
+                                    limits: Limits {
+                                        max_body_bytes: 1 << 20,
+                                        max_concurrency: 4,
+                                        max_rate_per_minute: 600,
+                                        max_batch_records: 1000,
+                                        retention_seconds: 30 * 86_400,
+                                    },
+                                    assurance_requirements: Vec::new(),
+                                }],
+                                expires: None,
+                                expected_fingerprint: None,
+                                min_assurance: None,
+                                name: None,
+                                groups: None,
+                            },
+                            "operator",
+                            NOW,
+                        )
+                        .map_err(|error| Failure::Refused(error.to_string()))?;
+                    Ok(Applied {
+                        revision: 1,
+                        target: Some(permguard_host::identity::record::uuid_text(
+                            &invitation.invite_id,
+                        )),
+                        value: (),
+                    })
+                },
+            )
+            .expect("invited");
+    }
+
+    /// A transition killed before its entry is added leaves nothing and a failed operation;
+    /// killed once it is added, before its views are written or its operation committed, the
+    /// transition is there, with the operation that made it, and recovery commits it.
+    #[test]
+    fn a_transition_killed_around_its_entry_is_whole_or_absent() {
+        for (point, added) in [
+            ("mutation.intent_audited", false),
+            ("members.entry_added", true),
+            ("mutation.applied", true),
+        ] {
+            let path = scratch(&format!("members-invite-{point}"));
+            drop(claim_volume(&path));
+            assert!(
+                crash("membering::child_invite", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let volume = claim_volume(&path);
+            let store = Store::open(&volume).expect("the memberships open again");
+            let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+            let recovered = mutations.recover(&Memberships(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            assert_eq!(
+                store.invitations(NOW).len(),
+                usize::from(added),
+                "{point}: the invitation is there, or it is not"
+            );
+            assert_eq!(
+                (recovered.reconciled.len(), recovered.failed.len()),
+                if added { (1, 0) } else { (0, 1) },
+                "{point}: committed when its entry is durable"
+            );
+            let _ = std::fs::remove_dir_all(path);
+        }
     }
 }

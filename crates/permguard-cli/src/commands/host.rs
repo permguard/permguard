@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Principal;
+use permguard_host::authz::store::files::FileBootstrap;
 use permguard_host::authz::{AuthzError, BootstrapStore};
 use permguard_host::keys::custody::Custodian;
 use permguard_host::keys::ring::HOST_IDENTITY;
@@ -63,6 +64,9 @@ pub fn host_command(
         HostAction::Members { action } => members(globals, action, trace),
         HostAction::Streams { action } => streams(globals, action, trace),
         HostAction::Keys { action } => super::host_ops::keys(globals, action, trace),
+        HostAction::Audit {
+            action: crate::args::AuditAction::Copy { out },
+        } => super::shared::audit_copy(globals, server_config, &out, trace),
         HostAction::Audit { action } => super::host_ops::audit(globals, action, trace),
         HostAction::Config { action } => super::host_ops::config(globals, action, trace),
         HostAction::Status => super::host_ops::status(globals, trace),
@@ -80,10 +84,34 @@ fn grants_bootstrap(
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     let now = permguard_core::time::unix_now();
-    let volume = volume_of(globals)?;
-    let (store, mutations) = open_mutable(&volume, server_config, trace)?;
-    let (commitment, written) =
-        grants::bootstrap(&mutations, &store, fingerprint, now).map_err(refused)?;
+    // Without --volume, on the `postgresql-s3` backend the server's configuration names: the
+    // commitment its database keeps (iteration 03, WP-28.1).
+    let (commitment, written) = match (&globals.volume, server_config) {
+        (None, Some(path)) => {
+            let config = super::shared::config_of(Some(path))?;
+            let Some(shared) = super::shared::open(&config)? else {
+                return Err(Failure::usage(
+                    "the configuration keeps its state on a volume: name it with --volume <dir>",
+                ));
+            };
+            trace.say(format!("backend: {}", shared.backend));
+            let mutations = shared
+                .offline_engine(permguard_core::build::VERSION)
+                .map_err(Failure::unavailable)?;
+            grants::bootstrap(
+                mutations.as_ref(),
+                shared.bootstrap.as_ref(),
+                fingerprint,
+                now,
+            )
+            .map_err(refused)?
+        }
+        _ => {
+            let volume = volume_of(globals)?;
+            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
+            grants::bootstrap(&mutations, store.as_ref(), fingerprint, now).map_err(refused)?
+        }
+    };
     render(
         &BootstrapReport {
             principal: commitment.principal.to_string(),
@@ -108,12 +136,13 @@ fn open_mutable(
     volume: &Path,
     server_config: Option<&Path>,
     trace: &Trace,
-) -> Result<(std::sync::Arc<BootstrapStore>, Mutations), Failure> {
+) -> Result<(std::sync::Arc<dyn BootstrapStore>, Mutations), Failure> {
     let held = claim(volume, trace)?;
-    let store = BootstrapStore::open(&held).map_err(failure)?;
+    let store: std::sync::Arc<dyn BootstrapStore> =
+        std::sync::Arc::new(FileBootstrap::open(&held).map_err(failure)?);
     let mutations = offline_engine(&held, server_config, trace)?;
     let recovered = mutations
-        .recover(&grants::Grants(&store))
+        .recover(&grants::Grants(store.as_ref()))
         .map_err(|error| Failure::unavailable(format!("recovering mutations: {error}")))?;
     if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
         trace.say(format!(
@@ -168,15 +197,16 @@ fn holds(
     action: HoldsAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
-    use permguard_host::holds::{self, Deadline, HoldStore, NewHold};
+    use permguard_host::holds::files::FileHolds;
+    use permguard_host::holds::{self, Deadline, HoldStore as _, NewHold};
 
     let volume = volume_of(globals)?;
     let now = permguard_core::time::unix_now();
     // What a change of the holds writes through: the volume claimed with the forensic refusal, the
     // holds opened, created when absent.
-    let writable = || -> Result<(Volume, HoldStore), Failure> {
+    let writable = || -> Result<(Volume, FileHolds), Failure> {
         let held = claim(&volume, trace)?;
-        let store = HoldStore::open(&held)
+        let store = FileHolds::open(&held)
             .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?;
         Ok((held, store))
     };
@@ -186,7 +216,7 @@ fn holds(
         // (BUG-0188).
         HoldsAction::List => {
             let held = hold(&volume, trace)?;
-            let listed = match HoldStore::open_to_read(&held)
+            let listed = match FileHolds::open_to_read(&held)
                 .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
             {
                 Some(store) => store.list().map_err(hold_refused)?,
@@ -203,7 +233,7 @@ fn holds(
         }
         HoldsAction::Verify => {
             let held = hold(&volume, trace)?;
-            let findings = match HoldStore::open_to_read(&held)
+            let findings = match FileHolds::open_to_read(&held)
                 .map_err(|error| Failure::unavailable(format!("opening the holds: {error}")))?
             {
                 Some(store) => store.verify().map_err(hold_refused)?,
@@ -334,7 +364,7 @@ fn held_in_catalog(volume: &Path, resource: &str) -> Result<(), Failure> {
 /// The offline transaction, the hold operations a crash left open resolved first.
 fn offline_holds(
     held: &Volume,
-    store: &permguard_host::holds::HoldStore,
+    store: &dyn permguard_host::holds::HoldStore,
     server_config: Option<&Path>,
     trace: &Trace,
 ) -> Result<Mutations, Failure> {
@@ -356,7 +386,7 @@ fn hold_refused(error: permguard_host::holds::HoldError) -> Failure {
     use permguard_host::holds::HoldError;
     match error {
         HoldError::Invalid(_) | HoldError::NotFound(_) => Failure::usage(error.to_string()),
-        HoldError::Storage(_) => Failure::unavailable(error.to_string()),
+        HoldError::Unavailable(_) => Failure::unavailable(error.to_string()),
         // A hold file, or the index beside the files, that is not what the operations wrote:
         // damaged at rest, exit 65, named (BUG-0172).
         HoldError::Record(_) => Failure::corrupt(error.to_string()),
@@ -492,7 +522,7 @@ fn refused(error: MutationError<AuthzError>) -> Failure {
 fn failure(error: AuthzError) -> Failure {
     match error {
         AuthzError::Invalid(_) => Failure::usage(error),
-        AuthzError::Storage(_) => Failure::unavailable(error),
+        AuthzError::Record(_) | AuthzError::Unavailable(_) => Failure::unavailable(error),
     }
 }
 
@@ -589,7 +619,13 @@ pub(super) fn open_identity(
             .map_err(|error| Failure::unavailable(format!("the identity's keys: {error}")))?,
     );
     let custodied = custodian(held, server_config)?
-        .plan(HOST_IDENTITY, host_id, keys, stored, suite)
+        .plan(
+            HOST_IDENTITY,
+            host_id,
+            std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(keys)),
+            stored,
+            suite,
+        )
         .map_err(|error| Failure::unavailable(without_custody(server_config, error)))?;
     // Sealing and rewrapping are the start's, which records them in the operations audit.
     if !custodied.plan.sealed.is_empty() || !custodied.plan.rewrapped.is_empty() {
@@ -616,6 +652,13 @@ fn identity(
     let now = permguard_core::time::unix_now();
     match action {
         IdentityAction::Provision { suite, if_missing } => {
+            // Without --volume, in the `postgresql-s3` backend the server's configuration names:
+            // the identity every instance opens, made before the first starts (WP-28.5).
+            if globals.volume.is_none()
+                && let Some(path) = server_config
+            {
+                return provision_shared(globals, path, &suite, if_missing, trace);
+            }
             let volume = volume_of(globals)?;
             let suite = Suite::from_name(&suite).ok_or_else(|| {
                 Failure::usage(format!(
@@ -657,7 +700,15 @@ fn identity(
                 &held,
                 |host_id| {
                     custodian
-                        .provider(HOST_IDENTITY, *host_id, keys, stored, suite)
+                        .provider(
+                            HOST_IDENTITY,
+                            *host_id,
+                            std::sync::Arc::new(
+                                permguard_host::keys::slots::files::FileSlots::new(keys),
+                            ),
+                            stored,
+                            suite,
+                        )
                         .map(|(provider, _)| provider)
                         .map_err(identity::IdentityError::from)
                 },
@@ -1714,7 +1765,7 @@ fn reset(
                         .map_err(|refusal| Refused::Refused(refusal_text(&refusal)))?;
                     Ok(Applied {
                         revision: opened.epoch(),
-                        target,
+                        target: target.clone(),
                         value: (),
                     })
                 },
@@ -1963,8 +2014,9 @@ pub(super) fn open_plans(
     mutations: &Mutations,
     now: u64,
 ) -> Result<permguard_host::api::Replay, Failure> {
-    let (replay, _) = permguard_host::api::Replay::open(held, now)
+    let (replay, _) = permguard_host::api::replay::files::FileReplay::open(held, now)
         .map_err(|error| Failure::unavailable(format!("opening the plans: {error}")))?;
+    let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
     mutations
         .recover(&replay)
         .map_err(|error| Failure::unavailable(format!("recovering the plans: {error}")))?;
@@ -2095,6 +2147,108 @@ struct IdentityReport {
     custody: Option<&'static str>,
     #[serde(skip)]
     provisioned: bool,
+}
+
+/// `host identity provision --server-config <file>` on the `postgresql-s3` backend (iteration
+/// 03, WP-28.5): the identity made in the database, in the custody the configuration names, before
+/// any instance starts; its witness printed once, as on a volume.
+fn provision_shared(
+    globals: &Globals,
+    server_config: &Path,
+    suite: &str,
+    if_missing: bool,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
+    use permguard_host::identity::{self, Home, Identity};
+    use permguard_host::keys::ring::HOST_IDENTITY;
+
+    let suite = identity::Suite::from_name(suite).ok_or_else(|| {
+        Failure::usage(format!(
+            "`{suite}` is not a suite: pg-ed25519-sha256-v1 or pg-p256-sha256-v1"
+        ))
+    })?;
+    let config = super::shared::config_of(Some(server_config))?;
+    let Some(shared) = super::shared::open(&config)? else {
+        return Err(Failure::usage(
+            "the configuration keeps its state on a volume: name it with --volume <dir>",
+        ));
+    };
+    trace.say(format!("backend: {}", shared.backend));
+    let held_already = || -> Result<ExitCode, Failure> {
+        render_json(
+            &serde_json::json!({
+                "provisioned": false,
+                "reason": "the database holds its identity already: its witness was printed when it was provisioned",
+            }),
+            globals,
+            trace,
+        )?;
+        Ok(ExitCode::SUCCESS)
+    };
+    if if_missing
+        && identity::provisioned_in(shared.identity.as_ref(), &shared.home)
+            .map_err(|error| Failure::unavailable(format!("the identity: {error}")))?
+            .is_some()
+    {
+        return held_already();
+    }
+    let secrets = permguard_offline::factories::secret_store_for(&config)
+        .map_err(|error| Failure::usage(format!("the secret store: {error:#}")))?;
+    let custodian = permguard_offline::keys::custodian_for(
+        &config,
+        secrets.as_deref(),
+        &permguard_host::secrets::Witnesses::new(std::sync::Arc::clone(&shared.witnesses)),
+    )
+    .map_err(|error| Failure::usage(format!("the custody of the keys: {error:#}")))?;
+    let now = permguard_core::time::unix_now();
+    let provisioned = Identity::provision_in(
+        std::sync::Arc::clone(&shared.identity),
+        Home {
+            id: shared.home,
+            generation: 0,
+        },
+        |host_id| {
+            custodian
+                .provider(
+                    HOST_IDENTITY,
+                    *host_id,
+                    std::sync::Arc::clone(&shared.identity_slots),
+                    identity::stored_public_in(std::sync::Arc::clone(&shared.identity)),
+                    suite,
+                )
+                .map(|(provider, _)| provider)
+                .map_err(identity::IdentityError::from)
+        },
+        suite,
+        now,
+        now.saturating_mul(1000),
+    );
+    let opened = match provisioned {
+        Ok(opened) => opened,
+        // Another instance provisioned it between the read above and the hold this one waited
+        // for: as if it had been there, the instances starting together (WP-29.1).
+        Err(identity::IdentityError::Provisioned) if if_missing => return held_already(),
+        Err(error @ identity::IdentityError::Provisioned) => return Err(Failure::usage(error)),
+        Err(other) => return Err(Failure::unavailable(other)),
+    };
+    shared
+        .offline_engine(permguard_core::build::VERSION)
+        .map_err(Failure::unavailable)?
+        .project(
+            &permguard_core::AuditEvent::new(
+                identity::AUDIT_PROVISIONED,
+                permguard_core::Subject::System(INITIATOR),
+            )
+            .on(&opened.host_id_text()),
+        )
+        .map_err(|error| Failure::unavailable(format!("recording the provisioning: {error}")))?;
+    let custody = custodian.custody_of(HOST_IDENTITY).as_str();
+    render(
+        &identity_report(&opened, true, Some(custody)),
+        globals.output,
+        trace,
+    )?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn identity_report(

@@ -11,6 +11,7 @@ use permguard_core::KeyManager as _;
 use super::record::{Action, MembershipAnswer, MembershipRequest};
 use super::*;
 use crate::keys::ring::Policy;
+use crate::storage::volume::Volume;
 use crate::time::TimeGuard;
 
 /// One Host: a volume, an identity, its rings bound by the identity, and its membership store.
@@ -509,7 +510,8 @@ fn verification_recovery_keeps_the_exact_result_after_consumption_and_a_later_sc
     );
     assert_eq!(
         Memberships(coordinator.store.as_ref())
-            .observe(&operation_id, Some(&uuid_text(&[0x55; 16]))),
+            .observe(&operation_id, Some(&uuid_text(&[0x55; 16])))
+            .expect("the domain answers"),
         None,
         "the immutable result belongs only to its original target"
     );
@@ -1405,7 +1407,12 @@ pub(crate) mod protocol {
                 )
                 .expect("the engine opens"),
             );
-            let peers = Arc::new(Peers::open(&host._volume, &[]).expect("the peers"));
+            let peers = Arc::new(Peers::new(
+                Arc::new(
+                    crate::session::peers::files::FileSeen::open(&host._volume).expect("the peers"),
+                ),
+                &[],
+            ));
             peers.with_source(Arc::clone(&host.store) as Arc<dyn crate::session::peers::PinSource>);
             let registry = Arc::new(crate::keys::registry::Registry::new(
                 Some(Arc::clone(&host.identity)),
@@ -1421,7 +1428,7 @@ pub(crate) mod protocol {
             let service = service.then(|| {
                 Arc::new(Coordinating {
                     store: Arc::clone(&host.store),
-                    mutations: Arc::clone(&mutations),
+                    mutations: Arc::clone(&mutations) as _,
                     identity: Arc::clone(&host.identity),
                     keys: registry,
                     capabilities: capabilities(),
@@ -1618,7 +1625,7 @@ pub(crate) mod protocol {
     pub(crate) fn member<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
         Member {
             store: &side.host.store,
-            mutations: &side.mutations,
+            mutations: side.mutations.as_ref(),
             identity: &side.host.identity,
             rings: &side.host.rings,
             capabilities: Box::leak(Box::new(harness(Role::Member))),
@@ -2171,6 +2178,7 @@ fn recovery_sees_the_operation_that_wrote_a_membership_and_no_other() {
     let written = Applying::for_tests(2).operation_id();
     let observed = Memberships(&c.store)
         .observe(&written, None)
+        .expect("the domain answers")
         .expect("the enrollment is observed");
     assert_eq!(
         observed.target,
@@ -2179,11 +2187,17 @@ fn recovery_sees_the_operation_that_wrote_a_membership_and_no_other() {
     assert!(
         Memberships(&c.store)
             .observe(&Applying::for_tests(42).operation_id(), None)
+            .expect("the domain answers")
             .is_none()
     );
     // After a reopen, from the journal alone.
     let reopened = Store::open(&c._volume).expect("reopens");
-    assert!(Memberships(&reopened).observe(&written, None).is_some());
+    assert!(
+        Memberships(&reopened)
+            .observe(&written, None)
+            .expect("the domain answers")
+            .is_some()
+    );
 }
 
 #[test]
@@ -3436,4 +3450,319 @@ fn an_enrollment_asking_for_a_name_another_host_holds_is_refused() {
         ),
         Err(MembershipError::NameTaken(name)) if name == "edge"
     ));
+}
+
+fn store_scratch(tag: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "permguard-host-members-store-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&path);
+    path
+}
+
+/// The file backend passes the contract's suite, each case on a volume of its own.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let volumes = Mutex::new(Vec::new());
+    suite::run(&|| {
+        let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let volume = Volume::claim(
+            &store_scratch(&format!("suite-{case}")),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("a volume");
+        let store = Arc::new(files::FileMembers::open(&volume).expect("the store opens"));
+        volumes.lock().expect("lock").push(volume);
+        store
+    });
+}
+
+/// What only the file backend can prove: every document is the file it always was, a kept
+/// checkpoint is the envelope itself, and what it keeps is read back by a later open, a torn
+/// last entry cut.
+#[test]
+fn the_file_backend_keeps_each_document_in_the_file_it_always_was() {
+    use std::io::Write as _;
+    use store::{Doc, MemberStore as _};
+
+    let root = store_scratch("layout");
+    let volume = Volume::claim(
+        &root,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .expect("a volume");
+    let members = root.join("host/members");
+    let id = [0x0a; 16];
+    let m = hex(&id);
+    let trail = hex(&Sha256::digest(b"security:host"));
+    let receipt = hex(&Sha256::digest(b"zone/a"));
+    let store = files::FileMembers::open(&volume).expect("opens");
+    let task = "decisions.ship";
+    let kept: Vec<(Doc<'_>, String)> = vec![
+        (
+            Doc::Lease {
+                membership: &id,
+                task,
+            },
+            format!("leases/{m}/{task}.cose"),
+        ),
+        (
+            Doc::Progress {
+                membership: &id,
+                task,
+            },
+            format!("progress/{m}/{task}.cbor"),
+        ),
+        (
+            Doc::Session {
+                membership: &id,
+                task,
+            },
+            format!("progress/{m}/{task}.session"),
+        ),
+        (
+            Doc::Delivered { membership: &id },
+            format!("progress/{m}/manifest.delivered"),
+        ),
+        (
+            Doc::ZoneReceipt {
+                membership: &id,
+                task,
+                resource: "zone/a",
+            },
+            format!("progress/{m}/{task}.{receipt}.zone"),
+        ),
+        (
+            Doc::ReplaySlot {
+                membership: &id,
+                task,
+                slot: 7,
+            },
+            format!("replay/{m}/{task}/0007.cbor"),
+        ),
+        (
+            Doc::Verification { membership: &id },
+            format!("verifications/{m}"),
+        ),
+        (
+            Doc::VerificationResult { operation: &id },
+            format!("verifications/results/{m}"),
+        ),
+        (
+            Doc::Acks {
+                membership: &id,
+                task,
+            },
+            format!("egress/{m}-{task}.cbor"),
+        ),
+        (
+            Doc::TrailName {
+                membership: &id,
+                trail: "security:host",
+            },
+            format!("audit/{m}/{trail}/META"),
+        ),
+        (
+            Doc::TrailLast {
+                membership: &id,
+                trail: "security:host",
+            },
+            format!("audit/{m}/{trail}/LAST"),
+        ),
+        (
+            Doc::TrailAnchor {
+                membership: &id,
+                trail: "security:host",
+            },
+            format!("audit/{m}/{trail}/ANCHOR"),
+        ),
+        (
+            Doc::TrailFork {
+                membership: &id,
+                trail: "security:host",
+            },
+            format!("audit/{m}/{trail}/FORKED"),
+        ),
+    ];
+    for (doc, file) in &kept {
+        store.keep(doc, b"kept").expect("kept");
+        assert!(members.join(file).is_file(), "{doc:?} is {file}");
+    }
+    store
+        .publish_checkpoint(&id, "security:host", 3, b"the envelope itself")
+        .expect("published");
+    assert_eq!(
+        std::fs::read(members.join(format!("audit/{m}/{trail}/{:020}.cose", 3))).expect("the file"),
+        b"the envelope itself"
+    );
+    store
+        .keep_manifest(&id, 2, "bb22", b"manifest")
+        .expect("kept");
+    assert!(
+        members
+            .join(format!("manifests/{m}/current.cose"))
+            .is_file()
+    );
+    assert!(
+        members
+            .join(format!("manifests/{m}/history/2-bb22.cose"))
+            .is_file()
+    );
+    store.keep_invitation(&id, b"invitation").expect("kept");
+    assert!(members.join(format!("invites/{m}.cbor")).is_file());
+    store.replace_summary(b"summary").expect("written");
+    assert!(members.join("snapshot.cbor").is_file());
+
+    let whole =
+        permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Int(7)).expect("an item");
+    store.append(1, &whole).expect("added");
+    drop(store);
+    let journal = members.join("journal.cborseq");
+    let before = std::fs::metadata(&journal).expect("the journal").len();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&journal)
+        .expect("opens")
+        .write_all(&[0x82, 0x01])
+        .expect("half an entry");
+    let reopened = files::FileMembers::open(&volume).expect("reopens");
+    assert_eq!(
+        std::fs::metadata(&journal).expect("the journal").len(),
+        before
+    );
+    assert_eq!(reopened.entries().expect("reads").len(), 1);
+    reopened
+        .append(2, &whole)
+        .expect("the next entry follows the one kept");
+    for (doc, _) in &kept {
+        assert_eq!(
+            reopened.doc(doc).expect("reads").as_deref(),
+            Some(&b"kept"[..]),
+            "{doc:?}"
+        );
+    }
+}
+
+/// The file store of a volume, read as a store other instances share: what a second instance of
+/// a coordinator reads in the tests of WP-28.6.
+struct SharedView(files::FileMembers);
+
+impl MemberStore for SharedView {
+    fn entries(&self) -> Result<Vec<permguard_objects::cbor::Value>, MembershipError> {
+        self.0.entries()
+    }
+    fn shared(&self) -> bool {
+        true
+    }
+    fn append(&self, seq: u64, entry: &[u8]) -> Result<(), MembershipError> {
+        self.0.append(seq, entry)
+    }
+    fn replace_summary(&self, summary: &[u8]) -> Result<(), MembershipError> {
+        self.0.replace_summary(summary)
+    }
+    fn keep_manifest(
+        &self,
+        membership: &[u8; 16],
+        epoch: u64,
+        digest: &str,
+        envelope: &[u8],
+    ) -> Result<(), MembershipError> {
+        self.0.keep_manifest(membership, epoch, digest, envelope)
+    }
+    fn keep_invitation(&self, invite: &[u8; 16], invitation: &[u8]) -> Result<(), MembershipError> {
+        self.0.keep_invitation(invite, invitation)
+    }
+    fn doc(&self, doc: &Doc<'_>) -> Result<Option<Vec<u8>>, MembershipError> {
+        self.0.doc(doc)
+    }
+    fn keep(&self, doc: &Doc<'_>, bytes: &[u8]) -> Result<(), MembershipError> {
+        self.0.keep(doc, bytes)
+    }
+    fn change(&self, doc: &Doc<'_>, change: store::Change<'_>) -> Result<(), MembershipError> {
+        self.0.change(doc, change)
+    }
+    fn remove(&self, doc: &Doc<'_>) -> Result<bool, MembershipError> {
+        self.0.remove(doc)
+    }
+    fn list(&self, listing: &store::Listing<'_>) -> Result<Vec<store::Listed>, MembershipError> {
+        self.0.list(listing)
+    }
+    fn checkpoint(
+        &self,
+        membership: &[u8; 16],
+        trail: &str,
+        count: u64,
+    ) -> Result<Option<Vec<u8>>, MembershipError> {
+        self.0.checkpoint(membership, trail, count)
+    }
+    fn publish_checkpoint(
+        &self,
+        membership: &[u8; 16],
+        trail: &str,
+        count: u64,
+        envelope: &[u8],
+    ) -> Result<(), MembershipError> {
+        self.0
+            .publish_checkpoint(membership, trail, count, envelope)
+    }
+}
+
+/// WP-28.6: a member joins through another instance of its coordinator than the one that issued
+/// its invitation a moment ago, well within the bound a read of the memberships may lag: the
+/// enrollment reads the invitation as the store holds it, and checks.
+#[test]
+fn an_enrollment_finds_an_invitation_another_instance_just_issued() {
+    let c = Host::new("shared-enroll-c");
+    let m = Host::new("shared-enroll-m");
+    let other = Store::open_in(
+        Arc::new(SharedView(
+            files::FileMembers::open(c.volume()).expect("the volume's store"),
+        )),
+        None,
+    )
+    .expect("the other instance opens");
+    assert!(
+        other
+            .invitations(permguard_core::time::unix_now())
+            .is_empty()
+    );
+    let (invitation, token) = invite(&c, Some(m.identity.first_fingerprint().to_owned()));
+    let request = request(&c, &m, &invitation, &token, &EXPORTER);
+    let verified = m.verified();
+    let pending = other
+        .check_enroll(
+            &c.coordinator(),
+            &Enrolling {
+                peer: &verified,
+                presentation: &m.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &request,
+            permguard_core::time::unix_now(),
+        )
+        .expect("the other instance finds the invitation at once");
+    assert_eq!(pending.invite_id, invitation.invite_id);
+}
+
+/// WP-28.6: a member's next session reaches another instance than the one its enrollment made
+/// the membership on, a moment later: the membership is read at once, not within the bound.
+#[test]
+fn a_membership_another_instance_just_made_is_found_at_once() {
+    let c = Host::new("shared-found-c");
+    let m = Host::new("shared-found-m");
+    let other = Store::open_in(
+        Arc::new(SharedView(
+            files::FileMembers::open(c.volume()).expect("the volume's store"),
+        )),
+        None,
+    )
+    .expect("the other instance opens");
+    assert!(other.memberships().is_empty());
+    let id = enroll(&c, &m).membership_id;
+    let held = other.membership(&id).expect("found at once");
+    assert_eq!(held.status, Status::Pending);
 }

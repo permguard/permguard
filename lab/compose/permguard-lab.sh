@@ -8,6 +8,10 @@
 #                                           and the operator's, once
 #   permguard-lab serve <binary> <config>   one Host: claim its volume, bootstrap the operator's
 #                                           certificate, serve
+#   permguard-lab import <binary> <config>  the stopped Host's volume moved to the `postgresql-s3`
+#                                           backend its configuration names
+#   permguard-lab offline <binary> <config> the offline commands on that backend, the Host stopped:
+#                                           its trails copied and verified, a cursor root rotated
 #   permguard-lab catalog <profile>         the zones, ledgers and policies a profile serves
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
@@ -35,7 +39,11 @@ trust_domain=spiffe://permguard-lab
 
 # Every Host a profile may run, by service name: each gets its certificate whatever the profile.
 hosts=(control-plane all-in-one data-plane data-plane-a data-plane-b data-plane-acme data-plane-beta
-    temporal-a temporal-b)
+    temporal-a temporal-b lab-postgres lab-s3)
+
+# Where the lab's authority writes the `postgresql-s3` backend's secrets: the database's password,
+# the bucket's secret and the key-encryption key that seals the Host's keys there.
+backend="${lab}/backend"
 
 # The CLI keeps its configuration under HOME, which the lab's user does not have.
 export HOME="${HOME:-/tmp}"
@@ -63,13 +71,14 @@ access_key_of() { sed -n 's/^access_key: //p' "$1"; }
 coordinators="${LAB_COORDINATORS:-/coordinators}"
 
 # The coordinator that runs the Authority Plane and `admin`'s key file on its volume, once its first
-# start wrote it: `<host> <file>`.
+# start wrote it: `<host> <file>`. With two Control Plane instances (WP-28.6) the one that made
+# `admin` wrote it, and either is reached at the one address, `control-plane`.
 admin_key() {
-    local host key
-    for host in all-in-one control-plane; do
-        key="${coordinators}/${host}/volume/planes/authority/admin.key"
+    local instance key
+    for instance in all-in-one control-plane control-plane-2; do
+        key="${coordinators}/${instance}/volume/planes/authority/admin.key"
         if [ -s "${key}" ]; then
-            printf '%s %s\n' "${host}" "${key}"
+            printf '%s %s\n' "${instance%-2}" "${key}"
             return 0
         fi
     done
@@ -147,7 +156,13 @@ cmd_pki() {
             rm -f "$1.csr" "$1.ext"
         }
         for host in "${hosts[@]}"; do
-            issue "${host}" "DNS:${host},URI:${trust_domain}/${host}" "serverAuth,clientAuth"
+            local names="DNS:${host}"
+            # On postgresql-s3 both Control Plane instances serve under the same certificate,
+            # each reached by its own name too, an endpoint a Data Plane names (WP-28.7).
+            if [ "${host}" = control-plane ] && [ "${LAB_BACKEND:-files}" = postgresql-s3 ]; then
+                names="${names},DNS:control-plane-1,DNS:control-plane-2"
+            fi
+            issue "${host}" "${names},URI:${trust_domain}/${host}" "serverAuth,clientAuth"
         done
         issue operator "URI:${trust_domain}/operator" "clientAuth"
         # Each certificate's principal on a Host: the fingerprint of its certificate.
@@ -161,6 +176,21 @@ cmd_pki() {
     rm -rf "${pki}"
     mv "${work}" "${pki}"
     log "the lab authority issued ${#hosts[@]} Host certificates and the operator's"
+    if [ "${LAB_BACKEND:-files}" = postgresql-s3 ]; then
+        (
+            umask 077
+            mkdir -p "${backend}" "${lab}/s3/permguard"
+            head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/postgres-password"
+            head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/s3-secret"
+            head -c 32 /dev/urandom >"${backend}/kek"
+            # The Host's own secrets, written once for every instance (WP-28.6): material an
+            # instance generated would be its own, and the database refuses another's.
+            for name in audit-pseudonym zone-root; do
+                head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"${backend}/${name}"
+            done
+        )
+        log "the lab authority wrote the postgresql-s3 backend's secrets, the Host's and its bucket"
+    fi
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -203,6 +233,54 @@ listener_env() {
     done
 }
 
+# The `postgresql-s3` backend's secrets the lab's authority wrote, installed as files of this
+# instance, beside its configuration: the database's password, the bucket's secret, the KEK, and
+# the Host's pseudonymisation key and coordinator root, the same in every instance, as one Secret
+# mounted in each.
+backend_secrets() {
+    local secrets="${volume}/operations/secrets" name
+    mkdir -p "${secrets}"
+    chmod 0700 "${volume}" "${volume}/operations" "${secrets}"
+    for name in postgres-password s3-secret kek audit-pseudonym zone-root; do
+        install -m 0600 "${backend}/${name}" "${secrets}/${name}"
+    done
+}
+
+# `import <binary> <config>`: the stopped Host's volume moved into the `postgresql-s3` backend its
+# configuration names (iteration 03, WP-28.1), offline, between its last start on files and its
+# first on the backend, as an operator runs it.
+cmd_import() {
+    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}" imported
+    [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ] ||
+        fail "the import's configuration names no postgresql-s3 backend"
+    listener_env "${host}" "${binary}"
+    imported="$(permguard -o json migrate import --volume "${volume}" --server-config "${config}")" ||
+        fail "${host}: the import of its volume failed"
+    jq -e '.stores | length > 0' >/dev/null <<<"${imported}" || fail "${host}: the import said nothing"
+    log "${host}: its volume imported into postgresql-s3, deployment $(jq -r '.deployment' <<<"${imported}"):" \
+        "$(jq -r '[.stores[] | select(.records > 0) | "\(.store) \(.records)"] | join(", ")' <<<"${imported}")"
+}
+
+# `offline <binary> <config>`: what an operator does on the `postgresql-s3` backend with the Host
+# stopped (iteration 03, WP-28.1): the trails copied out of the database and the bucket and checked
+# by the server binary's own verification, then the decision store's cursor root rotated.
+cmd_offline() {
+    local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}" copy copied rotated
+    [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ] ||
+        fail "the offline commands' configuration names no postgresql-s3 backend"
+    listener_env "${host}" "${binary}"
+    copy="$(mktemp -d)/audit"
+    copied="$(permguard -o json host audit copy --server-config "${config}" --out "${copy}")" ||
+        fail "${host}: its trails were not copied"
+    jq -e '.trails > 0' >/dev/null <<<"${copied}" || fail "${host}: no trail was copied: ${copied}"
+    "${binary}" audit verify --directory "${copy}/trails" --keys "${copy}/host.operations.keys.json" >&2 ||
+        fail "${host}: the trails copied out of postgresql-s3 do not verify"
+    log "${host}: $(jq -r '.trails' <<<"${copied}") trails copied out of postgresql-s3 verify under its host.operations keys"
+    rotated="$(permguard -o json evidence rotate-cursor-root --store decisions --server-config "${config}")" ||
+        fail "${host}: the decision store's cursor root did not rotate"
+    log "${host}: the decision store's cursor root rotated: $(jq -r '.rotated' <<<"${rotated}")"
+}
+
 # `serve <binary> <config>`: what a Pod's init containers and its server are, in one container.
 # The claim moves forward on every start (TD-1); the operator's certificate is bootstrapped once,
 # offline, before the Host first serves; the listeners carry the certificate the lab's authority
@@ -210,14 +288,37 @@ listener_env() {
 cmd_serve() {
     local binary="$1" config="$2" host="${LAB_HOST:?the service name, LAB_HOST}"
     [ -f "${pki}/${host}.crt" ] || fail "the lab authority issued no certificate to ${host}"
-    "${binary}" volume claim --volume "${volume}" --next --create
-    if [ ! -f /var/lib/permguard/.lab-operator ]; then
-        permguard -o json host grants bootstrap --volume "${volume}" \
-            --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
-        touch /var/lib/permguard/.lab-operator
-        log "${host}: the lab operator's certificate is this volume's bootstrap principal"
-    fi
     listener_env "${host}" "${binary}"
+    if [ "${PERMGUARD_STORAGE_BACKEND:-files}" = postgresql-s3 ]; then
+        # No volume: the Host's state is the database's and the bucket's. Its secrets are files of
+        # this instance, beside its configuration, and the bootstrap is the database's.
+        backend_secrets
+        # The identity made in the database before the first start, as the chart's `identity`
+        # init container makes it (WP-28.5); a database that holds one is said so.
+        local provisioned
+        provisioned="$(permguard -o json host identity provision --if-missing --server-config "${config}")" ||
+            fail "${host}: the identity could not be made in the database"
+        if [ "$(jq -r '.provisioned' <<<"${provisioned}")" != false ]; then
+            log "${host}: the identity is made in the database, $(jq -r '.host_id' <<<"${provisioned}")"
+        fi
+        if [ ! -f /var/lib/permguard/.lab-operator ]; then
+            permguard -o json host grants bootstrap --server-config "${config}" \
+                --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
+            touch /var/lib/permguard/.lab-operator
+            log "${host}: the lab operator's certificate is the database's bootstrap principal"
+        fi
+    else
+        "${binary}" volume claim --volume "${volume}" --next --create
+        # Before an import, the Host on files keeps its keys sealed under the key-encryption key
+        # it keeps on the backend after it, and reads the backend's secrets as the import does.
+        [ ! -d "${backend}" ] || backend_secrets
+        if [ ! -f /var/lib/permguard/.lab-operator ]; then
+            permguard -o json host grants bootstrap --volume "${volume}" \
+                --fingerprint "$(cat "${pki}/operator.fp")" >/dev/null
+            touch /var/lib/permguard/.lab-operator
+            log "${host}: the lab operator's certificate is this volume's bootstrap principal"
+        fi
+    fi
     # TD-5: a member whose invitations the catalog step wrote joins its coordinator by itself, its
     # coordinator pinned apart from them; the enroll step then approves the fingerprint it expects.
     local invited="${state}/join/${host}"
@@ -228,8 +329,17 @@ cmd_serve() {
         export "PERMGUARD_HOST_JOIN_GROUPS=$(cat "${invited}/group")"
         log "${host}: joins its coordinator by itself from ${invited}"
     fi
+    # WP-28.7: the Control Plane's instances a member names besides its memberships' address, by
+    # the Host they serve, which discovery states.
+    if [ -n "${LAB_COORDINATOR_ENDPOINTS:-}" ]; then
+        local coordinator
+        coordinator="$(curl -fsS http://control-plane:5443/.well-known/server-configuration |
+            jq -er '.host_id')" || fail "${host}: the Control Plane states no Host id"
+        export "PERMGUARD_HOST_COORDINATOR_ENDPOINTS=${coordinator} ${LAB_COORDINATOR_ENDPOINTS}"
+        log "${host}: reaches ${coordinator} at ${LAB_COORDINATOR_ENDPOINTS}"
+    fi
     # The server refuses a `PERMGUARD_` name it does not know; the lab's own are not prefixed.
-    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES
+    unset LAB_HOST LAB_DIR LAB_EXAMPLES LAB_TEMPLATES LAB_COORDINATOR_ENDPOINTS
     exec "${binary}" "${config}"
 }
 
@@ -519,8 +629,17 @@ membership() {
         jq -er --arg id "${id}" '.members[] | select(.membership_id == $id) | .revision')"
     pg --host-endpoint "$(host_endpoint "${coordinator}")" host members approve "${id}" \
         --expected-revision "${revision}" >/dev/null
-    status="$(pg --host-endpoint "$(host_endpoint "${member}")" host members sync "${id}" | jq -r '.status')"
-    [ "${status}" = active ] || fail "${member}: the membership ${id} is ${status} after its sync"
+    # A member's session reads its coordinator's memberships within 5 s of a change, on any of
+    # its instances (WP-28.4): a sync that reaches another instance than the approval may read the
+    # membership pending a moment longer, and the next one reads it active.
+    local deadline=$((SECONDS + 15))
+    while :; do
+        status="$(pg --host-endpoint "$(host_endpoint "${member}")" host members sync "${id}" | jq -r '.status')"
+        [ "${status}" = active ] && break
+        [ "${status}" = pending ] && [ "${SECONDS}" -lt "${deadline}" ] ||
+            fail "${member}: the membership ${id} is ${status} after its sync"
+        sleep 2
+    done
     log "${member}: member of ${coordinator} for ${selector} (${id}; ${member_fp} approved, ${coordinator_fp} pinned)"
 }
 
@@ -625,6 +744,18 @@ cmd_assert() {
     split-plane)
         case "${phase}" in
         "") assert_split_plane ;;
+        before-import | imported) assert_import "${phase}" ;;
+        replicas) assert_replicas ;;
+        drill-before) drill_before ;;
+        drill-database-down) drill_database_down ;;
+        drill-database-back) drill_database_back ;;
+        drill-database-unanswering) drill_database_unanswering ;;
+        drill-s3-down) drill_s3_down ;;
+        drill-s3-back) drill_s3_back ;;
+        drill-churn) drill_churn 30 ;;
+        drill-churn-check) drill_churn_check ;;
+        drill-concurrent) drill_concurrent ;;
+        drill-load) drill_load ;;
         *) drill_restore "${phase}" ;;
         esac
         ;;
@@ -872,6 +1003,456 @@ assert_split_plane() {
     # `crates/permguard-conformance/tests/compose.rs`): what verified the batches is the ring the
     # membership pinned.
     log "the coordinator holds all ${recorded} records of ${producer}, verified under its pinned data.attest ring"
+}
+
+# The import of the Control Plane's volume (iteration 03, WP-28.1), around `BACKEND=import`:
+#
+#   before-import  on files: the Control Plane's identity, kept under the lab's state
+#   imported       on postgresql-s3: the same identity, served from the database and the bucket
+assert_import() {
+    local kept="${state}/import" identity
+    identity="$(pg --host-endpoint "$(host_endpoint control-plane)" host identity show |
+        jq -c '{host_id, fingerprint}')"
+    case "$1" in
+    before-import)
+        mkdir -p "${kept}"
+        printf '%s\n' "${identity}" >"${kept}/identity"
+        log "the Control Plane on files is $(jq -r '.host_id' <<<"${identity}")"
+        ;;
+    imported)
+        [ "${identity}" = "$(cat "${kept}/identity")" ] ||
+            fail "the Control Plane served from postgresql-s3 is ${identity}, not $(cat "${kept}/identity")"
+        log "the Control Plane served from postgresql-s3 is the Host it was on files, $(jq -r '.host_id' <<<"${identity}")"
+        ;;
+    esac
+}
+
+# Two Control Plane instances behind one address (iteration 03, WP-28.6), each reached by its own
+# name and checked against the certificate of the address: one Host, one catalog.
+assert_replicas() {
+    local instances=(control-plane-1 control-plane-2) instance identity seen="" zones
+    step "split-plane: two Control Plane instances, one Host"
+    for instance in "${instances[@]}"; do
+        identity="$(pg --host-endpoint "$(host_endpoint "${instance}")" \
+            host identity show | jq -c '{host_id, fingerprint}')" ||
+            fail "${instance} did not answer its identity"
+        [ -z "${seen}" ] || [ "${identity}" = "${seen}" ] ||
+            fail "${instance} is ${identity}, not ${seen}"
+        seen="${identity}"
+    done
+    log "both instances are the Host $(jq -r '.host_id' <<<"${seen}")"
+
+    step "split-plane: a zone made through one instance, read through the other"
+    pg --control-endpoint "$(control_endpoint control-plane-2)" \
+        zones create replicated >/dev/null || fail "control-plane-2 did not make the zone"
+    zones="$(pg --control-endpoint "$(control_endpoint control-plane-1)" zones list)" ||
+        fail "control-plane-1 did not list the zones"
+    jq -e '[.zones[].name] | index("replicated") != null and index("acme") != null' <<<"${zones}" >/dev/null ||
+        fail "control-plane-1 does not hold the zone control-plane-2 made"
+    log "the zone made through control-plane-2 is read through control-plane-1 at once"
+}
+
+# ---------------------------------------------------------------------------------------------
+# drills (iteration 03, WP-29.1)
+# ---------------------------------------------------------------------------------------------
+
+# The resilience drills of the two Control Plane instances on postgresql-s3, each a phase of the
+# split-plane profile, run by `DRILLS=1 BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane`,
+# which stops, pauses and kills the servers between them. What each finds is logged as evidence,
+# and kept under the lab's state, `drill/`, for the phase that checks it.
+drill_dir="${state}/drill"
+drill_instances=(control-plane-1 control-plane-2)
+
+# The administrator's token, issued while the database answers, for the changes a drill asks of
+# a Control Plane while it does not: what refuses them is then the Plane, not the token's issue.
+drill_admin_token() {
+    local held key file="${drill_dir}/admin.jwt"
+    mkdir -p "${drill_dir}"
+    held="$(admin_key)" || fail "no coordinator wrote admin's key"
+    key="${held#* }"
+    rm -f "${file}"
+    pg_cert --authority-endpoint "$(authority_endpoint)" --access-key "$(access_key_of "${key}")" \
+        --secret-key-file "${key}" authority token --out "${file}" >/dev/null ||
+        fail "the Authority Plane issued admin no token"
+    echo "${file}"
+}
+
+# A change of the catalog through `instance` with the token `file`: its answer, and whether it was
+# made.
+drill_change() { # instance, token file, zone
+    pg_cert --token-file "$2" --control-endpoint "$(control_endpoint "$1")" zones create "$3" 2>&1
+}
+
+# Whether `instance` is ready, as a load balancer asks it: `ready` or `not ready`.
+drill_state() {
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$1:5443/readyz" 2>/dev/null)" || true
+    case "${code}" in
+    200) echo ready ;;
+    *) echo "not ready (${code:-no answer})" ;;
+    esac
+}
+
+# Waits up to `seconds` for every instance to be `ready` or not: answers the seconds it took.
+drill_readiness() { # ready|not, seconds
+    local deadline=$((SECONDS + $2)) started=${SECONDS} instance state
+    for instance in "${drill_instances[@]}"; do
+        while :; do
+            state="$(drill_state "${instance}")"
+            case "$1:${state}" in
+            ready:ready | not:not*) break ;;
+            esac
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "${instance} is ${state} $2 s on"
+            sleep 1
+        done
+    done
+    echo $((SECONDS - started))
+}
+
+# A change of the catalog keeps being made, within `seconds`: the database answers again.
+drill_changes_again() { # seconds, zone prefix
+    local deadline=$((SECONDS + $1)) token instance
+    token="$(drill_admin_token 2>/dev/null)" || true
+    for instance in "${drill_instances[@]}"; do
+        until [ -n "${token}" ] &&
+            drill_change "${instance}" "${token}" "$2-${instance}-$(date +%s%N | cut -c1-13)" >/dev/null; do
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "${instance} makes no change $1 s after the drill"
+            sleep 2
+            [ -n "${token}" ] || token="$(drill_admin_token 2>/dev/null)" || true
+        done
+    done
+}
+
+# before: the token the drills change the catalog with, and every instance's state.
+drill_before() {
+    rm -rf "${drill_dir}"
+    mkdir -p "${drill_dir}"
+    drill_admin_token >/dev/null
+    local instance
+    for instance in "${drill_instances[@]}"; do
+        log "${instance} is $(drill_state "${instance}")"
+    done
+}
+
+# The database stopped: the Data Plane decides on what it holds; each instance refuses a change
+# and issues no token, rather than answer from a copy in memory (E28).
+drill_database_down() {
+    local instance answer started
+    step "drill: the database stopped"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    expect_decision data-plane acme main deny.json false >/dev/null
+    log "the Data Plane decides on the ledger it mirrored"
+    for instance in "${drill_instances[@]}"; do
+        started=${SECONDS}
+        if answer="$(drill_change "${instance}" "${drill_dir}/admin.jwt" "drill-down-${instance}")"; then
+            fail "${instance} made a change with the database stopped: ${answer}"
+        fi
+        log "${instance} refuses a change in $((SECONDS - started)) s: $(tr -d '\n' <<<"${answer}" | cut -c1-200)"
+        if answer="$(pg_cert --authority-endpoint "https://${instance}:8443" \
+            --access-key "$(access_key_of "${state}/lab-client.key")" \
+            --secret-key-file "${state}/lab-client.key" authority token \
+            --scope "decision.evaluate" --out "${drill_dir}/down.jwt" 2>&1)"; then
+            fail "${instance} issued a token with the database stopped"
+        fi
+        log "${instance} issues no token: $(tr -d '\n' <<<"${answer}" | cut -c1-200)"
+    done
+    log "every instance is not ready $(drill_readiness not 30) s on (E28)"
+}
+
+# The database back: every instance makes a change again within a minute.
+drill_database_back() {
+    step "drill: the database back"
+    local started=${SECONDS}
+    log "every instance is ready $(drill_readiness ready 120) s after the database answered"
+    drill_changes_again 120 drill-back
+    log "every instance makes a change again, $((SECONDS - started)) s after the database answered"
+}
+
+# The database answering nothing, paused or cut from the network: no answer and no refusal. A
+# change is refused within a bound, readiness is held, and decisions go on.
+drill_database_unanswering() {
+    local instance started code
+    step "drill: the database answers nothing"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    log "the Data Plane decides on the ledger it mirrored"
+    for instance in "${drill_instances[@]}"; do
+        started=${SECONDS}
+        code=0
+        within 300 "${drill_dir}/cut-${instance}.out"             drill_change "${instance}" "${drill_dir}/admin.jwt" "drill-cut-${instance}" || code=$?
+        [ "${code}" != 124 ] || fail "${instance} held a change past 300 s"
+        [ "${code}" != 0 ] ||
+            fail "${instance} made a change with the database answering nothing: $(cat "${drill_dir}/cut-${instance}.out")"
+        log "${instance} refuses a change in $((SECONDS - started)) s: $(tr -d '\n' <"${drill_dir}/cut-${instance}.out" | cut -c1-200)"
+    done
+    log "every instance is not ready $(drill_readiness not 60) s on (E28)"
+}
+
+# Runs a command with its output in `file`, stopped past `seconds`: its status, 124 when stopped.
+within() { # seconds, file, command...
+    local limit="$1" file="$2" waited=0 pid
+    shift 2
+    "$@" >"${file}" 2>&1 &
+    pid=$!
+    while kill -0 "${pid}" 2>/dev/null; do
+        if [ "${waited}" -ge "${limit}" ]; then
+            kill "${pid}" 2>/dev/null
+            wait "${pid}" 2>/dev/null
+            return 124
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    wait "${pid}"
+}
+
+# A push of the basics example's policies to the ledger `ledger` of acme through
+# control-plane-1, made or not: its status is the push's, its output the push's answer.
+drill_push() { # ledger
+    local endpoint workspace status=0
+    endpoint="$(control_endpoint control-plane-1)"
+    ledger_id control-plane-1 acme "$1" >/dev/null 2>&1 ||
+        pg --control-endpoint "${endpoint}" ledgers create "$1" --zone acme >/dev/null 2>&1 || return 1
+    workspace="$(mktemp -d)"
+    cp -R "${examples}/basics/." "${workspace}"
+    rm -rf "${workspace}/.permguard"
+    if [ -f "${workspace}/manifest.yml" ]; then
+        pg -w "${workspace}" init >/dev/null 2>&1 || status=1
+    else
+        pg -w "${workspace}" init "$1" --language cedar,rego >/dev/null 2>&1 || status=1
+    fi
+    [ "${status}" = 0 ] && pg -w "${workspace}" remote add origin "${endpoint}" >/dev/null 2>&1 || status=1
+    [ "${status}" = 0 ] && pg -w "${workspace}" checkout "origin/acme/$1" >/dev/null 2>&1 || status=1
+    [ "${status}" = 0 ] && { pg -w "${workspace}" apply -m "a drill's push" 2>&1 || status=1; }
+    rm -rf "${workspace}"
+    return "${status}"
+}
+
+# S3 stopped: a push of a ledger's policies is refused, decisions go on.
+drill_s3_down() {
+    local answer
+    step "drill: S3 stopped"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    if answer="$(drill_push drill-s3 2>&1)"; then
+        fail "a push was taken with S3 stopped: ${answer}"
+    fi
+    log "a push is refused with S3 stopped: $(tr -d '\n' <<<"${answer}" | tail -c 200)"
+    log "the Data Plane decides on the ledger it mirrored"
+}
+
+# S3 back: the push is taken.
+drill_s3_back() {
+    local deadline=$((SECONDS + 120))
+    step "drill: S3 back"
+    until drill_push drill-s3 >/dev/null 2>&1; do
+        [ "${SECONDS}" -lt "${deadline}" ] || fail "no push is taken two minutes after S3 answered"
+        sleep 3
+    done
+    log "a push is taken again once S3 answers"
+}
+
+# A token of lab-client, or of the account whose key file is `key`, issued by `instance` into
+# `file`; its refusal, when refused, on standard output.
+drill_token() { # instance, file, [key file]
+    local key="${3:-${state}/lab-client.key}"
+    pg_cert --authority-endpoint "https://$1:8443" \
+        --access-key "$(access_key_of "${key}")" \
+        --secret-key-file "${key}" authority token \
+        --scope "decision.evaluate" --out "$2" 2>&1 >/dev/null
+}
+
+# control.attest as `instance` holds it: its epoch, its digest and its key ids, one line.
+drill_ring() {
+    drill_ring_of "$1" control.attest
+}
+
+# The ring `ring` as `instance` holds it, one line.
+drill_ring_of() { # instance, ring
+    pg --host-endpoint "$(host_endpoint "$1")" host keys show "$2" 2>/dev/null |
+        jq -c '{epoch, digest, kids: [.keys[].kid]}'
+}
+
+# For `seconds`, rotations of control.attest and revocations of fresh tokens through
+# control-plane-2, which the drill kills on the way: each one it answered is recorded, the epoch
+# of a rotation and the jti of a revocation.
+drill_churn() {
+    local seconds="${1:-30}" deadline epoch file jti n=0
+    step "drill: rotations and revocations through control-plane-2, killed on the way"
+    deadline=$((SECONDS + seconds))
+    : >"${drill_dir}/rotated"
+    : >"${drill_dir}/revoked"
+    drill_ring control-plane-1 >"${drill_dir}/ring-before"
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        n=$((n + 1))
+        if epoch="$(pg --host-endpoint "$(host_endpoint control-plane-2)" host keys show control.attest 2>/dev/null | jq -er '.epoch')" &&
+            pg --host-endpoint "$(host_endpoint control-plane-2)" host keys rotate control.attest \
+                --expected-epoch "${epoch}" >/dev/null 2>&1; then
+            echo "${epoch}" >>"${drill_dir}/rotated"
+        fi
+        file="${drill_dir}/churn-${n}.jwt"
+        if drill_token control-plane-2 "${file}" >/dev/null && jti="$(jti_of "${file}")" &&
+            pg --authority-endpoint "https://control-plane-2:8443" authority tokens revoke "${jti}" >/dev/null 2>&1; then
+            echo "${jti} ${file}" >>"${drill_dir}/revoked"
+        fi
+        sleep 0.3
+    done
+    log "$(wc -l <"${drill_dir}/rotated" | tr -d ' ') rotations and $(wc -l <"${drill_dir}/revoked" | tr -d ' ') revocations answered in ${n} rounds"
+}
+
+# After the churn, both instances back: one ring on both, every key once, its epoch past the one
+# it started at by the rotations answered, or by one more that committed unanswered; every
+# revocation answered is in the store and refused by the Data Plane.
+drill_churn_check() {
+    local one other before rotated advanced jti file answer deadline
+    step "drill: no key doubled, no revocation lost"
+    one="$(drill_ring control-plane-1)"
+    other="$(drill_ring control-plane-2)"
+    [ -n "${one}" ] && [ "${one}" = "${other}" ] ||
+        fail "the instances hold control.attest apart: ${one} and ${other}"
+    jq -e '(.kids | length) == (.kids | unique | length)' <<<"${one}" >/dev/null ||
+        fail "control.attest holds a key twice: ${one}"
+    before="$(jq -r '.epoch' "${drill_dir}/ring-before")"
+    rotated="$(wc -l <"${drill_dir}/rotated" | tr -d ' ')"
+    advanced=$(($(jq -r '.epoch' <<<"${one}") - before))
+    [ "${advanced}" -ge "${rotated}" ] && [ "${advanced}" -le $((rotated + 1)) ] ||
+        fail "control.attest moved ${advanced} epochs for ${rotated} rotations answered"
+    log "control.attest is one ring on both instances, every key once, ${advanced} epochs for ${rotated} rotations answered"
+    local revoked
+    revoked="$(pg --authority-endpoint "https://control-plane-1:8443" authority tokens list --status invalid |
+        jq -r '.[].jti')"
+    while read -r jti file; do
+        [ -n "${jti}" ] || continue
+        grep -qx "${jti}" <<<"${revoked}" || fail "the revocation of ${jti} was answered and is lost"
+        deadline=$((SECONDS + 90))
+        until answer="$(decide data-plane acme main permit.json "${file}")" &&
+            grep -q "unauthenticated" <<<"${answer}"; do
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "the Data Plane still decides on ${jti}, revoked: ${answer}"
+            sleep 3
+        done
+    done <"${drill_dir}/revoked"
+    log "every revocation answered is in the store and refused by the Data Plane: $(wc -l <"${drill_dir}/revoked" | tr -d ' ')"
+}
+
+# Concurrent: two rotations of one epoch, one on each instance, of which one is made; revocations
+# through both instances at once, every one kept.
+drill_concurrent() {
+    local ring epoch made instance n jti
+    step "drill: concurrent rotations and revocations on both instances"
+    # A ring rotated once waits for its successor to take over: each round is another ring.
+    for ring in data.attest host.operations; do
+        epoch="$(pg --host-endpoint "$(host_endpoint control-plane-1)" host keys show "${ring}" | jq -er '.epoch')"
+        for instance in "${drill_instances[@]}"; do
+            (pg --host-endpoint "$(host_endpoint "${instance}")" host keys rotate "${ring}" \
+                --expected-epoch "${epoch}" >"${drill_dir}/race-${ring}-${instance}" 2>&1 &&
+                echo made >>"${drill_dir}/race-${ring}-${instance}") &
+        done
+        wait
+        made="$(cat "${drill_dir}"/race-"${ring}"-* | grep -cx made || true)"
+        [ "${made}" = 1 ] || fail "two rotations of ${ring} at epoch ${epoch} made ${made}: $(cat "${drill_dir}"/race-"${ring}"-* | tr -d '\n' | cut -c1-300)"
+        [ "$(drill_ring_of control-plane-1 "${ring}")" = "$(drill_ring_of control-plane-2 "${ring}")" ] ||
+            fail "the instances hold ${ring} apart after the race"
+    done
+    log "twice, two rotations of one epoch on two instances made one, and one ring on both"
+    : >"${drill_dir}/concurrent"
+    for n in $(seq 1 10); do
+        drill_token control-plane-1 "${drill_dir}/concurrent-${n}.jwt" >/dev/null || fail "no token ${n}"
+        jti_of "${drill_dir}/concurrent-${n}.jwt" >>"${drill_dir}/concurrent"
+    done
+    n=0
+    while read -r jti; do
+        n=$((n + 1))
+        instance="${drill_instances[$((n % 2))]}"
+        (
+            # `slow_down` is the bound of hashing work: asked again a second on, as a client is.
+            while :; do
+                if pg --authority-endpoint "https://${instance}:8443" authority tokens revoke "${jti}" \
+                    >"${drill_dir}/revoke-${jti}" 2>&1; then
+                    echo made >>"${drill_dir}/revoke-${jti}"
+                    break
+                fi
+                grep -q '"slow_down"' "${drill_dir}/revoke-${jti}" || break
+                echo slowed >>"${drill_dir}/revoke-slowed"
+                sleep 1
+            done
+        ) &
+    done <"${drill_dir}/concurrent"
+    wait
+    local invalid slowed
+    invalid="$(pg --authority-endpoint "https://control-plane-2:8443" authority tokens list --status invalid |
+        jq -r '.[].jti')"
+    while read -r jti; do
+        grep -qx made "${drill_dir}/revoke-${jti}" ||
+            fail "the revocation of ${jti}, made with nine others at once, was refused: $(tr -d '\n' <"${drill_dir}/revoke-${jti}" | cut -c1-200)"
+        grep -qx "${jti}" <<<"${invalid}" ||
+            fail "the revocation of ${jti}, answered with nine others at once, is lost"
+    done <"${drill_dir}/concurrent"
+    slowed="$(wc -l <"${drill_dir}/revoke-slowed" 2>/dev/null | tr -d ' ' || echo 0)"
+    log "ten revocations at once through both instances: all ten answered and kept; ${slowed:-0} asked again after slow_down"
+}
+
+# A short load through the one address: tokens issued and decisions answered by several clients
+# at once, each its own service account, as clients are, the errors counted and the time
+# measured. Each stays under the token endpoint's bound of 60 a minute for one access key
+# (2-security/8), which answers `slow_down` past it.
+drill_load() {
+    local workers=6 each=20 started elapsed failed worker key
+    step "drill: load through the one address"
+    for worker in $(seq 1 "${workers}"); do
+        key="${drill_dir}/load-${worker}.key"
+        pg authority service-accounts get "drill-load-${worker}" >/dev/null 2>&1 ||
+            pg authority service-accounts create "drill-load-${worker}" \
+                --scope "decision.evaluate@plane/data/*" >/dev/null || fail "no account drill-load-${worker}"
+        rm -f "${key}"
+        pg authority keys create "drill-load-${worker}" --secret-out "${key}" >/dev/null ||
+            fail "no key for drill-load-${worker}"
+    done
+    started=${SECONDS}
+    for worker in $(seq 1 "${workers}"); do
+        (
+            local i failures=0 slowed=0 answer
+            for i in $(seq 1 "${each}"); do
+                while :; do
+                    rm -f "${drill_dir}/load-${worker}.jwt"
+                    answer="$(drill_token control-plane "${drill_dir}/load-${worker}.jwt" \
+                        "${drill_dir}/load-${worker}.key")" && break
+                    # The bound of concurrent work answers `slow_down`: asked again a second on,
+                    # as a client is told to.
+                    if grep -q '"slow_down"' <<<"${answer}"; then
+                        slowed=$((slowed + 1))
+                        sleep 1
+                        continue
+                    fi
+                    failures=$((failures + 1))
+                    break
+                done
+            done
+            echo "${failures}" >"${drill_dir}/load-tokens-${worker}"
+            echo "${slowed}" >"${drill_dir}/load-slowed-${worker}"
+        ) &
+    done
+    wait
+    elapsed=$((SECONDS - started))
+    failed="$(cat "${drill_dir}"/load-tokens-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    [ "${failed}" = 0 ] || fail "${failed} of $((workers * each)) tokens failed under load"
+    local slowed
+    slowed="$(cat "${drill_dir}"/load-slowed-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    log "$((workers * each)) tokens by ${workers} clients at once through the one address in ${elapsed} s, none failed; ${slowed} answered slow_down by the bound of concurrent work and asked again"
+    started=${SECONDS}
+    for worker in $(seq 1 "${workers}"); do
+        (
+            local i failures=0 answer
+            for i in $(seq 1 "${each}"); do
+                answer="$(decide data-plane acme main permit.json "${drill_dir}/load-${worker}.jwt")"
+                jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"${answer}" ||
+                    failures=$((failures + 1))
+            done
+            echo "${failures}" >"${drill_dir}/load-decisions-${worker}"
+        ) &
+    done
+    wait
+    elapsed=$((SECONDS - started))
+    failed="$(cat "${drill_dir}"/load-decisions-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    [ "${failed}" = 0 ] || fail "${failed} of $((workers * each)) decisions failed under load"
+    log "$((workers * each)) decisions by ${workers} clients at once in ${elapsed} s, none failed"
 }
 
 # The restore drill (WP-7.7, `scripts/drill-restore.sh`), in four phases on the split-plane lab:
@@ -1390,6 +1971,8 @@ shift || true
 case "${command}" in
 pki) cmd_pki "$@" ;;
 serve) cmd_serve "$@" ;;
+import) cmd_import "$@" ;;
+offline) cmd_offline "$@" ;;
 catalog) cmd_catalog "$@" ;;
 enroll) cmd_enroll "$@" ;;
 assert) cmd_assert "$@" ;;

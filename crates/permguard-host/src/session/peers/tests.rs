@@ -12,6 +12,7 @@ use super::*;
 use crate::identity::{Identity, Suite, directories};
 use crate::keys::FileKeyProvider;
 use crate::operations::mutation::Applying;
+use crate::storage::volume::Volume;
 
 const NOW: u64 = 1_800_000_000;
 
@@ -36,6 +37,32 @@ fn open(root: &Path) -> (Volume, Identity) {
             .expect("provisioned")
     };
     (volume, identity)
+}
+
+/// The peers `pins` names, with the seen epochs `volume` keeps.
+fn peers(volume: &Volume, pins: &[PinnedPeer]) -> Peers {
+    Peers::new(
+        Arc::new(files::FileSeen::open(volume).expect("the seen epochs open")),
+        pins,
+    )
+}
+
+/// The file backend passes the contract's suite, each case on a volume of its own.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let volumes = std::sync::Mutex::new(Vec::new());
+    suite::run(&|| {
+        let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let volume = Volume::claim(
+            &scratch(&format!("suite-{case}")),
+            AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let store = Arc::new(files::FileSeen::open(&volume).expect("the seen epochs open"));
+        volumes.lock().expect("lock").push(volume);
+        store
+    });
 }
 
 fn presentation(identity: &Identity) -> Presentation {
@@ -74,7 +101,7 @@ fn a_pinned_peer_is_accepted_and_its_epoch_advances_only_upward() {
     let root = scratch("advance");
     let (_peer_volume, peer) = open(&root.join("peer"));
     let (volume, _) = open(&root.join("verifier"));
-    let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
+    let peers = peers(&volume, &[pin(&peer)]);
     let verified = peers
         .accept(&presentation(&peer), None, None)
         .expect("accepted");
@@ -134,7 +161,7 @@ fn a_lower_epoch_is_rollback_and_another_key_at_a_seen_epoch_is_equivocation() {
     assert_ne!(fork.fingerprint(), peer.fingerprint());
 
     let (volume, _) = open(&root.join("verifier"));
-    let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
+    let peers = peers(&volume, &[pin(&peer)]);
     let verified = peers
         .accept(&presentation(&peer), None, None)
         .expect("accepted");
@@ -166,7 +193,7 @@ fn a_peer_no_pin_names_or_whose_first_key_is_another_is_refused() {
     let (_one_volume, one) = open(&root.join("one"));
     let (_other_volume, other) = open(&root.join("other"));
     let (volume, _) = open(&root.join("verifier"));
-    let none = Peers::open(&volume, &[]).expect("opened");
+    let none = peers(&volume, &[]);
     assert!(matches!(
         none.accept(&presentation(&one), None, None),
         Err(PeerRefusal::Unpinned)
@@ -175,7 +202,7 @@ fn a_peer_no_pin_names_or_whose_first_key_is_another_is_refused() {
     let wrong: PinnedPeer = format!("{} {}", one.host_id_text(), other.first_fingerprint())
         .parse()
         .expect("a pin");
-    let peers = Peers::open(&volume, &[wrong]).expect("opened");
+    let peers = peers(&volume, &[wrong]);
     assert!(matches!(
         peers.accept(&presentation(&one), None, None),
         Err(PeerRefusal::Unpinned)
@@ -188,7 +215,7 @@ fn a_presentation_that_does_not_verify_is_refused() {
     let (_peer_volume, peer) = open(&root.join("peer"));
     let (_other_volume, other) = open(&root.join("other"));
     let (volume, _) = open(&root.join("verifier"));
-    let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
+    let peers = peers(&volume, &[pin(&peer)]);
     // Another Host's document over the pinned Host's first key.
     let forged = Presentation {
         document: other.document(),
@@ -225,19 +252,19 @@ fn a_seen_file_naming_another_host_is_refused() {
     let root = scratch("seen-other");
     let (_peer_volume, peer) = open(&root.join("peer"));
     let (volume, _) = open(&root.join("verifier"));
-    let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
+    let peers = peers(&volume, &[pin(&peer)]);
     let seen = Seen {
         host_id: [9; 16],
         epoch: 1,
         fingerprint: peer.fingerprint(),
         at: NOW,
     };
-    write::replace_bytes(
+    crate::storage::write::replace_bytes(
         &volume
             .host()
             .subdir(DIRECTORY, false)
             .expect("the directory"),
-        &file(&peer.host_id()),
+        &format!("{}.cbor", peer.host_id_text()),
         &seen.encode().expect("encoded"),
     )
     .expect("written");

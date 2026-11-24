@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-463 packages.
+491 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -67,6 +67,7 @@ says so and its repository is the authority.
 | `bstr` | 1.13.1 | MIT OR Apache-2.0 | https://github.com/BurntSushi/bstr |
 | `bumpalo` | 3.20.3 | MIT OR Apache-2.0 | https://github.com/fitzgen/bumpalo |
 | `bytecount` | 0.6.9 | Apache-2.0/MIT | https://github.com/llogiq/bytecount |
+| `byteorder` | 1.5.0 | Unlicense OR MIT | https://github.com/BurntSushi/byteorder |
 | `bytes` | 1.12.1 | MIT | https://github.com/tokio-rs/bytes |
 | `cc` | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | `cedar-policy` | 4.11.0 | Apache-2.0 | https://github.com/cedar-policy/cedar |
@@ -87,6 +88,7 @@ says so and its repository is the authority.
 | `cobs` | 0.3.0 | MIT OR Apache-2.0 | https://github.com/jamesmunns/cobs.rs |
 | `colorchoice` | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
 | `const-oid` | 0.10.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
+| `const-oid` | 0.9.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/const-oid |
 | `const-random` | 0.1.18 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/constrandom |
 | `const-random-macro` | 0.1.16 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/constrandom |
 | `convert_case` | 0.4.0 | MIT | https://github.com/rutrum/convert-case |
@@ -108,7 +110,9 @@ says so and its repository is the authority.
 | `defmt` | 1.1.1 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | `defmt-macros` | 1.1.1 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | `defmt-parser` | 1.0.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
+| `der` | 0.7.10 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/der |
 | `der-parser` | 10.0.0 | MIT OR Apache-2.0 | https://github.com/rusticata/der-parser.git |
+| `der_derive` | 0.7.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/der/derive |
 | `deranged` | 0.5.8 | MIT OR Apache-2.0 | https://github.com/jhpratt/deranged |
 | `digest` | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `digest` | 0.11.3 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
@@ -126,16 +130,18 @@ says so and its repository is the authority.
 | `enum-ordinalize-derive` | 4.4.2 | MIT | https://github.com/magiclen/enum-ordinalize |
 | `equivalent` | 1.0.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | `errno` | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
+| `fallible-iterator` | 0.2.0 | MIT/Apache-2.0 | https://github.com/sfackler/rust-fallible-iterator |
 | `fancy-regex` | 0.19.2 | MIT | https://github.com/fancy-regex/fancy-regex |
 | `fastrand` | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/fastrand |
 | `find-msvc-tools` | 0.1.14 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | `fixedbitset` | 0.5.7 | MIT OR Apache-2.0 | https://github.com/petgraph/fixedbitset |
+| `flagset` | 0.4.7 | Apache-2.0 | https://github.com/enarx/flagset |
 | `flate2` | 1.1.10 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
 | `fluent-uri` | 0.4.1 | MIT | https://github.com/yescallop/fluent-uri-rs |
 | `fnv` | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | `foldhash` | 0.1.5 | Zlib | https://github.com/orlp/foldhash |
 | `foldhash` | 0.2.0 | Zlib | https://github.com/orlp/foldhash |
-| `form_urlencoded` | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| `form_urlencoded` | 1.2.3 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | `fraction` | 0.15.4 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
 | `fraction` | 0.17.0 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
 | `fs-err` | 3.3.1 | MIT OR Apache-2.0 | https://github.com/andrewhickman/fs-err |
@@ -204,6 +210,7 @@ says so and its repository is the authority.
 | `lazy_static` | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
 | `libc` | 0.2.190 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | `libloading` | 0.8.9 | ISC | https://github.com/nagisa/rust_libloading/ |
+| `libredox` | 0.1.25 | MIT | https://gitlab.redox-os.org/redox-os/libredox.git |
 | `libyaml-rs` | 0.3.0 | MIT | https://github.com/yaml/libyaml-rs |
 | `linked-hash-map` | 0.5.6 | MIT/Apache-2.0 | https://github.com/contain-rs/linked-hash-map |
 | `linked_hash_set` | 0.1.6 | Apache-2.0 | https://github.com/alexheretic/linked-hash-set |
@@ -217,6 +224,7 @@ says so and its repository is the authority.
 | `lru` | 0.18.5 | MIT | https://github.com/jeromefroe/lru-rs.git |
 | `matchit` | 0.8.4 | MIT AND BSD-3-Clause | https://github.com/ibraheemdev/matchit |
 | `mcp-tools-sdk` | 0.4.1 | Apache-2.0 | https://github.com/cedar-policy/cedar-for-agents |
+| `md-5` | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `memchr` | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
 | `micromap` | 0.3.0 | MIT | https://github.com/yegor256/micromap |
 | `miette` | 7.6.0 | Apache-2.0 | https://github.com/zkat/miette |
@@ -243,6 +251,8 @@ says so and its repository is the authority.
 | `num-iter` | 0.1.46 | MIT OR Apache-2.0 | https://github.com/rust-num/num-iter |
 | `num-rational` | 0.4.2 | MIT OR Apache-2.0 | https://github.com/rust-num/num-rational |
 | `num-traits` | 0.2.19 | MIT OR Apache-2.0 | https://github.com/rust-num/num-traits |
+| `objc2-core-foundation` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | https://github.com/madsmtm/objc2 |
+| `objc2-system-configuration` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | https://github.com/madsmtm/objc2 |
 | `object` | 0.39.1 | Apache-2.0 OR MIT | https://github.com/gimli-rs/object |
 | `oid-registry` | 0.8.1 | MIT OR Apache-2.0 | https://github.com/rusticata/oid-registry.git |
 | `once_cell` | 1.21.4 | MIT OR Apache-2.0 | https://github.com/matklad/once_cell |
@@ -266,8 +276,10 @@ says so and its repository is the authority.
 | `petgraph` | 0.8.3 | MIT OR Apache-2.0 | https://github.com/petgraph/petgraph |
 | `phc` | 0.6.1 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | `phf` | 0.12.1 | MIT | https://github.com/rust-phf/rust-phf |
+| `phf` | 0.13.1 | MIT | https://github.com/rust-phf/rust-phf |
 | `phf_shared` | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
 | `phf_shared` | 0.12.1 | MIT | https://github.com/rust-phf/rust-phf |
+| `phf_shared` | 0.13.1 | MIT | https://github.com/rust-phf/rust-phf |
 | `pico-args` | 0.5.0 | MIT | https://github.com/RazrFalcon/pico-args |
 | `pin-project` | 1.1.13 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project |
 | `pin-project-internal` | 1.1.13 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project |
@@ -275,6 +287,9 @@ says so and its repository is the authority.
 | `portable-atomic` | 1.15.0 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic |
 | `portable-atomic-util` | 0.2.8 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic-util |
 | `postcard` | 1.1.3 | MIT OR Apache-2.0 | https://github.com/jamesmunns/postcard |
+| `postgres` | 0.19.14 | MIT OR Apache-2.0 | https://github.com/rust-postgres/rust-postgres |
+| `postgres-protocol` | 0.6.12 | MIT OR Apache-2.0 | https://github.com/rust-postgres/rust-postgres |
+| `postgres-types` | 0.2.14 | MIT OR Apache-2.0 | https://github.com/rust-postgres/rust-postgres |
 | `potential_utf` | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `powerfmt` | 0.2.0 | MIT OR Apache-2.0 | https://github.com/jhpratt/powerfmt |
 | `ppv-lite86` | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
@@ -356,10 +371,12 @@ says so and its repository is the authority.
 | `socket2` | 0.6.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/socket2 |
 | `spin` | 0.12.3 | MIT | https://codeberg.org/zesterer/spin |
 | `spin` | 0.5.2 | MIT | https://github.com/mvdnes/spin-rs.git |
+| `spki` | 0.7.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/spki |
 | `stable_deref_trait` | 1.2.1 | MIT OR Apache-2.0 | https://github.com/storyyeller/stable_deref_trait |
 | `stacker` | 0.1.25 | MIT OR Apache-2.0 | https://github.com/rust-lang/stacker |
 | `static_assertions` | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nvzqz/static-assertions-rs |
 | `string_cache` | 0.8.9 | MIT OR Apache-2.0 | https://github.com/servo/string-cache |
+| `stringprep` | 0.1.5 | MIT/Apache-2.0 | https://github.com/sfackler/rust-stringprep |
 | `strsim` | 0.11.1 | MIT | https://github.com/rapidfuzz/strsim-rs |
 | `strum` | 0.28.0 | MIT | https://github.com/Peternator7/strum |
 | `strum_macros` | 0.28.0 | MIT | https://github.com/Peternator7/strum |
@@ -385,8 +402,12 @@ says so and its repository is the authority.
 | `tiny-keccak` | 2.0.2 | CC0-1.0 | — |
 | `tinystr` | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `tinyvec` | 1.13.3 | Zlib OR Apache-2.0 OR MIT | https://github.com/Lokathor/tinyvec |
+| `tls_codec` | 0.4.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
+| `tls_codec_derive` | 0.4.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | `tokio` | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-macros` | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
+| `tokio-postgres` | 0.7.18 | MIT OR Apache-2.0 | https://github.com/rust-postgres/rust-postgres |
+| `tokio-postgres-rustls` | 0.14.0 | MIT | https://github.com/jbg/tokio-postgres-rustls |
 | `tokio-rustls` | 0.26.6 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
 | `tokio-stream` | 0.1.19 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-util` | 0.7.19 | MIT | https://github.com/tokio-rs/tokio |
@@ -416,9 +437,11 @@ says so and its repository is the authority.
 | `typenum` | 1.20.1 | MIT OR Apache-2.0 | https://github.com/paholg/typenum |
 | `ucd-trie` | 0.1.7 | MIT OR Apache-2.0 | https://github.com/BurntSushi/ucd-generate |
 | `unicase` | 2.9.0 | MIT OR Apache-2.0 | https://github.com/seanmonstar/unicase |
+| `unicode-bidi` | 0.3.18 | MIT OR Apache-2.0 | https://github.com/servo/unicode-bidi |
 | `unicode-general-category` | 1.1.0 | Apache-2.0 | https://github.com/yeslogic/unicode-general-category |
 | `unicode-ident` | 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
 | `unicode-normalization` | 0.1.25 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-normalization |
+| `unicode-properties` | 0.1.5 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/unicode-rs/unicode-properties |
 | `unicode-script` | 0.5.8 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-script |
 | `unicode-security` | 0.1.2 | MIT/Apache-2.0 | https://github.com/unicode-rs/unicode-security |
 | `unicode-width` | 0.1.14 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-width |
@@ -426,7 +449,7 @@ says so and its repository is the authority.
 | `unicode-xid` | 0.2.6 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-xid |
 | `unsafe-libyaml-norway` | 0.2.15 | MIT | https://github.com/cafkafk/unsafe-libyaml-norway |
 | `untrusted` | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
-| `url` | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| `url` | 2.5.9 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | `utf8_iter` | 1.0.4 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf8_iter |
 | `utf8parse` | 0.2.2 | Apache-2.0 OR MIT | https://github.com/alacritty/vte |
 | `uuid` | 1.26.1 | Apache-2.0 OR MIT | https://github.com/uuid-rs/uuid |
@@ -443,12 +466,16 @@ says so and its repository is the authority.
 | `walkdir` | 2.5.0 | Unlicense/MIT | https://github.com/BurntSushi/walkdir |
 | `want` | 0.3.2 | MIT | https://github.com/seanmonstar/want |
 | `wasi` | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
+| `wasi` | 0.14.7+wasi-0.2.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi-rs |
 | `wasip2` | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi-rs |
+| `wasite` | 1.0.2 | Apache-2.0 OR BSL-1.0 OR MIT | https://github.com/ardaku/wasite |
 | `wasm-bindgen` | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
 | `wasm-bindgen-macro` | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro |
 | `wasm-bindgen-macro-support` | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support |
 | `wasm-bindgen-shared` | 0.2.129 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared |
+| `web-sys` | 0.3.106 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys |
 | `web-time` | 1.1.0 | MIT OR Apache-2.0 | https://github.com/daxpedda/web-time |
+| `whoami` | 2.1.3 | Apache-2.0 OR BSL-1.0 OR MIT | https://github.com/ardaku/whoami |
 | `winapi-util` | 0.1.11 | Unlicense OR MIT | https://github.com/BurntSushi/winapi-util |
 | `windows-core` | 0.62.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | `windows-implement` | 0.60.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
@@ -470,6 +497,7 @@ says so and its repository is the authority.
 | `winnow` | 1.0.4 | MIT | https://github.com/winnow-rs/winnow |
 | `wit-bindgen` | 0.57.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wit-bindgen |
 | `writeable` | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| `x509-cert` | 0.2.5 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/x509-cert |
 | `x509-parser` | 0.18.1 | MIT OR Apache-2.0 | https://github.com/rusticata/x509-parser.git |
 | `yaml_serde` | 0.10.7 | MIT OR Apache-2.0 | https://github.com/yaml/yaml-serde |
 | `yasna` | 0.6.0 | MIT OR Apache-2.0 | https://github.com/qnighy/yasna.rs |

@@ -1,0 +1,78 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The split-plane profile with its Control Plane on the `postgresql-s3` backend (iteration 03,
+# WP-28.1): the Control Plane and the Authority Plane keep their state in a PostgreSQL and an S3
+# server of the lab, both over TLS under the lab's authority; the Data Plane keeps its own on its
+# volume, as it always does. Added by `BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane`,
+# never on its own.
+
+services:
+  # The lab's authority also writes the backend's secrets and the bucket's directory.
+  lab-pki:
+    environment: { LAB_BACKEND: postgresql-s3 }
+
+  lab-postgres:
+    image: postgres:17
+    profiles: [split-plane]
+    # The server's key handed to the server's own user, as PostgreSQL requires of it.
+    entrypoint: ["bash", "-c"]
+    command:
+      - >-
+        install -o postgres -g postgres -m 0600 /lab/pki/lab-postgres.key /var/lib/postgresql/server.key &&
+        install -o postgres -g postgres -m 0644 /lab/pki/lab-postgres.crt /var/lib/postgresql/server.crt &&
+        exec docker-entrypoint.sh postgres -c ssl=on
+        -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+    environment:
+      POSTGRES_USER: permguard
+      POSTGRES_DB: permguard
+      POSTGRES_PASSWORD_FILE: /lab/backend/postgres-password
+    volumes: ["lab:/lab:ro"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "permguard", "-d", "permguard"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    depends_on:
+      lab-pki: { condition: service_completed_successfully }
+
+  lab-s3:
+    # Pinned by digest, as the tests' server is.
+    image: versity/versitygw@sha256:8319a530d08d537426e2f855bae5280709795dc73a3f0c347973ef915d6343c5
+    profiles: [split-plane]
+    # Its secret read from the file the lab's authority wrote, as the Host reads it.
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        ROOT_SECRET_KEY="$$(cat /lab/backend/s3-secret)" exec /usr/local/bin/versitygw
+        --cert /lab/pki/lab-s3.crt --key /lab/pki/lab-s3.key posix /lab/s3
+    environment:
+      ROOT_ACCESS_KEY: permguard-lab
+    volumes: ["lab:/lab"]
+    depends_on:
+      lab-pki: { condition: service_completed_successfully }
+
+  control-plane:
+    environment:
+      LAB_HOST: control-plane
+      PERMGUARD_STORAGE_BACKEND: postgresql-s3
+      PERMGUARD_STORAGE_POSTGRESQL_HOST: lab-postgres
+      PERMGUARD_STORAGE_POSTGRESQL_DATABASE: permguard
+      PERMGUARD_STORAGE_POSTGRESQL_USER: permguard
+      PERMGUARD_STORAGE_POSTGRESQL_PASSWORD_REF: postgres-password
+      PERMGUARD_STORAGE_POSTGRESQL_CA: /lab/pki/ca.crt
+      PERMGUARD_STORAGE_S3_ENDPOINT: https://lab-s3:7070
+      PERMGUARD_STORAGE_S3_REGION: us-east-1
+      PERMGUARD_STORAGE_S3_BUCKET: permguard
+      PERMGUARD_STORAGE_S3_ACCESS_KEY: permguard-lab
+      PERMGUARD_STORAGE_S3_SECRET_REF: s3-secret
+      PERMGUARD_STORAGE_S3_CA: /lab/pki/ca.crt
+      # The lab's S3 server encrypts nothing it is given: development only.
+      PERMGUARD_STORAGE_S3_ENCRYPTION: none
+      # No key is kept in the clear on this backend: the `file` custody, sealed under a
+      # key-encryption key the lab's authority wrote.
+      PERMGUARD_KEYS_CUSTODY: file
+      PERMGUARD_KEYS_KEK_REF: kek
+    depends_on:
+      lab-postgres: { condition: service_healthy }
+      lab-s3: { condition: service_started }

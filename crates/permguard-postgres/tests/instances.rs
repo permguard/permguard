@@ -1,0 +1,752 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! Several instances on one database: each its own pool of connections, as each process has,
+//! all on one schema. What a store's suite proves of the threads of one instance is proven here
+//! of instances that share nothing but the database.
+//!
+//! The tests need a server, as `foundations.rs` says, and are skipped without one.
+
+#![allow(clippy::expect_used, clippy::panic)]
+
+use std::collections::BTreeMap;
+use std::sync::{Arc, Barrier, Mutex};
+
+use permguard_core::catalog::{Catalog, CatalogError, Selector, Write};
+use permguard_host::identity::store::IdentityStore;
+use permguard_host::keys::ring::RingError;
+use permguard_host::keys::ring::store::RingStore;
+use permguard_host::membership::MembershipError;
+use permguard_host::membership::store::{Doc, MemberStore};
+use permguard_postgres::catalog::PostgresCatalog;
+use permguard_postgres::database::Database;
+use permguard_postgres::identity::PostgresIdentity;
+use permguard_postgres::members::PostgresMembers;
+use permguard_postgres::ring::PostgresRing;
+use permguard_postgres::testing::{Server, config, scratch, server};
+
+const INSTANCES: usize = 6;
+const ROUNDS: u64 = 4;
+
+/// One store an instance, each over a pool of its own on `schema`.
+fn instances<S>(server: &Server, schema: &str, store: impl Fn(Database) -> S) -> Vec<S> {
+    (0..INSTANCES)
+        .map(|_| {
+            store(
+                Database::connect(config(server, Some(schema.to_owned()), 2))
+                    .expect("an instance connects"),
+            )
+        })
+        .collect()
+}
+
+/// What every instance answered `call`, all released at once.
+fn together<S: Sync, T: Send>(stores: &[S], call: impl Fn(usize, &S) -> T + Sync) -> Vec<T> {
+    let barrier = Barrier::new(stores.len());
+    std::thread::scope(|scope| {
+        let running: Vec<_> = stores
+            .iter()
+            .enumerate()
+            .map(|(instance, store)| {
+                let (barrier, call) = (&barrier, &call);
+                scope.spawn(move || {
+                    barrier.wait();
+                    call(instance, store)
+                })
+            })
+            .collect();
+        running
+            .into_iter()
+            .map(|instance| instance.join().expect("an instance finished"))
+            .collect()
+    })
+}
+
+#[test]
+fn instances_that_add_one_entry_together_add_it_once_on_postgresql() {
+    let Some(server) = server("instances_that_add_one_entry_together_add_it_once_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let rings = instances(&server, &scratch.schema, |database| {
+        PostgresRing::new(database, "host-signing")
+    });
+    let members = instances(&server, &scratch.schema, PostgresMembers::new);
+    for seq in 1..=ROUNDS {
+        // A CBOR unsigned integer below 24 is its own byte: each instance adds another entry.
+        let added = together(&rings, |instance, ring| ring.append(seq, &[instance as u8]));
+        for answer in &added {
+            assert!(
+                matches!(answer, Ok(()) | Err(RingError::Refused(_))),
+                "an instance was answered {answer:?}"
+            );
+        }
+        assert_eq!(added.iter().filter(|answer| answer.is_ok()).count(), 1);
+        assert_eq!(rings[0].entries().expect("reads").len() as u64, seq);
+
+        let added = together(&members, |instance, store| {
+            store.append(seq, &[instance as u8])
+        });
+        for answer in &added {
+            assert!(
+                matches!(answer, Ok(()) | Err(MembershipError::Conflict { .. })),
+                "an instance was answered {answer:?}"
+            );
+        }
+        assert_eq!(added.iter().filter(|answer| answer.is_ok()).count(), 1);
+        assert_eq!(members[0].entries().expect("reads").len() as u64, seq);
+    }
+}
+
+#[test]
+fn instances_that_publish_together_keep_one_record_on_postgresql() {
+    let Some(server) = server("instances_that_publish_together_keep_one_record_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let identities = instances(&server, &scratch.schema, PostgresIdentity::new);
+    let rings = instances(&server, &scratch.schema, |database| {
+        PostgresRing::new(database, "host-signing")
+    });
+    let members = instances(&server, &scratch.schema, PostgresMembers::new);
+    let membership = [7u8; 16];
+    for round in 1..=ROUNDS {
+        let published = together(&identities, |instance, identity| {
+            identity.publish_public(round, &[instance as u8; 32])
+        });
+        assert_eq!(published.iter().filter(|answer| answer.is_ok()).count(), 1);
+        let kept = identities[0]
+            .public(round)
+            .expect("reads")
+            .expect("one key is kept");
+        for identity in &identities {
+            assert_eq!(identity.public(round).expect("reads"), Some(kept.clone()));
+        }
+
+        let thumbprint = format!("thumb-{round}");
+        let published = together(&rings, |instance, ring| {
+            ring.publish_public(&thumbprint, &[instance as u8; 40])
+        });
+        assert_eq!(published.iter().filter(|answer| answer.is_ok()).count(), 1);
+
+        let published = together(&members, |instance, store| {
+            store.publish_checkpoint(&membership, "security:host", round, &[instance as u8; 8])
+        });
+        assert_eq!(published.iter().filter(|answer| answer.is_ok()).count(), 1);
+    }
+    let provisioned = together(&identities, |instance, identity| {
+        identity.publish_init(&[instance as u8; 8])
+    });
+    assert_eq!(
+        provisioned.iter().filter(|answer| answer.is_ok()).count(),
+        1,
+        "one identity is provisioned in a database"
+    );
+}
+
+#[test]
+fn instances_that_change_one_document_together_lose_no_change_on_postgresql() {
+    let Some(server) =
+        server("instances_that_change_one_document_together_lose_no_change_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let members = instances(&server, &scratch.schema, PostgresMembers::new);
+    const EACH: u64 = 10;
+    let membership = [7u8; 16];
+    let doc = Doc::Acks {
+        membership: &membership,
+        task: "events.ship",
+    };
+    together(&members, |_, store| {
+        for _ in 0..EACH {
+            store
+                .change(&doc, &mut |held| {
+                    let count = held.map_or(0, |bytes| {
+                        u64::from_be_bytes(bytes.try_into().expect("eight bytes"))
+                    });
+                    Ok(Some((count + 1).to_be_bytes().to_vec()))
+                })
+                .expect("changed");
+        }
+    });
+    assert_eq!(
+        members[0].doc(&doc).expect("reads"),
+        Some((INSTANCES as u64 * EACH).to_be_bytes().to_vec()),
+        "every change was given what the one before it kept, on whatever instance"
+    );
+}
+
+#[test]
+fn instances_that_change_the_catalog_together_apply_once_on_postgresql() {
+    let Some(server) =
+        server("instances_that_change_the_catalog_together_apply_once_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let catalogs = instances(&server, &scratch.schema, PostgresCatalog::new);
+
+    let created = together(&catalogs, |_, catalog| catalog.create_zone("delivery"));
+    for answer in &created {
+        assert!(
+            matches!(answer, Ok(_) | Err(CatalogError::NameTaken { .. })),
+            "an instance was answered {answer:?}"
+        );
+    }
+    assert_eq!(created.iter().filter(|answer| answer.is_ok()).count(), 1);
+    assert_eq!(catalogs[0].list_zones().expect("listed").len(), 1);
+
+    let zone = Selector::parse("delivery");
+    let created = together(&catalogs, |_, catalog| {
+        catalog.create_ledger(&zone, "policies")
+    });
+    assert_eq!(created.iter().filter(|answer| answer.is_ok()).count(), 1);
+    assert_eq!(catalogs[0].list_ledgers(&zone).expect("listed").len(), 1);
+
+    // A zone deleted while a ledger is created in it: the zone goes empty, or it stays with
+    // its ledger, and never a ledger is left in a zone that is gone.
+    catalogs[0].create_zone("leaving").expect("a zone");
+    let leaving = Selector::parse("leaving");
+    let answers = together(&catalogs, |instance, catalog| {
+        if instance == 0 {
+            catalog.delete_zone(&leaving).map(|_| ())
+        } else {
+            catalog
+                .create_ledger(&leaving, &format!("ledger-{instance}"))
+                .map(|_| ())
+        }
+    });
+    match catalogs[0].get_zone(&leaving) {
+        Ok(_) => assert!(
+            matches!(answers[0], Err(CatalogError::NotEmpty { .. })),
+            "a zone that holds ledgers is kept: {:?}",
+            answers[0]
+        ),
+        Err(CatalogError::NotFound { .. }) => {
+            assert!(answers[0].is_ok());
+            for answer in &answers[1..] {
+                assert!(
+                    matches!(answer, Err(CatalogError::NotFound { .. })),
+                    "a ledger was created in a zone that is gone: {answer:?}"
+                );
+            }
+        }
+        Err(other) => panic!("the zone reads {other}"),
+    }
+
+    // Renames held to one revision: one applies, the others learn the revision moved.
+    let held = Write {
+        expected_revision: Some(1),
+        operation: None,
+        provenance: None,
+    };
+    let renamed = together(&catalogs, |instance, catalog| {
+        catalog.rename_zone_with(&zone, &format!("delivery-{instance}"), &held)
+    });
+    assert_eq!(renamed.iter().filter(|answer| answer.is_ok()).count(), 1);
+    for answer in renamed.iter().filter(|answer| answer.is_err()) {
+        assert!(
+            matches!(
+                answer,
+                Err(CatalogError::RevisionConflict { .. } | CatalogError::NotFound { .. })
+            ),
+            "an instance was answered {answer:?}"
+        );
+    }
+}
+
+/// A change of a document made alone while an operation holds another change of it, not yet
+/// committed, is asked again on what the operation kept: the first time stays.
+#[test]
+fn a_change_alone_sees_the_one_an_operation_made_on_postgresql() {
+    let Some(server) = server("a_change_alone_sees_the_one_an_operation_made_on_postgresql") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let databases = instances(&server, &scratch.schema, |database| database);
+    let membership = [7u8; 16];
+    let doc = Doc::Verification {
+        membership: &membership,
+    };
+    // What every caller does: the first time asked stays, and every one is answered it.
+    let schedule = |store: &PostgresMembers, now: u64| {
+        let mut scheduled = now;
+        store
+            .change(&doc, &mut |held| match held {
+                Some(first) => {
+                    scheduled = u64::from_be_bytes(first.try_into().expect("eight bytes"));
+                    Ok(None)
+                }
+                None => {
+                    scheduled = now;
+                    Ok(Some(now.to_be_bytes().to_vec()))
+                }
+            })
+            .expect("changed");
+        scheduled
+    };
+    let inside = &databases[0];
+    let unit = inside.begin().expect("a unit of work");
+    let first = {
+        let _entered = inside.enter(&unit);
+        schedule(&PostgresMembers::new(inside.clone()), 100)
+    };
+    assert_eq!(first, 100);
+    let alone = PostgresMembers::new(databases[1].clone());
+    let second = std::thread::scope(|scope| {
+        let asked = scope.spawn(|| schedule(&alone, 200));
+        // Long enough for the change made alone to reach the row the operation holds.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        unit.commit().expect("the operation is committed");
+        asked.join().expect("the change alone finished")
+    });
+    assert_eq!(second, 100, "every one is answered the first time");
+    assert_eq!(
+        alone.doc(&doc).expect("reads"),
+        Some(100u64.to_be_bytes().to_vec())
+    );
+}
+
+/// WP-27.5: two instances sign with one key, and no key is in the clear. A key generated on one
+/// instance, sealed under a key-encryption key held outside the database, is unsealed and signs
+/// on another; the row holds the sealed key, never the PKCS#8; and of two keys generated for one
+/// slot together, one is kept.
+#[test]
+fn instances_sign_with_one_sealed_key_on_postgresql() {
+    use permguard_host::keys::KeyProvider as _;
+    use permguard_host::keys::custody::{Keks, SealedFileKeyProvider, SecretKek, StoredPublic};
+    use permguard_host::secrets::{KeyVersion, Root};
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_sign_with_one_sealed_key_on_postgresql") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    // The key-encryption key every instance resolves from the same secret reference.
+    let kek = || {
+        let root =
+            Root::from_material(&[42; 32], KeyVersion::new(1).expect("a version")).expect("a root");
+        Keks {
+            current: Arc::new(SecretKek::from_root("kek", &root).expect("a KEK")),
+            previous: None,
+        }
+    };
+    let published: Arc<Mutex<BTreeMap<String, Vec<u8>>>> = Arc::default();
+    let stored = || -> StoredPublic {
+        let held = Arc::clone(&published);
+        Box::new(move |slot, _| Ok(held.lock().expect("lock").get(slot).cloned()))
+    };
+    let providers = instances(&server, &scratch.schema, |database| {
+        SealedFileKeyProvider::new(
+            Arc::new(PostgresSlots::new(database, "host.operations")),
+            [7; 16],
+            "host.operations",
+            kek(),
+            stored(),
+        )
+    });
+
+    let public = providers[0]
+        .generate("slot-1", Suite::Ed25519Sha256V1)
+        .expect("generated");
+    published
+        .lock()
+        .expect("lock")
+        .insert("slot-1".to_owned(), public.bytes.clone());
+    for (instance, provider) in providers.iter().enumerate() {
+        let message = format!("signed on instance {instance}");
+        let signature = provider
+            .sign("slot-1", Suite::Ed25519Sha256V1, message.as_bytes())
+            .expect("signed");
+        Suite::Ed25519Sha256V1
+            .verify(&public.bytes, message.as_bytes(), &signature)
+            .expect("one key signs on every instance");
+    }
+
+    // The row is the sealed key: neither the PKCS#8 nor any other form of the key in the clear.
+    let row: Vec<u8> = scratch
+        .database
+        .write(|unit| {
+            Ok(unit
+                .query_one(
+                    "SELECT bytes FROM permguard_key_slots WHERE slot = 'slot-1'",
+                    &[],
+                )?
+                .get(0))
+        })
+        .expect("read");
+    assert!(
+        permguard_objects::crypto::seal::SealedKey::decode(&row).is_ok(),
+        "the slot holds a sealed key"
+    );
+    assert_ne!(row.first(), Some(&0x30), "no PKCS#8 in the clear");
+
+    // Generated together for one slot: one key is kept, the others are refused.
+    let generated = together(&providers, |_, provider| {
+        provider.generate("slot-2", Suite::Ed25519Sha256V1)
+    });
+    assert_eq!(generated.iter().filter(|answer| answer.is_ok()).count(), 1);
+}
+
+/// One ring over one database read by two instances (WP-28.2): the one that holds the ring's job
+/// maintains it, the other reads again what it made and signs with it; and a transition made on
+/// an instance whose view is behind the database reads the database first, so it destroys no key
+/// the other made and writes after the last entry.
+#[test]
+fn instances_read_again_the_ring_another_maintained_on_postgresql() {
+    use permguard_core::KeyManager as _;
+    use permguard_core::keys::Sign as _;
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{DATA_ATTEST, Policy, Ring};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_read_again_the_ring_another_maintained_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let policy = Policy {
+        publish_ahead: std::time::Duration::ZERO,
+        rotate_every: std::time::Duration::from_secs(1),
+        retain: std::time::Duration::from_secs(60),
+    };
+    let rings = instances(&server, &scratch.schema, |database| {
+        Ring::open_with(
+            Arc::new(PostgresRing::new(database.clone(), DATA_ATTEST)),
+            Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+                database,
+                DATA_ATTEST,
+            )))),
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            policy,
+            Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
+        )
+        .expect("opens")
+    });
+    let (holder, other) = (&rings[0], &rings[1]);
+    holder.maintain().expect("maintained");
+    other.refresh().expect("read again");
+    assert_eq!(
+        other.statement().expect("a statement"),
+        holder.statement().expect("a statement")
+    );
+    // The holder rotates; the other, behind, maintains: it reads the database first.
+    std::thread::sleep(std::time::Duration::from_millis(1_200));
+    holder.maintain().expect("rotated");
+    let rotated = holder.statement().expect("a statement");
+    other
+        .maintain()
+        .expect("a transition behind the database reads it first");
+    assert_eq!(other.statement().expect("a statement"), rotated);
+    let signature = other
+        .sign(b"payload")
+        .expect("signs with the key the holder made, which is kept");
+    assert!(
+        rotated
+            .keys
+            .iter()
+            .any(|key| key.kid == signature.key_id().as_str())
+    );
+    let slots = scratch
+        .database
+        .write(|unit| {
+            Ok(unit
+                .query_one("SELECT count(*) FROM permguard_key_slots", &[])?
+                .get::<_, i64>(0))
+        })
+        .expect("read");
+    assert!(slots >= 1, "the keys the holder made are held");
+}
+
+/// A key revoked on one instance stops signing on every instance within the stated bound
+/// (WP-28.3): the other instance, which signed with it, reads the database again once its
+/// reading is older than the bound, and from then on signs with the key that replaced it and
+/// publishes a set without the revoked one.
+#[test]
+fn a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql() {
+    use permguard_core::KeyManager as _;
+    use permguard_core::keys::{PublicSet as _, Sign as _};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{
+        AUDIT_REVOKED, DATA_ATTEST, DOMAIN, Policy, REVOKE_RUN, Ring,
+    };
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::{Applied, Begin, run_checked_on};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) =
+        server("a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    const BOUND: std::time::Duration = std::time::Duration::from_millis(300);
+    let rings = instances(&server, &scratch.schema, |database| {
+        Ring::open_with(
+            Arc::new(PostgresRing::new(database.clone(), DATA_ATTEST)),
+            Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+                database,
+                DATA_ATTEST,
+            )))),
+            DATA_ATTEST,
+            Suite::Ed25519Sha256V1,
+            Policy {
+                publish_ahead: std::time::Duration::from_secs(3_600),
+                rotate_every: std::time::Duration::from_secs(86_400),
+                retain: std::time::Duration::from_secs(86_400),
+            },
+            Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
+        )
+        .expect("opens")
+        .fresh_for(BOUND)
+    });
+    let (revoking, other) = (&rings[0], &rings[1]);
+    revoking.maintain().expect("maintained");
+    std::thread::sleep(BOUND);
+    let revoked = other
+        .sign(b"before")
+        .expect("signs")
+        .key_id()
+        .as_str()
+        .to_owned();
+    let epoch = revoking.check_revocable(&revoked).expect("revocable");
+    run_checked_on::<(), String>(
+        &permguard_postgres::testing::engine(Database::clone(&scratch.database)),
+        Begin {
+            domain: DOMAIN,
+            operation: REVOKE_RUN,
+            action: AUDIT_REVOKED,
+            initiator: Initiator::System("test".to_owned()),
+            request: None,
+            target: Some(revoked.clone()),
+        },
+        || Ok(()),
+        |applying| {
+            revoking
+                .revoke(applying, &revoked, "compromised", None, epoch)
+                .map_err(|error| {
+                    permguard_host::operations::mutation::Failure::Refused(error.to_string())
+                })?;
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: (),
+            })
+        },
+    )
+    .expect("revoked");
+    assert_ne!(
+        revoking.sign(b"after").expect("signs").key_id().as_str(),
+        revoked,
+        "the revoking instance at once"
+    );
+    std::thread::sleep(BOUND + std::time::Duration::from_millis(50));
+    let signed = other.sign(b"after").expect("signs with the replacement");
+    assert_ne!(
+        signed.key_id().as_str(),
+        revoked,
+        "the other within the bound"
+    );
+    assert!(
+        other
+            .public_keys()
+            .expect("published")
+            .iter()
+            .all(|key| key.kid != revoked),
+        "and publishes no revoked key"
+    );
+}
+
+/// One Host identity across instances (WP-28.5): each instance starts with a boot id of its own;
+/// a rotation made on one is presented by the other at once, so a member that moves between them
+/// never sees an epoch go back; and a rotation asked of an instance behind the store follows the
+/// one the store holds rather than forking the chain.
+#[test]
+fn one_identity_is_every_instances_and_never_goes_back_on_postgresql() {
+    use permguard_host::identity::{Home, Identity, IdentityError};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::HOST_IDENTITY;
+    use permguard_host::operations::journal::Initiator;
+    use permguard_host::operations::mutation::MutationError;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("one_identity_is_every_instances_and_never_goes_back_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let home = Home {
+        id: [5; 16],
+        generation: 0,
+    };
+    let databases = instances(&server, &scratch.schema, |database| database);
+    let provider = |database: &Database| -> Arc<dyn permguard_host::keys::KeyProvider> {
+        Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+            database.clone(),
+            HOST_IDENTITY,
+        ))))
+    };
+    let now = permguard_core::time::unix_now();
+    let one = Identity::provision_in(
+        Arc::new(PostgresIdentity::new(databases[0].clone())),
+        home,
+        |_| Ok(provider(&databases[0])),
+        Suite::Ed25519Sha256V1,
+        now,
+        now * 1_000,
+    )
+    .expect("provisioned");
+    let other = Identity::open_in(
+        Arc::new(PostgresIdentity::new(databases[1].clone())),
+        home,
+        provider(&databases[1]),
+    )
+    .expect("opened");
+    assert_eq!(other.host_id(), one.host_id(), "one identity");
+    assert_ne!(other.boot_id(), one.boot_id(), "a boot id an instance");
+
+    // The engine over the first instance's pool: a rotation's writes are its one transaction.
+    let engine = permguard_postgres::testing::engine(databases[0].clone());
+    let rotated = permguard_host::identity::rotate(
+        &engine,
+        &one,
+        Initiator::System("test".to_owned()),
+        1,
+        now,
+    )
+    .expect("rotated on the first instance");
+    assert_eq!(rotated.epoch, 2);
+    // Within the bound an ordinary read may still be the epoch read; past it, the one held.
+    std::thread::sleep(permguard_host::identity::FRESH_FOR);
+    assert_eq!(
+        other.epoch(),
+        2,
+        "an ordinary read follows within the bound"
+    );
+
+    // A rotation asked of an instance behind the store reads it first: the store's epoch answers.
+    let behind = Identity::open_in(
+        Arc::new(PostgresIdentity::new(databases[2].clone())),
+        home,
+        provider(&databases[2]),
+    )
+    .expect("opened");
+    permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[0].clone()),
+        &one,
+        Initiator::System("test".to_owned()),
+        2,
+        now,
+    )
+    .expect("rotated again on the first instance");
+    let stale = permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[2].clone()),
+        &behind,
+        Initiator::System("test".to_owned()),
+        2,
+        now,
+    );
+    assert!(
+        matches!(
+            stale,
+            Err(MutationError::Refused(IdentityError::Conflict {
+                current: 3,
+                ..
+            }))
+        ),
+        "{stale:?}"
+    );
+    // Presented at once, whatever the reading's age, by every instance.
+    let presented = other.presented().expect("presented");
+    assert_eq!(presented.document, one.document());
+    assert_eq!(presented.successions, one.successions());
+    assert_eq!(presented.epoch, 3);
+    permguard_host::identity::rotate(
+        &permguard_postgres::testing::engine(databases[1].clone()),
+        &other,
+        Initiator::System("test".to_owned()),
+        3,
+        now,
+    )
+    .expect("rotated on the other, after the first's");
+    let presented = one.presented().expect("presented");
+    assert_eq!(presented.document, other.document());
+    assert_eq!(presented.epoch, 4);
+    assert_eq!(one.epoch(), 4);
+}
+
+/// Instances that provision one identity together make one (WP-28.5): one provisions, the others
+/// find it provisioned, and the identity opens whole on every instance.
+#[test]
+fn instances_that_provision_together_make_one_identity_on_postgresql() {
+    use permguard_host::identity::{Home, Identity, IdentityError};
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::HOST_IDENTITY;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("instances_that_provision_together_make_one_identity_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let home = Home {
+        id: [6; 16],
+        generation: 0,
+    };
+    let databases = instances(&server, &scratch.schema, |database| database);
+    let provider = |database: &Database| -> Arc<dyn permguard_host::keys::KeyProvider> {
+        Arc::new(FileKeyProvider::over(Arc::new(PostgresSlots::new(
+            database.clone(),
+            HOST_IDENTITY,
+        ))))
+    };
+    let now = permguard_core::time::unix_now();
+    // Staggered: each provisioning arrives while the ones before are writing their records.
+    let answers = together(&databases, |instance, database| {
+        std::thread::sleep(std::time::Duration::from_millis(
+            4 * u64::try_from(instance).expect("small"),
+        ));
+        Identity::provision_in(
+            Arc::new(PostgresIdentity::new(database.clone())),
+            home,
+            |_| Ok(provider(database)),
+            Suite::Ed25519Sha256V1,
+            now,
+            now * 1_000,
+        )
+        .map(|identity| identity.host_id())
+    });
+    let made: Vec<_> = answers
+        .iter()
+        .filter_map(|answer| answer.as_ref().ok())
+        .collect();
+    assert_eq!(made.len(), 1, "{answers:?}");
+    assert!(
+        answers
+            .iter()
+            .filter(|answer| answer.is_err())
+            .all(|answer| matches!(answer, Err(IdentityError::Provisioned))),
+        "{answers:?}"
+    );
+    for database in &databases {
+        let opened = Identity::open_in(
+            Arc::new(PostgresIdentity::new(database.clone())),
+            home,
+            provider(database),
+        )
+        .expect("the one identity opens on every instance");
+        assert_eq!(&opened.host_id(), made[0]);
+    }
+}

@@ -35,7 +35,7 @@ use crate::identity::record::uuid_text;
 use crate::identity::{Identity, Verified};
 use crate::keys::ring::Ring;
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Mutations, Outcome};
+use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Outcome};
 use crate::session::Refusal;
 use crate::session::record::Operation;
 use crate::time::TimeGuard;
@@ -314,7 +314,7 @@ pub struct Join {
 /// The member's memberships, and what reaching their coordinators takes.
 pub struct Member<'a> {
     pub store: &'a Store,
-    pub mutations: &'a Mutations,
+    pub mutations: &'a dyn crate::operations::mutation::Engine,
     pub identity: &'a Identity,
     pub rings: &'a [Arc<Ring>],
     pub capabilities: &'a Capabilities,

@@ -2099,6 +2099,74 @@ fn test_pinned_peers_are_read_checked_and_pinned_once() {
     }
 }
 
+/// WP-28.7: `host.coordinator_endpoints` names each coordinator once, by a lowercase UUIDv7 and
+/// its endpoints, each `https://<host>:<port>` once, in canonical form.
+#[test]
+fn test_coordinator_endpoints_are_read_checked_and_named_once() {
+    let lines =
+        format!("{PEER_A} https://cp-1:5444 grpcs://cp-2:5444/\n{PEER_B} https://cp.example:5444");
+    let named = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_COORDINATOR_ENDPOINTS, &lines),
+        ],
+        &[],
+        &[],
+    );
+    named.validate().expect("two coordinators validate");
+    let coordinators = named.host_coordinator_endpoints();
+    assert_eq!(coordinators.len(), 2);
+    assert_eq!(
+        coordinators[0].endpoints(),
+        ["https://cp-1:5444", "https://cp-2:5444"],
+        "in canonical form, in the order written"
+    );
+    assert_eq!(
+        coordinators[0].to_string(),
+        format!("{PEER_A} https://cp-1:5444 https://cp-2:5444")
+    );
+
+    let twice = format!("{PEER_A} https://cp-1:5444\n{PEER_A} https://cp-2:5444");
+    let doubled = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_COORDINATOR_ENDPOINTS, &twice),
+        ],
+        &[],
+        &[],
+    );
+    let error = doubled
+        .validate()
+        .expect_err("one line per coordinator")
+        .to_string();
+    assert!(error.contains("twice"), "{error}");
+
+    let many = (0..17)
+        .map(|at| format!("https://cp-{at}:5444"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    for malformed in [
+        PEER_A.to_owned(),
+        format!("{} https://cp-1:5444", PEER_A.to_uppercase()),
+        "0198f2aa-0000-4000-8000-000000000001 https://cp-1:5444".to_owned(),
+        format!("{PEER_A} http://cp-1:5444"),
+        format!("{PEER_A} https://cp-1"),
+        format!("{PEER_A} https://cp-1:5444/path"),
+        format!("{PEER_A} https://cp-1:5444 https://cp-1:5444/"),
+        format!("{PEER_A} {many}"),
+    ] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(&[(SETTING_HOST_COORDINATOR_ENDPOINTS, &malformed)])),
+            )
+            .is_err(),
+            "`{malformed}` names no coordinator's endpoints"
+        );
+    }
+}
+
 /// WP-2.3: peer sessions default to `end_to_end` only on a mutual-TLS listener, and stating
 /// `end_to_end` for one without a client CA is refused.
 #[test]
@@ -2541,6 +2609,241 @@ fn test_a_sweep_removes_a_bounded_number_of_objects() {
         )
         .is_err()
     );
+}
+
+/// Iteration 03, E1 and E7: a process keeps its state on files unless its configuration names
+/// the other backend, in `storage.backend` or the environment; a name that is neither is refused.
+#[test]
+fn test_the_storage_backend_is_files_unless_the_configuration_says_otherwise() {
+    use permguard_core::volume::Backend;
+
+    let default = config(&[], &[], &[]);
+    assert_eq!(default.storage_backend(), Backend::Files);
+    assert!(default.storage_backend().has_volume());
+
+    let named = config(
+        &[],
+        &[(
+            permguard_core::config::SETTING_STORAGE_BACKEND,
+            "postgresql-s3",
+        )],
+        &[],
+    );
+    assert_eq!(named.storage_backend(), Backend::PostgresqlS3);
+    assert!(!named.storage_backend().has_volume());
+
+    let file =
+        permguard_core::ConfigFile::parse("storage:\n  backend: postgresql-s3\n").expect("parses");
+    let pairs_of_file: Vec<(String, String)> = file.settings();
+    let pairs_of_file: Vec<(&str, &str)> = pairs_of_file
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(
+        config(&pairs_of_file, &[], &[]).storage_backend(),
+        Backend::PostgresqlS3
+    );
+
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_environment(pairs(&[(
+                permguard_core::config::SETTING_STORAGE_BACKEND,
+                "sqlite"
+            )])),
+        )
+        .is_err()
+    );
+    let refusal = permguard_core::volume::unsupported_command(Backend::PostgresqlS3, "a backup");
+    assert!(
+        refusal.starts_with(permguard_core::codes::storage::BACKEND_UNSUPPORTED),
+        "{refusal}"
+    );
+}
+
+/// Iteration 03, WP-27.5: on the `postgresql-s3` backend no key is kept in the clear, so the
+/// `development` custody is refused at start, for every ring; on files it stays allowed in
+/// `development`, and another custody is not refused for that reason.
+#[test]
+fn test_the_shared_backend_keeps_no_key_in_the_clear() {
+    let with = |backend: &str, custody: &str| {
+        config(
+            &[
+                (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+                (SETTING_ASSURANCE_PROFILE, "development"),
+                (permguard_core::config::SETTING_STORAGE_BACKEND, backend),
+                (permguard_core::config::SETTING_KEYS_CUSTODY, custody),
+            ],
+            &[],
+            &[],
+        )
+        .validate()
+    };
+    let refused = with("postgresql-s3", "development").expect_err("a key in the clear is refused");
+    assert!(
+        refused.to_string().contains("keeps no key in the clear"),
+        "{refused}"
+    );
+    assert!(with("files", "development").is_ok());
+    if let Err(other) = with("postgresql-s3", "file") {
+        assert!(
+            !other.to_string().contains("keeps no key in the clear"),
+            "{other}"
+        );
+    }
+}
+
+/// Iteration 03, WP-28.1: a process on `postgresql-s3` is told where its database and its
+/// bucket are, or refuses before it connects; a connection is in the clear only in development
+/// and only on a loopback address. On files the settings are not read.
+#[test]
+fn test_the_shared_backend_is_told_where_its_database_and_bucket_are() {
+    use permguard_core::config::{
+        SETTING_STORAGE_BACKEND, SETTING_STORAGE_POSTGRESQL_DATABASE,
+        SETTING_STORAGE_POSTGRESQL_HOST, SETTING_STORAGE_POSTGRESQL_TLS,
+        SETTING_STORAGE_POSTGRESQL_USER, SETTING_STORAGE_S3_ACCESS_KEY, SETTING_STORAGE_S3_BUCKET,
+        SETTING_STORAGE_S3_ENDPOINT, SETTING_STORAGE_S3_REGION, SETTING_STORAGE_S3_SECRET_REF,
+    };
+    let complete = [
+        (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+        (permguard_core::config::SETTING_KEYS_CUSTODY, "file"),
+        (SETTING_STORAGE_BACKEND, "postgresql-s3"),
+        (SETTING_STORAGE_POSTGRESQL_HOST, "db.internal"),
+        (SETTING_STORAGE_POSTGRESQL_DATABASE, "permguard"),
+        (SETTING_STORAGE_POSTGRESQL_USER, "permguard"),
+        (SETTING_STORAGE_S3_ENDPOINT, "https://s3.internal:9000"),
+        (SETTING_STORAGE_S3_REGION, "eu-west-1"),
+        (SETTING_STORAGE_S3_BUCKET, "permguard"),
+        (SETTING_STORAGE_S3_ACCESS_KEY, "AKIA"),
+        (SETTING_STORAGE_S3_SECRET_REF, "s3-secret"),
+    ];
+    let with = |changes: &[(&str, &str)], development: bool| {
+        let mut settings: Vec<(&str, &str)> = complete
+            .iter()
+            .filter(|(key, _)| !changes.iter().any(|(changed, _)| changed == key))
+            .copied()
+            .collect();
+        settings.extend(changes.iter().filter(|(_, value)| !value.is_empty()));
+        settings.push((SETTING_ASSURANCE_PROFILE, "development"));
+        settings.push((
+            permguard_core::config::SETTING_DEVELOPMENT_MODE,
+            if development { "true" } else { "false" },
+        ));
+        let config = config(&settings, &[], &[]);
+        let connection = config.storage_connection().clone();
+        (config.validate().map(|_| ()), connection)
+    };
+    let refusal = |result: Result<(), anyhow::Error>| match result {
+        Ok(()) => String::new(),
+        Err(error) => format!("{error:#}"),
+    };
+    // What the backend needs, one at a time.
+    for missing in [
+        SETTING_STORAGE_POSTGRESQL_HOST,
+        SETTING_STORAGE_POSTGRESQL_DATABASE,
+        SETTING_STORAGE_POSTGRESQL_USER,
+        SETTING_STORAGE_S3_ENDPOINT,
+        SETTING_STORAGE_S3_REGION,
+        SETTING_STORAGE_S3_BUCKET,
+        SETTING_STORAGE_S3_ACCESS_KEY,
+        SETTING_STORAGE_S3_SECRET_REF,
+    ] {
+        let (result, _) = with(&[(missing, "")], true);
+        let refused = refusal(result);
+        assert!(
+            refused.contains(&format!("needs {missing}")),
+            "{missing}: {refused}"
+        );
+    }
+    // Defaults, and nothing about the connection refused when it is complete.
+    let (result, connection) = with(&[], true);
+    assert!(!refusal(result).contains("postgresql-s3` storage backend needs"));
+    assert_eq!(connection.postgresql_port(), 5432);
+    assert_eq!(connection.postgresql_pool(), 16);
+    assert!(connection.postgresql_tls);
+    // In the clear: only in development, only on a loopback address.
+    for (changes, development, refused) in [
+        (
+            vec![(SETTING_STORAGE_S3_ENDPOINT, "http://127.0.0.1:9000")],
+            true,
+            false,
+        ),
+        (
+            vec![(SETTING_STORAGE_S3_ENDPOINT, "http://127.0.0.1:9000")],
+            false,
+            true,
+        ),
+        (
+            vec![(SETTING_STORAGE_S3_ENDPOINT, "http://s3.internal:9000")],
+            true,
+            true,
+        ),
+        (
+            vec![(SETTING_STORAGE_S3_ENDPOINT, "s3.internal:9000")],
+            true,
+            true,
+        ),
+        (
+            vec![
+                (SETTING_STORAGE_POSTGRESQL_TLS, "disabled"),
+                (SETTING_STORAGE_POSTGRESQL_HOST, "127.0.0.1"),
+            ],
+            true,
+            false,
+        ),
+        (
+            vec![(SETTING_STORAGE_POSTGRESQL_TLS, "disabled")],
+            true,
+            true,
+        ),
+        (
+            vec![
+                (SETTING_STORAGE_POSTGRESQL_TLS, "disabled"),
+                (SETTING_STORAGE_POSTGRESQL_HOST, "127.0.0.1"),
+            ],
+            false,
+            true,
+        ),
+    ] {
+        let (result, _) = with(&changes, development);
+        let text = refusal(result);
+        let in_the_clear = text.contains("in the clear") || text.contains("https://host:port");
+        assert_eq!(
+            in_the_clear, refused,
+            "{changes:?} in development {development}: {text}"
+        );
+    }
+    // What the bucket encrypts with: its own keys by default, or a key of its KMS; nothing only
+    // in development.
+    use permguard_core::config::SETTING_STORAGE_S3_ENCRYPTION;
+    assert_eq!(connection.s3_encryption, "managed");
+    for (encryption, development, refused) in [
+        ("kms:permguard", false, false),
+        ("none", true, false),
+        ("none", false, true),
+        ("kms:", true, true),
+        ("aes", true, true),
+    ] {
+        let (result, _) = with(&[(SETTING_STORAGE_S3_ENCRYPTION, encryption)], development);
+        let text = refusal(result);
+        assert_eq!(
+            text.contains(SETTING_STORAGE_S3_ENCRYPTION),
+            refused,
+            "{encryption} in development {development}: {text}"
+        );
+    }
+    // On files nothing of it is asked for.
+    let files = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+        ],
+        &[],
+        &[],
+    )
+    .validate();
+    assert!(!refusal(files.map(|_| ())).contains("postgresql-s3"));
 }
 
 /// WP-7.12: a transfer session stays open fifteen minutes by default, and at most an hour.

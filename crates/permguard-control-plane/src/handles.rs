@@ -174,7 +174,7 @@ pub fn ref_mutations(
 /// review).
 pub(crate) fn holds(
     context: &PlaneContext<'_>,
-) -> Result<Option<std::sync::Arc<permguard_host::holds::HoldStore>>, ()> {
+) -> Result<Option<std::sync::Arc<dyn permguard_host::holds::HoldStore>>, ()> {
     match registration(context) {
         None => Ok(None),
         Some(registration) => registration.holds().map(Some).ok_or(()),

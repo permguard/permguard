@@ -423,6 +423,10 @@ pub enum Command {
     ///
     /// The retained prefix anchors of its decision and event streams, through the Host listener.
     Evidence {
+        /// The server's configuration file, for what is done offline on the `postgresql-s3`
+        /// backend: where the database is, and how it is reached.
+        #[arg(long, global = true, value_name = "FILE")]
+        server_config: Option<PathBuf>,
         #[command(subcommand)]
         action: EvidenceAction,
     },
@@ -2268,6 +2272,20 @@ Examples:\n  permguard host audit checkpoint --class security --resource host\n 
         #[arg(long, value_name = "FILE")]
         out: PathBuf,
     },
+    /// Copy the trails a stopped server keeps on `postgresql-s3` into a new directory, offline.
+    ///
+    /// The trails as the file backend lays them out, and the `host.operations` keys that sign
+    /// their checkpoints, for the server binary's `audit verify` to check.
+    #[command(
+        after_help = "Then: `permguard-control-plane audit verify --directory <out>/trails --keys <out>/host.operations.keys.json`. The keys come from the database too: an independent verification takes them from an export kept apart. On files the volume's trails are read where they are.
+
+Examples:\n  permguard host audit copy --server-config /etc/permguard/server.yaml --out ./audit-copy\n  permguard host audit copy --server-config server.yaml --out ./audit-copy -o json"
+    )]
+    Copy {
+        /// A new directory that receives the trails and the keys.
+        #[arg(long, value_name = "DIRECTORY")]
+        out: PathBuf,
+    },
 }
 
 /// `permguard host config …` (TC-2).
@@ -2870,6 +2888,15 @@ Examples:\n  permguard migrate plan --volume /var/lib/permguard --subsystem audi
         after_help = "Examples:\n  permguard migrate status --volume /var/lib/permguard\n  permguard migrate status --volume ./volume -o json"
     )]
     Status,
+    /// Import a stopped server's volume into the `postgresql-s3` backend its configuration names.
+    ///
+    /// Every store a Control Plane or an Authority Plane keeps, as the volume kept it.
+    #[command(
+        after_help = "The configuration is the server's on the backend, its working directory the volume. The database must hold nothing: a server never started on it. An import that does not complete leaves the database refused at start; empty its schema and the bucket's prefix, then import again.
+
+Examples:\n  permguard migrate import --volume /var/lib/permguard --server-config /etc/permguard/server.yaml\n  permguard migrate import --volume ./volume --server-config server.yaml -o json"
+    )]
+    Import,
     /// Return a committed migration to its old generation, when the new one is as the commit
     /// left it.
     #[command(
@@ -2896,6 +2923,20 @@ Examples:\n  permguard evidence anchors 0198f3bb-0000-7000-8000-000000000002 019
         zone: String,
         /// The ledger, by id.
         ledger: String,
+    },
+    /// Rotate the cursor root of an evidence store on `postgresql-s3`, the servers stopped.
+    ///
+    /// The issuing root becomes the previous, still accepted, and the next ask mints another; a
+    /// second rotation drops the previous, and the offsets issued under it are refused.
+    #[command(
+        after_help = "An instance reads the roots at its start: stop every instance, rotate, start them. On files the rotation is the operator's move of `CURSOR_KEY` to `CURSOR_KEY.previous` beside the store.
+
+Examples:\n  permguard evidence rotate-cursor-root --store decisions --server-config /etc/permguard/server.yaml\n  permguard evidence rotate-cursor-root --store events --server-config server.yaml -o json"
+    )]
+    RotateCursorRoot {
+        /// The evidence store: `decisions` or `events`.
+        #[arg(long, value_parser = ["decisions", "events"])]
+        store: String,
     },
 }
 
@@ -3268,7 +3309,9 @@ pub enum HostGrantsAction {
     #[command(
         after_help = "It holds the per-Host operations on its own Host API, presented by that certificate. Written once: a second bootstrap naming the same fingerprint is the first, one naming another is refused.
 
-Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
+On the postgresql-s3 backend the stopped server's configuration names where it is, in place of a volume: --server-config <file>.
+
+Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json\n  permguard host grants bootstrap --server-config /etc/permguard/control-plane.yml --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
     )]
     Bootstrap {
         /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.

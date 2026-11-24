@@ -67,21 +67,22 @@ The **State** cell is one of:
 
 ## Evidence
 
-| Command             | Grant           | State   | Why |
-| ------------------- | --------------- | ------- | --- |
-| `decisions list`    | `evidence.read` | present |     |
-| `decisions tail`    | `evidence.read` | present |     |
-| `decisions get`     | `evidence.read` | present |     |
-| `decisions signers` | `evidence.read` | present |     |
-| `decisions export`  | `evidence.read` | present |     |
-| `decisions verify`  | offline         | present |     |
-| `events list`       | `evidence.read` | present |     |
-| `events tail`       | `evidence.read` | present |     |
-| `events get`        | `evidence.read` | present |     |
-| `events signers`    | `evidence.read` | present |     |
-| `events export`     | `evidence.read` | present |     |
-| `events verify`     | offline         | present |     |
-| `evidence anchors`  | `streams.read`  | present |     |
+| Command                       | Grant           | State   | Why |
+| ----------------------------- | --------------- | ------- | --- |
+| `decisions list`              | `evidence.read` | present |     |
+| `decisions tail`              | `evidence.read` | present |     |
+| `decisions get`               | `evidence.read` | present |     |
+| `decisions signers`           | `evidence.read` | present |     |
+| `decisions export`            | `evidence.read` | present |     |
+| `decisions verify`            | offline         | present |     |
+| `events list`                 | `evidence.read` | present |     |
+| `events tail`                 | `evidence.read` | present |     |
+| `events get`                  | `evidence.read` | present |     |
+| `events signers`              | `evidence.read` | present |     |
+| `events export`               | `evidence.read` | present |     |
+| `events verify`               | offline         | present |     |
+| `evidence anchors`            | `streams.read`  | present |     |
+| `evidence rotate-cursor-root` | offline         | present |     |
 
 ## Host identity
 
@@ -176,6 +177,7 @@ A secret key is written once to a new file only its owner reads, and never print
 | `host audit checkpoints` | `audit.read`       | present |     |
 | `host audit checkpoint`  | `audit.checkpoint` | present |     |
 | `host audit export`      | `audit.read`       | present |     |
+| `host audit copy`        | offline            | present |     |
 | `audit verify`           | offline            | server  |     |
 
 ## Streams
@@ -233,6 +235,7 @@ A secret key is written once to a new file only its owner reads, and never print
 | `migrate run`          | recovery operator | present |     |
 | `migrate status`       | recovery operator | present |     |
 | `migrate rollback`     | recovery operator | present |     |
+| `migrate import`       | recovery operator | present |     |
 | `ledgers export`       | `catalog.read`    | present |     |
 | `ledgers import`       | `policy.push`     | present |     |
 | `zones export`         | `catalog.read`    | present |     |

@@ -17,7 +17,15 @@
 # the all-in-one with keys replaced every two minutes (`docker-compose.lab.rotation.yml`) and proves
 # its decisions keep reaching its Control Plane across the rotations (BUG-0195). Every all-in-one
 # run also proves the Authority Plane: a service account, its key and scopes over HTTPS and gRPC, a
-# token revoked and the token keys rotated.
+# token revoked and the token keys rotated. BACKEND=postgresql-s3 runs the split-plane profile with
+# its Control Plane on PostgreSQL and S3 (`docker-compose.lab.postgresql-s3.yml`, iteration 03,
+# WP-28.1): the Data Plane on files, as always. Two Control Plane instances serve it behind one
+# address (`docker-compose.lab.replicas.yml`, WP-28.6), and the profile is proved again with each
+# of them stopped in turn; DRILLS=1 then runs the resilience drills on them (WP-29.1): the database
+# stopped, answering nothing and restarted, S3 stopped, an instance killed while it rotates keys
+# and revokes tokens, rotations and revocations at once on both, and a load. BACKEND=import runs it with its Control Plane on
+# files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
+# S3 with `permguard migrate import`, serves it from there and proves the profile again.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -53,10 +61,29 @@ fi
 run_profile() {
     local profile="$1" project="permguard-lab-$1"
     local files=(-f docker-compose.lab.yml)
+    case "${BACKEND:-files}" in
+    files) ;;
+    postgresql-s3 | import)
+        [ "${profile}" = split-plane ] || {
+            echo "compose-lab: BACKEND=${BACKEND} runs the split-plane profile alone" >&2
+            exit 64
+        }
+        files+=(-f docker-compose.lab.postgresql-s3.yml)
+        [ "${BACKEND}" != postgresql-s3 ] || files+=(-f docker-compose.lab.replicas.yml)
+        ;;
+    *)
+        echo "compose-lab: no backend ${BACKEND}; one of files, postgresql-s3, import" >&2
+        exit 64
+        ;;
+    esac
+    # What serves after an import: the backend, without the phase on files before it.
+    local served=("${files[@]}")
+    [ "${BACKEND:-files}" != import ] || files+=(-f docker-compose.lab.import.yml)
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         files+=(-f docker-compose.lab.rotation.yml)
     fi
     dc() { COMPOSE_PROFILES="${profile}" docker compose "${files[@]}" -p "${project}" "$@"; }
+    dc_served() { COMPOSE_PROFILES="${profile}" docker compose "${served[@]}" -p "${project}" "$@"; }
     failed() {
         dc ps -a >"${artifacts}/${profile}.ps" 2>&1 || true
         dc logs --no-color --timestamps >"${artifacts}/${profile}.log" 2>&1 || true
@@ -84,6 +111,51 @@ run_profile() {
         [ "${code}" = 0 ]
     }
 
+    # The resilience drills (WP-29.1): the servers stopped, paused and killed from here, what each
+    # drill proves asserted from the lab's tools, its log under ARTIFACTS.
+    run_drills() {
+        drill() { dc run --rm lab assert "${profile}" "drill-$1" || failed "the drill $1 failed"; }
+        postgres() { dc ps -q lab-postgres; }
+        step "${profile}: resilience drills"
+        drill before
+        dc stop lab-postgres >/dev/null 2>&1 || failed "the database did not stop"
+        drill database-down
+        dc up -d --no-deps --wait lab-postgres >/dev/null 2>&1 || failed "the database did not start"
+        drill database-back
+        # Frozen: the process paused, its connections open and silent.
+        docker pause "$(postgres)" >/dev/null || failed "the database was not paused"
+        drill database-unanswering
+        docker unpause "$(postgres)" >/dev/null || failed "the database was not unpaused"
+        drill database-back
+        # Cut: the database gone from the network the instances reach it on.
+        docker network disconnect "${project}_default" "$(postgres)" >/dev/null ||
+            failed "the database was not cut from the network"
+        drill database-unanswering
+        docker network connect --alias lab-postgres "${project}_default" "$(postgres)" >/dev/null ||
+            failed "the database was not put back on the network"
+        drill database-back
+        dc restart lab-postgres >/dev/null 2>&1 || failed "the database did not restart"
+        dc up -d --no-deps --wait lab-postgres >/dev/null 2>&1 || failed "the database did not answer again"
+        drill database-back
+        dc stop lab-s3 >/dev/null 2>&1 || failed "S3 did not stop"
+        drill s3-down
+        dc up -d --no-deps lab-s3 >/dev/null 2>&1 || failed "S3 did not start"
+        drill s3-back
+        # control-plane-2 killed while the churn rotates and revokes through it.
+        dc run --rm lab assert "${profile}" drill-churn >"${artifacts}/drill-churn.log" 2>&1 &
+        local churn=$!
+        sleep 12
+        docker kill "$(dc ps -q control-plane-2)" >/dev/null || failed "control-plane-2 was not killed"
+        wait "${churn}" || failed "the churn failed (${artifacts}/drill-churn.log)"
+        sed -n 's/^[^|]*| //p' "${artifacts}/drill-churn.log" | grep -v '^$' | tail -n 3 || true
+        dc up -d --no-deps --wait control-plane-2 >/dev/null 2>&1 || failed "control-plane-2 did not serve again"
+        drill churn-check
+        drill concurrent
+        drill load
+        step "${profile}: what it must prove, after the drills"
+        dc run --rm lab assert "${profile}" || failed "an assertion failed after the drills"
+    }
+
     step "${profile}: a fresh project, ${project}"
     dc down -v --remove-orphans >/dev/null 2>&1 || true
     dc up -d 2>/dev/null || failed "the profile did not start"
@@ -97,6 +169,44 @@ run_profile() {
 
     step "${profile}: what it must prove"
     dc run --rm lab assert "${profile}" || failed "an assertion failed"
+    if [ "${BACKEND:-files}" = postgresql-s3 ]; then
+        step "${profile}: two Control Plane instances behind one address"
+        dc run --rm lab assert "${profile}" replicas || failed "the instances are not one Control Plane"
+        local instance
+        for instance in control-plane control-plane-2; do
+            step "${profile}: ${instance} stopped, the other instance serves"
+            dc stop "${instance}" >/dev/null 2>&1 || failed "${instance} did not stop"
+            dc run --rm lab assert "${profile}" || failed "an assertion failed with ${instance} stopped"
+            dc up -d --no-deps --wait "${instance}" 2>/dev/null || failed "${instance} did not serve again"
+        done
+        if [ "${DRILLS:-0}" = 1 ]; then
+            run_drills
+        fi
+    fi
+    if [ "${BACKEND:-files}" = import ]; then
+        step "${profile}: the Control Plane's volume imported into postgresql-s3"
+        dc run --rm lab assert "${profile}" before-import || failed "the identity on files was not read"
+        dc stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
+        dc_served run --rm --no-deps control-plane import permguard-control-plane \
+            /opt/permguard/lab/control-plane.yml || failed "the import of the volume failed"
+        dc_served up -d --no-deps --wait control-plane 2>/dev/null ||
+            failed "the Control Plane did not serve from postgresql-s3"
+        # Read whole first: `grep -q` stopping the pipe early would fail it under `pipefail`.
+        local served_log
+        served_log="$(dc_served logs --no-color control-plane 2>/dev/null)" || true
+        grep -q '"storage.database_ready"' <<<"${served_log}" ||
+            failed "the Control Plane did not open the database"
+        step "${profile}: what it must prove, served from postgresql-s3"
+        dc_served run --rm lab assert "${profile}" imported || failed "the imported identity differs"
+        dc_served run --rm lab assert "${profile}" || failed "an assertion failed after the import"
+        step "${profile}: the offline commands on postgresql-s3, the Control Plane stopped"
+        dc_served stop control-plane >/dev/null 2>&1 || failed "the Control Plane did not stop"
+        dc_served run --rm --no-deps control-plane offline permguard-control-plane \
+            /opt/permguard/lab/control-plane.yml || failed "an offline command failed"
+        dc_served up -d --no-deps --wait control-plane 2>/dev/null ||
+            failed "the Control Plane did not serve again after the offline commands"
+        dc_served run --rm lab assert "${profile}" imported || failed "the identity differs after a restart"
+    fi
     if [ "${ROTATION:-0}" = 1 ] && [ "${profile}" = all-in-one ]; then
         step "${profile}: decisions across key rotations"
         dc run --rm lab assert "${profile}" rotation || failed "an assertion failed across rotations"

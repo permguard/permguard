@@ -186,6 +186,98 @@ async fn output_of(app: &App, action: &Action) -> String {
     String::from_utf8(out).expect("the output is valid UTF-8")
 }
 
+/// Iteration 03, E7 and E19: the backend is the process's, from its configuration. This build
+/// serves from files alone, so the other backend is refused before a volume is touched; and a
+/// command that acts on a volume answers `storage_backend_unsupported` where the process keeps
+/// none, instead of running on the directory it names.
+#[tokio::test]
+async fn test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands() {
+    let path = config_file(
+        "no-volume",
+        &format!(
+            "{SERVABLE}storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    database: permguard\n    user: permguard\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    access_key: AKIA\n    secret_ref: s3-secret\n"
+        ),
+    );
+    let mut sink = Vec::new();
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut sink)
+        .await
+        .expect_err("this build has one backend");
+    assert!(
+        format!("{refused:#}").contains("serves from `files` alone"),
+        "{refused:#}"
+    );
+
+    let volume = path.with_file_name("no-volume-volume");
+    let migrate = Cli::try_parse_from([
+        "demo-x",
+        "migrate",
+        "events",
+        "--volume",
+        volume.to_str().expect("a UTF-8 path"),
+        "--backup",
+        "snapshot-1",
+        "--config",
+        path.to_str().expect("a UTF-8 path"),
+    ])
+    .expect("the command parses")
+    .action()
+    .expect("the invocation resolves to an action");
+    let refused = app()
+        .dispatch_to(&migrate, &mut sink)
+        .await
+        .expect_err("a migration acts on a volume");
+    let said = format!("{refused:#}");
+    assert!(
+        said.starts_with(permguard_core::codes::storage::BACKEND_UNSUPPORTED)
+            && said.contains("a migration"),
+        "{said}"
+    );
+    assert!(!volume.exists(), "nothing was claimed or created");
+}
+
+/// Iteration 03, X111: with the backend's adapter registered, a process that serves the Data
+/// Plane is refused on `postgresql-s3`, before anything is opened: the Data Plane keeps its state
+/// on files. One that serves no Data Plane goes on to open the backend.
+#[tokio::test]
+async fn test_a_process_that_serves_the_data_plane_is_refused_on_the_shared_backend() {
+    use permguard_host::composition::Declaration;
+
+    let path = config_file(
+        "shared-data-plane",
+        &format!(
+            "{SERVABLE}storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    database: permguard\n    user: permguard\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    access_key: AKIA\n    secret_ref: s3-secret\noperations:\n  keys:\n    custody: file\n    kek_ref: kek\n"
+        ),
+    );
+    let adapter = |_: &permguard_core::Config,
+                   _: Option<&dyn permguard_core::secrets::SecretStore>|
+     -> anyhow::Result<permguard_host::backend::Shared> {
+        anyhow::bail!("the adapter was asked to open the backend")
+    };
+    let refused = app()
+        .with_shared_backend(adapter)
+        .with_plane_declaration(|_| Some(("data", true, Declaration::new("data"))))
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the Data Plane keeps its state on files");
+    let said = format!("{refused:#}");
+    assert!(
+        said.contains("run the Data Plane in a process of its own"),
+        "{said}"
+    );
+
+    let opened = app()
+        .with_shared_backend(adapter)
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the adapter refuses");
+    let said = format!("{opened:#}");
+    assert!(
+        said.contains("the adapter was asked to open the backend"),
+        "{said}"
+    );
+}
+
 #[tokio::test]
 async fn test_volume_claim_moves_the_generation_forward_and_never_back() {
     let volume = env::temp_dir().join(format!(
@@ -689,7 +781,7 @@ fn test_a_configuration_that_leaves_pseudonymisation_off_builds_no_policy() {
     assert!(!config.audit_pseudonym_enabled());
     assert!(
         app()
-            .pseudonymizer_for(&config, None, &pseudonym_volume("off"), HOST_ID)
+            .pseudonymizer_for(&config, None, &witnesses(&pseudonym_volume("off")), HOST_ID)
             .expect("no policy is needed")
             .is_none()
     );
@@ -708,7 +800,7 @@ fn test_the_policy_is_the_host_local_key_of_the_configured_root_and_version() {
 
     let store = secrets();
     let policy = app
-        .pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .pseudonymizer_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("the policy builds")
         .expect("the configuration asked for one");
 
@@ -742,13 +834,14 @@ fn test_another_key_under_a_witnessed_version_is_refused() {
         .expect("the config builds");
     let volume = pseudonym_volume("changed");
     let store = secrets();
-    app.pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+    app.pseudonymizer_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("first seen");
     let other: Box<dyn SecretStore> = Box::new(WideSecret32);
-    let error = match app.pseudonymizer_for(&config, Some(other.as_ref()), &volume, HOST_ID) {
-        Err(error) => error,
-        Ok(_) => panic!("other material under v7"),
-    };
+    let error =
+        match app.pseudonymizer_for(&config, Some(other.as_ref()), &witnesses(&volume), HOST_ID) {
+            Err(error) => error,
+            Ok(_) => panic!("other material under v7"),
+        };
     assert!(format!("{error:#}").contains("new version"), "{error:#}");
 }
 
@@ -778,7 +871,12 @@ fn test_asking_for_pseudonymisation_with_nowhere_to_resolve_the_key_refuses() {
 
     // A build that can pseudonymise but has nowhere to get the key refuses, rather than deriving
     // pseudonyms from something it invented.
-    let error = match app.pseudonymizer_for(&config, None, &pseudonym_volume("no-store"), HOST_ID) {
+    let error = match app.pseudonymizer_for(
+        &config,
+        None,
+        &witnesses(&pseudonym_volume("no-store")),
+        HOST_ID,
+    ) {
         Err(error) => error,
         Ok(_) => panic!("there is no secret store"),
     };
@@ -798,7 +896,7 @@ fn test_a_secret_shorter_than_256_bits_is_refused() {
     let error = match app.pseudonymizer_for(
         &config,
         Some(store.as_ref()),
-        &pseudonym_volume("short"),
+        &witnesses(&pseudonym_volume("short")),
         HOST_ID,
     ) {
         Err(error) => error,
@@ -825,7 +923,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
     let volume = pseudonym_volume("coordinating");
     let store = secrets();
     let coordinator = app
-        .coordinator_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .coordinator_for(&config, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
         .expect("resolved")
         .expect("the configuration names one");
     assert_eq!(coordinator.authority(), HOST_ID);
@@ -843,7 +941,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
         .coordinator_for(
             &config,
             Some(short.as_ref()),
-            &pseudonym_volume("short-root"),
+            &witnesses(&pseudonym_volume("short-root")),
             HOST_ID,
         )
         .err()
@@ -855,7 +953,7 @@ fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
         .config_for(&serve_action(&config_file("not-coordinating", SERVABLE)))
         .expect("the config builds");
     assert!(
-        app.coordinator_for(&plain, Some(store.as_ref()), &volume, HOST_ID)
+        app.coordinator_for(&plain, Some(store.as_ref()), &witnesses(&volume), HOST_ID)
             .expect("nothing to resolve")
             .is_none()
     );
@@ -1065,7 +1163,9 @@ async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() 
         )
         .expect("claimed");
         TimeGuard::open(
-            &volume,
+            Arc::new(
+                permguard_host::time::files::FileClockMark::open(&volume).expect("the mark opens"),
+            ),
             Arc::new(permguard_core::time::ManualClock::at(
                 SystemClock.now() + 3_600,
             )),
@@ -2099,4 +2199,11 @@ fn recovery_secrets() -> String {
 /// backups' recovery key is resolved at Bootstrap, and these tests are about what comes after.
 fn production_app() -> App {
     app().with_secrets(Box::new(StubSecrets))
+}
+
+/// The witnesses of `volume`, as a start opens them before it resolves a root.
+fn witnesses(
+    volume: &permguard_host::storage::volume::Volume,
+) -> permguard_host::secrets::Witnesses {
+    permguard_host::secrets::Witnesses::open(volume).expect("the witnesses open")
 }

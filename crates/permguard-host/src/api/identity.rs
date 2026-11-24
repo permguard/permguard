@@ -86,14 +86,16 @@ impl HostApi {
     pub fn identity(&self, actor: &Actor) -> Result<IdentityView, Refusal> {
         let _admitted = self.admit(actor, operations::IDENTITY_READ)?;
         let identity = self.host_identity()?;
+        // One reading, as a peer is presented the identity (WP-28.5).
+        let presented = identity.presented().map_err(refusal_of)?;
         Ok(IdentityView {
             host_id: identity.host_id_text(),
-            epoch: identity.epoch(),
-            fingerprint: identity.fingerprint(),
+            epoch: presented.epoch,
+            fingerprint: presented.fingerprint,
             first_fingerprint: identity.first_fingerprint().to_owned(),
-            document: URL_SAFE_NO_PAD.encode(identity.document()),
-            successions: identity
-                .successions()
+            document: URL_SAFE_NO_PAD.encode(&presented.document),
+            successions: presented
+                .successions
                 .iter()
                 .map(|record| URL_SAFE_NO_PAD.encode(record))
                 .collect(),
@@ -187,7 +189,7 @@ impl HostApi {
                 let rotated = identity
                     .rotate(applying, Some(expected), now)
                     .map_err(|error| match error {
-                        IdentityError::Storage(_) | IdentityError::Indeterminate(_) => {
+                        IdentityError::Unavailable(_) | IdentityError::Indeterminate(_) => {
                             Failure::Indeterminate(refusal_of(error))
                         }
                         other => Failure::Refused(refusal_of(other)),

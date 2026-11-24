@@ -110,6 +110,7 @@ fn json(output: &Output) -> serde_json::Value {
 
 #[test]
 fn the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret() {
+    use permguard_authority_plane::accounts::AccountStore as _;
     use permguard_authority_plane::{accounts, admin};
 
     let volume = Volume::provisioned("admin-key");
@@ -129,10 +130,12 @@ fn the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret()
     std::fs::create_dir_all(&plane_dir).expect("the plane's directory");
     let first = {
         let dir = permguard_host::storage::Dir::open(&plane_dir).expect("opens");
-        let (held, _) =
-            accounts::Accounts::open(&dir, permguard_host::storage::journal::Options::default())
-                .expect("the accounts open");
-        admin::ensure(&held, &plane_dir, permguard_core::time::unix_now())
+        let (held, _) = accounts::files::FileAccounts::open(
+            &dir,
+            permguard_host::storage::journal::Options::default(),
+        )
+        .expect("the accounts open");
+        admin::ensure(&*held, &plane_dir, permguard_core::time::unix_now())
             .expect("made")
             .expect("the first start makes it")
     };
@@ -171,11 +174,14 @@ fn the_offline_admin_key_needs_the_authority_plane_and_never_prints_its_secret()
     );
     {
         let dir = permguard_host::storage::Dir::open(&plane_dir).expect("opens");
-        let (held, _) =
-            accounts::Accounts::open(&dir, permguard_host::storage::journal::Options::default())
-                .expect("the accounts open");
+        let (held, _) = accounts::files::FileAccounts::open(
+            &dir,
+            permguard_host::storage::journal::Options::default(),
+        )
+        .expect("the accounts open");
         let keys: Vec<String> = held
             .get(accounts::ADMIN)
+            .expect("the accounts read")
             .expect("admin")
             .keys
             .into_iter()

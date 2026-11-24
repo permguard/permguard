@@ -96,7 +96,11 @@ impl App {
                 // own certificate, verifying them against its client CA; without one, a join is
                 // refused.
                 .with_peer_connector(|config, session| {
-                    permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+                    permguard_client::peer::connector(
+                        config.admin_tls().as_ref(),
+                        session,
+                        config.host_coordinator_endpoints(),
+                    )
                 })
                 // Every listener and what it demands of its clients (WP-2.11).
                 .with_listeners(crate::plane::listeners::listeners),
@@ -291,6 +295,21 @@ impl App {
             + 'static,
     {
         self.composition = self.composition.with_data_signing_keys_factory(factory);
+
+        self
+    }
+
+    /// Supplies what opens the stores of the `postgresql-s3` backend (iteration 03, WP-28.1): a
+    /// build that serves it registers its adapter; one that registers none serves from files
+    /// alone.
+    pub fn with_shared_backend<F>(mut self, factory: F) -> Self
+    where
+        F: Fn(&Config, Option<&dyn SecretStore>) -> Result<permguard_host::backend::Shared>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.composition = self.composition.with_shared_backend(factory);
 
         self
     }

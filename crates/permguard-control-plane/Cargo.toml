@@ -27,6 +27,8 @@ permguard-decisions = { workspace = true, features = ["stream"] }
 # The event record, chain and signed batch contract this store keeps.
 permguard-events = { workspace = true, features = ["stream"] }
 permguard-host.workspace = true
+# The stores of the second backend that live with the Control Plane: its cursor roots.
+permguard-postgres.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.
 ring.workspace = true
@@ -42,6 +44,20 @@ tracing.workspace = true
 [features]
 # The storage library's named crash points, for the crash test of a push (WP-7.12).
 crash-points = ["permguard-host/crash-points"]
+# The conformance suites of the store contracts, for the tests of every backend. Tests only.
+test-support = []
+
+[[test]]
+name = "archive_crash"
+required-features = ["crash-points"]
+
+[[test]]
+name = "catalog_crash"
+required-features = ["crash-points"]
+
+[[test]]
+name = "cursor_crash"
+required-features = ["crash-points"]
 
 [[test]]
 name = "push_crash"
@@ -49,6 +65,9 @@ required-features = ["crash-points"]
 
 [dev-dependencies]
 permguard-host = { workspace = true, features = ["test-support"] }
+permguard-postgres = { workspace = true, features = ["test-support"] }
+# The stores of the second backend, for the push and pull scenarios run on it.
+permguard-s3 = { workspace = true, features = ["test-support", "control-plane"] }
 # Decoding an offset token, to prove that editing one is refused.
 base64.workspace = true
 # The producer half, so the shipping contract is exercised end to end rather

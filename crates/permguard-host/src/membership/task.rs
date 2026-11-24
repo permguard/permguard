@@ -82,20 +82,57 @@ pub struct Live {
     pub expires_at: u64,
 }
 
-/// The open task sessions, by membership (owner decision: in memory, the connection alive).
-#[derive(Debug, Default)]
+/// The open task sessions, by membership (owner decision: in memory, the connection alive). On a
+/// backend other instances share they are its store's, so the clone alarm sees a session another
+/// instance holds (iteration 03, WP-28.4).
+#[derive(Default)]
 pub struct LiveSessions {
     sessions: Mutex<BTreeMap<[u8; 16], BTreeMap<u64, Live>>>,
     next: Mutex<u64>,
+    shared: Option<Arc<dyn SessionStore>>,
 }
+
+impl std::fmt::Debug for LiveSessions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveSessions").finish_non_exhaustive()
+    }
+}
+
+/// Where the open task sessions of every instance are kept, on a backend they share (WP-28.4).
+pub trait SessionStore: Send + Sync {
+    /// Opens `live` for `membership_id` as [`LiveSessions`] opens one, whichever instance holds
+    /// the others: answers the session's key.
+    fn open(
+        &self,
+        membership_id: &[u8; 16],
+        live: &Live,
+        now: u64,
+        max_concurrency: u64,
+    ) -> Result<String, Unopened>;
+
+    /// Closes the session `key`.
+    fn close(&self, membership_id: &[u8; 16], key: &str);
+
+    /// The epoch the session `key` runs under now.
+    fn set_epoch(&self, membership_id: &[u8; 16], key: &str, epoch: u64);
+
+    /// The open sessions of `membership_id`, on every instance, their leases running at `now`.
+    fn of(&self, membership_id: &[u8; 16], now: u64) -> Vec<Live>;
+}
+
+/// The store a composition hands the Host for its task sessions, as a backend's handle.
+#[derive(Clone)]
+pub struct SharedSessions(pub Arc<dyn SessionStore>);
 
 /// Why a session was not opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Unopened {
+pub enum Unopened {
     /// Another incarnation of the member holds this open session.
     Clone(Live),
     /// The task holds its signed `max_concurrency` of running sessions.
     Busy,
+    /// The store of the sessions every instance holds did not answer: nothing is opened.
+    Unavailable(String),
 }
 
 /// Holds one session open; dropped with its connection.
@@ -103,19 +140,35 @@ pub(crate) enum Unopened {
 pub struct Opened {
     sessions: Arc<LiveSessions>,
     membership_id: [u8; 16],
-    key: u64,
+    key: OpenedKey,
+}
+
+/// Where an open session is held: this instance's memory, or the store every instance shares.
+#[derive(Debug)]
+enum OpenedKey {
+    Local(u64),
+    Shared(String),
 }
 
 impl Opened {
     /// The epoch the session's lease now runs under: a re-pin leases it again (WP-4.5).
     fn set_epoch(&self, epoch: u64) {
+        let key = match &self.key {
+            OpenedKey::Local(key) => *key,
+            OpenedKey::Shared(key) => {
+                if let Some(shared) = &self.sessions.shared {
+                    shared.set_epoch(&self.membership_id, key, epoch);
+                }
+                return;
+            }
+        };
         if let Some(live) = self
             .sessions
             .sessions
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .get_mut(&self.membership_id)
-            .and_then(|open| open.get_mut(&self.key))
+            .and_then(|open| open.get_mut(&key))
         {
             live.epoch = epoch;
         }
@@ -124,13 +177,22 @@ impl Opened {
 
 impl Drop for Opened {
     fn drop(&mut self) {
+        let key = match &self.key {
+            OpenedKey::Local(key) => *key,
+            OpenedKey::Shared(key) => {
+                if let Some(shared) = &self.sessions.shared {
+                    shared.close(&self.membership_id, key);
+                }
+                return;
+            }
+        };
         let mut sessions = self
             .sessions
             .sessions
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         if let Some(open) = sessions.get_mut(&self.membership_id) {
-            open.remove(&self.key);
+            open.remove(&key);
             if open.is_empty() {
                 sessions.remove(&self.membership_id);
             }
@@ -139,6 +201,14 @@ impl Drop for Opened {
 }
 
 impl LiveSessions {
+    /// The sessions `store` keeps for every instance that shares it (WP-28.4).
+    pub fn shared(store: Arc<dyn SessionStore>) -> Self {
+        Self {
+            shared: Some(store),
+            ..Self::default()
+        }
+    }
+
     /// Opens `live` for `membership_id`, unless another incarnation of the member holds an open
     /// session whose lease runs at `now` (that one is answered), or its task already holds
     /// `max_concurrency` running sessions (WP-4.4).
@@ -149,6 +219,14 @@ impl LiveSessions {
         now: u64,
         max_concurrency: u64,
     ) -> Result<Opened, Unopened> {
+        if let Some(shared) = &self.shared {
+            let key = shared.open(&membership_id, &live, now, max_concurrency)?;
+            return Ok(Opened {
+                sessions: Arc::clone(self),
+                membership_id,
+                key: OpenedKey::Shared(key),
+            });
+        }
         let mut sessions = self.sessions.lock().unwrap_or_else(PoisonError::into_inner);
         let open = sessions.entry(membership_id).or_default();
         if let Some(other) = open
@@ -173,13 +251,21 @@ impl LiveSessions {
         Ok(Opened {
             sessions: Arc::clone(self),
             membership_id,
-            key,
+            key: OpenedKey::Local(key),
         })
     }
 
     /// An open session of `membership_id` from another incarnation than `boot_id`, its lease
     /// running at `now`.
     fn conflict(&self, membership_id: &[u8; 16], boot_id: &[u8; 16], now: u64) -> Option<Live> {
+        // On a shared store a session that does not read is no conflict here: the open repeats
+        // the check where it inserts, and refuses when the store does not answer.
+        if let Some(shared) = &self.shared {
+            return shared
+                .of(membership_id, now)
+                .into_iter()
+                .find(|other| other.member_boot_id != *boot_id && now < other.expires_at);
+        }
         self.sessions
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -191,6 +277,9 @@ impl LiveSessions {
 
     /// The open sessions of `membership_id`.
     pub fn of(&self, membership_id: &[u8; 16]) -> Vec<Live> {
+        if let Some(shared) = &self.shared {
+            return shared.of(membership_id, permguard_core::time::unix_now());
+        }
         self.sessions
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -875,6 +964,12 @@ impl super::service::Coordinating {
             Ok(opened) => opened,
             Err(Unopened::Clone(other)) => {
                 return Err(self.clone_alarm(peer, &id, &request, &other, now));
+            }
+            Err(Unopened::Unavailable(detail)) => {
+                return Err(refusal(
+                    codes::common::UNAVAILABLE,
+                    format!("the task sessions could not be read: {detail}"),
+                ));
             }
             Err(Unopened::Busy) => {
                 return Err(refusal(

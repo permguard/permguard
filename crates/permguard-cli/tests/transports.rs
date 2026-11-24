@@ -1508,7 +1508,7 @@ impl permguard_core::authz::Authenticator for Bearers {
 /// A Host API over its own volume, served on a TLS listener with [`Bearers`].
 fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
     use permguard_core::assurance::AssuranceProfile;
-    use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+    use permguard_host::api::{Assurance, Composition, Effective, HostApi};
     use permguard_host::authz::Authorization;
     use permguard_host::storage::volume::Volume;
 
@@ -1532,7 +1532,12 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
         )
         .expect("provisioned"),
     );
-    let (replay, _) = Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay");
+    let (replay, _) = permguard_host::api::replay::files::FileReplay::open(
+        &volume,
+        permguard_core::time::unix_now(),
+    )
+    .expect("the replay");
+    let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
     let api = Arc::new(HostApi::new(Composition {
         authorization: Arc::new(Authorization::closed()),
         replay,

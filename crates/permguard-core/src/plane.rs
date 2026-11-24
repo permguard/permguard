@@ -70,6 +70,12 @@ impl<'a> PlaneContext<'a> {
         self.server.plane_handles::<T>(self.plane)
     }
 
+    /// What the composition handed every surface, as the type it stored it as: on a shared
+    /// backend, what a Plane composes its own stores over (iteration 03, WP-28.1).
+    pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.server.extension::<T>()
+    }
+
     /// The process's health as this Plane reads and reports it.
     pub fn health(&self) -> PlaneHealth {
         PlaneHealth {

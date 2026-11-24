@@ -1,50 +1,39 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The service accounts (`2-security/8` Service accounts): their scopes and access keys, in one
-//! journal on the volume.
+//! The service accounts (`2-security/8` Service accounts): their scopes and access keys, and the
+//! contract their store keeps (`1-architecture/8` Store contracts).
 //!
-//! ```text
-//! planes/authority/accounts/journal/     one frame per change: the account as it stands after it
-//! ```
+//! | Here               | What                                                                       |
+//! | ------------------ | -------------------------------------------------------------------------- |
+//! | [`Account`]        | one service account as it stands, its keys as Argon2id hashes only         |
+//! | [`validate`]       | what no store ever writes: a name, a description, scopes, more live keys   |
+//! | [`AccountStore`]   | the contract: every way the Authority Plane reads and changes its accounts |
+//! | [`files`]          | the file backend: one journal on the volume                                |
+//! | [`postgres`]       | the PostgreSQL backend: a row an account, its keys and scopes beside it    |
+//! | [`suite`]          | the conformance suite every backend of the contract passes                 |
 //!
-//! A frame is a closed CBOR map with integer labels (`contracts/cbor/authority.json`):
-//!
-//! | Label | Member         | Type                         |
-//! | ----- | -------------- | ---------------------------- |
-//! | 1     | `name`         | text                         |
-//! | 2     | `revision`     | uint                         |
-//! | 3     | `at`           | uint, seconds                |
-//! | 4     | `by`           | text                         |
-//! | 5     | `operation_id` | bytes, 16, optional          |
-//! | 6     | `status`       | `active`, `suspended`, `deleted` |
-//! | 7     | `description`  | text, optional               |
-//! | 8     | `scopes`       | array of `{1 operations, 2 selector}` |
-//! | 9     | `keys`         | array of `{1 access_key, 2 secret_hash, 3 created_at, 4? expires_at}` |
-//! | 10    | `created_at`   | uint, seconds, optional      |
-//!
-//! The journal is the truth and is replayed whole at open: the last frame of a name is the
-//! account. A secret key is kept as its Argon2id hash and nothing else.
-
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+//! | Rule of the contract                         | Where                                              |
+//! | -------------------------------------------- | -------------------------------------------------- |
+//! | an account is valid, or it is not written    | [`AccountStore::create`], [`AccountStore::update`] |
+//! | an access key names one key of one account   | [`AccountStore::create`], [`AccountStore::update`] |
+//! | at most [`MAX_ACCOUNTS`] accounts            | [`AccountStore::create`]                           |
+//! | a change reads the account it replaces       | [`AccountStore::update`], [`AccountStore::delete`] |
+//! | `admin` is never deleted                     | [`AccountStore::delete`]                           |
+//! | an operation changes the accounts once       | every change                                       |
+//! | the revision rises by one with every change  | [`AccountStore::revision`]                         |
 
 use permguard_core::authz::{
     MAX_TOKEN_SCOPES, Resource, Selector, TokenScope, operation_fits, operations,
 };
 use permguard_host::operations::journal::OperationId;
 use permguard_host::operations::mutation::{Applying, Domain, Observed};
-use permguard_host::storage::StorageError;
-use permguard_host::storage::dir::Dir;
-use permguard_host::storage::journal::{Journal, Options, Recovery};
-use permguard_objects::cbor::Value;
 
-use crate::cbor::{self, RecordError};
+pub mod files;
+pub mod postgres;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 
-/// The directory below `planes/authority/`.
-pub const DIRECTORY: &str = "accounts";
-const JOURNAL: &str = "journal";
-const FRAME_ACCOUNT: u16 = 1;
 /// The domain the accounts' mutations run in.
 pub const DOMAIN: &str = "authority.accounts";
 /// The administrator every Authority Plane makes at its first start.
@@ -234,7 +223,7 @@ pub fn check_scopes(scopes: &[TokenScope]) -> Result<(), String> {
     Ok(())
 }
 
-/// What the store refuses.
+/// What a store refuses, and what it could not do.
 #[derive(Debug)]
 pub enum AccountsError {
     /// A request the store would never write.
@@ -243,413 +232,143 @@ pub enum AccountsError {
     NotFound(String),
     /// What the change would make collides with what is there.
     Conflict(String),
-    Storage(StorageError),
-    Record(RecordError),
+    /// The store did not answer, or what it holds does not read: nothing is known of the change.
+    Unavailable(String),
 }
 
 impl std::fmt::Display for AccountsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Invalid(detail) | Self::NotFound(detail) | Self::Conflict(detail) => {
-                f.write_str(detail)
-            }
-            Self::Storage(error) => write!(f, "{error}"),
-            Self::Record(error) => write!(f, "{error}"),
+            Self::Invalid(detail)
+            | Self::NotFound(detail)
+            | Self::Conflict(detail)
+            | Self::Unavailable(detail) => f.write_str(detail),
         }
     }
 }
 
 impl std::error::Error for AccountsError {}
 
-impl From<StorageError> for AccountsError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
-
-impl From<RecordError> for AccountsError {
-    fn from(error: RecordError) -> Self {
-        Self::Record(error)
-    }
-}
-
-/// One journaled frame: the account after a change, or its deletion.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountRecord {
-    pub name: String,
-    pub revision: u64,
-    pub at: u64,
-    pub by: String,
-    pub operation_id: Option<OperationId>,
-    /// `None` for a deletion.
-    pub account: Option<Account>,
-}
-
-fn scope_value(scope: &TokenScope) -> Value {
-    cbor::map(vec![
-        (1, Some(cbor::texts(scope.operations.iter()))),
-        (2, Some(Value::Text(scope.selector.to_string()))),
-    ])
-}
-
-fn scope_of(value: Value) -> Result<TokenScope, RecordError> {
-    let mut read = cbor::Labelled::new(value, 2)?;
-    let operations = read
-        .array(1, cbor::text_of)?
-        .into_iter()
-        .collect::<std::collections::BTreeSet<_>>();
-    let selector = Selector::parse(&read.text(2)?)
-        .map_err(|error| RecordError::Malformed(format!("a scope's selector: {error}")))?;
-    read.finish()?;
-    Ok(TokenScope {
-        operations,
-        selector,
-    })
-}
-
-fn key_value(key: &AccessKey) -> Result<Value, RecordError> {
-    Ok(cbor::map(vec![
-        (1, Some(Value::Text(key.access_key.clone()))),
-        (2, Some(Value::Text(key.secret_hash.clone()))),
-        (3, Some(cbor::uint(key.created_at)?)),
-        (4, key.expires_at.map(cbor::uint).transpose()?),
-    ]))
-}
-
-fn key_of(value: Value) -> Result<AccessKey, RecordError> {
-    let mut read = cbor::Labelled::new(value, 4)?;
-    let key = AccessKey {
-        access_key: read.text(1)?,
-        secret_hash: read.text(2)?,
-        created_at: read.uint(3)?,
-        expires_at: read.optional_uint(4)?,
-    };
-    read.finish()?;
-    Ok(key)
-}
-
-impl AccountRecord {
-    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
-        let account = self.account.as_ref();
-        let status = account.map_or("deleted", |account| account.status.as_str());
-        let value = cbor::map(vec![
-            (1, Some(Value::Text(self.name.clone()))),
-            (2, Some(cbor::uint(self.revision)?)),
-            (3, Some(cbor::uint(self.at)?)),
-            (4, Some(Value::Text(self.by.clone()))),
-            (
-                5,
-                self.operation_id
-                    .map(|id| Value::Bytes(id.as_bytes().to_vec())),
-            ),
-            (6, Some(Value::Text(status.to_owned()))),
-            (
-                7,
-                account.map(|account| Value::Text(account.description.clone())),
-            ),
-            (
-                8,
-                account
-                    .map(|account| Value::Array(account.scopes.iter().map(scope_value).collect())),
-            ),
-            (
-                9,
-                account
-                    .map(|account| {
-                        account
-                            .keys
-                            .iter()
-                            .map(key_value)
-                            .collect::<Result<Vec<_>, _>>()
-                            .map(Value::Array)
-                    })
-                    .transpose()?,
-            ),
-            (
-                10,
-                account
-                    .map(|account| cbor::uint(account.created_at))
-                    .transpose()?,
-            ),
-        ]);
-        cbor::encode(&value)
-    }
-
-    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
-        let mut read = cbor::decode(bytes, 10)?;
-        let name = read.text(1)?;
-        let revision = read.uint(2)?;
-        let at = read.uint(3)?;
-        let by = read.text(4)?;
-        let operation_id = read.optional_operation_id(5)?;
-        let status = read.text(6)?;
-        let description = read.optional_text(7)?;
-        let scopes = read.array(8, scope_of)?;
-        let keys = read.array(9, key_of)?;
-        let created_at = read.optional_uint(10)?;
-        read.finish()?;
-        let account = match status.as_str() {
-            "deleted" => None,
-            "active" | "suspended" => Some(Account {
-                name: name.clone(),
-                description: description.unwrap_or_default(),
-                status: if status == "active" {
-                    Status::Active
-                } else {
-                    Status::Suspended
-                },
-                scopes,
-                keys,
-                created_at: created_at.unwrap_or(at),
-                updated_at: at,
-                revision,
-            }),
-            other => {
-                return Err(RecordError::Malformed(format!(
-                    "`{other}` is not an account status"
-                )));
-            }
-        };
-        Ok(Self {
-            name,
-            revision,
-            at,
-            by,
-            operation_id,
-            account,
-        })
-    }
-}
-
-#[derive(Default)]
-struct State {
-    accounts: BTreeMap<String, Account>,
-    revision: u64,
-    operations: BTreeMap<OperationId, (u64, String)>,
-}
-
-fn apply(state: &mut State, frame: AccountRecord) -> Result<(), AccountsError> {
-    if frame.revision != state.revision + 1 {
-        return Err(AccountsError::Record(RecordError::Malformed(format!(
-            "the accounts journal at revision {} follows revision {}",
-            frame.revision, state.revision
-        ))));
-    }
-    state.revision = frame.revision;
-    if let Some(id) = frame.operation_id {
-        state
-            .operations
-            .insert(id, (frame.revision, frame.name.clone()));
-    }
-    match frame.account {
-        Some(account) => {
-            state.accounts.insert(frame.name, account);
-        }
-        None => {
-            state.accounts.remove(&frame.name);
-        }
+/// Refuses what no store writes, in the order the refusals are answered: the name, the
+/// description, the scopes, then more than [`MAX_LIVE_KEYS`] keys live at `now`. Every backend
+/// calls it on what it is about to write.
+pub fn validate(account: &Account, now: u64) -> Result<(), AccountsError> {
+    check_name(&account.name).map_err(AccountsError::Invalid)?;
+    check_description(&account.description).map_err(AccountsError::Invalid)?;
+    check_scopes(&account.scopes).map_err(AccountsError::Invalid)?;
+    if account.live_keys(now).count() > MAX_LIVE_KEYS {
+        return Err(AccountsError::Conflict(format!(
+            "an account holds at most {MAX_LIVE_KEYS} live access keys: delete one first"
+        )));
     }
     Ok(())
 }
 
-/// The accounts of one Authority Plane.
-pub struct Accounts {
-    journal: Mutex<Journal>,
-    state: RwLock<State>,
+/// Everything an [`AccountStore`] holds, as an import carries it to another backend at rest
+/// (iteration 03, WP-27.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Exported {
+    /// The number of changes applied.
+    pub revision: u64,
+    /// Every account, with who made its last change.
+    pub accounts: Vec<(Account, String)>,
+    /// The revision each operation produced and the account it changed.
+    pub operations: Vec<(OperationId, u64, String)>,
 }
 
-impl std::fmt::Debug for Accounts {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Accounts")
-            .field("revision", &self.revision())
-            .finish_non_exhaustive()
-    }
-}
-
-impl Accounts {
-    /// Opens the accounts under `dir`, the plane's directory, replaying the journal.
-    pub fn open(dir: &Dir, options: Options) -> Result<(Arc<Self>, Recovery), AccountsError> {
-        let journal_dir = dir.subdir(DIRECTORY, true)?.subdir(JOURNAL, true)?;
-        let (journal, recovery) = Journal::open(journal_dir, options)?;
-        let mut state = State::default();
-        for frame in journal.frames()? {
-            if frame.kind != FRAME_ACCOUNT {
-                return Err(AccountsError::Record(RecordError::Malformed(format!(
-                    "the accounts journal holds a frame of kind {}",
-                    frame.kind
-                ))));
-            }
-            apply(&mut state, AccountRecord::decode(&frame.payload)?)?;
-        }
-        Ok((
-            Arc::new(Self {
-                journal: Mutex::new(journal),
-                state: RwLock::new(state),
-            }),
-            recovery,
-        ))
-    }
-
-    fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {
-        self.state.read().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// The journal revision: the number of changes applied.
-    pub fn revision(&self) -> u64 {
-        self.read().revision
-    }
+/// The accounts of one Authority Plane: the only way its code reads and changes them.
+///
+/// A call holds one complete rule: what it checks and what it writes are never two calls a
+/// caller could interleave. A read answers accounts whose change was committed.
+pub trait AccountStore: Send + Sync + std::fmt::Debug {
+    /// The number of changes applied: it rises by one with every change that succeeds, and
+    /// never otherwise.
+    fn revision(&self) -> Result<u64, AccountsError>;
 
     /// The account `name`, while held.
-    pub fn get(&self, name: &str) -> Option<Account> {
-        self.read().accounts.get(name).cloned()
-    }
+    fn get(&self, name: &str) -> Result<Option<Account>, AccountsError>;
 
     /// Every account, by name.
-    pub fn list(&self) -> Vec<Account> {
-        self.read().accounts.values().cloned().collect()
-    }
+    fn list(&self) -> Result<Vec<Account>, AccountsError>;
 
     /// How many accounts are held.
-    pub fn len(&self) -> usize {
-        self.read().accounts.len()
-    }
-
-    /// Whether none is.
-    pub fn is_empty(&self) -> bool {
-        self.read().accounts.is_empty()
-    }
+    fn count(&self) -> Result<usize, AccountsError>;
 
     /// The account holding `access_key`, and the key.
-    pub fn by_access_key(&self, access_key: &str) -> Option<(Account, AccessKey)> {
-        self.read().accounts.values().find_map(|account| {
-            account
-                .key(access_key)
-                .map(|key| (account.clone(), key.clone()))
-        })
-    }
-
-    /// The revision `operation_id` produced and the account it named, when the journal holds it.
-    pub fn operation(&self, operation_id: &OperationId) -> Option<(u64, String)> {
-        self.read().operations.get(operation_id).cloned()
-    }
-
-    fn write(
+    fn by_access_key(
         &self,
-        applying: Option<&Applying<'_>>,
-        name: &str,
-        account: Option<Account>,
-        by: &str,
-        now: u64,
-    ) -> Result<Option<Account>, AccountsError> {
-        let mut journal = self.journal.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
-        if let Some(id) = applying.map(Applying::operation_id)
-            && state.operations.contains_key(&id)
-        {
-            return Err(AccountsError::Conflict(
-                "this operation already changed an account".to_owned(),
-            ));
-        }
-        let revision = state.revision + 1;
-        let account = account.map(|account| Account {
-            updated_at: now,
-            revision,
-            ..account
-        });
-        let frame = AccountRecord {
-            name: name.to_owned(),
-            revision,
-            at: now,
-            by: by.to_owned(),
-            operation_id: applying.map(Applying::operation_id),
-            account: account.clone(),
-        };
-        let bytes = frame.encode()?;
-        journal.append(FRAME_ACCOUNT, &bytes)?;
-        apply(&mut state, frame)?;
-        Ok(account)
-    }
+        access_key: &str,
+    ) -> Result<Option<(Account, AccessKey)>, AccountsError>;
 
-    /// Writes `account` as it stands now, a new one or a change, inside the operation `applying`
-    /// names when one does; the offline commands and the first start write with none.
-    pub fn put(
+    /// The revision `operation_id` produced and the account it named, when the store holds it:
+    /// what recovery of the mutation journal reads.
+    fn operation(&self, operation_id: &OperationId)
+    -> Result<Option<(u64, String)>, AccountsError>;
+
+    /// Writes the new account `account` at `now`, inside the operation `applying` names when
+    /// one does; the offline commands and the first start write with none. No account of its
+    /// name is held, or it is a [`AccountsError::Conflict`]. Answers the account as written.
+    fn create(
         &self,
         applying: Option<&Applying<'_>>,
         account: Account,
         by: &str,
         now: u64,
-    ) -> Result<Account, AccountsError> {
-        check_name(&account.name).map_err(AccountsError::Invalid)?;
-        check_description(&account.description).map_err(AccountsError::Invalid)?;
-        check_scopes(&account.scopes).map_err(AccountsError::Invalid)?;
-        if account.live_keys(now).count() > MAX_LIVE_KEYS {
-            return Err(AccountsError::Conflict(format!(
-                "an account holds at most {MAX_LIVE_KEYS} live access keys: delete one first"
-            )));
-        }
-        {
-            let state = self.read();
-            if !state.accounts.contains_key(&account.name) && state.accounts.len() >= MAX_ACCOUNTS {
-                return Err(AccountsError::Conflict(format!(
-                    "the Authority Plane holds at most {MAX_ACCOUNTS} service accounts"
-                )));
-            }
-            // An access key names one key of one account, ever.
-            for key in &account.keys {
-                if state
-                    .accounts
-                    .values()
-                    .any(|other| other.name != account.name && other.key(&key.access_key).is_some())
-                {
-                    return Err(AccountsError::Conflict(format!(
-                        "the access key {} belongs to another account",
-                        key.access_key
-                    )));
-                }
-            }
-        }
-        let name = account.name.clone();
-        let written = self.write(applying, &name, Some(account), by, now)?;
-        written.ok_or(AccountsError::NotFound(name))
-    }
+    ) -> Result<Account, AccountsError>;
 
-    /// Deletes the account `name`, its keys with it.
-    pub fn delete(
+    /// Changes the account `name` at `now`: `change` is given the account as it stands and
+    /// answers it as it shall be, or why not. The account `change` reads is the one its answer
+    /// replaces: nothing changes the account between the two, so a change never undoes one it
+    /// did not see, and what `change` refuses is refused of the account as it is. The name and
+    /// the time it was made are the account's and are kept. Answers the account as written.
+    ///
+    /// `change` runs inside the store, while it holds the account: it decides from the account
+    /// it is given and never calls the store, which would wait on itself.
+    fn update(
         &self,
         applying: Option<&Applying<'_>>,
         name: &str,
+        change: &dyn Fn(&Account) -> Result<Account, AccountsError>,
         by: &str,
         now: u64,
-    ) -> Result<(), AccountsError> {
-        let account = self
-            .get(name)
-            .ok_or_else(|| AccountsError::NotFound(format!("no service account `{name}`")))?;
-        if account.is_admin() {
-            return Err(AccountsError::Conflict(
-                "`admin` is never deleted: there is always one account that can repair the \
-                 others"
-                    .to_owned(),
-            ));
-        }
-        self.write(applying, name, None, by, now).map(|_| ())
-    }
+    ) -> Result<Account, AccountsError>;
+
+    /// Deletes the account `name`, its keys with it, once `allow` has seen it as it stands and
+    /// let it go; `admin` is never deleted. `allow` runs inside the store, as the change of
+    /// [`AccountStore::update`] does, and never calls it.
+    fn delete(
+        &self,
+        applying: Option<&Applying<'_>>,
+        name: &str,
+        allow: &dyn Fn(&Account) -> Result<(), AccountsError>,
+        by: &str,
+        now: u64,
+    ) -> Result<(), AccountsError>;
 }
 
 /// The accounts, as recovery of the mutation journal sees them.
-pub struct Recovering<'a>(pub &'a Accounts);
+pub struct Recovering<'a>(pub &'a dyn AccountStore);
 
 impl Domain for Recovering<'_> {
     fn name(&self) -> &'static str {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.0
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // A store that cannot be asked stops the recovery: the engine never records as failed an
+        // operation its domain may have applied (decision E17).
+        Ok(self
+            .0
             .operation(operation_id)
+            .map_err(|error| error.to_string())?
             .map(|(revision, name)| Observed {
                 revision,
                 target: Some(name),
-            })
+            }))
     }
 }
 
@@ -658,123 +377,6 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-
-    fn scratch(tag: &str) -> Dir {
-        let root = std::env::temp_dir().join(format!(
-            "pg-authority-accounts-{tag}-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("scratch");
-        Dir::open(&root).expect("a directory")
-    }
-
-    fn scope(operations: &[&str], selector: &str) -> TokenScope {
-        TokenScope {
-            operations: operations.iter().map(|op| (*op).to_owned()).collect(),
-            selector: Selector::parse(selector).expect("a selector"),
-        }
-    }
-
-    fn key(id: &str) -> AccessKey {
-        AccessKey {
-            access_key: id.to_owned(),
-            secret_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA".to_owned(),
-            created_at: 10,
-            expires_at: None,
-        }
-    }
-
-    #[test]
-    fn accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account() {
-        let dir = scratch("reopen");
-        let (accounts, _) = Accounts::open(&dir, Options::default()).expect("opens");
-        let billing = Account::new(
-            "billing",
-            "the billing service",
-            vec![scope(&[operations::DECISION_EVALUATE], "plane/data/*")],
-            10,
-        );
-        let written = accounts.put(None, billing, "test", 10).expect("written");
-        assert_eq!(written.revision, 1);
-        let mut changed = written.clone();
-        changed.status = Status::Suspended;
-        changed.keys.push(key("pgak_AAAAAAAAAAAAAAAAAAAA"));
-        accounts.put(None, changed, "test", 20).expect("changed");
-        accounts
-            .put(None, Account::new("gone", "", Vec::new(), 30), "test", 30)
-            .expect("written");
-        accounts.delete(None, "gone", "test", 40).expect("deleted");
-        drop(accounts);
-        let (reopened, _) = Accounts::open(&dir, Options::default()).expect("reopens");
-        assert_eq!(reopened.revision(), 4);
-        let held = reopened.get("billing").expect("held");
-        assert_eq!(held.status, Status::Suspended);
-        assert_eq!(held.created_at, 10);
-        assert_eq!(held.updated_at, 20);
-        assert_eq!(held.scopes.len(), 1);
-        assert!(reopened.get("gone").is_none());
-        assert_eq!(
-            reopened
-                .by_access_key("pgak_AAAAAAAAAAAAAAAAAAAA")
-                .expect("found")
-                .0
-                .name,
-            "billing"
-        );
-    }
-
-    #[test]
-    fn what_the_store_would_never_hold_is_refused() {
-        let dir = scratch("refused");
-        let (accounts, _) = Accounts::open(&dir, Options::default()).expect("opens");
-        for bad in ["", "Upper", "-dash", &"a".repeat(64), "sp ace"] {
-            assert!(
-                accounts
-                    .put(None, Account::new(bad, "", Vec::new(), 1), "t", 1)
-                    .is_err(),
-                "{bad:?}"
-            );
-        }
-        // An operation outside the registry, or one that never applies where it is placed.
-        for scopes in [
-            vec![scope(&["nothing.at.all"], "plane/data/*")],
-            vec![scope(&[operations::DECISION_EVALUATE], "plane/control/*")],
-            vec![scope(&[], "plane/data/*")],
-        ] {
-            assert!(
-                accounts
-                    .put(None, Account::new("a", "", scopes, 1), "t", 1)
-                    .is_err()
-            );
-        }
-        let mut three = Account::new("three", "", Vec::new(), 1);
-        three.keys = vec![
-            key("pgak_AAAAAAAAAAAAAAAAAAAA"),
-            key("pgak_BBBBBBBBBBBBBBBBBBBB"),
-            key("pgak_CCCCCCCCCCCCCCCCCCCC"),
-        ];
-        assert!(matches!(
-            accounts.put(None, three, "t", 1),
-            Err(AccountsError::Conflict(_))
-        ));
-        let mut one = Account::new("one", "", Vec::new(), 1);
-        one.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
-        accounts.put(None, one, "t", 1).expect("written");
-        let mut other = Account::new("other", "", Vec::new(), 1);
-        other.keys = vec![key("pgak_AAAAAAAAAAAAAAAAAAAA")];
-        assert!(matches!(
-            accounts.put(None, other, "t", 1),
-            Err(AccountsError::Conflict(_))
-        ));
-        accounts
-            .put(None, Account::new(ADMIN, "", admin_scopes(), 1), "t", 1)
-            .expect("the administrator");
-        assert!(matches!(
-            accounts.delete(None, ADMIN, "t", 2),
-            Err(AccountsError::Conflict(_))
-        ));
-    }
 
     #[test]
     fn the_administrators_scopes_are_coherent_and_reach_every_plane() {

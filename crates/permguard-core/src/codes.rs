@@ -435,6 +435,9 @@ pub mod storage {
     pub const OBJECTIVES_INCONSISTENT: &str = "objectives_inconsistent";
     /// A measured lag or headroom crossed its objective's margin: readiness is held (TS-5).
     pub const OBJECTIVE_MARGIN: &str = "objective_margin";
+    /// The process's storage backend has nothing this operation acts on: a backup or a restore
+    /// of a volume asked of a backend that is not files (iteration 03, decision E5).
+    pub const BACKEND_UNSUPPORTED: &str = "storage_backend_unsupported";
 }
 
 /// The Host API, `/host/v1` and `permguard.host.v1` (WP-2.5): what the common envelope refuses
@@ -860,6 +863,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         storage::OBJECTIVES_INCOMPLETE,
         storage::OBJECTIVES_INCONSISTENT,
         storage::OBJECTIVE_MARGIN,
+        storage::BACKEND_UNSUPPORTED,
         host::REQUEST_ID_REQUIRED,
         host::REQUEST_ID_REUSED,
         host::REQUEST_IN_FLIGHT,

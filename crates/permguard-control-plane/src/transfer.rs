@@ -47,18 +47,14 @@
 
 use permguard_core::encoding::hex;
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::sync::MutexGuard;
 use std::time::Duration;
 
 use permguard_notp::ExpectedRef;
 use permguard_objects::cbor::{self, Value};
 use permguard_objects::digest::Digest;
 
-use crate::store::{FileObjectStore, StoreError};
+use crate::store::{LedgerStore, StoreError, TransferSessions};
 
-/// The directory below the ledger.
-pub const DIRECTORY: &str = "transfers";
 /// The most sessions one ledger keeps open at once.
 pub const MAX_OPEN: usize = 256;
 /// The most pushes one principal keeps open on one ledger.
@@ -337,88 +333,54 @@ pub struct Swept {
     pub removed: usize,
 }
 
-/// One ledger's sessions, read and written under its transfer lock.
+/// One ledger's sessions, read and written under its store's hold.
 pub struct Transfers<'a> {
-    root: PathBuf,
-    store: &'a FileObjectStore,
-    _guard: MutexGuard<'a, ()>,
+    store: &'a dyn LedgerStore,
+    sessions: Box<dyn TransferSessions + 'a>,
 }
 
 impl<'a> Transfers<'a> {
-    pub fn new(store: &'a FileObjectStore, guard: MutexGuard<'a, ()>) -> Self {
-        Self {
-            root: store.root().to_path_buf(),
-            store,
-            _guard: guard,
-        }
-    }
-
-    fn directory(&self) -> PathBuf {
-        self.root.join(DIRECTORY)
-    }
-
-    fn name(transfer_id: &[u8; 16]) -> String {
-        format!("{}.cbor", hex(transfer_id))
+    /// The sessions of `store`, over what its backend keeps them in and holds them with.
+    pub fn new(store: &'a dyn LedgerStore, sessions: Box<dyn TransferSessions + 'a>) -> Self {
+        Self { store, sessions }
     }
 
     /// The session `transfer_id` names, when this ledger keeps one.
     pub fn get(&self, transfer_id: &[u8; 16]) -> Result<Option<Session>, StoreError> {
-        let path = self.directory().join(Self::name(transfer_id));
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                let session = Session::decode(&bytes)?;
-                if session.transfer_id != *transfer_id {
-                    return Err(invalid(format!("{} holds another session", path.display())));
-                }
-                Ok(Some(session))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(invalid(format!("reading a session: {error}"))),
+        let Some(bytes) = self.sessions.get(transfer_id)? else {
+            return Ok(None);
+        };
+        let session = Session::decode(&bytes)?;
+        if session.transfer_id != *transfer_id {
+            return Err(invalid(format!(
+                "the record of the session {} holds another session",
+                hex(transfer_id)
+            )));
         }
+        Ok(Some(session))
     }
 
     /// Every session this ledger keeps. A record that does not read stops the listing: a
     /// reservation or a pin it may hold is not one to forget.
     pub fn list(&self) -> Result<Vec<Session>, StoreError> {
-        let entries = match std::fs::read_dir(self.directory()) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(invalid(format!("listing sessions: {error}"))),
-        };
-        let mut sessions = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(|error| invalid(format!("listing sessions: {error}")))?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            // The storage library's temporaries are swept with the ledger's.
-            if !name.ends_with(".cbor") {
-                continue;
-            }
-            let bytes = std::fs::read(entry.path())
-                .map_err(|error| invalid(format!("reading a session: {error}")))?;
-            sessions.push(Session::decode(&bytes)?);
-        }
+        let mut sessions = self
+            .sessions
+            .list()?
+            .iter()
+            .map(|bytes| Session::decode(bytes))
+            .collect::<Result<Vec<_>, _>>()?;
         sessions.sort_by_key(|session| session.transfer_id);
         Ok(sessions)
     }
 
     /// Writes `session`, durably, replacing what it was.
     pub fn put(&self, session: &Session) -> Result<(), StoreError> {
-        let bytes = session.encode()?;
-        crate::store::write_durable(
-            &self.root,
-            &format!("{DIRECTORY}/{}", Self::name(&session.transfer_id)),
-            &bytes,
-        )
+        self.sessions.put(&session.transfer_id, &session.encode()?)
     }
 
     /// Removes the record of `transfer_id`, and with it what it pins.
     pub fn remove(&self, transfer_id: &[u8; 16]) -> Result<(), StoreError> {
-        let dir = permguard_host::storage::Dir::create_root(&self.root)
-            .and_then(|root| root.subdir(DIRECTORY, true))
-            .map_err(|error| invalid(format!("opening the sessions: {error}")))?;
-        dir.unlink(&Self::name(transfer_id))
-            .map_err(|error| invalid(format!("removing a session: {error}")))?;
-        Ok(())
+        self.sessions.remove(transfer_id)
     }
 
     /// The session `principal` opened in `direction` with `request_id`, when it is still kept.
@@ -501,13 +463,8 @@ impl<'a> Transfers<'a> {
     }
 
     /// The store the sessions belong to.
-    pub fn store(&self) -> &FileObjectStore {
+    pub fn store(&self) -> &'a dyn LedgerStore {
         self.store
-    }
-
-    /// Where they live, for a test.
-    pub fn root(&self) -> &Path {
-        &self.root
     }
 }
 
@@ -520,7 +477,10 @@ pub fn unix_now(clock: &dyn permguard_core::time::Clock) -> u64 {
 mod tests {
     #![allow(clippy::unwrap_used)]
 
+    use std::path::PathBuf;
+
     use super::*;
+    use crate::store::FileObjectStore;
 
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -707,9 +667,9 @@ mod tests {
         let transfers = store.transfers().unwrap();
         transfers.put(&push(1, "alice", "push-1")).unwrap();
         std::fs::write(
-            transfers
+            store
                 .root()
-                .join(DIRECTORY)
+                .join(crate::store::files::TRANSFERS)
                 .join(format!("{}.cbor", hex(&[9; 16]))),
             b"rot",
         )

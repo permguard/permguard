@@ -327,9 +327,9 @@ pub fn host_log(context: &PlaneContext<'_>) -> Option<Arc<HostLog>> {
                         .working_dir()
                         .join(permguard_decisions::archive::TARGET),
                     &keys,
-                    Some(&permguard_host::identity::witness::HostScope::of(
-                        config.working_dir(),
+                    Some(&permguard_host::identity::witness::HostScope::new(
                         &host_id,
+                        permguard_host::identity::files::was_reset_at(config.working_dir()),
                     )),
                 )
             });

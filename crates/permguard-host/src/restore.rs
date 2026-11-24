@@ -215,7 +215,7 @@ pub fn record(
                 mark(volume, marker).map_err(Failure::Indeterminate)?;
                 Ok(Applied {
                     revision: marker.generation,
-                    target,
+                    target: target.clone(),
                     value: (),
                 })
             },
@@ -233,14 +233,22 @@ impl Domain for Restores<'_> {
         DOMAIN
     }
 
-    fn observe(&self, _operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        // A marker that does not read shows nothing: the run is failed, and the corruption still
-        // refuses every restore and every start that reads it.
-        let marker = marked(self.0).ok()??;
-        (target? == run_target(&marker.plan_id)).then(|| Observed {
-            revision: marker.generation,
-            target: Some(run_target(&marker.plan_id)),
-        })
+    fn observe(
+        &self,
+        _operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // A marker that does not read is not a restore that never ran: it stops the recovery,
+        // as it refuses every restore and every start that reads it.
+        let Some(marker) = marked(self.0).map_err(|error| error.to_string())? else {
+            return Ok(None);
+        };
+        Ok(
+            (target == Some(run_target(&marker.plan_id).as_str())).then(|| Observed {
+                revision: marker.generation,
+                target: Some(run_target(&marker.plan_id)),
+            }),
+        )
     }
 }
 
@@ -403,7 +411,12 @@ mod tests {
         let mutations = Mutations::open_offline(&volume, "test").expect("the journal");
         let id = OperationId::from_bytes([1; 16]);
         let restores = Restores(&volume);
-        assert_eq!(restores.observe(&id, Some(&run_target(&[8; 16]))), None);
+        assert_eq!(
+            restores
+                .observe(&id, Some(&run_target(&[8; 16])))
+                .expect("the domain answers"),
+            None
+        );
         record(
             &mutations,
             &volume,
@@ -413,14 +426,29 @@ mod tests {
         .expect("recorded");
         assert_eq!(marked(&volume).expect("reads"), Some(marker(Mode::Clone)));
         assert_eq!(
-            restores.observe(&id, Some(&run_target(&[8; 16]))),
+            restores
+                .observe(&id, Some(&run_target(&[8; 16])))
+                .expect("the domain answers"),
             Some(Observed {
                 revision: 3,
                 target: Some(run_target(&[8; 16])),
             })
         );
-        assert_eq!(restores.observe(&id, Some(&run_target(&[9; 16]))), None);
-        assert_eq!(restores.observe(&id, Some("restore-plan:clone")), None);
-        assert_eq!(restores.observe(&id, None), None);
+        assert_eq!(
+            restores
+                .observe(&id, Some(&run_target(&[9; 16])))
+                .expect("the domain answers"),
+            None
+        );
+        assert_eq!(
+            restores
+                .observe(&id, Some("restore-plan:clone"))
+                .expect("the domain answers"),
+            None
+        );
+        assert_eq!(
+            restores.observe(&id, None).expect("the domain answers"),
+            None
+        );
     }
 }

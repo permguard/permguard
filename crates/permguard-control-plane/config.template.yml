@@ -45,6 +45,7 @@ working_dir: /var/lib/permguard/control-plane
 # private: owned by the process's non-root user, directories 0700, files 0600, no symbolic link,
 # nothing mounted inside; from `production` a breach stops the start, below it is logged.
 # storage:
+#   backend: files                    # where this process keeps its state; files is the default and the one backend of this build
 #   volume:
 #     storage_class: fast-ssd          # the storage class the volume comes from
 #     driver: ebs.csi.aws.com          # the driver or provider that attaches it

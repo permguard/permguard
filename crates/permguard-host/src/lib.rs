@@ -17,12 +17,14 @@
 pub mod api;
 pub mod audit;
 pub mod authz;
+pub mod backend;
 pub mod composition;
 pub mod exports;
 pub mod gc;
 pub mod hardening;
 pub mod holds;
 pub mod identity;
+pub mod jobs;
 pub mod keys;
 pub mod membership;
 pub mod operations;

@@ -35,15 +35,28 @@ no volume layout changes that:
     created through one pod is missing when the next request lands on the other.
 
 The second is the quieter mistake, and it is why this refuses replicas rather than refusing shared
-storage. Until a control plane can elect a leader or keep its catalog in something that arbitrates,
-it is one replica — and an all-in-one IS a control plane.
+storage. On a volume a control plane is one replica — and an all-in-one IS a control plane.
 
 A data plane holds no authority: it mirrors a ledger and answers from it, and each replica of a
 group keeps its own volume (`templates/data-plane-groups.yaml`), so its groups may be replicated.
+
+A control plane on the `postgresql-s3` backend keeps its state in what arbitrates (iteration 03,
+WP-28.6): its replicas serve one catalog, one identity and one set of memberships behind one
+Service, its single jobs under leases, so it may run several and autoscale. An all-in-one runs a
+data plane, which stays on its volume, and stays at one.
 */ -}}
-{{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1 until the state lives in something that arbitrates." }}
+{{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1, or keep its state on `postgresql-s3` (controlPlane.storage.backend)." }}
+{{- $sharedControlPlane := eq (toString (dig "backend" "files" (.Values.controlPlane.storage | default dict))) "postgresql-s3" }}
+{{- /*
+Several instances share their secrets: what `autogenerate` mints is one instance's own, and the
+database, which records the material a secret's version was first seen with, refuses another's.
+They come from one Secret mounted in every instance.
+*/ -}}
+{{- if and $sharedControlPlane .Values.controlPlane.enabled .Values.autogenerate (or (gt (int .Values.controlPlane.replicaCount) 1) (and .Values.controlPlane.autoscaling .Values.controlPlane.autoscaling.enabled)) }}
+{{- fail "controlPlane on postgresql-s3 with several replicas and autogenerate=true: each instance would mint its own secrets, which the others refuse. Mount one Secret in every instance and set autogenerate=false" }}
+{{- end }}
 {{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
-{{- if $plane.enabled }}
+{{- if and $plane.enabled (not (and (eq $component "controlPlane") $sharedControlPlane)) }}
 {{- if gt (int $plane.replicaCount) 1 }}
 {{- fail (printf "%s.replicaCount=%v: %s" $component $plane.replicaCount $authority) }}
 {{- end }}
@@ -657,12 +670,38 @@ The drain controller (TD-2): what it reaches and what it needs.
 {{- end }}
 
 {{- /*
+The Control Plane on the `postgresql-s3` backend (iteration 03, WP-28.1): its state is the
+database's and the bucket's, so it keeps no volume, and what the server refuses at start is refused
+here first. Above `development` its identity is made offline in the database by the `identity`
+init container, the same for every instance (WP-28.5).
+*/ -}}
+{{- $cpStorage := .Values.controlPlane.storage | default dict }}
+{{- $cpBackend := toString ($cpStorage.backend | default "files") }}
+{{- if and .Values.controlPlane.enabled (eq $cpBackend "postgresql-s3") }}
+{{- if include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane) }}
+{{- fail "controlPlane.storage.backend=postgresql-s3 keeps the Host's state in the database and the bucket, and no volume: set controlPlane.persistence.enabled=false." }}
+{{- end }}
+{{- range $key := list "host" "database" "user" }}
+{{- if not (get ($cpStorage.postgresql | default dict) $key) }}
+{{- fail (printf "controlPlane.storage.backend=postgresql-s3 needs controlPlane.storage.postgresql.%s." $key) }}
+{{- end }}
+{{- end }}
+{{- range $key := list "endpoint" "region" "bucket" "accessKey" "secretRef" }}
+{{- if not (get ($cpStorage.s3 | default dict) $key) }}
+{{- fail (printf "controlPlane.storage.backend=postgresql-s3 needs controlPlane.storage.s3.%s." $key) }}
+{{- end }}
+{{- end }}
+{{- else if and .Values.controlPlane.enabled (ne $cpBackend "files") }}
+{{- fail (printf "controlPlane.storage.backend=%s is no backend: `files` or `postgresql-s3`." $cpBackend) }}
+{{- end }}
+
+{{- /*
 The Host identity under `production` (TS-10): made offline once, and the Host started on its witness
 only, so the identity must outlive its Pod. A Host on an emptyDir would make a new one in every Pod,
 whose witness nobody could record before it starts. A group is refused that already, by the evidence
 it records from `production`.
 */ -}}
-{{- if and .Values.controlPlane.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane))) }}
+{{- if and .Values.controlPlane.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.controlPlane.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.controlPlane))) (ne $cpBackend "postgresql-s3") }}
 {{- fail "controlPlane: from `production` the Host starts only on the witness of an identity made offline, which must outlive its Pod: set persistence.enabled (or controlPlane.persistence.enabled)." }}
 {{- end }}
 {{- if and .Values.allInOne.enabled (include "permguard.provisionsIdentity" (dict "assurance" .Values.allInOne.assurance)) (not (include "permguard.persists" (dict "root" $ "plane" .Values.allInOne))) }}

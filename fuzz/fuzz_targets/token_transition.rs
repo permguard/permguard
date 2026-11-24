@@ -5,7 +5,8 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use permguard_authority_plane::tokens::{TokenTransition, status};
+use permguard_authority_plane::tokens::files::TokenTransition;
+use permguard_authority_plane::tokens::status;
 
 fuzz_target!(|data: &[u8]| {
     // A status a caller names to filter the tokens listed.

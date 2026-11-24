@@ -1173,7 +1173,7 @@ mod strict {
         let _ = std::fs::remove_dir_all(&root);
         DecisionFacade {
             members: None,
-            store: Arc::new(DecisionStore::open(root).expect("it opens")),
+            store: Some(Arc::new(DecisionStore::open(root).expect("it opens"))),
             ceiling: None,
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 ROOT,

@@ -28,8 +28,12 @@ use crate::{accounts, admin, tokens};
 
 /// How often the lists are signed again and handed to this Host: well within their `ttl`.
 const FEED_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+/// How often a token's want of a list or a key is looked for between two feeds (BUG-0336).
+const WANTED_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// How often the lists whose tokens all expired are retired.
 const RETIRE_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+/// The single job the retirement of expired lists is (WP-28.2).
+const RETIRE_JOB: &str = "authority/retire-lists";
 
 /// The facade, composed once from the Host's handles and shared by whatever serves it and by the
 /// plane's pass: `None` when the plane is dormant or could not compose, as the log says why.
@@ -66,6 +70,18 @@ fn listening(config: &permguard_core::Config) -> bool {
             .is_some_and(|address| !address.trim().is_empty())
 }
 
+/// The stores of the Authority Plane on a backend that is not a volume (iteration 03, WP-28.1):
+/// what the composition hands it, found among the context's extensions.
+pub struct AuthorityStores {
+    pub accounts: Arc<dyn accounts::AccountStore>,
+    pub tokens: Arc<dyn tokens::TokenStore>,
+    pub marks: Arc<dyn crate::marks::MarkStore>,
+    /// The database the three are kept in: what a start completes of the tokens reads the
+    /// accounts and writes the tokens in one of its units, so an instance that changes them
+    /// meanwhile has the unit run again rather than its change read as gone (WP-28.2).
+    pub database: permguard_postgres::Database,
+}
+
 fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let config = context.config();
     if !listening(config) {
@@ -95,36 +111,65 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         );
         return None;
     };
-    let (dir, options) = match registration.state_dir() {
-        Ok(Some(found)) => found,
-        Ok(None) => {
+    // On a shared backend the composition hands the stores over; on files they are this Plane's
+    // directory of the volume. Either way the administrator's first secret and an offline mark
+    // are files of this instance, beside its configuration (decision X105).
+    let shared = context.extension::<AuthorityStores>();
+    let (dir, options) = match (&shared, registration.state_dir()) {
+        (None, Ok(Some(found))) => found,
+        (Some(_), _) => match permguard_host::storage::Dir::create_root(
+            &config.working_dir().join("planes").join(crate::PLANE),
+        ) {
+            Ok(dir) => (dir, permguard_host::storage::journal::Options::default()),
+            Err(error) => {
+                fail("its directory does not open", &error);
+                return None;
+            }
+        },
+        (None, Ok(None)) => {
             fail("the Host composes no volume", &"no volume");
             return None;
         }
-        Err(error) => {
+        (None, Err(error)) => {
             fail("its directory does not open", &error);
             return None;
         }
     };
-    let accounts_mutations = registration.mutations(accounts::DOMAIN).ok().flatten();
-    let token_mutations = registration.mutations(tokens::DOMAIN).ok().flatten();
-    let (accounts, _) = match accounts::Accounts::open(&dir, options) {
-        Ok(opened) => opened,
-        Err(error) => {
-            fail("its accounts do not open", &error);
-            return None;
-        }
-    };
-    let (registry, _) = match tokens::TokenRegistry::open(&dir, options) {
-        Ok(opened) => opened,
-        Err(error) => {
-            fail("its tokens do not open", &error);
-            return None;
-        }
-    };
+    // One subsystem: an account's change and the tokens it ends are one step (decision E26).
+    let accounts_mutations = registration
+        .mutations(accounts::DOMAIN)
+        .ok()
+        .flatten()
+        .map(|handle| handle.in_subsystem(crate::PLANE));
+    let token_mutations = registration
+        .mutations(tokens::DOMAIN)
+        .ok()
+        .flatten()
+        .map(|handle| handle.in_subsystem(crate::PLANE));
+    let (accounts, registry): (Arc<dyn accounts::AccountStore>, Arc<dyn tokens::TokenStore>) =
+        match &shared {
+            Some(stores) => (Arc::clone(&stores.accounts), Arc::clone(&stores.tokens)),
+            None => {
+                let accounts = match accounts::files::FileAccounts::open(&dir, options) {
+                    Ok((opened, _)) => opened,
+                    Err(error) => {
+                        fail("its accounts do not open", &error);
+                        return None;
+                    }
+                };
+                let registry = match tokens::files::FileTokens::open(&dir, options) {
+                    Ok((opened, _)) => opened,
+                    Err(error) => {
+                        fail("its tokens do not open", &error);
+                        return None;
+                    }
+                };
+                (accounts as _, registry as _)
+            }
+        };
     // A change a crash left open is committed or failed before anything reads the state.
     if let Some(handle) = &accounts_mutations
-        && let Err(error) = handle.recover(&accounts::Recovering(&accounts))
+        && let Err(error) = handle.recover(&accounts::Recovering(&*accounts))
     {
         fail(
             "the account changes a crash left open do not resolve",
@@ -133,7 +178,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         return None;
     }
     if let Some(handle) = &token_mutations
-        && let Err(error) = handle.recover(&tokens::Recovering(&registry))
+        && let Err(error) = handle.recover(&tokens::Recovering(&*registry))
     {
         fail(
             "the token revocations a crash left open do not resolve",
@@ -144,7 +189,45 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     let time = Arc::new(permguard_host::time::TimeGuard::system(
         config.time_max_clock_skew(),
     ));
-    match admin::ensure(&accounts, dir.path(), time.now_secs()) {
+    // What a change of an account left to do of its tokens is done before anything is served.
+    let now = time.now_secs();
+    let completing = || crate::completion::complete_tokens(&*accounts, &*registry, now);
+    let completion = match &shared {
+        Some(stores) => stores
+            .database
+            // A statement the database failed, one it could not serialize among them, is the
+            // unit's failure, so the unit is run again; only the completion's own refusal is one.
+            .transaction(|unit| {
+                completing().map_err(|refusal| match unit.failure() {
+                    Some(failed) => permguard_postgres::Failure::Db(failed),
+                    None => permguard_postgres::Failure::Refused(refusal),
+                })
+            })
+            .map_err(|error| error.to_string())
+            .and_then(|completed| completed),
+        None => completing(),
+    };
+    let completed = match completion {
+        Ok(completed) if completed.is_empty() => None,
+        Ok(completed) => {
+            tracing::warn!(
+                event.name = "authority.tokens_completed",
+                component = crate::COMPONENT,
+                invalidated = completed.invalidated,
+                suspended = completed.suspended,
+                "tokens a change of their account had left as they were now are as it says"
+            );
+            Some(completed)
+        }
+        Err(error) => {
+            fail(
+                "the tokens a change of their account left to revoke are not completed",
+                &error,
+            );
+            return None;
+        }
+    };
+    match admin::ensure(&*accounts, dir.path(), time.now_secs()) {
         Ok(Some(access_key)) => tracing::warn!(
             event.name = "authority.admin_created",
             component = crate::COMPONENT,
@@ -173,7 +256,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
     }
     let list_signer = registration.signer::<StatusListTokenV1>().ok().flatten();
     let audit = registration.audit::<AuthorityAudit>().ok().flatten();
-    let authority = Arc::new(Authority::new(Parts {
+    let authority = match Authority::new(Parts {
         accounts,
         registry,
         tokens: token_signer,
@@ -191,9 +274,45 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         audit: audit.clone(),
         trust: registration.authority_trust(),
         time,
-        marks: permguard_host::storage::Dir::open(dir.path()).ok(),
-    }));
+        marks: match &shared {
+            Some(stores) => Some(Arc::clone(&stores.marks)),
+            None => permguard_host::storage::Dir::open(dir.path())
+                .ok()
+                .map(|dir| {
+                    Arc::new(crate::marks::files::FileMarks::new(dir))
+                        as Arc<dyn crate::marks::MarkStore>
+                }),
+        },
+    }) {
+        Ok(authority) => Arc::new(authority),
+        Err(error) => {
+            fail("its status lists do not read", &error);
+            return None;
+        }
+    };
     authority.feed_trust();
+    // What the start changed of the tokens is in the trail, beside the log line.
+    if let (Some(completed), Some(audit)) = (completed, audit.clone()) {
+        tokio::spawn(async move {
+            let facts = [
+                (
+                    "invalidated",
+                    permguard_core::Fact::Uint(completed.invalidated as u64),
+                ),
+                (
+                    "suspended",
+                    permguard_core::Fact::Uint(completed.suspended as u64),
+                ),
+            ];
+            let event = permguard_core::AuditEvent::new(
+                permguard_host::audit::AUDIT_TOKENS_COMPLETED,
+                permguard_core::Subject::System(crate::completion::BY),
+            )
+            .on("tokens")
+            .with_facts(&facts);
+            let _ = audit.record_event(&event).await;
+        });
+    }
     if let (Some(access_key), Some(audit)) = (offline, audit) {
         tokio::spawn(async move {
             let facts = [("access_key", permguard_core::Fact::Text(&access_key))];
@@ -210,7 +329,7 @@ fn compose(context: &PlaneContext<'_>) -> Option<Arc<Authority>> {
         event.name = "authority.serving",
         component = crate::COMPONENT,
         issuer = %issuer,
-        accounts = authority.accounts().len(),
+        accounts = authority.accounts().count().unwrap_or_default(),
         "the Authority Plane issues tokens"
     );
     Some(authority)
@@ -290,23 +409,44 @@ impl PlaneTask for ListsService {
             let Some(authority) = self.composition.authority(context) else {
                 return Ok(());
             };
+            // The retirement of expired lists is one instance's at a time (WP-28.2); what every
+            // instance verifies with is fed by each.
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             let task = tokio::spawn(async move {
                 let mut retired_at = std::time::Instant::now();
                 loop {
-                    tokio::time::sleep(FEED_EVERY).await;
-                    let feeding = Arc::clone(&authority);
+                    // At the latest every FEED_EVERY; at once when a token named a list or a key
+                    // this Host does not hold, as one another instance issued does (WP-28.7).
+                    let due = std::time::Instant::now() + FEED_EVERY;
+                    while std::time::Instant::now() < due {
+                        tokio::time::sleep(WANTED_POLL).await;
+                        if authority.trust_wanted() {
+                            break;
+                        }
+                    }
+                    let (feeding, jobs) = (Arc::clone(&authority), jobs.clone());
                     let retire = retired_at.elapsed() >= RETIRE_EVERY;
                     if retire {
                         retired_at = std::time::Instant::now();
                     }
                     let _ = tokio::task::spawn_blocking(move || {
-                        if retire && let Err(refusal) = feeding.retire_expired() {
-                            tracing::warn!(
-                                event.name = "authority.retire_failed",
-                                component = crate::COMPONENT,
-                                refusal = ?refusal,
-                                "the expired status lists could not be retired"
-                            );
+                        if retire {
+                            jobs.run(RETIRE_JOB, RETIRE_EVERY, &mut || {
+                                let retired = feeding.retire_expired();
+                                if let Err(refusal) = &retired {
+                                    tracing::warn!(
+                                        event.name = "authority.retire_failed",
+                                        component = crate::COMPONENT,
+                                        refusal = ?refusal,
+                                        "the expired status lists could not be retired"
+                                    );
+                                }
+                                retired.is_ok()
+                            });
                         }
                         feeding.feed_trust();
                     })

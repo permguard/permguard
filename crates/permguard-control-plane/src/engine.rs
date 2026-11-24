@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::store::{FileObjectStore, RefState, RefUpdate, StoreError};
+use crate::store::{Landed, LedgerStore, RefState, RefUpdate, StoreError};
 use crate::transfer;
 use permguard_core::codes;
 use permguard_notp::*;
@@ -256,7 +256,7 @@ fn expected_head(
 
 /// The NOTP engine over one ledger's store.
 pub struct Engine<'a> {
-    pub store: &'a FileObjectStore,
+    pub store: &'a dyn LedgerStore,
     pub identity: LedgerIdentity,
     /// The `host_id` of the Control Plane Host whose ring signs this ledger's head statements.
     pub authority: [u8; 16],
@@ -527,10 +527,7 @@ impl Engine<'_> {
             validate_blob(&blob.media_type, &blob.data)?;
         }
         let (digest, _, published) = self.store.publish_object(bytes)?;
-        Ok((
-            digest,
-            published == permguard_host::storage::write::Published::Written,
-        ))
+        Ok((digest, published == Landed::Written))
     }
 
     // ---- commit ----
@@ -2136,26 +2133,7 @@ impl Engine<'_> {
 
     /// Bytes currently stored in this ledger's objects, for the quota.
     fn ledger_bytes(&self) -> Result<u64> {
-        fn sum(directory: &std::path::Path) -> std::io::Result<u64> {
-            let mut total = 0;
-            for entry in std::fs::read_dir(directory)? {
-                let entry = entry?;
-                let meta = entry.metadata()?;
-                if meta.is_dir() {
-                    total += sum(&entry.path())?;
-                } else {
-                    total += meta.len();
-                }
-            }
-            Ok(total)
-        }
-        let objects = self.store.root().join("objects");
-        if !objects.exists() {
-            return Ok(0);
-        }
-        sum(&objects).map_err(|e| EngineError::Internal {
-            detail: format!("sizing the ledger: {e}"),
-        })
+        Ok(self.store.stored_bytes()?)
     }
 }
 

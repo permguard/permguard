@@ -2409,11 +2409,23 @@ fn ship_of(host: &Host, batch: &[u8]) -> Vec<u8> {
     .expect("encodes")
 }
 
+thread_local! {
+    /// Whether the consumers of this thread's tests open their runs for each hold, as on a
+    /// backend any instance may write (iteration 03, WP-27.4).
+    static REOPENING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// The coordinator's consumer of the tests' descriptor, on `host`.
 fn consumer_on(host: &Host) -> Consumer<Text> {
-    host.streams()
+    let consumer = host
+        .streams()
         .register_consumer(descriptor(), Text)
-        .expect("registered")
+        .expect("registered");
+    if REOPENING.with(std::cell::Cell::get) {
+        consumer.reopening()
+    } else {
+        consumer
+    }
 }
 
 /// Ships `body` from `member` at epoch 1 of the test membership, the member's pin current.
@@ -3471,18 +3483,21 @@ fn a_consumer_journal_of_a_later_claim_is_refused() {
     let (_producer, run, batches) = shipped(&host, 2, 2);
     let at = |claim: u64| {
         Consumer::new(
-            permguard_host::storage::Dir::open(
-                &host
-                    .root
-                    .join("host")
-                    .join(STREAMS)
-                    .join("data")
-                    .join("decisions")
-                    .join("1")
-                    .join("consumer"),
-            )
-            .expect("the consumer directory"),
-            claim,
+            Arc::new(super::consumer::store::FileRuns::new(
+                permguard_host::storage::Dir::open(
+                    &host
+                        .root
+                        .join("host")
+                        .join(STREAMS)
+                        .join("data")
+                        .join("decisions")
+                        .join("1")
+                        .join("consumer"),
+                )
+                .expect("the consumer directory"),
+                claim,
+                permguard_host::storage::journal::DEFAULT_SEGMENT_BYTES,
+            )),
             descriptor(),
             Text,
             Arc::clone(&host.time),
@@ -8822,4 +8837,60 @@ fn an_ended_run_of_an_ended_membership_is_carried_too() {
         1,
         "shipped"
     );
+}
+
+/// Iteration 03, WP-27.4: every test of the consumer built by `consumer_on` passes again with
+/// its runs opened for each hold, the path the consumer takes on a backend any instance may
+/// write: what it keeps between holds is never what decides.
+#[test]
+fn the_consumer_tests_pass_with_runs_opened_for_each_hold() {
+    REOPENING.with(|reopening| reopening.set(true));
+    an_acknowledgement_follows_every_durable_write();
+    a_record_the_plane_does_not_admit_refuses_its_batch_before_any_write();
+    an_exact_replay_is_ok_and_a_differing_one_a_fork();
+    a_batch_that_does_not_chain_or_signs_a_range_again_over_other_records_is_a_fork();
+    a_range_whose_held_file_commits_to_other_records_is_a_fork();
+    a_range_signed_again_by_another_key_is_a_fork();
+    an_unreadable_held_file_is_corruption_not_a_fork();
+    an_overlap_appends_only_its_suffix();
+    a_batch_ahead_is_out_of_order_and_stores_nothing();
+    a_range_below_the_oldest_retained_is_gone();
+    an_unverifiable_batch_stores_nothing();
+    each_check_refuses_in_the_documented_order();
+    a_store_failure_is_deferred();
+    the_handler_reports_a_fork_and_defers_a_store_failure();
+    a_run_ships_on_after_a_repin_under_both_pins();
+    the_ingest_refuses_what_its_task_does_not_pin();
+    each_subscription_keeps_its_own_ack_and_truncate_safe_is_the_least_required();
+    a_silent_required_subscription_still_blocks_until_its_task_leaves_the_manifest();
+    a_refused_producer_ships_once_approved_without_restart();
+    the_consumer_answers_its_runs_records_and_batches();
+    pressure_counts_only_the_unacknowledged();
+    files_a_crash_left_below_the_pruned_mark_are_skipped_then_deleted();
+    only_the_fencing_memberships_subscriptions_block_a_run();
+    an_acknowledgement_never_moves_back_nor_past_what_was_sealed();
+    the_bounds_of_what_is_due_and_deleted_are_exact();
+    an_incomplete_drain_marks_the_streams_behind_and_shipping_settles_them();
+    a_mark_waits_for_every_older_run_whichever_membership_fences_it();
+    a_pass_anchors_audits_then_deletes_what_was_acknowledged();
+    an_unaudited_pass_deletes_nothing_and_passes_never_overlap();
+    a_pass_stopped_after_its_anchor_or_its_base_is_finished();
+    a_reopened_stream_seals_what_follows_its_base();
+    a_pre_anchor_mark_is_anchored_and_the_journal_is_caught_up();
+    a_run_never_pruned_reads_without_a_gap();
+    an_origins_batches_import_into_its_own_run_under_its_pins();
+    a_restored_coordinator_is_probed_for_the_runs_it_had_acknowledged_whole();
+    an_acknowledged_batch_is_kept_the_retention_then_deleted();
+    an_acknowledgement_from_before_the_retention_ages_from_the_first_pass();
+    the_retention_runs_from_the_last_required_acknowledgement();
+    a_host_ships_its_own_streams_to_itself_under_its_own_ring();
+    a_run_fenced_by_a_membership_that_ended_is_rolled_over_for_the_live_one();
+    decisions_before_the_first_ship_pass_ship_and_an_earlier_run_is_stated();
+    a_both_planes_member_ships_to_its_coordinator_and_to_itself();
+    a_host_stuck_on_an_old_cutover_resumes_shipping_to_itself();
+    a_host_keeps_shipping_to_itself_across_key_rotations();
+    a_run_started_past_its_beginning_admits_the_batch_that_chains_from_its_anchor();
+    records_before_the_first_membership_are_carried_into_its_run_and_ship();
+    what_an_ended_membership_never_acknowledged_is_carried_to_the_next_one();
+    an_ended_run_of_an_ended_membership_is_carried_too();
 }

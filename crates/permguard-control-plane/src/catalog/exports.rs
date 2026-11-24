@@ -16,7 +16,7 @@
 //! `host.operations`; this plane hands it the fields. An archive is answered in one message: one
 //! that would pass the transport's ceiling is refused before anything is signed.
 
-use std::path::PathBuf;
+use std::sync::Arc;
 
 use permguard_core::authz::{Actor, operations};
 use permguard_core::catalog::Selector;
@@ -27,7 +27,7 @@ use permguard_objects::cbor::{self, Value};
 
 use super::CatalogFacade;
 use crate::refusal::Refusal;
-use crate::store::FileObjectStore;
+use crate::store::Ledgers;
 
 /// A bundle entry holding an object.
 pub const OBJECT: i64 = 1;
@@ -40,8 +40,10 @@ const ENTRY_FRAMING: usize = 32;
 
 /// What an export needs beyond the catalog.
 pub struct Exports {
-    /// `<volume>/data/zones`: every ledger's store.
-    zones_root: PathBuf,
+    /// Every ledger's store.
+    pub ledgers: Arc<dyn Ledgers>,
+    /// The archives the zones keep as foreign evidence.
+    pub archives: Arc<dyn super::archives::ArchiveStore>,
     /// The capability to have the Host sign a manifest under `host.operations`.
     signer: Signer<LedgerExportV1>,
     /// This Host's id, the source authority every manifest names.
@@ -57,24 +59,21 @@ pub struct Exports {
 
 impl Exports {
     pub fn new(
-        zones_root: PathBuf,
+        ledgers: Arc<dyn Ledgers>,
+        archives: Arc<dyn super::archives::ArchiveStore>,
         signer: Signer<LedgerExportV1>,
         authority: [u8; 16],
         max_bytes: usize,
     ) -> Self {
         Self {
-            zones_root,
+            ledgers,
+            archives,
             signer,
             authority,
             max_bytes,
             running: std::sync::Mutex::new(()),
             importing: tokio::sync::Mutex::new(()),
         }
-    }
-
-    /// `<volume>/data/zones`: every ledger's store, and every zone's archives.
-    pub fn zones_root(&self) -> &std::path::Path {
-        &self.zones_root
     }
 }
 
@@ -217,12 +216,7 @@ impl Exports {
         let mut stores = Vec::new();
         let mut exported = Vec::new();
         for ledger in ledgers {
-            let store = FileObjectStore::new(
-                self.zones_root
-                    .join(&zone.id)
-                    .join("ledgers")
-                    .join(&ledger.id),
-            );
+            let store = self.ledgers.ledger(&zone.id, &ledger.id);
             let refs = store.list_refs().map_err(internal)?;
             exported.push(ExportedLedger {
                 id: ledger.id.clone(),
@@ -256,9 +250,11 @@ impl Exports {
         let mut held = self.within(0, skeleton.len() + 4 * ENTRY_FRAMING)?;
         let mut entries = Vec::new();
         for (index, (store, ledger)) in stores.iter().zip(exported.iter_mut()).enumerate() {
-            let closure =
-                crate::gc::reachable_from(store, ledger.refs.iter().map(|held| held.head.clone()))
-                    .map_err(internal)?;
+            let closure = crate::gc::reachable_from(
+                store.as_ref(),
+                ledger.refs.iter().map(|held| held.head.clone()),
+            )
+            .map_err(internal)?;
             let at = Value::Int(i64::try_from(index).map_err(internal)?);
             for digest in &closure {
                 let bytes = store.get_object(digest).map_err(internal)?.ok_or_else(|| {
@@ -348,6 +344,8 @@ pub mod tests {
     use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
     use permguard_std::catalog::FileCatalog;
 
+    use crate::store::LedgerStore as _;
+
     use super::*;
 
     pub struct Fixture {
@@ -414,7 +412,7 @@ pub mod tests {
         let ledger = catalog
             .create_ledger(&Selector::Id(zone.id.clone()), "release")
             .expect("a ledger");
-        let store = FileObjectStore::new(
+        let store = crate::store::FileObjectStore::new(
             root.join("zones")
                 .join(&zone.id)
                 .join("ledgers")
@@ -470,7 +468,10 @@ pub mod tests {
         Fixture {
             catalog,
             exports: Exports::new(
-                root.join("zones"),
+                Arc::new(crate::store::FileLedgers::new(root.join("zones"))),
+                Arc::new(crate::catalog::archives::FileArchives::new(
+                    root.join("zones"),
+                )),
                 crate::handles::export_signer_for_tests(Arc::clone(&ring)),
                 [7; 16],
                 max_bytes,

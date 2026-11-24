@@ -29,14 +29,14 @@ use permguard_host::operations::journal::{Initiator, RequestKey};
 use permguard_host::operations::mutation::{
     Applied, Applying, Begin, Failure, MutationError, Outcome,
 };
-use permguard_host::storage::Dir;
 use permguard_host::time::TimeGuard;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::access_keys;
-use crate::accounts::{self, AccessKey, Account, Accounts, AccountsError, Status};
-use crate::tokens::{self, IssuedToken, TokenDraft, TokenError, TokenRegistry, status};
+use crate::accounts::{self, AccessKey, Account, AccountStore, AccountsError, Status};
+use crate::marks::MarkStore;
+use crate::tokens::{self, IssuedToken, TokenDraft, TokenError, TokenStore, status};
 
 /// The resource every operation of this plane is authorized on.
 pub fn resource() -> Resource {
@@ -52,6 +52,7 @@ impl AuditSchema for AuthorityAudit {
         permguard_host::audit::AUDIT_TOKEN_ISSUED,
         permguard_host::audit::AUDIT_TOKEN_REFUSED,
         permguard_host::audit::AUDIT_ADMIN_KEY_OFFLINE,
+        permguard_host::audit::AUDIT_TOKENS_COMPLETED,
     ];
 }
 
@@ -245,7 +246,7 @@ fn invalid(message: impl Into<String>) -> Refusal {
 
 /// The bearer's principal, when `jti` names the very token it presents.
 /// Whether every operation `held` grants, where it grants it, is granted by `scopes` too.
-fn granted_within(held: &[TokenScope], scopes: &[TokenScope]) -> bool {
+pub(crate) fn granted_within(held: &[TokenScope], scopes: &[TokenScope]) -> bool {
     held.iter().all(|scope| {
         scope.operations.iter().all(|operation| {
             scopes.iter().any(|granted| {
@@ -294,7 +295,7 @@ fn refusal_of(error: AccountsError) -> Refusal {
 
 fn failure(error: AccountsError) -> Failure<AccountsError> {
     match error {
-        AccountsError::Storage(_) | AccountsError::Record(_) => Failure::Indeterminate(error),
+        AccountsError::Unavailable(_) => Failure::Indeterminate(error),
         other => Failure::Refused(other),
     }
 }
@@ -543,47 +544,6 @@ struct SignedList {
 /// Plane refuses a list not after the one it holds.
 pub const INHERITED_AHEAD: u64 = 60;
 
-/// The highest `iat` signed of each list, kept on the volume so a restarted process signs past
-/// it (BUG-0278): each change signed moves `iat` one second past the last, so a burst of changes
-/// runs it ahead of the clock by as many seconds, and a fixed lead cannot cover that.
-pub const SIGNED_MARKS: &str = "lists-signed.json";
-
-/// The marks, by list id in hex.
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SignedMarks {
-    lists: BTreeMap<String, u64>,
-}
-
-/// The marks the volume holds; none when it holds no file or one that does not read, which the
-/// fixed lead then covers as before.
-fn read_marks(dir: &Dir) -> BTreeMap<[u8; 16], u64> {
-    let Ok(Some(bytes)) = dir.read(SIGNED_MARKS) else {
-        return BTreeMap::new();
-    };
-    let Ok(marks) = serde_json::from_slice::<SignedMarks>(&bytes) else {
-        return BTreeMap::new();
-    };
-    marks
-        .lists
-        .into_iter()
-        .filter_map(|(id, iat)| tokens::parse_id(&id).map(|id| (id, iat)))
-        .collect()
-}
-
-/// Writes `marks` whole, replacing the file.
-fn write_marks(dir: &Dir, marks: &BTreeMap<[u8; 16], u64>) -> Result<(), String> {
-    let held = SignedMarks {
-        lists: marks
-            .iter()
-            .map(|(id, iat)| (uuid_text(id), *iat))
-            .collect(),
-    };
-    let bytes = serde_json::to_vec(&held).map_err(|error| error.to_string())?;
-    permguard_host::storage::write::replace_bytes(dir, SIGNED_MARKS, &bytes)
-        .map_err(|error| error.to_string())
-}
-
 /// The `iat` the next list token of a list is signed at: past the one this process signed, past
 /// the mark an earlier process left, and never before `now`; a list inherited with no mark is
 /// dated the fixed lead ahead.
@@ -650,8 +610,8 @@ pub fn source_key(source: &str) -> String {
 
 /// What the facade is built from.
 pub struct Parts {
-    pub accounts: Arc<Accounts>,
-    pub registry: Arc<TokenRegistry>,
+    pub accounts: Arc<dyn AccountStore>,
+    pub registry: Arc<dyn TokenStore>,
     pub tokens: Option<Signer<AccessTokenV1>>,
     pub lists: Option<Signer<StatusListTokenV1>>,
     pub issuer: String,
@@ -663,13 +623,13 @@ pub struct Parts {
     pub trust: Option<Arc<AuthorityTrust>>,
     pub time: Arc<TimeGuard>,
     /// Where the highest `iat` signed of each list is kept (BUG-0278); `None` keeps none.
-    pub marks: Option<Dir>,
+    pub marks: Option<Arc<dyn MarkStore>>,
 }
 
 /// The Authority Plane's facade: one per process, shared by both transports.
 pub struct Authority {
-    accounts: Arc<Accounts>,
-    registry: Arc<TokenRegistry>,
+    accounts: Arc<dyn AccountStore>,
+    registry: Arc<dyn TokenStore>,
     tokens: Option<Signer<AccessTokenV1>>,
     lists: Option<Signer<StatusListTokenV1>>,
     issuer: String,
@@ -685,7 +645,7 @@ pub struct Authority {
     inherited: BTreeSet<[u8; 16]>,
     /// The highest `iat` signed of each list, as the volume holds it, and where.
     marks: Mutex<BTreeMap<[u8; 16], u64>>,
-    marks_dir: Option<Dir>,
+    mark_store: Option<Arc<dyn MarkStore>>,
     limiter: Limiter,
     /// Every Argon2id verification, one bound.
     pub hashing: Arc<tokio::sync::Semaphore>,
@@ -695,7 +655,7 @@ impl std::fmt::Debug for Authority {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Authority")
             .field("issuer", &self.issuer)
-            .field("accounts", &self.accounts.len())
+            .field("accounts", &self.accounts.count().ok())
             .finish_non_exhaustive()
     }
 }
@@ -711,13 +671,19 @@ pub struct Issued {
 }
 
 impl Authority {
-    pub fn new(parts: Parts) -> Self {
-        let inherited = parts.registry.list_ids().into_iter().collect();
-        let marks = parts.marks.as_ref().map(read_marks).unwrap_or_default();
-        Self {
+    /// The facade over `parts`. The lists the store holds are read once: a list held before
+    /// this process signed it is dated past whatever an earlier process signed.
+    pub fn new(parts: Parts) -> Result<Self, TokenError> {
+        let inherited = parts.registry.list_ids()?.into_iter().collect();
+        let marks = parts
+            .marks
+            .as_ref()
+            .map(|store| store.held())
+            .unwrap_or_default();
+        Ok(Self {
             inherited,
             marks: Mutex::new(marks),
-            marks_dir: parts.marks,
+            mark_store: parts.marks,
             accounts: parts.accounts,
             registry: parts.registry,
             tokens: parts.tokens,
@@ -734,7 +700,7 @@ impl Authority {
             signed: Mutex::default(),
             limiter: Limiter::default(),
             hashing: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_HASHES)),
-        }
+        })
     }
 
     /// The issuer every token names.
@@ -743,12 +709,12 @@ impl Authority {
     }
 
     /// The accounts.
-    pub fn accounts(&self) -> &Arc<Accounts> {
+    pub fn accounts(&self) -> &Arc<dyn AccountStore> {
         &self.accounts
     }
 
     /// The token registry.
-    pub fn registry(&self) -> &Arc<TokenRegistry> {
+    pub fn registry(&self) -> &Arc<dyn TokenStore> {
         &self.registry
     }
 
@@ -793,8 +759,14 @@ impl Authority {
     }
 
     /// The id of every list a live token may name.
-    pub fn list_ids(&self) -> Vec<String> {
-        self.registry.list_ids().iter().map(uuid_text).collect()
+    pub fn list_ids(&self) -> Result<Vec<String>, Refusal> {
+        Ok(self
+            .registry
+            .list_ids()
+            .map_err(unavailable)?
+            .iter()
+            .map(uuid_text)
+            .collect())
     }
 
     /// The signed list `id` names at `now`: the one already signed while the list has not changed
@@ -808,25 +780,33 @@ impl Authority {
     }
 
     fn signed_list(&self, list_id: &[u8; 16], now: u64) -> Result<Option<String>, Refusal> {
-        let Some(changed_at) = self.registry.changed_at(list_id) else {
+        let Some(changed_at) = self.registry.changed_at(list_id).map_err(unavailable)? else {
             return Ok(None);
         };
         let signer = self.lists.as_ref().ok_or_else(|| {
             unavailable("no authority.tokens ring is composed in this deployment")
         })?;
         let mut signed = self.signed.lock().unwrap_or_else(PoisonError::into_inner);
-        signed.retain(|id, _| self.registry.changed_at(id).is_some());
+        // A list the store no longer holds is forgotten; one it could not answer for is kept.
+        signed.retain(|id, _| !matches!(self.registry.changed_at(id), Ok(None)));
         if let Some(held) = signed.get(list_id)
             && held.changed_at == changed_at
             && now < held.iat.saturating_add(self.timing.ttl)
         {
             return Ok(Some(held.compact.clone()));
         }
-        let Some(view) = self.registry.list(list_id) else {
-            return Ok(None);
-        };
         // A change is signed at once, so a revocation holds here at once; `iat` grows strictly.
         let mut marks = self.marks.lock().unwrap_or_else(PoisonError::into_inner);
+        // The marks as the store holds them now: another instance may have signed lists past
+        // what this one read at its start, and keeping a mark below one of them would be refused
+        // (X84). Each is taken where it is higher.
+        if let Some(store) = &self.mark_store {
+            for (id, kept) in store.held() {
+                if marks.get(&id).is_none_or(|held| *held < kept) {
+                    marks.insert(id, kept);
+                }
+            }
+        }
         let iat = next_iat(
             signed.get(list_id).map(|held| held.iat),
             marks.get(list_id).copied(),
@@ -836,11 +816,11 @@ impl Authority {
         // The mark is on the volume before the list leaves this process: a restart then signs
         // past it. A mark that cannot be kept is a list not signed, never one a restart could
         // date before (BUG-0278).
-        if let Some(dir) = &self.marks_dir
+        if let Some(store) = &self.mark_store
             && marks.get(list_id).is_none_or(|held| *held < iat)
         {
             let previous = marks.insert(*list_id, iat);
-            if let Err(error) = write_marks(dir, &marks) {
+            if let Err(error) = store.keep(&marks) {
                 match previous {
                     Some(previous) => marks.insert(*list_id, previous),
                     None => marks.remove(list_id),
@@ -851,6 +831,11 @@ impl Authority {
             }
         }
         drop(marks);
+        // The list read once its mark is kept: an instance that signed it below that mark had
+        // kept it first, and read the list before, so whatever it signed is in what is read now.
+        let Some(view) = self.registry.list(list_id).map_err(unavailable)? else {
+            return Ok(None);
+        };
         let lst = view.list.encode().map_err(unavailable)?;
         let payload = serde_json::json!({
             "iss": self.issuer,
@@ -882,6 +867,18 @@ impl Authority {
         Ok(Some(compact))
     }
 
+    /// Whether a token asked this Host for a list or a key it does not hold since the last call:
+    /// the feed is then due at once, as the refresh from a remote Authority Plane is (BUG-0336).
+    /// On several instances a token another instance issued names a list it opened a moment ago,
+    /// and this instance's feed hands it over within a quarter of a second (WP-28.7).
+    pub fn trust_wanted(&self) -> bool {
+        self.trust.as_ref().is_some_and(|trust| {
+            let lists = trust.take_lists_wanted();
+            let keys = trust.take_keys_wanted();
+            lists || keys
+        })
+    }
+
     /// Hands this Host the key set and every list as they stand: what a change or a tick of the
     /// plane calls, so the Planes in this process verify with what was just decided.
     pub fn feed_trust(&self) {
@@ -903,7 +900,19 @@ impl Authority {
             Err(_) => return,
         }
         let now = self.now();
-        let ids = self.registry.list_ids();
+        // Without the lists' names nothing is fed: naming none would drop every list held.
+        let ids = match self.registry.list_ids() {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "authority.lists_unread",
+                    component = crate::COMPONENT,
+                    reason = %error,
+                    "the status lists could not be read: the ones held stay in use"
+                );
+                return;
+            }
+        };
         for list_id in &ids {
             match self.signed_list(list_id, now) {
                 Ok(Some(token)) => {
@@ -952,7 +961,15 @@ impl Authority {
             access_keys::burn(&request.client_secret);
             return Err(TokenRefusal::InvalidClient);
         }
-        let Some((account, key)) = self.accounts.by_access_key(&request.client_id) else {
+        let found = match self.accounts.by_access_key(&request.client_id) {
+            Ok(found) => found,
+            Err(error) => {
+                // The same work as a refusal costs, whatever the store could not answer.
+                access_keys::burn(&request.client_secret);
+                return Err(TokenRefusal::Unavailable(error.to_string()));
+            }
+        };
+        let Some((account, key)) = found else {
             access_keys::burn(&request.client_secret);
             return Err(TokenRefusal::InvalidClient);
         };
@@ -967,7 +984,9 @@ impl Authority {
         if account.status != Status::Active || !key.is_live(now) {
             return Err(TokenRefusal::InvalidClient);
         }
-        let scopes = narrowed(&account.scopes, request.scope.as_deref())?;
+        // Refused here from the account as it was read: what a caller is told first is the same
+        // whatever else arrives. What the token carries is decided again below, under the gate.
+        narrowed(&account.scopes, request.scope.as_deref())?;
         let lifetime = match request.requested_lifetime {
             None => DEFAULT_LIFETIME,
             Some(0) => {
@@ -984,10 +1003,6 @@ impl Authority {
             }
             Some(asked) => asked,
         };
-        let lifetime = match key.expires_at {
-            Some(expires) => lifetime.min(expires.saturating_sub(now)),
-            None => lifetime,
-        };
         let signer = self
             .tokens
             .as_ref()
@@ -995,18 +1010,47 @@ impl Authority {
         signer
             .ready()
             .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
-        let issued = self
-            .registry
-            .issue(
-                TokenDraft {
-                    account: account.name.clone(),
-                    access_key: key.access_key.clone(),
-                    scopes: scopes.clone(),
-                    expires_at: now.saturating_add(lifetime),
-                },
-                now,
-            )
-            .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
+        // The account is read again and the token recorded as one step with any change of the
+        // account (decision E26): a token is never issued for an account, a key or a scope that
+        // a change which has already ended its tokens took away.
+        let record = || {
+            let current = self
+                .accounts
+                .get(&account.name)
+                .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?
+                .ok_or(TokenRefusal::InvalidClient)?;
+            let key = current
+                .key(&key.access_key)
+                .ok_or(TokenRefusal::InvalidClient)?;
+            if current.status != Status::Active || !key.is_live(now) {
+                return Err(TokenRefusal::InvalidClient);
+            }
+            let scopes = narrowed(&current.scopes, request.scope.as_deref())?;
+            let lifetime = match key.expires_at {
+                Some(expires) => lifetime.min(expires.saturating_sub(now)),
+                None => lifetime,
+            };
+            let issued = self
+                .registry
+                .issue(
+                    TokenDraft {
+                        account: current.name.clone(),
+                        access_key: key.access_key.clone(),
+                        scopes: scopes.clone(),
+                        expires_at: now.saturating_add(lifetime),
+                    },
+                    now,
+                )
+                .map_err(|error| TokenRefusal::Unavailable(error.to_string()))?;
+            Ok((issued, scopes))
+        };
+        let (issued, scopes) = match &self.mutations {
+            Some(mutations) => mutations
+                .consistent(record)
+                .map_err(TokenRefusal::Unavailable)?,
+            // No change of an account is made on a process with no mutation journal.
+            None => record(),
+        }?;
         let scope = scope_words(&scopes);
         let claims = serde_json::json!({
             "iss": self.issuer,
@@ -1031,7 +1075,7 @@ impl Authority {
             // Never handed out: an over-long token is revoked at once.
             let _ = self.registry.set_status(
                 None,
-                |held| held.jti == issued.jti,
+                &|held: &IssuedToken| held.jti == issued.jti,
                 status::INVALID,
                 "authority",
                 now,
@@ -1146,7 +1190,13 @@ impl Authority {
             access_key: key.access_key.clone(),
             created_at: rfc3339(key.created_at),
             expires_at: key.expires_at.map(rfc3339),
-            last_used_at: self.registry.last_used(&key.access_key).map(rfc3339),
+            // A view never fails for it: a store that cannot say shows no last use.
+            last_used_at: self
+                .registry
+                .last_used(&key.access_key)
+                .ok()
+                .flatten()
+                .map(rfc3339),
             status: if key.is_live(now) {
                 "active"
             } else {
@@ -1174,6 +1224,7 @@ impl Authority {
     fn held(&self, name: &str) -> Result<Account, Refusal> {
         self.accounts
             .get(name)
+            .map_err(refusal_of)?
             .ok_or_else(|| not_found(format!("no service account `{name}`")))
     }
 
@@ -1183,6 +1234,7 @@ impl Authority {
         Ok(self
             .accounts
             .list()
+            .map_err(refusal_of)?
             .iter()
             .map(|account| self.view(account))
             .collect())
@@ -1236,6 +1288,7 @@ impl Authority {
         Ok(self
             .registry
             .live_tokens(self.now())
+            .map_err(unavailable)?
             .iter()
             .filter(|token| {
                 account.is_none_or(|account| account.is_empty() || token.account == account)
@@ -1260,8 +1313,8 @@ impl Authority {
         request_id: &str,
         request: &R,
         target: &str,
-        check: impl FnOnce() -> Result<(), AccountsError>,
-        apply: impl FnOnce(&Applying<'_>) -> Result<Applied<T>, Failure<AccountsError>>,
+        check: impl FnMut() -> Result<(), AccountsError>,
+        apply: impl FnMut(&Applying<'_>) -> Result<Applied<T>, Failure<AccountsError>>,
         rebuild: impl FnOnce() -> Result<T, Refusal>,
     ) -> Result<(T, bool), Refusal>
     where
@@ -1295,7 +1348,7 @@ impl Authority {
         let handle = if domain == mutations.domain() {
             mutations.clone()
         } else {
-            MutationHandle::new(mutations.engine(), domain)
+            mutations.for_domain(domain)
         };
         let outcome = handle
             .run_checked(
@@ -1350,7 +1403,7 @@ impl Authority {
             &name,
             || {
                 accounts::check_name(&name).map_err(AccountsError::Invalid)?;
-                if self.accounts.get(&name).is_some() {
+                if self.accounts.get(&name)?.is_some() {
                     return Err(AccountsError::Conflict(format!(
                         "the service account `{name}` exists"
                     )));
@@ -1360,7 +1413,7 @@ impl Authority {
             |applying| {
                 let written = self
                     .accounts
-                    .put(Some(applying), account, &principal, now)
+                    .create(Some(applying), account.clone(), &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1395,6 +1448,14 @@ impl Authority {
         let principal = self.admit(actor, operations::ACCOUNTS_WRITE)?;
         let held = self.held(name)?;
         let now = self.now();
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            Self::expect_revision(current, update.expected_revision)?;
+            Ok(Account {
+                description: update.description.clone(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1403,19 +1464,11 @@ impl Authority {
             &update.request_id,
             &update,
             name,
-            || Self::expect_revision(&held, update.expected_revision),
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            description: update.description.clone(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1460,6 +1513,21 @@ impl Authority {
                 status::INVALID,
             )
         };
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            if current.is_admin() {
+                return Err(AccountsError::Conflict(
+                    "`admin` is never suspended: there is always one account that can repair \
+                     the others"
+                        .to_owned(),
+                ));
+            }
+            Self::expect_revision(current, change.expected_revision)?;
+            Ok(Account {
+                status: wanted,
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1468,33 +1536,16 @@ impl Authority {
             &change.request_id,
             &change,
             name,
-            || {
-                if held.is_admin() {
-                    return Err(AccountsError::Conflict(
-                        "`admin` is never suspended: there is always one account that can repair \
-                         the others"
-                            .to_owned(),
-                    ));
-                }
-                Self::expect_revision(&held, change.expected_revision)
-            },
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            status: wanted,
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 self.registry
                     .set_status(
                         None,
-                        |token| token.account == name && token.status == from,
+                        &|token: &IssuedToken| token.account == name && token.status == from,
                         to,
                         &principal,
                         now,
@@ -1521,7 +1572,7 @@ impl Authority {
     ) -> Result<Deleted, Refusal> {
         let principal = self.admit(actor, operations::ACCOUNTS_WRITE)?;
         let now = self.now();
-        let held = self.accounts.get(name);
+        let held = self.accounts.get(name).map_err(refusal_of)?;
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1544,21 +1595,28 @@ impl Authority {
                 Self::expect_revision(held, change.expected_revision)
             },
             |applying| {
+                // The revision the caller expects is the account's when it is deleted.
                 self.accounts
-                    .delete(Some(applying), name, &principal, now)
+                    .delete(
+                        Some(applying),
+                        name,
+                        &|current| Self::expect_revision(current, change.expected_revision),
+                        &principal,
+                        now,
+                    )
                     .map_err(failure)?;
                 let revoked = self
                     .registry
                     .set_status(
                         None,
-                        |token| token.account == name,
+                        &|token: &IssuedToken| token.account == name,
                         status::INVALID,
                         &principal,
                         now,
                     )
                     .map_err(token_failure)?;
                 Ok(Applied {
-                    revision: self.accounts.revision(),
+                    revision: self.accounts.revision().map_err(failure)?,
                     target: Some(name.to_owned()),
                     value: Deleted {
                         name: name.to_owned(),
@@ -1592,6 +1650,21 @@ impl Authority {
             .map(ScopeView::read)
             .collect::<Result<Vec<_>, _>>()?;
         let now = self.now();
+        // Decided again on the account as it stands when the change is applied.
+        let changed = |current: &Account| {
+            if current.is_admin() {
+                return Err(AccountsError::Conflict(
+                    "`admin`'s scopes are every operation on every resource, and never change"
+                        .to_owned(),
+                ));
+            }
+            accounts::check_scopes(&scopes).map_err(AccountsError::Invalid)?;
+            Self::expect_revision(current, set.expected_revision)?;
+            Ok(Account {
+                scopes: scopes.clone(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1600,28 +1673,11 @@ impl Authority {
             &set.request_id,
             &set,
             name,
-            || {
-                if held.is_admin() {
-                    return Err(AccountsError::Conflict(
-                        "`admin`'s scopes are every operation on every resource, and never change"
-                            .to_owned(),
-                    ));
-                }
-                accounts::check_scopes(&scopes).map_err(AccountsError::Invalid)?;
-                Self::expect_revision(&held, set.expected_revision)
-            },
+            || changed(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            scopes: scopes.clone(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &changed, &principal, now)
                     .map_err(failure)?;
                 // A narrowing holds at once: a live token holding anything the new scopes do not
                 // grant is revoked, and with `revoke_tokens` every live token of the account is
@@ -1630,7 +1686,7 @@ impl Authority {
                     .registry
                     .set_status(
                         None,
-                        |token| {
+                        &|token: &IssuedToken| {
                             token.account == name
                                 && (set.revoke_tokens || !granted_within(&token.scopes, &scopes))
                         },
@@ -1683,6 +1739,22 @@ impl Authority {
             created_at: now,
             expires_at,
         };
+        // Decided again on the account as it stands when the key is added: the keys it holds
+        // then are the ones the new key joins.
+        let with_key = |current: &Account| {
+            if current.live_keys(now).count() >= accounts::MAX_LIVE_KEYS {
+                return Err(AccountsError::Conflict(format!(
+                    "`{name}` holds {} live access keys already: delete one first",
+                    accounts::MAX_LIVE_KEYS
+                )));
+            }
+            let mut keys = current.keys.clone();
+            keys.push(key.clone());
+            Ok(Account {
+                keys,
+                ..current.clone()
+            })
+        };
         let (view, applied) = self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1691,29 +1763,11 @@ impl Authority {
             &create.request_id,
             &create,
             name,
-            || {
-                if held.live_keys(now).count() >= accounts::MAX_LIVE_KEYS {
-                    return Err(AccountsError::Conflict(format!(
-                        "`{name}` holds {} live access keys already: delete one first",
-                        accounts::MAX_LIVE_KEYS
-                    )));
-                }
-                Ok(())
-            },
+            || with_key(&held).map(|_| ()),
             |applying| {
-                let mut keys = held.keys.clone();
-                keys.push(key.clone());
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            keys,
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &with_key, &principal, now)
                     .map_err(failure)?;
                 Ok(Applied {
                     revision: written.revision,
@@ -1750,6 +1804,34 @@ impl Authority {
         let principal = self.admit(actor, operations::ACCOUNTS_WRITE)?;
         let held = self.held(name)?;
         let now = self.now();
+        // Decided again on the account as it stands when the key is removed: `admin`'s last
+        // live key is judged among the keys it holds then.
+        let without_key = |current: &Account| {
+            if current.key(access_key).is_none() {
+                return Err(AccountsError::NotFound(format!(
+                    "`{name}` holds no access key {access_key}"
+                )));
+            }
+            if current.is_admin()
+                && current
+                    .live_keys(now)
+                    .all(|key| key.access_key == access_key)
+            {
+                return Err(AccountsError::Conflict(
+                    "`admin`'s last live access key is never deleted: make another first"
+                        .to_owned(),
+                ));
+            }
+            Ok(Account {
+                keys: current
+                    .keys
+                    .iter()
+                    .filter(|key| key.access_key != access_key)
+                    .cloned()
+                    .collect(),
+                ..current.clone()
+            })
+        };
         self.transact(
             &principal,
             accounts::DOMAIN,
@@ -1758,43 +1840,17 @@ impl Authority {
             &change.request_id,
             &(access_key, &change),
             name,
-            || {
-                if held.key(access_key).is_none() {
-                    return Err(AccountsError::NotFound(format!(
-                        "`{name}` holds no access key {access_key}"
-                    )));
-                }
-                if held.is_admin() && held.live_keys(now).all(|key| key.access_key == access_key) {
-                    return Err(AccountsError::Conflict(
-                        "`admin`'s last live access key is never deleted: make another first"
-                            .to_owned(),
-                    ));
-                }
-                Ok(())
-            },
+            || without_key(&held).map(|_| ()),
             |applying| {
                 let written = self
                     .accounts
-                    .put(
-                        Some(applying),
-                        Account {
-                            keys: held
-                                .keys
-                                .iter()
-                                .filter(|key| key.access_key != access_key)
-                                .cloned()
-                                .collect(),
-                            ..held.clone()
-                        },
-                        &principal,
-                        now,
-                    )
+                    .update(Some(applying), name, &without_key, &principal, now)
                     .map_err(failure)?;
                 let revoked = self
                     .registry
                     .set_status(
                         None,
-                        |token| token.access_key == access_key,
+                        &|token: &IssuedToken| token.access_key == access_key,
                         status::INVALID,
                         &principal,
                         now,
@@ -1838,6 +1894,7 @@ impl Authority {
         let rebuild = || {
             self.registry
                 .token(&id)
+                .map_err(unavailable)?
                 .map(|token| self.token_view(&token))
                 .ok_or_else(|| not_found(format!("no token `{jti}`")))
         };
@@ -1853,6 +1910,7 @@ impl Authority {
                 let token = self
                     .registry
                     .token(&id)
+                    .map_err(|error| AccountsError::Unavailable(error.to_string()))?
                     .ok_or_else(|| AccountsError::NotFound(format!("no token `{jti}`")))?;
                 if token.status == status::INVALID {
                     return Err(AccountsError::Conflict(format!(
@@ -1865,7 +1923,7 @@ impl Authority {
                 self.registry
                     .set_status(
                         Some(applying),
-                        |token| token.jti == id,
+                        &|token: &IssuedToken| token.jti == id,
                         status::INVALID,
                         &principal,
                         now,
@@ -1874,9 +1932,10 @@ impl Authority {
                 let token = self
                     .registry
                     .token(&id)
+                    .map_err(token_failure)?
                     .ok_or_else(|| failure(AccountsError::NotFound(format!("no token `{jti}`"))))?;
                 Ok(Applied {
-                    revision: self.registry.revision(),
+                    revision: self.registry.revision().map_err(token_failure)?,
                     target: Some(jti.to_owned()),
                     value: self.token_view(&token),
                 })
@@ -1947,6 +2006,25 @@ mod tests {
         TokenScope {
             operations: operations.iter().map(|op| (*op).to_owned()).collect(),
             selector: Selector::parse(selector).unwrap_or_else(|_| unreachable!("a selector")),
+        }
+    }
+
+    /// What a token is issued with is within its account's scopes, whatever was asked: a start
+    /// ends the tokens that hold more than their account grants, and must end none of these.
+    #[test]
+    fn what_a_token_is_issued_with_is_within_its_accounts_scopes() {
+        let held = vec![
+            scope(&["decision.evaluate", "event.submit"], "plane/data/*"),
+            scope(&["catalog.read"], "plane/control/*"),
+        ];
+        for asked in [
+            None,
+            Some("decision.evaluate"),
+            Some("event.submit catalog.read"),
+            Some("catalog.read"),
+        ] {
+            let issued = narrowed(&held, asked).unwrap_or_else(|_| unreachable!("granted"));
+            assert!(granted_within(&issued, &held), "{asked:?}: {issued:?}");
         }
     }
 
@@ -2081,7 +2159,10 @@ mod tests {
 mod signed_marks {
     #![allow(clippy::expect_used)]
 
+    use permguard_host::storage::Dir;
+
     use super::*;
+    use crate::marks::files::{FileMarks, SIGNED_MARKS};
 
     /// BUG-0278: 150 changes signed within a few seconds run `iat` ahead of the clock by about as
     /// many seconds; the mark kept on the volume makes the first list a restarted process signs
@@ -2095,7 +2176,7 @@ mod signed_marks {
         ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("created");
-        let dir = Dir::open(&root).expect("the directory");
+        let store = FileMarks::new(Dir::open(&root).expect("the directory"));
         let list = [7u8; 16];
         let start = 1_794_213_639;
 
@@ -2107,13 +2188,13 @@ mod signed_marks {
             assert!(held.is_none_or(|before| iat > before), "strictly later");
             held = Some(iat);
             marks.insert(list, iat);
-            write_marks(&dir, &marks).expect("kept");
+            store.keep(&marks).expect("kept");
         }
         let last = held.expect("signed");
         assert!(last >= start + 145, "ahead of the clock: {last}");
 
         // Restarted a second later: what the volume says, not the fixed lead.
-        let reopened = read_marks(&dir);
+        let reopened = store.held();
         assert_eq!(reopened.get(&list), Some(&last));
         let first = next_iat(None, reopened.get(&list).copied(), true, start + 5);
         assert!(first > last, "{first} after {last}");
@@ -2130,6 +2211,6 @@ mod signed_marks {
 
         // A file that does not read is no mark.
         std::fs::write(root.join(SIGNED_MARKS), b"not json").expect("written");
-        assert!(read_marks(&dir).is_empty());
+        assert!(store.held().is_empty());
     }
 }

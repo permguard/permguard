@@ -28,9 +28,8 @@ use zeroize::Zeroizing;
 
 use permguard_host::identity::Suite;
 use permguard_host::keys::custody::{Dek, Remote, Wrap, WrapError};
+use permguard_host::keys::slots::{Kind, SlotStore};
 use permguard_host::keys::{Custody, KeyError, KeyProvider, PublicKey};
-use permguard_host::storage::Dir;
-use permguard_host::storage::write::{Published, publish_immutable};
 
 /// The wrapping algorithm a PKCS#11 KEK writes.
 pub const WRAP_PKCS11: &str = permguard_core::domains::format::PKCS11_KEK_WRAP_V1;
@@ -118,10 +117,10 @@ impl Hsm {
     }
 }
 
-/// A ring's keys in the token, their labels in `<slot>.ref` below `dir`.
+/// A ring's keys in the token, their labels the references of its slots.
 pub struct HsmKeys {
     hsm: Arc<Hsm>,
-    dir: Dir,
+    slots: Arc<dyn SlotStore>,
     ring: &'static str,
 }
 
@@ -129,7 +128,6 @@ impl fmt::Debug for HsmKeys {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HsmKeys")
             .field("ring", &self.ring)
-            .field("dir", &self.dir.path())
             .finish_non_exhaustive()
     }
 }
@@ -156,18 +154,14 @@ fn point_of(bytes: &[u8], suite: Suite) -> Result<Vec<u8>, KeyError> {
 }
 
 impl HsmKeys {
-    fn reference(slot: &str) -> String {
-        format!("{slot}.ref")
-    }
-
     /// The label `<slot>.ref` names: `<ring>:<thumbprint>`, never another ring's key or the KEK's
     /// label copied in. A ring's slot is its key's thumbprint, so the label is exactly
     /// `<ring>:<slot>`; the identity's slot is its epoch, and its open compares the key it finds
     /// with its signed document.
     fn label_of(&self, slot: &str) -> Result<String, KeyError> {
         let bytes = self
-            .dir
-            .read(&Self::reference(slot))?
+            .slots
+            .read(Kind::Reference, slot)?
             .ok_or_else(|| KeyError::Absent(slot.to_owned()))?;
         let refused = || KeyError::Malformed(format!("`{slot}.ref` names no key of this ring"));
         let label = String::from_utf8(bytes).map_err(|_| refused())?;
@@ -241,13 +235,7 @@ impl HsmKeys {
     }
 
     fn remember(&self, slot: &str, label: &str) -> Result<(), KeyError> {
-        let reference = Self::reference(slot);
-        let readable = |bytes: &[u8]| std::str::from_utf8(bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == label.as_bytes();
-        match publish_immutable(&self.dir, &reference, label.as_bytes(), &readable, &same)? {
-            Published::Written => Ok(()),
-            Published::AlreadyThere => Err(KeyError::Exists(slot.to_owned())),
-        }
+        self.slots.fill(Kind::Reference, slot, label.as_bytes())
     }
 }
 
@@ -261,7 +249,7 @@ impl KeyProvider for HsmKeys {
     }
 
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
-        if self.dir.read(&Self::reference(slot))?.is_some() {
+        if self.slots.read(Kind::Reference, slot)?.is_some() {
             return Err(KeyError::Exists(slot.to_owned()));
         }
         let (label, public) = self.create(suite)?;
@@ -277,12 +265,7 @@ impl KeyProvider for HsmKeys {
     }
 
     fn slots(&self) -> Result<Vec<String>, KeyError> {
-        Ok(self
-            .dir
-            .names()?
-            .into_iter()
-            .filter_map(|name| name.strip_suffix(".ref").map(str::to_owned))
-            .collect())
+        self.slots.slots(Kind::Reference)
     }
 
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
@@ -344,8 +327,7 @@ impl KeyProvider for HsmKeys {
                 Err(error) => return Err(error),
             }
         }
-        permguard_host::storage::tombstone::delete(&self.dir, &Self::reference(slot))?;
-        Ok(())
+        self.slots.empty(Kind::Reference, slot)
     }
 }
 
@@ -354,10 +336,14 @@ impl KeyProvider for HsmKeys {
 pub struct SharedHsm(pub Arc<Hsm>);
 
 impl Remote for SharedHsm {
-    fn provider(&self, ring: &'static str, dir: Dir) -> Result<Arc<dyn KeyProvider>, KeyError> {
+    fn provider(
+        &self,
+        ring: &'static str,
+        slots: Arc<dyn SlotStore>,
+    ) -> Result<Arc<dyn KeyProvider>, KeyError> {
         Ok(Arc::new(HsmKeys {
             hsm: Arc::clone(&self.0),
-            dir,
+            slots,
             ring,
         }))
     }

@@ -340,22 +340,9 @@ permit (
         <article><small>DISCOVERY</small><strong>One URL</strong><span>server → plane → interface</span></article>
       </div>
     </div>
-    <p class="pgx-system-map__truth">Policies are written once, in the Control Plane: versioned, signed and distributed. The Data Plane decides beside the workload, as a sidecar or a remote service, or inside the process through the engine libraries. The <a :href="withBase('/trust-plane')">Trust Plane</a>, for authority continuity with PIC-X, is next on the roadmap.</p>
+    <p class="pgx-system-map__truth">Policies are written once, in the Control Plane: versioned, signed and distributed. The Data Plane decides beside the workload, as a sidecar or a remote service, or inside the process through the engine libraries.</p>
   </section>
 
-  <section class="pgx-section">
-    <div class="pgx-section-head"><div><div class="pgx-kicker">Beyond authorization</div><h2>Authorization is the first question.</h2></div><p>Permguard governs the rules an execution follows: written once, answered where the execution runs, proven afterwards. Every dimension of execution is in its scope; each joins these pages when it ships.</p></div>
-    <div class="pgx-dimensions" role="table" aria-label="One Control Plane governs every question. Application policies are answered by the PDP in the Data Plane, available today. Trust Anchors, a policy engine for PIC-like protocols with interfaces of its own, will answer in the Data Plane, next. Authority continuity, with PIC-X, is the Trust Plane's, next.">
-      <div class="pgx-dimensions__govern" role="rowheader"><small>GOVERNED BY</small><strong>Control Plane</strong><span>one ledger model, signed versions, for every question</span></div>
-      <div class="pgx-dimensions__rows">
-        <div class="pgx-dimensions__head" role="row"><span role="columnheader">The question</span><span role="columnheader">Answered by</span><span role="columnheader">Proven by</span><span role="columnheader">Status</span></div>
-        <div class="pgx-dimensions__row pgx-dimensions__row--live" role="row"><div role="cell"><strong>May alice read the budget?</strong><span>application policies</span></div><div role="cell"><strong>PDP</strong><span>Data Plane</span></div><div role="cell"><span>a signed decision record</span></div><div role="cell"><em class="pgx-status pgx-status--live">Available</em></div></div>
-        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>May this hand-off cross the boundary?</strong><span>a policy engine for PIC-like protocols; its interfaces differ from the PDP's, so it has its own name</span></div><div role="cell"><strong>Trust Anchor</strong><span>Data Plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
-        <div class="pgx-dimensions__row" role="row"><div role="cell"><strong>Does authority hold along the chain?</strong><span>authority continuity, with <a href="https://pic-protocol.org/pic-x">PIC-X</a>, the trust-plane component of PIC</span></div><div role="cell"><strong><a :href="withBase('/trust-plane')">Trust Plane</a></strong><span>its own plane</span></div><div role="cell"><span>the same evidence chain</span></div><div role="cell"><em class="pgx-status pgx-status--next">Next</em></div></div>
-      </div>
-    </div>
-    <p class="pgx-dimensions__note">Each question arrives as its own interface, on the plane that answers it, and a server advertises only the interfaces it actually runs.</p>
-  </section>
 
   <section class="pgx-section">
     <div class="pgx-section-head"><div><div class="pgx-kicker">Who does what</div><h2>Authorization gets an owner.</h2></div><p>The rules no longer start in the code.</p></div>

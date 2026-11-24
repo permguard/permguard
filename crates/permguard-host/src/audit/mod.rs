@@ -39,6 +39,9 @@ pub mod jsonl;
 pub mod pseudonym;
 pub mod query;
 pub mod record;
+pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 pub mod trail;
 pub mod verify;
 
@@ -52,7 +55,9 @@ use permguard_core::server::Health;
 use permguard_core::{AuditError, AuditEvent, AuditSink, BoxFuture, Fact, Subject};
 use permguard_objects::digest::Digest;
 
+#[cfg(test)]
 use crate::storage::Dir;
+#[cfg(test)]
 use crate::storage::volume::Volume;
 use crate::time::TimeGuard;
 
@@ -60,6 +65,9 @@ use checkpoint::{CheckpointSigner, CheckpointWitness};
 use pseudonym::ResourcePseudonyms;
 use query::{CheckpointList, CursorKey, Page, Query, QueryError};
 use record::{AuditRecord, FactValue};
+#[cfg(test)]
+use store::FileTrails;
+use store::{Listed, Trails};
 use trail::Trail;
 
 /// The directory below `host/` the trails live in.
@@ -74,6 +82,9 @@ pub const CHECKPOINT_CAPABILITY: &str = "audit_checkpoint";
 pub const WITNESS_CAPABILITY: &str = "audit_witness";
 /// How many `access` records may wait for the writer before new ones are dropped.
 pub const ACCESS_QUEUE: usize = 4096;
+/// The name the cursors of the audit queries are issued under on a backend other instances
+/// share: of the root that backend keeps for them, and of the key derived from it (WP-28.6).
+pub const QUERY_CURSORS: &str = "audit";
 
 /// The resource roots the Host assigns: its own actions, and each Plane's.
 pub const HOST: &str = "host";
@@ -168,6 +179,9 @@ pub const AUDIT_TOKEN_ISSUED: &str = "authority.token.issued";
 pub const AUDIT_TOKEN_REFUSED: &str = "authority.token.refused";
 /// A key made offline for `admin`, recorded at the next start.
 pub const AUDIT_ADMIN_KEY_OFFLINE: &str = "authority.admin_key.offline";
+/// The tokens a start made what their accounts say (`2-security/8` Stores): what a change of an
+/// account had left to do of its tokens when the process stopped.
+pub const AUDIT_TOKENS_COMPLETED: &str = "authority.tokens.completed";
 /// The bootstrap principal acting on a joined member (WP-12.4).
 pub const AUDIT_AUTHZ_BOOTSTRAP: &str = "host.authz.bootstrap";
 
@@ -227,6 +241,17 @@ pub const REGISTRY: &[ActionSchema] = &[
         phases: false,
     },
     action(AUDIT_ADMIN_KEY_OFFLINE, Class::Security, AUTHORITY),
+    ActionSchema {
+        action: AUDIT_TOKENS_COMPLETED,
+        class: Class::Security,
+        root: AUTHORITY,
+        facts: &[
+            ("invalidated", FactType::Uint),
+            ("suspended", FactType::Uint),
+        ],
+        max_bytes: 4 * 1024,
+        phases: false,
+    },
     // The bootstrap principal acting on a joined member (WP-12.4): every use, a break-glass.
     ActionSchema {
         action: AUDIT_AUTHZ_BOOTSTRAP,
@@ -699,14 +724,12 @@ pub struct Stamp {
 }
 
 struct Inner {
-    trails: Dir,
-    /// The trails the volume ever held (BUG-0156), each named before its directory exists.
-    index: Dir,
+    /// The trails of the Host, on whatever backend keeps them.
+    trails: Arc<dyn Trails>,
     registry: &'static [ActionSchema],
     stamp: Stamp,
     time: Arc<TimeGuard>,
     pseudonyms: Option<ResourcePseudonyms>,
-    open: Mutex<BTreeMap<(Class, String), Trail>>,
     health: OnceLock<Health>,
     lost: AtomicU64,
     dropped: AtomicU64,
@@ -720,16 +743,15 @@ struct Inner {
     retention_security: OnceLock<std::time::Duration>,
     signer: OnceLock<Arc<dyn CheckpointSigner>>,
     witness: OnceLock<Arc<dyn CheckpointWitness>>,
+    /// The key the cursors of the queries are issued under, drawn for the process...
     cursors: CursorKey,
+    /// ...unless a root every instance holds gave one (WP-28.6).
+    shared_cursors: OnceLock<CursorKey>,
     /// The trails whose last seal failed: `audit_checkpoint` is restored once none is left.
     unsealed: Mutex<std::collections::BTreeSet<(Class, String)>>,
     /// The trails the witness left a checkpoint of unanswered: `audit_witness` likewise.
     unwitnessed: Mutex<std::collections::BTreeSet<(Class, String)>>,
 }
-
-/// One trail a listing found: its class, its digest, and the resource its `META.cbor` names or
-/// why it names none.
-type Listed = (Class, String, Result<String, String>);
 
 /// What the export of a trail allows retention to delete (WP-5.9, owner decision of 2026-10-16).
 pub trait EgressFloor: Send + Sync {
@@ -753,31 +775,25 @@ pub struct Engine {
     inner: Arc<Inner>,
     /// The trails the index names that this start found gone (BUG-0156).
     found_lost: Vec<String>,
+    /// The trails as the file backend keeps them: what a test of that backend's files reads.
+    #[cfg(test)]
+    files: Option<Arc<FileTrails>>,
     access: Mutex<Option<SyncSender<Box<AuditRecord>>>>,
     writer: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl std::fmt::Debug for Engine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Engine")
-            .field("trails", &self.inner.trails.path())
-            .finish_non_exhaustive()
+        f.debug_struct("Engine").finish_non_exhaustive()
     }
 }
 
 impl Engine {
-    /// The engine of the volume `volume` holds, with the process's registry.
-    pub fn open(
-        volume: &Volume,
-        stamp: Stamp,
-        time: Arc<TimeGuard>,
-        pseudonyms: Option<ResourcePseudonyms>,
-    ) -> Result<Self, Refused> {
-        let engine = Self::with_registry(volume, REGISTRY, stamp, time, pseudonyms)?;
-        for trail in engine.found_lost.clone() {
-            // The trail is gone and its records with it; what is left is to say so where the
-            // Host's own security record is kept (BUG-0156).
-            if let Err(error) = engine.append(
+    /// Records each trail found gone where the Host's own security record is kept: the trail
+    /// is gone and its records with it, and what is left is to say so (BUG-0156).
+    fn record_lost(&self) {
+        for trail in self.found_lost.clone() {
+            if let Err(error) = self.append(
                 &AuditEvent::system(AUDIT_TRAIL_LOST, "permguard").on(&trail),
                 None,
             ) {
@@ -790,7 +806,6 @@ impl Engine {
                 );
             }
         }
-        Ok(engine)
     }
 
     /// Removes the sealed `access` and `operations` day files older than `retention`, from the
@@ -811,6 +826,27 @@ impl Engine {
         let _ = self.inner.egress.set(egress);
     }
 
+    /// Issues and opens the cursors of its queries under the key `root` derives for this Host,
+    /// from now on: on a backend other instances share, the root every instance reads, so a
+    /// cursor one instance issued opens at another, wherever the next page is asked (iteration
+    /// 03, WP-28.6). Without it a cursor is issued under a key drawn for the process, and dies
+    /// with it. Set once, before the engine answers a query; a second root changes nothing.
+    pub fn cursors_from_root(&self, root: &[u8]) -> Result<(), Refused> {
+        let refused = |error: crate::secrets::SecretsError| {
+            Refused::Storage(format!("the root of the audit queries' cursors: {error}"))
+        };
+        let version = crate::secrets::KeyVersion::new(1)
+            .ok_or_else(|| Refused::Storage("the cursor key version".to_owned()))?;
+        let key = crate::secrets::HostLocal::new(
+            crate::secrets::Root::from_material(root, version).map_err(refused)?,
+            self.inner.stamp.host_id,
+        )
+        .key(crate::secrets::HostPurpose::StreamCursor, QUERY_CURSORS)
+        .map_err(refused)?;
+        let _ = self.inner.shared_cursors.set(CursorKey::from_key(&key));
+        Ok(())
+    }
+
     /// Seals every ended day of every trail with `signer` from now on.
     pub fn seal_with(&self, signer: Arc<dyn CheckpointSigner>) {
         let _ = self.inner.signer.set(signer);
@@ -821,19 +857,44 @@ impl Engine {
         let _ = self.inner.witness.set(witness);
     }
 
-    /// The engine over `registry`, for a test that registers its own actions.
-    pub fn with_registry(
-        volume: &Volume,
+    /// The engine over `trails`, the trails of the Host on whatever backend keeps them, with
+    /// the process's registry; `lost` names the trails found gone, each recorded in the Host's
+    /// own security trail.
+    pub fn over(
+        trails: Arc<dyn Trails>,
+        lost: Vec<String>,
+        stamp: Stamp,
+        time: Arc<TimeGuard>,
+        pseudonyms: Option<ResourcePseudonyms>,
+    ) -> Result<Self, Refused> {
+        Self::over_registry(trails, lost, REGISTRY, stamp, time, pseudonyms)
+    }
+
+    /// [`Engine::over`] with `registry`, for a test that registers its own actions.
+    pub fn over_registry(
+        trails: Arc<dyn Trails>,
+        lost: Vec<String>,
         registry: &'static [ActionSchema],
         stamp: Stamp,
         time: Arc<TimeGuard>,
         pseudonyms: Option<ResourcePseudonyms>,
     ) -> Result<Self, Refused> {
-        Self::with_queue(volume, registry, stamp, time, pseudonyms, ACCESS_QUEUE)
+        let engine = Self::over_with_queue(
+            trails,
+            lost,
+            registry,
+            stamp,
+            time,
+            pseudonyms,
+            ACCESS_QUEUE,
+        )?;
+        engine.record_lost();
+        Ok(engine)
     }
 
-    pub(crate) fn with_queue(
-        volume: &Volume,
+    fn over_with_queue(
+        trails: Arc<dyn Trails>,
+        found_lost: Vec<String>,
         registry: &'static [ActionSchema],
         stamp: Stamp,
         time: Arc<TimeGuard>,
@@ -841,14 +902,6 @@ impl Engine {
         queue: usize,
     ) -> Result<Self, Refused> {
         check_registry(registry).map_err(Refused::Fact)?;
-        let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
-        let audit = volume.host().subdir(DIRECTORY, true).map_err(storage)?;
-        let trails = audit.subdir(TRAILS, true).map_err(storage)?;
-        let index = audit.subdir(index::DIRECTORY, true).map_err(storage)?;
-        // A trail the index names and the volume lacks was deleted whole: said now, and kept
-        // said, rather than recreated at seq 0 as if it never existed (BUG-0156).
-        let found_lost = index::reconcile(&index, &trails, &trail::day_name(time.now_secs()))
-            .map_err(storage)?;
         for trail in &found_lost {
             tracing::error!(
                 event.name = "audit.trail_lost",
@@ -859,12 +912,10 @@ impl Engine {
         }
         let inner = Arc::new(Inner {
             trails,
-            index,
             registry,
             stamp,
             time,
             pseudonyms,
-            open: Mutex::new(BTreeMap::new()),
             health: OnceLock::new(),
             lost: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
@@ -877,6 +928,7 @@ impl Engine {
             cursors: CursorKey::draw().ok_or_else(|| {
                 Refused::Storage("the system has no source of randomness".to_owned())
             })?,
+            shared_cursors: OnceLock::new(),
             unsealed: Mutex::new(std::collections::BTreeSet::new()),
             unwitnessed: Mutex::new(std::collections::BTreeSet::new()),
         });
@@ -896,6 +948,8 @@ impl Engine {
         Ok(Self {
             inner,
             found_lost,
+            #[cfg(test)]
+            files: None,
             access: Mutex::new(Some(sender)),
             writer: Mutex::new(Some(writer)),
         })
@@ -916,59 +970,29 @@ impl Engine {
         self.inner.dropped.load(Ordering::SeqCst)
     }
 
-    /// The trail of `(class, resource)`, opened for reading: what a verifier walks.
-    pub fn trail_dir(&self, class: Class, resource: &str) -> Result<Dir, Refused> {
-        trail::directory(&self.inner.trails, class, resource, false)
+    /// The directory of the trail of `(class, resource)`, on the file backend.
+    #[cfg(test)]
+    pub(crate) fn trail_dir(
+        &self,
+        class: Class,
+        resource: &str,
+    ) -> Result<crate::storage::Dir, Refused> {
+        trail::directory(self.files().root(), class, resource, false)
             .map_err(|error| Refused::Storage(error.to_string()))
     }
 
-    /// Every trail on the volume, by class and digest, with the resource its `META.cbor` names or
-    /// why it names none.
-    ///
-    /// Listed under the lock a trail is created under (TD-3): a trail's directory exists a moment
-    /// before its `META.cbor` does, and a listing between the two read the trail being created as
-    /// one whose `META.cbor` is unreadable.
+    /// The trails as the file backend keeps them.
+    #[cfg(test)]
+    #[allow(clippy::expect_used)]
+    pub(crate) fn files(&self) -> &FileTrails {
+        self.files
+            .as_ref()
+            .expect("the engine of a test is on the file backend")
+    }
+
+    /// Every trail the Host holds.
     fn trails(&self) -> Result<Vec<Listed>, Refused> {
-        let _creating = self
-            .inner
-            .open
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
-        let mut trails = Vec::new();
-        for class_name in self.inner.trails.subdirs().map_err(storage)? {
-            let Some(class) = Class::parse(&class_name) else {
-                continue;
-            };
-            let class_dir = self
-                .inner
-                .trails
-                .subdir(&class_name, false)
-                .map_err(storage)?;
-            for digest in class_dir.subdirs().map_err(storage)? {
-                let resource = class_dir
-                    .subdir(&digest, false)
-                    .and_then(|dir| dir.read(trail::META))
-                    .map_err(|error| error.to_string())
-                    .and_then(|meta| {
-                        // A missing file is said to be missing, never decoded as an empty one
-                        // and called corrupt (BUG-0078).
-                        let meta = meta.ok_or_else(|| format!("its {} is missing", trail::META))?;
-                        record::TrailMeta::decode(&meta).map_err(|error| error.to_string())
-                    })
-                    .and_then(|meta| {
-                        // A `META.cbor` naming a resource kept elsewhere would open another trail.
-                        if trail::resource_digest(&meta.resource) == digest {
-                            Ok(meta.resource)
-                        } else {
-                            Err("its META.cbor names a resource kept under another digest"
-                                .to_owned())
-                        }
-                    });
-                trails.push((class, digest, resource));
-            }
-        }
-        Ok(trails)
+        self.inner.trails.held().map_err(Refused::Storage)
     }
 
     /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
@@ -993,15 +1017,19 @@ impl Engine {
                     continue;
                 }
             };
-            let mut open = self
-                .inner
-                .open
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            match self.inner.trail(&mut open, class, &resource) {
-                Ok(trail) => {
-                    written.extend(self.inner.maintain(trail, class, &resource, &today));
-                }
+            // What the last run of the work wrote is what the sweep wrote.
+            let mut swept = Vec::new();
+            let held = self.inner.trails.hold(
+                class,
+                &resource,
+                self.inner.retention_of(class),
+                &mut |trail| {
+                    swept = self.inner.maintain(trail, class, &resource, &today);
+                    true
+                },
+            );
+            match held {
+                Ok(()) => written.extend(swept),
                 Err(error) => tracing::error!(
                     event.name = "audit.sweep_failed",
                     component = "host",
@@ -1010,10 +1038,19 @@ impl Engine {
                     "an audit trail could not be swept"
                 ),
             }
-            drop(open);
             visited.push((class, resource));
         }
         self.inner.ask_witness(&visited);
+        // What no trail changes any more goes where the backend keeps it for good; a failure is
+        // said, and the next sweep moves it.
+        if let Err(error) = self.inner.trails.settle() {
+            tracing::error!(
+                event.name = "audit.settle_failed",
+                component = "host",
+                error = %error,
+                "sealed audit days could not be moved to where they are kept; the next sweep retries"
+            );
+        }
         Ok(written)
     }
 
@@ -1035,12 +1072,12 @@ impl Engine {
 
     /// The bytes of the `ANCHOR.cbor` of `(class, resource)`, when retention deleted a prefix.
     pub fn anchor_bytes(&self, class: Class, resource: &str) -> Result<Option<Vec<u8>>, Refused> {
-        match trail::directory(&self.inner.trails, class, resource, false) {
-            Ok(dir) => dir
-                .read(checkpoint::ANCHOR)
+        match self.inner.trails.view(class, resource) {
+            Ok(Some(held)) => held
+                .anchor()
                 .map_err(|error| Refused::Storage(error.to_string())),
-            Err(error) if not_found(&error) => Ok(None),
-            Err(error) => Err(Refused::Storage(error.to_string())),
+            Ok(None) => Ok(None),
+            Err(error) => Err(Refused::Storage(error)),
         }
     }
 
@@ -1075,32 +1112,49 @@ impl Engine {
         let signer = self.inner.signer.get().ok_or_else(|| {
             Refused::Storage("no checkpoint signer is registered in this process".to_owned())
         })?;
-        self.trail_dir(class, resource)?;
+        // A checkpoint is of a trail that exists: asking for one never creates it.
+        if self
+            .inner
+            .trails
+            .view(class, resource)
+            .map_err(Refused::Storage)?
+            .is_none()
+        {
+            return Err(Refused::Storage(format!(
+                "the Host holds no {} trail of {resource}",
+                class.as_str()
+            )));
+        }
         let today = trail::day_name(self.inner.time.now_secs());
-        let newest = {
-            let mut open = self
-                .inner
-                .open
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            let trail = self
-                .inner
-                .trail(&mut open, class, resource)
-                .map_err(Refused::Storage)?;
-            let sealed = trail.checkpoint_now(
-                &today,
-                signer.as_ref(),
-                self.inner.stamp.host_id,
-                self.inner.time.now_secs(),
-            );
-            match sealed {
-                Ok(_) => self.inner.sealed(class, resource),
-                Err(error) => {
-                    self.inner.seal_failed(class, resource, &error);
-                    return Err(Refused::Storage(error));
-                }
+        let mut sealed = Err("the trail was not held".to_owned());
+        self.inner
+            .trails
+            .hold(
+                class,
+                resource,
+                self.inner.retention_of(class),
+                &mut |trail| {
+                    sealed = trail
+                        .checkpoint_now(
+                            &today,
+                            signer.as_ref(),
+                            self.inner.stamp.host_id,
+                            self.inner.time.now_secs(),
+                        )
+                        .map(|_| trail.newest_checkpoint().map(ToOwned::to_owned));
+                    true
+                },
+            )
+            .map_err(Refused::Storage)?;
+        let newest = match sealed {
+            Ok(newest) => {
+                self.inner.sealed(class, resource);
+                newest
             }
-            trail.newest_checkpoint().map(ToOwned::to_owned)
+            Err(error) => {
+                self.inner.seal_failed(class, resource, &error);
+                return Err(Refused::Storage(error));
+            }
         };
         self.inner.ask_witness(&[(class, resource.to_owned())]);
         Ok(newest)
@@ -1161,10 +1215,10 @@ impl Engine {
         resource: &str,
         period: Option<&str>,
     ) -> Result<CheckpointList, QueryError> {
-        match trail::directory(&self.inner.trails, class, resource, false) {
-            Ok(dir) => query::checkpoints(&dir, period),
-            Err(error) if not_found(&error) => Ok(CheckpointList::default()),
-            Err(error) => Err(QueryError::Storage(error.to_string())),
+        match self.inner.trails.view(class, resource) {
+            Ok(Some(held)) => query::checkpoints(held.as_ref(), period),
+            Ok(None) => Ok(CheckpointList::default()),
+            Err(error) => Err(QueryError::Storage(error)),
         }
     }
 
@@ -1175,9 +1229,9 @@ impl Engine {
         query: &Query,
         export: bool,
     ) -> Result<Page, QueryError> {
-        let dir = match trail::directory(&self.inner.trails, class, resource, false) {
-            Ok(dir) => dir,
-            Err(error) if not_found(&error) => {
+        let dir = match self.inner.trails.view(class, resource) {
+            Ok(Some(held)) => held,
+            Ok(None) => {
                 if query.cursor.is_some() {
                     // No cursor was issued for a trail that does not exist.
                     return Err(QueryError::Cursor(
@@ -1192,22 +1246,27 @@ impl Engine {
                     anchor: None,
                 });
             }
-            Err(error) => return Err(QueryError::Storage(error.to_string())),
+            Err(error) => return Err(QueryError::Storage(error)),
         };
-        let next_seq = {
-            let mut open = self
-                .inner
-                .open
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            self.inner
-                .trail(&mut open, class, resource)
-                .map_err(QueryError::Storage)?
-                .next_seq()
-        };
+        let mut next_seq = 0;
+        self.inner
+            .trails
+            .hold(
+                class,
+                resource,
+                self.inner.retention_of(class),
+                &mut |trail| {
+                    next_seq = trail.next_seq();
+                    true
+                },
+            )
+            .map_err(QueryError::Storage)?;
         query::page(
-            &self.inner.cursors,
-            &dir,
+            self.inner
+                .shared_cursors
+                .get()
+                .unwrap_or(&self.inner.cursors),
+            dir.as_ref(),
             class,
             resource,
             next_seq,
@@ -1455,28 +1514,12 @@ impl Inner {
         }
     }
 
-    /// The open trail of `(class, resource)`, opened on first use.
-    fn trail<'a>(
-        &self,
-        open: &'a mut BTreeMap<(Class, String), Trail>,
-        class: Class,
-        resource: &str,
-    ) -> Result<&'a mut Trail, String> {
-        let key = (class, resource.to_owned());
-        if !open.contains_key(&key) {
-            let retention = match class {
-                Class::Security => self.retention_security.get().copied(),
-                Class::Operations | Class::Access => self.retention.get().copied(),
-            };
-            // Named in the index before its directory exists, so no moment holds a trail the
-            // index does not know (BUG-0156).
-            index::record(&self.index, class, resource).map_err(|error| error.to_string())?;
-            let trail = Trail::open(&self.trails, class, resource, retention)
-                .map_err(|error| error.to_string())?;
-            open.insert(key.clone(), trail);
+    /// How long the day files of a trail of `class` are kept; for ever when `None`.
+    fn retention_of(&self, class: Class) -> Option<std::time::Duration> {
+        match class {
+            Class::Security => self.retention_security.get().copied(),
+            Class::Operations | Class::Access => self.retention.get().copied(),
         }
-        open.get_mut(&key)
-            .ok_or_else(|| "the trail vanished".to_owned())
     }
 
     /// Appends `record` to its trail, opening the trail on first use; a record that starts a new
@@ -1484,30 +1527,35 @@ impl Inner {
     fn write(&self, record: AuditRecord) -> Result<Recorded, String> {
         let class = Class::parse(record.trail.split(':').next().unwrap_or_default())
             .ok_or_else(|| format!("`{}` names no class", record.trail))?;
-        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        let key = (class, record.resource.clone());
-        let trail = self.trail(&mut open, class, &record.resource)?;
+        let resource = record.resource.clone();
         let name = record.trail.clone();
-        match trail.append(record) {
-            Ok(new_day) => {
-                let recorded = Recorded {
-                    trail: name,
-                    seq: trail.next_seq().saturating_sub(1),
-                    digest: trail.head().clone(),
-                };
-                if new_day && let Some(today) = trail.last_day().map(ToOwned::to_owned) {
-                    self.maintain(trail, class, &key.1, &today);
+        // What the last run of the work answered is the answer: a backend may run it again
+        // when it could not keep what the first run did.
+        let mut outcome = Err("the trail was not held".to_owned());
+        self.trails.hold(
+            class,
+            &resource,
+            self.retention_of(class),
+            &mut |trail| match trail.append(record.clone()) {
+                Ok(new_day) => {
+                    let recorded = Recorded {
+                        trail: name.clone(),
+                        seq: trail.next_seq().saturating_sub(1),
+                        digest: trail.head().clone(),
+                    };
+                    if new_day && let Some(today) = trail.last_day().map(ToOwned::to_owned) {
+                        self.maintain(trail, class, &resource, &today);
+                    }
+                    outcome = Ok(recorded);
+                    true
                 }
-                Ok(recorded)
-            }
-            Err(error) => {
-                // Reopened at the next record: what a failed append left at the end of the day
-                // file is a torn item there, which opening cuts, and the sequence continues from
-                // disk.
-                open.remove(&key);
-                Err(error.to_string())
-            }
-        }
+                Err(error) => {
+                    outcome = Err(error.to_string());
+                    false
+                }
+            },
+        )?;
+        outcome
     }
 
     /// Seals the days of `trail` before the day file `today` and deletes what its retention
@@ -1595,12 +1643,10 @@ impl Inner {
         let mut unanswered = None;
         let mut answered = Vec::new();
         'trails: for (class, resource) in trails {
-            let Ok(held) = trail::directory(&self.trails, *class, resource, false)
-                .and_then(|dir| dir.subdir(trail::CHECKPOINTS, false))
-            else {
+            let Ok(Some(held)) = self.trails.view(*class, resource) else {
                 continue;
             };
-            let Ok(names) = held.names() else {
+            let Ok(names) = held.checkpoint_names() else {
                 continue;
             };
             for name in checkpoint::ordered(names.iter().cloned()) {
@@ -1609,16 +1655,12 @@ impl Inner {
                     continue;
                 }
                 let answer = held
-                    .read(&name)
+                    .checkpoint(&name)
                     .map_err(|error| error.to_string())
                     .and_then(|envelope| witness.cosign(&envelope.unwrap_or_default()))
                     .and_then(|signature| {
-                        let same = |kept: &[u8]| kept == signature.as_slice();
-                        crate::storage::write::publish_immutable(
-                            &held, &cosigned, &signature, &same, &same,
-                        )
-                        .map(|_| ())
-                        .map_err(|error| error.to_string())
+                        held.publish_checkpoint(&cosigned, &signature)
+                            .map_err(|error| error.to_string())
                     });
                 if let Err(error) = answer {
                     unanswered = Some(((*class, resource.clone()), error));
@@ -1731,11 +1773,6 @@ impl Inner {
             }
         }
     }
-}
-
-fn not_found(error: &crate::storage::StorageError) -> bool {
-    matches!(error, crate::storage::StorageError::Io { source, .. }
-        if source.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn facts_of(

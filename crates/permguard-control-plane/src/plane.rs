@@ -44,8 +44,50 @@ pub struct Composition {
     /// The NOTP facade, composed once: REST, gRPC and the `policy.mirror` task share its stores,
     /// so one gate serializes a ledger's compare-and-swap and its transfer sessions (WP-7.12).
     notp: Composed<crate::notp::NotpFacade>,
+    /// The stores below the zones directory, composed once: everything that reads and writes a
+    /// ledger does it through the same store.
+    stores: ComposedStores,
     /// Whether the `events.import` handler was offered to the Host, once (WP-6.2c1).
     import: std::sync::OnceLock<()>,
+}
+
+/// The stores of what a zones directory keeps: every ledger's, and the zones' archives.
+#[derive(Clone)]
+pub struct ZoneStores {
+    pub ledgers: std::sync::Arc<dyn crate::store::Ledgers>,
+    pub archives: std::sync::Arc<dyn crate::catalog::archives::ArchiveStore>,
+}
+
+/// The zone stores this plane composed, once per zones directory, for every surface and every
+/// service: a store carries the holds of what it keeps, a ledger's compare-and-swap and its
+/// transfer sessions among them, and two stores over one ledger are two holds that do not see
+/// each other. A push, a collection, an export, an import and a recovery go through the same one.
+#[derive(Clone, Default)]
+pub struct ComposedStores(
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, ZoneStores>>>,
+);
+
+impl ComposedStores {
+    /// The stores of the zones directory the configuration names; on a backend that is not a
+    /// volume, those the composition handed over (iteration 03, WP-28.1).
+    pub fn under(&self, context: &PlaneContext<'_>) -> ZoneStores {
+        if let Some(shared) = context.extension::<ZoneStores>() {
+            return ZoneStores::clone(&shared);
+        }
+        let directory = context.config().zones_directory();
+        let mut held = match self.0.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        held.entry(directory.clone())
+            .or_insert_with(|| ZoneStores {
+                ledgers: std::sync::Arc::new(crate::store::FileLedgers::new(directory.clone())),
+                archives: std::sync::Arc::new(crate::catalog::archives::FileArchives::new(
+                    directory,
+                )),
+            })
+            .clone()
+    }
 }
 
 impl Composition {
@@ -113,7 +155,7 @@ impl Composition {
     pub fn notp_facade(&self, context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         let directory = context.config().zones_directory();
         composed(&self.notp, directory, || {
-            let facade = notp_facade(context)?;
+            let facade = notp_facade(context, self.stores.under(context).ledgers)?;
             if let Some(registration) = crate::handles::registration(context) {
                 let mirror = std::sync::Arc::new(crate::notp::mirror::Mirror {
                     facade: std::sync::Arc::new(facade.clone()),
@@ -282,7 +324,9 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
              memberships' pinned rings. Remove it"
         );
     }
-    if !config.decision_store_enabled() {
+    // On a backend with no volume there is no legacy store to open and no cursor key file: the
+    // database keeps the roots (decision X125).
+    if !config.decision_store_enabled() || !config.storage_backend().has_volume() {
         return Ok(());
     }
 
@@ -306,6 +350,63 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
     Ok(())
 }
 
+/// The cursor roots of one evidence store on a backend that is not a volume, sealed by `Sealer`.
+pub type SharedCursorRoots = Box<
+    dyn Fn(
+            std::sync::Arc<permguard_host::secrets::sealed::Sealer>,
+            &str,
+        ) -> std::sync::Arc<dyn crate::decisions::cursorkey::CursorRoots>
+        + Send
+        + Sync,
+>;
+
+/// The decision store's API: the name its cursor keys are derived for, and its cursor roots are
+/// kept under on a backend that is not a volume.
+pub const DECISIONS_API: &str = "decisions";
+/// The event store's API, as [`DECISIONS_API`] is the decision store's.
+pub const EVENTS_API: &str = "events";
+
+/// The Control Plane's evidence on a backend that is not a volume (iteration 03, WP-28.1): what
+/// the composition hands it. No legacy store is kept there (decision X125): the evidence arrives
+/// over the Host's ship tasks, and every read is the consumer's.
+pub struct SharedEvidence {
+    /// The cursor roots of each evidence store, by its API's name.
+    pub cursor_roots: SharedCursorRoots,
+}
+
+/// The evidence the composition handed over, with what seals its cursor roots; `None` on files.
+fn shared_evidence(
+    context: &PlaneContext<'_>,
+) -> Option<(
+    std::sync::Arc<SharedEvidence>,
+    std::sync::Arc<permguard_host::secrets::sealed::Sealer>,
+)> {
+    Some((
+        context.extension::<SharedEvidence>()?,
+        context.extension::<permguard_host::secrets::sealed::Sealer>()?,
+    ))
+}
+
+/// The cursor keys of `api`: from the roots the backend keeps, or the root file beside the store.
+fn cursor_keys(
+    evidence: Option<&(
+        std::sync::Arc<SharedEvidence>,
+        std::sync::Arc<permguard_host::secrets::sealed::Sealer>,
+    )>,
+    directory: &std::path::Path,
+    host_id: [u8; 16],
+    api: &str,
+) -> anyhow::Result<crate::decisions::cursorkey::CursorKeys> {
+    match evidence {
+        Some((evidence, sealer)) => crate::decisions::cursorkey::CursorKeys::open(
+            (evidence.cursor_roots)(std::sync::Arc::clone(sealer), api).as_ref(),
+            host_id,
+            api,
+        ),
+        None => crate::decisions::cursorkey::load(directory, host_id, api),
+    }
+}
+
 /// The event store's facade, when this deployment receives events.
 ///
 /// Built the same way the decision store's is, and for the same reasons: the producers' published
@@ -319,23 +420,27 @@ fn build_event_facade(
     facades: &std::sync::Arc<std::sync::Mutex<Option<crate::events::facade::EventFacade>>>,
 ) -> Option<crate::events::facade::EventFacade> {
     let config = context.config();
-    let store = match crate::events::EventStore::open(directory) {
-        Ok(store) => std::sync::Arc::new(store),
-        Err(error) => {
-            tracing::error!(
-                event.name = "events.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the event store is configured and could not be opened"
-            );
-            return None;
-        }
+    let evidence = shared_evidence(context);
+    let store = match &evidence {
+        Some(_) => None,
+        None => match crate::events::EventStore::open(directory) {
+            Ok(store) => Some(std::sync::Arc::new(store)),
+            Err(error) => {
+                tracing::error!(
+                    event.name = "events.unavailable",
+                    component = COMPONENT,
+                    error = %error,
+                    "the event store is configured and could not be opened"
+                );
+                return None;
+            }
+        },
     };
     let cursor_key = match crate::handles::host_id(context)
         .ok_or_else(|| {
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
-        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "events"))
+        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, EVENTS_API))
         .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
@@ -371,7 +476,7 @@ fn build_event_facade(
         ),
     };
     if let Ok(mut held) = shared.lock() {
-        *held = Some(std::sync::Arc::clone(&facade.store));
+        held.clone_from(&facade.store);
     }
     if let Ok(mut held) = facades.lock() {
         *held = Some(facade.clone());
@@ -386,17 +491,21 @@ fn build_decision_facade(
     shared: &std::sync::Arc<std::sync::Mutex<Option<crate::decisions::facade::DecisionFacade>>>,
 ) -> Option<crate::decisions::facade::DecisionFacade> {
     let config = context.config();
-    let store = match crate::decisions::DecisionStore::open(directory) {
-        Ok(store) => std::sync::Arc::new(store),
-        Err(error) => {
-            tracing::error!(
-                event.name = "decisions.unavailable",
-                component = COMPONENT,
-                error = %error,
-                "the decision log is configured but its store could not be opened"
-            );
-            return None;
-        }
+    let evidence = shared_evidence(context);
+    let store = match &evidence {
+        Some(_) => None,
+        None => match crate::decisions::DecisionStore::open(directory) {
+            Ok(store) => Some(std::sync::Arc::new(store)),
+            Err(error) => {
+                tracing::error!(
+                    event.name = "decisions.unavailable",
+                    component = COMPONENT,
+                    error = %error,
+                    "the decision log is configured but its store could not be opened"
+                );
+                return None;
+            }
+        },
     };
 
     // The offset signing key lives beside the store it issues positions into, and is created on
@@ -406,7 +515,7 @@ fn build_decision_facade(
         .ok_or_else(|| {
             anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
         })
-        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "decisions"))
+        .and_then(|host_id| cursor_keys(evidence.as_ref(), directory, host_id, DECISIONS_API))
         .map(|keys| keys.with_lifetime(context.config().stream_cursor_ttl()))
     {
         Ok(key) => key,
@@ -453,6 +562,7 @@ fn build_decision_facade(
 /// or a Host identity to name as the source authority.
 fn exports_of(
     context: &PlaneContext<'_>,
+    stores: ZoneStores,
 ) -> Option<std::sync::Arc<crate::catalog::exports::Exports>> {
     let signer = crate::handles::export_signer(context)?;
     let authority = crate::handles::host_id(context)?;
@@ -461,14 +571,18 @@ fn exports_of(
     // of the ceiling both share.
     let max_bytes = grpc_message_ceiling(config) / 4 * 3;
     Some(std::sync::Arc::new(crate::catalog::exports::Exports::new(
-        config.zones_directory(),
+        stores.ledgers,
+        stores.archives,
         signer,
         authority,
         max_bytes,
     )))
 }
 
-fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
+fn notp_facade(
+    context: &PlaneContext<'_>,
+    ledgers: std::sync::Arc<dyn crate::store::Ledgers>,
+) -> Option<crate::notp::NotpFacade> {
     let catalog = context.catalog()?;
     let Some(keys) = crate::handles::head_signer(context) else {
         tracing::warn!(
@@ -500,7 +614,7 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         return None;
     };
     let domain = crate::store::RefDomain {
-        zones_root: config.zones_directory(),
+        ledgers: std::sync::Arc::clone(&ledgers),
     };
     if let Err(error) = mutations.recover(&domain) {
         tracing::error!(
@@ -515,7 +629,7 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
 
     Some(crate::notp::NotpFacade::new(
         std::sync::Arc::clone(catalog),
-        config.zones_directory(),
+        ledgers,
         keys,
         authority,
         crate::engine::EngineLimits {
@@ -558,7 +672,10 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
 
 /// The catalog's facade under `context`, when this build composes a catalog: the same facade for
 /// both transports.
-pub fn catalog_facade(context: &PlaneContext<'_>) -> Option<CatalogFacade> {
+pub fn catalog_facade(
+    composition: &Composition,
+    context: &PlaneContext<'_>,
+) -> Option<CatalogFacade> {
     let catalog = context.catalog()?;
     Some(CatalogFacade {
         catalog: std::sync::Arc::clone(catalog),
@@ -569,7 +686,7 @@ pub fn catalog_facade(context: &PlaneContext<'_>) -> Option<CatalogFacade> {
         authorization: crate::handles::authorization(context),
         host: crate::handles::registration(context),
         mutations: catalog_mutations(context, catalog),
-        exports: exports_of(context),
+        exports: exports_of(context, composition.stores.under(context)),
     })
 }
 
@@ -592,11 +709,15 @@ pub fn verified_trees() -> Vec<permguard_host::storage::verify::VerifiedTree> {
 pub fn services(composition: &Composition) -> Vec<Box<dyn permguard_core::PlaneTask>> {
     vec![
         // First: what Load verifies before the plane reports ready (BUG-0255).
-        Box::new(crate::readiness::ReadinessService::new()),
-        Box::new(crate::inventory::InventoryService::new()),
+        Box::new(crate::readiness::ReadinessService::new(
+            composition.stores.clone(),
+        )),
+        Box::new(crate::inventory::InventoryService::new(
+            composition.stores.clone(),
+        )),
         // What startup does not read: a sample of the objects, checked in the background.
         Box::new(crate::verify::VerifyService::new()),
-        Box::new(crate::gc::GcService::new()),
+        Box::new(crate::gc::GcService::new(composition.stores.clone())),
         Box::new(crate::decisions::retention::RetentionService::new()),
         // The event store's own sweep. Registered beside the decision store's rather than
         // relying on it: they are two stores with two windows, and the event one held a

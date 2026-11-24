@@ -12,7 +12,11 @@ use permguard_core::time::ManualClock;
 
 use super::*;
 use crate::identity::Identity;
+use crate::keys::FileKeyProvider;
 use crate::operations::mutation::Applying;
+use crate::storage::volume::Volume;
+use crate::storage::write::{read_view, replace_view};
+use crate::storage::{Dir, format, sequence};
 use crate::time::ManualMonotonic;
 use permguard_objects::crypto::suite::SigningKey;
 
@@ -74,6 +78,11 @@ impl Fixture {
 
     fn advance(&self, seconds: u64) {
         self.clock.jump(i64::try_from(seconds).expect("small"));
+    }
+
+    /// The ring's records, opened as a start opens them.
+    fn store(&self) -> Arc<dyn RingStore> {
+        Arc::new(files::FileRing::open(self.dir(), DATA_ATTEST).expect("the ring's records open"))
     }
 
     fn dir(&self) -> Dir {
@@ -339,8 +348,7 @@ fn the_private_half_is_destroyed_only_after_the_signings_in_flight() {
     });
     let ring = Arc::new(
         Ring::open_with(
-            directory(&fixture.volume, DATA_ATTEST).expect("dir"),
-            dir.subdir(PUBLIC, true).expect("public"),
+            fixture.store(),
             gated.clone(),
             DATA_ATTEST,
             Suite::Ed25519Sha256V1,
@@ -433,8 +441,7 @@ fn what_a_crash_left_is_completed_and_journaled_by_the_next_maintenance() {
     let private = || FileKeyProvider::new(dir.subdir(PRIVATE, true).expect("private"));
     let first = {
         let ring = Ring::open_with(
-            fixture.dir(),
-            dir.subdir(PUBLIC, true).expect("public"),
+            fixture.store(),
             Arc::new(Undestroyable {
                 inner: private(),
                 armed: std::sync::atomic::AtomicBool::new(true),
@@ -726,12 +733,14 @@ fn an_operator_rotation_is_observed_by_its_operation_and_refused_while_one_waits
     let rings = [ring.clone()];
     let observed = Rings(&rings)
         .observe(&OperationId::from_bytes([2; 16]), None)
+        .expect("the domain answers")
         .expect("the journal shows it");
     assert_eq!(observed.revision, 2);
     assert_eq!(observed.target.as_deref(), Some("data.attest:epoch:2"));
     assert!(
         Rings(&rings)
             .observe(&OperationId::from_bytes([3; 16]), None)
+            .expect("the domain answers")
             .is_none()
     );
     // It takes over once `publish_ahead` has passed, like any successor.
@@ -1186,5 +1195,210 @@ fn no_transition_shows_the_ring_without_an_active_key() {
     assert!(
         seen.iter().all(|(_, active)| *active),
         "a transition showed no active key: {seen:?}"
+    );
+}
+
+/// The file backend passes the contract's suite, each case on a volume of its own and what a
+/// retirement keeps inside an operation the engine built.
+#[test]
+fn the_file_backend_keeps_the_contract() {
+    use crate::operations::journal::Initiator;
+    use crate::operations::mutation::{Applied, Begin, Failure, Mutations};
+
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let engine_volume =
+        Volume::claim(&scratch("suite-engine"), AssuranceProfile::Development).expect("a volume");
+    let mutations = Mutations::open_offline(&engine_volume, "suite").expect("the engine opens");
+    let next = std::sync::atomic::AtomicU64::new(1);
+    // The volumes stay claimed while their stores are used.
+    let volumes = Mutex::new(Vec::new());
+    suite::run(
+        &|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let volume = Volume::claim(
+                &scratch(&format!("suite-{case}")),
+                AssuranceProfile::Development,
+            )
+            .expect("a volume");
+            let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+            let store = Arc::new(files::FileRing::open(dir, DATA_ATTEST).expect("the store opens"));
+            volumes.lock().expect("lock").push(volume);
+            store
+        },
+        &|work| {
+            let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            mutations
+                .run(
+                    Begin {
+                        domain: DOMAIN,
+                        operation: REVOKE_RUN,
+                        action: AUDIT_REVOKED,
+                        initiator: Initiator::System("suite".to_owned()),
+                        request: None,
+                        target: Some(format!("suite-{at}")),
+                    },
+                    |applying| {
+                        work(applying);
+                        Ok::<_, Failure<String>>(Applied {
+                            revision: at,
+                            target: None,
+                            value: (),
+                        })
+                    },
+                )
+                .expect("the operation ran");
+        },
+    );
+}
+
+/// What only the file backend can prove: an entry a process that stopped left half written is
+/// cut when the records are opened, and left as it is when they are opened to read; a retired
+/// ring's records are kept under the retired Host and the ring's name.
+#[test]
+fn the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_host() {
+    use std::io::Write as _;
+
+    let volume =
+        Volume::claim(&scratch("torn-entry"), AssuranceProfile::Development).expect("a volume");
+    let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+    let whole =
+        permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Int(7)).expect("an item");
+    {
+        let store = files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST)
+            .expect("opens");
+        store.append(1, &whole).expect("added");
+    }
+    let journal = dir.path().join(JOURNAL);
+    let before = std::fs::metadata(&journal).expect("the journal").len();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&journal)
+        .expect("opens")
+        .write_all(&[0x82, 0x01])
+        .expect("half an entry");
+    // Opened to read: one entry is read, and the file is as the stopped process left it.
+    let reading = files::FileRing::to_read(Dir::open(dir.path()).expect("opens"));
+    assert_eq!(reading.entries().expect("reads").len(), 1);
+    assert_eq!(
+        std::fs::metadata(&journal).expect("the journal").len(),
+        before + 2
+    );
+    // Opened to serve: the torn entry is cut.
+    let store =
+        files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST).expect("opens");
+    assert_eq!(
+        std::fs::metadata(&journal).expect("the journal").len(),
+        before
+    );
+    assert_eq!(store.entries().expect("reads").len(), 1);
+
+    store.publish_public("thumb", b"jwk").expect("published");
+    store.replace_view(b"the view").expect("written");
+    store.replace_binding(b"the binding").expect("written");
+    store.keep_binding(1, b"bound at 1").expect("kept");
+    store
+        .retire(&Applying::for_tests(1), &[0x0a; 16])
+        .expect("retired");
+    let kept = volume
+        .root()
+        .join("host/keys")
+        .join(RETIRED)
+        .join(crate::identity::record::uuid_text(&[0x0a; 16]))
+        .join(DATA_ATTEST);
+    assert!(kept.join(JOURNAL).is_file(), "the entries are kept");
+    assert_eq!(
+        std::fs::read(kept.join(PUBLIC).join("thumb.jwk")).expect("the key"),
+        b"jwk"
+    );
+    for name in [VIEW, BINDING] {
+        assert!(kept.join(name).is_file(), "{name} is kept");
+    }
+    assert!(
+        kept.join(BINDINGS).join("1.cose").is_file(),
+        "its bindings are kept"
+    );
+    // What is cleared is the ring's, never the evidence of the retired Host.
+    store.forget_entries().expect("forgotten");
+    store.clear().expect("cleared");
+    assert!(kept.join(JOURNAL).is_file());
+    assert!(kept.join(BINDINGS).join("1.cose").is_file());
+}
+
+/// What only the file backend can prove: a file in `bindings/` that does not read as a kept
+/// binding, a temporary a write that stopped left or one damaged at rest, is none, and the
+/// others are still read. Were they not, the ring would take its binding for one never kept and
+/// issue another at every maintenance.
+#[test]
+fn the_file_backend_reads_the_kept_bindings_past_one_that_does_not_read() {
+    let volume =
+        Volume::claim(&scratch("torn-binding"), AssuranceProfile::Development).expect("a volume");
+    let dir = directory(&volume, DATA_ATTEST).expect("the ring's directory");
+    let store =
+        files::FileRing::open(Dir::open(dir.path()).expect("opens"), DATA_ATTEST).expect("opens");
+    store.keep_binding(3, b"bound at 3").expect("kept");
+    let bindings = dir.path().join(BINDINGS);
+    std::fs::write(bindings.join(".tmp-4.cose-stopped"), b"").expect("a temporary left");
+    std::fs::write(bindings.join("5.cose"), b"not a view").expect("a damaged one");
+    assert_eq!(
+        store.kept_bindings().expect("reads"),
+        vec![b"bound at 3".to_vec()]
+    );
+    assert_eq!(
+        store.kept_binding(3).expect("reads").as_deref(),
+        Some(&b"bound at 3"[..])
+    );
+}
+
+/// What only the file backend can prove: a ring's records opened to read take no write and make
+/// no directory, whatever is asked of them.
+#[test]
+fn the_file_backend_opened_to_read_writes_nothing() {
+    let root = scratch("to-read");
+    std::fs::create_dir_all(&root).expect("a directory");
+    let store = files::FileRing::to_read(Dir::open(&root).expect("opens"));
+    assert!(store.entries().expect("reads").is_empty());
+    assert_eq!(store.public("thumb").expect("reads"), None);
+    assert_eq!(store.kept_binding(1).expect("reads"), None);
+    assert!(store.kept_bindings().expect("reads").is_empty());
+    let refused = |said: Result<(), RingError>| {
+        assert!(matches!(said, Err(RingError::Refused(_))));
+    };
+    refused(store.append(1, b"\x01"));
+    refused(store.replace_view(b"view"));
+    refused(store.replace_binding(b"binding"));
+    refused(store.keep_binding(1, b"bound"));
+    refused(store.publish_public("thumb", b"jwk"));
+    refused(store.retire(&Applying::for_tests(1), &[0x0a; 16]));
+    refused(store.forget_entries());
+    refused(store.clear());
+    assert_eq!(
+        std::fs::read_dir(&root).expect("lists").count(),
+        0,
+        "nothing was made in the directory"
+    );
+}
+
+/// Two rings over one store, as two instances over one database (iteration 03, WP-28.2): what
+/// one maintains the other reads again and signs with, its rotation included. The refusal of a
+/// write from a view behind the store is the shared backend's, proven there.
+#[test]
+fn a_ring_reads_again_what_another_maintained() {
+    let fixture = Fixture::new("refresh");
+    let (holder, other) = (fixture.ring(), fixture.ring());
+    holder.maintain().expect("maintained");
+    let active = holder.statement().expect("a statement").keys[0].kid.clone();
+    assert!(other.statement().is_err(), "the other has not read it yet");
+    other.refresh().expect("read again");
+    assert_eq!(other.statement().expect("a statement").keys[0].kid, active);
+    let signature = other
+        .sign(b"payload")
+        .expect("signs with the key the holder made");
+    assert_eq!(signature.key_id().as_str(), active);
+    fixture.advance(ROTATE + AHEAD + 1);
+    holder.maintain().expect("rotated");
+    other.refresh().expect("read again");
+    assert_eq!(
+        other.statement().expect("a statement"),
+        holder.statement().expect("a statement")
     );
 }

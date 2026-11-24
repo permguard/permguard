@@ -6,9 +6,9 @@
 //! store of its own. The Host identity is its first user; the [`ring`] registry (WP-3.1) its
 //! second; the custody providers (WP-3.2) follow.
 //!
-//! | Provider            | Custody                                                                      |
-//! | ------------------- | ---------------------------------------------------------------------------- |
-//! | [`FileKeyProvider`] | PKCS#8 in `<slot>.key`, `0600`, below a `0700` directory: plaintext custody  |
+//! | Provider            | Custody                                                              |
+//! | ------------------- | -------------------------------------------------------------------- |
+//! | [`FileKeyProvider`] | PKCS#8 in the clear, a key a slot of its [`slots`]: plaintext custody |
 //!
 //! A slot names one key; the private bytes never leave the provider, and a slot once generated
 //! is never generated again: a lost key is not silently replaced. A ring's slot is the key's own
@@ -21,8 +21,10 @@ pub mod migration;
 pub mod record;
 pub mod registry;
 pub mod ring;
+pub mod slots;
 
 use std::fmt;
+use std::sync::Arc;
 
 use permguard_objects::crypto::suite::{SigningKey, Suite};
 use permguard_objects::crypto::thumbprint;
@@ -30,8 +32,7 @@ use permguard_objects::digest::Digest;
 
 pub use permguard_objects::crypto::thumbprint::{is_thumbprint, selects};
 
-use crate::storage::write::{Published, publish_immutable};
-use crate::storage::{Dir, StorageError, tombstone};
+use slots::{Kind, SlotStore};
 
 /// How a provider keeps the private keys it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,8 +71,8 @@ pub enum KeyError {
     Exists(String),
     /// The key held does not read as the suite asked.
     Malformed(String),
-    /// The storage below the provider failed.
-    Storage(StorageError),
+    /// What keeps the provider's keys could not be read or written.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl fmt::Display for KeyError {
@@ -82,18 +83,12 @@ impl fmt::Display for KeyError {
                 write!(f, "`{slot}` already holds a key; a key is generated once")
             }
             Self::Malformed(detail) => f.write_str(detail),
-            Self::Storage(error) => write!(f, "{error}"),
+            Self::Unavailable(error) => write!(f, "{error}"),
         }
     }
 }
 
 impl std::error::Error for KeyError {}
-
-impl From<StorageError> for KeyError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
 
 /// The RFC 7638 thumbprint of `public`: the slot a ring's key is named by.
 pub fn thumbprint_of(public: &PublicKey) -> Result<String, KeyError> {
@@ -120,40 +115,29 @@ pub trait KeyProvider: Send + Sync {
     fn sign(&self, slot: &str, suite: Suite, message: &[u8]) -> Result<Vec<u8>, KeyError>;
     /// Destroys the key in `slot`.
     fn destroy(&self, slot: &str) -> Result<(), KeyError>;
+
+    /// Forgets what this process holds of the key in `slot`, so the next use reads the slot
+    /// again: a key another instance put there, or one an undone attempt made, is never used
+    /// from memory (iteration 03, WP-28.5). A provider that holds nothing in memory forgets
+    /// nothing.
+    fn forget(&self, _slot: &str) {}
 }
 
-/// Keys as PKCS#8 files below one directory.
+/// Keys as PKCS#8 in the clear, each the key of its slot.
 pub struct FileKeyProvider {
-    dir: Dir,
+    slots: Arc<dyn SlotStore>,
 }
 
 impl fmt::Debug for FileKeyProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FileKeyProvider")
-            .field("dir", &self.dir.path())
-            .finish()
+        f.debug_struct("FileKeyProvider").finish_non_exhaustive()
     }
 }
 
 impl FileKeyProvider {
-    /// Over `dir`, which the caller created `0700`.
-    pub fn new(dir: Dir) -> Self {
-        Self { dir }
-    }
-
-    /// A slot is letters, digits, `-` and `_`: an identity epoch, a ring key's base64url
-    /// thumbprint (owner decision of 2026-10-08).
-    pub(crate) fn name_of(slot: &str) -> Result<String, KeyError> {
-        if slot.is_empty()
-            || !slot
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        {
-            return Err(KeyError::Malformed(format!(
-                "`{slot}` is not a key slot: letters, digits, `-` and `_`"
-            )));
-        }
-        Ok(format!("{slot}.key"))
+    /// Over the slots `slots` keeps.
+    pub fn over(slots: Arc<dyn SlotStore>) -> Self {
+        Self { slots }
     }
 
     /// Takes over a key held before the rings (WP-3.1): `pkcs8` of `suite` lands in the slot named
@@ -171,29 +155,22 @@ impl FileKeyProvider {
 
     /// Publishes `pkcs8` as `slot`, which must hold nothing yet.
     fn publish(&self, slot: &str, suite: Suite, pkcs8: &[u8]) -> Result<(), KeyError> {
-        let name = Self::name_of(slot)?;
-        if self.dir.read(&name)?.is_some() {
-            return Err(KeyError::Exists(slot.to_owned()));
-        }
-        let readable = |bytes: &[u8]| SigningKey::from_pkcs8(suite, bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == pkcs8;
-        match publish_immutable(&self.dir, &name, pkcs8, &readable, &same)? {
-            Published::Written => Ok(()),
-            Published::AlreadyThere => Err(KeyError::Exists(slot.to_owned())),
-        }
+        // Read as its suite before it is kept: what does not read is never a slot's key.
+        SigningKey::from_pkcs8(suite, pkcs8)
+            .map_err(|error| KeyError::Malformed(format!("reading a {suite} key: {error:?}")))?;
+        self.slots.fill(Kind::Key, slot, pkcs8)
     }
 
     fn load(&self, slot: &str, suite: Suite) -> Result<SigningKey, KeyError> {
-        let name = Self::name_of(slot)?;
         let pkcs8 = zeroize::Zeroizing::new(
-            self.dir
-                .read(&name)?
+            self.slots
+                .read(Kind::Key, slot)?
                 .ok_or_else(|| KeyError::Absent(slot.to_owned()))?,
         );
         SigningKey::from_pkcs8(suite, &pkcs8).map_err(|error| {
             KeyError::Malformed(format!(
                 "{} does not read as a {suite} key: {error:?}",
-                self.dir.child_path(&name).display()
+                self.slots.place(Kind::Key, slot)
             ))
         })
     }
@@ -209,7 +186,7 @@ impl KeyProvider for FileKeyProvider {
     }
 
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
-        Self::name_of(slot)?;
+        slots::check(slot)?;
         let pkcs8 =
             zeroize::Zeroizing::new(SigningKey::generate_pkcs8(suite).map_err(|error| {
                 KeyError::Malformed(format!("generating a {suite} key: {error:?}"))
@@ -233,13 +210,7 @@ impl KeyProvider for FileKeyProvider {
     }
 
     fn slots(&self) -> Result<Vec<String>, KeyError> {
-        Ok(self
-            .dir
-            .names()?
-            .into_iter()
-            .filter_map(|name| name.strip_suffix(".key").map(str::to_owned))
-            .filter(|slot| Self::name_of(slot).is_ok())
-            .collect())
+        self.slots.slots(Kind::Key)
     }
 
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
@@ -258,9 +229,7 @@ impl KeyProvider for FileKeyProvider {
     }
 
     fn destroy(&self, slot: &str) -> Result<(), KeyError> {
-        let name = Self::name_of(slot)?;
-        tombstone::delete(&self.dir, &name)?;
-        Ok(())
+        self.slots.empty(Kind::Key, slot)
     }
 }
 
@@ -269,6 +238,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::storage::Dir;
 
     fn scratch(tag: &str) -> Dir {
         let path = std::env::temp_dir().join(format!(
@@ -279,6 +249,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).expect("a scratch directory");
         Dir::open(&path).expect("opens")
+    }
+
+    /// The file backend of the slots passes the contract's suite, each case in a directory of
+    /// its own.
+    #[test]
+    fn the_file_backend_of_the_slots_keeps_the_contract() {
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        slots::suite::run(&|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Arc::new(slots::files::FileSlots::new(scratch(&format!(
+                "suite-{case}"
+            ))))
+        });
+    }
+
+    /// What only the file backend can prove: a slot is one file named for it, a key `.key` and a
+    /// reference `.ref`, read back by a later process; a file that is no slot's is not listed.
+    #[test]
+    fn the_file_backend_keeps_a_slot_in_one_file_named_for_it() {
+        let dir = scratch("slot-files");
+        let store = slots::files::FileSlots::new(Dir::open(dir.path()).expect("opens"));
+        store.fill(Kind::Key, "7", b"a key").expect("filled");
+        store
+            .fill(Kind::Reference, "7", b"a label")
+            .expect("filled");
+        assert_eq!(
+            std::fs::read(dir.path().join("7.key")).expect("the file"),
+            b"a key"
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("7.ref")).expect("the file"),
+            b"a label"
+        );
+        std::fs::write(dir.path().join("not a slot.key"), b"x").expect("written");
+        std::fs::write(dir.path().join("7.pub"), b"x").expect("written");
+        drop(store);
+        let reopened = slots::files::FileSlots::new(Dir::open(dir.path()).expect("opens"));
+        assert_eq!(reopened.slots(Kind::Key).expect("reads"), vec!["7"]);
+        assert_eq!(reopened.slots(Kind::Reference).expect("reads"), vec!["7"]);
+        assert_eq!(
+            reopened.read(Kind::Key, "7").expect("reads").as_deref(),
+            Some(&b"a key"[..])
+        );
+        assert!(reopened.place(Kind::Key, "7").ends_with("7.key"));
     }
 
     #[test]

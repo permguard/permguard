@@ -14,7 +14,7 @@ use permguard_host::api::streams::{
 use super::super::anchor::anchor_in;
 use super::super::reads::{Inspect, anchor_view, page_view, span_view};
 use super::super::{RecordCodec, StreamError, StreamKey};
-use super::{Consumer, FORKED};
+use super::Consumer;
 
 impl<C: RecordCodec> Consumer<C> {
     /// The runs held of `resource`, `(key, run)`.
@@ -24,18 +24,6 @@ impl<C: RecordCodec> Consumer<C> {
             .into_iter()
             .filter(|(key, _)| key.resource == resource)
             .collect())
-    }
-
-    /// The directory of `key`'s run `run`, when it exists: read without opening its journal.
-    fn run_dir(
-        &self,
-        key: &StreamKey,
-        run: &[u8; 16],
-    ) -> Result<Option<permguard_host::storage::Dir>, StreamError> {
-        let Some(producer) = self.producer_dir(key, false)? else {
-            return Ok(None);
-        };
-        super::child(&producer, &hex(run), false)
     }
 }
 
@@ -54,9 +42,7 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
             if resources.iter().any(|held| held.resource == key.resource) {
                 continue;
             }
-            let forked = self
-                .producer_dir(&key, false)?
-                .is_some_and(|dir| dir.exists(FORKED).unwrap_or(false));
+            let forked = self.mark(&key)?.is_some();
             resources.push(ResourceState {
                 resource: key.resource.clone(),
                 state: if forked { "forked" } else { "held" }.to_owned(),
@@ -78,16 +64,13 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
         // From each run's STATE, written after its records: no journal is opened (after the
         // review).
         for (key, run) in self.held_runs(resource)? {
-            let Some(dir) = self.run_dir(&key, &run)? else {
+            let Some(dir) = self.peek(&key, &run)? else {
                 continue;
             };
-            let state = permguard_host::storage::write::read_view(
-                &dir,
-                super::STATE,
-                permguard_host::storage::format::VIEW,
-            )?
-            .map(|bytes| super::ConsumerState::decode(&bytes))
-            .transpose()?;
+            let state = dir
+                .view(super::STATE)?
+                .map(|bytes| super::ConsumerState::decode(&bytes))
+                .transpose()?;
             into.consumer.push(ConsumerRun {
                 producer: hex(&key.producer_host_id),
                 run: hex(&run),
@@ -136,14 +119,10 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
     fn signers(&self, resource: &str) -> Result<Vec<RunSigners>, StreamError> {
         let mut found = Vec::new();
         for (key, run) in self.held_runs(resource)? {
-            let Some(dir) = self.run_dir(&key, &run)? else {
+            let Some(dir) = self.peek(&key, &run)? else {
                 continue;
             };
-            let spans = match permguard_host::storage::write::read_view(
-                &dir,
-                super::SIGNERS,
-                permguard_host::storage::format::VIEW,
-            )? {
+            let spans = match dir.view(super::SIGNERS)? {
                 Some(bytes) => super::super::producer::Spans::decode(&bytes)?,
                 None => super::super::producer::Spans::default(),
             };
@@ -169,10 +148,10 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
     fn anchors(&self, resource: &str) -> Result<Vec<AnchorView>, StreamError> {
         let mut found = Vec::new();
         for (key, run) in self.held_runs(resource)? {
-            let Some(dir) = self.run_dir(&key, &run)? else {
+            let Some(dir) = self.peek(&key, &run)? else {
                 continue;
             };
-            if let Some(anchor) = anchor_in(&dir)? {
+            if let Some(anchor) = anchor_in(dir.as_ref())? {
                 found.push(anchor_view("consumer", &key.producer_host_id, &anchor)?);
             }
         }
@@ -181,9 +160,9 @@ impl<C: RecordCodec> Inspect for Consumer<C> {
 }
 
 /// The batch files in `dir`, `(first, last, name)` by first sequence.
-fn batch_files(dir: &permguard_host::storage::Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
-    let mut found: Vec<(u64, u64, String)> = dir
-        .names()?
+fn batch_files(run: &dyn super::store::RunFiles) -> Result<Vec<(u64, u64, String)>, StreamError> {
+    let mut found: Vec<(u64, u64, String)> = run
+        .names(super::BATCHES)?
         .into_iter()
         .filter_map(|name| {
             let (first, last) = name.strip_suffix(".jws")?.split_once('-')?;
@@ -205,18 +184,15 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
     ) -> Result<Vec<permguard_host::composition::ConsumedRun>, String> {
         let mut found = Vec::new();
         for (key, run) in self.runs_of(resource).map_err(wrap)? {
-            let Some(dir) = self.run_dir(&key, &run).map_err(wrap)? else {
+            let Some(dir) = self.peek(&key, &run).map_err(wrap)? else {
                 continue;
             };
-            let state = permguard_host::storage::write::read_view(
-                &dir,
-                super::STATE,
-                permguard_host::storage::format::VIEW,
-            )
-            .map_err(|error| error.to_string())?
-            .map(|bytes| super::ConsumerState::decode(&bytes))
-            .transpose()
-            .map_err(wrap)?;
+            let state = dir
+                .view(super::STATE)
+                .map_err(|error| error.to_string())?
+                .map(|bytes| super::ConsumerState::decode(&bytes))
+                .transpose()
+                .map_err(wrap)?;
             found.push((
                 hex(&key.producer_host_id),
                 state.and_then(|state| state.opened).unwrap_or_default(),
@@ -274,20 +250,17 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         seq: u64,
     ) -> Result<Option<Vec<u8>>, String> {
         let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
-        let Some(dir) = self.run_dir(&key, run).map_err(wrap)? else {
+        let Some(dir) = self.peek(&key, run).map_err(wrap)? else {
             return Ok(None);
         };
-        let Some(batches) = super::child(&dir, super::BATCHES, false).map_err(wrap)? else {
-            return Ok(None);
-        };
-        let Some((_, _, name)) = batch_files(&batches)
+        let Some((_, _, name)) = batch_files(dir.as_ref())
             .map_err(wrap)?
             .into_iter()
             .find(|(first, last, _)| (*first..=*last).contains(&seq))
         else {
             return Ok(None);
         };
-        batches.read(&name).map_err(|error| error.to_string())
+        dir.read(super::BATCHES, &name).map_err(wrap)
     }
 
     fn statement(
@@ -298,20 +271,13 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
         kid: &str,
     ) -> Result<Option<Vec<u8>>, String> {
         let key = self.descriptor.key(resource, *producer).map_err(wrap)?;
-        let Some(dir) = self.run_dir(&key, run).map_err(wrap)? else {
-            return Ok(None);
-        };
-        let Some(statements) = super::child(&dir, super::STATEMENTS, false).map_err(wrap)? else {
+        let Some(dir) = self.peek(&key, run).map_err(wrap)? else {
             return Ok(None);
         };
         // Of the statements naming the key, the latest epoch's: the set the run moved on to.
         let mut found: Option<(u64, Vec<u8>)> = None;
-        for name in statements.names().map_err(|error| error.to_string())? {
-            // A statement a crash left half-published is no statement (after the review).
-            if name.starts_with(permguard_host::storage::dir::TEMP_PREFIX) {
-                continue;
-            }
-            let Some(bytes) = statements.read(&name).map_err(|error| error.to_string())? else {
+        for name in dir.names(super::STATEMENTS).map_err(wrap)? {
+            let Some(bytes) = dir.read(super::STATEMENTS, &name).map_err(wrap)? else {
                 continue;
             };
             let statement = permguard_host::membership::record::RingStatement::decode(&bytes)
@@ -378,20 +344,18 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
                 }
                 // What deleted the prefix keeps its last record's digest: the anchor of the
                 // records this Host deleted, or the start of a run it imported past its beginning.
-                if let Some(anchor) = super::super::anchor::anchor_in(&held.dir)?
+                if let Some(anchor) = super::super::anchor::anchor_in(held.store.as_ref())?
                     && anchor.low_watermark == held.oldest_retained
                 {
                     return Ok(Some(anchor.terminal_head));
                 }
-                Ok(permguard_host::storage::write::read_view(
-                    &held.dir,
-                    super::START,
-                    permguard_host::storage::format::VIEW,
-                )?
-                .map(|bytes| super::decode_start(&bytes))
-                .transpose()?
-                .filter(|(first_seq, _)| *first_seq == held.oldest_retained)
-                .map(|(_, head)| head))
+                Ok(held
+                    .store
+                    .view(super::START)?
+                    .map(|bytes| super::decode_start(&bytes))
+                    .transpose()?
+                    .filter(|(first_seq, _)| *first_seq == held.oldest_retained)
+                    .map(|(_, head)| head))
             })
             .map_err(wrap)?
             .flatten())
@@ -423,15 +387,12 @@ impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consum
                 .collect();
         let mut found = Vec::new();
         for (key, run) in self.runs_of(resource).map_err(wrap)? {
-            let Some(dir) = self.run_dir(&key, &run).map_err(wrap)? else {
+            let Some(dir) = self.peek(&key, &run).map_err(wrap)? else {
                 continue;
             };
-            let spans = match permguard_host::storage::write::read_view(
-                &dir,
-                super::SIGNERS,
-                permguard_host::storage::format::VIEW,
-            )
-            .map_err(|error| error.to_string())?
+            let spans = match dir
+                .view(super::SIGNERS)
+                .map_err(|error| error.to_string())?
             {
                 Some(bytes) => super::super::producer::Spans::decode(&bytes).map_err(wrap)?,
                 None => super::super::producer::Spans::default(),

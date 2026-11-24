@@ -49,8 +49,6 @@ use crate::identity::record::{Labelled, RecordError, encode, uint, uuid_text};
 use crate::operations::journal::Initiator;
 use crate::secrets::{self, KeyVersion, ZoneKeys, ZonePurpose, ZoneTuple, parse_uuid};
 use crate::session::Refusal;
-use crate::storage::format;
-use crate::storage::write::{read_view, replace_view};
 use crate::time::TimeGuard;
 
 /// The contract version this module speaks.
@@ -65,8 +63,6 @@ pub const CURRENT: &str = "current";
 pub const MAX_TUPLES: usize = 64;
 /// The most bytes one `zone.secrets` record takes.
 const MAX_ZONE_BYTES: usize = 16 * 1024;
-/// The suffix of a receipt in a membership's progress directory.
-const RECEIPT: &str = "zone";
 /// The longest resource a receipt names.
 const MAX_RESOURCE_BYTES: usize = 512;
 
@@ -414,13 +410,6 @@ fn canonical_resource(text: String) -> Result<String, RecordError> {
     Ok(text)
 }
 
-/// The file a receipt of `resource` of `task_id` is kept in.
-fn receipt_name(task_id: &str, resource: &str) -> String {
-    let digest: [u8; 32] = Sha256::digest(resource.as_bytes()).into();
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("{task_id}.{hex}.{RECEIPT}")
-}
-
 /// The tuples `task` grants over `resource` at `version` (owner decision): the purposes its
 /// `resource_types` name that the resource takes, a zone its shared pseudonym key and a ledger its
 /// input-tag key.
@@ -571,16 +560,14 @@ impl Store {
         task_id: &str,
         receipt: &Receipt,
     ) -> Result<(), MembershipError> {
-        let dir = self
-            .progress_dir(id, true)?
-            .ok_or_else(|| MembershipError::Storage("the progress directory".to_owned()))?;
-        replace_view(
-            &dir,
-            &receipt_name(task_id, &receipt.resource),
-            format::VIEW,
+        self.store.keep(
+            &super::store::Doc::ZoneReceipt {
+                membership: id,
+                task: task_id,
+                resource: &receipt.resource,
+            },
             &receipt.encode()?,
-        )?;
-        Ok(())
+        )
     }
 
     /// The last receipt of `task_id` of `id` for `resource`.
@@ -590,10 +577,12 @@ impl Store {
         task_id: &str,
         resource: &str,
     ) -> Result<Option<Receipt>, MembershipError> {
-        let Some(dir) = self.progress_dir(id, false)? else {
-            return Ok(None);
-        };
-        read_view(&dir, &receipt_name(task_id, resource), format::VIEW)?
+        self.store
+            .doc(&super::store::Doc::ZoneReceipt {
+                membership: id,
+                task: task_id,
+                resource,
+            })?
             .map(|bytes| Receipt::decode(&bytes).map_err(MembershipError::from))
             .transpose()
     }
@@ -604,26 +593,13 @@ impl Store {
         id: &[u8; 16],
         task_id: &str,
     ) -> Result<Vec<Receipt>, MembershipError> {
-        let Some(dir) = self.progress_dir(id, false)? else {
-            return Ok(Vec::new());
-        };
-        let prefix = format!("{task_id}.");
-        let suffix = format!(".{RECEIPT}");
         let mut receipts = Vec::new();
-        for name in dir.names()? {
-            // `<task_id>.<64 hex>.zone`: another task's name never matches its digest's length.
-            let Some(middle) = name
-                .strip_prefix(&prefix)
-                .and_then(|rest| rest.strip_suffix(&suffix))
-            else {
-                continue;
-            };
-            if middle.len() != 64 || !middle.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                continue;
-            }
-            if let Some(bytes) = read_view(&dir, &name, format::VIEW)? {
-                receipts.push(Receipt::decode(&bytes)?);
-            }
+        for listed in self.store.list(&super::store::Listing::ZoneReceipts {
+            membership: id,
+            task: task_id,
+        })? {
+            let bytes = listed.bytes.map_err(MembershipError::Storage)?;
+            receipts.push(Receipt::decode(&bytes)?);
         }
         receipts.sort_by(|left, right| left.resource.cmp(&right.resource));
         Ok(receipts)

@@ -300,26 +300,7 @@ impl FromStr for PinnedPeer {
         let Some((host_id, fingerprint)) = value.trim().split_once(char::is_whitespace) else {
             bail!("a pinned peer is `<host_id> sha256:<hex>`");
         };
-        let hex: String = host_id.chars().filter(|c| *c != '-').collect();
-        let canonical = host_id.len() == 36
-            && [8, 13, 18, 23]
-                .iter()
-                .all(|at| host_id.as_bytes().get(*at) == Some(&b'-'))
-            && hex.len() == 32
-            && hex
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
-        let mut bytes = [0u8; 16];
-        for (at, byte) in bytes.iter_mut().enumerate() {
-            *byte = canonical
-                .then(|| u8::from_str_radix(hex.get(at * 2..at * 2 + 2)?, 16).ok())
-                .flatten()
-                .unwrap_or_default();
-        }
-        // A UUIDv7: version 7, the RFC 9562 variant.
-        if !canonical || bytes[6] >> 4 != 7 || bytes[8] >> 6 != 0b10 {
-            bail!("`{host_id}` is not a Host id: a lowercase UUIDv7");
-        }
+        let bytes = host_id_of(host_id)?;
         let fingerprint = fingerprint.trim();
         let digest = fingerprint.strip_prefix("sha256:").unwrap_or_default();
         if digest.len() != 64
@@ -341,17 +322,175 @@ impl FromStr for PinnedPeer {
 
 impl fmt::Display for PinnedPeer {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let hex: String = self.host_id.iter().map(|b| format!("{b:02x}")).collect();
         write!(
             formatter,
-            "{}-{}-{}-{}-{} {}",
-            &hex[..8],
-            &hex[8..12],
-            &hex[12..16],
-            &hex[16..20],
-            &hex[20..],
+            "{} {}",
+            host_id_text(&self.host_id),
             self.fingerprint
         )
+    }
+}
+
+/// A Host id as configuration writes it: a lowercase UUIDv7.
+fn host_id_of(text: &str) -> Result<[u8; 16]> {
+    let hex: String = text.chars().filter(|c| *c != '-').collect();
+    let canonical = text.len() == 36
+        && [8, 13, 18, 23]
+            .iter()
+            .all(|at| text.as_bytes().get(*at) == Some(&b'-'))
+        && hex.len() == 32
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+    let mut bytes = [0u8; 16];
+    for (at, byte) in bytes.iter_mut().enumerate() {
+        *byte = canonical
+            .then(|| u8::from_str_radix(hex.get(at * 2..at * 2 + 2)?, 16).ok())
+            .flatten()
+            .unwrap_or_default();
+    }
+    // A UUIDv7: version 7, the RFC 9562 variant.
+    if !canonical || bytes[6] >> 4 != 7 || bytes[8] >> 6 != 0b10 {
+        bail!("`{text}` is not a Host id: a lowercase UUIDv7");
+    }
+    Ok(bytes)
+}
+
+/// `host_id` as configuration writes it.
+fn host_id_text(host_id: &[u8; 16]) -> String {
+    let hex: String = host_id.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
+    )
+}
+
+/// Where a member reaches its coordinator, in its one canonical form, `https://<host>:<port>`,
+/// or what is wrong with `address` (BUG-0290, DEC-0017): a `grpcs://` endpoint is the same
+/// listener; an empty host, a missing port, a path, a query, a fragment or user info names no
+/// listener a member could join, and is refused before an invitation's handoff carries it.
+pub fn peer_address(address: &str) -> Result<String, String> {
+    let refused = |why: &str| {
+        format!(
+            "`{address}` is not where a member reaches a coordinator ({why}): https://<host>:<port>"
+        )
+    };
+    let rest = address
+        .strip_prefix("https://")
+        .or_else(|| address.strip_prefix("grpcs://"))
+        .ok_or_else(|| refused("the scheme is https or grpcs"))?;
+    let authority = rest.strip_suffix('/').unwrap_or(rest);
+    if authority.contains(['/', '?', '#', '@']) {
+        return Err(refused(
+            "a path, a query, a fragment or user info names no listener",
+        ));
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() && host != "[" => (host, port),
+        _ => return Err(refused("the host and its port are both needed")),
+    };
+    if port.is_empty()
+        || !port.bytes().all(|byte| byte.is_ascii_digit())
+        || port.parse::<u16>().map_or(true, |port| port == 0)
+    {
+        return Err(refused("the port is a number from 1 to 65535"));
+    }
+    match host
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+    {
+        Some(inner) => {
+            if inner.parse::<std::net::Ipv6Addr>().is_err() {
+                return Err(refused("the bracketed host is an IPv6 address"));
+            }
+        }
+        None if host.contains(':') => {
+            return Err(refused("an IPv6 host is written in brackets"));
+        }
+        None => {
+            let label = |label: &str| {
+                !label.is_empty()
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            };
+            if host.len() > 253 || !host.split('.').all(label) {
+                return Err(refused("the host is a DNS name or an IP address"));
+            }
+        }
+    }
+    Ok(format!("https://{host}:{port}"))
+}
+
+/// The most endpoints one coordinator is named with (WP-28.7).
+pub const MAX_COORDINATOR_ENDPOINTS: usize = 16;
+
+/// One `host.coordinator_endpoints[]` entry (iteration 03, WP-28.7): where the coordinator
+/// `host_id` is reached besides the address its memberships name, the instances of one Control
+/// Plane, each `https://<host>:<port>`. A session opens on one and moves to the next when it
+/// cannot connect; whichever answers proves the coordinator's identity, pinned as before.
+/// Written `<host_id> <endpoint> [<endpoint> ...]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoordinatorEndpoints {
+    host_id: [u8; 16],
+    endpoints: Vec<String>,
+}
+
+impl CoordinatorEndpoints {
+    /// The coordinator's `host_id`.
+    pub fn host_id(&self) -> [u8; 16] {
+        self.host_id
+    }
+
+    /// Its endpoints, in the order written, each in the canonical form [`peer_address`] gives.
+    pub fn endpoints(&self) -> &[String] {
+        &self.endpoints
+    }
+}
+
+impl FromStr for CoordinatorEndpoints {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        let words: Vec<&str> = value.split_whitespace().collect();
+        let [host_id, named @ ..] = words.as_slice() else {
+            bail!("a coordinator's endpoints are `<host_id> <https://host:port> ...`");
+        };
+        if named.is_empty() {
+            bail!("a coordinator's endpoints are `<host_id> <https://host:port> ...`");
+        }
+        let host_id = host_id_of(host_id)?;
+        let mut endpoints: Vec<String> = Vec::new();
+        for word in named {
+            let endpoint = peer_address(word).map_err(anyhow::Error::msg)?;
+            if endpoints.contains(&endpoint) {
+                bail!("`{endpoint}` is named twice: each endpoint once");
+            }
+            endpoints.push(endpoint);
+        }
+        if endpoints.len() > MAX_COORDINATOR_ENDPOINTS {
+            bail!(
+                "{} endpoints for one coordinator: at most {MAX_COORDINATOR_ENDPOINTS}",
+                endpoints.len()
+            );
+        }
+        Ok(Self { host_id, endpoints })
+    }
+}
+
+impl fmt::Display for CoordinatorEndpoints {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", host_id_text(&self.host_id))?;
+        for endpoint in &self.endpoints {
+            write!(formatter, " {endpoint}")?;
+        }
+        Ok(())
     }
 }
 

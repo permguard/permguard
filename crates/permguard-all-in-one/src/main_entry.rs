@@ -29,6 +29,8 @@ async fn serve() -> ExitCode {
         brand::PERMGUARD_ART,
     );
     PlaneServer::new(identity, build_settings(build::VERSION))
+        // The postgresql-s3 backend, when the configuration names it (iteration 03, WP-28.1).
+        .with_shared_backend(permguard_s3::backend::open)
         // The Authority Plane beside the others (`2-security/8` Where it runs): `runtime.planes`
         // selects which of them this process serves.
         .with_plane(

@@ -31,8 +31,9 @@ use crate::config::{
     SETTING_AUDIT_RETENTION, SETTING_AUDIT_RETENTION_SECURITY, SETTING_AUDIT_SINK,
     SETTING_AUTOGENERATE, SETTING_BACKUP_DESTRUCTION, SETTING_BACKUP_ENCRYPTION_PROFILE,
     SETTING_BACKUP_RECOVERY_KEY, SETTING_BACKUP_RECOVERY_KEY_ID, SETTING_BACKUP_RETENTION,
-    SETTING_DEVELOPMENT_MODE, SETTING_DUAL_CONTROL_APPROVAL_TTL, SETTING_HOST_IDENTITY_SUITE,
-    SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
+    SETTING_DEVELOPMENT_MODE, SETTING_DUAL_CONTROL_APPROVAL_TTL,
+    SETTING_HOST_COORDINATOR_ENDPOINTS, SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS,
+    SETTING_HOST_IDENTITY_WITNESS_FILE, SETTING_HOST_JOIN_GROUPS,
     SETTING_HOST_JOIN_INVITATION_FILE, SETTING_HOST_JOIN_NAME, SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_PEERS, SETTING_ISSUER, SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY,
     SETTING_KEYS_ENABLED, SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER,
@@ -167,6 +168,9 @@ pub struct ConfigFile {
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StorageSection {
+    /// `files` or `postgresql-s3`; absent means `files`.
+    #[serde(default)]
+    backend: Option<String>,
     #[serde(default)]
     volume: VolumeSection,
     #[serde(default)]
@@ -177,6 +181,75 @@ struct StorageSection {
     floors: FloorsSection,
     #[serde(default)]
     quotas: QuotasSection,
+    /// Where a process on `postgresql-s3` finds its database (iteration 03, WP-28.1).
+    #[serde(default)]
+    postgresql: PostgresqlSection,
+    /// Where a process on `postgresql-s3` finds its bucket (iteration 03, WP-28.1).
+    #[serde(default)]
+    s3: S3Section,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PostgresqlSection {
+    #[serde(default)]
+    host: Option<String>,
+    #[serde(default)]
+    port: Option<NumberValue>,
+    #[serde(default)]
+    database: Option<String>,
+    #[serde(default)]
+    user: Option<String>,
+    #[serde(default)]
+    password_ref: Option<String>,
+    #[serde(default)]
+    schema: Option<String>,
+    #[serde(default)]
+    ca: Option<String>,
+    #[serde(default)]
+    pool: Option<NumberValue>,
+    #[serde(default)]
+    tls: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct S3Section {
+    #[serde(default)]
+    endpoint: Option<String>,
+    #[serde(default)]
+    region: Option<String>,
+    #[serde(default)]
+    bucket: Option<String>,
+    #[serde(default)]
+    prefix: Option<String>,
+    #[serde(default)]
+    access_key: Option<String>,
+    #[serde(default)]
+    secret_ref: Option<String>,
+    #[serde(default)]
+    session_token_ref: Option<String>,
+    #[serde(default)]
+    ca: Option<String>,
+    #[serde(default)]
+    encryption: Option<String>,
+}
+
+/// A number the file may write bare or quoted.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum NumberValue {
+    Number(u64),
+    Text(String),
+}
+
+impl NumberValue {
+    fn as_setting_value(&self) -> String {
+        match self {
+            Self::Number(value) => value.to_string(),
+            Self::Text(value) => value.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
@@ -875,6 +948,15 @@ struct PeerPinSection {
     fingerprint: String,
 }
 
+/// One `host.coordinator_endpoints[]` entry (WP-28.7): where a coordinator is reached besides
+/// the address its memberships name.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoordinatorEndpointsSection {
+    host_id: String,
+    endpoints: Vec<String>,
+}
+
 /// Listener address for the telemetry surface.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -890,6 +972,9 @@ struct TelemetrySection {
     /// The peer Hosts this one opens sessions with (WP-2.3).
     #[serde(default)]
     peers: Vec<PeerPinSection>,
+    /// Where each coordinator is reached besides its memberships' address (WP-28.7).
+    #[serde(default)]
+    coordinator_endpoints: Vec<CoordinatorEndpointsSection>,
     /// The join a Data Plane Host makes by itself at start (TD-5).
     #[serde(default)]
     join: JoinSection,
@@ -1307,6 +1392,20 @@ impl ConfigFile {
                 .collect::<Vec<_>>()
                 .join("\n")
         });
+        let coordinator_endpoints = (!self.host.coordinator_endpoints.is_empty()).then(|| {
+            self.host
+                .coordinator_endpoints
+                .iter()
+                .map(|coordinator| {
+                    format!(
+                        "{} {}",
+                        coordinator.host_id,
+                        coordinator.endpoints.join(" ")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
         let added_controls = (!self.assurance.added_controls.is_empty())
             .then(|| self.assurance.added_controls.join(","));
         let appraisal_controls = (!self.membership.appraisal.controls.is_empty()).then(|| {
@@ -1357,6 +1456,10 @@ impl ConfigFile {
             (SETTING_ISSUER, self.public.url.as_ref()),
             (SETTING_ADMIN_ALLOW, allow.as_ref()),
             (SETTING_HOST_PEERS, peers.as_ref()),
+            (
+                SETTING_HOST_COORDINATOR_ENDPOINTS,
+                coordinator_endpoints.as_ref(),
+            ),
             (
                 SETTING_ADMIN_PEER_SESSIONS,
                 self.admin.peer_sessions.as_ref(),
@@ -1638,6 +1741,74 @@ impl ConfigFile {
             ),
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
             (SETTING_ASSURANCE_PROFILE, self.assurance.profile.as_ref()),
+            (
+                crate::config::SETTING_STORAGE_BACKEND,
+                self.storage.backend.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_HOST,
+                self.storage.postgresql.host.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_DATABASE,
+                self.storage.postgresql.database.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_USER,
+                self.storage.postgresql.user.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_PASSWORD_REF,
+                self.storage.postgresql.password_ref.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_SCHEMA,
+                self.storage.postgresql.schema.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_CA,
+                self.storage.postgresql.ca.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_TLS,
+                self.storage.postgresql.tls.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_ENDPOINT,
+                self.storage.s3.endpoint.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_REGION,
+                self.storage.s3.region.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_BUCKET,
+                self.storage.s3.bucket.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_PREFIX,
+                self.storage.s3.prefix.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_ACCESS_KEY,
+                self.storage.s3.access_key.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_SECRET_REF,
+                self.storage.s3.secret_ref.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_SESSION_TOKEN_REF,
+                self.storage.s3.session_token_ref.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_CA,
+                self.storage.s3.ca.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_S3_ENCRYPTION,
+                self.storage.s3.encryption.as_ref(),
+            ),
             (SETTING_ASSURANCE_ADDED_CONTROLS, added_controls.as_ref()),
             (
                 SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
@@ -1725,6 +1896,20 @@ impl ConfigFile {
                 .into_iter()
                 .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.clone()))),
         );
+        for (key, value) in [
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_PORT,
+                self.storage.postgresql.port.as_ref(),
+            ),
+            (
+                crate::config::SETTING_STORAGE_POSTGRESQL_POOL,
+                self.storage.postgresql.pool.as_ref(),
+            ),
+        ] {
+            if let Some(value) = value {
+                settings.push((key.to_owned(), value.as_setting_value()));
+            }
+        }
 
         // `experimental.<name>.enabled`, one key per runtime the file names. Generated rather than
         // listed, so a build that grows a new provisional runtime needs no edit here.
@@ -2192,6 +2377,47 @@ mod tests {
         ConfigFile::parse(text).expect("the file parses").settings()
     }
 
+    /// Iteration 03, WP-28.1: where a process on `postgresql-s3` finds its database and its
+    /// bucket, a port and a pool written bare or quoted.
+    #[test]
+    fn test_the_storage_connection_maps_to_its_settings() {
+        let settings = settings_of(
+            "storage:\n  backend: postgresql-s3\n  postgresql:\n    host: db.internal\n    port: 6432\n    database: permguard\n    user: permguard\n    password_ref: postgres-password\n    schema: tenant_a\n    ca: db-ca.pem\n    pool: \"8\"\n    tls: verified\n  s3:\n    endpoint: https://s3.internal:9000\n    region: eu-west-1\n    bucket: permguard\n    prefix: tenant-a/\n    access_key: AKIA\n    secret_ref: s3-secret\n    session_token_ref: s3-session\n    ca: s3-ca.pem\n    encryption: kms:permguard\n",
+        );
+        for (key, value) in [
+            ("PERMGUARD_STORAGE_POSTGRESQL_HOST", "db.internal"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_PORT", "6432"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_DATABASE", "permguard"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_USER", "permguard"),
+            (
+                "PERMGUARD_STORAGE_POSTGRESQL_PASSWORD_REF",
+                "postgres-password",
+            ),
+            ("PERMGUARD_STORAGE_POSTGRESQL_SCHEMA", "tenant_a"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_CA", "db-ca.pem"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_POOL", "8"),
+            ("PERMGUARD_STORAGE_POSTGRESQL_TLS", "verified"),
+            ("PERMGUARD_STORAGE_S3_ENDPOINT", "https://s3.internal:9000"),
+            ("PERMGUARD_STORAGE_S3_REGION", "eu-west-1"),
+            ("PERMGUARD_STORAGE_S3_BUCKET", "permguard"),
+            ("PERMGUARD_STORAGE_S3_PREFIX", "tenant-a/"),
+            ("PERMGUARD_STORAGE_S3_ACCESS_KEY", "AKIA"),
+            ("PERMGUARD_STORAGE_S3_SECRET_REF", "s3-secret"),
+            ("PERMGUARD_STORAGE_S3_SESSION_TOKEN_REF", "s3-session"),
+            ("PERMGUARD_STORAGE_S3_CA", "s3-ca.pem"),
+            ("PERMGUARD_STORAGE_S3_ENCRYPTION", "kms:permguard"),
+        ] {
+            assert!(
+                settings.contains(&(key.to_owned(), value.to_owned())),
+                "{key} = {value} in {settings:?}"
+            );
+        }
+        assert!(
+            ConfigFile::parse("storage:\n  s3:\n    secret: in-the-file\n").is_err(),
+            "a secret is given by reference, never written in the file"
+        );
+    }
+
     #[test]
     fn test_parse_reads_every_documented_section() {
         let file = ConfigFile::parse(FULL).expect("the file parses");
@@ -2432,6 +2658,28 @@ mod tests {
         assert!(
             ConfigFile::parse("host:\n  peers:\n    - host_id: x\n      key: y\n").is_err(),
             "a pin has exactly its two members"
+        );
+    }
+
+    #[test]
+    fn test_the_coordinator_endpoints_reach_their_setting() {
+        // WP-28.7: `host.coordinator_endpoints[]` as lines `<host_id> <endpoint> ...`.
+        let settings = settings_of(
+            "host:\n  coordinator_endpoints:\n    - host_id: 0198f2aa-0000-7000-8000-000000000001\n      endpoints: [\"https://cp-1:5444\", \"https://cp-2:5444\"]\n",
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .find(|(name, _)| name == SETTING_HOST_COORDINATOR_ENDPOINTS)
+                .map(|(_, value)| value.as_str()),
+            Some("0198f2aa-0000-7000-8000-000000000001 https://cp-1:5444 https://cp-2:5444")
+        );
+        assert!(
+            ConfigFile::parse(
+                "host:\n  coordinator_endpoints:\n    - host_id: x\n      address: y\n"
+            )
+            .is_err(),
+            "an entry has exactly its two members"
         );
     }
 

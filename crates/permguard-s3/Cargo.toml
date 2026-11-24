@@ -1,0 +1,111 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-s3"
+description = "The object store side of Permguard's second storage backend: one bounded client of an S3 bucket, five requests, signed, with no development kit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[features]
+# What the tests of a store kept on this backend share: the test bucket and a prefix of a test's
+# own. Tests only.
+test-support = []
+# The settled days of the audit trails kept on PostgreSQL: the bucket as their object store.
+audit = ["dep:permguard-postgres"]
+# The backend as a build selects it (iteration 03, WP-28.1): the database and the bucket opened
+# from the configuration, and every store of the Host over them.
+backend = [
+    "audit",
+    "authority-plane",
+    "control-plane",
+    "streams",
+    "dep:anyhow",
+    "dep:permguard-host",
+    "dep:permguard-std",
+    "dep:ring",
+    "dep:rustls-native-certs",
+    "dep:tracing",
+]
+# A stream consumer's runs on PostgreSQL and S3: its batches and ring statements in the bucket.
+streams = ["dep:permguard-host", "dep:permguard-postgres", "dep:permguard-stream"]
+# The Control Plane's stores whose objects this bucket keeps: a ledger's, and the archives. They
+# live here and not in the Control Plane's own package, whose domain links no network client.
+# The Authority Plane's stores on the backend: its accounts, tokens and marks.
+authority-plane = ["dep:permguard-authority-plane", "dep:permguard-postgres"]
+control-plane = [
+    "dep:permguard-control-plane",
+    "dep:permguard-host",
+    "dep:permguard-notp",
+    "dep:permguard-objects",
+    "dep:permguard-postgres",
+    "dep:serde",
+    "dep:serde_json",
+]
+
+[dependencies]
+permguard-core.workspace = true
+anyhow = { workspace = true, optional = true }
+ring = { workspace = true, optional = true }
+rustls-native-certs = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+permguard-authority-plane = { workspace = true, optional = true }
+permguard-control-plane = { workspace = true, optional = true }
+permguard-host = { workspace = true, optional = true }
+permguard-notp = { workspace = true, optional = true }
+permguard-objects = { workspace = true, optional = true }
+permguard-postgres = { workspace = true, optional = true }
+permguard-std = { workspace = true, optional = true, features = ["catalog"] }
+permguard-stream = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+bytes.workspace = true
+hmac.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+rustls.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tokio-rustls.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+permguard-s3 = { path = ".", features = ["test-support"] }
+permguard-control-plane = { workspace = true, features = ["test-support"] }
+permguard-stream = { workspace = true, features = ["test-support"] }
+permguard-postgres = { workspace = true, features = ["test-support"] }
+permguard-host = { workspace = true, features = ["test-support"] }
+permguard-objects.workspace = true
+rustls.workspace = true
+tokio = { workspace = true }
+zeroize.workspace = true
+
+[[test]]
+name = "control_plane"
+required-features = ["control-plane"]
+
+[[test]]
+name = "audit"
+required-features = ["audit"]
+
+[[test]]
+name = "streams"
+required-features = ["streams"]
+
+[[test]]
+name = "import"
+required-features = ["control-plane", "streams"]
+
+[[test]]
+name = "import_volume"
+required-features = ["backend"]

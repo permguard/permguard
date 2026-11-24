@@ -116,15 +116,64 @@ impl Queue {
     }
 }
 
+/// Where a hint published on one instance reaches the watches held on the others (iteration 03,
+/// WP-28.4, decision E9): every instance that shares the memberships hears what every other
+/// publishes. A hint carries no policy and grants nothing, so one heard twice, or not at all when
+/// a connection drops, costs a member at most its ordinary round.
+pub trait Relay: Send + Sync {
+    /// Tells the other instances of `hint`, about `resource`, for the watches of `task_type`.
+    fn send(&self, task_type: TaskType, resource: &Resource, hint: &WatchHint);
+
+    /// Delivers to `hub` what the other instances send, until the answer is dropped.
+    fn listen(&self, hub: Weak<Hub>) -> Box<dyn std::any::Any + Send + Sync>;
+}
+
+/// The relay a composition hands the Host, as a backend's handle.
+#[derive(Clone)]
+pub struct Relayed(pub Arc<dyn Relay>);
+
+impl std::fmt::Debug for Relayed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Relayed").finish_non_exhaustive()
+    }
+}
+
 /// Where handlers publish hints, and where watches are registered.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Hub {
     queues: Mutex<Vec<Weak<Queue>>>,
+    /// The other instances, on a backend they share.
+    relay: std::sync::RwLock<Option<Arc<dyn Relay>>>,
+}
+
+impl std::fmt::Debug for Hub {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hub").finish_non_exhaustive()
+    }
 }
 
 impl Hub {
-    /// Offers `hint`, about `resource`, to every live watch of `task_type` covering it.
+    /// Publishes to the other instances too, through `relay`.
+    pub fn relay_to(&self, relay: Arc<dyn Relay>) {
+        *self.relay.write().unwrap_or_else(PoisonError::into_inner) = Some(relay);
+    }
+
+    /// Offers `hint`, about `resource`, to every live watch of `task_type` covering it, on this
+    /// instance and, through the relay, on the others.
     pub fn publish(&self, task_type: TaskType, resource: &Resource, hint: &WatchHint) {
+        self.deliver(task_type, resource, hint);
+        if let Some(relay) = self
+            .relay
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            relay.send(task_type, resource, hint);
+        }
+    }
+
+    /// Offers `hint` to the watches of this instance alone: what another instance published.
+    pub fn deliver(&self, task_type: TaskType, resource: &Resource, hint: &WatchHint) {
         let mut queues = self.queues.lock().unwrap_or_else(PoisonError::into_inner);
         queues.retain(|queue| queue.strong_count() > 0);
         for queue in queues.iter().filter_map(Weak::upgrade) {
@@ -281,5 +330,51 @@ impl Fence for LeaseFence {
             return Err(ended(codes::host::LEASE_EXPIRED, "the lease expired"));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod relay_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    /// What a relay was asked to send.
+    #[derive(Default)]
+    struct Recorded(Mutex<Vec<(TaskType, String, WatchHint)>>);
+
+    impl Relay for Recorded {
+        fn send(&self, task_type: TaskType, resource: &Resource, hint: &WatchHint) {
+            self.0
+                .lock()
+                .expect("held")
+                .push((task_type, resource.to_string(), hint.clone()));
+        }
+
+        fn listen(&self, _hub: Weak<Hub>) -> Box<dyn std::any::Any + Send + Sync> {
+            Box::new(())
+        }
+    }
+
+    /// A hint published here is sent to the other instances once; one another instance sent is
+    /// delivered here alone, never sent back (WP-28.4).
+    #[test]
+    fn a_published_hint_is_relayed_and_a_delivered_one_is_not() {
+        let hub = Hub::default();
+        let relay = Arc::new(Recorded::default());
+        hub.relay_to(Arc::clone(&relay) as Arc<dyn Relay>);
+        let resource = Resource::parse("plane/control/zone/z1").expect("a resource");
+        let hint = WatchHint {
+            key: "ledger/l1".to_owned(),
+            head: "sha256:ab".to_owned(),
+            counter: 3,
+        };
+        hub.publish(TaskType::PolicyMirror, &resource, &hint);
+        hub.deliver(TaskType::PolicyMirror, &resource, &hint);
+        let sent = relay.0.lock().expect("held");
+        assert_eq!(
+            *sent,
+            vec![(TaskType::PolicyMirror, resource.to_string(), hint)]
+        );
     }
 }

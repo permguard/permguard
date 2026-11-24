@@ -1,9 +1,12 @@
 {
   "engine": "crates/permguard-host/src/operations/mutation.rs",
   "token": "Applying",
+  "engines": [
+    "crates/permguard-postgres/src/mutations.rs"
+  ],
   "guarded": [
     {
-      "source": "crates/permguard-host/src/authz/store.rs",
+      "source": "crates/permguard-host/src/authz/store/files.rs",
       "calls": [
         "publish_immutable"
       ],
@@ -12,7 +15,7 @@
       "state": "the bootstrap commitment, the recovery principal's"
     },
     {
-      "source": "crates/permguard-host/src/api/replay.rs",
+      "source": "crates/permguard-host/src/api/replay/files.rs",
       "calls": [
         "append"
       ],
@@ -30,32 +33,30 @@
     {
       "source": "crates/permguard-host/src/identity/mod.rs",
       "calls": [
-        "append",
-        "replace_bytes",
+        "publish_init",
+        "remove_init",
+        "replace_document",
+        "append_succession",
+        "publish_public",
+        "remove_public",
+        "record_start",
+        "clear",
         "generate",
         "destroy"
       ],
       "fields": [],
       "exempt": [
         {
-          "item": "provision",
-          "reason": "creates the identity before INIT exists: nothing is an identity until INIT is written, and the operation journal opens after it"
-        },
-        {
-          "item": "provision_with",
-          "reason": "`provision` with the provider made for the host_id just minted (WP-3.2): creates the identity before INIT exists, as `provision` does"
-        },
-        {
-          "item": "open",
-          "reason": "completes a rotation whose succession is durable, removes keys no document named, and writes this start's BOOT; never a new epoch"
-        },
-        {
           "item": "provision_in",
-          "reason": "what `provision_with` and a reset share: creates an identity before its INIT exists; a reset reaches it only through `Identity::reset`, inside the engine's operation, or through `reset::resume`, which completes one"
+          "reason": "creates the identity before its provisioning record exists: nothing is an identity until that record is written, and the operation journal opens after it"
+        },
+        {
+          "item": "provision_records",
+          "reason": "what `provision_in` and a reset share: writes the records of an identity before its provisioning record exists; a reset reaches it only through `Identity::reset`, inside the engine's operation, or through `reset::resume_in`, which completes one"
         },
         {
           "item": "open_provisioned",
-          "reason": "the body of `open`, once a reset under way is ruled out: completes a rotation, removes unnamed keys, writes this start's BOOT"
+          "reason": "the body of `open_in`, once a reset under way is ruled out: completes a rotation whose succession is durable, publishes a public key its succession names, and records this start; never a new epoch"
         }
       ],
       "state": "the Host identity: its keys, its document and its succession records"
@@ -72,29 +73,23 @@
     {
       "source": "crates/permguard-host/src/identity/reset.rs",
       "calls": [
-        "replace_bytes",
-        "destroy",
-        "delete"
+        "retire",
+        "mark_resetting",
+        "clear_resetting",
+        "remove_init",
+        "destroy"
       ],
       "fields": [],
       "exempt": [
         {
-          "item": "resume",
-          "reason": "completes a reset its RESETTING marker names, begun inside the engine's operation; what `open` is to a rotation (WP-4.1)"
-        },
-        {
           "item": "complete",
-          "reason": "the last steps of `reset` and `resume`: removes INIT and provisions the next identity, reached only from them"
-        },
-        {
-          "item": "keep_evidence",
-          "reason": "copies the public records of the identity `reset` retires into `retired/`; reached only from `reset`"
+          "reason": "the last steps of `reset` and `resume_in`: removes the provisioning record and provisions the next identity, reached only from them"
         }
       ],
       "state": "the identity reset: the retired identity's evidence, the RESETTING marker and the next identity (WP-4.1)"
     },
     {
-      "source": "crates/permguard-host/src/holds.rs",
+      "source": "crates/permguard-host/src/holds/files.rs",
       "calls": [
         "replace_bytes",
         "unlink"

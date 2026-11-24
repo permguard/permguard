@@ -18,7 +18,7 @@ use permguard_core::assurance::{AssuranceProfile, Control, EvidenceClass};
 use permguard_core::authz::{Principal, Resource, Selector, operations};
 use permguard_core::{Disclosure, Health, PeerSessionsReport, TlsSettings};
 use permguard_host::api::sessions::PeerSessions;
-use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+use permguard_host::api::{Assurance, Composition, Effective, HostApi};
 use permguard_host::authz::Authorization;
 use permguard_host::identity::{Identity, Suite, directories};
 use permguard_host::keys::FileKeyProvider;
@@ -241,8 +241,12 @@ fn launch_host(
                 )
                 .expect("the mutation journal opens"),
             );
-            let (replay, _) =
-                Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay opens");
+            let (replay, _) = permguard_host::api::replay::files::FileReplay::open(
+                &volume,
+                permguard_core::time::unix_now(),
+            )
+            .expect("the replay opens");
+            let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
             let open_ring = |id: &'static str| {
                 let ring = Arc::new(
                     Ring::open(
@@ -277,7 +281,13 @@ fn launch_host(
                     .expect("the task handler registers"),
                 ..permguard_host::membership::task::Tasks::default()
             });
-            let peers = Arc::new(Peers::open(&volume, &[]).expect("the peers open"));
+            let peers = Arc::new(Peers::new(
+                Arc::new(
+                    permguard_host::session::peers::files::FileSeen::open(&volume)
+                        .expect("the peers open"),
+                ),
+                &[],
+            ));
             peers.with_source(
                 Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>
             );
@@ -291,7 +301,7 @@ fn launch_host(
                 service: Some(Arc::new(
                     permguard_host::membership::service::Coordinating {
                         store: Arc::clone(&members),
-                        mutations: Arc::clone(&mutations),
+                        mutations: Arc::clone(&mutations) as _,
                         identity: Arc::clone(&identity),
                         keys: Arc::clone(&keys),
                         capabilities: capabilities.clone(),
@@ -339,7 +349,7 @@ fn launch_host(
                         }],
                     },
                     trail: "test".to_owned(),
-                    mutations: Some(mutations),
+                    mutations: Some(Arc::clone(&mutations) as _),
                     identity: Some(Arc::clone(&identity)),
                     time,
                     peer_sessions: PeerSessions {
@@ -366,6 +376,7 @@ fn launch_host(
                         permguard_host::operations::backup::Backups::open(&volume)
                             .expect("the backups open"),
                     ),
+                    Arc::clone(&mutations),
                     None,
                     None,
                 ),

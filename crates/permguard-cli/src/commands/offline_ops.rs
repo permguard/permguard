@@ -11,6 +11,7 @@
 //! | `migrate run`      | checks the plan against the volume and its claim, spends it, migrates    |
 //! | `migrate status`   | every subsystem laid out, its version, generation and phase              |
 //! | `migrate rollback` | a committed migration back to its old generation                         |
+//! | `migrate import`   | the volume into the `postgresql-s3` backend, store by store              |
 //!
 //! The migrations are the server binary's own (`permguard_offline::migrate`,
 //! `legacy_events::migrate_events`): one implementation, reached from both.
@@ -299,6 +300,10 @@ pub fn migrate_command(
             &rooted_file(globals, &out),
             trace,
         )?,
+        MigrateAction::Import => {
+            let imported = super::shared::import(&volume, server_config, trace)?;
+            render(&imported, globals.output, trace)?;
+        }
         MigrateAction::Run { confirm_file } => {
             run(
                 globals,
@@ -501,7 +506,7 @@ fn plan(
                 .map_err(|refusal| Refused::Refused(refusal_text(&refusal)))?;
             Ok(Applied {
                 revision: held.generation(),
-                target,
+                target: target.clone(),
                 value: (),
             })
         },
@@ -715,6 +720,18 @@ pub(super) fn server_config_of(
 /// offline plan then needs an approval, which an offline volume cannot collect.
 pub(super) fn config_of(server_config: Option<&Path>) -> Result<permguard_core::Config, Failure> {
     let config = server_config_of(server_config)?;
+    // A restore and a migration act on a volume: a deployment whose backend keeps none has
+    // nothing for them to act on (iteration 03, decisions E5 and E19).
+    if !config.storage_backend().has_volume() {
+        return Err(Failure::usage(permguard_core::volume::unsupported(
+            config.storage_backend(),
+            "an offline restore or migration",
+        ))
+        .named(
+            "conflict",
+            permguard_core::codes::storage::BACKEND_UNSUPPORTED,
+        ));
+    }
     if config
         .assurance()
         .requires(permguard_core::assurance::Control::OperationsDualControl)

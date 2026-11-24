@@ -277,6 +277,26 @@ configuration: `hostControls.storage` is the `storage` section, `hostControls.ba
 Whether a unit's Host makes its identity offline, before its first start: every profile but
 `development` (TS-10). Takes `(dict "assurance" $unit.assurance)`; answers "true" or nothing.
 */}}
+{{/*
+The `storage` section of a Host's configuration on the `postgresql-s3` backend (iteration 03,
+WP-28.1), from `controlPlane.storage`: the values stated, under the configuration's own names;
+nothing on `files`. Takes the plane's `storage`.
+*/}}
+{{- define "permguard.storageConfig" -}}
+{{- $storage := . | default dict -}}
+{{- if eq (toString ($storage.backend | default "files")) "postgresql-s3" -}}
+{{- $postgresql := dict -}}
+{{- range $key, $name := dict "host" "host" "port" "port" "database" "database" "user" "user" "passwordRef" "password_ref" "schema" "schema" "ca" "ca" -}}
+{{- with get ($storage.postgresql | default dict) $key }}{{ $_ := set $postgresql $name . }}{{ end -}}
+{{- end -}}
+{{- $s3 := dict -}}
+{{- range $key, $name := dict "endpoint" "endpoint" "region" "region" "bucket" "bucket" "prefix" "prefix" "accessKey" "access_key" "secretRef" "secret_ref" "encryption" "encryption" "ca" "ca" -}}
+{{- with get ($storage.s3 | default dict) $key }}{{ $_ := set $s3 $name . }}{{ end -}}
+{{- end -}}
+{{- toYaml (dict "storage" (dict "backend" "postgresql-s3" "postgresql" $postgresql "s3" $s3)) -}}
+{{- end -}}
+{{- end }}
+
 {{- define "permguard.provisionsIdentity" -}}
 {{- if ne (toString (dig "profile" "production" (.assurance | default dict))) "development" }}true{{ end }}
 {{- end }}
@@ -299,7 +319,12 @@ is verified first, by its own `verify-cli` (TD-4).
 - name: identity
   image: {{ include "permguard.image" $cli }}
   imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+  {{- if .shared }}
+  # On `postgresql-s3` the identity is the database's, the same for every instance (WP-28.5).
+  args: ["host", "identity", "provision", "--if-missing", "--server-config", "/etc/permguard/config.yml"]
+  {{- else }}
   args: ["host", "identity", "provision", "--if-missing", "--volume", "/var/lib/permguard/volume", "--server-config", "/etc/permguard/config.yml"]
+  {{- end }}
   {{- with .extraEnv }}
   env:
     {{- toYaml . | nindent 4 }}

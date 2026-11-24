@@ -1,32 +1,26 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Host identity (WP-2.2): `host/identity/` on the volume.
-//!
-//! ```text
-//! host/identity/
-//! ├── INIT                 immutable provisioning marker, written last
-//! ├── identity.cose        the signed document of the current epoch; atomic replace
-//! ├── succession.cborseq   the succession records, appended
-//! ├── BOOT                 this start's boot id and the volume's claim generation
-//! └── keys/
-//!     ├── <epoch>.key      the private key, through the key provider (0600)
-//!     └── <epoch>.pub      the public key, kept for good (owner decision of 2026-10-08)
-//! ```
+//! The Host identity (WP-2.2), its records kept by an [`IdentityStore`]
+//! (`1-architecture/2` Stores): [`files`], the default, is `host/identity/` on the volume.
 //!
 //! | Step      | What                                                                                         |
 //! | --------- | -------------------------------------------------------------------------------------------- |
-//! | provision | leftovers of an interrupted provisioning removed; `host_id` (UUIDv7) minted; epoch 1 generated and self-tested; the document written; `INIT` last |
-//! | open      | `INIT` read and matched to `VOLUME_ID`; the chain verified from the epoch-1 key `INIT` pins to the current document; an interrupted rotation completed; keys of epochs never published removed; possession proven; a `boot_id` minted and `BOOT` written |
-//! | rotate    | under the mutation engine: epoch n+1 generated, the succession signed by n and appended, the document signed by n+1, every private key below n the custody still holds destroyed, each checked against its published public half |
+//! | provision | leftovers of an interrupted provisioning removed; `host_id` (UUIDv7) minted; epoch 1 generated and self-tested; the document written; the provisioning record last |
+//! | open      | the provisioning record read and matched to its home; the chain verified from the epoch-1 key the record pins to the current document; an interrupted rotation completed; keys of epochs no succession names reported; possession proven; a `boot_id` minted and the start recorded |
+//! | rotate    | under the mutation engine: epoch n+1 generated, the succession signed by n and added, the document signed by n+1, every private key below n the custody still holds destroyed, each checked against its published public half |
 //!
-//! Without `INIT` nothing is minted at open: the installation does not exist. With `INIT`,
-//! missing or damaged state refuses the open; no replacement key is ever generated (the blueprint's
-//! provisioning and recovery). The identity key signs only identity documents, successions,
-//! proof transcripts and ring bindings.
+//! Without a provisioning record nothing is minted at open: the installation does not exist. With
+//! one, missing or damaged state refuses the open; no replacement key is ever generated (the
+//! blueprint's provisioning and recovery). The identity key signs only identity documents,
+//! successions, proof transcripts and ring bindings.
 
+pub mod files;
 pub mod record;
 pub mod reset;
+pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 pub mod witness;
 
 use std::sync::{Arc, PoisonError, RwLock};
@@ -39,21 +33,22 @@ use permguard_objects::digest::Digest;
 use crate::keys::{Custody, KeyError, KeyProvider, PublicKey};
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Domain, Observed};
-use crate::storage::volume::Volume;
-use crate::storage::write::{self, Published, publish_immutable};
-use crate::storage::{Dir, StorageError, sequence, tombstone};
 
 use record::{Boot, Document, Init, RecordError, Succession};
+use store::IdentityStore;
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "identity";
-pub const INIT: &str = "INIT";
-pub const DOCUMENT: &str = "identity.cose";
-pub const SUCCESSION: &str = "succession.cborseq";
-pub const BOOT: &str = "BOOT";
-pub const KEYS: &str = "keys";
-/// The most bytes one succession record takes.
-const MAX_RECORD_BYTES: usize = 16 * 1024;
+pub use files::{
+    BOOT, DIRECTORY, DOCUMENT, INIT, KEYS, SUCCESSION, directories, host_id_of, is_provisioned,
+    stored_public, suite_of, witness_of,
+};
+
+/// Where an identity lives: what its provisioning record binds it to, and the generation of the
+/// claim this process serves it under. On the file backend, the volume's id and its claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Home {
+    pub id: [u8; 16],
+    pub generation: u64,
+}
 /// The protocol versions this build speaks, as the document lists them.
 pub const PROTOCOLS: &[&str] = &[protected::HOST_SESSION];
 /// What the identity key signs for others than itself.
@@ -91,7 +86,8 @@ pub enum IdentityError {
     /// A reset began and did not complete: running it again completes it.
     ResetIncomplete,
     Key(KeyError),
-    Storage(StorageError),
+    /// The store could not be read or written: a change may have been made all the same.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for IdentityError {
@@ -123,18 +119,12 @@ impl std::fmt::Display for IdentityError {
                  reset run` again to complete it",
             ),
             Self::Key(error) => write!(f, "{error}"),
-            Self::Storage(error) => write!(f, "{error}"),
+            Self::Unavailable(error) => write!(f, "{error}"),
         }
     }
 }
 
 impl std::error::Error for IdentityError {}
-
-impl From<StorageError> for IdentityError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
 
 impl From<KeyError> for IdentityError {
     fn from(error: KeyError) -> Self {
@@ -163,6 +153,18 @@ struct Current {
     last: Option<Digest>,
 }
 
+/// The identity as a peer is presented it, read together.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Presented {
+    pub epoch: u64,
+    /// The fingerprint of the epoch's key.
+    pub fingerprint: String,
+    /// The signed document of the epoch.
+    pub document: Vec<u8>,
+    /// Every succession record, oldest first.
+    pub successions: Vec<Vec<u8>>,
+}
+
 /// What a rotation produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rotated {
@@ -174,19 +176,20 @@ pub struct Rotated {
 
 /// The Host identity, open.
 pub struct Identity {
-    dir: Dir,
-    keys: Dir,
+    store: Arc<dyn IdentityStore>,
     provider: Arc<dyn KeyProvider>,
     init: Init,
     init_bytes: Vec<u8>,
     first_public: Vec<u8>,
     volume_id: [u8; 16],
     boot: Boot,
-    current: RwLock<Current>,
+    current: Arc<RwLock<Current>>,
     /// Set by a reset: from then on the identity signs nothing.
-    retired: std::sync::atomic::AtomicBool,
+    retired: Arc<std::sync::atomic::AtomicBool>,
     /// Set while a reset of this identity runs: a second one is refused before it writes.
-    resetting: std::sync::atomic::AtomicBool,
+    resetting: Arc<std::sync::atomic::AtomicBool>,
+    /// When the identity was last read from a store other instances share (WP-28.5).
+    read_at: std::sync::Mutex<std::time::Instant>,
     /// Makes the provider of the identity a reset provisions, for its `host_id`.
     provisioner: Option<reset::Provisioner>,
 }
@@ -204,10 +207,6 @@ fn slot(epoch: u64) -> String {
     epoch.to_string()
 }
 
-fn public_name(epoch: u64) -> String {
-    format!("{epoch}.pub")
-}
-
 /// Destroys every private key of an epoch below `current - 1` the provider still holds: past
 /// its grace, and one a rotation before could not destroy is tried again (WP-2.10). A key is
 /// destroyed only when its public half is the one published for its epoch, so a slot pointed at
@@ -217,7 +216,7 @@ fn public_name(epoch: u64) -> String {
 fn destroy_retired(
     _applying: &Applying<'_>,
     provider: &dyn KeyProvider,
-    keys: &Dir,
+    store: &dyn IdentityStore,
     suite: Suite,
     current: u64,
 ) {
@@ -240,7 +239,7 @@ fn destroy_retired(
         })
     });
     for epoch in retired {
-        let published = match keys.read(&public_name(epoch)) {
+        let published = match store.public(epoch) {
             Ok(Some(published)) => published,
             Ok(None) => {
                 kept(Some(epoch), &"no public half is published for its epoch");
@@ -271,53 +270,57 @@ fn destroy_retired(
     }
 }
 
-/// The identity directory of `volume`, and its `keys/` below, created `0700`.
-pub fn directories(volume: &Volume) -> Result<(Dir, Dir), StorageError> {
-    let dir = volume.host().subdir(DIRECTORY, true)?;
-    let keys = dir.subdir(KEYS, true)?;
-    Ok((dir, keys))
+/// What a start reads of the identity a store keeps, before it opens it and writing nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provisioned {
+    /// The external witness: the provisioning record, the home's id and the first fingerprint.
+    pub witness: String,
+    /// The Host the provisioning record names.
+    pub host_id: [u8; 16],
+    /// The suite of the current document; `None` before one is written.
+    pub suite: Option<Suite>,
 }
 
-/// The external witness of `volume`'s identity, read from `INIT` alone and without writing
-/// anything: what a start compares before it opens the identity. `None` without `INIT`.
-pub fn witness_of(volume: &Volume) -> Result<Option<String>, IdentityError> {
-    let (dir, _) = directories(volume)?;
-    let Some(bytes) = dir.read(INIT)? else {
+/// What a start reads of the identity `store` keeps at `home` before it opens it (iteration 03,
+/// WP-28.1): what [`witness_of`], [`host_id_of`] and [`suite_of`] read of a volume, for any
+/// backend. `None` when the identity is not provisioned.
+pub fn provisioned_in(
+    store: &dyn store::IdentityStore,
+    home: &[u8; 16],
+) -> Result<Option<Provisioned>, IdentityError> {
+    let Some(bytes) = store.init()? else {
         return Ok(None);
     };
-    let init = Init::decode(&bytes)?;
-    Ok(Some(record::witness(
-        &bytes,
-        &volume.id(),
-        &init.fingerprint,
-    )))
+    let init = record::Init::decode(&bytes)?;
+    Ok(Some(Provisioned {
+        witness: record::witness(&bytes, home, &init.fingerprint),
+        host_id: init.host_id,
+        suite: store
+            .document()?
+            .map(|document| suite_of_document(&document))
+            .transpose()?,
+    }))
 }
 
-/// The `host_id` `INIT` names, when the identity is provisioned: what the provider of its keys
-/// binds them to before the identity opens (WP-3.2).
-pub fn host_id_of(volume: &Volume) -> Result<Option<[u8; 16]>, IdentityError> {
-    let (dir, _) = directories(volume)?;
-    let Some(bytes) = dir.read(INIT)? else {
-        return Ok(None);
-    };
-    Ok(Some(Init::decode(&bytes)?.host_id))
+/// The stored public keys of the identity `store` keeps, by epoch: what a sealed identity key
+/// must open as (WP-3.2), for any backend.
+pub fn stored_public_in(
+    store: Arc<dyn store::IdentityStore>,
+) -> crate::keys::custody::StoredPublic {
+    Box::new(move |slot, _suite| {
+        let Ok(epoch) = slot.parse::<u64>() else {
+            return Ok(None);
+        };
+        store
+            .public(epoch)
+            .map_err(|error| crate::keys::KeyError::Malformed(error.to_string()))
+    })
 }
 
-/// The suite of the current identity document, read without verifying it: which suite the keys
-/// on the volume are, before a provider seals them (WP-3.2). The open verifies the document.
-pub fn suite_of(volume: &Volume) -> Result<Option<Suite>, IdentityError> {
-    let (dir, _) = directories(volume)?;
-    let Some(bytes) = dir.read(DOCUMENT)? else {
-        return Ok(None);
-    };
-    let envelope = Sign1::decode(&bytes).map_err(|error| corrupt(error.to_string()))?;
-    Ok(Some(Document::decode(envelope.payload_unverified())?.suite))
-}
-
-/// The stored public keys of the identity, `<epoch>.pub` below `keys`: what a sealed identity
-/// key must open as (WP-3.2).
-pub fn stored_public(keys: Dir) -> crate::keys::custody::StoredPublic {
-    Box::new(move |slot, _suite| Ok(keys.read(&format!("{slot}.pub"))?))
+/// The suite the identity document `bytes` names, read without verifying it.
+fn suite_of_document(bytes: &[u8]) -> Result<Suite, IdentityError> {
+    let envelope = Sign1::decode(bytes).map_err(|error| corrupt(error.to_string()))?;
+    Ok(Document::decode(envelope.payload_unverified())?.suite)
 }
 
 /// The most succession records a published identity may carry: a bound on the work a peer's
@@ -439,103 +442,78 @@ pub fn verify_published(
     })
 }
 
-/// Whether `volume` holds a provisioned identity.
-pub fn is_provisioned(volume: &Volume) -> Result<bool, StorageError> {
-    Ok(directories(volume)?.0.read(INIT)?.is_some())
-}
-
 impl Identity {
-    /// Provisions the identity of `volume`: refused when `INIT` exists. Answers the open
-    /// identity, its first `boot_id` minted.
-    pub fn provision(
-        volume: &Volume,
-        provider: Arc<dyn KeyProvider>,
-        suite: Suite,
-        now: u64,
-        now_millis: u64,
-    ) -> Result<Self, IdentityError> {
-        Self::provision_with(volume, |_| Ok(provider), suite, now, now_millis)
-    }
-
-    /// [`Identity::provision`] with the provider made for the `host_id` just minted: a sealing
-    /// provider binds every key to its Host (WP-3.2).
-    pub fn provision_with(
-        volume: &Volume,
+    /// Provisions the identity `store` keeps, at `home`: refused when it is provisioned. Answers
+    /// the open identity, its first `boot_id` minted. `provider` is made for the `host_id` just
+    /// minted: a sealing provider binds every key to its Host (WP-3.2).
+    pub fn provision_in(
+        store: Arc<dyn IdentityStore>,
+        home: Home,
         provider: impl FnOnce(&[u8; 16]) -> Result<Arc<dyn KeyProvider>, IdentityError>,
         suite: Suite,
         now: u64,
         now_millis: u64,
     ) -> Result<Self, IdentityError> {
-        let (dir, keys) = directories(volume)?;
         let provider =
-            Self::provision_in(&dir, &keys, volume.id(), provider, suite, now, now_millis)?;
-        Self::open(volume, provider)
+            Self::provision_records(store.as_ref(), home.id, provider, suite, now, now_millis)?;
+        Self::open_in(store, home, provider)
     }
 
-    /// Opens the identity of `volume`, verifying it whole, and mints this start's `boot_id`.
-    pub fn open(volume: &Volume, provider: Arc<dyn KeyProvider>) -> Result<Self, IdentityError> {
-        let (dir, keys) = directories(volume)?;
-        dir.sweep_temps()?;
-        tombstone::complete(&dir)?;
-        keys.sweep_temps()?;
-        tombstone::complete(&keys)?;
-        if dir.read(reset::RESETTING)?.is_some() {
+    /// Opens the identity `store` keeps, at `home`, verifying it whole, and mints this start's
+    /// `boot_id`.
+    pub fn open_in(
+        store: Arc<dyn IdentityStore>,
+        home: Home,
+        provider: Arc<dyn KeyProvider>,
+    ) -> Result<Self, IdentityError> {
+        if store.resetting()?.is_some() {
             return Err(IdentityError::ResetIncomplete);
         }
-        Self::open_provisioned(volume, dir, keys, provider)
+        Self::open_provisioned(store, home, provider)
     }
 
-    /// Provisions an identity in `dir` and its `keys`, refused when `INIT` exists: what
-    /// [`Identity::provision_with`] and a reset share. Answers the new identity's provider.
-    fn provision_in(
-        dir: &Dir,
-        keys: &Dir,
+    /// Writes the records of a new identity into `store`, refused when one is provisioned: what
+    /// [`Identity::provision_in`] and a reset share. Answers the new identity's provider.
+    fn provision_records(
+        store: &dyn IdentityStore,
         volume_id: [u8; 16],
         provider: impl FnOnce(&[u8; 16]) -> Result<Arc<dyn KeyProvider>, IdentityError>,
         suite: Suite,
         now: u64,
         now_millis: u64,
     ) -> Result<Arc<dyn KeyProvider>, IdentityError> {
-        dir.sweep_temps()?;
-        tombstone::complete(dir)?;
-        if dir.read(INIT)?.is_some() {
+        // One provisioning at a time, on any instance: the second finds the first's INIT.
+        let _provisioning = store.provisioning()?;
+        if store.init()?.is_some() {
             return Err(IdentityError::Provisioned);
         }
-        // A reset retired the identity these files were (its evidence kept apart): they go,
+        // A reset retired the identity these records were (its evidence kept apart): they go,
         // whatever they hold.
-        let resetting = dir.read(reset::RESETTING)?.is_some();
+        let resetting = store.resetting()?.is_some();
         // What an interrupted provisioning left: a key of epoch 1, its public half and an epoch-1
         // document, never more. Anything beyond is an identity that existed and lost its INIT,
         // which is never replaced (the blueprint's recovery).
         let succeeded = !resetting
-            && (dir.read(BOOT)?.is_some()
-                || dir.read(SUCCESSION)?.is_some_and(|bytes| !bytes.is_empty())
-                || keys.names()?.iter().any(|name| {
-                    name.split('.')
-                        .next()
-                        .and_then(|stem| stem.parse::<u64>().ok())
-                        .is_some_and(|held| held >= 2)
-                }));
+            && (store.started()?
+                || !store.successions()?.is_empty()
+                || store.held_epochs()?.iter().any(|held| held.epoch >= 2));
         if succeeded {
             return Err(corrupt(
                 "INIT is missing beside an identity that was opened or rotated: it is never \
                  replaced; restore INIT from a backup, or reset the Host",
             ));
         }
-        for name in [DOCUMENT, SUCCESSION, BOOT] {
-            if dir.read(name)?.is_some() {
-                tombstone::delete(dir, name)?;
-            }
-        }
-        keys.sweep_temps()?;
-        tombstone::complete(keys)?;
-        for name in keys.names()? {
-            tombstone::delete(keys, &name)?;
-        }
+        store.clear()?;
         let host_id = record::uuid_v7(now_millis, random()?);
         let provider = provider(&host_id)?;
+        // An interrupted provisioning may have left its key in the slot of epoch 1, which a
+        // custody fills once: it is no identity's, and goes before the new key takes the slot.
+        match provider.destroy(&slot(1)) {
+            Ok(()) | Err(crate::keys::KeyError::Absent(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
         let public = provider.generate(&slot(1), suite)?;
-        publish_public(keys, 1, &public.bytes)?;
+        store.publish_public(1, &public.bytes)?;
         // The self-test: the key signs a fresh challenge and its public half verifies it.
         let challenge = random()?;
         let probe = provider.sign(&slot(1), suite, &challenge)?;
@@ -555,18 +533,14 @@ impl Identity {
             issued_at: now,
         };
         let envelope = sign_document(provider.as_ref(), &document)?;
-        write::replace_bytes(dir, DOCUMENT, &envelope)?;
+        store.replace_document(&envelope)?;
         let init = Init {
             host_id,
             volume_id,
             fingerprint: public.fingerprint(),
             created_at: now,
         };
-        let bytes = init.encode()?;
-        let same = |held: &[u8]| held == bytes.as_slice();
-        match publish_immutable(dir, INIT, &bytes, &same, &same)? {
-            Published::Written | Published::AlreadyThere => {}
-        }
+        store.publish_init(&init.encode()?)?;
         tracing::info!(
             event.name = "host.identity_provisioned",
             component = "host",
@@ -575,20 +549,19 @@ impl Identity {
             "the Host identity is provisioned"
         );
         if resetting {
-            tombstone::delete(dir, reset::RESETTING)?;
+            store.clear_resetting()?;
         }
         Ok(provider)
     }
 
     fn open_provisioned(
-        volume: &Volume,
-        dir: Dir,
-        keys: Dir,
+        store: Arc<dyn IdentityStore>,
+        home: Home,
         provider: Arc<dyn KeyProvider>,
     ) -> Result<Self, IdentityError> {
-        let init_bytes = dir.read(INIT)?.ok_or(IdentityError::NotProvisioned)?;
+        let init_bytes = store.init()?.ok_or(IdentityError::NotProvisioned)?;
         let init = Init::decode(&init_bytes)?;
-        if init.volume_id != volume.id() {
+        if init.volume_id != home.id {
             return Err(corrupt(
                 "INIT names another volume than this one's VOLUME_ID",
             ));
@@ -596,15 +569,15 @@ impl Identity {
         if !record::is_uuid_v7(&init.host_id) {
             return Err(corrupt("INIT's host_id is not a UUIDv7"));
         }
-        let envelope = dir
-            .read(DOCUMENT)?
+        let envelope = store
+            .document()?
             .ok_or_else(|| corrupt("INIT is there and identity.cose is not"))?;
         let sign1 = Sign1::decode(&envelope).map_err(corrupt)?;
         // The suite is read before the key that verifies it, then checked against every record.
         let claimed = Document::decode(sign1.payload_unverified())?;
         let suite = claimed.suite;
-        let first_public = keys
-            .read(&public_name(1))?
+        let first_public = store
+            .public(1)?
             .ok_or_else(|| corrupt("the epoch-1 public key is missing"))?;
         // The suite comes from a document not yet verified: its key length must match too, and
         // every verification below pins the algorithm to it.
@@ -626,7 +599,7 @@ impl Identity {
         let mut epoch = 1;
         let mut last = None;
         let mut successions = Vec::new();
-        for item in sequence::recover(&dir, SUCCESSION, MAX_RECORD_BYTES)?.items {
+        for item in store.successions()? {
             let envelope = Sign1::from_value(item).map_err(corrupt)?;
             let bytes = envelope.encode().map_err(corrupt)?;
             check_kid(&envelope, epoch)?;
@@ -649,15 +622,15 @@ impl Identity {
                     epoch + 1
                 )));
             }
-            match keys.read(&public_name(record.to_epoch))? {
+            match store.public(record.to_epoch)? {
                 Some(held) if held == record.public_key => {}
                 Some(_) => {
                     return Err(corrupt(format!(
-                        "keys/{} is not the key the succession names",
-                        public_name(record.to_epoch)
+                        "keys/{}.pub is not the key the succession names",
+                        record.to_epoch
                     )));
                 }
-                None => publish_public(&keys, record.to_epoch, &record.public_key)?,
+                None => store.publish_public(record.to_epoch, &record.public_key)?,
             }
             last = Some(record::succession_digest(&bytes));
             successions.push(bytes);
@@ -696,7 +669,7 @@ impl Identity {
                 ..claimed.clone()
             };
             let envelope = sign_document(provider.as_ref(), &document)?;
-            write::replace_bytes(&dir, DOCUMENT, &envelope)?;
+            store.replace_document(&envelope)?;
             tracing::warn!(
                 event.name = "host.identity_rotation_completed",
                 component = "host",
@@ -724,22 +697,18 @@ impl Identity {
         // Keys of epochs no succession names: a rotation that stopped before its succession, or a
         // volume whose identity files were put back from an older copy. Nothing is removed here:
         // the next rotation replaces them under its own audited operation.
-        let strays: Vec<String> = keys
-            .names()?
+        let strays: Vec<u64> = store
+            .held_epochs()?
             .into_iter()
-            .filter(|name| {
-                name.split('.')
-                    .next()
-                    .and_then(|stem| stem.parse::<u64>().ok())
-                    .is_some_and(|held| held > epoch)
-            })
+            .map(|held| held.epoch)
+            .filter(|held| *held > epoch)
             .collect();
         if !strays.is_empty() {
             tracing::error!(
                 event.name = "host.identity_keys_unnamed",
                 component = "host",
                 epoch,
-                keys = ?strays,
+                epochs = ?strays,
                 "keys of epochs no succession names: a rotation stopped, or the identity files \
                  were put back from an older copy"
             );
@@ -750,37 +719,37 @@ impl Identity {
         suite
             .verify(&key.bytes, &challenge, &proof)
             .map_err(|_| corrupt("the provider's key does not match the document's"))?;
-        let envelope = dir
-            .read(DOCUMENT)?
+        let envelope = store
+            .document()?
             .ok_or_else(|| corrupt("identity.cose vanished"))?;
         let mut boot_id = [0u8; 16];
         boot_id[..10].copy_from_slice(&random()?);
         boot_id[10..].copy_from_slice(&random()?[..6]);
         let boot = Boot {
             boot_id,
-            generation: volume.generation(),
+            generation: home.generation,
         };
-        write::replace_bytes(&dir, BOOT, &boot.encode()?)?;
+        store.record_start(&boot.encode()?)?;
         Ok(Self {
-            dir,
-            keys,
+            store,
             provider,
-            volume_id: volume.id(),
+            volume_id: home.id,
             init,
             init_bytes,
             first_public,
             boot,
-            current: RwLock::new(Current {
+            current: Arc::new(RwLock::new(Current {
                 epoch,
                 public: key,
                 document,
                 envelope,
                 successions,
                 last,
-            }),
-            retired: std::sync::atomic::AtomicBool::new(false),
-            resetting: std::sync::atomic::AtomicBool::new(false),
+            })),
+            retired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            resetting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             provisioner: None,
+            read_at: std::sync::Mutex::new(std::time::Instant::now()),
         })
     }
 
@@ -838,6 +807,57 @@ impl Identity {
         self.read().successions.clone()
     }
 
+    /// The signed document and every succession, read together, as a peer is presented them.
+    /// On a store other instances share they are read again first (iteration 03, WP-28.5): a
+    /// member that moved between instances is never presented an epoch before one it was shown.
+    /// A store that does not answer refuses the presentation.
+    pub fn presented(&self) -> Result<Presented, IdentityError> {
+        let of = |current: &Current| Presented {
+            epoch: current.epoch,
+            fingerprint: current.public.fingerprint(),
+            document: current.envelope.clone(),
+            successions: current.successions.clone(),
+        };
+        if self.store.shared() && !self.is_retired() {
+            let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+            self.caught_up(&mut current)?;
+            return Ok(of(&current));
+        }
+        Ok(of(&self.read()))
+    }
+
+    /// Signs `payload` with the key of `epoch`, the epoch a presentation named: the current one,
+    /// or the one before it, whose key verifies in-flight work until the next rotation.
+    pub fn sign_at(
+        &self,
+        epoch: u64,
+        content_type: &str,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, IdentityError> {
+        if self.is_retired() {
+            return Err(IdentityError::Retired);
+        }
+        if !SIGNS_FOR_OTHERS.contains(&content_type) {
+            return Err(IdentityError::Refused(format!(
+                "the identity key does not sign `{content_type}`"
+            )));
+        }
+        let current = self.read();
+        if epoch != current.epoch && epoch.saturating_add(1) != current.epoch {
+            return Err(IdentityError::Refused(format!(
+                "the identity is at epoch {} and holds no key of epoch {epoch} to sign with",
+                current.epoch
+            )));
+        }
+        sign(
+            self.provider.as_ref(),
+            epoch,
+            current.public.suite,
+            content_type,
+            payload,
+        )
+    }
+
     /// The external witness of this identity.
     pub fn witness(&self) -> String {
         record::witness(&self.init_bytes, &self.volume_id, &self.init.fingerprint)
@@ -880,7 +900,13 @@ impl Identity {
         if self.is_retired() {
             return Err(IdentityError::Retired);
         }
+        // Held through the rotation's writes: two rotations of this process write one at a time.
         let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        // A rotation follows every one the store holds, another instance's included: one decided
+        // on an epoch another instance moved past would fork the chain (WP-28.5).
+        if self.store.shared() {
+            self.caught_up(&mut current)?;
+        }
         if let Some(expected) = expected_epoch
             && expected != current.epoch
         {
@@ -893,24 +919,27 @@ impl Identity {
         let next = current.epoch + 1;
         // A key no succession names, left by a rotation that stopped or by older files put back:
         // replaced here, inside this audited operation.
-        if self.keys.read(&format!("{}.key", slot(next)))?.is_some()
-            || self.keys.read(&public_name(next))?.is_some()
-        {
+        let stray = self
+            .store
+            .held_epochs()?
+            .into_iter()
+            .find(|held| held.epoch == next);
+        if let Some(stray) = stray.filter(|held| held.private || held.public) {
             tracing::warn!(
                 event.name = "host.identity_stray_key_replaced",
                 component = "host",
                 epoch = next,
                 "a key of the next epoch that no succession names is replaced by this rotation"
             );
-            if self.keys.read(&format!("{}.key", slot(next)))?.is_some() {
+            if stray.private {
                 self.provider.destroy(&slot(next))?;
             }
-            if self.keys.read(&public_name(next))?.is_some() {
-                tombstone::delete(&self.keys, &public_name(next))?;
+            if stray.public {
+                self.store.remove_public(next)?;
             }
         }
         let public = self.provider.generate(&slot(next), suite)?;
-        publish_public(&self.keys, next, &public.bytes)?;
+        self.store.publish_public(next, &public.bytes)?;
         let record = Succession {
             host_id: self.init.host_id,
             from_epoch: current.epoch,
@@ -927,7 +956,7 @@ impl Identity {
             protected::HOST_SUCCESSION,
             record.encode()?,
         )?;
-        sequence::append(&self.dir, SUCCESSION, &succession)?;
+        self.store.append_succession(&succession)?;
         // From here the rotation is durable whatever follows: the next open completes it. A
         // failure is uncertain, never a refusal.
         let indeterminate = |error: IdentityError| IdentityError::Indeterminate(error.to_string());
@@ -942,20 +971,45 @@ impl Identity {
             ..current.document.clone()
         };
         let envelope = sign_document(self.provider.as_ref(), &document).map_err(indeterminate)?;
-        write::replace_bytes(&self.dir, DOCUMENT, &envelope)
-            .map_err(|error| indeterminate(error.into()))?;
+        self.store
+            .replace_document(&envelope)
+            .map_err(indeterminate)?;
         // The grace: the key just retired keeps verifying in-flight work until the next rotation,
         // which destroys it; every one before it goes now.
-        destroy_retired(applying, self.provider.as_ref(), &self.keys, suite, next);
-        current.successions.push(succession.clone());
-        *current = Current {
+        destroy_retired(
+            applying,
+            self.provider.as_ref(),
+            self.store.as_ref(),
+            suite,
+            next,
+        );
+        let mut successions = current.successions.clone();
+        successions.push(succession.clone());
+        let rotated = Current {
             epoch: next,
             public: public.clone(),
             document,
             envelope,
-            successions: std::mem::take(&mut current.successions),
+            successions,
             last: Some(last),
         };
+        // Shown once the operation is kept: an attempt run again rotates from the epoch kept,
+        // and one undone leaves the identity as it was (decision X68).
+        drop(current);
+        let shown = Arc::clone(&self.current);
+        // A key generated by an attempt the database undoes is never used from memory.
+        let (provider, generated) = (Arc::clone(&self.provider), slot(next));
+        applying.on_end(move |kept| {
+            if kept {
+                let mut current = shown.write().unwrap_or_else(PoisonError::into_inner);
+                // Another reading may already hold this rotation, or one after it.
+                if rotated.successions.len() > current.successions.len() {
+                    *current = rotated;
+                }
+            } else {
+                provider.forget(&generated);
+            }
+        });
         tracing::info!(
             event.name = "host.identity_rotated",
             component = "host",
@@ -971,14 +1025,167 @@ impl Identity {
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, Current> {
+        self.fresh();
         self.current.read().unwrap_or_else(PoisonError::into_inner)
     }
+
+    /// Reads the identity again when the reading is older than [`FRESH_FOR`], on a store other
+    /// instances share (iteration 03, WP-28.5): a rotation another instance made is then this
+    /// one's to sign with. The store is read and the chain verified outside the lock; what verifies
+    /// replaces the state when it is still ahead of it, and a reader of this thread or another is
+    /// not waited for. A store that does not answer, or answers what does not verify, is asked
+    /// again one bound later, never at every read.
+    fn fresh(&self) {
+        if !self.store.shared() || self.is_retired() {
+            return;
+        }
+        {
+            let mut read_at = self.read_at.lock().unwrap_or_else(PoisonError::into_inner);
+            if read_at.elapsed() < FRESH_FOR {
+                return;
+            }
+            *read_at = std::time::Instant::now();
+        }
+        let held = self
+            .current
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        match self.verified_after(&held) {
+            Ok(Some(next)) => {
+                if let Ok(mut current) = self.current.try_write()
+                    && next.successions.len() >= current.successions.len()
+                {
+                    *current = next;
+                }
+            }
+            Ok(None) => {}
+            Err(error) => tracing::error!(
+                event.name = "host.identity_unread",
+                component = "host",
+                error = %error,
+                "the identity another instance changed does not verify: it stays as read"
+            ),
+        }
+    }
+
+    /// Brings `current` to what the store holds, verified: what a presentation and a rotation
+    /// do before they act, holding the state to write.
+    fn caught_up(&self, current: &mut Current) -> Result<(), IdentityError> {
+        if let Some(next) = self.verified_after(current)? {
+            *current = next;
+        }
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// The identity as the store holds it past `held`, verified as an open verifies it: each
+    /// succession another instance appended under the key of the epoch before, its public key the
+    /// one the store keeps, the document they lead to under the last key, and possession of that
+    /// key; `None` when the store holds what `held` does. The successions and the document are
+    /// read in one reading. Fewer successions than held is a store put back, refused; nothing is
+    /// written.
+    fn verified_after(&self, held: &Current) -> Result<Option<Current>, IdentityError> {
+        let (all, envelope) = self.store.chain()?;
+        let envelope = envelope.ok_or_else(|| corrupt("identity.cose vanished"))?;
+        let count = held.successions.len();
+        if all.len() < count {
+            return Err(corrupt(format!(
+                "the store holds {} successions and this instance read {count}: a store put back",
+                all.len()
+            )));
+        }
+        if all.len() == count && envelope == held.envelope {
+            return Ok(None);
+        }
+        let suite = held.public.suite;
+        let (mut key, mut epoch, mut last) = (held.public.clone(), held.epoch, held.last.clone());
+        let mut successions = held.successions.clone();
+        for item in all.into_iter().skip(count) {
+            let succession = Sign1::from_value(item).map_err(corrupt)?;
+            let bytes = succession.encode().map_err(corrupt)?;
+            check_kid(&succession, epoch)?;
+            let payload = succession
+                .verify(suite, &key.bytes, protected::HOST_SUCCESSION)
+                .map_err(|error| corrupt(format!("succession to epoch {}: {error}", epoch + 1)))?;
+            let record = Succession::decode(payload)?;
+            let next = PublicKey {
+                suite,
+                bytes: record.public_key.clone(),
+            };
+            if record.host_id != self.init.host_id
+                || record.from_epoch != epoch
+                || record.to_epoch != epoch + 1
+                || record.previous != last.clone().unwrap_or_else(record::zero_digest)
+                || record.fingerprint != next.fingerprint()
+            {
+                return Err(corrupt(format!(
+                    "the succession to epoch {} does not continue the chain",
+                    epoch + 1
+                )));
+            }
+            if self.store.public(record.to_epoch)?.as_deref() != Some(record.public_key.as_slice())
+            {
+                return Err(corrupt(format!(
+                    "the public key of epoch {} is not the one its succession names",
+                    record.to_epoch
+                )));
+            }
+            last = Some(record::succession_digest(&bytes));
+            successions.push(bytes);
+            key = next;
+            epoch += 1;
+        }
+        let sign1 = Sign1::decode(&envelope).map_err(corrupt)?;
+        check_kid(&sign1, epoch)?;
+        let document = Document::decode(
+            sign1
+                .verify(suite, &key.bytes, protected::HOST_IDENTITY)
+                .map_err(|error| corrupt(format!("the identity document: {error}")))?,
+        )?;
+        if document.host_id != self.init.host_id
+            || document.subject != record::subject(&self.init.host_id)
+            || document.epoch != epoch
+            || document.public_key != key.bytes
+            || document.fingerprint != key.fingerprint()
+            || document.last_succession != last
+            || document.suite != suite
+            || document.revision < held.document.revision
+        {
+            return Err(corrupt(
+                "the document does not name the key and chain the store holds",
+            ));
+        }
+        // Possession, proven as an open proves it: what this process held of the keys of the
+        // epochs taken on is forgotten first, so a key an undone attempt made is never used.
+        for adopted in held.epoch + 1..=epoch {
+            self.provider.forget(&slot(adopted));
+        }
+        let challenge = random()?;
+        let proof = self.provider.sign(&slot(epoch), suite, &challenge)?;
+        suite
+            .verify(&key.bytes, &challenge, &proof)
+            .map_err(|_| corrupt("the provider's key does not match the document's"))?;
+        Ok(Some(Current {
+            epoch,
+            public: key,
+            document,
+            envelope,
+            successions,
+            last,
+        }))
+    }
 }
+
+/// How old the reading of the identity may be when it signs or is read, on a store other
+/// instances share (iteration 03, WP-28.5): a rotation on one instance is signed with on every
+/// instance within this bound.
+pub const FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Rotates `identity` as `initiator`, with no request id: the offline CLI. `expected_epoch` is
 /// the epoch the operator read.
 pub fn rotate(
-    mutations: &crate::operations::mutation::Mutations,
+    mutations: &dyn crate::operations::mutation::Engine,
     identity: &Identity,
     initiator: crate::operations::journal::Initiator,
     expected_epoch: u64,
@@ -999,7 +1206,7 @@ pub fn rotate(
             let rotated = identity
                 .rotate(applying, Some(expected_epoch), now)
                 .map_err(|error| match error {
-                    IdentityError::Storage(_) | IdentityError::Indeterminate(_) => {
+                    IdentityError::Unavailable(_) | IdentityError::Indeterminate(_) => {
                         Failure::Indeterminate(error)
                     }
                     other => Failure::Refused(other),
@@ -1030,17 +1237,29 @@ impl Domain for Identities<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
         // A reset's intent names the identity it retires: the identity open now shows it done
         // when another Host retired that one under this operation.
-        if target?.starts_with("reset:") {
+        if target.starts_with("reset:") {
             return reset::observe(self.0, operation_id);
         }
-        let epoch = target?.strip_prefix("epoch:")?.parse::<u64>().ok()?;
-        (self.0.epoch() >= epoch).then(|| Observed {
+        let Some(epoch) = target
+            .strip_prefix("epoch:")
+            .and_then(|epoch| epoch.parse::<u64>().ok())
+        else {
+            return Ok(None);
+        };
+        Ok((self.0.epoch() >= epoch).then(|| Observed {
             revision: epoch,
             target: Some(format!("epoch:{epoch}")),
-        })
+        }))
     }
 }
 
@@ -1083,13 +1302,6 @@ fn sign_document(
         protected::HOST_IDENTITY,
         document.encode()?,
     )
-}
-
-fn publish_public(keys: &Dir, epoch: u64, bytes: &[u8]) -> Result<(), IdentityError> {
-    let same = |held: &[u8]| held == bytes;
-    match publish_immutable(keys, &public_name(epoch), bytes, &same, &same)? {
-        Published::Written | Published::AlreadyThere => Ok(()),
-    }
 }
 
 fn random() -> Result<[u8; 10], IdentityError> {

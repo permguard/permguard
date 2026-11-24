@@ -1332,9 +1332,9 @@
     },
     {
       "crate": "permguard-authority-plane",
-      "source": "crates/permguard-authority-plane/src/accounts.rs",
+      "source": "crates/permguard-authority-plane/src/accounts/files.rs",
       "item": "AccountRecord::decode",
-      "entry": "permguard_authority_plane::accounts::AccountRecord::decode",
+      "entry": "permguard_authority_plane::accounts::files::AccountRecord::decode",
       "max_input_bytes": 262144,
       "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own accounts journal only",
       "enforced_at_decoder": true,
@@ -1342,9 +1342,9 @@
     },
     {
       "crate": "permguard-authority-plane",
-      "source": "crates/permguard-authority-plane/src/tokens.rs",
+      "source": "crates/permguard-authority-plane/src/tokens/files.rs",
       "item": "TokenTransition::decode",
-      "entry": "permguard_authority_plane::tokens::TokenTransition::decode",
+      "entry": "permguard_authority_plane::tokens::files::TokenTransition::decode",
       "max_input_bytes": 262144,
       "limit": "`cbor::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Authority Plane's own token journal only",
       "enforced_at_decoder": true,
@@ -1483,13 +1483,18 @@
       "reason": "the assurance profile an operator states in `assurance.profile` (WP-2.8): operator configuration, read once at start"
     },
     {
-      "source": "crates/permguard-host/src/authz/store.rs",
-      "item": "BootstrapStore::open",
+      "source": "crates/permguard-core/src/volume.rs",
+      "item": "Backend::from_str",
+      "reason": "the storage backend an operator states in `storage.backend` (iteration 03, E7): operator configuration, read once at start"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/store/files.rs",
+      "item": "FileBootstrap::open",
       "reason": "the recovery principal's commitment on the Host's volume, one file this process or the offline bootstrap wrote under the volume's lock"
     },
     {
-      "source": "crates/permguard-host/src/api/replay.rs",
-      "item": "Replay::open",
+      "source": "crates/permguard-host/src/api/replay/files.rs",
+      "item": "FileReplay::open",
       "reason": "the replay journal's own directory on the Host's volume, written by this process; every frame is JSON this process encoded, read back through the storage library's journal, which checks the frames"
     },
     {
@@ -1500,7 +1505,7 @@
     {
       "source": "crates/permguard-host/src/time.rs",
       "item": "TimeGuard::open",
-      "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
+      "reason": "the clock's high-water mark as its store answers it (WP-2.12): a wall time the store read and checked, compared and never parsed here"
     },
     {
       "source": "crates/permguard-host/src/storage/migrate.rs",
@@ -1528,9 +1533,14 @@
       "reason": "an audit class name this process wrote into a record's `trail` field or a trail's `META.cbor` (WP-3.5): one of three words, anything else refused"
     },
     {
-      "source": "crates/permguard-host/src/audit/mod.rs",
+      "source": "crates/permguard-host/src/audit/store.rs",
       "item": "Engine::open",
       "reason": "the audit trails directory on the Host's own volume, `host/audit/trails/` (WP-3.5): it only creates the directory, and each trail is read when it is first written, through `Trail::open`"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/store.rs",
+      "item": "FileTrails::open",
+      "reason": "the audit trails directory and its index on the Host's own volume, `host/audit/trails/` and `host/audit/index/` (iteration 03, WP-27.4): it creates the directories and reconciles the index with them, reading each trail's `META.cbor` as this process or an earlier one wrote it; each trail is read when it is first written, through `Trail::open`"
     },
     {
       "source": "crates/permguard-host/src/audit/record.rs",
@@ -1568,7 +1578,7 @@
       "reason": "`host/identity/BOOT` on the Host's own volume (WP-2.2): two labels this process wrote"
     },
     {
-      "source": "crates/permguard-host/src/identity/mod.rs",
+      "source": "crates/permguard-host/src/identity/files.rs",
       "item": "Identity::open",
       "reason": "the identity directory on the Host's own volume (WP-2.2): INIT, the document, the succession records and the keys, each verified against INIT and the chain; anything that does not verify refuses the open"
     },
@@ -1593,6 +1603,11 @@
       "reason": "a configuration value the operator sets: `admin.peer_sessions` (WP-2.3)"
     },
     {
+      "source": "crates/permguard-core/src/peer.rs",
+      "item": "CoordinatorEndpoints::from_str",
+      "reason": "a configuration value the operator sets: `host.coordinator_endpoints[]` (iteration 03, WP-28.7), each endpoint in the grammar of a membership's address"
+    },
+    {
       "source": "crates/permguard-host/src/session/record.rs",
       "item": "Operation::from_str",
       "reason": "a text member already read by `Hello::decode` or `Transcript::decode`, which are the boundary"
@@ -1608,8 +1623,8 @@
       "reason": "`host/peers/<host_id>.cbor` on the Host's own volume (WP-2.3): four labels this process wrote; one naming another Host refuses the peer"
     },
     {
-      "source": "crates/permguard-host/src/session/peers.rs",
-      "item": "Peers::open",
+      "source": "crates/permguard-host/src/session/peers/files.rs",
+      "item": "FileSeen::open",
       "reason": "the pinned peers' directory on the Host's own volume (WP-2.3); each seen file is read through `Seen::decode`"
     },
     {
@@ -1619,11 +1634,21 @@
     },
     {
       "source": "crates/permguard-host/src/secrets/mod.rs",
+      "item": "ZonePurpose::parse",
+      "reason": "a zone key's purpose as this process wrote it into a row of the delivered keys (iteration 03, WP-27.5): one of two words, anything else refused"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/sealed.rs",
+      "item": "Sealer::open",
+      "reason": "a sealed secret kept in a row of the Host's own database (iteration 03, WP-27.5): its wrap is authenticated against the closed context the Host builds itself, and anything that does not open under it is refused, never read as a secret"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/files.rs",
       "item": "Witnesses::open",
       "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"
     },
     {
-      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "source": "crates/permguard-host/src/secrets/files.rs",
       "item": "ZoneKeys::open",
       "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
     },
@@ -1638,7 +1663,7 @@
       "reason": "`ring.cbor` on the Host's own volume (WP-3.1): a view this process wrote and rebuilds from the journal; the ring never reads its state back from it"
     },
     {
-      "source": "crates/permguard-host/src/keys/ring.rs",
+      "source": "crates/permguard-host/src/keys/ring/files.rs",
       "item": "Ring::open",
       "reason": "a ring's directory on the Host's own volume (WP-3.1): the journal replayed under the history it allows, anything else refusing the open"
     },
@@ -1658,7 +1683,7 @@
       "reason": "a configuration value the operator sets: the custody of the Host's keys (WP-3.2)"
     },
     {
-      "source": "crates/permguard-host/src/membership/mod.rs",
+      "source": "crates/permguard-host/src/membership/files.rs",
       "item": "Store::open",
       "reason": "the store's own directory on the Host's volume, written by this process; every entry is decoded by `Entry::decode` and the records it carries by their registered decoders, the journal's hash chain checked as it is replayed"
     },
@@ -1678,14 +1703,9 @@
       "reason": "reads a batch `SealedBatch::decode` already bounded and parsed, registered and fuzzed; its header and envelope parse only through `jcs::decode_canonical`, registered and fuzzed"
     },
     {
-      "source": "crates/permguard-host/src/holds.rs",
-      "item": "HoldStore::open",
-      "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; a hold that does not read is refused, never skipped"
-    },
-    {
-      "source": "crates/permguard-host/src/holds.rs",
-      "item": "HoldStore::verify",
-      "reason": "the same hold files and their index, read under the volume's lock and bounded as `list` reads them (`MAX_HOLD_BYTES`, `MAX_INDEX_BYTES`); a file that does not read is a finding, never trusted"
+      "source": "crates/permguard-host/src/holds/files.rs",
+      "item": "FileHolds::open",
+      "reason": "the holds' own directory on the Host's volume, written by this process or the offline CLI under the volume's lock; every read of the contract (`list`, `get`, `verify`) is bounded (`MAX_HOLD_BYTES`, `MAX_INDEX_BYTES`), and a hold that does not read is refused or a finding, never skipped or trusted"
     },
     {
       "source": "crates/permguard-host/src/operations/backup.rs",
@@ -1703,19 +1723,54 @@
       "reason": "a closed set of three names: the marker's own field, and a command-line value clap already restricts to them (WP-7.9)"
     },
     {
-      "source": "crates/permguard-authority-plane/src/accounts.rs",
-      "item": "Accounts::open",
+      "source": "crates/permguard-authority-plane/src/accounts/files.rs",
+      "item": "FileAccounts::open",
       "reason": "the accounts' own journal on the Authority Plane's volume, written by this process; every frame is decoded by `AccountRecord::decode`, the registered boundary"
     },
     {
-      "source": "crates/permguard-authority-plane/src/tokens.rs",
-      "item": "TokenRegistry::open",
+      "source": "crates/permguard-authority-plane/src/tokens/files.rs",
+      "item": "FileTokens::open",
       "reason": "the token registry's own journal on the Authority Plane's volume, written by this process; every frame is decoded by `TokenTransition::decode`, the registered boundary"
     },
     {
       "source": "crates/permguard-core/src/planes/discovery.rs",
       "item": "PlaneId::parse",
       "reason": "a Plane module's id, from the closed set this build registers; never received"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/files.rs",
+      "item": "FileIdentity::open",
+      "reason": "the identity directory on the Host's own volume (WP-2.2), opened as a store of bytes: what a process that stopped left of a write or a deletion is completed through the storage library, and no record is decoded here; `Identity` verifies each against the provisioning record and the chain"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/files.rs",
+      "item": "FileWitnesses::open",
+      "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/files.rs",
+      "item": "FileDeliveredKeys::open",
+      "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
+    },
+    {
+      "source": "crates/permguard-host/src/time/files.rs",
+      "item": "FileClockMark::open",
+      "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/held/files.rs",
+      "item": "FileHeld::open",
+      "reason": "`host/authority/` on the Host's own volume: the key set and the status lists this process kept, signed as they arrived; nothing is decoded at open, and every list is verified under the held key set before it is held"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/ring/files.rs",
+      "item": "FileRing::open",
+      "reason": "a ring's directory on the Host's own volume (WP-3.1), opened as a store of bytes: a torn last entry of its journal is cut through the storage library, and no entry is decoded here; `Ring` replays and checks every one"
+    },
+    {
+      "source": "crates/permguard-host/src/membership/files.rs",
+      "item": "FileMembers::open",
+      "reason": "`host/members/` on the Host's own volume (WP-4.1), opened as a store of bytes: its layout version is checked, a torn last entry of its journal is cut through the storage library, and no entry or document is decoded here; `Store` replays every entry and checks its chain"
     }
   ]
 }

@@ -242,7 +242,11 @@ impl Embedded {
         self.compose(|composition| {
             composition
                 .with_peer_connector(|config, session| {
-                    permguard_client::peer::connector(config.admin_tls().as_ref(), session)
+                    permguard_client::peer::connector(
+                        config.admin_tls().as_ref(),
+                        session,
+                        config.host_coordinator_endpoints(),
+                    )
                 })
                 // What this Host owes its coordinator is shipped before it stops, or the stop
                 // says it was not: registered after the Plane, so it drains once the Plane did.

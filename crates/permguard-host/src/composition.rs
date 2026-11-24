@@ -369,7 +369,7 @@ impl std::error::Error for CompositionError {}
 
 /// The Host: every generic capability, implemented once.
 pub struct Host {
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     task_slots: BTreeMap<
         (crate::membership::record::TaskType, u64),
         Arc<crate::membership::task::Deferred>,
@@ -377,7 +377,7 @@ pub struct Host {
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -401,7 +401,7 @@ struct Claims {
 /// Builds the [`Host`] from the collaborators composition resolved.
 #[derive(Default)]
 pub struct HostBuilder {
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     task_slots: BTreeMap<
         (crate::membership::record::TaskType, u64),
         Arc<crate::membership::task::Deferred>,
@@ -409,7 +409,7 @@ pub struct HostBuilder {
     hub: Option<Arc<crate::membership::watch::Hub>>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
@@ -490,7 +490,7 @@ impl HostBuilder {
 
     /// The Host's security mutation transaction (WP-3.6): a Plane that declared a mutation
     /// domain applies it through a handle over this engine.
-    pub fn mutations(mut self, mutations: Arc<crate::operations::mutation::Mutations>) -> Self {
+    pub fn mutations(mut self, mutations: Arc<dyn crate::operations::mutation::Engine>) -> Self {
         self.mutations = Some(mutations);
         self
     }
@@ -528,7 +528,7 @@ impl HostBuilder {
     }
 
     /// The volume's holds (WP-7.3c): handed to a Plane that declared it reads them.
-    pub fn holds(mut self, holds: Arc<crate::holds::HoldStore>) -> Self {
+    pub fn holds(mut self, holds: Arc<dyn crate::holds::HoldStore>) -> Self {
         self.holds = Some(holds);
         self
     }
@@ -865,7 +865,7 @@ pub struct Registration {
     >,
     provided: Vec<(crate::membership::record::TaskType, u64)>,
     hints: Option<Hints>,
-    mutations: Option<Arc<crate::operations::mutation::Mutations>>,
+    mutations: Option<Arc<dyn crate::operations::mutation::Engine>>,
     declared_mutations: Vec<&'static str>,
     plane: String,
     signers: BTreeMap<&'static str, (RingId, Arc<dyn KeyManager>)>,
@@ -886,7 +886,7 @@ pub struct Registration {
     time: Arc<TimeGuard>,
     memberships: Option<Arc<dyn ServingMembers>>,
     mirror_tasks: Option<Arc<dyn MirrorTasks>>,
-    holds: Option<Arc<crate::holds::HoldStore>>,
+    holds: Option<Arc<dyn crate::holds::HoldStore>>,
     gc_jobs: Option<Arc<crate::gc::Jobs>>,
     declared_gc_jobs: Vec<&'static str>,
     authority_trust: Option<Arc<crate::authz::AuthorityTrust>>,
@@ -1242,6 +1242,7 @@ impl Registration {
         Ok(self.mutations.as_ref().map(|engine| MutationHandle {
             engine: Arc::clone(engine),
             domain,
+            subsystem: None,
         }))
     }
 
@@ -1262,7 +1263,7 @@ impl Registration {
 
     /// The Host's holds (WP-7.3c): `None` for a Plane that did not declare it reads them, or a
     /// Host that composes none.
-    pub fn holds(&self) -> Option<Arc<crate::holds::HoldStore>> {
+    pub fn holds(&self) -> Option<Arc<dyn crate::holds::HoldStore>> {
         self.holds.clone()
     }
 
@@ -1825,8 +1826,12 @@ impl Hints {
 /// operations, and no other domain's.
 #[derive(Clone)]
 pub struct MutationHandle {
-    engine: Arc<crate::operations::mutation::Mutations>,
+    /// The engine of the process's backend (iteration 03, decision E23): a domain never learns
+    /// which.
+    engine: Arc<dyn crate::operations::mutation::Engine>,
     domain: &'static str,
+    /// The subsystem whose gate every operation of this handle holds while it applies.
+    subsystem: Option<crate::operations::mutation::Subsystem>,
 }
 
 impl std::fmt::Debug for MutationHandle {
@@ -1839,7 +1844,54 @@ impl MutationHandle {
     /// A handle over `engine` for `domain`, for a test or a composition that holds the engine
     /// itself.
     pub fn new(engine: Arc<crate::operations::mutation::Mutations>, domain: &'static str) -> Self {
-        Self { engine, domain }
+        Self::over(engine, domain)
+    }
+
+    /// A handle over any engine for `domain`: what a composition root makes once it has chosen
+    /// the process's backend.
+    pub fn over(
+        engine: Arc<dyn crate::operations::mutation::Engine>,
+        domain: &'static str,
+    ) -> Self {
+        Self {
+            engine,
+            domain,
+            subsystem: None,
+        }
+    }
+
+    /// This handle, its operations applied under the gate of the subsystem `name` (iteration
+    /// 03, decision E26): the domain write of each, every store it changes, is one step for
+    /// every other operation of the subsystem and for every read made through
+    /// [`MutationHandle::consistent`].
+    #[must_use]
+    pub fn in_subsystem(mut self, name: &str) -> Self {
+        self.subsystem = Some(self.engine.subsystem(name));
+        self
+    }
+
+    /// A handle for another domain of the same Plane, in the same subsystem: a Plane that
+    /// declared two domains runs the second on it.
+    #[must_use]
+    pub fn for_domain(&self, domain: &'static str) -> Self {
+        Self {
+            engine: Arc::clone(&self.engine),
+            domain,
+            subsystem: self.subsystem.clone(),
+        }
+    }
+
+    /// Runs `read` while no operation of this handle's subsystem applies: what it reads of the
+    /// subsystem's stores is as one operation left them, never between two of its writes. A
+    /// handle in no subsystem runs it as it is.
+    ///
+    /// `Err` when the subsystem could not be held, and `read` was then not run, or when what
+    /// `read` did under it could not be kept, and nothing of it is.
+    pub fn consistent<R>(&self, read: impl FnOnce() -> R) -> Result<R, String> {
+        match &self.subsystem {
+            Some(subsystem) => subsystem.hold(read),
+            None => Ok(read()),
+        }
     }
 
     /// The domain it applies.
@@ -1849,7 +1901,7 @@ impl MutationHandle {
 
     /// The engine behind it: a Plane that declared two domains runs the second on a handle of
     /// its own, [`MutationHandle::new`].
-    pub fn engine(&self) -> Arc<crate::operations::mutation::Mutations> {
+    pub fn engine(&self) -> Arc<dyn crate::operations::mutation::Engine> {
         Arc::clone(&self.engine)
     }
 
@@ -1858,8 +1910,8 @@ impl MutationHandle {
     pub fn run_checked<T, E>(
         &self,
         begin: crate::operations::mutation::Begin,
-        check: impl FnOnce() -> Result<(), E>,
-        apply: impl FnOnce(
+        check: impl FnMut() -> Result<(), E>,
+        apply: impl FnMut(
             &crate::operations::mutation::Applying<'_>,
         ) -> Result<
             crate::operations::mutation::Applied<T>,
@@ -1880,7 +1932,24 @@ impl MutationHandle {
                 ),
             ));
         }
-        self.engine.run_checked(begin, check, apply)
+        use crate::operations::mutation::run_checked_on;
+        match &self.subsystem {
+            Some(subsystem) => {
+                let mut apply = apply;
+                run_checked_on(self.engine.as_ref(), begin, check, |applying| {
+                    // Inside an operation the gate always runs the write: one it could not take
+                    // fails the operation's unit of work, and the write's own change with it.
+                    let mut applied = None;
+                    let _ = subsystem.hold(|| applied = Some(apply(applying)));
+                    match applied {
+                        Some(applied) => applied,
+                        // A gate that broke its rule and did not run the write: run without it.
+                        None => apply(applying),
+                    }
+                })
+            }
+            None => run_checked_on(self.engine.as_ref(), begin, check, apply),
+        }
     }
 
     /// [`crate::operations::mutation::Mutations::replayed`], for a request of this domain: the
@@ -1904,7 +1973,7 @@ impl MutationHandle {
                 ),
             ));
         }
-        self.engine.replayed(begin)
+        crate::operations::mutation::replayed_on(self.engine.as_ref(), begin)
     }
 
     /// Resolves the open operations this domain left at a crash.
@@ -1919,7 +1988,9 @@ impl MutationHandle {
                 domain.name()
             )));
         }
-        self.engine.recover(domain)
+        self.engine
+            .recover(domain)
+            .map_err(crate::storage::StorageError::Refused)
     }
 }
 
@@ -2885,8 +2956,8 @@ mod tests {
                 &self,
                 _: &crate::operations::journal::OperationId,
                 _: Option<&str>,
-            ) -> Option<Observed> {
-                None
+            ) -> Result<Option<Observed>, String> {
+                Ok(None)
             }
         }
 

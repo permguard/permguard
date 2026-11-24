@@ -860,7 +860,9 @@ mod openapi {
             members: None,
             host: None,
             catalog: None,
-            store: std::sync::Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
+            store: Some(std::sync::Arc::new(
+                crate::events::EventStore::open(&root).expect("it opens"),
+            )),
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 b"a-test-cursor-key-of-32-bytes!!!!",
                 [1; 16],
@@ -929,7 +931,9 @@ mod gate {
             members: None,
             host: None,
             catalog: None,
-            store: Arc::new(crate::events::EventStore::open(&root).expect("it opens")),
+            store: Some(Arc::new(
+                crate::events::EventStore::open(&root).expect("it opens"),
+            )),
             cursor_key: crate::decisions::cursorkey::CursorKeys::from_root(
                 b"a-test-cursor-key-of-32-bytes!!!!",
                 [1; 16],

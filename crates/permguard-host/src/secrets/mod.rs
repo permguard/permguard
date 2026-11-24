@@ -3,11 +3,10 @@
 
 //! Secrets, their witnesses and the keys derived from them (WP-3.3).
 //!
-//! ```text
-//! host/state/witness/<reference>/<version>                              a root's witness
-//! host/state/witness/zone-use/<authority>/<zone>/<purpose>/<scope>/<v>  a delivered key's witness
-//! host/zone-use/<authority>/<zone>/<purpose>/<scope>/<version>          a delivered key (0600)
-//! ```
+//! | Contract          | Holds                                          | File backend, [`files`] |
+//! | ----------------- | ---------------------------------------------- | ----------------------- |
+//! | [`WitnessStore`]  | what a root or a delivered key was first seen as | `host/state/witness/` |
+//! | [`DeliveredKeys`] | the zone keys a coordinator delivered          | `host/zone-use/`        |
 //!
 //! | Root                 | Derivation                                                                  | Who holds it            |
 //! | -------------------- | --------------------------------------------------------------------------- | ----------------------- |
@@ -25,7 +24,7 @@ use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use hmac::{Hmac, KeyInit, Mac as _};
 use sha2::Sha256;
@@ -37,15 +36,20 @@ use permguard_objects::cbor::{self, Value};
 use permguard_objects::crypto::kdf::{self, KEY_LEN, MIN_ROOT_LEN};
 
 use crate::identity::record::uuid_text;
-use crate::storage::volume::Volume;
-use crate::storage::{Dir, StorageError, write};
 
-/// The witnesses' directory below `host/state/`.
-pub const WITNESS: &str = "witness";
-/// The witnesses of a root by its role, whatever reference names it, below `host/state/witness/`.
+pub mod files;
+pub mod sealed;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
+pub use files::WITNESS;
+
+/// The witnesses of a root by its role, whatever reference names it: the first part of their
+/// name.
 pub const BY_ROLE: &str = "by-role";
 
-/// The delivered zone keys' directory below `host/`.
+/// The delivered zone keys: the first part of their witnesses' name, and on the file backend
+/// their directory below `host/`.
 pub const ZONE_USE: &str = purposes::ZONE_USE;
 
 /// Why a secret did not resolve, verify or derive.
@@ -96,12 +100,6 @@ impl fmt::Display for SecretsError {
 }
 
 impl std::error::Error for SecretsError {}
-
-impl From<StorageError> for SecretsError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error.to_string())
-    }
-}
 
 impl From<kdf::KdfError> for SecretsError {
     fn from(error: kdf::KdfError) -> Self {
@@ -199,7 +197,7 @@ impl ZonePurpose {
         }
     }
 
-    pub(crate) fn parse(text: &str) -> Option<Self> {
+    pub fn parse(text: &str) -> Option<Self> {
         [Self::AuditPseudonym, Self::DecisionCommitment]
             .into_iter()
             .find(|purpose| purpose.as_str() == text)
@@ -285,43 +283,47 @@ fn component(name: &str) -> String {
     }
 }
 
-/// The witnesses of one volume.
-#[derive(Debug)]
+/// The store of the witnesses: the only way the Host reads and writes them (`1-architecture/8`
+/// Store contracts).
+pub trait WitnessStore: Send + Sync {
+    /// The witness held under `name`, which is `witness` when none was: the first witness under
+    /// a name stays, and a later one is answered the first. `name` is one part or several, each
+    /// a plain name. Of the witnesses that arrive together under one name, one is kept and every
+    /// caller is answered that one.
+    fn first(&self, name: &[String], witness: &[u8; 32]) -> Result<Vec<u8>, SecretsError>;
+}
+
+/// The witnesses of a Host: what a root or a delivered key was first seen as.
 pub struct Witnesses {
-    dir: Dir,
+    store: Arc<dyn WitnessStore>,
+}
+
+impl fmt::Debug for Witnesses {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Witnesses").finish_non_exhaustive()
+    }
 }
 
 impl Witnesses {
-    /// `host/state/witness/` of `volume`, created `0700`.
-    pub fn open(volume: &Volume) -> Result<Self, SecretsError> {
-        let dir = volume.host().subdir("state", true)?.subdir(WITNESS, true)?;
-        dir.sweep_temps()?;
-        Ok(Self { dir })
+    /// The witnesses `store` keeps.
+    pub fn new(store: Arc<dyn WitnessStore>) -> Self {
+        Self { store }
     }
 
-    /// Checks `material` against the witness at `path`, writing it the first time: other material
-    /// under a path already witnessed is refused as `what`.
-    fn check(&self, path: &[String], material: &[u8], what: &str) -> Result<(), SecretsError> {
-        let (name, parents) = path
-            .split_last()
-            .ok_or_else(|| SecretsError::Storage("an empty witness path".to_owned()))?;
-        let mut dir: Option<Dir> = None;
-        for parent in parents {
-            dir = Some(dir.as_ref().unwrap_or(&self.dir).subdir(parent, true)?);
+    /// Checks `material` against the witness under `name`, kept the first time: other material
+    /// under a name already witnessed is refused as `what`.
+    fn check(&self, name: &[String], material: &[u8], what: &str) -> Result<(), SecretsError> {
+        if name.is_empty() {
+            return Err(SecretsError::Storage("an empty witness name".to_owned()));
         }
-        let dir = dir.as_ref().unwrap_or(&self.dir);
         let witness = witness_of(material);
-        if let Some(held) = dir.read(name)? {
-            return if equal(&held, &witness) {
-                Ok(())
-            } else {
-                Err(SecretsError::Changed {
-                    what: what.to_owned(),
-                })
-            };
+        if equal(&self.store.first(name, &witness)?, &witness) {
+            Ok(())
+        } else {
+            Err(SecretsError::Changed {
+                what: what.to_owned(),
+            })
         }
-        write::publish_immutable(dir, name, &witness, &|_| true, &|held| held == witness)?;
-        Ok(())
     }
 }
 
@@ -451,7 +453,7 @@ pub struct ZoneTuple {
 }
 
 impl ZoneTuple {
-    fn path(&self) -> Vec<String> {
+    pub(crate) fn path(&self) -> Vec<String> {
         vec![
             uuid_text(&self.authority),
             uuid_text(&self.zone),
@@ -536,40 +538,54 @@ impl Coordinator {
     }
 }
 
-/// The delivered zone keys of one volume, each with its witness.
-#[derive(Debug)]
+/// The store of the delivered zone keys: the only way the Host reads and writes them
+/// (`1-architecture/8` Store contracts).
+pub trait DeliveredKeys: Send + Sync {
+    /// The key held under `tuple`, which is `key` when none was: a key is kept once under its
+    /// coordinates, and a later one is answered the first. Of the keys that arrive together
+    /// under one tuple, one is kept and every caller is answered that one.
+    fn keep(
+        &self,
+        tuple: &ZoneTuple,
+        key: &[u8; KEY_LEN],
+    ) -> Result<Zeroizing<[u8; KEY_LEN]>, SecretsError>;
+
+    /// The key held under `tuple`; `None` when none was delivered. What is there and is not a
+    /// key is an error, never none.
+    fn key(&self, tuple: &ZoneTuple) -> Result<Option<Zeroizing<[u8; KEY_LEN]>>, SecretsError>;
+
+    /// Every tuple a key is held under for `authority`, `purpose` and `version`.
+    fn delivered(
+        &self,
+        authority: &[u8; 16],
+        purpose: ZonePurpose,
+        version: KeyVersion,
+    ) -> Result<Vec<ZoneTuple>, SecretsError>;
+}
+
+/// The delivered zone keys of a Host, each with its witness.
 pub struct ZoneKeys {
-    dir: Dir,
+    keys: Arc<dyn DeliveredKeys>,
     witnesses: Witnesses,
 }
 
+impl fmt::Debug for ZoneKeys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ZoneKeys").finish_non_exhaustive()
+    }
+}
+
 impl ZoneKeys {
-    /// `host/zone-use/` of `volume`, created `0700`.
-    pub fn open(volume: &Volume) -> Result<Self, SecretsError> {
-        let dir = volume.host().subdir(ZONE_USE, true)?;
-        dir.sweep_temps()?;
-        Ok(Self {
-            dir,
-            witnesses: Witnesses::open(volume)?,
-        })
+    /// The keys `keys` holds, each checked against `witnesses`.
+    pub fn new(keys: Arc<dyn DeliveredKeys>, witnesses: Witnesses) -> Self {
+        Self { keys, witnesses }
     }
 
-    fn directory(&self, tuple: &ZoneTuple, create: bool) -> Result<Option<Dir>, SecretsError> {
-        let path = tuple.path();
-        let mut dir: Option<Dir> = None;
-        for part in &path[..path.len() - 1] {
-            let parent = dir.as_ref().unwrap_or(&self.dir);
-            let next = if create {
-                parent.subdir(part, true)?
-            } else {
-                match existing(parent, part)? {
-                    Some(next) => next,
-                    None => return Ok(None),
-                }
-            };
-            dir = Some(next);
-        }
-        Ok(dir)
+    /// The name a delivered key is witnessed under.
+    fn witness_name(tuple: &ZoneTuple) -> Vec<String> {
+        let mut name = vec![ZONE_USE.to_owned()];
+        name.extend(tuple.path());
+        name
     }
 
     /// Stores the key of `tuple` once: the same key again is a no-op, another key under the same
@@ -579,21 +595,17 @@ impl ZoneKeys {
             return Err(SecretsError::Scope);
         }
         let what = format!("the delivered key {}", tuple.path().join("/"));
-        let dir = self
-            .directory(tuple, true)?
-            .ok_or_else(|| SecretsError::Storage("the zone key directory".to_owned()))?;
-        let name = tuple.version.to_string();
-        // The key on disk first: a refused key never leaves its witness behind.
-        if let Some(held) = dir.read(&name)?
-            && !equal(&held, key)
+        // The key held first: a refused key never leaves its witness behind.
+        if let Some(held) = self.keys.key(tuple)?
+            && !equal(&held[..], key)
         {
             return Err(SecretsError::Changed { what });
         }
-        let mut witness_path = vec![ZONE_USE.to_owned()];
-        witness_path.extend(tuple.path());
-        self.witnesses.check(&witness_path, key, &what)?;
-        if dir.read(&name)?.is_none() {
-            write::publish_immutable(&dir, &name, key, &|_| true, &|held| held == key)?;
+        self.witnesses
+            .check(&Self::witness_name(tuple), key, &what)?;
+        // Kept once: another key that arrived meanwhile is the one held, and this one is refused.
+        if !equal(&self.keys.keep(tuple, key)?[..], key) {
+            return Err(SecretsError::Changed { what });
         }
         Ok(())
     }
@@ -603,20 +615,11 @@ impl ZoneKeys {
         &self,
         tuple: &ZoneTuple,
     ) -> Result<Option<Zeroizing<[u8; KEY_LEN]>>, SecretsError> {
-        let Some(dir) = self.directory(tuple, false)? else {
+        let Some(key) = self.keys.key(tuple)? else {
             return Ok(None);
         };
-        let Some(held) = dir.read(&tuple.version.to_string())? else {
-            return Ok(None);
-        };
-        let key: [u8; KEY_LEN] = held.as_slice().try_into().map_err(|_| {
-            SecretsError::Storage(format!("{} is not a key", tuple.path().join("/")))
-        })?;
-        let key = Zeroizing::new(key);
-        let mut witness_path = vec![ZONE_USE.to_owned()];
-        witness_path.extend(tuple.path());
         self.witnesses.check(
-            &witness_path,
+            &Self::witness_name(tuple),
             &key[..],
             &format!("the delivered key {}", tuple.path().join("/")),
         )?;
@@ -631,53 +634,7 @@ impl ZoneKeys {
         purpose: ZonePurpose,
         version: KeyVersion,
     ) -> Result<Vec<ZoneTuple>, SecretsError> {
-        let mut found = Vec::new();
-        let Some(authority_dir) = existing(&self.dir, &uuid_text(authority))? else {
-            return Ok(found);
-        };
-        for zone in authority_dir.subdirs()? {
-            let Some(zone_id) = parse_uuid(&zone) else {
-                continue;
-            };
-            let zone_dir = authority_dir.subdir(&zone, false)?;
-            if !zone_dir
-                .subdirs()?
-                .iter()
-                .any(|name| ZonePurpose::parse(name) == Some(purpose))
-            {
-                continue;
-            }
-            let purpose_dir = zone_dir.subdir(purpose.as_str(), false)?;
-            for scope in purpose_dir.subdirs()? {
-                let Some(scope_id) = parse_uuid(&scope) else {
-                    continue;
-                };
-                let tuple = ZoneTuple {
-                    authority: *authority,
-                    zone: zone_id,
-                    purpose,
-                    scope: scope_id,
-                    version,
-                };
-                if purpose_dir
-                    .subdir(&scope, false)?
-                    .read(&version.to_string())?
-                    .is_some()
-                {
-                    found.push(tuple);
-                }
-            }
-        }
-        Ok(found)
-    }
-}
-
-/// The subdirectory `name` of `dir`, when it exists.
-fn existing(dir: &Dir, name: &str) -> Result<Option<Dir>, SecretsError> {
-    if dir.subdirs()?.iter().any(|held| held == name) {
-        Ok(Some(dir.subdir(name, false)?))
-    } else {
-        Ok(None)
+        self.keys.delivered(authority, purpose, version)
     }
 }
 

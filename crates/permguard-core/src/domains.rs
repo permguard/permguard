@@ -328,6 +328,9 @@ pub mod assurance {
 pub mod format {
     /// A private key sealed at rest under envelope encryption.
     pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
+    /// A 256-bit secret sealed at rest by a key-encryption key held outside the store that keeps
+    /// it: a delivered zone key, a cursor root (iteration 03, WP-27.5).
+    pub const SEALED_SECRET_V1: &str = "permguard.sealed-secret.v1";
     /// The source marker of the grant store's snapshot (`permguard_host::authz::store`).
     pub const AUTHZ_SNAPSHOT_V1: &str = "permguard.host.authz.snapshot.v1";
     /// The kind of the plan file an offline identity reset writes and its run confirms (WP-4.1).
@@ -743,6 +746,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("format.ROLES_APPLY_PLAN_V1", format::ROLES_APPLY_PLAN_V1),
         ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
+        ("format.SEALED_SECRET_V1", format::SEALED_SECRET_V1),
         ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
         ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),
         ("format.BENCH_REPORT_V1", format::BENCH_REPORT_V1),

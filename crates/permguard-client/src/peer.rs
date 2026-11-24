@@ -412,12 +412,148 @@ pub fn member_client(
 pub struct PeerConnector {
     context: Context,
     tls: PeerClient,
+    /// Where each coordinator is reached besides the address its memberships name (WP-28.7).
+    endpoints: std::collections::BTreeMap<[u8; 16], Endpoints>,
+}
+
+/// The endpoints of one coordinator, and the one a connection opened on last: where the next
+/// session starts, whichever address its membership names.
+struct Endpoints {
+    named: Vec<String>,
+    last: Mutex<Option<String>>,
 }
 
 impl PeerConnector {
     /// A connector initiating with `context` over `tls`.
     pub fn new(context: Context, tls: PeerClient) -> Self {
-        Self { context, tls }
+        Self {
+            context,
+            tls,
+            endpoints: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// This connector, reaching each coordinator `coordinators` names at its endpoints besides
+    /// the address its memberships name (iteration 03, WP-28.7): a session opens on the one a
+    /// connection opened on last, and on the next when it cannot connect. Only the connection
+    /// moves: nothing is sent before it opens, so no request reaches two instances, and the peer
+    /// proves the pinned identity on whichever endpoint answers.
+    pub fn with_endpoints(
+        mut self,
+        coordinators: &[permguard_core::peer::CoordinatorEndpoints],
+    ) -> Self {
+        self.endpoints = coordinators
+            .iter()
+            .map(|coordinator| {
+                (
+                    coordinator.host_id(),
+                    Endpoints {
+                        named: coordinator.endpoints().to_vec(),
+                        last: Mutex::new(None),
+                    },
+                )
+            })
+            .collect();
+        self
+    }
+
+    /// Where a session to `target` may open, in order: the coordinator's configured endpoints,
+    /// then the address its membership names when they leave it out; and the index to start at.
+    fn candidates(&self, target: &Target) -> (Vec<String>, usize) {
+        let Some(endpoints) = self.endpoints.get(&target.host_id) else {
+            return (vec![target.address.clone()], 0);
+        };
+        let mut candidates = endpoints.named.clone();
+        let named = permguard_host::membership::peer_address(&target.address)
+            .unwrap_or_else(|_| target.address.clone());
+        if !candidates.contains(&named) {
+            candidates.push(target.address.clone());
+        }
+        let last = endpoints
+            .last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let start = last
+            .and_then(|last| candidates.iter().position(|candidate| *candidate == last))
+            .unwrap_or(0);
+        (candidates, start)
+    }
+
+    /// The bound of a whole exchange with `target`: the connection's attempts, the handshake and
+    /// the answer.
+    fn bound(&self, target: &Target) -> Duration {
+        let attempts = u32::try_from(self.candidates(target).0.len()).unwrap_or(u32::MAX);
+        HANDSHAKE.saturating_mul(attempts.saturating_add(2))
+    }
+
+    /// A connection to `target`, at the first of its candidates that opens one, each attempt
+    /// bounded: resolution, TCP and TLS. The endpoint that opened is where the next starts.
+    async fn connect(&self, target: &Target, late: &str) -> Result<Connection, Refusal> {
+        let (candidates, start) = self.candidates(target);
+        let mut failed = None;
+        for step in 0..candidates.len() {
+            let at = (start + step) % candidates.len();
+            let address = &candidates[at];
+            // Every address the name resolves to, in turn: a name several instances share
+            // resolves to one that stopped as well, until it is gone from the name.
+            let opened = tokio::time::timeout(HANDSHAKE, async {
+                let (addresses, name) = endpoint(address).await?;
+                let tls = self.tls.connection_config().await?;
+                let mut refused = None;
+                // Each address bounded on its own: one whose packets are dropped does not take
+                // the endpoint's whole bound from the next.
+                for resolved in addresses {
+                    match tokio::time::timeout(
+                        ADDRESS_BOUND,
+                        Connection::open(resolved, name.clone(), &tls),
+                    )
+                    .await
+                    {
+                        Ok(Ok(connection)) => return Ok(connection),
+                        Ok(Err(error)) => refused = Some(refusal_of(error)),
+                        Err(_) => {
+                            refused = Some(unreachable_peer(format!(
+                                "{resolved} did not open a connection within {ADDRESS_BOUND:?}"
+                            )));
+                        }
+                    }
+                }
+                Err(refused.unwrap_or_else(|| unreachable_peer(late)))
+            })
+            .await
+            .map_err(|_| unreachable_peer(late))
+            .and_then(|opened| opened);
+            match opened {
+                Ok(connection) => {
+                    if let Some(endpoints) = self.endpoints.get(&target.host_id) {
+                        *endpoints
+                            .last
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner) = Some(address.clone());
+                    }
+                    return Ok(connection);
+                }
+                // The peer client's own material refuses on every endpoint alike.
+                Err(refusal) if refusal.code == codes::host::PEER_CLIENT_UNCONFIGURED => {
+                    return Err(refusal);
+                }
+                Err(refusal) => failed = Some((address.clone(), refusal)),
+            }
+        }
+        Err(match failed {
+            Some((_, refusal)) if candidates.len() == 1 => refusal,
+            Some((address, refusal)) => Refusal {
+                code: refusal.code,
+                reason: format!(
+                    "none of the coordinator's {} endpoints could be reached; the last, \
+                     `{address}`: {}",
+                    candidates.len(),
+                    refusal.reason
+                ),
+            },
+            None => unreachable_peer(late),
+        })
     }
 
     async fn exchange_once(
@@ -441,15 +577,9 @@ impl PeerConnector {
         }
         // Resolution, TCP, TLS and the stream bounded together: an address that drops packets
         // never holds a request.
-        let connection = tokio::time::timeout(HANDSHAKE, async {
-            let (address, name) = endpoint(&target.address).await?;
-            let tls = self.tls.connection_config().await?;
-            Connection::open(address, name, &tls)
-                .await
-                .map_err(refusal_of)
-        })
-        .await
-        .map_err(|_| unreachable_peer("the coordinator could not be reached in time"))??;
+        let connection = self
+            .connect(&target, "the coordinator could not be reached in time")
+            .await?;
         let bytes = (exchange.build)(&connection.exporter())?;
         let request = Request {
             peer: target.host_id,
@@ -495,15 +625,9 @@ impl PeerConnector {
     }
 
     async fn prove_once(&self, target: Target) -> Result<ProvedPeer, Refusal> {
-        let connection = tokio::time::timeout(HANDSHAKE, async {
-            let (address, name) = endpoint(&target.address).await?;
-            let tls = self.tls.connection_config().await?;
-            Connection::open(address, name, &tls)
-                .await
-                .map_err(refusal_of)
-        })
-        .await
-        .map_err(|_| unreachable_peer("the peer could not be reached in time"))??;
+        let connection = self
+            .connect(&target, "the peer could not be reached in time")
+            .await?;
         let request = Request {
             peer: target.host_id,
             operation: Operation::Enroll,
@@ -584,15 +708,9 @@ impl TaskChannel for PeerTask {
 
 impl PeerConnector {
     async fn open_task_once(&self, target: Target, open: TaskOpen) -> Result<TaskOpened, Refusal> {
-        let connection = tokio::time::timeout(HANDSHAKE, async {
-            let (address, name) = endpoint(&target.address).await?;
-            let tls = self.tls.connection_config().await?;
-            Connection::open(address, name, &tls)
-                .await
-                .map_err(refusal_of)
-        })
-        .await
-        .map_err(|_| unreachable_peer("the coordinator could not be reached in time"))??;
+        let connection = self
+            .connect(&target, "the coordinator could not be reached in time")
+            .await?;
         // A task session reaches the coordinator by the pin its membership holds, and names the
         // one membership and the one task it serves.
         let request = Request {
@@ -637,7 +755,7 @@ impl PeerConnector {
 impl Connector for PeerConnector {
     fn prove(&self, target: Target) -> permguard_core::BoxFuture<'_, Result<ProvedPeer, Refusal>> {
         Box::pin(async move {
-            tokio::time::timeout(3 * HANDSHAKE, self.prove_once(target))
+            tokio::time::timeout(self.bound(&target), self.prove_once(target))
                 .await
                 .map_err(|_| unreachable_peer("the peer did not prove in time"))?
         })
@@ -649,7 +767,7 @@ impl Connector for PeerConnector {
         open: TaskOpen,
     ) -> permguard_core::BoxFuture<'_, Result<TaskOpened, Refusal>> {
         Box::pin(async move {
-            tokio::time::timeout(3 * HANDSHAKE, self.open_task_once(target, open))
+            tokio::time::timeout(self.bound(&target), self.open_task_once(target, open))
                 .await
                 .map_err(|_| unreachable_peer("the coordinator did not answer in time"))?
         })
@@ -663,7 +781,7 @@ impl Connector for PeerConnector {
         // The connection, the handshake and the answer each have their bound; the whole exchange
         // has one too, so no step a peer slows holds a request past it.
         Box::pin(async move {
-            tokio::time::timeout(3 * HANDSHAKE, self.exchange_once(target, exchange))
+            tokio::time::timeout(self.bound(&target), self.exchange_once(target, exchange))
                 .await
                 .map_err(|_| unreachable_peer("the coordinator did not answer in time"))?
         })
@@ -684,8 +802,13 @@ fn refusal_of(error: PeerError) -> Refusal {
     }
 }
 
-/// The socket address and server name of `https://<host>:<port>`.
-async fn endpoint(address: &str) -> Result<(SocketAddr, ServerName<'static>), Refusal> {
+/// The most addresses one name is tried at: a Service or a round-robin name of a few instances.
+const ADDRESSES_TRIED: usize = 8;
+/// How long one address may take to open a connection, TCP and TLS, before the next is tried.
+const ADDRESS_BOUND: Duration = Duration::from_secs(5);
+
+/// The socket addresses, as the name resolves, and server name of `https://<host>:<port>`.
+async fn endpoint(address: &str) -> Result<(Vec<SocketAddr>, ServerName<'static>), Refusal> {
     let invalid = || Refusal {
         code: codes::common::INVALID_ARGUMENT,
         reason: format!("`{address}` is not `https://<host>:<port>`"),
@@ -707,24 +830,31 @@ async fn endpoint(address: &str) -> Result<(SocketAddr, ServerName<'static>), Re
     // Never from a decision (TS-4): refused before the name leaves the process.
     permguard_core::egress::check(permguard_core::egress::Target::Resolve)
         .map_err(|error| unreachable_peer(format!("resolving `{address}`: {error}")))?;
-    let resolved = tokio::net::lookup_host((host.as_str(), port))
+    let resolved: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
         .await
         .map_err(|error| unreachable_peer(format!("resolving `{address}`: {error}")))?
-        .next()
-        .ok_or_else(|| unreachable_peer(format!("`{address}` resolves to nothing")))?;
+        .take(ADDRESSES_TRIED)
+        .collect();
+    if resolved.is_empty() {
+        return Err(unreachable_peer(format!("`{address}` resolves to nothing")));
+    }
     Ok((resolved, name))
 }
 
 /// How a Host reaches its coordinators under `settings`, the Host listener's TLS block,
-/// initiating with `context`: what a composition hands the membership side. `None` without a
+/// initiating with `context`, at the endpoints `coordinators` names besides their memberships'
+/// address (WP-28.7): what a composition hands the membership side. `None` without a
 /// client CA, and a join is then `peer_client_unconfigured`; material that cannot be read stops
 /// the start.
 pub fn connector(
     settings: Option<&permguard_core::TlsSettings>,
     context: &Context,
+    coordinators: &[permguard_core::peer::CoordinatorEndpoints],
 ) -> anyhow::Result<Option<Arc<dyn Connector>>> {
-    Ok(member_client(settings)?
-        .map(|tls| Arc::new(PeerConnector::new(context.clone(), tls)) as Arc<dyn Connector>))
+    Ok(member_client(settings)?.map(|tls| {
+        Arc::new(PeerConnector::new(context.clone(), tls).with_endpoints(coordinators))
+            as Arc<dyn Connector>
+    }))
 }
 
 #[cfg(test)]
@@ -797,15 +927,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_coordinator_address_is_https_with_a_host_and_a_port() {
-        let (address, name) = endpoint("https://127.0.0.1:7443")
+        let (addresses, name) = endpoint("https://127.0.0.1:7443")
             .await
             .expect("an address");
-        assert_eq!(address.port(), 7443);
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].port(), 7443);
         assert_eq!(name, ServerName::try_from("127.0.0.1").expect("a name"));
-        let (address, _) = endpoint("https://[::1]:7443")
+        let (addresses, _) = endpoint("https://[::1]:7443")
             .await
             .expect("an IPv6 address");
-        assert!(address.is_ipv6());
+        assert!(addresses.iter().all(SocketAddr::is_ipv6));
         for refused in [
             "http://127.0.0.1:7443",
             "https://127.0.0.1",

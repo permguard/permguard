@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use permguard_conformance::mutations::{Exempt, Guarded, Rules, check, rules, scan};
+use permguard_conformance::mutations::{Exempt, Guarded, Rules, check, minted, rules, scan};
 
 fn root() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -22,6 +22,7 @@ fn seeded_rules() -> Rules {
     Rules {
         engine: ENGINE.to_owned(),
         token: "Applying".to_owned(),
+        engines: vec!["crates/permguard-postgres/src/mutations.rs".to_owned()],
         guarded: vec![Guarded {
             source: STORE.to_owned(),
             calls: vec!["append".to_owned()],
@@ -201,5 +202,31 @@ fn test_a_file_that_does_not_parse_is_reported_not_skipped() {
     assert_eq!(
         rules_of(&scanned.violations),
         vec![("<file>".to_owned(), "unparsed".to_owned())]
+    );
+}
+
+/// The token is built for another backend's engine by `within`, and asked for by nothing else:
+/// a named engine may, the file engine may, and any other file is found, however the call is
+/// spaced.
+#[test]
+fn only_a_named_engine_asks_for_a_token() {
+    let rules = seeded_rules();
+    let asking = "fn forge() {\n    let token = Applying :: within(id, &unit);\n}\n";
+    assert!(minted(ENGINE, asking, &rules).is_empty());
+    assert!(minted("crates/permguard-postgres/src/mutations.rs", asking, &rules).is_empty());
+    let found = minted("crates/permguard-control-plane/src/gc.rs", asking, &rules);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        (found[0].line, found[0].primitive.as_str()),
+        (2, "token minted")
+    );
+    // A comment that names the call asks for nothing.
+    assert!(
+        minted(
+            "crates/permguard-control-plane/src/gc.rs",
+            "// Applying::within builds it\n",
+            &rules
+        )
+        .is_empty()
     );
 }

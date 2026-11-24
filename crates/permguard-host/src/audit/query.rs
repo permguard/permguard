@@ -29,12 +29,10 @@ use sha2::Sha256;
 use permguard_core::domains::digest::AUDIT_CURSOR;
 use permguard_objects::cbor::{self, Value};
 
-use crate::storage::Dir;
-
 use super::Class;
 use super::checkpoint::{self, Anchor, CHECKPOINT_SUFFIX};
 use super::record::{AuditRecord, FactValue};
-use super::trail::{self, CHECKPOINTS, DAY_SUFFIX};
+use super::trail::{self, DAY_SUFFIX, TrailStore};
 
 /// The records a page answers when the caller names no limit.
 pub const DEFAULT_LIMIT: usize = 100;
@@ -151,6 +149,12 @@ impl std::fmt::Debug for CursorKey {
 }
 
 impl CursorKey {
+    /// The key `key` is: one a root every instance of the Host holds derives, so a cursor one
+    /// instance issued opens at another (iteration 03, WP-28.6).
+    pub fn from_key(key: &[u8; 32]) -> Self {
+        Self(*key)
+    }
+
     /// A key drawn from the system's randomness.
     pub fn draw() -> Option<Self> {
         use ring::rand::SecureRandom as _;
@@ -239,7 +243,7 @@ impl CursorKey {
 /// Reads one page of the trail in `dir`, whose next sequence is `next_seq` now.
 pub(crate) fn page(
     key: &CursorKey,
-    dir: &Dir,
+    dir: &dyn TrailStore,
     class: Class,
     resource: &str,
     next_seq: u64,
@@ -400,23 +404,17 @@ pub(crate) fn page(
 /// The checkpoints of the trail in `dir`, in the order they were sealed, of the day `period`
 /// alone when it names one, the newest [`MAX_CHECKPOINTS`] kept and the rest counted; with each,
 /// its co-signature. A trail never opened since checkpoints exist has none.
-pub(crate) fn checkpoints(dir: &Dir, period: Option<&str>) -> Result<CheckpointList, QueryError> {
+pub(crate) fn checkpoints(
+    held: &dyn TrailStore,
+    period: Option<&str>,
+) -> Result<CheckpointList, QueryError> {
     let storage = |error: crate::storage::StorageError| QueryError::Storage(error.to_string());
     if let Some(period) = period
         && permguard_core::time::Date::from_iso(period).is_none()
     {
         return Err(QueryError::Invalid(format!("`{period}` is not a day")));
     }
-    let held = match dir.subdir(CHECKPOINTS, false) {
-        Ok(held) => held,
-        Err(crate::storage::StorageError::Io { source, .. })
-            if source.kind() == std::io::ErrorKind::NotFound =>
-        {
-            return Ok(CheckpointList::default());
-        }
-        Err(error) => return Err(storage(error)),
-    };
-    let names = held.names().map_err(storage)?;
+    let names = held.checkpoint_names().map_err(storage)?;
     let mut ordered: Vec<String> = checkpoint::ordered(names.iter().cloned())
         .into_iter()
         .filter(|name| {
@@ -430,10 +428,10 @@ pub(crate) fn checkpoints(dir: &Dir, period: Option<&str>) -> Result<CheckpointL
     let files = ordered
         .into_iter()
         .map(|name| {
-            let envelope = held.read(&name).map_err(storage)?.unwrap_or_default();
+            let envelope = held.checkpoint(&name).map_err(storage)?.unwrap_or_default();
             let witness_name = checkpoint::witness_name(&name);
             let witness = if names.contains(&witness_name) {
-                held.read(&witness_name).map_err(storage)?
+                held.checkpoint(&witness_name).map_err(storage)?
             } else {
                 None
             };

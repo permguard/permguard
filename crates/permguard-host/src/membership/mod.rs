@@ -1,21 +1,9 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Memberships (WP-4.1): direct, bilateral grants between two Host identities, on the volume
-//! under `host/members/` (owner decisions of 2026-10-09).
-//!
-//! ```text
-//! host/members/
-//! ├── FORMAT                             the layout version, 1
-//! ├── journal.cborseq                    authoritative, hash-chained transitions
-//! ├── snapshot.cbor                      rebuildable summary, replaced atomically
-//! ├── invites/<sha256(token)>.cbor       the invitation; never the token
-//! ├── verifications/<membership_id>      a coordinator's pending proof request
-//! │   └── results/<operation_id>         immutable exact answers for recovery and replay
-//! └── manifests/<membership_id>/
-//!     ├── current.cose
-//!     └── history/<epoch>-<digest>.cose
-//! ```
+//! Memberships (WP-4.1): direct, bilateral grants between two Host identities (owner decisions
+//! of 2026-10-09), kept by a [`store::MemberStore`] (`1-architecture/3` Stores): [`files`], the
+//! default, is `host/members/` on the volume.
 //!
 //! | Transition                            | Who                     | Journal entry | Manifest               |
 //! | ------------------------------------- | ----------------------- | ------------- | ---------------------- |
@@ -37,6 +25,7 @@ pub mod appraisal;
 pub mod contracts;
 pub mod dormancy;
 pub mod egress;
+pub mod files;
 pub mod import;
 pub mod local;
 pub mod member;
@@ -46,6 +35,9 @@ pub mod repin;
 pub mod replay;
 pub mod reset;
 pub mod service;
+pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 pub mod task;
 pub mod watch;
 pub mod zone;
@@ -79,32 +71,18 @@ use crate::keys::ring::{
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Domain, Observed};
 use crate::session::record::Operation as SessionOperation;
-use crate::storage::volume::Volume;
-use crate::storage::write::{read_view, replace_view};
-use crate::storage::{Dir, StorageError, format, sequence};
+
+use store::{Doc, MemberStore};
 
 use record::{
     EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Manifest, OperatorApproval,
     Pending, RingPin, RingStatement, Role, Status, Task, TaskType, chain, manifest_digest,
 };
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "members";
-pub const FORMAT: &str = "FORMAT";
-pub const JOURNAL: &str = "journal.cborseq";
-pub const SNAPSHOT: &str = "snapshot.cbor";
-pub const INVITES: &str = "invites";
-pub const MANIFESTS: &str = "manifests";
-pub const CURRENT: &str = "current.cose";
-pub const HISTORY: &str = "history";
-/// The leases a member holds, one per task: `leases/<membership_id>/<task_id>.cose` (WP-4.3).
-pub const LEASES: &str = "leases";
-/// Durable coordinator requests for the next proven inbound session, by membership id (WP-4.8).
-pub const VERIFICATIONS: &str = "verifications";
-/// Immutable verification results by operation id, separate from consumable pending markers.
-pub const VERIFICATION_RESULTS: &str = "results";
-/// The layout version `FORMAT` holds.
-pub const LAYOUT_VERSION: u64 = 1;
+pub use files::{
+    CURRENT, DIRECTORY, FORMAT, HISTORY, INVITES, JOURNAL, LAYOUT_VERSION, LEASES, MANIFESTS,
+    SNAPSHOT, VERIFICATION_RESULTS, VERIFICATIONS,
+};
 
 /// The mutation domain.
 pub const DOMAIN: &str = "memberships";
@@ -176,6 +154,22 @@ pub const INVITE_DEFAULT_SECONDS: u64 = 86_400;
 pub const MANIFEST_LIFETIME_SECONDS: u64 = 365 * 86_400;
 /// The most journal entries one store reads: far beyond any real history.
 const MAX_ENTRIES: usize = 1_000_000;
+
+/// When a verification was asked, as its document says it: eight bytes, or the longer form an
+/// earlier build wrote. A document of another shape asks nothing.
+fn scheduled_at(bytes: &[u8]) -> Result<Option<u64>, MembershipError> {
+    let instant = match bytes.len() {
+        8 => bytes.get(..8),
+        33 if bytes.first() == Some(&0) => bytes.get(1..9),
+        _ => return Ok(None),
+    };
+    let bytes: [u8; 8] = instant
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| {
+            MembershipError::Storage("a verification schedule has no eight-byte instant".into())
+        })?;
+    Ok(Some(u64::from_be_bytes(bytes)))
+}
 
 /// The lease policy a membership signs when the approval names none.
 pub const DEFAULT_LEASE_POLICY: LeasePolicy = LeasePolicy {
@@ -269,12 +263,6 @@ impl fmt::Display for MembershipError {
 
 impl std::error::Error for MembershipError {}
 
-impl From<StorageError> for MembershipError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error.to_string())
-    }
-}
-
 impl From<RecordError> for MembershipError {
     fn from(error: RecordError) -> Self {
         Self::Storage(error.to_string())
@@ -289,64 +277,9 @@ impl MembershipError {
     }
 }
 
-/// Where a member reaches its coordinator, in its one canonical form, `https://<host>:<port>`,
-/// or what is wrong with `address` (BUG-0290, DEC-0017): a `grpcs://` endpoint is the same
-/// listener; an empty host, a missing port, a path, a query, a fragment or user info names no
-/// listener a member could join, and is refused before an invitation's handoff carries it.
-pub fn peer_address(address: &str) -> Result<String, String> {
-    let refused = |why: &str| {
-        format!(
-            "`{address}` is not where a member reaches a coordinator ({why}): https://<host>:<port>"
-        )
-    };
-    let rest = address
-        .strip_prefix("https://")
-        .or_else(|| address.strip_prefix("grpcs://"))
-        .ok_or_else(|| refused("the scheme is https or grpcs"))?;
-    let authority = rest.strip_suffix('/').unwrap_or(rest);
-    if authority.contains(['/', '?', '#', '@']) {
-        return Err(refused(
-            "a path, a query, a fragment or user info names no listener",
-        ));
-    }
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) if !host.is_empty() && host != "[" => (host, port),
-        _ => return Err(refused("the host and its port are both needed")),
-    };
-    if port.is_empty()
-        || !port.bytes().all(|byte| byte.is_ascii_digit())
-        || port.parse::<u16>().map_or(true, |port| port == 0)
-    {
-        return Err(refused("the port is a number from 1 to 65535"));
-    }
-    match host
-        .strip_prefix('[')
-        .and_then(|inner| inner.strip_suffix(']'))
-    {
-        Some(inner) => {
-            if inner.parse::<std::net::Ipv6Addr>().is_err() {
-                return Err(refused("the bracketed host is an IPv6 address"));
-            }
-        }
-        None if host.contains(':') => {
-            return Err(refused("an IPv6 host is written in brackets"));
-        }
-        None => {
-            let label = |label: &str| {
-                !label.is_empty()
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-            };
-            if host.len() > 253 || !host.split('.').all(label) {
-                return Err(refused("the host is a DNS name or an IP address"));
-            }
-        }
-    }
-    Ok(format!("https://{host}:{port}"))
-}
+/// Where a member reaches its coordinator, in its one canonical form (BUG-0290, DEC-0017): the
+/// grammar is the configuration's too, which names a coordinator's endpoints (WP-28.7).
+pub use permguard_core::peer::peer_address;
 
 /// The task contracts this Host registered (WP-4.4, owner decisions of 2026-10-11): each a type,
 /// the version it speaks and whether it is the provider's handler or the consumer's client, as
@@ -498,17 +431,19 @@ struct State {
 
 /// The membership store of one Host.
 pub struct Store {
-    dir: Dir,
-    invites: Dir,
-    manifests: Dir,
-    state: RwLock<State>,
+    store: Arc<dyn MemberStore>,
+    /// The state of the entries kept: what every reader is answered.
+    state: Arc<RwLock<State>>,
+    /// The state an attempt wrote and has not seen kept, by attempt (decision X68 of iteration
+    /// 03): its next entry follows it, and it shows once the operation is kept.
+    pending: Arc<Mutex<BTreeMap<u64, State>>>,
     /// Serializes appends: the chain is a function of the order.
     writing: Mutex<()>,
     /// Set by an identity reset once it starts settling: no invitation, enrollment, approval or
     /// join is taken from then on in this process.
     fenced: std::sync::atomic::AtomicBool,
-    /// Serializes a progress report's check and write (WP-4.4).
-    keeping: Mutex<()>,
+    /// What holds the fence every instance sees, on a store they share (X171).
+    fence_held: Mutex<Option<Box<dyn store::Fence>>>,
     /// The replay windows read so far, by membership and task (WP-4.4).
     windows: Mutex<BTreeMap<([u8; 16], String), replay::Window>>,
     /// The version of the coordinator root this Host delivers zone keys at, `0` without a root:
@@ -517,13 +452,32 @@ pub struct Store {
     /// The `dr` restore of this volume, when it was restored: what a coordinator's first revision
     /// of a membership it held before re-anchors the chain on (BUG-0199).
     restored: Option<record::RestoreAnchor>,
+    /// When the entries were last read from a store other instances share (WP-28.4).
+    read_at: Mutex<std::time::Instant>,
+    /// Set while a thread reads the store's new entries for the bound: the others read the state
+    /// as it is meanwhile, rather than all asking the store at once.
+    following: std::sync::atomic::AtomicBool,
+    /// When a missing membership or invitation was last asked of the store, by what was missing:
+    /// a peer naming ids nobody holds is not a query each.
+    asked: Mutex<BTreeMap<Vec<u8>, std::time::Instant>>,
 }
+
+/// How long a reader waits for the state's other readers before it leaves what it read of the
+/// store for the next read (WP-29.1): never long, as one of those readers may be its own thread.
+const FOLLOW_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+/// How often one missing id is asked of the store.
+const ASK_MISSING_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+/// The most missing ids remembered; past it they are forgotten together.
+const MAX_ASKED: usize = 1024;
+
+/// How old the reading of the memberships may be while they are read, on a store other instances
+/// share (iteration 03, WP-28.4): a change made through one instance is seen by every instance
+/// within this bound; a change is always made on the entries as the store holds them.
+pub const FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl fmt::Debug for Store {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Store")
-            .field("dir", &self.dir.path())
-            .finish_non_exhaustive()
+        f.debug_struct("Store").finish_non_exhaustive()
     }
 }
 
@@ -1200,56 +1154,45 @@ pub struct Offered<'a> {
     pub principal: &'a str,
 }
 
+/// The state of the entries `store` keeps, their chain checked.
+fn replay(store: &dyn MemberStore) -> Result<State, MembershipError> {
+    let entries = store.entries()?;
+    if entries.len() > MAX_ENTRIES {
+        return Err(MembershipError::Storage(
+            "the journal is beyond its bound".to_owned(),
+        ));
+    }
+    let mut state = State::default();
+    for item in entries {
+        let bytes =
+            cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
+        let entry = Entry::decode(&bytes)?;
+        apply(&mut state, &entry, &bytes)?;
+    }
+    Ok(state)
+}
+
 impl Store {
-    /// Opens `host/members/` on `volume`, laying it out when absent, and replays the journal,
-    /// checking its chain.
-    pub fn open(volume: &Volume) -> Result<Arc<Self>, MembershipError> {
-        let dir = volume.host().subdir(DIRECTORY, true)?;
-        match read_view(&dir, FORMAT, format::VIEW)? {
-            None => replace_view(&dir, FORMAT, format::VIEW, &LAYOUT_VERSION.to_be_bytes())?,
-            Some(bytes) if bytes == LAYOUT_VERSION.to_be_bytes() => {}
-            Some(_) => {
-                return Err(MembershipError::Storage(format!(
-                    "{} is a layout this build does not read",
-                    dir.child_path(FORMAT).display()
-                )));
-            }
-        }
-        let invites = dir.subdir(INVITES, true)?;
-        let manifests = dir.subdir(MANIFESTS, true)?;
-        let journal = sequence::recover(&dir, JOURNAL, record::MAX_RECORD_BYTES * 2)?;
-        if journal.items.len() > MAX_ENTRIES {
-            return Err(MembershipError::Storage(
-                "the journal is beyond its bound".to_owned(),
-            ));
-        }
-        // A coordinator restored for disaster recovery re-anchors each membership's chain at its
-        // first revision since (BUG-0199).
-        let restored = crate::restore::marked(volume)?
-            .filter(|marker| marker.mode == crate::restore::Mode::Dr)
-            .map(|marker| record::RestoreAnchor {
-                plan_id: marker.plan_id,
-                previous_boot_id: marker.previous_boot_id,
-                at: marker.at,
-            });
-        let mut state = State::default();
-        for item in journal.items {
-            let bytes =
-                cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
-            let entry = Entry::decode(&bytes)?;
-            apply(&mut state, &entry, &bytes)?;
-        }
+    /// Opens the memberships `store` keeps and replays their entries, checking their chain.
+    /// `restored` is the `dr` restore of where they are kept, when it was restored.
+    pub fn open_in(
+        store: Arc<dyn MemberStore>,
+        restored: Option<record::RestoreAnchor>,
+    ) -> Result<Arc<Self>, MembershipError> {
+        let state = replay(store.as_ref())?;
         Ok(Arc::new(Self {
-            dir,
-            invites,
-            manifests,
-            state: RwLock::new(state),
+            store,
+            state: Arc::new(RwLock::new(state)),
+            pending: Arc::new(Mutex::new(BTreeMap::new())),
             writing: Mutex::new(()),
             fenced: std::sync::atomic::AtomicBool::new(false),
-            keeping: Mutex::new(()),
+            fence_held: Mutex::new(None),
             windows: Mutex::new(BTreeMap::new()),
             root_version: std::sync::atomic::AtomicU64::new(0),
             restored,
+            read_at: Mutex::new(std::time::Instant::now()),
+            following: std::sync::atomic::AtomicBool::new(false),
+            asked: Mutex::new(BTreeMap::new()),
         }))
     }
 
@@ -1265,7 +1208,132 @@ impl Store {
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {
+        self.current(false);
         self.state.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Adds to the state the entries another instance added since it was read, on a store other
+    /// instances share (WP-28.4): when the reading is older than [`FRESH_FOR`], or `now`. One
+    /// thread at a time asks the store; the others read the state as it is meanwhile. A store
+    /// that does not answer leaves the state as it was, and the next read asks it.
+    fn current(&self, now: bool) {
+        if !self.store.shared() {
+            return;
+        }
+        let read_at = *self.read_at.lock().unwrap_or_else(PoisonError::into_inner);
+        if !now && read_at.elapsed() < FRESH_FOR {
+            return;
+        }
+        if self
+            .following
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        self.follow();
+        self.following
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Adds to the state, now, the entries another instance added since it was read, on a store
+    /// other instances share: what an operator's request reads before it answers or changes
+    /// anything (WP-28.6), so a membership another instance made a moment ago is found and its
+    /// revision is the one the store holds. A store that does not answer leaves the state as it
+    /// was.
+    pub fn catch_up(&self) {
+        if self.store.shared() {
+            self.follow();
+        }
+    }
+
+    /// [`Store::catch_up`] for what a lookup did not find, `missing`, at most once every
+    /// [`ASK_MISSING_EVERY`] for the same: a membership or an invitation another instance made a
+    /// moment ago is found at once, and ids nobody holds are not a query each.
+    fn catch_up_missing(&self, missing: &[u8]) {
+        if !self.store.shared() {
+            return;
+        }
+        {
+            let mut asked = self.asked.lock().unwrap_or_else(PoisonError::into_inner);
+            if asked
+                .get(missing)
+                .is_some_and(|at| at.elapsed() < ASK_MISSING_EVERY)
+            {
+                return;
+            }
+            if asked.len() >= MAX_ASKED {
+                asked.clear();
+            }
+            asked.insert(missing.to_vec(), std::time::Instant::now());
+        }
+        self.follow();
+    }
+
+    /// Reads the entries the store holds after the state's, with no lock of the state held, then
+    /// applies the ones the state still lacks under its write lock, waited for [`FOLLOW_WAIT`] at
+    /// most (WP-29.1): a store slow to answer, or not answering, holds no reader of the state;
+    /// a write lock not had in time leaves what was read for the next read.
+    fn follow(&self) {
+        if let Err(error) = self.follow_or_say() {
+            tracing::warn!(
+                event.name = "host.membership.state_unread",
+                component = "host",
+                error = %error,
+                "the memberships other instances changed could not be read: the next read asks again"
+            );
+        }
+    }
+
+    /// [`Store::follow`], saying why the state was left as it was: the store did not answer, an
+    /// entry does not read or does not follow, or the state's readers held it past the wait.
+    fn follow_or_say(&self) -> Result<(), MembershipError> {
+        let busy = || {
+            MembershipError::Storage(
+                "the memberships were held by their readers past the wait".to_owned(),
+            )
+        };
+        let deadline = std::time::Instant::now() + FOLLOW_WAIT;
+        let seq = loop {
+            match self.state.try_read() {
+                Ok(state) => break state.seq,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(_) => return Err(busy()),
+            }
+        };
+        let mut entries = Vec::new();
+        for item in self.store.entries_after(seq)? {
+            let bytes =
+                cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
+            entries.push((Entry::decode(&bytes)?, bytes));
+        }
+        let deadline = std::time::Instant::now() + FOLLOW_WAIT;
+        let mut state = loop {
+            match self.state.try_write() {
+                Ok(state) => break state,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(_) => return Err(busy()),
+            }
+        };
+        // What another thread applied meanwhile, from the store or from its own change, is not
+        // applied again.
+        let mut next = state.clone();
+        for (entry, bytes) in &entries {
+            if entry.seq <= next.seq {
+                continue;
+            }
+            apply(&mut next, entry, bytes).map_err(|error| {
+                MembershipError::Storage(format!(
+                    "an entry another instance added does not follow the memberships read: {error}"
+                ))
+            })?;
+        }
+        *state = next;
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
+        Ok(())
     }
 
     /// Appends `entry` (its `seq` and `previous` filled here), then applies it: the journal is
@@ -1277,18 +1345,92 @@ impl Store {
     }
 
     /// Fences the store for an identity reset: what would create authority under the identity
-    /// being retired, a task session included, is refused from now on in this process.
-    pub fn fence(&self) {
-        let _writing = self.begin();
-        self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+    /// being retired, a task session included, is refused from now on, in this process and, on a
+    /// store other instances share, in every instance, once the changes they had under way ended;
+    /// the memberships are then read as the store holds them (X171). A fence every instance cannot
+    /// be told of refuses the reset.
+    pub fn fence(&self) -> Result<(), MembershipError> {
+        // Every instance's fence first, with no lock of this process held while it waits for the
+        // changes under way, this process's included.
+        let held = self
+            .fence_held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some();
+        let taken = if held { None } else { self.store.fence_all()? };
+        {
+            let _writing = self.begin();
+            if let Some(taken) = taken {
+                *self
+                    .fence_held
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = Some(taken);
+            }
+            self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        // What the reset reads is every change made before the fence, or the reset is refused.
+        if self.store.shared()
+            && let Err(error) = self.follow_or_say()
+        {
+            self.unfence();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Whether the fence of a reset still holds in every instance, before a step that cannot be
+    /// undone (X171): on a store instances share the fence held on the database's connection
+    /// may have been dropped with it, and every instance then takes changes again.
+    pub fn fence_holds(&self) -> Result<(), MembershipError> {
+        if !self.store.shared() {
+            return Ok(());
+        }
+        let holds = self
+            .fence_held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|fence| fence.held());
+        if holds {
+            Ok(())
+        } else {
+            Err(MembershipError::Storage(
+                "the fence of the identity reset was lost with its connection to the database: \
+                 nothing irreversible is done; run the reset again"
+                    .to_owned(),
+            ))
+        }
+    }
+
+    /// Lets the other instances go once the reset is done: the identity is retired, its
+    /// memberships ended, and this process, fenced still, serves nothing more until it restarts.
+    pub fn release_shared_fence(&self) {
+        drop(
+            self.fence_held
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take(),
+        );
+    }
+
+    /// Whether a reset fenced the memberships, in this process or another instance (X171).
+    pub fn fenced_anywhere(&self) -> Result<bool, MembershipError> {
+        Ok(self.fenced.load(std::sync::atomic::Ordering::SeqCst)
+            || self.store.fenced_elsewhere()?)
     }
 
     /// Lifts the fence of a reset refused before anything irreversible (WP-4.9): the identity is
-    /// unchanged, and serves as before.
+    /// unchanged, and serves as before, here and in every instance.
     pub fn unfence(&self) {
         let _writing = self.begin();
         self.fenced
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        drop(
+            self.fence_held
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take(),
+        );
     }
 
     /// Whether an identity reset fenced the store.
@@ -1297,7 +1439,7 @@ impl Store {
     }
 
     fn unfenced(&self) -> Result<(), MembershipError> {
-        if self.fenced.load(std::sync::atomic::Ordering::SeqCst) {
+        if self.fenced.load(std::sync::atomic::Ordering::SeqCst) || self.store.fenced_elsewhere()? {
             return Err(MembershipError::Invalid(
                 "an identity reset is under way: nothing new is taken under this identity"
                     .to_owned(),
@@ -1344,10 +1486,28 @@ impl Store {
         detail: Option<Vec<u8>>,
         statements: Vec<RingStatement>,
     ) -> Result<Entry, MembershipError> {
-        let (seq, previous) = {
-            let state = self.read();
-            (state.seq + 1, chain(state.last.as_deref()))
+        // What this attempt wrote before, or what is kept: an attempt run again starts from what
+        // is kept, never from what a lost attempt wrote (decision X68).
+        let pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&applying.attempt())
+            .cloned();
+        let base = match pending {
+            Some(pending) => pending,
+            None => {
+                // A change follows every entry the store holds, another instance's included.
+                if self.store.shared() {
+                    self.follow();
+                }
+                self.state
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone()
+            }
         };
+        let (seq, previous) = (base.seq + 1, chain(base.last.as_deref()));
         let entry = Entry {
             seq,
             kind,
@@ -1364,12 +1524,43 @@ impl Store {
         // or one the history does not take never reaches the journal.
         Entry::decode(&bytes)
             .map_err(|error| MembershipError::Invalid(format!("the entry: {}", error.0)))?;
-        let mut next = self.read().clone();
+        let mut next = base;
         apply(&mut next, &entry, &bytes).map_err(|error| {
             MembershipError::Invalid(format!("the history does not take the entry: {error}"))
         })?;
-        sequence::append(&self.dir, JOURNAL, &bytes)?;
-        *self.state.write().unwrap_or_else(PoisonError::into_inner) = next;
+        if let Err(error) = self.store.append(entry.seq, &bytes) {
+            if matches!(error, MembershipError::Conflict { .. }) {
+                // The entries kept moved past this process's: once the attempt ends, it reads
+                // them again, so the next operation follows what is kept.
+                let (store, state) = (Arc::clone(&self.store), Arc::clone(&self.state));
+                applying.on_end(move |_| match replay(store.as_ref()) {
+                    Ok(read) => *state.write().unwrap_or_else(PoisonError::into_inner) = read,
+                    Err(error) => tracing::warn!(
+                        event.name = "host.membership.state_unread",
+                        component = "host",
+                        error = %error,
+                        "the memberships could not be read again after a conflict"
+                    ),
+                });
+            }
+            return Err(error);
+        }
+        // Shown once the operation is kept; a later entry of this attempt follows it.
+        let attempt = applying.attempt();
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(attempt, next);
+        let (pending, state) = (Arc::clone(&self.pending), Arc::clone(&self.state));
+        applying.on_end(move |kept| {
+            let written = pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&attempt);
+            if let (true, Some(written)) = (kept, written) {
+                *state.write().unwrap_or_else(PoisonError::into_inner) = written;
+            }
+        });
         // The views follow the journal, best effort: the journal is authoritative.
         if let (Kind::Manifest, Some(envelope), Some(epoch)) =
             (kind, entry.detail.as_deref(), epoch)
@@ -1416,7 +1607,7 @@ impl Store {
             ]))
         };
         if let Ok(bytes) = summary
-            && let Err(error) = replace_view(&self.dir, SNAPSHOT, format::VIEW, &bytes)
+            && let Err(error) = self.store.replace_summary(&bytes)
         {
             tracing::warn!(
                 event.name = "host.membership.snapshot_unwritten",
@@ -1435,15 +1626,12 @@ impl Store {
         epoch: u64,
         digest: &Digest,
     ) -> Result<(), MembershipError> {
-        let dir = self.manifests.subdir(&hex(membership_id), true)?;
-        let history = dir.subdir(HISTORY, true)?;
-        let name = format!(
-            "{epoch}-{}.cose",
-            digest.to_string().trim_start_matches("sha256:")
-        );
-        replace_view(&history, &name, format::VIEW, envelope)?;
-        replace_view(&dir, CURRENT, format::VIEW, envelope)?;
-        Ok(())
+        self.store.keep_manifest(
+            membership_id,
+            epoch,
+            digest.to_string().trim_start_matches("sha256:"),
+            envelope,
+        )
     }
 
     /// Keeps the lease a member holds for `task_id` of `id`, replacing the one before (WP-4.3).
@@ -1453,23 +1641,21 @@ impl Store {
         task_id: &str,
         envelope: &[u8],
     ) -> Result<(), MembershipError> {
-        let dir = self.dir.subdir(LEASES, true)?.subdir(&hex(id), true)?;
-        replace_view(&dir, &format!("{task_id}.cose"), format::VIEW, envelope)?;
-        Ok(())
+        self.store.keep(
+            &Doc::Lease {
+                membership: id,
+                task: task_id,
+            },
+            envelope,
+        )
     }
 
     /// The lease a member holds for `task_id` of `id`, if any.
     pub fn lease(&self, id: &[u8; 16], task_id: &str) -> Result<Option<Vec<u8>>, MembershipError> {
-        // Reading creates nothing: a member that never leased has no directory.
-        if !self.dir.subdirs()?.iter().any(|name| name == LEASES) {
-            return Ok(None);
-        }
-        let leases = self.dir.subdir(LEASES, false)?;
-        if !leases.subdirs()?.contains(&hex(id)) {
-            return Ok(None);
-        }
-        let dir = leases.subdir(&hex(id), false)?;
-        Ok(read_view(&dir, &format!("{task_id}.cose"), format::VIEW)?)
+        self.store.doc(&Doc::Lease {
+            membership: id,
+            task: task_id,
+        })
     }
 
     /// The coordinator's ring statements journaled with `id`'s manifest of `epoch`.
@@ -1504,6 +1690,12 @@ impl Store {
     }
 
     pub fn membership(&self, id: &[u8; 16]) -> Option<Held> {
+        let found = self.read().memberships.get(id).cloned();
+        if found.is_some() {
+            return found;
+        }
+        // One another instance made a moment ago is read at once, not within the bound (WP-28.6).
+        self.catch_up_missing(id);
         self.read().memberships.get(id).cloned()
     }
 
@@ -1516,12 +1708,7 @@ impl Store {
                 "only a coordinator schedules verification of a live membership".to_owned(),
             ));
         }
-        if let Some(scheduled) = self.verification_scheduled(id)? {
-            return Ok(scheduled);
-        }
-        let dir = self.dir.subdir(VERIFICATIONS, true)?;
-        replace_view(&dir, &hex(id), format::VIEW, &now.to_be_bytes())?;
-        Ok(now)
+        self.schedule(id, now)
     }
 
     /// [`Self::schedule_verification`] inside the security-mutation transaction. The consumable
@@ -1538,10 +1725,30 @@ impl Store {
                 "only a coordinator schedules verification of a live membership".to_owned(),
             ));
         }
-        let scheduled = self.verification_scheduled(id)?.unwrap_or(now);
         let _ = applying;
-        let dir = self.dir.subdir(VERIFICATIONS, true)?;
-        replace_view(&dir, &hex(id), format::VIEW, &scheduled.to_be_bytes())?;
+        self.schedule(id, now)
+    }
+
+    /// Keeps `now` as when `id`'s verification was asked, unless one is asked already: the first
+    /// time stays, decided in the store on the request as it stands, so of the requests that
+    /// arrive together every one is answered the same time.
+    fn schedule(&self, id: &[u8; 16], now: u64) -> Result<u64, MembershipError> {
+        let mut scheduled = now;
+        self.store.change(
+            &Doc::Verification { membership: id },
+            // Asked again when the store's unit of work is: each time it answers for the
+            // document it is given then.
+            &mut |held| match held.map(scheduled_at).transpose()?.flatten() {
+                Some(first) => {
+                    scheduled = first;
+                    Ok(None)
+                }
+                None => {
+                    scheduled = now;
+                    Ok(Some(now.to_be_bytes().to_vec()))
+                }
+            },
+        )?;
         Ok(scheduled)
     }
 
@@ -1561,21 +1768,19 @@ impl Store {
         bytes.extend_from_slice(&serde_json::to_vec(result).map_err(|error| {
             MembershipError::Storage(format!("a verification result does not encode: {error}"))
         })?);
-        let dir = self
-            .dir
-            .subdir(VERIFICATIONS, true)?
-            .subdir(VERIFICATION_RESULTS, true)?;
-        let name = hex(applying.operation_id().as_bytes());
-        if let Some(existing) = read_view(&dir, &name, format::VIEW)? {
-            if existing == bytes {
-                return Ok(());
-            }
-            return Err(MembershipError::Storage(
-                "an immutable verification result differs from its operation".to_owned(),
-            ));
-        }
-        replace_view(&dir, &name, format::VIEW, &bytes)?;
-        Ok(())
+        // Kept once, decided in the store on what it holds: the same result again is the first.
+        self.store.change(
+            &Doc::VerificationResult {
+                operation: applying.operation_id().as_bytes(),
+            },
+            &mut |held| match held {
+                Some(existing) if existing == bytes.as_slice() => Ok(None),
+                Some(_) => Err(MembershipError::Storage(
+                    "an immutable verification result differs from its operation".to_owned(),
+                )),
+                None => Ok(Some(bytes.clone())),
+            },
+        )
     }
 
     /// The exact answer an applied verification recorded for recovery.
@@ -1593,55 +1798,47 @@ impl Store {
 
     /// When the coordinator scheduled `id` for verification, across restarts.
     pub fn verification_scheduled(&self, id: &[u8; 16]) -> Result<Option<u64>, MembershipError> {
-        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
-            return Ok(None);
-        }
-        let dir = self.dir.subdir(VERIFICATIONS, false)?;
-        let Some(bytes) = read_view(&dir, &hex(id), format::VIEW)? else {
-            return Ok(None);
-        };
-        let instant = match bytes.len() {
-            8 => bytes.get(..8),
-            33 if bytes.first() == Some(&0) => bytes.get(1..9),
-            _ => return Ok(None),
-        };
-        let bytes: [u8; 8] = instant
-            .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| {
-                MembershipError::Storage("a verification schedule has no eight-byte instant".into())
-            })?;
-        Ok(Some(u64::from_be_bytes(bytes)))
+        self.store
+            .doc(&Doc::Verification { membership: id })?
+            .as_deref()
+            .map(scheduled_at)
+            .transpose()
+            .map(Option::flatten)
     }
 
-    fn verification_observed(&self, id: &[u8; 16], operation_id: &OperationId) -> Option<Observed> {
-        let bytes = self.verification_record(operation_id).ok()??;
-        if bytes.len() < 24 || bytes.get(8..24)? != id {
-            return None;
-        }
-        let revision = u64::from_be_bytes(bytes.get(..8)?.try_into().ok()?);
-        Some(Observed {
-            revision,
-            target: Some(uuid_text(id)),
-        })
+    /// What a verification's kept answer shows of `operation_id`. No answer kept is an answer;
+    /// one that does not read stops the recovery that asked.
+    fn verification_observed(
+        &self,
+        id: &[u8; 16],
+        operation_id: &OperationId,
+    ) -> Result<Option<Observed>, String> {
+        let Some(bytes) = self
+            .verification_record(operation_id)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let shown = (|| {
+            if bytes.len() < 24 || bytes.get(8..24)? != id {
+                return None;
+            }
+            let revision = u64::from_be_bytes(bytes.get(..8)?.try_into().ok()?);
+            Some(Observed {
+                revision,
+                target: Some(uuid_text(id)),
+            })
+        })();
+        Ok(shown)
     }
 
     fn verification_record(
         &self,
         operation_id: &OperationId,
     ) -> Result<Option<Vec<u8>>, MembershipError> {
-        if !self.dir.subdirs()?.iter().any(|name| name == VERIFICATIONS) {
-            return Ok(None);
-        }
-        let verifications = self.dir.subdir(VERIFICATIONS, false)?;
-        if !verifications
-            .subdirs()?
-            .iter()
-            .any(|name| name == VERIFICATION_RESULTS)
-        {
-            return Ok(None);
-        }
-        let dir = verifications.subdir(VERIFICATION_RESULTS, false)?;
-        read_view(&dir, &hex(operation_id.as_bytes()), format::VIEW).map_err(Into::into)
+        self.store.doc(&Doc::VerificationResult {
+            operation: operation_id.as_bytes(),
+        })
     }
 
     /// Consumes a scheduled verification only after the exact member completed a proven session.
@@ -1657,9 +1854,7 @@ impl Store {
         if held.role != Role::Coordinator || &held.request.member.host_id != peer {
             return Ok(false);
         }
-        let dir = self.dir.subdir(VERIFICATIONS, false)?;
-        crate::storage::tombstone::delete(&dir, &hex(id))?;
-        Ok(true)
+        self.store.remove(&Doc::Verification { membership: id })
     }
 
     /// When `id` last entered `active`, from the journal's clock (WP-4.6).
@@ -1803,12 +1998,7 @@ impl Store {
             Some(bytes.clone()),
         )?;
         // The view follows the journal, best effort.
-        if let Err(error) = replace_view(
-            &self.invites,
-            &format!("{}.cbor", hex(&invitation.invite_id)),
-            format::VIEW,
-            &bytes,
-        ) {
+        if let Err(error) = self.store.keep_invitation(&invitation.invite_id, &bytes) {
             tracing::warn!(
                 event.name = "host.membership.view_unwritten",
                 component = "host",
@@ -1849,7 +2039,8 @@ impl Store {
     }
 
     /// Checks an enrollment without writing: the invitation, the proof, the peer, the request.
-    /// Answers the pending membership the enrollment would create.
+    /// Answers the pending membership the enrollment would create. The invitation is read as the
+    /// store holds it: one another instance issued a moment ago is found (WP-28.6).
     pub fn check_enroll(
         &self,
         coordinator: &Coordinator<'_>,
@@ -1858,12 +2049,16 @@ impl Store {
         now: u64,
     ) -> Result<Pending, MembershipError> {
         let refused = |detail: &str| MembershipError::Enrollment(detail.to_owned());
-        let (invitation, state) = self
-            .read()
-            .invites
-            .get(&request.invite_id)
-            .cloned()
-            .ok_or_else(|| refused("no invitation of that id"))?;
+        let held = self.read().invites.get(&request.invite_id).cloned();
+        let held = match held {
+            Some(held) => Some(held),
+            None => {
+                // One another instance issued a moment ago is read at once (WP-28.6).
+                self.catch_up_missing(&request.invite_id);
+                self.read().invites.get(&request.invite_id).cloned()
+            }
+        };
+        let (invitation, state) = held.ok_or_else(|| refused("no invitation of that id"))?;
         if state != InviteState::Issued {
             return Err(refused("the invitation was used or revoked"));
         }
@@ -2720,6 +2915,11 @@ impl Store {
         held_epoch: Option<u64>,
     ) -> Result<record::MembershipAnswer, MembershipError> {
         let _ = coordinator;
+        // A membership another instance made a moment ago is read at once (WP-28.6).
+        let known = self.read().memberships.contains_key(id);
+        if !known {
+            self.catch_up_missing(id);
+        }
         // One reading of the state: the status, the manifests and their statements agree.
         let state = self.read();
         let held = state.memberships.get(id).ok_or_else(|| {
@@ -3223,6 +3423,20 @@ impl crate::session::peers::PinSource for Store {
     /// for a `membership` session, on which the coordinator answers the manifest that ended it:
     /// the member's receipt. An orphaned membership pins nobody.
     fn pin(&self, host_id: &[u8; 16], operation: Option<SessionOperation>) -> Option<String> {
+        let pinned = self.pinned(host_id, operation);
+        if pinned.is_some() {
+            return pinned;
+        }
+        // A membership another instance made or approved a moment ago pins its peer at once:
+        // asked of the store at most once a second for the same peer (WP-29.1).
+        self.catch_up_missing(host_id);
+        self.pinned(host_id, operation)
+    }
+}
+
+impl Store {
+    /// The pin of `host_id` the memberships held give for `operation`.
+    fn pinned(&self, host_id: &[u8; 16], operation: Option<SessionOperation>) -> Option<String> {
         self.read().memberships.values().find_map(|held| {
             let peer = match held.role {
                 Role::Coordinator => &held.request.member,
@@ -3277,11 +3491,18 @@ impl Domain for Memberships<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
-        self.0.observe(operation_id).or_else(|| {
-            let id = target.and_then(id_from_text)?;
-            self.0.verification_observed(&id, operation_id)
-        })
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        if let Some(observed) = self.0.observe(operation_id) {
+            return Ok(Some(observed));
+        }
+        let Some(id) = target.and_then(id_from_text) else {
+            return Ok(None);
+        };
+        self.0.verification_observed(&id, operation_id)
     }
 }
 

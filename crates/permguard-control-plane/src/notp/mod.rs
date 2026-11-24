@@ -13,9 +13,7 @@
 pub mod mirror;
 
 use permguard_core::keys::PublicSet as _;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
 use permguard_core::metrics::labels;
@@ -23,7 +21,7 @@ use permguard_core::metrics::{Metric, Metrics, SECONDS};
 use permguard_core::{ApiError, Disclosure, ErrorClass, Subject};
 
 use crate::engine::{Engine, EngineError, EngineLimits, LedgerIdentity};
-use crate::store::FileObjectStore;
+use crate::store::{LedgerStore, Ledgers};
 use permguard_notp::*;
 use permguard_objects::statement::HeadStatement;
 use permguard_objects::{compress, limits};
@@ -64,9 +62,9 @@ const WIRE_BYTES: Metric = Metric::counter(
 #[derive(Clone)]
 pub struct NotpFacade {
     pub catalog: Arc<dyn Catalog>,
-    /// `<volume>/data/zones` — the same root the catalog keeps, so a ledger's
-    /// store is always beside its record.
-    pub zones_root: PathBuf,
+    /// What hands out the store of each ledger: one a ledger, shared with everything else that
+    /// reads and writes it, so that they meet in its holds.
+    pub ledgers: Arc<dyn Ledgers>,
     /// The ring that signs head statements — the git-like ring, never the
     /// one sealing the audit trail.
     pub keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
@@ -89,8 +87,6 @@ pub struct NotpFacade {
     pub audit_refusals: bool,
     /// Where the numbers go; a handle that may hold nothing, costing a branch.
     pub metrics: Metrics,
-    /// One store per ledger, shared: the CAS lock must be process-wide.
-    stores: Arc<Mutex<HashMap<String, Arc<FileObjectStore>>>>,
     /// The Host's authorization, before anything is resolved (WP-2.4): `policy.push` on the exact
     /// ledger for a push, `catalog.read` on it for a ref read, a pull or a fetch until the Host
     /// task transport of WP-4.x carries pulls for `policy.mirror` members; the key ring stays open,
@@ -110,7 +106,7 @@ impl NotpFacade {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         catalog: Arc<dyn Catalog>,
-        zones_root: PathBuf,
+        ledgers: Arc<dyn Ledgers>,
         keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
         authority: [u8; 16],
         limits: EngineLimits,
@@ -127,7 +123,7 @@ impl NotpFacade {
     ) -> Self {
         Self {
             catalog,
-            zones_root,
+            ledgers,
             keys,
             authority,
             limits,
@@ -141,7 +137,6 @@ impl NotpFacade {
             audit_refusals,
             metrics,
             authorization,
-            stores: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -279,7 +274,7 @@ impl NotpFacade {
         zone: &str,
         ledger: &str,
         access: Access,
-    ) -> Result<(LedgerIdentity, Arc<FileObjectStore>), ApiError> {
+    ) -> Result<(LedgerIdentity, Arc<dyn LedgerStore>), ApiError> {
         let zone = self
             .catalog
             .get_zone(&Selector::parse(zone))
@@ -296,18 +291,7 @@ impl NotpFacade {
             ));
         }
 
-        let mut stores = self
-            .stores
-            .lock()
-            .map_err(|_| internal("the store table is poisoned"))?;
-        let store = Arc::clone(stores.entry(ledger.id.clone()).or_insert_with(|| {
-            Arc::new(FileObjectStore::new(
-                self.zones_root
-                    .join(&zone.id)
-                    .join("ledgers")
-                    .join(&ledger.id),
-            ))
-        }));
+        let store = self.ledgers.ledger(&zone.id, &ledger.id);
 
         Ok((
             LedgerIdentity {
@@ -331,7 +315,7 @@ impl NotpFacade {
         &'a self,
         caller: &str,
         identity: LedgerIdentity,
-        store: &'a FileObjectStore,
+        store: &'a dyn LedgerStore,
     ) -> Engine<'a> {
         Engine {
             store,
@@ -401,7 +385,7 @@ impl NotpFacade {
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
             let signer = self.signer();
-            let engine = self.engine(caller, identity, &store);
+            let engine = self.engine(caller, identity, store.as_ref());
             let (state, statement) = engine.get_ref(name, &signer).map_err(api_error)?;
             Ok(GetRefResponse {
                 ref_digest: crate::store::ref_digest(&state).map_err(|e| api_error(e.into()))?,
@@ -426,7 +410,7 @@ impl NotpFacade {
         let result = match self.resolve(zone, ledger, Access::Push) {
             Ok((identity, store)) => {
                 match self
-                    .engine(&Self::caller_of(actor), identity, &store)
+                    .engine(&Self::caller_of(actor), identity, store.as_ref())
                     .negotiate_push(request)
                 {
                     Ok(mut response) => {
@@ -455,7 +439,7 @@ impl NotpFacade {
         let result = match self.resolve(zone, ledger, Access::Push) {
             Ok((identity, store)) => match self.decode_batch(request) {
                 Ok(raw) => match self
-                    .engine(&Self::caller_of(actor), identity, &store)
+                    .engine(&Self::caller_of(actor), identity, store.as_ref())
                     .upload(&raw)
                 {
                     Ok(response) => {
@@ -493,7 +477,7 @@ impl NotpFacade {
                 let signer = self.signer();
                 let (zone_id, ledger_id) = (identity.zone_id.clone(), identity.ledger_id.clone());
                 match self
-                    .engine(&Self::caller_of(actor), identity, &store)
+                    .engine(&Self::caller_of(actor), identity, store.as_ref())
                     .commit_push(request, &signer)
                 {
                     Ok(response) => {
@@ -534,7 +518,7 @@ impl NotpFacade {
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
             let signer = self.signer();
-            let engine = self.engine(caller, identity, &store);
+            let engine = self.engine(caller, identity, store.as_ref());
             let mut response = engine.negotiate_pull(request, &signer).map_err(api_error)?;
             response.compression = self.advertised();
             Ok(response)
@@ -566,7 +550,7 @@ impl NotpFacade {
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger, Access::Read)?;
-            let engine = self.engine(caller, identity, &store);
+            let engine = self.engine(caller, identity, store.as_ref());
             let mut response = engine.fetch(request).map_err(api_error)?;
             if self.compression && request.accept_compression.as_deref() == Some(compress::DEFLATE)
             {
@@ -916,7 +900,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let facade = NotpFacade::new(
             Arc::new(FileCatalog::new(root.join("zones"))),
-            root.join("zones"),
+            Arc::new(crate::store::FileLedgers::new(root.join("zones"))),
             signer,
             [0x11; 16],
             EngineLimits {

@@ -267,7 +267,8 @@ pub type Page = Block<Value>;
 /// when one is composed (WP-6.2b).
 #[derive(Clone, Copy)]
 pub struct Sources<'a> {
-    pub store: &'a EventStore,
+    /// The legacy store; `None` on a backend with no volume, which keeps none (decision X125).
+    pub store: Option<&'a EventStore>,
     pub host: Option<&'a StreamConsumer>,
 }
 
@@ -341,7 +342,16 @@ pub fn read(
     keys: &CursorKeys,
     window: &Window,
 ) -> Result<Page, ReadError> {
-    read_with(&Sources { store, host: None }, scope, filters, keys, window)
+    read_with(
+        &Sources {
+            store: Some(store),
+            host: None,
+        },
+        scope,
+        filters,
+        keys,
+        window,
+    )
 }
 
 /// Reads one bounded, filtered block of `scope` from `sources`: the legacy store first, then each
@@ -359,21 +369,26 @@ pub fn read_with(
     if let Scope::Stream { .. } = scope
         && legacy
         && host_runs.is_empty()
-        && !store
-            .scope_path(scope)
-            .map_err(|error| ReadError::Unavailable(error.to_string()))?
-            .is_dir()
+        && !match store {
+            Some(store) => store
+                .scope_path(scope)
+                .map_err(|error| ReadError::Unavailable(error.to_string()))?
+                .is_dir(),
+            None => false,
+        }
     {
         return Err(ReadError::NotHeld(
             "this store holds no such producer stream in this ledger".to_owned(),
         ));
     }
-    let gate = store.scope_gate(scope);
-    let _reading = match gate.lock() {
+    let gate = store.map(|store| store.scope_gate(scope));
+    let _reading = gate.as_ref().map(|gate| match gate.lock() {
         Ok(held) => held,
         Err(poisoned) => poisoned.into_inner(),
-    };
-    let (legacy_end, segments) = if legacy {
+    });
+    // Without a legacy store there is nothing legacy to read: only the consumer's runs.
+    let legacy = legacy && store.is_some();
+    let (legacy_end, segments) = if let (true, Some(store)) = (legacy, store) {
         (
             store
                 .frontier(scope)
@@ -432,7 +447,7 @@ pub fn read_with(
     let mut stopped_early = false;
     let mut end = Frontier::empty();
 
-    if legacy {
+    if let (true, Some(store)) = (legacy, store) {
         let mut position = cursor.position(&stream);
         if position.segment == 0 {
             position.segment = oldest_segment;
@@ -602,7 +617,10 @@ pub fn read_with(
             .filter(|(_, origin)| origin.is_none())
             .map(|(record, _)| record.clone())
             .collect();
-        let (mut proof, mut inclusion) = proofs(store, &legacy_records)?;
+        let (mut proof, mut inclusion) = match store {
+            Some(store) => proofs(store, &legacy_records)?,
+            None => (Vec::new(), Vec::new()),
+        };
         // Each entry names its format (owner decision of 2026-10-18): the JWS members unchanged.
         for envelope in &mut proof {
             if let Some(object) = envelope.as_object_mut() {
@@ -1143,11 +1161,13 @@ pub fn held_by_ids(
         zone: zone.to_owned(),
         ledger: ledger.to_owned(),
     };
-    let viewed = sources
-        .store
-        .scope_path(&scope)
-        .map_err(|error| ReadError::Unavailable(error.to_string()))?
-        .is_dir();
+    let viewed = match sources.store {
+        Some(store) => store
+            .scope_path(&scope)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?
+            .is_dir(),
+        None => false,
+    };
     if viewed {
         return Ok(true);
     }

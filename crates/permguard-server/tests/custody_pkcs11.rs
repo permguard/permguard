@@ -21,6 +21,11 @@ use permguard_host::keys::custody::{Dek, Remote as _, Wrap as _};
 use permguard_host::storage::Dir;
 use permguard_server::custody::pkcs11::{Hsm, HsmKek, SharedHsm, Token};
 
+/// The slots a custody keeps its references in, below `dir`.
+fn slots(dir: Dir) -> std::sync::Arc<dyn permguard_host::keys::slots::SlotStore> {
+    std::sync::Arc::new(permguard_host::keys::slots::files::FileSlots::new(dir))
+}
+
 const MODULES: &[&str] = &[
     "/usr/lib/softhsm/libsofthsm2.so",
     "/usr/lib/x86_64-linux-gnu/softhsm/libsofthsm2.so",
@@ -96,7 +101,7 @@ fn a_ring_key_is_generated_in_the_token_and_signs_there(hsm: &Arc<Hsm>, root: &s
     let dir = root.join("ring");
     std::fs::create_dir_all(&dir).expect("created");
     let keys = SharedHsm(Arc::clone(hsm))
-        .provider("host.operations", Dir::open(&dir).expect("opens"))
+        .provider("host.operations", slots(Dir::open(&dir).expect("opens")))
         .expect("a provider");
     for suite in [Suite::Ed25519Sha256V1, Suite::P256Sha256V1] {
         let (slot, public) = keys
@@ -142,7 +147,7 @@ fn the_identity_is_provisioned_and_opened_in_the_token(hsm: &Arc<Hsm>, root: &st
         &volume,
         |_| {
             shared
-                .provider("host.identity", keys())
+                .provider("host.identity", slots(keys()))
                 .map_err(IdentityError::from)
         },
         Suite::Ed25519Sha256V1,
@@ -153,7 +158,7 @@ fn the_identity_is_provisioned_and_opened_in_the_token(hsm: &Arc<Hsm>, root: &st
     let opened = Identity::open(
         &volume,
         shared
-            .provider("host.identity", keys())
+            .provider("host.identity", slots(keys()))
             .expect("a provider"),
     )
     .expect("opened from the token");

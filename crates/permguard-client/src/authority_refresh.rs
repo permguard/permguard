@@ -178,6 +178,14 @@ async fn run(
         .await;
         let pause = match outcome {
             Ok(cadence) => {
+                tracing::debug!(
+                    event.name = "authz.authority_refreshed",
+                    component = "server",
+                    url = %source.url,
+                    keys = trust.anchor().map_or(0, |anchor| anchor.keys.len()),
+                    next_in_ms = u64::try_from(cadence.as_millis()).unwrap_or(u64::MAX),
+                    "the Authority Plane's keys and lists are fetched"
+                );
                 retry = FIRST_RETRY;
                 cadence
             }
@@ -205,6 +213,11 @@ async fn run(
                 break;
             }
             if trust.anchor().is_some() && trust.take_lists_wanted() {
+                tracing::debug!(
+                    event.name = "authz.authority_refresh_woken",
+                    component = "server",
+                    "a token names a status list not held: the lists are fetched now"
+                );
                 break;
             }
         }

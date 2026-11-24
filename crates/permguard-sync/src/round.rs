@@ -117,7 +117,7 @@ pub enum Holds {
     #[default]
     None,
     /// The Host's hold store.
-    Store(Arc<permguard_host::holds::HoldStore>),
+    Store(Arc<dyn permguard_host::holds::HoldStore>),
     /// The plane reads holds and was handed none: nothing is reaped, since what a hold keeps is
     /// never guessed.
     Unavailable,

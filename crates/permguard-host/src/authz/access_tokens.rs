@@ -394,6 +394,12 @@ impl permguard_core::authz::Authenticator for TokenAuthenticator {
             // A list the issuer opened since the last fetch: not judged yet, never `401`; the
             // boundary asks again while the list is fetched (BUG-0336).
             Err(refused) if refused.step == 6 && refused.reason == LIST_NOT_HELD => {
+                tracing::debug!(
+                    event.name = "authz.token_pending",
+                    component = "host",
+                    list = status_list_uri_of(token).as_deref().unwrap_or(""),
+                    "an access token names a status list not held yet: it is fetched"
+                );
                 Err(permguard_core::AccessDenial::pending(
                     "the access token names a status list this Host is fetching: retry in a moment",
                 ))

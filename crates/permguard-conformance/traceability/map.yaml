@@ -59,7 +59,7 @@ sections:
       - crates/permguard-core/src/authz.rs::authorize_is_deny_by_default_and_matches_principal_operation_selector_and_type
       - crates/permguard-host/src/authz/mod.rs::closed_refuses_everybody_and_public_admits_anonymous_and_authenticated_alike
       - crates/permguard-host/src/authz/mod.rs::a_token_decides_alone_and_a_public_grant_never_widens_it
-      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
       - crates/permguard-core/src/authz.rs::a_token_permits_only_what_its_scopes_name
   "1-architecture/1-architecture-server.md#authorization-store":
     paths:
@@ -68,9 +68,9 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
       - crates/permguard-host/src/authz/store.rs
     tests:
-      - crates/permguard-host/src/authz/store.rs::the_bootstrap_is_written_once_and_read_back_at_open
-      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
+      - crates/permguard-authority-plane/src/accounts/files.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/tests/crash_points.rs::every_crash_point_of_a_mutation_recovers_to_one_outcome
     gaps:
       - "open (code): the one-time-claim bootstrap of the recovery administrator is not built, only the offline fingerprint; the grant journal is a segmented directory (recorded interpretation)"
@@ -378,6 +378,64 @@ sections:
       - crates/permguard-server/tests/app.rs::test_a_witness_that_does_not_match_the_volume_refuses_the_start
       - crates/permguard-host/src/membership/task/tests.rs::a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new_boot_id
       - crates/permguard-host/src/authz/mapper.rs::the_bootstrap_fingerprint_maps_and_nothing_presented_is_anonymous
+  "1-architecture/2-architecture-server-host-identity.md#stores":
+    paths:
+      - crates/permguard-host/src/authz/store.rs
+      - crates/permguard-host/src/authz/store/files.rs
+      - crates/permguard-host/src/authz/store/suite.rs
+      - crates/permguard-host/src/operations/grants.rs
+      - crates/permguard-host/src/secrets/mod.rs
+      - crates/permguard-host/src/secrets/files.rs
+      - crates/permguard-host/src/secrets/suite.rs
+      - crates/permguard-host/src/identity/witness.rs
+      - crates/permguard-host/src/identity/witness/files.rs
+      - crates/permguard-host/src/identity/witness/suite.rs
+      - crates/permguard-runtime/src/witness.rs
+    tests:
+      - crates/permguard-host/src/authz/store/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/authz/store/tests.rs::the_commitment_survives_a_restart_and_a_damaged_one_is_not_taken_for_none
+      - crates/permguard-host/tests/crash_points.rs::a_bootstrap_killed_midway_is_committed_or_absent
+      - crates/permguard-host/src/secrets/tests.rs::the_file_backends_keep_their_contracts
+      - crates/permguard-host/src/secrets/tests.rs::a_delivered_key_is_stored_once_witnessed_and_read_back
+      - crates/permguard-host/src/identity/witness.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/identity/witness.rs::the_file_backend_keeps_its_entries_across_a_restart
+  "1-architecture/2-architecture-server-host-identity.md#identity-store":
+    paths:
+      - crates/permguard-host/src/identity/store.rs
+      - crates/permguard-host/src/identity/files.rs
+      - crates/permguard-host/src/identity/suite.rs
+      - crates/permguard-host/src/identity/mod.rs
+      - crates/permguard-host/src/identity/reset.rs
+    tests:
+      - crates/permguard-postgres/tests/instances.rs::one_identity_is_every_instances_and_never_goes_back_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_provision_together_make_one_identity_on_postgresql
+      - crates/permguard-host/src/identity/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/identity/tests.rs::the_file_backend_tells_the_keys_it_holds_by_their_files
+      - crates/permguard-host/tests/crash_points.rs::a_rotation_killed_between_its_writes_is_at_one_epoch_or_the_next
+      - crates/permguard-host/tests/crash_points.rs::a_reset_killed_between_its_writes_keeps_the_identity_or_completes_when_run_again
+      - crates/permguard-host/src/identity/reset/tests.rs::an_interrupted_reset_refuses_the_open_and_completes_when_run_again
+  "1-architecture/2-architecture-server-host-identity.md#trust-held":
+    paths:
+      - crates/permguard-host/src/session/peers.rs
+      - crates/permguard-host/src/session/peers/files.rs
+      - crates/permguard-host/src/session/peers/suite.rs
+      - crates/permguard-host/src/authz/held.rs
+      - crates/permguard-host/src/authz/held/files.rs
+      - crates/permguard-host/src/authz/held/suite.rs
+      - crates/permguard-host/src/authz/authority.rs
+      - crates/permguard-host/src/authz/status_lists.rs
+      - crates/permguard-host/src/time.rs
+      - crates/permguard-host/src/time/files.rs
+      - crates/permguard-host/src/time/suite.rs
+    tests:
+      - crates/permguard-host/src/session/peers/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/session/peers/tests.rs::a_seen_file_naming_another_host_is_refused
+      - crates/permguard-host/src/authz/authority.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/authz/authority.rs::a_list_the_store_keeps_newer_is_not_replaced
+      - crates/permguard-host/src/authz/authority.rs::keys_and_lists_are_verified_held_and_restored_after_a_restart
+      - crates/permguard-host/src/time.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/time.rs::a_damaged_mark_fails_the_start
+      - crates/permguard-host/src/time.rs::a_restart_under_a_clock_set_back_opens_the_anomaly_from_the_volume
   "1-architecture/3-architecture-server-host-membership.md#model":
     paths:
       - crates/permguard-host/src/membership/record.rs
@@ -551,6 +609,16 @@ sections:
       - crates/permguard-host/src/membership/zone/tests.rs::the_member_view_shows_receipts_never_keys
     gaps:
       - "open (code, deferred to WP-4.3 in status.md): a peer reading its membership's safe status through the Host API"
+  "1-architecture/3-architecture-server-host-membership.md#a-member-with-no-listener":
+    paths:
+      - crates/permguard-embedded/src/lib.rs
+      - crates/permguard-runtime/src/composition.rs
+      - crates/permguard-runtime/src/join.rs
+    tests:
+      - crates/permguard-server/tests/peer_session.rs::an_embedded_host_with_no_listener_joins_the_coordinator_it_dials_out_to
+      - crates/permguard-core/tests/refusals.rs::test_a_process_with_no_listener_is_refused_unless_a_composition_embeds_it
+    gaps:
+      - "open (trace): entered on 2026-11-21 from the tests that name the rule (iteration 03, WP-25.3); the rows of its table are not each traced to a test of their own"
   "1-architecture/3-architecture-server-host-membership.md#current-implementation-and-target":
     paths:
       - crates/permguard-host/src/membership/mod.rs
@@ -709,6 +777,47 @@ sections:
       - crates/permguard-host/src/keys/ring/tests.rs::a_revoked_key_leaves_the_set_at_once_and_an_active_one_is_replaced
       - crates/permguard-objects/src/crypto/thumbprint.rs::test_a_legacy_kid_selects_only_the_key_whose_thumbprint_it_is
       - crates/permguard-host/src/secrets/tests.rs::a_root_is_at_least_256_bits_and_its_material_is_witnessed_per_version
+  "1-architecture/4-architecture-server-host-keys.md#stores":
+    paths:
+      - crates/permguard-postgres/src/slots.rs
+      - crates/permguard-postgres/src/delivered.rs
+      - crates/permguard-host/src/secrets/sealed.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs
+      - crates/permguard-host/src/keys/ring/store.rs
+      - crates/permguard-host/src/keys/ring/files.rs
+      - crates/permguard-host/src/keys/ring/suite.rs
+      - crates/permguard-host/src/keys/ring.rs
+      - crates/permguard-host/src/keys/slots.rs
+      - crates/permguard-host/src/keys/slots/files.rs
+      - crates/permguard-host/src/keys/slots/suite.rs
+      - crates/permguard-host/src/keys/custody.rs
+      - crates/permguard-host/src/keys/registry.rs
+      - crates/permguard-host/src/keys/migration.rs
+      - crates/permguard-offline/src/custody/pkcs11.rs
+      - crates/permguard-offline/src/custody/transit.rs
+    tests:
+      - crates/permguard-postgres/tests/instances.rs::a_revoked_key_stops_signing_on_every_instance_within_the_bound_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_read_again_the_ring_another_maintained_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_key_slots_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_sign_with_one_sealed_key_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_delivered_keys_keep_their_contract_sealed_on_postgresql
+      - crates/permguard-host/src/secrets/sealed.rs::a_secret_opens_only_as_what_it_was_sealed_for
+      - crates/permguard-host/src/secrets/sealed.rs::a_secret_of_the_previous_kek_opens_and_is_wrapped_again
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::the_cursor_roots_keep_their_contract_sealed_on_postgresql
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::a_cursor_root_rotates_on_postgresql
+      - crates/permguard-core/tests/config.rs::test_the_shared_backend_keeps_no_key_in_the_clear
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_cuts_a_torn_entry_at_open_and_keeps_a_retired_ring_by_its_host
+      - crates/permguard-host/src/keys/mod.rs::the_file_backend_of_the_slots_keeps_the_contract
+      - crates/permguard-host/src/keys/mod.rs::the_file_backend_keeps_a_slot_in_one_file_named_for_it
+      - crates/permguard-host/src/keys/custody/tests.rs::a_remote_custody_over_key_files_is_refused_and_names_them
+      - crates/permguard-host/tests/crash_points.rs::a_prepublication_killed_between_its_writes_leaves_one_successor
+      - crates/permguard-host/tests/crash_points.rs::a_hand_over_killed_between_its_writes_leaves_the_successor_signing
+      - crates/permguard-host/tests/crash_points.rs::a_sealing_killed_between_its_entry_and_its_key_seals_at_the_next_start
+      - crates/permguard-host/tests/crash_points.rs::a_retirement_killed_between_its_writes_opens_as_a_new_ring
+      - crates/permguard-host/tests/crash_points.rs::a_binding_killed_between_its_entry_and_its_file_is_issued_once_more_and_no_more
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_reads_the_kept_bindings_past_one_that_does_not_read
+      - crates/permguard-host/src/keys/ring/tests.rs::the_file_backend_opened_to_read_writes_nothing
   "1-architecture/5-architecture-server-host-audit.md#audit-versus-evidence":
     paths:
       - crates/permguard-host/src/audit/mod.rs
@@ -750,6 +859,42 @@ sections:
       - crates/permguard-host/src/operations/mutation/tests.rs::a_retry_learns_the_answer_inside_the_window_and_another_request_is_refused
       - crates/permguard-host/src/operations/mutation/tests.rs::an_audit_outage_refuses_new_mutations_degrades_the_host_and_heals_once_written
       - crates/permguard-host/src/operations/mutation/tests.rs::an_uncertain_domain_write_leaves_the_intent_for_the_next_start
+  "1-architecture/5-architecture-server-host-audit.md#stores":
+    paths:
+      - crates/permguard-host/src/audit/store.rs
+      - crates/permguard-host/src/audit/trail.rs
+      - crates/permguard-host/src/audit/suite.rs
+      - crates/permguard-postgres/src/audit.rs
+      - crates/permguard-s3/src/audit.rs
+      - crates/permguard-host/src/holds.rs
+      - crates/permguard-host/src/holds/files.rs
+      - crates/permguard-host/src/holds/suite.rs
+      - crates/permguard-host/src/api/replay.rs
+      - crates/permguard-host/src/api/replay/files.rs
+      - crates/permguard-host/src/api/replay/suite.rs
+      - crates/permguard-host/src/api/gc.rs
+      - crates/permguard-host/src/audit/mod.rs
+      - crates/permguard-host/src/audit/index.rs
+    tests:
+      - crates/permguard-host/src/audit/store.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-postgres/tests/host_stores.rs::the_audit_trails_keep_their_contract_on_postgresql
+      - crates/permguard-s3/tests/audit.rs::sealed_days_settle_to_s3_and_the_trail_verifies_offline
+      - crates/permguard-host/src/holds/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/holds/tests.rs::a_hold_removed_or_edited_outside_an_operation_is_detected
+      - crates/permguard-host/src/holds/tests.rs::a_file_the_index_lacks_keeps_and_a_missing_index_is_refused
+      - crates/permguard-host/src/holds/tests.rs::a_hold_that_does_not_read_is_an_error_never_skipped
+      - crates/permguard-host/src/api/replay/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/api/replay/tests.rs::a_plan_is_consumed_once_and_expires
+      - crates/permguard-host/src/api/replay/tests.rs::an_approval_survives_a_restart_and_recovery_finds_it_by_its_operation
+      - crates/permguard-host/tests/crash_points.rs::a_hold_add_killed_midway_is_whole_or_absent
+      - crates/permguard-host/tests/crash_points.rs::a_hold_release_killed_midway_keeps_or_ends_the_hold
+      - crates/permguard-host/tests/crash_points.rs::a_plan_approval_killed_midway_is_recorded_or_absent
+      - crates/permguard-host/tests/crash_points.rs::a_plan_consumption_killed_midway_spends_the_plan_once_or_not_at_all
+      - crates/permguard-host/tests/crash_points.rs::a_crash_between_a_trails_directory_and_its_name_loses_no_trail
+    gaps:
+      - "open (test): the suites run on the file backend alone until WP-27.2 adds the PostgreSQL one"
+      - "open (design): the mutation engine and the audit engine are their own file backends until WP-27.2 and WP-27.4 put a second implementation behind their interfaces (E33)"
+      - "open (test): two runs of one garbage-collection receipt from two instances are proven by the store's suite, not by a test of two Host APIs on one store, until WP-28.1"
   "1-architecture/5-architecture-server-host-audit.md#attribution-resource-and-privacy":
     paths:
       - crates/permguard-host/src/audit/pseudonym.rs
@@ -855,6 +1000,18 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_forked_stream_opens_no_run_of_its_own
       - crates/permguard-stream/src/engine/tests.rs::a_restored_producer_rolls_every_run_over_and_appends_only_to_successors
       - crates/permguard-host/src/membership/task/tests.rs::a_handler_incident_suspends_the_membership
+  "1-architecture/6-architecture-server-host-streams.md#which-subscription-owns-a-run":
+    paths:
+      - crates/permguard-stream/src/engine/producer.rs
+      - crates/permguard-stream/src/engine/producer/ship.rs
+    tests:
+      - crates/permguard-stream/src/engine/tests.rs::a_run_shipped_under_a_membership_carries_its_fence
+      - crates/permguard-stream/src/engine/tests.rs::a_run_fenced_by_a_membership_that_ended_is_rolled_over_for_the_live_one
+      - crates/permguard-stream/src/engine/tests.rs::records_before_the_first_membership_are_carried_into_its_run_and_ship
+      - crates/permguard-stream/src/engine/tests.rs::what_an_ended_membership_never_acknowledged_is_carried_to_the_next_one
+      - crates/permguard-stream/src/engine/tests.rs::an_ended_run_of_an_ended_membership_is_carried_too
+    gaps:
+      - "open (trace): entered on 2026-11-21 from the tests that name the rule (iteration 03, WP-25.3); the rows of its table are not each traced to a test of their own"
   "1-architecture/6-architecture-server-host-streams.md#record-and-batch":
     paths:
       - crates/permguard-stream/src/engine/batch.rs
@@ -930,6 +1087,23 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::the_reserve_is_allocated_or_the_stream_closes_under_pressure
       - crates/permguard-stream/src/engine/tests.rs::a_rollover_stopped_at_any_step_completes_on_reopening
       - crates/permguard-stream/src/engine/tests.rs::a_sealed_batch_is_kept_before_it_is_answered_and_never_signed_again
+  "1-architecture/6-architecture-server-host-streams.md#stores":
+    paths:
+      - crates/permguard-stream/src/engine/consumer/store.rs
+      - crates/permguard-stream/src/engine/consumer/suite.rs
+      - crates/permguard-s3/src/streams.rs
+      - crates/permguard-host/src/composition.rs
+      - crates/permguard-stream/src/engine/mod.rs
+      - crates/permguard-stream/src/engine/consumer.rs
+      - crates/permguard-conformance/dal.json
+    tests:
+      - crates/permguard-stream/src/engine/consumer/store.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-stream/src/engine/tests.rs::the_consumer_tests_pass_with_runs_opened_for_each_hold
+      - crates/permguard-s3/tests/streams.rs::a_consumers_runs_keep_their_contract_on_postgresql_and_s3
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-control-plane-server/tests/composition.rs::the_control_plane_gets_what_it_declared_and_nothing_else
+    gaps:
+      - "open (code): the engine's second implementation, on PostgreSQL and S3, is WP-27.4; until then its sources are listed as direct access under that package"
   "1-architecture/6-architecture-server-host-streams.md#files-on-disk":
     paths:
       - crates/permguard-stream/src/layout.rs
@@ -1141,6 +1315,213 @@ sections:
       - crates/permguard-host/src/storage/volume.rs::the_first_claim_creates_the_volume_and_later_claims_read_it
       - crates/permguard-host/src/storage/volume.rs::a_claim_only_moves_forward_and_never_beside_a_holder
       - crates/permguard-conformance/tests/durability.rs::test_no_durability_primitive_lives_outside_the_storage_library
+  "1-architecture/8-architecture-storage-operations.md#storage-backends":
+    paths:
+      - crates/permguard-host/src/storage/mod.rs
+      - crates/permguard-conformance/src/dal.rs
+      - crates/permguard-core/src/volume.rs
+      - crates/permguard-runtime/src/composition.rs
+      - crates/permguard-server/src/app/cli.rs
+      - crates/permguard-host/src/api/backups.rs
+    tests:
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-core/tests/config.rs::test_the_storage_backend_is_files_unless_the_configuration_says_otherwise
+      - crates/permguard-server/tests/app.rs::test_a_backend_with_no_volume_serves_nothing_here_and_refuses_volume_commands
+      - crates/permguard-server/src/app/cli.rs::the_commands_that_act_on_a_volume_are_named
+      - crates/permguard-host/src/api/backups/tests.rs::a_backend_with_no_volume_refuses_every_backup_operation
+      - crates/permguard-cli/tests/restore.rs::a_backend_with_no_volume_refuses_a_restore
+    gaps:
+      - "open (code): the PostgreSQL and S3 backend and everything of several instances are not built (iteration 03, phases 27 and 28); a configuration that names that backend is refused at start"
+  "1-architecture/8-architecture-storage-operations.md#postgresql-foundations":
+    paths:
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-postgres/src/schema.rs
+      - crates/permguard-postgres/src/lease.rs
+      - crates/permguard-postgres/src/time.rs
+      - crates/permguard-postgres/src/mutations.rs
+      - crates/permguard-postgres/src/witnesses.rs
+      - crates/permguard-postgres/src/held.rs
+      - crates/permguard-postgres/src/replay.rs
+      - crates/permguard-postgres/src/identity.rs
+      - crates/permguard-postgres/src/ring.rs
+      - crates/permguard-postgres/src/members.rs
+      - crates/permguard-postgres/src/catalog.rs
+      - scripts/test-postgres.sh
+      - .github/workflows/ci.yml
+    tests:
+      - crates/permguard-postgres/tests/foundations.rs::the_schema_is_applied_once_and_a_newer_one_is_refused
+      - crates/permguard-postgres/tests/foundations.rs::units_of_work_that_read_then_write_lose_no_update
+      - crates/permguard-postgres/tests/foundations.rs::a_refused_unit_of_work_changes_nothing
+      - crates/permguard-postgres/tests/foundations.rs::a_scope_is_held_by_one_transaction_at_a_time
+      - crates/permguard-postgres/tests/foundations.rs::a_lease_has_one_holder_and_a_lost_one_writes_nothing
+      - crates/permguard-postgres/tests/foundations.rs::the_clock_mark_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/foundations.rs::a_unit_of_work_runs_from_inside_a_runtime
+      - crates/permguard-postgres/tests/foundations.rs::a_process_killed_inside_a_unit_of_work_leaves_nothing
+      - crates/permguard-postgres/tests/foundations.rs::a_verified_connection_is_encrypted_and_an_unknown_authority_is_refused
+      - crates/permguard-postgres/tests/foundations.rs::a_database_that_does_not_answer_is_unavailable
+      - crates/permguard-postgres/tests/mutations.rs::an_operation_is_kept_whole_and_a_retry_learns_its_answer
+      - crates/permguard-postgres/tests/mutations.rs::a_refused_write_is_undone_and_recorded_failed
+      - crates/permguard-postgres/tests/mutations.rs::instances_that_apply_one_request_together_keep_one_write
+      - crates/permguard-postgres/tests/mutations.rs::a_mutation_runs_from_inside_a_runtime_on_the_callers_thread
+      - crates/permguard-postgres/tests/mutations.rs::a_process_killed_inside_a_mutation_leaves_nothing
+      - crates/permguard-postgres/tests/mutations.rs::a_store_inside_an_operation_reads_and_writes_in_it
+      - crates/permguard-postgres/tests/mutations.rs::a_write_whose_statement_failed_is_never_answered_applied
+      - crates/permguard-postgres/tests/mutations.rs::operations_that_all_change_one_row_are_all_applied
+      - crates/permguard-postgres/tests/foundations.rs::a_unit_whose_statement_failed_is_not_committed
+      - crates/permguard-postgres/tests/foundations.rs::work_inside_a_unit_of_work_is_part_of_it_and_its_refusal_keeps_nothing
+      - crates/permguard-postgres/tests/instances.rs::a_change_alone_sees_the_one_an_operation_made_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_holds_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_seen_epochs_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_bootstrap_commitment_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_witnesses_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_version_witnesses_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::what_a_host_holds_of_the_authority_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_plans_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_identity_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::a_ring_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_rings_of_one_database_are_apart_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_memberships_keep_their_contract_on_postgresql
+      - crates/permguard-postgres/tests/host_stores.rs::the_catalog_keeps_its_contract_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_add_one_entry_together_add_it_once_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_publish_together_keep_one_record_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_change_one_document_together_lose_no_change_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_that_change_the_catalog_together_apply_once_on_postgresql
+      - crates/permguard-host/src/operations/mutation/tests.rs::any_engine_hands_its_unit_of_work_to_the_domain
+      - crates/permguard-conformance/tests/mutations.rs::only_a_named_engine_asks_for_a_token
+    gaps:
+      - "open (code): the tests need a PostgreSQL and are skipped without one; `scripts/test-postgres.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-27.2), and the object store's client is WP-27.3"
+  "1-architecture/3-architecture-server-host-membership.md#several-instances":
+    paths:
+      - crates/permguard-host/src/membership/mod.rs
+      - crates/permguard-host/src/membership/replay.rs
+      - crates/permguard-host/src/membership/task.rs
+      - crates/permguard-host/src/membership/watch.rs
+      - crates/permguard-postgres/src/members.rs
+      - crates/permguard-postgres/src/sessions.rs
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-s3/src/backend.rs
+    tests:
+      - crates/permguard-postgres/tests/mutations.rs::a_membership_changed_on_one_instance_is_read_on_another
+      - crates/permguard-postgres/src/sessions.rs::the_open_sessions_are_every_instances_on_postgresql
+      - crates/permguard-postgres/tests/foundations.rs::a_notification_reaches_a_listener_when_its_unit_commits_on_postgresql
+      - crates/permguard-host/src/membership/watch.rs::a_published_hint_is_relayed_and_a_delivered_one_is_not
+      - crates/permguard-s3/src/backend.rs::a_hint_travels_whole_to_the_other_instances
+    gaps:
+      - "open (code): the PostgreSQL tests are skipped without a server; `scripts/test-postgres.sh` and the `postgres` job of CI run them. Several instances behind one address in the lab are WP-29.1's"
+  "1-architecture/8-architecture-storage-operations.md#single-jobs":
+    paths:
+      - crates/permguard-host/src/jobs.rs
+      - crates/permguard-postgres/src/jobs.rs
+      - crates/permguard-postgres/src/database.rs
+      - crates/permguard-runtime/src/repin.rs
+      - crates/permguard-runtime/src/dormancy.rs
+      - crates/permguard-runtime/src/checkpoints.rs
+      - crates/permguard-runtime/src/stream_gc.rs
+      - crates/permguard-std/src/keys/service.rs
+      - crates/permguard-authority-plane/src/plane.rs
+      - crates/permguard-control-plane/src/gc.rs
+      - crates/permguard-control-plane/src/inventory.rs
+      - crates/permguard-control-plane/src/verify.rs
+      - crates/permguard-host/src/keys/ring.rs
+    tests:
+      - crates/permguard-postgres/src/jobs.rs::one_instance_runs_a_job_a_cadence_on_postgresql
+      - crates/permguard-postgres/src/jobs.rs::a_job_writes_only_while_it_holds_its_lease_on_postgresql
+      - crates/permguard-postgres/src/jobs.rs::a_holder_whose_work_failed_gives_the_job_up_on_postgresql
+      - crates/permguard-postgres/tests/instances.rs::instances_read_again_the_ring_another_maintained_on_postgresql
+      - crates/permguard-host/src/keys/ring/tests.rs::a_ring_reads_again_what_another_maintained
+      - crates/permguard-authority-plane/src/instances.rs::an_instance_behind_on_another_list_still_signs_on_postgresql
+      - crates/permguard-authority-plane/src/instances.rs::instances_sign_one_list_past_each_other_and_lose_no_revocation_on_postgresql
+      - crates/permguard-s3/tests/control_plane.rs::the_deep_verification_finds_an_object_altered_in_the_bucket
+      - crates/permguard-s3/tests/control_plane.rs::the_bytes_no_archive_record_names_are_swept
+    gaps:
+      - "open (code): the tests need a PostgreSQL and an S3 server and are skipped without them; `scripts/test-s3.sh --then scripts/test-postgres.sh` and the `postgres` job of CI run them"
+  "1-architecture/8-architecture-storage-operations.md#connection-settings":
+    paths:
+      - crates/permguard-core/src/config.rs
+      - crates/permguard-core/src/config_file.rs
+      - crates/permguard-core/src/volume.rs
+    tests:
+      - crates/permguard-core/tests/config.rs::test_the_shared_backend_is_told_where_its_database_and_bucket_are
+      - crates/permguard-core/src/config_file.rs::test_the_storage_connection_maps_to_its_settings
+  "1-architecture/8-architecture-storage-operations.md#import-of-a-volume":
+    paths:
+      - crates/permguard-postgres/src/identity.rs
+      - crates/permguard-postgres/src/catalog.rs
+      - crates/permguard-postgres/src/schema.rs
+      - crates/permguard-host/src/identity/files.rs
+      - crates/permguard-host/src/membership/files.rs
+      - crates/permguard-host/src/authz/authority.rs
+      - crates/permguard-std/src/catalog.rs
+      - crates/permguard-authority-plane/src/accounts/postgres.rs
+      - crates/permguard-authority-plane/src/tokens/postgres.rs
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs
+      - crates/permguard-s3/src/control_plane/ledgers.rs
+      - crates/permguard-s3/src/streams.rs
+      - crates/permguard-stream/src/engine/consumer.rs
+    tests:
+      - crates/permguard-postgres/tests/import.rs::an_audit_trail_is_imported_as_it_was_on_postgresql
+      - crates/permguard-postgres/tests/import.rs::the_identity_and_a_ring_are_imported_as_they_were
+      - crates/permguard-postgres/tests/import.rs::the_memberships_are_imported_as_they_were
+      - crates/permguard-postgres/tests/import.rs::the_catalog_is_imported_as_it_was
+      - crates/permguard-postgres/tests/import.rs::the_host_secrets_and_trust_are_imported_as_they_were
+      - crates/permguard-authority-plane/src/accounts/postgres.rs::the_accounts_of_a_volume_are_imported_as_they_were
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_tokens_of_a_volume_are_imported_as_they_were
+      - crates/permguard-control-plane/src/decisions/cursorkey/postgres.rs::the_cursor_roots_of_a_volume_are_imported_as_they_were
+      - crates/permguard-s3/tests/import.rs::a_ledger_is_imported_as_it_was
+      - crates/permguard-s3/tests/import.rs::the_archives_of_a_zone_are_imported_as_they_were
+      - crates/permguard-s3/tests/import.rs::a_consumers_runs_are_imported_as_they_were
+  "1-architecture/8-architecture-storage-operations.md#object-store":
+    paths:
+      - crates/permguard-s3/src/lib.rs
+      - crates/permguard-s3/src/sign.rs
+      - crates/permguard-s3/src/listing.rs
+      - crates/permguard-s3/src/control_plane/ledgers.rs
+      - crates/permguard-s3/src/control_plane/archives.rs
+      - crates/permguard-postgres/src/database.rs
+      - scripts/test-s3.sh
+      - .github/workflows/ci.yml
+    tests:
+      - crates/permguard-s3/tests/bucket.rs::an_object_is_published_once_and_read_whole
+      - crates/permguard-s3/tests/bucket.rs::a_listing_is_whole_and_of_its_prefix
+      - crates/permguard-s3/tests/bucket.rs::publications_of_one_key_together_write_one
+      - crates/permguard-s3/tests/bucket.rs::clients_under_two_prefixes_share_nothing
+      - crates/permguard-s3/tests/bucket.rs::a_request_runs_from_inside_a_runtime
+      - crates/permguard-s3/tests/bucket.rs::a_wrong_secret_an_unknown_authority_and_a_silent_store_are_told_apart
+      - crates/permguard-s3/tests/control_plane.rs::the_ledgers_keep_their_contract_on_postgresql_and_s3
+      - crates/permguard-s3/tests/control_plane.rs::the_archives_keep_their_contract_on_postgresql_and_s3
+      - crates/permguard-s3/tests/control_plane.rs::bytes_no_row_names_give_way_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::push_then_pull_round_trips_the_worked_example_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::multi_batch_transfer_lifecycle_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::tampered_uploads_are_rejected_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::the_quota_is_reserved_before_anything_lands_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::repeated_pull_rounds_are_never_refused_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::pushes_of_one_ref_together_move_it_once_on_postgresql_and_s3
+      - crates/permguard-control-plane/tests/engine_flow.rs::an_object_no_ref_reaches_is_collected_on_postgresql_and_s3
+      - crates/permguard-s3/src/sign.rs::the_documented_example_is_signed_as_documented
+      - crates/permguard-s3/src/listing.rs::an_answer_that_does_not_read_whole_is_refused
+      - crates/permguard-s3/src/lib.rs::a_connection_in_the_clear_is_to_a_loopback_address_only
+      - crates/permguard-s3/src/lib.rs::a_key_is_a_path_of_plain_names
+      - crates/permguard-s3/src/lib.rs::a_publication_is_conditional_and_asks_for_the_encryption_configured
+      - crates/permguard-s3/src/lib.rs::a_configuration_shows_no_credential
+    gaps:
+      - "open (code): the tests need an S3 server and a PostgreSQL and are skipped without them; `scripts/test-s3.sh` and the `postgres` job of CI run them. No process is composed on this backend yet (WP-28.1)"
+  "1-architecture/8-architecture-storage-operations.md#store-contracts":
+    paths:
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/tokens.rs
+      - crates/permguard-authority-plane/src/marks.rs
+      - crates/permguard-authority-plane/src/completion.rs
+      - crates/permguard-conformance/src/dal.rs
+    tests:
+      - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/accounts/files.rs::two_changes_of_one_account_are_both_kept_across_a_reopen
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_accounts_tokens_are_invalid
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+      - crates/permguard-conformance/tests/dal.rs::test_a_seeded_reach_is_found_however_it_is_written
+    gaps:
+      - "open (code): only the Authority Plane's domains are behind a contract; the others are the direct entries of dal.json, each with the package that moves it (iteration 03, phase 26)"
   "1-architecture/8-architecture-storage-operations.md#required-filesystem-semantics":
     paths:
       - crates/permguard-host/src/storage/probe.rs
@@ -1394,7 +1775,7 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::concurrent_appenders_never_share_a_sequence
       - crates/permguard-stream/src/engine/tests.rs::a_failed_group_flush_answers_every_waiting_appender_with_an_error
       - crates/permguard-host/src/operations/mutation/tests.rs::an_operation_runs_every_step_under_one_operation_id
-      - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
+      - crates/permguard-host/src/api/replay/tests.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
       - crates/permguard-data-plane/src/blocking.rs::work_beyond_the_bound_is_refused_and_not_queued
   "1-architecture/9-architecture-patterns.md#p4-durability-and-recovery":
     paths:
@@ -1474,7 +1855,7 @@ sections:
     tests:
       - crates/permguard-host/src/api/plans/tests.rs::the_planner_cannot_approve_its_own_plan_and_an_approval_counts_once_per_principal
       - crates/permguard-host/src/api/plans/tests.rs::under_regulated_reset_and_key_revocation_are_refused_below_the_approval_count
-      - crates/permguard-host/src/api/replay.rs::a_plan_is_consumed_once_and_expires
+      - crates/permguard-host/src/api/replay/tests.rs::a_plan_is_consumed_once_and_expires
       - crates/permguard-host/tests/plan_vectors.rs::a_receipt_is_not_an_approval_and_an_altered_one_does_not_verify
       - crates/permguard-cli/tests/restore.rs::a_dr_restore_keeps_the_host_under_a_new_boot_id_once_per_fence
       - crates/permguard-host/src/api/gc/tests.rs::a_plan_changes_nothing_and_its_run_spends_it_once
@@ -1570,6 +1951,59 @@ sections:
       - crates/permguard-control-plane/src/events/read/host_reads.rs::the_tenant_view_reads_every_consumer_run_of_its_ledger_in_order
     gaps:
       - "open (code): no jitter or last-success and lag metrics for the GC, inventory and index services; no index service over the Host consumer stream"
+  "3-control-plane/1-control-plane.md#stores":
+    paths:
+      - crates/permguard-core/src/catalog.rs
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/catalog/archives.rs
+      - crates/permguard-control-plane/src/plane.rs
+      - scripts/check-composition-root.sh
+    tests:
+      - crates/permguard-std/tests/catalog.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/store/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-conformance/tests/dal.rs::test_no_source_reaches_storage_outside_the_lists
+  "3-control-plane/1-control-plane.md#catalog":
+    paths:
+      - crates/permguard-core/src/catalog.rs
+      - crates/permguard-core/src/catalog/suite.rs
+      - crates/permguard-std/src/catalog.rs
+      - crates/permguard-control-plane/src/catalog/mod.rs
+    tests:
+      - crates/permguard-std/tests/catalog.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-std/tests/catalog.rs::a_tombstone_an_interrupted_delete_left_leaves_the_record_live
+      - crates/permguard-control-plane/tests/catalog_crash.rs::a_catalog_change_interrupted_at_every_step_recovers
+    gaps:
+      - "open (code): a deletion that landed and whose answer a crash lost is answered `not_found` at its retry, because the tombstone does not keep the record; closing it changes the tombstone's format"
+  "3-control-plane/1-control-plane.md#ledger-store":
+    paths:
+      - crates/permguard-control-plane/src/store.rs
+      - crates/permguard-control-plane/src/store/files.rs
+      - crates/permguard-control-plane/src/store/suite.rs
+      - crates/permguard-control-plane/src/transfer.rs
+      - crates/permguard-control-plane/src/engine.rs
+      - crates/permguard-control-plane/src/gc.rs
+      - crates/permguard-control-plane/src/readiness.rs
+      - crates/permguard-control-plane/src/inventory.rs
+      - crates/permguard-control-plane/src/notp/mod.rs
+    tests:
+      - crates/permguard-control-plane/src/store/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/store/files.rs::a_ledger_has_one_store_however_often_it_is_asked
+      - crates/permguard-control-plane/src/store/files.rs::a_repaired_layout_is_served_by_the_same_store
+      - crates/permguard-control-plane/tests/push_crash.rs::a_push_interrupted_at_every_step_recovers
+      - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
+  "3-control-plane/1-control-plane.md#archive-store":
+    paths:
+      - crates/permguard-control-plane/src/catalog/archives.rs
+      - crates/permguard-control-plane/src/catalog/archives/files.rs
+      - crates/permguard-control-plane/src/catalog/archives/suite.rs
+      - crates/permguard-control-plane/src/catalog/imports.rs
+    tests:
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::an_archive_is_kept_verbatim_on_disk
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::an_archive_without_its_record_keeps_nothing
+      - crates/permguard-control-plane/src/catalog/archives/files.rs::a_record_that_does_not_read_is_an_error
+      - crates/permguard-control-plane/tests/archive_crash.rs::an_archive_interrupted_at_every_step_is_whole_or_absent
   "3-control-plane/1-control-plane.md#files":
     paths:
       - crates/permguard-control-plane/src/store.rs
@@ -1577,7 +2011,7 @@ sections:
       - crates/permguard-control-plane/src/transfer.rs
       - crates/permguard-stream/src/engine/consumer.rs
     tests:
-      - crates/permguard-control-plane/src/store.rs::invalid_ref_names_are_refused_everywhere
+      - crates/permguard-control-plane/src/store/files.rs::invalid_ref_names_are_refused_everywhere
       - crates/permguard-control-plane/tests/engine_flow.rs::every_file_of_a_populated_ledger_is_declared
       - crates/permguard-core/src/catalog.rs::test_a_reference_is_an_id_or_a_name_and_never_a_guess
       - crates/permguard-stream/src/engine/tests.rs::a_stream_key_names_its_four_parts_and_no_path_holds_caller_text
@@ -1648,9 +2082,9 @@ sections:
       - crates/permguard-objects/src/object.rs::unsorted_tree_is_rejected
       - crates/permguard-objects/src/object.rs::non_canonical_bytes_are_rejected
       - crates/permguard-objects/src/cbor.rs::a_map_naming_a_key_twice_is_refused_at_every_depth
-      - crates/permguard-control-plane/src/store.rs::corrupt_objects_are_detected_not_served
-      - crates/permguard-control-plane/src/store.rs::non_canonical_bytes_never_land
-      - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
+      - crates/permguard-control-plane/src/store/files.rs::corrupt_objects_are_detected_not_served
+      - crates/permguard-control-plane/src/store/files.rs::non_canonical_bytes_never_land
+      - crates/permguard-control-plane/src/store/files.rs::the_object_store_keeps_the_immutable_storage_contract
   "3-control-plane/2-control-plane-ledger-notp.md#manifest":
     paths:
       - crates/permguard-objects/src/manifest.rs
@@ -1682,7 +2116,7 @@ sections:
       - crates/permguard-mirror/src/verify.rs
     tests:
       - crates/permguard-objects/src/refstate.rs::a_ref_state_round_trips_and_chains_to_the_one_before
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-objects/src/statement.rs::freshness_table
       - crates/permguard-notp/tests/notp_vectors.rs::the_head_statement_binds_the_authority_the_ref_digest_and_the_ring_set
       - crates/permguard-client/tests/verify_negative.rs::another_ref_state_at_one_counter_is_equivocation_even_with_the_same_head
@@ -1731,8 +2165,8 @@ sections:
       - crates/permguard-control-plane/src/store.rs
       - crates/permguard-control-plane/src/engine.rs
     tests:
-      - crates/permguard-control-plane/src/store.rs::a_failed_flush_while_writing_a_ref_is_reported
-      - crates/permguard-control-plane/src/store.rs::a_failed_directory_flush_while_writing_a_ref_is_reported
+      - crates/permguard-control-plane/src/store/files.rs::a_failed_flush_while_writing_a_ref_is_reported
+      - crates/permguard-control-plane/src/store/files.rs::a_failed_directory_flush_while_writing_a_ref_is_reported
       - crates/permguard-control-plane/tests/engine_flow.rs::a_ref_update_names_its_operation_for_recovery
       - crates/permguard-control-plane/tests/engine_flow.rs::a_commit_flushes_the_objects_it_reaches_before_writing_the_ref
       - crates/permguard-control-plane/tests/engine_flow.rs::a_retried_commit_whose_statement_was_lost_is_signed_again
@@ -1789,7 +2223,7 @@ sections:
     tests:
       - crates/permguard-notp/tests/notp_vectors.rs::the_messages_are_the_generators_bytes
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_member_pulls_over_the_task_what_rest_pushed
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/tests/authorization.rs::f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zone_that_is_not_there
       - crates/permguard-sync/src/task.rs::a_statement_outside_the_pin_or_its_coordinator_is_refused
       - crates/permguard-control-plane/tests/gc_sweep.rs::a_transfer_session_pins_its_closure_however_old
@@ -1864,6 +2298,20 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_consumer_keeps_an_unmeasured_run_and_prunes_a_measured_one_to_its_floor
       - crates/permguard-runtime/src/stream_gc.rs::the_event_retention_waits_for_its_consumer_and_its_members
       - crates/permguard-host/src/membership/member/import/tests.rs::retention_refusals_and_bad_batches_leave_durable_gaps_and_stop_the_run
+  "3-control-plane/3-control-plane-evidence-stores.md#stores":
+    paths:
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/files.rs
+      - crates/permguard-control-plane/src/decisions/cursorkey/suite.rs
+      - crates/permguard-control-plane/src/decisions/store.rs
+      - crates/permguard-control-plane/src/events/store.rs
+    tests:
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::a_root_swapped_in_silence_is_refused_by_its_witness
+      - crates/permguard-control-plane/src/decisions/cursorkey.rs::a_rotation_keeps_outstanding_offsets_working_while_the_previous_key_is_kept
+      - crates/permguard-control-plane/tests/cursor_crash.rs::a_minting_interrupted_at_every_step_leaves_a_root
+    gaps:
+      - "open (code): the facades hold the legacy stores of a volume always; a process with no volume composes none, WP-27.4"
   "3-control-plane/3-control-plane-evidence-stores.md#files":
     paths:
       - crates/permguard-stream/src/engine/consumer.rs
@@ -4007,7 +4455,7 @@ sections:
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_coalesces_by_key_and_sends_heartbeats_while_quiet
       - crates/permguard-host/src/membership/task/tests.rs::a_watch_ends_on_overflow_and_on_a_fence
       - crates/permguard-sync/src/hints.rs::a_hint_or_a_lost_watch_wakes_the_round_and_a_heartbeat_does_not
-      - crates/permguard-control-plane/src/store.rs::ref_cas_follows_the_idempotency_table
+      - crates/permguard-control-plane/src/store/files.rs::ref_cas_follows_the_idempotency_table
       - crates/permguard-control-plane-server/src/notp/http.rs::test_a_compressed_batch_cannot_inflate_past_the_ceiling
   "7-contracts/6-contract-ledger-notp.md#refusal-codes":
     paths:
@@ -4116,7 +4564,7 @@ sections:
       - crates/permguard-host/src/api/bounds.rs
       - crates/permguard-server/src/host_api/http.rs
     tests:
-      - crates/permguard-host/src/api/replay.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
+      - crates/permguard-host/src/api/replay/tests.rs::a_result_is_replayed_for_the_same_request_and_refused_for_another
       - crates/permguard-host/src/api/plans/tests.rs::a_run_consumes_the_receipt_once
       - crates/permguard-host/src/api/plans/tests.rs::under_regulated_reset_and_key_revocation_are_refused_below_the_approval_count
       - crates/permguard-host/src/api/bounds.rs::concurrency_is_bounded_per_principal_and_released_on_drop
@@ -4313,8 +4761,8 @@ sections:
       - crates/permguard-authority-plane/src/accounts.rs
       - crates/permguard-authority-plane/src/authority.rs
     tests:
-      - crates/permguard-authority-plane/src/accounts.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::accounts_survive_a_reopen_and_the_last_frame_of_a_name_is_the_account
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
   "2-security/8-security-authority.md#access-keys":
     paths:
@@ -4339,7 +4787,7 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
     tests:
       - crates/permguard-authority-plane/src/authority.rs::a_token_narrows_to_what_is_asked_and_never_widens
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/src/authz/access_tokens.rs::a_valid_token_verifies_into_its_scopes
   "2-security/8-security-authority.md#token-endpoint":
     paths:
@@ -4380,6 +4828,34 @@ sections:
       - crates/permguard-client/src/authority_refresh.rs::a_list_id_names_no_path
     gaps:
       - "open (test): the fetch from authority.url over HTTPS, its schedule and its metrics are proven by the lab, not by a Rust test"
+  "2-security/8-security-authority.md#stores":
+    paths:
+      - crates/permguard-authority-plane/src/accounts/postgres.rs
+      - crates/permguard-authority-plane/src/tokens/postgres.rs
+      - crates/permguard-postgres/src/gate.rs
+      - crates/permguard-authority-plane/src/accounts.rs
+      - crates/permguard-authority-plane/src/accounts/files.rs
+      - crates/permguard-authority-plane/src/tokens.rs
+      - crates/permguard-authority-plane/src/tokens/files.rs
+      - crates/permguard-authority-plane/src/marks.rs
+      - crates/permguard-authority-plane/src/marks/files.rs
+      - crates/permguard-authority-plane/src/completion.rs
+    tests:
+      - crates/permguard-authority-plane/src/accounts/postgres.rs::the_accounts_keep_their_contract_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_tokens_keep_their_contract_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::the_marks_are_every_instances_and_only_rise_on_postgresql
+      - crates/permguard-authority-plane/src/tokens/postgres.rs::a_token_issued_while_its_account_is_suspended_is_never_left_valid_on_postgresql
+      - crates/permguard-authority-plane/src/accounts/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/tokens/files.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-authority-plane/src/completion.rs::tokens_that_are_as_their_accounts_say_are_left
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_accounts_tokens_are_invalid
+      - crates/permguard-authority-plane/src/completion.rs::a_suspension_and_a_resumption_reach_the_tokens
+      - crates/permguard-authority-plane/src/completion.rs::a_deleted_keys_tokens_are_invalid_and_no_others
+      - crates/permguard-authority-plane/src/completion.rs::a_narrowing_ends_the_tokens_that_hold_more
+      - crates/permguard-authority-plane/src/authority.rs::what_a_token_is_issued_with_is_within_its_accounts_scopes
+      - crates/permguard-authority-plane/src/authority.rs::a_restarted_authority_signs_past_every_list_it_signed_before
+    gaps:
+      - "open (code): where the administrator's first key is handed over on a backend with no volume is not decided (iteration 03, WP-27.2)"
   "2-security/8-security-authority.md#profiles":
     paths:
       - crates/permguard-authority-plane/src/plane.rs
@@ -4402,7 +4878,7 @@ sections:
       - crates/permguard-authority-plane/src/tokens.rs
       - crates/permguard-objects/src/status_list.rs
     tests:
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
       - crates/permguard-host/src/authz/testing.rs::a_minted_token_verifies_until_it_is_revoked
   "2-security/9-security-token-status.md#the-status-list-token":
     paths:
@@ -4464,7 +4940,7 @@ sections:
       - contracts/openapi/authority.json
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
   "2-security/5-security-management-api.md#access-keys":
     paths:
       - crates/permguard-authority-plane-server/src/http.rs
@@ -4487,7 +4963,7 @@ sections:
       - crates/permguard-authority-plane-server/src/grpc.rs
     tests:
       - crates/permguard-cli/tests/authority.rs::the_authority_commands_manage_an_account_whose_token_the_host_verifies_until_revoked
-      - crates/permguard-authority-plane/src/tokens.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
+      - crates/permguard-authority-plane/src/tokens/files.rs::a_token_draws_an_entry_its_status_changes_and_both_survive_a_reopen
   "2-security/6-security-api-protection.md#every-route-behind-a-scope":
     paths:
       - crates/permguard-server/src/host_api/http.rs
@@ -4504,7 +4980,7 @@ sections:
     tests:
       - crates/permguard-core/src/authz.rs::a_grant_fits_only_where_its_operation_applies
       - crates/permguard-core/src/authz.rs::the_authority_operations_fit_the_authority_plane_alone
-      - crates/permguard-authority-plane/src/accounts.rs::what_the_store_would_never_hold_is_refused
+      - crates/permguard-authority-plane/src/accounts/files.rs::what_the_store_would_never_hold_is_refused
   "2-security/7-security-command-line.md#service-accounts":
     paths:
       - crates/permguard-cli/src/commands/authority.rs
@@ -4565,6 +5041,23 @@ sections:
     tests:
       - crates/permguard-host/src/membership/tests.rs::an_invitation_fixes_the_name_and_groups_an_enrollment_may_only_repeat
       - crates/permguard-host/src/membership/tests.rs::the_groups_a_member_asks_for_are_never_taken_unless_the_approval_names_them
+  "1-architecture/3-architecture-server-host-membership.md#stores":
+    paths:
+      - crates/permguard-host/src/membership/store.rs
+      - crates/permguard-host/src/membership/files.rs
+      - crates/permguard-host/src/membership/suite.rs
+      - crates/permguard-host/src/membership/mod.rs
+      - crates/permguard-host/src/membership/progress.rs
+      - crates/permguard-host/src/membership/replay.rs
+      - crates/permguard-host/src/membership/repin.rs
+      - crates/permguard-host/src/membership/zone.rs
+      - crates/permguard-host/src/membership/egress.rs
+    tests:
+      - crates/permguard-host/src/membership/tests.rs::the_file_backend_keeps_the_contract
+      - crates/permguard-host/src/membership/tests.rs::the_file_backend_keeps_each_document_in_the_file_it_always_was
+      - crates/permguard-host/src/membership/egress.rs::a_checkpoint_published_before_its_count_is_kept_when_it_is_shipped_again
+      - crates/permguard-host/src/membership/egress.rs::a_coordinator_keeps_a_trail_in_its_order_and_refuses_a_fork
+      - crates/permguard-host/tests/crash_points.rs::a_transition_killed_around_its_entry_is_whole_or_absent
   "3-control-plane/3-control-plane-evidence-stores.md#what-a-decision-store-accepts-in-clear":
     paths:
       - crates/permguard-decisions/src/ceiling.rs
@@ -4793,7 +5286,7 @@ findings:
       - crates/permguard-host/src/storage/write.rs::different_content_under_an_existing_name_is_corruption_and_the_original_stays
       - crates/permguard-host/src/storage/write.rs::concurrent_equal_publishes_are_idempotent
       - crates/permguard-host/src/storage/write.rs::identical_content_is_idempotent_and_keeps_the_inode
-      - crates/permguard-control-plane/src/store.rs::the_object_store_keeps_the_immutable_storage_contract
+      - crates/permguard-control-plane/src/store/files.rs::the_object_store_keeps_the_immutable_storage_contract
       - crates/permguard-mirror/src/objects.rs::local_objects_keep_the_immutable_storage_contract
   "H-07":
     tests:

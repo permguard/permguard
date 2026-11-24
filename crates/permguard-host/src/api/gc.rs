@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize};
 use permguard_core::authz::{Actor, Resource, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::replay::{self, Plan};
+use super::replay::{self, Plan, ReplayError};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use super::{rfc3339, unreachable_reconciliation};
 use crate::gc::{self, GcError, GcJob, Report};
-use crate::operations::mutation::{Applied, Failure};
+use crate::operations::mutation::{Applied, Failure, MutationError};
 
 /// The plan step, as the transaction names it.
 pub const PLAN: &str = "gc.plan";
@@ -253,7 +253,7 @@ impl HostApi {
                         expires: rfc3339(issued.expires),
                         receipt: issued.receipt,
                         approvals_required: issued.approvals_required,
-                        report,
+                        report: report.clone(),
                     },
                 })
             },
@@ -306,24 +306,23 @@ impl HostApi {
         )? {
             return Ok(answered);
         }
-        // Spent first, in an operation of its own, checked and spent under one lock: two runs of
-        // one receipt never both sweep, and whatever happens to the sweep, the receipt is spent.
-        let plan = {
-            let _spending = self
-                .gc_spending
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let plan = presented()?;
-            super::plans::consume_plan(self.mutations()?, &self.replay, &admitted.principal, &plan)
-                .map_err(|error| {
-                    Refusal::new(
-                        ErrorClass::Unavailable,
-                        codes::common::UNAVAILABLE,
-                        format!("the plan could not be spent, nothing was swept: {error}"),
-                    )
-                })?;
-            plan
-        };
+        // Spent first, in an operation of its own. The store spends a plan once, whoever asks:
+        // two runs of one receipt never both sweep, and whatever happens to the sweep, the
+        // receipt is spent.
+        let plan = presented()?;
+        super::plans::consume_plan(self.mutations()?, &self.replay, &admitted.principal, &plan)
+            .map_err(|error| match error {
+                // Another run spent it between the read above and here: this one is answered as
+                // a run that arrived after it.
+                MutationError::Refused(
+                    refused @ (ReplayError::PlanConsumed | ReplayError::PlanUnknown),
+                ) => Refusal::from(refused),
+                other => Refusal::new(
+                    ErrorClass::Unavailable,
+                    codes::common::UNAVAILABLE,
+                    format!("the plan could not be spent, nothing was swept: {other}"),
+                ),
+            })?;
         // The sweep runs outside any operation: the backup barrier and the journal wait for no
         // sweep (after the review).
         let swept = provided.handler.run(&scope, &plan.plan_id);

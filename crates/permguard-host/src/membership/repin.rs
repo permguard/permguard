@@ -21,7 +21,6 @@
 //! every membership it coordinates (a successor re-pins its rings as they are), and its ring
 //! activates the new key only once each member received that revision, by a lease or a sync.
 
-use permguard_core::encoding::hex;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -32,8 +31,6 @@ use super::{Coordinator, Held, MembershipError, Store, verify_statement};
 use crate::identity::Verified;
 use crate::identity::record::RecordError;
 use crate::operations::mutation::Applying;
-use crate::storage::format;
-use crate::storage::write::{read_view, replace_view};
 
 /// A re-pin, a mutation of the store (`security`).
 pub const AUDIT_REPINNED: &str = "host.membership.repinned";
@@ -50,8 +47,6 @@ pub const ACKNOWLEDGE: &str = "members.acknowledge";
 pub const RETIRE_PIN: &str = "members.retire_pin";
 
 /// Where a coordinator keeps the last manifest epoch each member received.
-const DELIVERED: &str = "manifest.delivered";
-
 /// A ring's cutover as the coordinator journaled it, and what was acknowledged since.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CutoverState {
@@ -503,35 +498,25 @@ impl Store {
         id: &[u8; 16],
         delivered: &Delivered,
     ) -> Result<(), MembershipError> {
-        if self
-            .delivered(id)?
-            .is_some_and(|held| held.epoch >= delivered.epoch)
-        {
-            return Ok(());
-        }
-        let dir = self
-            .dir
-            .subdir(super::progress::DIRECTORY, true)?
-            .subdir(&hex(id), true)?;
-        replace_view(&dir, DELIVERED, format::VIEW, &delivered.encode()?)?;
-        Ok(())
+        let bytes = delivered.encode()?;
+        // The epoch delivered only rises, held against the one the store keeps in the step
+        // that keeps this one.
+        self.store.change(
+            &super::store::Doc::Delivered { membership: id },
+            &mut |held| {
+                let behind = held
+                    .map(Delivered::decode)
+                    .transpose()?
+                    .is_some_and(|held| held.epoch >= delivered.epoch);
+                Ok((!behind).then(|| bytes.clone()))
+            },
+        )
     }
 
     /// The last manifest epoch the member of `id` was delivered, if any.
     pub fn delivered(&self, id: &[u8; 16]) -> Result<Option<Delivered>, MembershipError> {
-        if !self
-            .dir
-            .subdirs()?
-            .iter()
-            .any(|name| name == super::progress::DIRECTORY)
-        {
-            return Ok(None);
-        }
-        let progress = self.dir.subdir(super::progress::DIRECTORY, false)?;
-        if !progress.subdirs()?.contains(&hex(id)) {
-            return Ok(None);
-        }
-        read_view(&progress.subdir(&hex(id), false)?, DELIVERED, format::VIEW)?
+        self.store
+            .doc(&super::store::Doc::Delivered { membership: id })?
             .map(|bytes| Delivered::decode(&bytes).map_err(MembershipError::from))
             .transpose()
     }
@@ -552,7 +537,7 @@ impl super::service::Coordinating {
         action: &'static str,
         initiator: crate::operations::journal::Initiator,
         id: &[u8; 16],
-        apply: impl FnOnce(&Applying<'_>) -> Result<(), MembershipError>,
+        mut apply: impl FnMut(&Applying<'_>) -> Result<(), MembershipError>,
     ) -> Result<(), MembershipError> {
         use crate::operations::mutation::{Applied, Begin, Failure, Outcome};
         let target = crate::identity::record::uuid_text(id);

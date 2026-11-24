@@ -28,7 +28,7 @@ use crate::identity::record::{subject, uuid_text};
 use crate::identity::{Identity, Verified};
 use crate::keys::registry::Registry;
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Mutations, Outcome};
+use crate::operations::mutation::{Applied, Begin, Failure, MutationError, Outcome};
 use crate::session::record::{EXPORTER_BYTES, Operation};
 use crate::session::{Refusal, Service, Session};
 use crate::time::TimeGuard;
@@ -37,7 +37,7 @@ use crate::time::TimeGuard;
 #[derive(Clone)]
 pub struct Coordinating {
     pub store: Arc<Store>,
-    pub mutations: Arc<Mutations>,
+    pub mutations: Arc<dyn crate::operations::mutation::Engine>,
     pub identity: Arc<Identity>,
     pub keys: Arc<Registry>,
     pub capabilities: Capabilities,
@@ -314,7 +314,9 @@ impl Service for Coordinating {
         // A reset under way takes no task session before it asks its coordinators (WP-4.9). A
         // session that passed this check as the fence landed is one opened just before the run:
         // the revocation ends it at its next frame.
-        if self.store.is_fenced() {
+        // On a store instances share, a reset another instance runs fences this one too (X171);
+        // a store that cannot say is a session not opened.
+        if self.store.fenced_anywhere().unwrap_or(true) {
             return Err(refusal(
                 codes::common::UNAVAILABLE,
                 "an identity reset is under way on this Host",

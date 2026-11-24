@@ -20,4 +20,5 @@ pub mod offline_ops;
 pub mod reclaim;
 #[cfg(feature = "volume-restore")]
 pub mod restore;
+pub(crate) mod shared;
 pub mod workspace;

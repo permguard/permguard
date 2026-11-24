@@ -14,7 +14,7 @@ use ring::signature::{Ed25519KeyPair, KeyPair as _};
 use permguard_cli::engine::remote::{RefAnswer, Remote};
 use permguard_cli::engine::{FsStore, Store, Workspace};
 use permguard_control_plane::engine::{Engine, EngineError, EngineLimits, LedgerIdentity};
-use permguard_control_plane::store::FileObjectStore;
+use permguard_control_plane::store::{FileObjectStore, LedgerStore as _};
 use permguard_notp::*;
 use permguard_objects::statement::SignedHead;
 

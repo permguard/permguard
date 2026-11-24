@@ -17,7 +17,74 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`storage.backend` names where a process keeps its state.**
+  `files`, the default, keeps it on the volume, as before; the setting is also read from `PERMGUARD_STORAGE_BACKEND`.
+  `postgresql-s3` keeps a Control Plane's state, and its Authority Plane's, in a PostgreSQL database and an S3 bucket, named under `storage.postgresql` and `storage.s3` (`PERMGUARD_STORAGE_POSTGRESQL_*`, `PERMGUARD_STORAGE_S3_*`), with no volume; a Data Plane keeps its volume and is refused on it.
+  Where a process keeps no volume, a backup, a restore, `volume claim`, `volume verify` and `migrate plan` answer `storage_backend_unsupported` and change nothing.
+- **Several Control Plane instances behind one address.**
+  On `postgresql-s3` the instances serve one catalog, one Host identity and one set of memberships, and any of them answers any request; the work that must run once runs under a lease.
+  The chart runs several replicas, `controlPlane.replicaCount` or `autoscaling`, on that backend only, and refuses `autogenerate` with them: the instances share the Host's own secrets from one Secret.
+- **Readiness follows the backend.**
+  An instance on `postgresql-s3` asks the database and the bucket every 5 seconds whether they answer, and holds readiness, `degraded: storage_backend`, while either does not: it then makes no change and issues no token.
+- **Offline commands on `postgresql-s3`.**
+  `permguard migrate import` moves a stopped server's volume into the backend, and the server starts there as the same Host.
+  `permguard host audit copy --out <DIRECTORY>` copies the trails out of the database and the bucket for `audit verify`, and `permguard evidence rotate-cursor-root` rotates an evidence store's cursor root.
+  `host identity provision --if-missing` and `host grants bootstrap` take the server's configuration, `--server-config`, in place of `--volume`.
+- **A Data Plane names the endpoints of its Control Plane's instances.**
+  `host.coordinator_endpoints`, or `PERMGUARD_HOST_COORDINATOR_ENDPOINTS`, one `<host_id> <endpoint> ...` line per coordinator.
+  A session opens on the endpoint that answered last, and on the next when its connection cannot be opened; the pinned identity is proven on whichever answers.
+
+### Changed
+
+- **A push to a ledger waits while that ledger is swept.**
+  The garbage collection held a ledger's transfer sessions on a store of its own, so a push negotiated during a sweep was not kept out: an object it had been told was present could be removed before its commit, which was then refused for the missing object and had to be pushed again.
+  A ledger now has one store for the life of the process, and a push, a collection, an export, an import and the check at load go through it.
+- **Two imports of one archive name, one over REST and one over gRPC, keep one archive.**
+  The name and the request id of an archive were checked free and the archive kept afterwards, under a lock each transport had its own copy of.
+  The archives' store now checks and keeps in one step: the second import is answered `conflict`, or the archive the same `request_id` already kept.
+- **A ledger refused for its layout is served again once it is repaired, without a restart.**
+  A store that found a ledger's `FORMAT` wrong remembered the refusal for as long as it lived.
+  Only a layout found right is remembered.
+- **The log record `gc.temporaries_not_swept` names its ledger by its ids.**
+  Its `ledger` field is `<zone id>/<ledger id>`, where it was the ledger's directory.
+- **A plan is run once, and an approval is decided on the plan as it stands.**
+  Approvals of one plan that arrived together were each checked against the plan before any of them was recorded, so all were recorded, more than the plan requires and more than one from a principal; the count of approving principals was not inflated by it.
+  Two runs of one receipt could both spend it.
+  The plan's store now decides an approval in the step that records it and refuses a plan already spent, whichever process asks: the second run of a garbage-collection receipt is answered `plan_expired` and sweeps nothing.
+- **An audit trail that never held a record is no longer reported lost.**
+  A trail was named in `host/audit/index` before its directory existed. A Host that stopped between the two, or that could not create the directory and was restarted, found at its next start a trail the index named and the volume lacked: it recorded `host.audit.trail_lost`, and `audit verify` failed on that trail for good.
+  The directory is now created first, named second, and written to third; a start that stops midway leaves nothing to report.
+- **An identity reset that stopped midway can be completed.**
+  A reset that stopped after it had marked itself under way left its operation open in the mutation journal, and the journal takes no other operation while one is open: `permguard host identity reset run` answered that the journal was unavailable, and the Host, whose identity does not open while a reset is under way, did not start again.
+  The reset run again now resolves the stopped operation first, from what the volume holds of it, and then completes.
+- **A bootstrap commitment that does not read refuses the start.**
+  `host/authz/bootstrap.cbor` damaged at rest was read as no commitment: the Host started with no recovery principal, and said nothing. The start, and `permguard host grants bootstrap`, now refuse naming the file.
+- **Two log fields changed.**
+  `host.clock_mark_ahead` carries `remedy`, what to do when the mark itself is wrong, with the file's path in it, in place of `path`. `host.identity_keys_unnamed` carries `epochs`, the epochs no succession names, in place of the file names in `keys`.
+- **A plan made before an identity reset runs nothing after it.**
+  A receipt names the Host identity it was made for. A run step now refuses, as a plan that is not held, a receipt that names another identity than the Host's: the plan of a reset whose consumption was lost can no longer reset the identity provisioned in its place.
+- **A Host whose recovery cannot finish answers not ready.**
+  When a store cannot say whether it applied an operation a crash left open, the recovery stops, as before, and the readiness probe now answers not ready, with what the store said, until a recovery ends. Before, a Plane refused changes and went on answering ready.
+  A ledger's creation left open in a zone deleted since no longer stops the Control Plane's recovery at every start: it is recorded failed.
+- **Two releases of one hold end it once.**
+  The second is answered that the hold is not held, and no index entry is rewritten from a read another release has made stale.
+- **A start stops when a domain cannot say whether it applied an operation a crash left open.**
+  Recovery asks each domain about every such operation. A domain whose state did not read, a file, a directory or a record the operating system refused, was taken as showing no trace of the operation, which was then recorded as failed although it may have been applied, and a retry applied it again.
+  The operation now stays open, nothing is recorded of it, the log says `host.mutations_recovery_stopped` with the domain and the reason, and the server does not serve that domain; the next start asks again.
+  This holds for the catalog, the refs of a ledger, the holds, the backups, a restore, an identity reset and a membership verification.
+- **A change of an account and the tokens it ends are one step, and a token is issued inside it.**
+  A token issued just as its account was suspended, its key deleted or its scopes narrowed could be recorded valid after the change had already ended the account's tokens, and a suspension and a resumption that crossed could leave the tokens in the order opposite to the account's; either lasted until the next start.
+  The Authority Plane's stores are now one subsystem: a token's account is read again and the token recorded while no change of that account is between its two writes, and changes reach the tokens in the order they reached the account.
+- **Two changes of one service account that arrive together are both applied.**
+  Each change is applied to the account as it stands at that moment, where the second used to be written over the first from an older copy of the account, which could bring back a key the first had deleted.
+  `expected_revision` is judged against the account as it stands when the change is applied, so a change that names a revision another change has moved past is answered `conflict`; a change that names none is never refused for a revision.
+  Every refusal of a change, `admin`'s last live key and the limit of live keys among them, is decided on the account as it stands then.
+- **A change of an account reaches its tokens even when the Authority Plane stops in the middle of it.**
+  A suspension, a resumption, a deletion, a narrowing of scopes and a deleted key write the account first and its tokens second; a process that died between the two left the tokens valid.
+  The Authority Plane now completes the tokens from the accounts at every start, before it serves, logs `authority.tokens_completed` and records `authority.tokens.completed` in the audit trail with how many it ended and how many it suspended; it does not serve when it cannot.
+  The same pass ends the tokens of a key that `authority admin-key` removed to make room for a new one, which used to stay valid until they expired.
 
 ## [0.1.34] - 2026-11-20
 

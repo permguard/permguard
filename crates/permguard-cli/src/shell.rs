@@ -388,7 +388,13 @@ fn dispatch(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Reclaim {
             action: crate::args::ReclaimAction::Run(args),
         } => commands::reclaim::run(&globals, &trace, args),
-        Command::Evidence { action } => {
+        Command::Evidence {
+            action: crate::args::EvidenceAction::RotateCursorRoot { store },
+            server_config,
+        } => {
+            commands::shared::rotate_cursor_root(&globals, server_config.as_deref(), &store, &trace)
+        }
+        Command::Evidence { action, .. } => {
             commands::host_ops::evidence_command(&globals, action, &trace)
         }
         Command::Backup { action } => {
@@ -508,6 +514,10 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
         Command::Backup { .. } => ("backup", Class::Volume),
         Command::Gc { .. } => ("gc", Class::Host),
         Command::Reclaim { .. } => ("reclaim", Class::Host),
+        Command::Evidence {
+            action: crate::args::EvidenceAction::RotateCursorRoot { .. },
+            ..
+        } => ("evidence", Class::Volume),
         Command::Evidence { .. } => ("evidence", Class::Host),
         Command::Migrate { .. } => ("migrate", Class::Volume),
         Command::Discover { .. } => ("discover", Class::Local),
@@ -521,7 +531,10 @@ fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
                     action: IdentityAction::Provision { .. } | IdentityAction::Reset { .. },
                 }
                 | HostAction::Grants { .. }
-                | HostAction::Holds { .. } => Class::Volume,
+                | HostAction::Holds { .. }
+                | HostAction::Audit {
+                    action: crate::args::AuditAction::Copy { .. },
+                } => Class::Volume,
                 HostAction::Identity {
                     action: IdentityAction::Pin { .. },
                 } => Class::Local,

@@ -47,8 +47,6 @@ const controlSidebar = section('Control Plane', '/control-plane', [])
 
 const dataSidebar = section('Data Plane', '/data-plane', [])
 
-const trustSidebar = section('Trust Plane', '/trust-plane', [])
-
 const commandLineSidebar = section('Command Line', '/command-line', [
   ['Configuration', 'configuration'],
   ['Workspaces & Policies', 'workspaces'],
@@ -116,11 +114,10 @@ export default defineConfig({
       { text: 'Command Line', link: '/command-line', activeMatch: '^/command-line' },
       {
         text: 'Planes',
-        activeMatch: '^/(authority|control|data|trust)-plane',
+        activeMatch: '^/(authority|control|data)-plane',
         items: [
           planeItem('Control Plane', '/control-plane', 'Policies, decision logs, events'),
           planeItem('Data Plane', '/data-plane', 'Decisions beside the workload'),
-          planeItem('Trust Plane', '/trust-plane', 'Authority continuity · PIC-X'),
           planeItem('Authority Plane', '/authority-plane', 'Identities, access keys, tokens')
         ]
       },
@@ -141,7 +138,6 @@ export default defineConfig({
       '/authority-plane': authoritySidebar,
       '/control-plane': controlSidebar,
       '/data-plane': dataSidebar,
-      '/trust-plane': trustSidebar,
       '/command-line': commandLineSidebar,
       '/how-it-works': [
         {

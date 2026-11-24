@@ -61,10 +61,13 @@ pub fn catalog_mutations_over(
 pub fn ref_mutations_for_tests(
     directory: &std::path::Path,
 ) -> permguard_host::composition::MutationHandle {
-    let handle = permguard_control_plane::store::testing::offline_ref_mutations(directory)
+    let engine = permguard_control_plane::store::testing::offline_ref_engine(directory)
         .unwrap_or_else(|error| unreachable!("a test mutation transaction opens: {error}"));
-    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(Arc::downgrade(&handle.engine())));
-    handle
+    LAST_MUTATIONS.with(|last| *last.borrow_mut() = Some(Arc::downgrade(&engine)));
+    permguard_host::composition::MutationHandle::new(
+        engine,
+        permguard_control_plane::store::REFS_DOMAIN,
+    )
 }
 
 thread_local! {
@@ -294,8 +297,9 @@ pub mod exports {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
+    use permguard_control_plane::catalog::archives::FileArchives;
     use permguard_control_plane::catalog::exports::*;
-    use permguard_control_plane::store::FileObjectStore;
+    use permguard_control_plane::store::{FileLedgers, FileObjectStore, LedgerStore as _};
     use permguard_core::catalog::{Catalog as _, Selector};
     use permguard_core::{Ledger, Zone};
     use permguard_objects::Digest;
@@ -393,7 +397,8 @@ pub mod exports {
         Fixture {
             catalog,
             exports: Exports::new(
-                root.join("zones"),
+                Arc::new(FileLedgers::new(root.join("zones"))),
+                Arc::new(FileArchives::new(root.join("zones"))),
                 super::export_signer_for_tests(Arc::clone(&ring)),
                 [7; 16],
                 max_bytes,
@@ -654,7 +659,7 @@ pub mod events {
     pub fn facade(fixture: &Fixture) -> permguard_control_plane::events::facade::EventFacade {
         permguard_control_plane::events::facade::EventFacade {
             members: None,
-            store: Arc::clone(&fixture.store),
+            store: Some(Arc::clone(&fixture.store)),
             host: Some(fixture.consumer.clone()),
             cursor_key: fixture.keys.clone(),
             catalog: None,

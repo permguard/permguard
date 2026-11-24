@@ -16,6 +16,7 @@ description: Discover and inspect the Planes, operate a Server Host through its 
 These are the operator's commands.
 `discover` and `inspect` find out what is running; the `host` family works on a Server Host through its listener at `--host-endpoint`, or offline on its volume at `--volume`.
 `restore`, `migrate` and `backup verify` work only on a stopped Server's volume, and `gc` and `reclaim` free storage through the Host listener.
+A Control Plane that keeps its state in PostgreSQL and S3 has no volume: its offline commands take its configuration instead, as [PostgreSQL and S3](#postgresql-and-s3) says.
 
 ## version
 
@@ -94,6 +95,7 @@ Most subcommands reach the Host listener; the ones marked volume work offline, o
 | `host members`                         | Host listener | membership enrollment, approval and lifecycle                      |
 | `host keys`                            | Host listener | key rings, rotation, revocation and the verification bundle        |
 | `host audit`                           | Host listener | audit trails, signed checkpoints and exports                       |
+| `host audit copy`                      | configuration | the trails a stopped server keeps in PostgreSQL and S3, copied     |
 | `host streams`                         | Host listener | the streams the Host produces and consumes                         |
 | `host plans`                           | Host listener | plan receipts and the countersignature dual control requires       |
 | `host backup`                          | Host listener | application-consistent backups                                     |
@@ -115,6 +117,33 @@ What cannot be undone happens in two steps.
 `host identity reset`, `host members revoke`, `host keys revoke`, `restore`, `migrate` and `gc objects` work this way.
 The plan is written to a new file only its owner reads, and `restore`, `migrate` and `host identity reset` refuse a run when the volume moved since its plan.
 A principal never approves its own plan.
+
+## PostgreSQL and S3
+
+A Control Plane, with the Authority Plane beside it, can keep its state in a PostgreSQL database and an S3 bucket instead of a volume: `storage.backend: postgresql-s3` in its configuration, or `PERMGUARD_STORAGE_BACKEND`.
+Several instances then serve behind one address, and any of them answers any request.
+A Data Plane keeps its own volume, as always.
+
+Before the first start the operator creates the database, a user that may create tables in it, or in the schema `storage.postgresql.schema` names, which must exist, and the bucket.
+Permguard creates and upgrades its own tables at start, one instance at a time; a database whose tables are newer than the server refuses the start and is not changed.
+
+An instance is ready only while the database and the bucket answer.
+While either does not, it makes no change and issues no token, and a Data Plane goes on deciding with what it holds.
+
+The commands that work on a stopped server take its configuration, `--server-config <FILE>`, in place of `--volume`:
+
+| Task                                     | Command                                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| make the identity before the first start | `host identity provision --if-missing`: once in the database, for every instance    |
+| commit the recovery principal            | `host grants bootstrap --fingerprint <FINGERPRINT>`                                 |
+| move a volume into the backend           | `migrate import`, the server stopped                                                |
+| verify the audit trails apart            | `host audit copy --out <DIRECTORY>`, then the server's `audit verify` on the copy   |
+| rotate an evidence store's cursor root   | `evidence rotate-cursor-root --store decisions` or `events`, every instance stopped |
+
+`host backup`, `restore`, `migrate plan` and the other commands that read or write a volume answer `storage_backend_unsupported`.
+
+A Data Plane reaches the instances of its Control Plane at the endpoints its configuration names, `host.coordinator_endpoints`, or `PERMGUARD_HOST_COORDINATOR_ENDPOINTS`: one line `<host_id> <endpoint> ...` per Control Plane, each endpoint `https://<host>:<port>`.
+A session opens on the endpoint that answered last, and on the next when its connection cannot be opened; whichever answers proves the same pinned identity.
 
 ## host status and config
 
@@ -173,6 +202,7 @@ permguard host identity show
 permguard host identity rotate --expected-epoch 1
 permguard host identity verify https://peer.example:9443 --fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 permguard host identity provision --volume /var/lib/permguard
+permguard host identity provision --if-missing --server-config /etc/permguard/server.yaml
 ```
 
 `provision` prints the witness to keep outside the volume and give the server as `host.identity.witness`.
@@ -329,13 +359,15 @@ The Host's audit trails: records, signed checkpoints and fixed-frontier exports.
 permguard host audit query [OPTIONS] --class <CLASS> --resource <RESOURCE>
 permguard host audit checkpoints [OPTIONS] --class <CLASS> --resource <RESOURCE>
 permguard host audit export [OPTIONS] --class <CLASS> --resource <RESOURCE> --out <FILE>
+permguard host audit copy [OPTIONS] --out <DIRECTORY>
 ```
 
-| Command       | What it does                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------- |
-| `query`       | prints one page of a trail's records, its gaps and the cursor of the next page                    |
-| `checkpoints` | prints a trail's signed checkpoints and the keys that cover them                                  |
-| `export`      | writes a trail's export, every page at one frontier with its verification metadata, to a new file |
+| Command       | What it does                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `query`       | prints one page of a trail's records, its gaps and the cursor of the next page                             |
+| `checkpoints` | prints a trail's signed checkpoints and the keys that cover them                                           |
+| `export`      | writes a trail's export, every page at one frontier with its verification metadata, to a new file          |
+| `copy`        | offline: copies the trails a stopped server keeps in PostgreSQL and S3, and their keys, to a new directory |
 
 | Flag                    | Meaning                                                                     |
 | ----------------------- | --------------------------------------------------------------------------- |
@@ -350,7 +382,11 @@ permguard host audit export [OPTIONS] --class <CLASS> --resource <RESOURCE> --ou
 permguard host audit query --class security --resource host
 permguard host audit checkpoints --class security --resource host --period 2026-10-01 -o json
 permguard host audit export --class security --resource host --out audit.json
+permguard host audit copy --server-config /etc/permguard/server.yaml --out ./audit-copy
 ```
+
+`copy` is for a server with no volume: `permguard-control-plane audit verify --directory ./audit-copy/trails --keys ./audit-copy/host.operations.keys.json` then verifies the copy.
+The keys come from the database too, so an independent verification takes them from an export kept apart.
 
 ## host streams
 
@@ -505,6 +541,7 @@ permguard migrate plan [OPTIONS] --subsystem <SUBSYSTEM> --backup <BACKUP> --out
 permguard migrate run [OPTIONS]
 permguard migrate status [OPTIONS]
 permguard migrate rollback [OPTIONS] --subsystem <SUBSYSTEM>
+permguard migrate import [OPTIONS]
 ```
 
 | Command    | What it does                                                                                   |
@@ -513,6 +550,7 @@ permguard migrate rollback [OPTIONS] --subsystem <SUBSYSTEM>
 | `run`      | runs the migration the plan in `--confirm-file` describes                                      |
 | `status`   | lists every subsystem on the volume: its version, generation and where its migration stands    |
 | `rollback` | returns a committed migration to its old generation, when the new one is as the commit left it |
+| `import`   | moves a stopped server's volume into the PostgreSQL and S3 backend its `--server-config` names |
 
 | Flag                      | Meaning                                                                                                     |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -524,7 +562,10 @@ permguard migrate rollback [OPTIONS] --subsystem <SUBSYSTEM>
 permguard migrate status --volume /var/lib/permguard
 permguard migrate plan --volume /var/lib/permguard --subsystem audit --backup snap-2026-10-25 --out migrate.plan
 permguard migrate run --volume /var/lib/permguard --confirm-file migrate.plan
+permguard migrate import --volume /var/lib/permguard --server-config /etc/permguard/server.yaml
 ```
+
+The server that imported starts on the backend as the same Host: its identity, keys, memberships, catalog and ledgers come with it.
 
 ## gc
 

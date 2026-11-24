@@ -1,17 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The ring registry (WP-3.1): `host/keys/<ring>/` on the volume.
-//!
-//! ```text
-//! host/keys/<ring>/
-//! ├── journal.cborseq          lifecycle and epoch transitions; authoritative
-//! ├── ring.cbor                the materialized public view, rebuilt from the journal
-//! ├── binding.cose             the identity-signed binding of the current set
-//! ├── bindings/<seq>.cose      every binding issued, by its `bound` journal entry (WP-3.4)
-//! ├── public/<thumbprint>.jwk  every key the ring ever published, kept for good
-//! └── private/<thumbprint>.key through the key provider, 0600; destroyed at retirement
-//! ```
+//! The ring registry (WP-3.1), a ring's records kept by a [`store::RingStore`]
+//! (`1-architecture/4` Stores): [`files`], the default, is `host/keys/<ring>/` on the volume.
 //!
 //! | State          | In the published set | Signs | Private half                          |
 //! | -------------- | -------------------- | ----- | ------------------------------------- |
@@ -22,8 +13,8 @@
 //! | archived       | no; `public/` keeps it | no  | destroyed                             |
 //!
 //! Exactly one key is active. The epoch rises at every change of the published set: a key
-//! prepublished, archived or revoked out of it. Every transition is a journal entry written before
-//! the change shows in `ring.cbor` or a key set, and an `operations` audit record; maintenance runs
+//! prepublished, archived or revoked out of it. Every transition is an entry added before the
+//! change shows in the view or a key set, and an `operations` audit record; maintenance runs
 //! at start and on the timer, serialized per ring, and is idempotent. An operator's rotation and
 //! revocation are security mutations of the domain [`DOMAIN`] (owner decisions of 2026-10-08).
 //!
@@ -46,33 +37,24 @@ use permguard_objects::cose::Sign1;
 use permguard_objects::crypto::suite::Suite;
 use permguard_objects::crypto::thumbprint::{self, KeySet};
 
-use super::record::{
-    Binding, Entry, KeyView, Kind, MAX_ENTRY_BYTES, MAX_REASON_BYTES, State, View,
-};
-use super::{FileKeyProvider, KeyError as ProviderError, KeyProvider, PublicKey};
+use super::record::{Binding, Entry, KeyView, Kind, MAX_REASON_BYTES, State, View};
+use super::{KeyError as ProviderError, KeyProvider, PublicKey};
 use crate::identity::record::RecordError;
 use crate::operations::journal::OperationId;
 use crate::operations::mutation::{Applying, Domain, Observed};
-use crate::storage::volume::Volume;
-use crate::storage::write::{Published, publish_immutable, read_view, replace_view};
-use crate::storage::{Dir, StorageError, format, sequence};
 use crate::time::TimeGuard;
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "keys";
-/// The ring's journal.
-pub const JOURNAL: &str = "journal.cborseq";
-/// The materialized view.
-pub const VIEW: &str = "ring.cbor";
-/// The identity-signed binding.
-pub const BINDING: &str = "binding.cose";
-/// Every binding issued, by the sequence of its `bound` journal entry, kept for the verification
-/// bundle (WP-3.4, owner decisions of 2026-10-09).
-pub const BINDINGS: &str = "bindings";
-/// The public halves.
-pub const PUBLIC: &str = "public";
-/// The private halves, through the key provider.
-pub const PRIVATE: &str = "private";
+pub mod files;
+pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
+
+use store::RingStore;
+
+pub use files::{
+    BINDING, BINDINGS, DIRECTORY, JOURNAL, PRIVATE, PUBLIC, RETIRED, VIEW, directory, export,
+    journal_entries,
+};
 
 /// The Host identity's ring: a view of the identity's keys, with no store of its own.
 pub const HOST_IDENTITY: &str = "host.identity";
@@ -132,7 +114,8 @@ pub struct Policy {
 /// Why a ring refused or failed.
 #[derive(Debug)]
 pub enum RingError {
-    Storage(StorageError),
+    /// The store could not be read or written: a write may have been made all the same.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
     Provider(ProviderError),
     Record(RecordError),
     /// The journal or the files below the ring do not agree: the ring is not opened.
@@ -160,7 +143,7 @@ pub enum RingError {
 impl fmt::Display for RingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Storage(error) => write!(f, "{error}"),
+            Self::Unavailable(error) => write!(f, "{error}"),
             Self::Provider(error) => write!(f, "{error}"),
             Self::Record(error) => write!(f, "{error}"),
             Self::Corrupt(detail)
@@ -180,12 +163,6 @@ impl fmt::Display for RingError {
 
 impl std::error::Error for RingError {}
 
-impl From<StorageError> for RingError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
-
 impl From<ProviderError> for RingError {
     fn from(error: ProviderError) -> Self {
         Self::Provider(error)
@@ -204,7 +181,7 @@ impl RingError {
     pub fn is_indeterminate(&self) -> bool {
         matches!(
             self,
-            Self::Storage(_) | Self::Provider(_) | Self::Unfinished(_)
+            Self::Unavailable(_) | Self::Provider(_) | Self::Unfinished(_)
         )
     }
 }
@@ -424,16 +401,6 @@ pub struct HistoryKey {
     /// The epoch its prepublication opened.
     pub epoch: u64,
     pub state: State,
-}
-
-/// Keeps `envelope` as `bindings/<seq>.cose`, `seq` the `bound` journal entry about to record
-/// it (WP-3.4, owner decision of 2026-10-09). Written before the entry: a file whose entry never
-/// reached the journal counts for nothing and is replaced by the next binding of that sequence,
-/// and once the entry is written the file is never written again.
-fn keep_binding(dir: &Dir, seq: u64, envelope: &[u8]) -> Result<(), RingError> {
-    let kept = dir.subdir(BINDINGS, true)?;
-    replace_view(&kept, &format!("{seq}.cose"), format::VIEW, envelope)?;
-    Ok(())
 }
 
 /// What an operator's transition produced.
@@ -696,8 +663,7 @@ pub struct Ring {
     id: &'static str,
     suite: Suite,
     policy: Policy,
-    dir: Dir,
-    public: Dir,
+    store: Arc<dyn RingStore>,
     provider: Arc<dyn KeyProvider>,
     time: Arc<TimeGuard>,
     binder: Option<Arc<dyn Binder>>,
@@ -711,100 +677,81 @@ pub struct Ring {
     serial: Mutex<()>,
     /// Set when a journal write failed: what reached the file is uncertain, so the ring takes no
     /// transition until it is opened again and the journal is read back.
-    stopped: AtomicBool,
+    stopped: Arc<AtomicBool>,
     /// Set when an identity reset retired the ring: it signs nothing more in this process.
-    retired: AtomicBool,
+    retired: Arc<AtomicBool>,
     /// Asked before a prepublished key takes over (WP-4.5); none lets every one take over.
     gate: RwLock<Option<Arc<dyn ActivationGate>>>,
     /// Asked before a background maintenance pass (BUG-0207); none never holds it.
     hold: RwLock<Option<Arc<dyn MaintenanceHold>>>,
+    /// When the store was last read whole, on a store other instances share (WP-28.3).
+    read_at: Mutex<std::time::Instant>,
+    /// Set when an operation that made a transition ended without being kept: the view holds
+    /// what the database undid, and is read again before it answers (WP-29.1).
+    undone: Arc<AtomicBool>,
+    /// How old that reading may be when the ring signs or publishes: [`FRESH_FOR`].
+    fresh_for: Duration,
 }
+
+/// How long a ring on a store other instances share signs and publishes from what it read before
+/// it reads the store again (iteration 03, WP-28.3): a key revoked or rotated on one instance
+/// stops signing on every instance within this bound of the change's commit.
+pub const FRESH_FOR: Duration = Duration::from_secs(5);
 
 impl fmt::Debug for Ring {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Ring")
             .field("id", &self.id)
             .field("suite", &self.suite)
-            .field("dir", &self.dir.path())
             .finish_non_exhaustive()
     }
 }
 
-/// The directory of `ring` below `volume`, created when absent.
-pub fn directory(volume: &Volume, ring: &str) -> Result<Dir, StorageError> {
-    volume.host().subdir(DIRECTORY, true)?.subdir(ring, true)
-}
-
-/// The directory a reset keeps a retired ring's public records in, below `host/keys/`.
-pub const RETIRED: &str = "retired";
-
 impl Ring {
     /// Retires the ring with the identity a reset retires (WP-4.1, owner decision of
-    /// 2026-10-10): it signs and transitions nothing more here; its public records (journal,
-    /// view, bindings, public keys) are kept in `host/keys/retired/<old host_id>/<ring>/`; its
-    /// journal goes first, so the ring opens as a new one at the next start, bound to the new
-    /// identity; then every private key is destroyed through its provider and the rest removed.
-    /// A crash after the journal went leaves keys no journal names, which the next maintenance
-    /// removes.
-    pub fn retire(
-        &self,
-        _applying: &Applying<'_>,
-        old_host_id: &[u8; 16],
-    ) -> Result<(), RingError> {
+    /// 2026-10-10): it signs and transitions nothing more here; its public records (entries,
+    /// view, bindings, public keys) are kept as the evidence of the retired Host; its entries go
+    /// first, so the ring opens as a new one at the next start, bound to the new identity; then
+    /// the rest is removed, and every private key is destroyed through its provider once the
+    /// reset is kept. A crash after the entries went leaves keys no entry names, which the next
+    /// maintenance removes.
+    pub fn retire(&self, applying: &Applying<'_>, old_host_id: &[u8; 16]) -> Result<(), RingError> {
         let _serial = self.serial.lock().unwrap_or_else(PoisonError::into_inner);
         self.retired.store(true, Ordering::SeqCst);
         self.stopped.store(true, Ordering::SeqCst);
+        // An attempt the database undoes retired nothing: the ring signs again (decision X68).
+        let (retired, stopped) = (Arc::clone(&self.retired), Arc::clone(&self.stopped));
+        applying.on_end(move |kept| {
+            if !kept {
+                retired.store(false, Ordering::SeqCst);
+                stopped.store(false, Ordering::SeqCst);
+            }
+        });
         // Taken to write: the signings in flight end before anything is destroyed.
         let _state = self.write();
-        let keys = Dir::open(
-            self.dir
-                .path()
-                .parent()
-                .ok_or_else(|| RingError::Corrupt("a ring directory has no parent".to_owned()))?,
-        )?;
-        let kept = keys
-            .subdir(RETIRED, true)?
-            .subdir(&crate::identity::record::uuid_text(old_host_id), true)?
-            .subdir(self.id, true)?;
-        for name in [JOURNAL, VIEW, BINDING] {
-            if let Some(bytes) = self.dir.read(name)? {
-                crate::storage::write::replace_bytes(&kept, name, &bytes)?;
+        self.store.retire(applying, old_host_id)?;
+        self.store.forget_entries()?;
+        let slots = self.provider.slots()?;
+        self.store.clear()?;
+        // A key a custody outside the database destroys is not undone with it: destroyed once
+        // the reset is kept.
+        let (provider, ring) = (Arc::clone(&self.provider), self.id);
+        applying.on_end(move |kept| {
+            if !kept {
+                return;
             }
-        }
-        for sub in [BINDINGS, PUBLIC] {
-            let from = self.dir.subdir(sub, true)?;
-            let to = kept.subdir(sub, true)?;
-            for name in from.names()? {
-                if let Some(bytes) = from.read(&name)? {
-                    crate::storage::write::replace_bytes(&to, &name, &bytes)?;
+            for slot in slots {
+                if let Err(error) = provider.destroy(&slot) {
+                    tracing::warn!(
+                        event.name = "host.keys.retired_key_kept",
+                        component = "host",
+                        ring,
+                        error = %error,
+                        "a retired ring key could not be destroyed; the next maintenance removes it"
+                    );
                 }
             }
-        }
-        if self.dir.read(JOURNAL)?.is_some() {
-            crate::storage::tombstone::delete(&self.dir, JOURNAL)?;
-        }
-        for slot in self.provider.slots()? {
-            if let Err(error) = self.provider.destroy(&slot) {
-                tracing::warn!(
-                    event.name = "host.keys.retired_key_kept",
-                    component = "host",
-                    ring = self.id,
-                    error = %error,
-                    "a retired ring key could not be destroyed; the next maintenance removes it"
-                );
-            }
-        }
-        for name in [VIEW, BINDING] {
-            if self.dir.read(name)?.is_some() {
-                crate::storage::tombstone::delete(&self.dir, name)?;
-            }
-        }
-        for sub in [BINDINGS, PUBLIC] {
-            let dir = self.dir.subdir(sub, true)?;
-            for name in dir.names()? {
-                crate::storage::tombstone::delete(&dir, &name)?;
-            }
-        }
+        });
         tracing::warn!(
             event.name = "host.keys.retired",
             component = "host",
@@ -814,41 +761,30 @@ impl Ring {
         Ok(())
     }
 
-    /// Opens `ring` on `volume`: the journal replayed and checked, `ring.cbor` rebuilt when
-    /// absent or stale. A prepublished or active key whose private half is gone refuses the
-    /// open: a lost key is never silently replaced. What a crash left otherwise (a private half a
-    /// retirement left, a key generated and never journaled) the first maintenance completes,
-    /// journaled and recorded like any transition.
-    pub fn open(
-        volume: &Volume,
-        ring: &'static str,
-        suite: Suite,
-        policy: Policy,
-        time: Arc<TimeGuard>,
-    ) -> Result<Self, RingError> {
+    /// Refuses what is not a ring with keys of its own.
+    fn registered(ring: &str) -> Result<(), RingError> {
         if !REGISTERED.contains(&ring) || ring == HOST_IDENTITY {
             return Err(RingError::Refused(format!(
                 "`{ring}` is not a ring with keys of its own"
             )));
         }
-        let dir = directory(volume, ring)?;
-        let public = dir.subdir(PUBLIC, true)?;
-        let private = dir.subdir(PRIVATE, true)?;
-        let provider: Arc<dyn KeyProvider> = Arc::new(FileKeyProvider::new(private));
-        Self::open_with(dir, public, provider, ring, suite, policy, time)
+        Ok(())
     }
 
-    /// Opens over a provider of the caller's: a custody provider (WP-3.2), a test.
+    /// Opens `ring` over the records `store` keeps and a provider of the caller's: the entries
+    /// replayed and checked, the view rebuilt when absent or stale. A prepublished or active key
+    /// whose private half is gone refuses the open: a lost key is never silently replaced. What
+    /// a crash left otherwise (a private half a retirement left, a key generated and never
+    /// recorded) the first maintenance completes, recorded like any transition.
     pub fn open_with(
-        dir: Dir,
-        public: Dir,
+        store: Arc<dyn RingStore>,
         provider: Arc<dyn KeyProvider>,
         ring: &'static str,
         suite: Suite,
         policy: Policy,
         time: Arc<TimeGuard>,
     ) -> Result<Self, RingError> {
-        let opened = Self::open_unchecked(dir, public, provider, ring, suite, policy, time)?;
+        let opened = Self::open_unchecked(store, provider, ring, suite, policy, time)?;
         opened.check_held()?;
         Ok(opened)
     }
@@ -856,17 +792,15 @@ impl Ring {
     /// Opens without checking the keys the provider holds: the custody journals what it is
     /// about to do before it does it, then [`Ring::check_held`] runs (WP-3.2).
     pub(crate) fn open_unchecked(
-        dir: Dir,
-        public: Dir,
+        store: Arc<dyn RingStore>,
         provider: Arc<dyn KeyProvider>,
         ring: &'static str,
         suite: Suite,
         policy: Policy,
         time: Arc<TimeGuard>,
     ) -> Result<Self, RingError> {
-        let journal = sequence::recover(&dir, JOURNAL, MAX_ENTRY_BYTES)?;
         let mut state = Materialized::default();
-        for item in journal.items {
+        for item in store.entries()? {
             let entry = Entry::decode(item)?;
             state
                 .apply(ring, &entry)
@@ -880,20 +814,12 @@ impl Ring {
                  transition is explicit, and this build makes none"
             )));
         }
-        let binding = match read_view(&dir, BINDING, format::VIEW)? {
-            Some(bytes) => Sign1::decode(&bytes)
-                .ok()
-                .and_then(|sign1| Binding::decode(sign1.payload_unverified()).ok())
-                .filter(|binding| binding.ring == ring)
-                .map(|binding| (binding, bytes)),
-            None => None,
-        };
+        let binding = binding_of(store.as_ref(), ring)?;
         let opened = Self {
             id: ring,
             suite,
             policy,
-            dir,
-            public,
+            store,
             provider,
             time,
             binder: None,
@@ -901,10 +827,13 @@ impl Ring {
             state: RwLock::new(state),
             binding: RwLock::new(binding),
             serial: Mutex::new(()),
-            stopped: AtomicBool::new(false),
-            retired: AtomicBool::new(false),
+            stopped: Arc::new(AtomicBool::new(false)),
+            retired: Arc::new(AtomicBool::new(false)),
             gate: RwLock::new(None),
             hold: RwLock::new(None),
+            read_at: Mutex::new(std::time::Instant::now()),
+            undone: Arc::new(AtomicBool::new(false)),
+            fresh_for: FRESH_FOR,
         };
         Ok(opened)
     }
@@ -945,23 +874,43 @@ impl Ring {
     /// What `keys export` prints for this ring: its published and retained public keys and its
     /// revocations, read from its journal (WP-3.7: what an audit export verifies offline with).
     pub fn export_document(&self) -> Result<String, RingError> {
-        export(self.dir.path())
+        export_of(self.store.as_ref(), self.id)
     }
 
     /// The ring epoch: `0` before its first key.
     pub fn epoch(&self) -> u64 {
+        // A store that cannot be read leaves the epoch as read: what a transition expects is
+        // checked again under its lock, on the store as it is.
+        let _ = self.current();
         self.read().epoch
+    }
+
+    /// Reads the store again once the operation `applying` ends without being kept, on a store
+    /// other instances share: the transition this ring applied to its view inside it was undone
+    /// with it, and an attempt run again, or the next question, must not find it (decision X68,
+    /// WP-29.1). On files the journal is the view's, and an operation is kept as it ends.
+    fn read_again_unless_kept(&self, applying: &Applying<'_>) {
+        if !self.store.shared() {
+            return;
+        }
+        let undone = Arc::clone(&self.undone);
+        applying.on_end(move |kept| {
+            if !kept {
+                undone.store(true, Ordering::SeqCst);
+            }
+        });
     }
 
     /// The epoch the active key was prepublished at, from the journal: what tells a key a pin's
     /// set published from one a later rotation added (BUG-0104). `None` without an active key.
     pub fn active_published_epoch(&self) -> Result<Option<u64>, RingError> {
+        self.current()?;
         let Some(active) = self.read().active().map(|key| key.kid.clone()) else {
             return Ok(None);
         };
         let entries = {
             let _serial = self.serial();
-            journal_entries(&self.dir)?
+            entries_of(self.store.as_ref())?
         };
         Ok(entries
             .into_iter()
@@ -977,8 +926,88 @@ impl Ring {
         self.state.write().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Reads the ring's entries and binding again from its store (iteration 03, WP-28.2): what
+    /// another instance that shares the store appended, a rotation its holder of the ring's job
+    /// made, is then this ring's view to sign and publish with. A retired ring stays as it is.
+    pub fn refresh(&self) -> Result<(), RingError> {
+        if self.retired.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let _serial = self.serial();
+        self.reload()
+    }
+
+    /// The lock every transition is made under. On a store other instances share, the ring is
+    /// read again under it first (WP-28.2): a transition decided from a view behind the store
+    /// would take a key the store holds and the view does not know for one never recorded, and
+    /// destroy it.
+    fn writing(&self) -> Result<std::sync::MutexGuard<'_, ()>, RingError> {
+        let serial = self.serial();
+        if self.store.shared() && !self.retired.load(Ordering::SeqCst) {
+            self.reload()?;
+        }
+        Ok(serial)
+    }
+
+    /// The view and the binding as the store holds them, under the serial lock. A ring stopped
+    /// by a write the store refused takes transitions again: it now reads what the store holds.
+    fn reload(&self) -> Result<(), RingError> {
+        let mut state = Materialized::default();
+        for item in self.store.entries()? {
+            let entry = Entry::decode(item)?;
+            state
+                .apply(self.id, &entry)
+                .map_err(|detail| RingError::Corrupt(format!("{}: {detail}", self.id)))?;
+        }
+        let binding = binding_of(self.store.as_ref(), self.id)?;
+        *self.write() = state;
+        *self.binding.write().unwrap_or_else(PoisonError::into_inner) = binding;
+        self.stopped.store(false, Ordering::SeqCst);
+        self.undone.store(false, Ordering::SeqCst);
+        *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// The ring as another bound than [`FRESH_FOR`] keeps it fresh: what a test waits for.
+    #[must_use]
+    pub fn fresh_for(mut self, bound: Duration) -> Self {
+        self.fresh_for = bound;
+        self
+    }
+
+    /// Reads the store again when the ring signs or publishes from a reading older than its
+    /// bound, on a store other instances share (WP-28.3). A store that cannot be read past the
+    /// bound is a ring that signs nothing: a key revoked elsewhere is never signed with past it.
+    /// While a transition holds the serial lock, this one or another thread's, the store was read
+    /// under it as the transition began, and is not read again: the transition's own reads of the
+    /// view never wait on the lock it holds.
+    fn current(&self) -> Result<(), RingError> {
+        if !self.store.shared() || self.retired.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let stale = self.undone.load(Ordering::SeqCst)
+            || self
+                .read_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .elapsed()
+                >= self.fresh_for;
+        if !stale {
+            return Ok(());
+        }
+        match self.serial.try_lock() {
+            Ok(_serial) => self.reload(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                let _serial = poisoned.into_inner();
+                self.reload()
+            }
+            Err(std::sync::TryLockError::WouldBlock) => Ok(()),
+        }
+    }
+
     /// The materialized view of the journal.
     pub fn view(&self) -> Result<View, RingError> {
+        self.current()?;
         let state = self.read();
         let (suite, key_set_digest) = match state.statement(self.id) {
             Ok((suite, digest, _)) => (suite, digest),
@@ -997,6 +1026,7 @@ impl Ring {
     /// The public statement: the published set, its epoch and digest, and the binding of this
     /// epoch when the identity signed one.
     pub fn statement(&self) -> Result<Statement, RingError> {
+        self.current()?;
         let state = self.read();
         let (suite, key_set_digest, keys) = state.statement(self.id)?;
         let binding = self
@@ -1070,10 +1100,16 @@ impl Ring {
                     .map_err(|detail| RingError::Refused(format!("{}: {detail}", self.id)))?;
             }
         }
-        for bytes in &encoded {
-            if let Err(error) = sequence::append(&self.dir, JOURNAL, bytes) {
-                self.stopped.store(true, Ordering::SeqCst);
-                return Err(error.into());
+        for (entry, bytes) in entries.iter().zip(&encoded) {
+            match self.store.append(entry.seq, bytes) {
+                Ok(()) => {}
+                // Refused, the store holds an entry this ring has not read and nothing was added;
+                // otherwise what reached the store is not known. Either way the ring takes no
+                // transition until it is opened again and reads its entries back.
+                Err(error) => {
+                    self.stopped.store(true, Ordering::SeqCst);
+                    return Err(error);
+                }
             }
         }
         {
@@ -1148,12 +1184,7 @@ impl Ring {
     }
 
     fn publish_public(&self, thumbprint: &str, jwk: &str) -> Result<(), RingError> {
-        let name = format!("{thumbprint}.jwk");
-        let readable = |bytes: &[u8]| serde_json::from_slice::<Jwk>(bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == jwk.as_bytes();
-        match publish_immutable(&self.public, &name, jwk.as_bytes(), &readable, &same)? {
-            Published::Written | Published::AlreadyThere => Ok(()),
-        }
+        self.store.publish_public(thumbprint, jwk.as_bytes())
     }
 
     /// Destroys the private half of `kid`, after the signings in flight: taking the state to
@@ -1232,8 +1263,8 @@ impl Ring {
 
     fn write_view(&self) -> Result<(), RingError> {
         let bytes = self.view()?.encode()?;
-        if read_view(&self.dir, VIEW, format::VIEW)?.as_deref() != Some(bytes.as_slice()) {
-            replace_view(&self.dir, VIEW, format::VIEW, &bytes)?;
+        if self.store.view()?.as_deref() != Some(bytes.as_slice()) {
+            self.store.replace_view(&bytes)?;
         }
         Ok(())
     }
@@ -1247,7 +1278,7 @@ impl Ring {
     /// prepublished `publish_ahead` before the active key's turn ends; a retired key past
     /// `retain` is archived; the binding is issued for a new epoch and before it ends.
     pub fn maintain_now(&self) -> Result<Maintenance, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         let now = self.time.now_secs();
         let mut report = Maintenance::default();
         let ahead = self.policy.publish_ahead.as_secs();
@@ -1427,9 +1458,9 @@ impl Ring {
             .kid()
             .map_err(|detail| RingError::NotReady(format!("the identity's kid: {detail}")))?;
         let entry = self.entry(Kind::Bound, &signer, 0, now);
-        keep_binding(&self.dir, entry.seq, &envelope)?;
+        self.store.keep_binding(entry.seq, &envelope)?;
         self.commit(entry)?;
-        replace_view(&self.dir, BINDING, format::VIEW, &envelope)?;
+        self.store.replace_binding(&envelope)?;
         *self.binding.write().unwrap_or_else(PoisonError::into_inner) = Some((binding, envelope));
         Ok(())
     }
@@ -1451,7 +1482,7 @@ impl Ring {
     pub fn history(&self, seq: u64) -> Result<History, RingError> {
         let entries = {
             let _serial = self.serial();
-            journal_entries(&self.dir)?
+            entries_of(self.store.as_ref())?
         };
         if entries.last().is_none_or(|last| last.seq < seq) || seq == 0 {
             return Err(RingError::Refused(format!(
@@ -1501,27 +1532,20 @@ impl Ring {
     /// binding counts only once its `bound` entry is in the journal's prefix, so every page of a
     /// frontier carries the same ones.
     pub fn kept_bindings(&self, history: &History) -> Result<Vec<(u64, Vec<u8>)>, RingError> {
-        let dir = self.dir.subdir(BINDINGS, true)?;
         let mut kept = Vec::new();
         for (seq, epoch) in &history.bound {
-            if let Some(bytes) = read_view(&dir, &format!("{seq}.cose"), format::VIEW)? {
+            if let Some(bytes) = self.store.kept_binding(*seq)? {
                 kept.push((*epoch, bytes));
             }
         }
         Ok(kept)
     }
 
-    /// Whether `envelope` is kept in `bindings/`.
+    /// Whether `envelope` is a binding the store keeps.
     fn is_kept(&self, envelope: &[u8]) -> bool {
-        let Ok(dir) = self.dir.subdir(BINDINGS, true) else {
-            return false;
-        };
-        dir.names().unwrap_or_default().iter().any(|name| {
-            read_view(&dir, name, format::VIEW)
-                .ok()
-                .flatten()
-                .is_some_and(|bytes| bytes == envelope)
-        })
+        self.store
+            .kept_bindings()
+            .is_ok_and(|kept| kept.iter().any(|bytes| bytes == envelope))
     }
 
     fn expect_epoch(&self, expected: u64) -> Result<(), RingError> {
@@ -1540,9 +1564,10 @@ impl Ring {
         applying: &Applying<'_>,
         expected_epoch: u64,
     ) -> Result<Transition, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_rotatable()?;
+        self.read_again_unless_kept(applying);
         let now = self.time.now_secs();
         let entry = self.prepublish(now, Some(*applying.operation_id().as_bytes()))?;
         self.write_view().map_err(|error| {
@@ -1603,9 +1628,10 @@ impl Ring {
         compromised_at: Option<u64>,
         expected_epoch: u64,
     ) -> Result<Transition, RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_revocable(kid)?;
+        self.read_again_unless_kept(applying);
         if reason.is_empty() || reason.len() > MAX_REASON_BYTES {
             return Err(RingError::Refused(format!(
                 "a revocation reason takes 1 to {MAX_REASON_BYTES} bytes"
@@ -1678,7 +1704,7 @@ impl Ring {
     /// Journals what the custody did to private halves at Bootstrap (WP-3.2): each slot in
     /// `slots`, sealed in place or rewrapped, an entry of `kind`.
     pub fn note_custody(&self, kind: Kind, slots: &[String]) -> Result<(), RingError> {
-        let _serial = self.serial();
+        let _serial = self.writing()?;
         let now = self.time.now_secs();
         for slot in slots {
             let kid = thumbprint::kid(self.id, slot);
@@ -1713,6 +1739,7 @@ impl Ring {
 
 impl permguard_core::keys::Sign for Ring {
     fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+        self.current().map_err(core_error)?;
         self.read()
             .active()
             .map(|key| KeyId::new(key.kid.clone()))
@@ -1731,6 +1758,7 @@ impl permguard_core::keys::Sign for Ring {
                 self.id
             )));
         }
+        self.current().map_err(core_error)?;
         // Held across the signing: a retirement waits for it before destroying the key.
         let state = self.read();
         let kid = state.active().map(|key| key.kid.clone()).ok_or_else(|| {
@@ -1752,6 +1780,7 @@ impl permguard_core::keys::Sign for Ring {
 impl permguard_core::keys::PublicSet for Ring {
     /// The published set; never an empty one: a ring with no key is not ready.
     fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
+        self.current().map_err(core_error)?;
         self.read()
             .statement(self.id)
             .map(|(_, _, keys)| keys)
@@ -1760,6 +1789,7 @@ impl permguard_core::keys::PublicSet for Ring {
 
     /// The epoch, the set's digest and the suite's algorithm, read together (WP-7.1).
     fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        self.current().map_err(core_error)?;
         let state = self.read();
         let (suite, digest, _) = state.statement(self.id).map_err(core_error)?;
         Ok(permguard_core::keys::KeySetView {
@@ -1795,6 +1825,22 @@ impl permguard_core::KeyManager for Ring {
         }
         self.maintain_now().map_err(core_error)
     }
+
+    fn refresh(&self) -> permguard_core::keys::Result<()> {
+        Ring::refresh(self).map_err(core_error)
+    }
+}
+
+/// The binding `store` keeps for `ring`, with its bytes, when it holds one of this ring.
+fn binding_of(store: &dyn RingStore, ring: &str) -> Result<Option<(Binding, Vec<u8>)>, RingError> {
+    Ok(match store.binding()? {
+        Some(bytes) => Sign1::decode(&bytes)
+            .ok()
+            .and_then(|sign1| Binding::decode(sign1.payload_unverified()).ok())
+            .filter(|binding| binding.ring == ring)
+            .map(|binding| (binding, bytes)),
+        None => None,
+    })
 }
 
 /// The rings, as the mutation engine asks them about an operation: the domain [`DOMAIN`],
@@ -1806,8 +1852,13 @@ impl Domain for Rings<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.0.iter().find_map(|ring| ring.observe(operation_id))
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        // A ring's operations are held in memory, read whole when it was opened.
+        Ok(self.0.iter().find_map(|ring| ring.observe(operation_id)))
     }
 }
 
@@ -1834,11 +1885,14 @@ pub fn check_history(ring: &str, entries: &[Entry]) -> Result<(), String> {
     Ok(())
 }
 
-/// The stored public keys of a ring, `public/<thumbprint>.jwk` below `public`: what a sealed
+/// The stored public keys of a ring, each published under its thumbprint: what a sealed
 /// private half must open as (WP-3.2).
-pub fn stored_public(public: Dir) -> super::custody::StoredPublic {
+pub fn stored_public(store: Arc<dyn RingStore>) -> super::custody::StoredPublic {
     Box::new(move |slot, suite| {
-        let Some(bytes) = public.read(&format!("{slot}.jwk"))? else {
+        let Some(bytes) = store
+            .public(slot)
+            .map_err(|error| ProviderError::Unavailable(Box::new(error)))?
+        else {
             return Ok(None);
         };
         let jwk: Jwk = serde_json::from_slice(&bytes)
@@ -1866,26 +1920,20 @@ pub fn stored_public(public: Dir) -> super::custody::StoredPublic {
     })
 }
 
-/// What `keys export --directory` prints for a ring directory on a stopped volume (WP-3.4, owner
-/// decisions of 2026-10-09), from its journal alone, no private half read: the ring, its epoch and
-/// key-set digest; `keys`, the JWKS of the published set the digest covers; `retained`, every
-/// other key it ever published with its state; `revoked`, the revocations. A consumer that reads
-/// `keys` as a JWKS never meets a revoked key.
-pub fn export(directory: &std::path::Path) -> Result<String, RingError> {
-    let dir = Dir::open(directory)?;
-    let entries = journal_entries(&dir)?;
+/// What `keys export` prints for the ring `store` keeps (WP-3.4, owner decisions of 2026-10-09),
+/// from its entries alone, no private half read: the ring, its epoch and key-set digest; `keys`,
+/// the JWKS of the published set the digest covers; `retained`, every other key it ever published
+/// with its state; `revoked`, the revocations. A consumer that reads `keys` as a JWKS never meets
+/// a revoked key. `place` is where the store is, for a refusal an operator reads.
+pub fn export_of(store: &dyn RingStore, place: &str) -> Result<String, RingError> {
+    let entries = entries_of(store)?;
     let ring = entries
         .iter()
         .find(|entry| entry.kind == Kind::Prepublished)
         .and_then(|entry| thumbprint::split_kid(&entry.kid))
         .map(|(ring, _)| ring.to_owned())
         .filter(|ring| REGISTERED.contains(&ring.as_str()) && ring != HOST_IDENTITY)
-        .ok_or_else(|| {
-            RingError::Refused(format!(
-                "{} holds no ring journal with a key",
-                directory.display()
-            ))
-        })?;
+        .ok_or_else(|| RingError::Refused(format!("{place} holds no ring journal with a key")))?;
     let mut state = Materialized::default();
     for entry in &entries {
         state
@@ -1927,11 +1975,10 @@ pub fn export(directory: &std::path::Path) -> Result<String, RingError> {
     .map_err(|error| RingError::Corrupt(error.to_string()))
 }
 
-/// Decodes `journal.cborseq`'s entries, for the tests and an offline reader.
-pub fn journal_entries(dir: &Dir) -> Result<Vec<Entry>, RingError> {
-    let journal = sequence::read(dir, JOURNAL, MAX_ENTRY_BYTES)?;
-    journal
-        .items
+/// The entries `store` keeps, decoded, oldest first.
+pub fn entries_of(store: &dyn RingStore) -> Result<Vec<Entry>, RingError> {
+    store
+        .entries()?
         .into_iter()
         .map(|item| Entry::decode(item).map_err(RingError::Record))
         .collect()

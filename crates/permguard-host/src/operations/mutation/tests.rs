@@ -76,6 +76,8 @@ impl Trail {
 #[derive(Default)]
 struct Ledger {
     applied: Mutex<BTreeMap<OperationId, Observed>>,
+    /// Why the ledger cannot be read, while it cannot: what a store that does not answer says.
+    unreadable: Mutex<Option<String>>,
 }
 
 impl Domain for Ledger {
@@ -83,12 +85,20 @@ impl Domain for Ledger {
         "ledger"
     }
 
-    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
-        self.applied
+    fn observe(
+        &self,
+        operation_id: &OperationId,
+        _target: Option<&str>,
+    ) -> Result<Option<Observed>, String> {
+        if let Some(reason) = self.unreadable.lock().expect("lock").clone() {
+            return Err(reason);
+        }
+        Ok(self
+            .applied
             .lock()
             .expect("lock")
             .get(operation_id)
-            .cloned()
+            .cloned())
     }
 }
 
@@ -171,7 +181,13 @@ fn an_operation_runs_every_step_under_one_operation_id() {
         "the outcome names the target"
     );
     let id = OperationId::from_bytes(records[0].1);
-    assert!(ledger.observe(&id, None).is_some(), "the domain carries it");
+    assert!(
+        ledger
+            .observe(&id, None)
+            .expect("the domain answers")
+            .is_some(),
+        "the domain carries it"
+    );
     let journal = entries(&volume);
     assert!(matches!(
         &journal[..],
@@ -612,6 +628,9 @@ fn recovery_commits_what_the_domain_shows_and_fails_what_it_does_not() {
         ledger.apply(
             &Applying {
                 operation_id: shown.operation_id,
+                unit: None,
+                attempt: next_attempt(),
+                ends: None,
                 _engine: PhantomData,
             },
             "z1",
@@ -649,6 +668,97 @@ fn recovery_commits_what_the_domain_shows_and_fails_what_it_does_not() {
         })
         .expect("applied");
     assert_eq!(fresh, Outcome::Applied("z2@2".to_owned()));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Decision E17: a domain that cannot read its state is not a domain that does not show the
+/// operation. Recovery stops there: the operation stays open, nothing is recorded of it, and
+/// once the domain reads again it is resolved as what it was, here applied.
+#[test]
+fn recovery_stops_when_the_domain_cannot_say_and_never_fails_what_it_applied() {
+    let root = scratch("recovery-unreadable");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let ledger = Ledger::default();
+    let applied = {
+        let engine = open(&volume, &trail, &time);
+        let intent = Intent {
+            operation_id: OperationId::mint().expect("random"),
+            at: 1,
+            domain: "ledger".to_owned(),
+            operation: "ledger.write".to_owned(),
+            action: "host.grant.issued".to_owned(),
+            initiator: Initiator::Principal("alice".to_owned()),
+            request: Some(RequestKey {
+                request_id: "r1".to_owned(),
+                digest: "d".to_owned(),
+            }),
+            target: None,
+        };
+        engine
+            .append(Entry::Intent(intent.clone()))
+            .expect("appended");
+        // The domain applied it, and the process died before the commit.
+        ledger.apply(
+            &Applying {
+                operation_id: intent.operation_id,
+                unit: None,
+                attempt: next_attempt(),
+                ends: None,
+                _engine: PhantomData,
+            },
+            "z1",
+        );
+        intent.operation_id
+    };
+    let engine = open(&volume, &trail, &time);
+    let health = Health::new();
+    engine.observe(health.clone());
+    let held = |health: &Health| health.lifecycle().holds().get(RECOVERY_HOLD).cloned();
+    assert_eq!(held(&health), None);
+    *ledger.unreadable.lock().expect("lock") = Some("the store did not answer".to_owned());
+    let stopped = engine
+        .recover(&ledger)
+        .expect_err("a domain that cannot say stops the recovery");
+    // Not ready while it is not known what the domain holds of the operation.
+    assert!(
+        held(&health).is_some_and(|reason| reason.contains("the store did not answer")),
+        "{:?}",
+        held(&health)
+    );
+    assert!(!health.lifecycle().ready());
+    let said = stopped.to_string();
+    assert!(said.contains("could not say"), "{said}");
+    assert!(said.contains("the store did not answer"), "{said}");
+    assert_eq!(engine.open_intents(), vec![applied], "it stays open");
+    assert!(trail.phases().is_empty(), "nothing is recorded of it");
+    assert_eq!(
+        engine.pending(),
+        1,
+        "one operation waits, neither committed nor failed"
+    );
+    // A retry does not apply it again while it is unresolved.
+    let retried = engine.run(
+        begin(Some("r1"), "d"),
+        |_| -> Result<Applied<String>, Failure<String>> { panic!("never applied again") },
+    );
+    assert!(
+        matches!(retried, Err(MutationError::Unrecorded(_))),
+        "{retried:?}"
+    );
+
+    // The store answers again: the operation is what it was, applied.
+    *ledger.unreadable.lock().expect("lock") = None;
+    let recovered = engine.recover(&ledger).expect("recovers");
+    assert_eq!(recovered.reconciled, vec![applied]);
+    assert!(recovered.failed.is_empty());
+    assert_eq!(trail.phases(), vec!["reconciled"]);
+    assert_eq!(
+        held(&health),
+        None,
+        "the recovery ended: nothing holds readiness"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -1028,4 +1138,286 @@ fn the_intent_record_of_an_operation_is_remembered_where_the_trail_wrote_it() {
         "each operation its own record"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// Decision E26: the operations of one subsystem apply one at a time, a read made consistent
+/// with them waits for the one applying, and an operation of no subsystem waits for none.
+#[test]
+fn the_operations_of_a_subsystem_apply_one_at_a_time_and_a_consistent_read_waits() {
+    use crate::composition::MutationHandle;
+    use std::sync::mpsc;
+
+    let root = scratch("subsystem");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let trail = Arc::new(Trail::default());
+    let engine = Arc::new(open(&volume, &trail, &time));
+    let ledger = Ledger::default();
+    let first = MutationHandle::new(Arc::clone(&engine), "ledger").in_subsystem("books");
+    // A second domain of the same Plane: another handle, the same gate.
+    let second = first.for_domain("ledger");
+    let outside = MutationHandle::new(Arc::clone(&engine), "ledger");
+    let order: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+    let note = |what: &'static str| order.lock().expect("lock").push(what);
+    let (entered, has_entered) = mpsc::channel::<()>();
+    let (release, released) = mpsc::channel::<()>();
+
+    let while_held = std::thread::scope(|scope| {
+        let (ledger, note) = (&ledger, &note);
+        scope.spawn(move || {
+            first
+                .run_checked(
+                    begin(Some("r1"), "d"),
+                    || Ok::<_, String>(()),
+                    |applying| {
+                        note("first applies");
+                        entered.send(()).expect("sent");
+                        // Held here: its two writes, with everything a test places between.
+                        released.recv().expect("released");
+                        note("first ends");
+                        Ok(ledger.apply(applying, "z1"))
+                    },
+                )
+                .expect("applied");
+        });
+        has_entered.recv().expect("the first operation applies");
+
+        let waiting_operation = scope.spawn(|| {
+            second
+                .run_checked(
+                    begin(Some("r2"), "d"),
+                    || Ok::<_, String>(()),
+                    |applying| {
+                        note("second applies");
+                        Ok(ledger.apply(applying, "z2"))
+                    },
+                )
+                .expect("applied");
+        });
+        let reading = second.clone();
+        let waiting_read = scope.spawn(move || reading.consistent(|| note("read")));
+
+        // An operation of no subsystem is not the gate's: it applies while the first holds it.
+        outside
+            .run_checked(
+                begin(Some("r3"), "d"),
+                || Ok::<_, String>(()),
+                |applying| {
+                    note("outside applies");
+                    Ok(ledger.apply(applying, "z3"))
+                },
+            )
+            .expect("applied");
+        // The two of the subsystem had every chance to run. What happened is read here and
+        // judged once the first operation is let go, so a failure is reported and never waits
+        // on a thread that is still held.
+        std::thread::sleep(Duration::from_millis(150));
+        let while_held = (
+            order.lock().expect("lock").clone(),
+            waiting_operation.is_finished(),
+            waiting_read.is_finished(),
+        );
+        release.send(()).expect("sent");
+        while_held
+    });
+    let (seen, operation_ran, read_ran) = while_held;
+    assert_eq!(
+        seen,
+        vec!["first applies", "outside applies"],
+        "nothing of the subsystem ran while its first operation applied"
+    );
+    assert!(
+        !operation_ran,
+        "an operation of the subsystem applied beside another"
+    );
+    assert!(
+        !read_ran,
+        "a consistent read ran while an operation applied"
+    );
+
+    let order = order.into_inner().expect("lock");
+    assert_eq!(
+        order[..3],
+        ["first applies", "outside applies", "first ends"]
+    );
+    let mut after: Vec<&str> = order[3..].to_vec();
+    after.sort_unstable();
+    assert_eq!(after, vec!["read", "second applies"]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// An engine that is no file engine: it runs the domain write inside a unit of its own and
+/// keeps what it was told, as a database's would.
+#[derive(Default)]
+struct UnitEngine {
+    /// The unit every operation is applied in.
+    unit: Mutex<Vec<String>>,
+    /// The answers kept for a retry, by request id.
+    kept: Mutex<BTreeMap<String, Vec<u8>>>,
+    /// Whether it answers applied without running the domain write.
+    lies: bool,
+}
+
+impl Engine for UnitEngine {
+    fn run_bytes(
+        &self,
+        begin: Begin,
+        check: &mut dyn FnMut() -> bool,
+        apply: &mut dyn FnMut(&Applying<'_>) -> Result<AppliedBytes, Declined>,
+    ) -> Result<Ended, Stopped> {
+        if !check() {
+            return Err(Stopped::Unchecked);
+        }
+        if self.lies {
+            return Ok(Ended::Applied);
+        }
+        let ends = Ends::default();
+        let token = Applying::within(OperationId::from_bytes([9; 16]), &self.unit, &ends);
+        let applied = apply(&token).map_err(|declined| match declined {
+            Declined::Refused => Stopped::Refused,
+            Declined::Indeterminate => Stopped::Indeterminate,
+        })?;
+        if let (Some(request), Some(result)) = (begin.request, applied.result) {
+            self.kept
+                .lock()
+                .expect("lock")
+                .insert(request.request_id, result);
+        }
+        Ok(Ended::Applied)
+    }
+
+    fn replayed_bytes(&self, begin: &Begin) -> Result<Option<Ended>, Stopped> {
+        Ok(begin
+            .request
+            .as_ref()
+            .and_then(|request| {
+                self.kept
+                    .lock()
+                    .expect("lock")
+                    .get(&request.request_id)
+                    .cloned()
+            })
+            .map(Ended::Replayed))
+    }
+
+    fn recover(&self, _domain: &dyn Domain) -> Result<Recovered, String> {
+        Err("this engine leaves nothing open".to_owned())
+    }
+
+    fn project(&self, _event: &permguard_core::AuditEvent<'_>) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn subsystem(&self, _name: &str) -> Subsystem {
+        Subsystem::default()
+    }
+}
+
+fn begin_of(request_id: &str) -> Begin {
+    Begin {
+        domain: "grants",
+        operation: "grants.create",
+        action: "host.grant.created",
+        initiator: Initiator::Principal("spiffe://acme/operator".to_owned()),
+        request: Some(RequestKey {
+            request_id: request_id.to_owned(),
+            digest: "sha256:request".to_owned(),
+        }),
+        target: None,
+    }
+}
+
+/// E23: a domain is handed the engine's unit of work by the token, on any engine, and the typed
+/// calls keep the domain's own answer and its own reason whatever the engine is.
+#[test]
+fn any_engine_hands_its_unit_of_work_to_the_domain() {
+    let engine = UnitEngine::default();
+    let applied = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-1"),
+        || Ok(()),
+        |applying| {
+            let unit = applying
+                .unit::<Mutex<Vec<String>>>()
+                .expect("the engine's unit");
+            unit.lock().expect("lock").push("written".to_owned());
+            assert!(
+                applying.unit::<String>().is_none(),
+                "a unit of another kind is none"
+            );
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: "the answer".to_owned(),
+            })
+        },
+    )
+    .expect("applied");
+    assert_eq!(applied, Outcome::Applied("the answer".to_owned()));
+    assert_eq!(*engine.unit.lock().expect("lock"), ["written"]);
+    // A retry learns the answer the engine kept, typed again.
+    assert_eq!(
+        replayed_on::<String, String>(&engine, &begin_of("request-1")).expect("answered"),
+        Some(Outcome::Replayed("the answer".to_owned()))
+    );
+    assert_eq!(
+        replayed_on::<String, String>(&engine, &begin_of("request-2")).expect("answered"),
+        None
+    );
+
+    // The domain's reason comes back as the domain gave it, from its validation and its write.
+    let unchecked = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-3"),
+        || Err("not valid".to_owned()),
+        |_| unreachable!("a refused validation applies nothing"),
+    );
+    assert!(matches!(unchecked, Err(MutationError::Refused(reason)) if reason == "not valid"));
+    let refused = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-4"),
+        || Ok(()),
+        |_| Err(Failure::Refused("not allowed".to_owned())),
+    );
+    assert!(matches!(refused, Err(MutationError::Refused(reason)) if reason == "not allowed"));
+    let unknown = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-5"),
+        || Ok(()),
+        |_| {
+            Err(Failure::Indeterminate(
+                "the write may have landed".to_owned(),
+            ))
+        },
+    );
+    assert!(matches!(
+        unknown,
+        Err(MutationError::Indeterminate(reason)) if reason == "the write may have landed"
+    ));
+}
+
+/// An engine that answers applied for a domain write it did not run is not believed: the caller
+/// is told the outcome is unrecorded, never handed an answer nobody made.
+#[test]
+fn an_engine_that_did_not_run_the_domain_write_is_not_believed() {
+    let engine = UnitEngine {
+        lies: true,
+        ..UnitEngine::default()
+    };
+    let answered = run_checked_on::<String, String>(
+        &engine,
+        begin_of("request-1"),
+        || Ok(()),
+        |_| {
+            Ok(Applied {
+                revision: 1,
+                target: None,
+                value: "never made".to_owned(),
+            })
+        },
+    );
+    assert!(
+        matches!(answered, Err(MutationError::Unrecorded(_))),
+        "{answered:?}"
+    );
 }

@@ -26,7 +26,7 @@ use permguard_core::{
     AccessDenial, BuildSettings, Config, Disclosure, Health, Layers, PeerIdentity, ProductIdentity,
     ServerContext, Service as _,
 };
-use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+use permguard_host::api::{Assurance, Composition, Effective, HostApi};
 use permguard_host::authz::{Authorization, PublicGrant};
 use permguard_host::composition::HOST_OPERATIONS;
 use permguard_host::storage::volume::Volume;
@@ -206,8 +206,12 @@ fn facade(tag: &str) -> Arc<HostApi> {
         .expect("the identity is provisioned")
         .with_provisioner(provisioner),
     );
-    let (replay, _) =
-        Replay::open(&volume, permguard_core::time::unix_now()).expect("the replay opens");
+    let (replay, _) = permguard_host::api::replay::files::FileReplay::open(
+        &volume,
+        permguard_core::time::unix_now(),
+    )
+    .expect("the replay opens");
+    let replay = permguard_host::api::Replay::new(std::sync::Arc::new(replay));
     // The operations ring, on the volume and bound by the identity (WP-3.1).
     let ring = Arc::new(
         permguard_host::keys::ring::Ring::open(
@@ -290,7 +294,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
                 public_grants: Vec::new(),
             },
             trail: "recording".to_owned(),
-            mutations: Some(mutations),
+            mutations: Some(Arc::clone(&mutations) as _),
             identity: Some(identity),
             time: Arc::new(permguard_host::time::TimeGuard::system(
                 std::time::Duration::from_secs(30),
@@ -330,7 +334,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             })),
         })
         .with_streams(Arc::new(FixedStreams))
-        .with_backups(Arc::new(backups), None, None),
+        .with_backups(Arc::new(backups), mutations, None, None),
     );
     // The object sweep a Control Plane provides (WP-7.11b), answering fixed reports.
     api.gc_jobs()

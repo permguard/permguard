@@ -110,6 +110,7 @@ mod window_tests {
     }
 }
 
+pub mod archives;
 pub mod exports;
 pub mod imports;
 pub mod ledgers;
@@ -309,8 +310,10 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
         &self,
         operation_id: &permguard_host::operations::journal::OperationId,
         target: Option<&str>,
-    ) -> Option<permguard_host::operations::mutation::Observed> {
-        let target = target?;
+    ) -> Result<Option<permguard_host::operations::mutation::Observed>, String> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
         let operation = operation_id.to_string();
         let written = |revision: u64, by: Option<&str>, at: String| {
             (by == Some(operation.as_str())).then_some(
@@ -320,19 +323,25 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                 },
             )
         };
-        match target.split('/').collect::<Vec<_>>().as_slice() {
+        // A catalog that does not read is not a catalog that holds no trace of the operation:
+        // only `NotFound` is an answer, and any other error stops the recovery.
+        let unread = |error: CatalogError| error.to_string();
+        Ok(match target.split('/').collect::<Vec<_>>().as_slice() {
             ["zone", id] => match permguard_core::Zone::at(self.catalog.as_ref(), target) {
                 Ok(zone) => written(zone.revision, zone.operation.as_deref(), zone.target()),
-                Err(CatalogError::NotFound { .. }) => {
-                    let gone = self.catalog.zone_tombstone(id).ok()??;
-                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
-                }
-                Err(_) => None,
+                Err(CatalogError::NotFound { .. }) => self
+                    .catalog
+                    .zone_tombstone(id)
+                    .map_err(unread)?
+                    .and_then(|gone| {
+                        written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                    }),
+                Err(error) => return Err(unread(error)),
             },
             ["zone-new"] => self
                 .catalog
                 .list_zones()
-                .ok()?
+                .map_err(unread)?
                 .into_iter()
                 .find_map(|zone| written(zone.revision, zone.operation.as_deref(), zone.target())),
             ["ledger", zone, id] => match permguard_core::Ledger::at(self.catalog.as_ref(), target)
@@ -342,26 +351,31 @@ impl permguard_host::operations::mutation::Domain for CatalogDomain {
                     ledger.operation.as_deref(),
                     ledger.target(),
                 ),
-                Err(CatalogError::NotFound { .. }) => {
-                    let gone = self.catalog.ledger_tombstone(zone, id).ok()??;
-                    written(gone.revision, gone.operation.as_deref(), target.to_owned())
-                }
-                Err(_) => None,
+                Err(CatalogError::NotFound { .. }) => self
+                    .catalog
+                    .ledger_tombstone(zone, id)
+                    .map_err(unread)?
+                    .and_then(|gone| {
+                        written(gone.revision, gone.operation.as_deref(), target.to_owned())
+                    }),
+                Err(error) => return Err(unread(error)),
             },
-            ["ledger-new", zone] => self
-                .catalog
-                .list_ledgers(&Selector::Id((*zone).to_owned()))
-                .ok()?
-                .into_iter()
-                .find_map(|ledger| {
-                    written(
-                        ledger.revision,
-                        ledger.operation.as_deref(),
-                        ledger.target(),
-                    )
-                }),
+            // A zone that is gone holds no ledger the operation created: an answer, as above.
+            ["ledger-new", zone] => {
+                match self.catalog.list_ledgers(&Selector::Id((*zone).to_owned())) {
+                    Ok(ledgers) => ledgers.into_iter().find_map(|ledger| {
+                        written(
+                            ledger.revision,
+                            ledger.operation.as_deref(),
+                            ledger.target(),
+                        )
+                    }),
+                    Err(CatalogError::NotFound { .. }) => None,
+                    Err(error) => return Err(unread(error)),
+                }
+            }
             _ => None,
-        }
+        })
     }
 }
 
@@ -515,7 +529,7 @@ impl CatalogFacade {
         mutation: Mutation,
         change: Change<'_>,
         target: String,
-        apply: impl FnOnce(&permguard_core::catalog::Write<'_>) -> Result<T, CatalogError>,
+        mut apply: impl FnMut(&permguard_core::catalog::Write<'_>) -> Result<T, CatalogError>,
     ) -> Result<T, crate::refusal::Refusal>
     where
         T: Record + serde::Serialize + serde::de::DeserializeOwned,
@@ -845,5 +859,52 @@ pub(crate) fn api_error(error: CatalogError) -> ApiError {
             )
             .with_internal(detail.clone())
         }
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    #![allow(clippy::expect_used)]
+
+    use std::sync::Arc;
+
+    use permguard_core::{Catalog, Selector};
+    use permguard_host::operations::journal::OperationId;
+    use permguard_host::operations::mutation::Domain as _;
+    use permguard_std::catalog::FileCatalog;
+
+    use super::CatalogDomain;
+
+    /// A ledger's creation left open in a zone that was deleted since: the zone holds no trace of
+    /// it, which is an answer. Recovery records the creation failed and goes on; it does not stop
+    /// at every start for a zone that will never read.
+    #[test]
+    fn a_creation_left_open_in_a_zone_that_is_gone_is_answered_not_applied() {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-catalog-recovery-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog: Arc<dyn Catalog> = Arc::new(FileCatalog::new(root.join("zones")));
+        let zone = catalog.create_zone("delivery").expect("a zone");
+        let domain = CatalogDomain {
+            catalog: Arc::clone(&catalog),
+        };
+        let operation = OperationId::from_bytes([7; 16]);
+        let target = format!("ledger-new/{}", zone.id);
+        assert_eq!(
+            domain.observe(&operation, Some(&target)),
+            Ok(None),
+            "a zone that holds no ledger of the operation"
+        );
+        catalog
+            .delete_zone(&Selector::Id(zone.id.clone()))
+            .expect("deleted");
+        assert_eq!(
+            domain.observe(&operation, Some(&target)),
+            Ok(None),
+            "a zone that is gone is an answer, never a catalog that does not read"
+        );
     }
 }

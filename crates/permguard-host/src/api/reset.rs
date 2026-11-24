@@ -230,7 +230,9 @@ impl HostApi {
         {
             return Err(invalid("`reason` is printable text of 1 to 256 bytes"));
         }
-        let memberships = self.memberships()?;
+        // The memberships as the store holds them: on a store other instances share, every one
+        // they made (WP-29.1).
+        let memberships = self.memberships_now()?;
         let now = self.time.now_secs();
         let mutation = Mutation {
             request_id: plan.request_id.clone(),
@@ -323,13 +325,15 @@ impl HostApi {
         if !identity.can_reset() {
             return Err(unprovisioned());
         }
-        let memberships = self.memberships()?;
+        // The memberships as the store holds them: on a store other instances share, every one
+        // they made (WP-29.1).
+        let memberships = self.memberships_now()?;
         // The checkpoint the reset requires must be possible before anything is taken or changed.
         self.sealing_audit()?;
         // From here nothing new is taken under this identity, a task session included, before the
         // memberships are enumerated (WP-4.9): what the plan bound is all there is. The fence is
         // lifted when the run ends before anything irreversible, held once it revokes or ends.
-        let mut fence = Fence::take(&memberships.store);
+        let mut fence = Fence::take(&memberships.store).map_err(refusal_of)?;
         let now = self.time.now_secs();
         let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
         if plan.operation != RESET {
@@ -358,6 +362,8 @@ impl HostApi {
         settle::preflight(&memberships.store, &coordinator, now).map_err(refusal_of)?;
         let mutations = self.mutations()?;
 
+        // Nothing irreversible once the fence every instance sees is lost (X171).
+        memberships.store.fence_holds().map_err(refusal_of)?;
         // Each coordinator asked to revoke; its revoked manifest is the receipt.
         let mut ended = Vec::new();
         let mut unreached = Vec::new();
@@ -416,6 +422,7 @@ impl HostApi {
             ));
         }
         // From here the run is irreversible: the fence stays; what was offered goes first.
+        memberships.store.fence_holds().map_err(refusal_of)?;
         fence.hold();
         settle::revoke_invites(&memberships.store, mutations, &initiator, now)
             .map_err(refusal_of)?;
@@ -441,6 +448,7 @@ impl HostApi {
         self.checkpoint_evidence()?;
 
         // The identity itself, last: retired here, its evidence kept, the next provisioned.
+        memberships.store.fence_holds().map_err(refusal_of)?;
         let old = identity.host_id_text();
         let suite = identity.suite();
         let done = self.transact(
@@ -515,6 +523,9 @@ impl HostApi {
             orphaned = done.orphaned.len(),
             "the Host identity was reset; the process signs nothing more and needs a restart"
         );
+        // The identity retired: the other instances take changes again, under the next one;
+        // this process stays fenced until it restarts.
+        memberships.store.release_shared_fence();
         Ok(done)
     }
 }
@@ -603,11 +614,12 @@ struct Fence<'a> {
 }
 
 impl<'a> Fence<'a> {
-    /// Fences `store`; a fence an earlier run left held stays held whatever this run does.
-    fn take(store: &'a crate::membership::Store) -> Self {
+    /// Fences `store`, in every instance on a store they share; a fence an earlier run left held
+    /// stays held whatever this run does. A fence that cannot be taken refuses the run.
+    fn take(store: &'a crate::membership::Store) -> Result<Self, MembershipError> {
         let held = store.is_fenced();
-        store.fence();
-        Self { store, held }
+        store.fence()?;
+        Ok(Self { store, held })
     }
 
     fn hold(&mut self) {

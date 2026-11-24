@@ -134,14 +134,15 @@ impl PlaneModule for ControlPlaneModule {
 
         // The catalog is optional in the contract and composed by every shipped binary; a build
         // that leaves it out simply has no zone routes, rather than routes that answer 500.
-        let routes = match permguard_control_plane::plane::catalog_facade(context) {
-            Some(facade) => {
-                // The holdings gauges start truthful, not at zero.
-                facade.refresh_holdings();
-                routes.merge(crate::catalog::http::routes(facade))
-            }
-            None => routes,
-        };
+        let routes =
+            match permguard_control_plane::plane::catalog_facade(&self.composition, context) {
+                Some(facade) => {
+                    // The holdings gauges start truthful, not at zero.
+                    facade.refresh_holdings();
+                    routes.merge(crate::catalog::http::routes(facade))
+                }
+                None => routes,
+            };
 
         // NOTP needs both the catalog (to resolve ledgers) and the git-like
         // signing ring (every served head is attested). Fail-closed: a build
@@ -196,7 +197,9 @@ impl PlaneModule for ControlPlaneModule {
             streams: permguard_server::plane::streams_document(&self.streams(context.config())),
         }));
 
-        if let Some(facade) = permguard_control_plane::plane::catalog_facade(context) {
+        if let Some(facade) =
+            permguard_control_plane::plane::catalog_facade(&self.composition, context)
+        {
             grpc.add_service(ZoneCatalogServer::new(crate::served::Served(facade)));
         }
 
@@ -689,12 +692,16 @@ mod tests {
             .event_facade(&context)
             .expect("the store opens");
 
+        let (http, grpc) = (
+            http.store.expect("a legacy store on files"),
+            grpc.store.expect("a legacy store on files"),
+        );
         assert!(
-            std::sync::Arc::ptr_eq(&http.store, &grpc.store),
+            std::sync::Arc::ptr_eq(&http, &grpc),
             "the two surfaces composed two stores over one directory"
         );
         assert!(
-            std::sync::Arc::ptr_eq(&http.store.gate(&stream()), &grpc.store.gate(&stream())),
+            std::sync::Arc::ptr_eq(&http.gate(&stream()), &grpc.gate(&stream())),
             "one stream's write gate is not shared, so the two surfaces do not exclude each other"
         );
     }
@@ -717,7 +724,10 @@ mod tests {
             module.composition.decision_facade(&context),
         ) {
             (Some(http), Some(grpc)) => assert!(
-                std::sync::Arc::ptr_eq(&http.store, &grpc.store),
+                std::sync::Arc::ptr_eq(
+                    &http.store.expect("a legacy store on files"),
+                    &grpc.store.expect("a legacy store on files")
+                ),
                 "the two surfaces composed two decision stores over one directory"
             ),
             (None, None) => {

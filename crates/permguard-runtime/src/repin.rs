@@ -21,6 +21,9 @@ use permguard_host::membership::service::Coordinating;
 
 /// How often the pass runs.
 pub const PASS: Duration = Duration::from_secs(60);
+/// The single job the coordinator's revision is (WP-28.2): of the instances, the holder of its
+/// lease revises the memberships, at its pass and at a revocation it committed itself.
+pub const JOB: &str = "membership/repin";
 
 /// The running pass; dropping it stops it.
 pub struct Repinning(tokio::task::JoinHandle<()>);
@@ -41,12 +44,17 @@ pub struct Egress {
 }
 
 /// Revises the memberships this Host coordinates for its moved rings, and retires what is due.
-async fn revise(coordinating: &Arc<Coordinating>) {
-    let revising = Arc::clone(coordinating);
+async fn revise(coordinating: &Arc<Coordinating>, jobs: &permguard_host::jobs::Jobs) {
+    let (revising, jobs) = (Arc::clone(coordinating), jobs.clone());
     match tokio::task::spawn_blocking(move || {
-        revising
-            .revise_coordinated()
-            .and_then(|revised| Ok(revised + revising.retire_due()?))
+        let mut revised = Ok(0);
+        jobs.run(JOB, PASS, &mut || {
+            revised = revising
+                .revise_coordinated()
+                .and_then(|revised| Ok(revised + revising.retire_due()?));
+            revised.is_ok()
+        });
+        revised
     })
     .await
     {
@@ -79,6 +87,7 @@ pub fn drive(
     api: Arc<HostApi>,
     egress: Egress,
     imports: bool,
+    jobs: permguard_host::jobs::Jobs,
 ) -> Repinning {
     let moved = Arc::new(tokio::sync::Notify::new());
     let waking = Arc::clone(&moved);
@@ -98,11 +107,11 @@ pub fn drive(
                 _ = interval.tick() => {}
                 () = moved.notified() => {
                     // A revocation committed: the memberships now, the rest at the pass.
-                    revise(&coordinating).await;
+                    revise(&coordinating, &jobs).await;
                     continue;
                 }
             }
-            revise(&coordinating).await;
+            revise(&coordinating, &jobs).await;
             // What the coordinators decided since the last pass, adopted before anything is
             // shipped under a membership they may have suspended or revoked (BUG-0152).
             let _ = api.sync_due().await;

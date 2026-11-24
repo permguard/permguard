@@ -1,0 +1,307 @@
+{
+  "note": "Every source of the crates in `scope` that reaches the filesystem or the storage library itself (iteration 03, WP-25.2). `backends` implement a contract or are the storage library. `configured` read or write what a configuration names, on any backend. `direct` reach storage today and name the package of iteration 03 that moves them behind a store contract; that package removes the entry. The Data Plane's crates and the command line are not in scope (decision E6).",
+  "scope": [
+    "permguard-authority-plane",
+    "permguard-authority-plane-server",
+    "permguard-control-plane",
+    "permguard-control-plane-server",
+    "permguard-events",
+    "permguard-host",
+    "permguard-offline",
+    "permguard-postgres",
+    "permguard-runtime",
+    "permguard-s3",
+    "permguard-server",
+    "permguard-std",
+    "permguard-stream"
+  ],
+  "backends": [
+    {
+      "path": "crates/permguard-authority-plane/src/accounts/files.rs",
+      "reason": "the file implementation of `accounts::AccountStore`"
+    },
+    {
+      "path": "crates/permguard-authority-plane/src/marks/files.rs",
+      "reason": "the file implementation of `marks::MarkStore`"
+    },
+    {
+      "path": "crates/permguard-authority-plane/src/plane.rs",
+      "reason": "the Authority Plane's composition: opens its file stores on the volume the process claimed"
+    },
+    {
+      "path": "crates/permguard-authority-plane/src/tokens/files.rs",
+      "reason": "the file implementation of `tokens::TokenStore`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/catalog/archives/files.rs",
+      "reason": "the file implementation of `catalog::archives::ArchiveStore`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/decisions/cursorkey/files.rs",
+      "reason": "the file implementation of `decisions::cursorkey::CursorRoots`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/decisions/retention.rs",
+      "reason": "the sweep of that decision store's old segments"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/decisions/store.rs",
+      "reason": "the decision store a release before the Host's consumer wrote on a volume: read, and swept, never written; no other backend has one"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/events/retention.rs",
+      "reason": "the sweep of that event store's old segments"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/events/store.rs",
+      "reason": "the event store a release before the Host's consumer wrote on a volume: read, and swept, never written; no other backend has one"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/plane.rs",
+      "reason": "the Control Plane's composition: makes its file stores below the configured directories and declares its tree to deep verification"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/store/files.rs",
+      "reason": "the file implementation of `store::LedgerStore` and `store::Ledgers`"
+    },
+    {
+      "path": "crates/permguard-control-plane/src/verify.rs",
+      "reason": "the file backend's deep verification of the zones tree, a sample of its objects read back"
+    },
+    {
+      "path": "crates/permguard-events/src/archive.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
+    },
+    {
+      "path": "crates/permguard-events/src/index.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
+    },
+    {
+      "path": "crates/permguard-events/src/journal.rs",
+      "reason": "the Data Plane's temporal history, which stays on files (E6)"
+    },
+    {
+      "path": "crates/permguard-host/src/api/replay/files.rs",
+      "reason": "the file implementation of `api::replay::ReplayStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/index.rs",
+      "reason": "the index of the trails a volume ever held: the audit engine's file backend, reached through `audit::Engine` alone"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/jsonl.rs",
+      "reason": "the migration of the audit trail's JSON-lines layout on a volume: a command of the file backend"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/query.rs",
+      "reason": "a page of a trail and its checkpoints read from the day files: the audit engine's file backend, reached through `audit::Engine` alone"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/store.rs",
+      "reason": "the trails of a volume: the file implementation of `audit::store::Trails`, and the audit engine's way in on the file backend"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/trail.rs",
+      "reason": "one trail, and the directory that is the file implementation of `audit::trail::TrailStore`: its day files, checkpoints and anchor"
+    },
+    {
+      "path": "crates/permguard-host/src/audit/verify.rs",
+      "reason": "offline verification of the trails in a directory an operator names: a command of the file backend"
+    },
+    {
+      "path": "crates/permguard-host/src/authz/held/files.rs",
+      "reason": "the file implementation of `authz::held::HeldStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/authz/store/files.rs",
+      "reason": "the file implementation of `authz::store::BootstrapStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/composition.rs",
+      "reason": "the Host's composition of the file backend: what it opens on the volume it is given"
+    },
+    {
+      "path": "crates/permguard-host/src/hardening.rs",
+      "reason": "the file backend's check that the process and the volume are private"
+    },
+    {
+      "path": "crates/permguard-host/src/holds/files.rs",
+      "reason": "the file implementation of `holds::HoldStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/identity/files.rs",
+      "reason": "the file implementation of `identity::store::IdentityStore`, and the entry points that take a volume"
+    },
+    {
+      "path": "crates/permguard-host/src/identity/witness/files.rs",
+      "reason": "the file implementation of `identity::witness::VersionWitnesses`"
+    },
+    {
+      "path": "crates/permguard-host/src/keys/migration.rs",
+      "reason": "the migration of a legacy ring directory into `host/keys/<ring>` through the storage library's migration framework, and the home that hands a volume's rings to an opener: both exist on the file backend alone"
+    },
+    {
+      "path": "crates/permguard-host/src/keys/ring/files.rs",
+      "reason": "the file implementation of `keys::ring::store::RingStore`, and the entry points that take a volume or a ring directory"
+    },
+    {
+      "path": "crates/permguard-host/src/keys/slots/files.rs",
+      "reason": "the file implementation of `keys::slots::SlotStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/membership/files.rs",
+      "reason": "the file implementation of `membership::store::MemberStore`, and the entry point that takes a volume"
+    },
+    {
+      "path": "crates/permguard-host/src/operations/backup.rs",
+      "reason": "the application-consistent snapshot of a volume: a capability of the file backend, refused `storage_backend_unsupported` elsewhere"
+    },
+    {
+      "path": "crates/permguard-host/src/operations/mutation.rs",
+      "reason": "the mutation engine of the file backend: the journal, the snapshot and their recovery on a volume (the other backend's is `permguard-postgres`)"
+    },
+    {
+      "path": "crates/permguard-host/src/restore.rs",
+      "reason": "the restore of a volume: a capability of the file backend, refused `storage_backend_unsupported` elsewhere"
+    },
+    {
+      "path": "crates/permguard-host/src/secrets/files.rs",
+      "reason": "the file implementations of `secrets::WitnessStore` and `secrets::DeliveredKeys`"
+    },
+    {
+      "path": "crates/permguard-host/src/session/peers/files.rs",
+      "reason": "the file implementation of `session::peers::SeenStore`"
+    },
+    {
+      "path": "crates/permguard-host/src/storage/",
+      "reason": "the storage library: the primitives of the file backend"
+    },
+    {
+      "path": "crates/permguard-host/src/time/files.rs",
+      "reason": "the file implementation of `time::ClockMark`"
+    },
+    {
+      "path": "crates/permguard-offline/src/legacy_events.rs",
+      "reason": "the migration of a volume's legacy event history: a command of the file backend"
+    },
+    {
+      "path": "crates/permguard-offline/src/legacy_spool.rs",
+      "reason": "the migration of a volume's legacy decision spool: a command of the file backend"
+    },
+    {
+      "path": "crates/permguard-offline/src/migrate.rs",
+      "reason": "the layout migrations of a volume: commands of the file backend"
+    },
+    {
+      "path": "crates/permguard-offline/src/volume.rs",
+      "reason": "a composition root of the file backend: the volume opened offline for a command"
+    },
+    {
+      "path": "crates/permguard-postgres/src/audit.rs",
+      "reason": "the PostgreSQL implementation of `audit::store::Trails` and `audit::trail::TrailStore`, whose errors are the storage library's: it names the error type and reaches no file"
+    },
+    {
+      "path": "crates/permguard-runtime/src/checkpoints.rs",
+      "reason": "the composition of the checkpoint witnesses over the volume the process claimed"
+    },
+    {
+      "path": "crates/permguard-runtime/src/composition.rs",
+      "reason": "the process's composition root: where the backend is chosen, and the file backend opened on the volume it claims"
+    },
+    {
+      "path": "crates/permguard-runtime/src/storage_quota.rs",
+      "reason": "the file backend's quota, measured from the volume's directories"
+    },
+    {
+      "path": "crates/permguard-s3/src/import.rs",
+      "reason": "the import of a volume into the `postgresql-s3` backend: reads the volume's layout, where its rings, streams and Planes' directories are, and its stores through their file implementations"
+    },
+    {
+      "path": "crates/permguard-s3/src/streams.rs",
+      "reason": "a stream consumer's runs on PostgreSQL and S3: the other implementation of `consumer::store::Runs`, whose errors are the storage library's; it names the error type and reaches no file"
+    },
+    {
+      "path": "crates/permguard-server/src/app.rs",
+      "reason": "the server's composition: the layouts and the verified trees of the file backend it is built with"
+    },
+    {
+      "path": "crates/permguard-server/src/app/cli.rs",
+      "reason": "the server's commands that act on a volume, refused `storage_backend_unsupported` where the process keeps none"
+    },
+    {
+      "path": "crates/permguard-std/src/catalog.rs",
+      "reason": "the file implementation of `permguard_core::Catalog`"
+    },
+    {
+      "path": "crates/permguard-std/src/keys.rs",
+      "reason": "the directory implementation of `permguard_core::KeyManager`"
+    },
+    {
+      "path": "crates/permguard-std/src/secrets.rs",
+      "reason": "the file implementation of `permguard_core::SecretStore`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/consumer/store.rs",
+      "reason": "a stream consumer's runs on a volume: the file implementation of `consumer::store::Runs` and `RunStore`, and the directory as `RunFiles`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/mod.rs",
+      "reason": "the stream engine on a volume: `Streams::open` registers producers and file consumers below `host/streams/`; a process on the other backend makes its consumers with `Consumer::over`"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer.rs",
+      "reason": "the stream producer, the file backend's alone: producers are the Data Plane's, which stays on files (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/prune.rs",
+      "reason": "the stream producer's retention, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/seal.rs",
+      "reason": "the stream producer's sealed batches, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/producer/ship.rs",
+      "reason": "the stream producer's shipping state, the file backend's alone (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/engine/verify.rs",
+      "reason": "offline verification of the streams in a directory an operator names: a command of the file backend (X103)"
+    },
+    {
+      "path": "crates/permguard-stream/src/layout.rs",
+      "reason": "where a stream lives on a volume: the file backend's layout"
+    },
+    {
+      "path": "crates/permguard-stream/src/signers.rs",
+      "reason": "the signer spans kept beside a stream on a volume: the file backend's, the producer's (X103)"
+    }
+  ],
+  "configured": [
+    {
+      "source": "crates/permguard-authority-plane/src/admin.rs",
+      "reason": "writes the administrator's first key, once, to `planes/authority/admin.key` below the working directory the configuration names, on any backend: the key is handed over as a file (`2-security/8`, decision X159); `authority admin-key` writes where `--secret-out` names"
+    },
+    {
+      "source": "crates/permguard-offline/src/custody/transit.rs",
+      "reason": "reads the certificate authority file the configuration names for the KMS (`PERMGUARD_KEYS_KMS_CA`), to verify the KMS it calls"
+    },
+    {
+      "source": "crates/permguard-runtime/src/join.rs",
+      "reason": "reads the invitation an operator mounted as a file, once, to join a coordinator"
+    },
+    {
+      "source": "crates/permguard-s3/src/backend.rs",
+      "reason": "reads the certificate authority files the configuration names for the database and the bucket (`PERMGUARD_STORAGE_POSTGRESQL_CA`, `PERMGUARD_STORAGE_S3_CA`), to verify the servers it connects to"
+    },
+    {
+      "source": "crates/permguard-s3/src/testing.rs",
+      "reason": "test support: reads the certificate authority file a test run names (`PERMGUARD_TEST_S3_CA`), to verify the S3 server the tests call"
+    },
+    {
+      "source": "crates/permguard-std/src/provision.rs",
+      "reason": "writes the material a development start was not given and `autogenerate` allows, at the paths the configuration names"
+    }
+  ],
+  "direct": []
+}

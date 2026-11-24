@@ -39,7 +39,7 @@
 pub mod anchor;
 pub mod batch;
 pub(crate) mod codec;
-mod consumer;
+pub mod consumer;
 pub mod ingest;
 mod producer;
 pub mod reads;
@@ -545,10 +545,16 @@ impl Streams {
         codec: C,
     ) -> Result<Consumer<C>, StreamError> {
         let dir = self.register(&descriptor, "consumer")?;
-        Ok(
-            Consumer::new(dir, self.claim, descriptor, codec, Arc::clone(&self.time))
-                .with_segment_bytes(self.segment_bytes),
-        )
+        Ok(Consumer::new(
+            Arc::new(consumer::store::FileRuns::new(
+                dir,
+                self.claim,
+                self.segment_bytes,
+            )),
+            descriptor,
+            codec,
+            Arc::clone(&self.time),
+        ))
     }
 }
 

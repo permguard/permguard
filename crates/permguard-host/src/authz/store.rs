@@ -1,33 +1,29 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Host's recovery principal on the volume: `host/authz/bootstrap.cbor`.
-//!
-//! ```text
-//! host/authz/
-//! └── bootstrap.cbor    immutable commitment to the recovery principal's certificate
-//! ```
+//! The Host's recovery principal: its commitment, and the contract of the store that keeps it
+//! (`1-architecture/2` Stores).
 //!
 //! Every caller of a Plane or a Host API is a token of the Authority Plane, or anonymous under a
 //! public grant; the bootstrap principal is the one exception, an offline certificate that holds
 //! the per-Host operations on its own Host API (`2-security/8` Authorization). It is committed
-//! once, offline, by `permguard host grants bootstrap`, and the file is never rewritten: a second
-//! commitment to the same certificate is the first, one to another is refused.
+//! once, offline, by `permguard host grants bootstrap`, and never rewritten: a second commitment
+//! to the same certificate is the first, one to another is refused.
+//!
+//! | Backend            | Keeps the commitment in                |
+//! | ------------------ | -------------------------------------- |
+//! | [`files`], default | `host/authz/bootstrap.cbor`, immutable |
 
-use std::sync::{Arc, Mutex};
+pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 
 use permguard_core::authz::Principal;
 use permguard_objects::cbor::{self, Value};
 
 use crate::operations::mutation::Applying;
-use crate::storage::dir::Dir;
-use crate::storage::volume::Volume;
-use crate::storage::write::{Published, publish_immutable};
-use crate::storage::{Rebuildable, StorageError};
 
-/// The directory below `host/`.
-pub const DIRECTORY: &str = "authz";
-const BOOTSTRAP: &str = "bootstrap.cbor";
+pub use files::DIRECTORY;
 
 /// The principal the bootstrap commitment names for a certificate fingerprint.
 pub fn bootstrap_principal(fingerprint: &str) -> Result<Principal, AuthzError> {
@@ -76,26 +72,22 @@ pub fn certificate_fingerprint(pem: &[u8]) -> Result<String, AuthzError> {
 pub enum AuthzError {
     /// A fingerprint that is not one, or a commitment to another certificate than the one held.
     Invalid(String),
-    /// The file could not be read or written.
-    Storage(StorageError),
+    /// The commitment held does not read as one: it is not taken for none.
+    Record(String),
+    /// The store could not be read or written: a commitment may have been written all the same.
+    Unavailable(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for AuthzError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Invalid(detail) => f.write_str(detail),
-            Self::Storage(error) => write!(f, "{error}"),
+            Self::Invalid(detail) | Self::Record(detail) => f.write_str(detail),
+            Self::Unavailable(error) => write!(f, "{error}"),
         }
     }
 }
 
 impl std::error::Error for AuthzError {}
-
-impl From<StorageError> for AuthzError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
 
 /// The bootstrap commitment: the one recovery principal, written once.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,7 +98,7 @@ pub struct Bootstrap {
 }
 
 impl Bootstrap {
-    fn encode(&self) -> Result<Vec<u8>, AuthzError> {
+    pub(crate) fn encode(&self) -> Result<Vec<u8>, AuthzError> {
         cbor::encode(&Value::Map(vec![
             (
                 Value::Int(1),
@@ -121,7 +113,7 @@ impl Bootstrap {
         .map_err(|error| AuthzError::Invalid(format!("encoding the bootstrap: {error}")))
     }
 
-    fn decode(bytes: &[u8]) -> Option<Self> {
+    pub(crate) fn decode(bytes: &[u8]) -> Option<Self> {
         let Value::Map(pairs) = cbor::decode_canonical(bytes).ok()? else {
             return None;
         };
@@ -144,142 +136,25 @@ impl Bootstrap {
     }
 }
 
-/// The recovery principal's store on one volume.
-pub struct BootstrapStore {
-    dir: Rebuildable<Dir>,
-    bootstrap: Mutex<Option<Bootstrap>>,
-}
+/// The store of the recovery principal's commitment: the only way the Host reads and writes it
+/// (`1-architecture/8` Store contracts).
+pub trait BootstrapStore: Send + Sync {
+    /// The commitment, when one was written. One that is there and does not read is an error,
+    /// never none: a Host does not serve as one that commits to nobody because its commitment
+    /// was damaged.
+    fn bootstrap(&self) -> Result<Option<Bootstrap>, AuthzError>;
 
-impl std::fmt::Debug for BootstrapStore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BootstrapStore")
-            .field("committed", &self.bootstrap().is_some())
-            .finish()
-    }
-}
-
-impl BootstrapStore {
-    /// Opens the store of `volume`, reading the commitment when one was written.
-    pub fn open(volume: &Volume) -> Result<Arc<Self>, AuthzError> {
-        let dir = volume.host().subdir(DIRECTORY, true)?;
-        let bootstrap = dir
-            .read(BOOTSTRAP)?
-            .and_then(|bytes| Bootstrap::decode(&bytes));
-        Ok(Arc::new(Self {
-            dir: Rebuildable::new(dir),
-            bootstrap: Mutex::new(bootstrap),
-        }))
-    }
-
-    /// The bootstrap commitment, when one was written.
-    pub fn bootstrap(&self) -> Option<Bootstrap> {
-        self.bootstrap
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Writes the bootstrap commitment once: a second bootstrap naming the same fingerprint is the
-    /// first; one naming another is refused, the file being immutable. Answers the commitment held
-    /// and whether this call wrote it.
-    pub fn commit(
+    /// Commits to the certificate `fingerprint` names, once, inside the operation `applying`: a
+    /// second commitment naming the same certificate is the first; one naming another is refused
+    /// and changes nothing. Answers the commitment held and whether this call wrote it. Of the
+    /// commitments that arrive together one is written, whatever each names.
+    fn commit(
         &self,
-        _applying: &Applying<'_>,
+        applying: &Applying<'_>,
         fingerprint: &str,
         now: u64,
-    ) -> Result<(Bootstrap, bool), AuthzError> {
-        let principal = bootstrap_principal(fingerprint)?;
-        let commitment = Bootstrap {
-            principal: principal.clone(),
-            fingerprint: fingerprint.trim().to_ascii_lowercase(),
-            created_at: now,
-        };
-        let bytes = commitment.encode()?;
-        let same_principal = |existing: &[u8]| {
-            Bootstrap::decode(existing).is_some_and(|held| held.principal == principal)
-        };
-        let published = publish_immutable(
-            self.dir.get(),
-            BOOTSTRAP,
-            &bytes,
-            &|content| Bootstrap::decode(content).is_some(),
-            &same_principal,
-        )
-        .map_err(|error| match error {
-            StorageError::Corruption(_) => AuthzError::Invalid(format!(
-                "{} already commits to another recovery principal; a bootstrap is written once",
-                self.dir.get().child_path(BOOTSTRAP).display()
-            )),
-            other => AuthzError::Storage(other),
-        })?;
-        let held = self
-            .dir
-            .get()
-            .read(BOOTSTRAP)?
-            .and_then(|bytes| Bootstrap::decode(&bytes))
-            .unwrap_or(commitment);
-        *self
-            .bootstrap
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(held.clone());
-        Ok((held, matches!(published, Published::Written)))
-    }
+    ) -> Result<(Bootstrap, bool), AuthzError>;
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(clippy::expect_used)]
-
-    use super::*;
-    use permguard_core::assurance::AssuranceProfile;
-
-    fn scratch(tag: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "pg-authz-bootstrap-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("scratch");
-        root
-    }
-
-    #[test]
-    fn the_bootstrap_is_written_once_and_read_back_at_open() {
-        let root = scratch("once");
-        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-        let store = BootstrapStore::open(&volume).expect("opens");
-        assert_eq!(store.bootstrap(), None);
-        let fingerprint = "AB".repeat(32);
-        let (commitment, written) = store
-            .commit(&Applying::for_tests(1), &fingerprint, 10)
-            .expect("committed");
-        assert!(written);
-        assert_eq!(
-            commitment.principal.as_str(),
-            format!("cert:sha256:{}", "ab".repeat(32))
-        );
-        // The same fingerprint again: the same commitment, not written again.
-        let (again, written) = store
-            .commit(
-                &Applying::for_tests(2),
-                &format!("sha256:{fingerprint}"),
-                20,
-            )
-            .expect("idempotent");
-        assert_eq!(again, commitment);
-        assert!(!written);
-        // Another fingerprint, or none: refused, the file is immutable.
-        assert!(matches!(
-            store.commit(&Applying::for_tests(3), &"cd".repeat(32), 30),
-            Err(AuthzError::Invalid(_))
-        ));
-        assert!(matches!(
-            store.commit(&Applying::for_tests(4), "nonsense", 30),
-            Err(AuthzError::Invalid(_))
-        ));
-        drop(store);
-        let reopened = BootstrapStore::open(&volume).expect("reopens");
-        assert_eq!(reopened.bootstrap(), Some(commitment));
-    }
-}
+mod tests;

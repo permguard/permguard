@@ -28,7 +28,6 @@
 //! asked by an authorized caller: a series per zone or per ledger would be a tenant identifier
 //! in the telemetry, which P10 forbids.
 
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -40,7 +39,12 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
+use crate::store::{LedgerStore, Ledgers};
+
 const COMPONENT: &str = "control-plane";
+
+/// The single job a pass is (WP-28.2).
+pub const JOB: &str = "objects/inventory";
 
 /// How often the store is measured. Not configurable on purpose: it is cheap,
 /// and a knob whose only effect is the freshness of a gauge is a knob nobody
@@ -71,6 +75,8 @@ pub const WALK_SECONDS: Metric = Metric::histogram(
 
 /// The service the plane mounts.
 pub struct InventoryService {
+    /// The stores this plane composed: what it measures is what it serves.
+    ledgers: crate::plane::ComposedStores,
     every: Duration,
     running: Mutex<Option<Running>>,
 }
@@ -80,16 +86,11 @@ struct Running {
     stop: watch::Sender<bool>,
 }
 
-impl Default for InventoryService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl InventoryService {
     /// The service, on its ordinary cadence.
-    pub fn new() -> Self {
+    pub fn new(ledgers: crate::plane::ComposedStores) -> Self {
         Self {
+            ledgers,
             every: EVERY,
             running: Mutex::new(None),
         }
@@ -120,13 +121,23 @@ impl PlaneTask for InventoryService {
 
                 return Ok(());
             };
-            let root = context.config().zones_directory();
+            let ledgers = self.ledgers.under(context).ledgers;
             let metrics = context.metrics().clone();
             let every = self.every;
 
+            // One instance measures an interval, a walk of every store being what it costs: the
+            // job's lease (WP-28.2). The gauges are that instance's.
+            let jobs = context
+                .extension::<permguard_host::jobs::Jobs>()
+                .map_or_else(permguard_host::jobs::Jobs::on_volume, |jobs| {
+                    permguard_host::jobs::Jobs::clone(&jobs)
+                });
             // Once at start, so a plane that has just come up already reports
             // what it holds rather than waiting out the first interval.
-            measure(&catalog, &root, &metrics);
+            jobs.run(JOB, every, &mut || {
+                measure(&catalog, ledgers.as_ref(), &metrics);
+                true
+            });
 
             let (stop, mut stopped) = watch::channel(false);
             let task = tokio::spawn(async move {
@@ -134,12 +145,16 @@ impl PlaneTask for InventoryService {
                     tokio::select! {
                         _ = tokio::time::sleep(every) => {
                             let catalog = Arc::clone(&catalog);
-                            let root = root.clone();
+                            let ledgers = Arc::clone(&ledgers);
                             let metrics = metrics.clone();
+                            let jobs = jobs.clone();
                             // A directory walk is blocking work; it does not
                             // belong on a runtime thread that answers requests.
                             let _ = tokio::task::spawn_blocking(move || {
-                                measure(&catalog, &root, &metrics);
+                                jobs.run(JOB, every, &mut || {
+                                    measure(&catalog, ledgers.as_ref(), &metrics);
+                                    true
+                                });
                             })
                             .await;
                         }
@@ -177,7 +192,7 @@ impl PlaneTask for InventoryService {
 }
 
 /// One pass: every zone, every ledger, published as gauges.
-fn measure(catalog: &Arc<dyn Catalog>, root: &Path, metrics: &Metrics) {
+fn measure(catalog: &Arc<dyn Catalog>, stores: &dyn Ledgers, metrics: &Metrics) {
     let started = Instant::now();
     let zones = match catalog.list_zones() {
         Ok(zones) => zones,
@@ -211,8 +226,7 @@ fn measure(catalog: &Arc<dyn Catalog>, root: &Path, metrics: &Metrics) {
         };
         let mut zone_bytes = 0u64;
         for ledger in &ledgers {
-            let directory = root.join(&zone.id).join("ledgers").join(&ledger.id);
-            let held = held_by(&directory);
+            let held = held_by(stores.ledger(&zone.id, &ledger.id).as_ref());
             zone_bytes += held.bytes;
             objects += held.objects;
         }
@@ -238,37 +252,14 @@ struct Held {
     objects: u64,
 }
 
-/// Walks one ledger's objects, counting files and bytes. `stat` only: nothing
-/// is read, and nothing is decompressed.
-fn held_by(ledger: &Path) -> Held {
-    let mut held = Held::default();
-    let objects = ledger.join("objects");
-    let Ok(fans) = std::fs::read_dir(&objects) else {
-        return held;
-    };
-    for fan in fans.flatten() {
-        let Ok(entries) = std::fs::read_dir(fan.path()) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            // A temporary is a write in flight or one a crash interrupted, not an object.
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(permguard_host::storage::dir::TEMP_PREFIX)
-            {
-                continue;
-            }
-            if let Ok(metadata) = entry.metadata()
-                && metadata.is_file()
-            {
-                held.objects += 1;
-                held.bytes += metadata.len();
-            }
-        }
+/// What one ledger's store holds. Nothing is read: the store answers each object's size at rest.
+/// A ledger that cannot be listed counts for nothing this round.
+fn held_by(ledger: &dyn LedgerStore) -> Held {
+    let objects = ledger.list_objects().unwrap_or_default();
+    Held {
+        bytes: objects.iter().map(|object| object.bytes).sum(),
+        objects: objects.len() as u64,
     }
-
-    held
 }
 
 #[cfg(test)]
@@ -276,6 +267,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::store::FileObjectStore;
     use std::path::PathBuf;
 
     fn scratch(tag: &str) -> PathBuf {
@@ -292,7 +284,10 @@ mod tests {
 
     #[test]
     fn a_ledger_that_is_not_there_holds_nothing() {
-        assert_eq!(held_by(Path::new("/nonexistent/ledger")), Held::default());
+        assert_eq!(
+            held_by(&FileObjectStore::new("/nonexistent/ledger")),
+            Held::default()
+        );
     }
 
     #[test]
@@ -300,15 +295,15 @@ mod tests {
         let ledger = scratch("counted");
         let fan = ledger.join("objects").join("ab");
         std::fs::create_dir_all(&fan).expect("the fanout exists");
-        std::fs::write(fan.join("cdef"), b"twelve bytes").expect("an object");
-        std::fs::write(fan.join("0123"), b"four").expect("another");
+        std::fs::write(fan.join("c".repeat(62)), b"twelve bytes").expect("an object");
+        std::fs::write(fan.join("d".repeat(62)), b"four").expect("another");
         // A directory inside the fanout is not an object.
         std::fs::create_dir_all(fan.join("nested")).expect("a directory");
         // Nor is a temporary a write left behind.
         std::fs::write(fan.join(".tmp-0123456789abcdef"), b"partial").expect("a temporary");
 
         assert_eq!(
-            held_by(&ledger),
+            held_by(&FileObjectStore::new(&ledger)),
             Held {
                 bytes: 16,
                 objects: 2

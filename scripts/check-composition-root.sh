@@ -24,6 +24,12 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/app.rs"
     "crates/permguard-server/src/plane/mod.rs"
     "crates/permguard-offline/src/factories.rs"
+    "crates/permguard-offline/src/volume.rs"
+    "crates/permguard-control-plane/src/plane.rs"
+    "crates/permguard-postgres/src/testing.rs"
+    "crates/permguard-s3/src/testing.rs"
+    "crates/permguard-s3/src/backend.rs"
+    "crates/permguard-s3/src/import.rs"
     "crates/permguard-control-plane-server/src/main.rs"
     "crates/permguard-data-plane-server/src/main.rs"
     "crates/permguard-authority-plane-server/src/main.rs"
@@ -32,17 +38,29 @@ COMPOSITION_ROOTS=(
     "crates/permguard-host/src/authz/mapper.rs"
     "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::open|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='[^d]FileKeyProvider::new|Ring::open\(|files::stores\(|FileRing::to_read|VolumeHome \{|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open|Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|HostApi::new|Replay::new|FileReplay::open|FileHolds::open|FileMembers::open|Witnesses::open|ZoneKeys::open|FileSlots::new|FileRing::open|FileVersionWitnesses::new|FileIdentity::open|FileHeld::open|FileWitnesses::open|FileDeliveredKeys::open|FileClockMark::open|FileSeen::open|FileBootstrap::open|DefaultServerHost::new|FileCatalog::new|FileLedgers::new|FileObjectStore::new|FileArchives::new|FileCursorRoots::new|PostgresClockMark::new|PostgresMutations::new|PostgresReplay::new|PostgresTrails::new|PostgresSlots::new|PostgresDeliveredKeys::new|PostgresCursorRoots::new|Bucket::connect|PostgresLedgers::new|PostgresArchives::new|PostgresRuns::new|PostgresIdentity::new|PostgresRing::new|PostgresMembers::new|PostgresCatalog::new|PostgresWitnesses::new|PostgresVersionWitnesses::new|PostgresHeld::new|PostgresHolds::new|PostgresSeen::new|PostgresBootstrap::new|PostgresAccounts::new|PostgresTokens::new|PostgresMarks::new|Database::connect|cursorkey::load(_root)?\(|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+
+# The files of the Host's file backend that make a store, or hand one to a composition root, for
+# another of them, and what they may construct or call among themselves.
+FILE_BACKEND=(
+    "crates/permguard-host/src/identity/files.rs"
+    "crates/permguard-host/src/keys/migration.rs"
+    "crates/permguard-host/src/keys/ring/files.rs"
+    "crates/permguard-host/src/keys/slots/files.rs"
+    "crates/permguard-host/src/secrets/files.rs"
+)
+FILE_BACKEND_WAYS_IN='File[A-Za-z]+::|Ring::open\(|files::stores\(|Identity::open\(|Identity::provision(_with)?\(|Witnesses::open|ZoneKeys::open'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a
-# single-line item (`#[cfg(test)] use …;`) alone. Comment lines are skipped.
+# single-line item (`#[cfg(test)] use …;`) alone. A condition that holds only in a test build,
+# `#[cfg(all(test, …))]`, marks its item the same way. Comment lines are skipped.
 NON_TEST_CODE='
     in_tests && /^\}/                     { in_tests = 0; next }
     in_tests                              { next }
     pending && /^#\[/                       { next }
     pending { pending = 0; if ($0 ~ /\{[[:space:]]*$/) { in_tests = 1 }; next }
-    /^#\[cfg\(test\)\][[:space:]]*$/      { pending = 1; next }
+    /^#\[cfg\((all\()?test[,)].*\][[:space:]]*$/ { pending = 1; next }
     /^#\[cfg\(test\)\]/ { if ($0 ~ /\{[[:space:]]*$/) { in_tests = 1 }; next }
     /^[[:space:]]*\/\//                    { next }
                                           { print FILENAME ":" FNR ": " $0 }
@@ -93,8 +111,38 @@ while IFS= read -r file; do
         continue
     fi
 
+    # A file may construct the types it defines: a backend's file makes its own store for the
+    # entry points it gives a composition root, and that is not a crate resolving a collaborator.
+    # The Host's file backend is the files `FILE_BACKEND` names, together: one of them may
+    # construct another's store or call another's way in, as a ring's records are opened with
+    # the slots of its keys. No other file is the file backend, whatever it is called.
+    in_file_backend=""
+    for backend in "${FILE_BACKEND[@]}"; do
+        if [ "${relative}" = "${backend}" ]; then
+            in_file_backend="yes"
+        fi
+    done
     found="$(
-        awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" || true
+        awk "${NON_TEST_CODE}" "${file}" | grep -E "${CONSTRUCTORS}" | while IFS= read -r line; do
+            foreign=""
+            # One constructor a line of `grep -o`: a pattern may hold a space, as a struct literal.
+            while IFS= read -r constructor; do
+                # A pattern that excludes a longer name by the character before it matches that
+                # character too.
+                constructor="${constructor#[^A-Za-z]}"
+                if grep -qE "^pub struct ${constructor%%::*}([ <{(;]|\$)" "${file}"; then
+                    continue
+                fi
+                if [ -n "${in_file_backend}" ] \
+                    && printf '%s\n' "${constructor}" | grep -qE "^(${FILE_BACKEND_WAYS_IN})"; then
+                    continue
+                fi
+                foreign="yes"
+            done < <(printf '%s\n' "${line}" | grep -oE "${CONSTRUCTORS}")
+            if [ -n "${foreign}" ]; then
+                printf '%s\n' "${line}"
+            fi
+        done || true
     )"
 
     if [ -n "${found}" ]; then
