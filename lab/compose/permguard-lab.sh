@@ -157,10 +157,10 @@ cmd_pki() {
         }
         for host in "${hosts[@]}"; do
             local names="DNS:${host}"
-            # On postgresql-s3 the second Control Plane instance serves under the same certificate,
-            # reached by its own name too, an endpoint a Data Plane names (WP-28.7).
+            # On postgresql-s3 both Control Plane instances serve under the same certificate,
+            # each reached by its own name too, an endpoint a Data Plane names (WP-28.7).
             if [ "${host}" = control-plane ] && [ "${LAB_BACKEND:-files}" = postgresql-s3 ]; then
-                names="${names},DNS:control-plane-2"
+                names="${names},DNS:control-plane-1,DNS:control-plane-2"
             fi
             issue "${host}" "${names},URI:${trust_domain}/${host}" "serverAuth,clientAuth"
         done
@@ -746,6 +746,16 @@ cmd_assert() {
         "") assert_split_plane ;;
         before-import | imported) assert_import "${phase}" ;;
         replicas) assert_replicas ;;
+        drill-before) drill_before ;;
+        drill-database-down) drill_database_down ;;
+        drill-database-back) drill_database_back ;;
+        drill-database-unanswering) drill_database_unanswering ;;
+        drill-s3-down) drill_s3_down ;;
+        drill-s3-back) drill_s3_back ;;
+        drill-churn) drill_churn 30 ;;
+        drill-churn-check) drill_churn_check ;;
+        drill-concurrent) drill_concurrent ;;
+        drill-load) drill_load ;;
         *) drill_restore "${phase}" ;;
         esac
         ;;
@@ -1020,10 +1030,10 @@ assert_import() {
 # Two Control Plane instances behind one address (iteration 03, WP-28.6), each reached by its own
 # name and checked against the certificate of the address: one Host, one catalog.
 assert_replicas() {
-    local instances=(control-plane control-plane-2) instance identity seen="" zones
+    local instances=(control-plane-1 control-plane-2) instance identity seen="" zones
     step "split-plane: two Control Plane instances, one Host"
     for instance in "${instances[@]}"; do
-        identity="$(pg --tls-server-name control-plane --host-endpoint "$(host_endpoint "${instance}")" \
+        identity="$(pg --host-endpoint "$(host_endpoint "${instance}")" \
             host identity show | jq -c '{host_id, fingerprint}')" ||
             fail "${instance} did not answer its identity"
         [ -z "${seen}" ] || [ "${identity}" = "${seen}" ] ||
@@ -1033,13 +1043,408 @@ assert_replicas() {
     log "both instances are the Host $(jq -r '.host_id' <<<"${seen}")"
 
     step "split-plane: a zone made through one instance, read through the other"
-    pg --tls-server-name control-plane --control-endpoint "$(control_endpoint control-plane-2)" \
+    pg --control-endpoint "$(control_endpoint control-plane-2)" \
         zones create replicated >/dev/null || fail "control-plane-2 did not make the zone"
-    zones="$(pg --tls-server-name control-plane --control-endpoint "$(control_endpoint control-plane)" \
-        zones list)" || fail "control-plane did not list the zones"
+    zones="$(pg --control-endpoint "$(control_endpoint control-plane-1)" zones list)" ||
+        fail "control-plane-1 did not list the zones"
     jq -e '[.zones[].name] | index("replicated") != null and index("acme") != null' <<<"${zones}" >/dev/null ||
-        fail "control-plane does not hold the zone control-plane-2 made"
-    log "the zone made through control-plane-2 is read through control-plane at once"
+        fail "control-plane-1 does not hold the zone control-plane-2 made"
+    log "the zone made through control-plane-2 is read through control-plane-1 at once"
+}
+
+# ---------------------------------------------------------------------------------------------
+# drills (iteration 03, WP-29.1)
+# ---------------------------------------------------------------------------------------------
+
+# The resilience drills of the two Control Plane instances on postgresql-s3, each a phase of the
+# split-plane profile, run by `DRILLS=1 BACKEND=postgresql-s3 scripts/compose-lab.sh split-plane`,
+# which stops, pauses and kills the servers between them. What each finds is logged as evidence,
+# and kept under the lab's state, `drill/`, for the phase that checks it.
+drill_dir="${state}/drill"
+drill_instances=(control-plane-1 control-plane-2)
+
+# The administrator's token, issued while the database answers, for the changes a drill asks of
+# a Control Plane while it does not: what refuses them is then the Plane, not the token's issue.
+drill_admin_token() {
+    local held key file="${drill_dir}/admin.jwt"
+    mkdir -p "${drill_dir}"
+    held="$(admin_key)" || fail "no coordinator wrote admin's key"
+    key="${held#* }"
+    rm -f "${file}"
+    pg_cert --authority-endpoint "$(authority_endpoint)" --access-key "$(access_key_of "${key}")" \
+        --secret-key-file "${key}" authority token --out "${file}" >/dev/null ||
+        fail "the Authority Plane issued admin no token"
+    echo "${file}"
+}
+
+# A change of the catalog through `instance` with the token `file`: its answer, and whether it was
+# made.
+drill_change() { # instance, token file, zone
+    pg_cert --token-file "$2" --control-endpoint "$(control_endpoint "$1")" zones create "$3" 2>&1
+}
+
+# Whether `instance` is ready, as a load balancer asks it: `ready` or `not ready`.
+drill_state() {
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$1:5443/readyz" 2>/dev/null)" || true
+    case "${code}" in
+    200) echo ready ;;
+    *) echo "not ready (${code:-no answer})" ;;
+    esac
+}
+
+# Waits up to `seconds` for every instance to be `ready` or not: answers the seconds it took.
+drill_readiness() { # ready|not, seconds
+    local deadline=$((SECONDS + $2)) started=${SECONDS} instance state
+    for instance in "${drill_instances[@]}"; do
+        while :; do
+            state="$(drill_state "${instance}")"
+            case "$1:${state}" in
+            ready:ready | not:not*) break ;;
+            esac
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "${instance} is ${state} $2 s on"
+            sleep 1
+        done
+    done
+    echo $((SECONDS - started))
+}
+
+# A change of the catalog keeps being made, within `seconds`: the database answers again.
+drill_changes_again() { # seconds, zone prefix
+    local deadline=$((SECONDS + $1)) token instance
+    token="$(drill_admin_token 2>/dev/null)" || true
+    for instance in "${drill_instances[@]}"; do
+        until [ -n "${token}" ] &&
+            drill_change "${instance}" "${token}" "$2-${instance}-$(date +%s%N | cut -c1-13)" >/dev/null; do
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "${instance} makes no change $1 s after the drill"
+            sleep 2
+            [ -n "${token}" ] || token="$(drill_admin_token 2>/dev/null)" || true
+        done
+    done
+}
+
+# before: the token the drills change the catalog with, and every instance's state.
+drill_before() {
+    rm -rf "${drill_dir}"
+    mkdir -p "${drill_dir}"
+    drill_admin_token >/dev/null
+    local instance
+    for instance in "${drill_instances[@]}"; do
+        log "${instance} is $(drill_state "${instance}")"
+    done
+}
+
+# The database stopped: the Data Plane decides on what it holds; each instance refuses a change
+# and issues no token, rather than answer from a copy in memory (E28).
+drill_database_down() {
+    local instance answer started
+    step "drill: the database stopped"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    expect_decision data-plane acme main deny.json false >/dev/null
+    log "the Data Plane decides on the ledger it mirrored"
+    for instance in "${drill_instances[@]}"; do
+        started=${SECONDS}
+        if answer="$(drill_change "${instance}" "${drill_dir}/admin.jwt" "drill-down-${instance}")"; then
+            fail "${instance} made a change with the database stopped: ${answer}"
+        fi
+        log "${instance} refuses a change in $((SECONDS - started)) s: $(tr -d '\n' <<<"${answer}" | cut -c1-200)"
+        if answer="$(pg_cert --authority-endpoint "https://${instance}:8443" \
+            --access-key "$(access_key_of "${state}/lab-client.key")" \
+            --secret-key-file "${state}/lab-client.key" authority token \
+            --scope "decision.evaluate" --out "${drill_dir}/down.jwt" 2>&1)"; then
+            fail "${instance} issued a token with the database stopped"
+        fi
+        log "${instance} issues no token: $(tr -d '\n' <<<"${answer}" | cut -c1-200)"
+    done
+    log "every instance is not ready $(drill_readiness not 30) s on (E28)"
+}
+
+# The database back: every instance makes a change again within a minute.
+drill_database_back() {
+    step "drill: the database back"
+    local started=${SECONDS}
+    log "every instance is ready $(drill_readiness ready 120) s after the database answered"
+    drill_changes_again 120 drill-back
+    log "every instance makes a change again, $((SECONDS - started)) s after the database answered"
+}
+
+# The database answering nothing, paused or cut from the network: no answer and no refusal. A
+# change is refused within a bound, readiness is held, and decisions go on.
+drill_database_unanswering() {
+    local instance started code
+    step "drill: the database answers nothing"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    log "the Data Plane decides on the ledger it mirrored"
+    for instance in "${drill_instances[@]}"; do
+        started=${SECONDS}
+        code=0
+        within 300 "${drill_dir}/cut-${instance}.out"             drill_change "${instance}" "${drill_dir}/admin.jwt" "drill-cut-${instance}" || code=$?
+        [ "${code}" != 124 ] || fail "${instance} held a change past 300 s"
+        [ "${code}" != 0 ] ||
+            fail "${instance} made a change with the database answering nothing: $(cat "${drill_dir}/cut-${instance}.out")"
+        log "${instance} refuses a change in $((SECONDS - started)) s: $(tr -d '\n' <"${drill_dir}/cut-${instance}.out" | cut -c1-200)"
+    done
+    log "every instance is not ready $(drill_readiness not 60) s on (E28)"
+}
+
+# Runs a command with its output in `file`, stopped past `seconds`: its status, 124 when stopped.
+within() { # seconds, file, command...
+    local limit="$1" file="$2" waited=0 pid
+    shift 2
+    "$@" >"${file}" 2>&1 &
+    pid=$!
+    while kill -0 "${pid}" 2>/dev/null; do
+        if [ "${waited}" -ge "${limit}" ]; then
+            kill "${pid}" 2>/dev/null
+            wait "${pid}" 2>/dev/null
+            return 124
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    wait "${pid}"
+}
+
+# A push of the basics example's policies to the ledger `ledger` of acme through
+# control-plane-1, made or not: its status is the push's, its output the push's answer.
+drill_push() { # ledger
+    local endpoint workspace status=0
+    endpoint="$(control_endpoint control-plane-1)"
+    ledger_id control-plane-1 acme "$1" >/dev/null 2>&1 ||
+        pg --control-endpoint "${endpoint}" ledgers create "$1" --zone acme >/dev/null 2>&1 || return 1
+    workspace="$(mktemp -d)"
+    cp -R "${examples}/basics/." "${workspace}"
+    rm -rf "${workspace}/.permguard"
+    if [ -f "${workspace}/manifest.yml" ]; then
+        pg -w "${workspace}" init >/dev/null 2>&1 || status=1
+    else
+        pg -w "${workspace}" init "$1" --language cedar,rego >/dev/null 2>&1 || status=1
+    fi
+    [ "${status}" = 0 ] && pg -w "${workspace}" remote add origin "${endpoint}" >/dev/null 2>&1 || status=1
+    [ "${status}" = 0 ] && pg -w "${workspace}" checkout "origin/acme/$1" >/dev/null 2>&1 || status=1
+    [ "${status}" = 0 ] && { pg -w "${workspace}" apply -m "a drill's push" 2>&1 || status=1; }
+    rm -rf "${workspace}"
+    return "${status}"
+}
+
+# S3 stopped: a push of a ledger's policies is refused, decisions go on.
+drill_s3_down() {
+    local answer
+    step "drill: S3 stopped"
+    expect_decision data-plane acme main permit.json true >/dev/null
+    if answer="$(drill_push drill-s3 2>&1)"; then
+        fail "a push was taken with S3 stopped: ${answer}"
+    fi
+    log "a push is refused with S3 stopped: $(tr -d '\n' <<<"${answer}" | tail -c 200)"
+    log "the Data Plane decides on the ledger it mirrored"
+}
+
+# S3 back: the push is taken.
+drill_s3_back() {
+    local deadline=$((SECONDS + 120))
+    step "drill: S3 back"
+    until drill_push drill-s3 >/dev/null 2>&1; do
+        [ "${SECONDS}" -lt "${deadline}" ] || fail "no push is taken two minutes after S3 answered"
+        sleep 3
+    done
+    log "a push is taken again once S3 answers"
+}
+
+# A token of lab-client, or of the account whose key file is `key`, issued by `instance` into
+# `file`; its refusal, when refused, on standard output.
+drill_token() { # instance, file, [key file]
+    local key="${3:-${state}/lab-client.key}"
+    pg_cert --authority-endpoint "https://$1:8443" \
+        --access-key "$(access_key_of "${key}")" \
+        --secret-key-file "${key}" authority token \
+        --scope "decision.evaluate" --out "$2" 2>&1 >/dev/null
+}
+
+# control.attest as `instance` holds it: its epoch, its digest and its key ids, one line.
+drill_ring() {
+    drill_ring_of "$1" control.attest
+}
+
+# The ring `ring` as `instance` holds it, one line.
+drill_ring_of() { # instance, ring
+    pg --host-endpoint "$(host_endpoint "$1")" host keys show "$2" 2>/dev/null |
+        jq -c '{epoch, digest, kids: [.keys[].kid]}'
+}
+
+# For `seconds`, rotations of control.attest and revocations of fresh tokens through
+# control-plane-2, which the drill kills on the way: each one it answered is recorded, the epoch
+# of a rotation and the jti of a revocation.
+drill_churn() {
+    local seconds="${1:-30}" deadline epoch file jti n=0
+    step "drill: rotations and revocations through control-plane-2, killed on the way"
+    deadline=$((SECONDS + seconds))
+    : >"${drill_dir}/rotated"
+    : >"${drill_dir}/revoked"
+    drill_ring control-plane-1 >"${drill_dir}/ring-before"
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        n=$((n + 1))
+        if epoch="$(pg --host-endpoint "$(host_endpoint control-plane-2)" host keys show control.attest 2>/dev/null | jq -er '.epoch')" &&
+            pg --host-endpoint "$(host_endpoint control-plane-2)" host keys rotate control.attest \
+                --expected-epoch "${epoch}" >/dev/null 2>&1; then
+            echo "${epoch}" >>"${drill_dir}/rotated"
+        fi
+        file="${drill_dir}/churn-${n}.jwt"
+        if drill_token control-plane-2 "${file}" >/dev/null && jti="$(jti_of "${file}")" &&
+            pg --authority-endpoint "https://control-plane-2:8443" authority tokens revoke "${jti}" >/dev/null 2>&1; then
+            echo "${jti} ${file}" >>"${drill_dir}/revoked"
+        fi
+        sleep 0.3
+    done
+    log "$(wc -l <"${drill_dir}/rotated" | tr -d ' ') rotations and $(wc -l <"${drill_dir}/revoked" | tr -d ' ') revocations answered in ${n} rounds"
+}
+
+# After the churn, both instances back: one ring on both, every key once, its epoch past the one
+# it started at by the rotations answered, or by one more that committed unanswered; every
+# revocation answered is in the store and refused by the Data Plane.
+drill_churn_check() {
+    local one other before rotated advanced jti file answer deadline
+    step "drill: no key doubled, no revocation lost"
+    one="$(drill_ring control-plane-1)"
+    other="$(drill_ring control-plane-2)"
+    [ -n "${one}" ] && [ "${one}" = "${other}" ] ||
+        fail "the instances hold control.attest apart: ${one} and ${other}"
+    jq -e '(.kids | length) == (.kids | unique | length)' <<<"${one}" >/dev/null ||
+        fail "control.attest holds a key twice: ${one}"
+    before="$(jq -r '.epoch' "${drill_dir}/ring-before")"
+    rotated="$(wc -l <"${drill_dir}/rotated" | tr -d ' ')"
+    advanced=$(($(jq -r '.epoch' <<<"${one}") - before))
+    [ "${advanced}" -ge "${rotated}" ] && [ "${advanced}" -le $((rotated + 1)) ] ||
+        fail "control.attest moved ${advanced} epochs for ${rotated} rotations answered"
+    log "control.attest is one ring on both instances, every key once, ${advanced} epochs for ${rotated} rotations answered"
+    local revoked
+    revoked="$(pg --authority-endpoint "https://control-plane-1:8443" authority tokens list --status invalid |
+        jq -r '.[].jti')"
+    while read -r jti file; do
+        [ -n "${jti}" ] || continue
+        grep -qx "${jti}" <<<"${revoked}" || fail "the revocation of ${jti} was answered and is lost"
+        deadline=$((SECONDS + 90))
+        until answer="$(decide data-plane acme main permit.json "${file}")" &&
+            grep -q "unauthenticated" <<<"${answer}"; do
+            [ "${SECONDS}" -lt "${deadline}" ] || fail "the Data Plane still decides on ${jti}, revoked: ${answer}"
+            sleep 3
+        done
+    done <"${drill_dir}/revoked"
+    log "every revocation answered is in the store and refused by the Data Plane: $(wc -l <"${drill_dir}/revoked" | tr -d ' ')"
+}
+
+# Concurrent: two rotations of one epoch, one on each instance, of which one is made; revocations
+# through both instances at once, every one kept.
+drill_concurrent() {
+    local ring epoch made instance n jti
+    step "drill: concurrent rotations and revocations on both instances"
+    # A ring rotated once waits for its successor to take over: each round is another ring.
+    for ring in data.attest host.operations; do
+        epoch="$(pg --host-endpoint "$(host_endpoint control-plane-1)" host keys show "${ring}" | jq -er '.epoch')"
+        for instance in "${drill_instances[@]}"; do
+            (pg --host-endpoint "$(host_endpoint "${instance}")" host keys rotate "${ring}" \
+                --expected-epoch "${epoch}" >"${drill_dir}/race-${ring}-${instance}" 2>&1 &&
+                echo made >>"${drill_dir}/race-${ring}-${instance}") &
+        done
+        wait
+        made="$(cat "${drill_dir}"/race-"${ring}"-* | grep -cx made || true)"
+        [ "${made}" = 1 ] || fail "two rotations of ${ring} at epoch ${epoch} made ${made}: $(cat "${drill_dir}"/race-"${ring}"-* | tr -d '\n' | cut -c1-300)"
+        [ "$(drill_ring_of control-plane-1 "${ring}")" = "$(drill_ring_of control-plane-2 "${ring}")" ] ||
+            fail "the instances hold ${ring} apart after the race"
+    done
+    log "twice, two rotations of one epoch on two instances made one, and one ring on both"
+    : >"${drill_dir}/concurrent"
+    for n in $(seq 1 10); do
+        drill_token control-plane-1 "${drill_dir}/concurrent-${n}.jwt" >/dev/null || fail "no token ${n}"
+        jti_of "${drill_dir}/concurrent-${n}.jwt" >>"${drill_dir}/concurrent"
+    done
+    n=0
+    while read -r jti; do
+        n=$((n + 1))
+        instance="${drill_instances[$((n % 2))]}"
+        (pg --authority-endpoint "https://${instance}:8443" authority tokens revoke "${jti}" \
+            >"${drill_dir}/revoke-${jti}" 2>&1 && echo made >>"${drill_dir}/revoke-${jti}") &
+    done <"${drill_dir}/concurrent"
+    wait
+    local invalid answered=0
+    invalid="$(pg --authority-endpoint "https://control-plane-2:8443" authority tokens list --status invalid |
+        jq -r '.[].jti')"
+    while read -r jti; do
+        if grep -qx made "${drill_dir}/revoke-${jti}"; then
+            answered=$((answered + 1))
+            grep -qx "${jti}" <<<"${invalid}" ||
+                fail "the revocation of ${jti}, answered with nine others at once, is lost"
+        else
+            log "the revocation of ${jti} was refused: $(tr -d '\n' <"${drill_dir}/revoke-${jti}" | cut -c1-200)"
+        fi
+    done <"${drill_dir}/concurrent"
+    [ "${answered}" -ge 1 ] || fail "none of ten revocations at once was answered"
+    log "ten revocations at once through both instances: ${answered} answered, every one answered kept"
+}
+
+# A short load through the one address: tokens issued and decisions answered by several clients
+# at once, each its own service account, as clients are, the errors counted and the time
+# measured. Each stays under the token endpoint's bound of 60 a minute for one access key
+# (2-security/8), which answers `slow_down` past it.
+drill_load() {
+    local workers=6 each=20 started elapsed failed worker key
+    step "drill: load through the one address"
+    for worker in $(seq 1 "${workers}"); do
+        key="${drill_dir}/load-${worker}.key"
+        pg authority service-accounts get "drill-load-${worker}" >/dev/null 2>&1 ||
+            pg authority service-accounts create "drill-load-${worker}" \
+                --scope "decision.evaluate@plane/data/*" >/dev/null || fail "no account drill-load-${worker}"
+        rm -f "${key}"
+        pg authority keys create "drill-load-${worker}" --secret-out "${key}" >/dev/null ||
+            fail "no key for drill-load-${worker}"
+    done
+    started=${SECONDS}
+    for worker in $(seq 1 "${workers}"); do
+        (
+            local i failures=0 slowed=0 answer
+            for i in $(seq 1 "${each}"); do
+                while :; do
+                    rm -f "${drill_dir}/load-${worker}.jwt"
+                    answer="$(drill_token control-plane "${drill_dir}/load-${worker}.jwt" \
+                        "${drill_dir}/load-${worker}.key")" && break
+                    # The bound of concurrent work answers `slow_down`: asked again a second on,
+                    # as a client is told to.
+                    if grep -q '"slow_down"' <<<"${answer}"; then
+                        slowed=$((slowed + 1))
+                        sleep 1
+                        continue
+                    fi
+                    failures=$((failures + 1))
+                    break
+                done
+            done
+            echo "${failures}" >"${drill_dir}/load-tokens-${worker}"
+            echo "${slowed}" >"${drill_dir}/load-slowed-${worker}"
+        ) &
+    done
+    wait
+    elapsed=$((SECONDS - started))
+    failed="$(cat "${drill_dir}"/load-tokens-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    [ "${failed}" = 0 ] || fail "${failed} of $((workers * each)) tokens failed under load"
+    local slowed
+    slowed="$(cat "${drill_dir}"/load-slowed-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    log "$((workers * each)) tokens by ${workers} clients at once through the one address in ${elapsed} s, none failed; ${slowed} answered slow_down by the bound of concurrent work and asked again"
+    started=${SECONDS}
+    for worker in $(seq 1 "${workers}"); do
+        (
+            local i failures=0 answer
+            for i in $(seq 1 "${each}"); do
+                answer="$(decide data-plane acme main permit.json "${drill_dir}/load-${worker}.jwt")"
+                jq -e '.evaluated == true and .decision == true' >/dev/null 2>&1 <<<"${answer}" ||
+                    failures=$((failures + 1))
+            done
+            echo "${failures}" >"${drill_dir}/load-decisions-${worker}"
+        ) &
+    done
+    wait
+    elapsed=$((SECONDS - started))
+    failed="$(cat "${drill_dir}"/load-decisions-* | awk '{ sum += $1 } END { print sum + 0 }')"
+    [ "${failed}" = 0 ] || fail "${failed} of $((workers * each)) decisions failed under load"
+    log "$((workers * each)) decisions by ${workers} clients at once in ${elapsed} s, none failed"
 }
 
 # The restore drill (WP-7.7, `scripts/drill-restore.sh`), in four phases on the split-plane lab:

@@ -55,6 +55,10 @@ pub type Delivered = Box<dyn Fn(Arc<Sealer>) -> Arc<dyn DeliveredKeys> + Send + 
 pub type AuditCursorRoot =
     Box<dyn Fn(Arc<Sealer>) -> Result<zeroize::Zeroizing<Vec<u8>>, String> + Send + Sync>;
 
+/// Whether the backend answers now, the database and the bucket each: what readiness asks of a
+/// process on it (decision E28, WP-29.1).
+pub type Ready = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
+
 /// Every store of a Host on a shared backend, and the connection a Plane's server composes its
 /// own stores over.
 pub struct Shared {
@@ -78,6 +82,7 @@ pub struct Shared {
     pub plans: Arc<dyn ReplayStore>,
     pub trails: Arc<dyn Trails>,
     pub audit_cursor_root: AuditCursorRoot,
+    pub ready: Ready,
     /// The catalog of zones and ledgers the Control Plane serves.
     pub catalog: Arc<dyn permguard_core::catalog::Catalog>,
     pub mutations: Mutations,

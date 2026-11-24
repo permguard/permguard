@@ -16,6 +16,11 @@ x-lab: &lab
   security_opt: ["no-new-privileges:true"]
 
 services:
+  # The first instance keeps the address and is also reached by a name of its own.
+  control-plane:
+    networks:
+      default: { aliases: [control-plane-1] }
+
   control-plane-2:
     <<: *lab
     profiles: [split-plane]

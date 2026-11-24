@@ -427,6 +427,15 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
                 .map_err(|error| error.to_string())
             })
         },
+        ready: {
+            let (database, bucket) = (database.clone(), connected.bucket.clone());
+            Arc::new(move || {
+                database
+                    .ready()
+                    .map_err(|error| format!("PostgreSQL: {error}"))?;
+                bucket.ready().map_err(|error| format!("S3: {error}"))
+            })
+        },
         catalog: Arc::new(pg::catalog::PostgresCatalog::new(database.clone())),
         mutations: Box::new(move |projection| {
             Arc::new(pg::mutations::PostgresMutations::new(

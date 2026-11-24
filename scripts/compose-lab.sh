@@ -21,7 +21,9 @@
 # its Control Plane on PostgreSQL and S3 (`docker-compose.lab.postgresql-s3.yml`, iteration 03,
 # WP-28.1): the Data Plane on files, as always. Two Control Plane instances serve it behind one
 # address (`docker-compose.lab.replicas.yml`, WP-28.6), and the profile is proved again with each
-# of them stopped in turn. BACKEND=import runs it with its Control Plane on
+# of them stopped in turn; DRILLS=1 then runs the resilience drills on them (WP-29.1): the database
+# stopped, answering nothing and restarted, S3 stopped, an instance killed while it rotates keys
+# and revokes tokens, rotations and revocations at once on both, and a load. BACKEND=import runs it with its Control Plane on
 # files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
 # S3 with `permguard migrate import`, serves it from there and proves the profile again.
 set -euo pipefail
@@ -109,6 +111,51 @@ run_profile() {
         [ "${code}" = 0 ]
     }
 
+    # The resilience drills (WP-29.1): the servers stopped, paused and killed from here, what each
+    # drill proves asserted from the lab's tools, its log under ARTIFACTS.
+    run_drills() {
+        drill() { dc run --rm lab assert "${profile}" "drill-$1" || failed "the drill $1 failed"; }
+        postgres() { dc ps -q lab-postgres; }
+        step "${profile}: resilience drills"
+        drill before
+        dc stop lab-postgres >/dev/null 2>&1 || failed "the database did not stop"
+        drill database-down
+        dc up -d --no-deps --wait lab-postgres >/dev/null 2>&1 || failed "the database did not start"
+        drill database-back
+        # Frozen: the process paused, its connections open and silent.
+        docker pause "$(postgres)" >/dev/null || failed "the database was not paused"
+        drill database-unanswering
+        docker unpause "$(postgres)" >/dev/null || failed "the database was not unpaused"
+        drill database-back
+        # Cut: the database gone from the network the instances reach it on.
+        docker network disconnect "${project}_default" "$(postgres)" >/dev/null ||
+            failed "the database was not cut from the network"
+        drill database-unanswering
+        docker network connect --alias lab-postgres "${project}_default" "$(postgres)" >/dev/null ||
+            failed "the database was not put back on the network"
+        drill database-back
+        dc restart lab-postgres >/dev/null 2>&1 || failed "the database did not restart"
+        dc up -d --no-deps --wait lab-postgres >/dev/null 2>&1 || failed "the database did not answer again"
+        drill database-back
+        dc stop lab-s3 >/dev/null 2>&1 || failed "S3 did not stop"
+        drill s3-down
+        dc up -d --no-deps lab-s3 >/dev/null 2>&1 || failed "S3 did not start"
+        drill s3-back
+        # control-plane-2 killed while the churn rotates and revokes through it.
+        dc run --rm lab assert "${profile}" drill-churn >"${artifacts}/drill-churn.log" 2>&1 &
+        local churn=$!
+        sleep 12
+        docker kill "$(dc ps -q control-plane-2)" >/dev/null || failed "control-plane-2 was not killed"
+        wait "${churn}" || failed "the churn failed (${artifacts}/drill-churn.log)"
+        sed -n 's/^[^|]*| //p' "${artifacts}/drill-churn.log" | grep -v '^$' | tail -n 3 || true
+        dc up -d --no-deps --wait control-plane-2 >/dev/null 2>&1 || failed "control-plane-2 did not serve again"
+        drill churn-check
+        drill concurrent
+        drill load
+        step "${profile}: what it must prove, after the drills"
+        dc run --rm lab assert "${profile}" || failed "an assertion failed after the drills"
+    }
+
     step "${profile}: a fresh project, ${project}"
     dc down -v --remove-orphans >/dev/null 2>&1 || true
     dc up -d 2>/dev/null || failed "the profile did not start"
@@ -132,6 +179,9 @@ run_profile() {
             dc run --rm lab assert "${profile}" || failed "an assertion failed with ${instance} stopped"
             dc up -d --no-deps --wait "${instance}" 2>/dev/null || failed "${instance} did not serve again"
         done
+        if [ "${DRILLS:-0}" = 1 ]; then
+            run_drills
+        fi
     fi
     if [ "${BACKEND:-files}" = import ]; then
         step "${profile}: the Control Plane's volume imported into postgresql-s3"

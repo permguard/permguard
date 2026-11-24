@@ -280,6 +280,15 @@ fn apart<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
     })
 }
 
+/// How long a connection is silent before its first keepalive (WP-29.1).
+const KEEPALIVE_IDLE: std::time::Duration = std::time::Duration::from_secs(10);
+/// Between two unanswered keepalives.
+const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+/// Unanswered keepalives after which the connection is closed.
+const KEEPALIVE_RETRIES: u32 = 3;
+/// How long what was sent may stay unacknowledged before the connection is closed.
+const TCP_USER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// What [`apart`] answers when the work was not run to its end.
 fn no_thread() -> DbError {
     DbError::Unavailable("no thread could run the work on the database".to_owned())
@@ -761,7 +770,16 @@ impl Database {
             .dbname(&config.database)
             .user(&config.user)
             .application_name("permguard")
-            .connect_timeout(config.wait);
+            .connect_timeout(config.wait)
+            // A database the network no longer reaches is told within a bound, not by the
+            // system's own TCP timeouts, minutes later: what was sent and not acknowledged in
+            // TCP_USER_TIMEOUT, or a connection silent and unanswering to its keepalives, is
+            // closed, and the unit of work on it fails (iteration 03, WP-29.1).
+            .keepalives(true)
+            .keepalives_idle(KEEPALIVE_IDLE)
+            .keepalives_interval(KEEPALIVE_INTERVAL)
+            .keepalives_retries(KEEPALIVE_RETRIES)
+            .tcp_user_timeout(TCP_USER_TIMEOUT);
         if let Some(password) = &config.password {
             settings.password(password);
         }

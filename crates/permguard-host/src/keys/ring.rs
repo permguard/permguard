@@ -686,6 +686,9 @@ pub struct Ring {
     hold: RwLock<Option<Arc<dyn MaintenanceHold>>>,
     /// When the store was last read whole, on a store other instances share (WP-28.3).
     read_at: Mutex<std::time::Instant>,
+    /// Set when an operation that made a transition ended without being kept: the view holds
+    /// what the database undid, and is read again before it answers (WP-29.1).
+    undone: Arc<AtomicBool>,
     /// How old that reading may be when the ring signs or publishes: [`FRESH_FOR`].
     fresh_for: Duration,
 }
@@ -829,6 +832,7 @@ impl Ring {
             gate: RwLock::new(None),
             hold: RwLock::new(None),
             read_at: Mutex::new(std::time::Instant::now()),
+            undone: Arc::new(AtomicBool::new(false)),
             fresh_for: FRESH_FOR,
         };
         Ok(opened)
@@ -875,7 +879,26 @@ impl Ring {
 
     /// The ring epoch: `0` before its first key.
     pub fn epoch(&self) -> u64 {
+        // A store that cannot be read leaves the epoch as read: what a transition expects is
+        // checked again under its lock, on the store as it is.
+        let _ = self.current();
         self.read().epoch
+    }
+
+    /// Reads the store again once the operation `applying` ends without being kept, on a store
+    /// other instances share: the transition this ring applied to its view inside it was undone
+    /// with it, and an attempt run again, or the next question, must not find it (decision X68,
+    /// WP-29.1). On files the journal is the view's, and an operation is kept as it ends.
+    fn read_again_unless_kept(&self, applying: &Applying<'_>) {
+        if !self.store.shared() {
+            return;
+        }
+        let undone = Arc::clone(&self.undone);
+        applying.on_end(move |kept| {
+            if !kept {
+                undone.store(true, Ordering::SeqCst);
+            }
+        });
     }
 
     /// The epoch the active key was prepublished at, from the journal: what tells a key a pin's
@@ -940,6 +963,7 @@ impl Ring {
         *self.write() = state;
         *self.binding.write().unwrap_or_else(PoisonError::into_inner) = binding;
         self.stopped.store(false, Ordering::SeqCst);
+        self.undone.store(false, Ordering::SeqCst);
         *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
         Ok(())
     }
@@ -961,12 +985,13 @@ impl Ring {
         if !self.store.shared() || self.retired.load(Ordering::SeqCst) {
             return Ok(());
         }
-        let stale = self
-            .read_at
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .elapsed()
-            >= self.fresh_for;
+        let stale = self.undone.load(Ordering::SeqCst)
+            || self
+                .read_at
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .elapsed()
+                >= self.fresh_for;
         if !stale {
             return Ok(());
         }
@@ -1542,6 +1567,7 @@ impl Ring {
         let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_rotatable()?;
+        self.read_again_unless_kept(applying);
         let now = self.time.now_secs();
         let entry = self.prepublish(now, Some(*applying.operation_id().as_bytes()))?;
         self.write_view().map_err(|error| {
@@ -1605,6 +1631,7 @@ impl Ring {
         let _serial = self.writing()?;
         self.expect_epoch(expected_epoch)?;
         self.check_revocable(kid)?;
+        self.read_again_unless_kept(applying);
         if reason.is_empty() || reason.len() > MAX_REASON_BYTES {
             return Err(RingError::Refused(format!(
                 "a revocation reason takes 1 to {MAX_REASON_BYTES} bytes"

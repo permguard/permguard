@@ -1027,3 +1027,99 @@ fn a_membership_changed_on_one_instance_is_read_on_another() {
     assert_eq!(one.seq(), 3, "caught up at once");
     assert_eq!(one.invitations(now).len(), 3);
 }
+
+/// WP-29.1: an operator's rotation of a ring on PostgreSQL, through the mutation engine as the
+/// Host API runs it. An operation the database undoes after the ring rotated leaves the ring at
+/// the epoch it was, so the rotation asked again of that epoch is made (found by the drills: the
+/// view kept the undone successor, and every rotation after it was refused); a kept one moves
+/// the epoch by one; a second rotation of the same epoch is refused for the successor that waits.
+#[test]
+fn a_ring_rotates_through_the_engine_on_postgresql() {
+    use permguard_core::KeyManager as _;
+    use permguard_host::keys::FileKeyProvider;
+    use permguard_host::keys::ring::{DATA_ATTEST, Policy, Ring};
+    use permguard_host::time::TimeGuard;
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_postgres::ring::PostgresRing;
+    use permguard_postgres::slots::PostgresSlots;
+
+    let Some(server) = server("a_ring_rotates_through_the_engine_on_postgresql") else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    let engine = permguard_postgres::testing::engine(Database::clone(database));
+    let ring = Ring::open_with(
+        std::sync::Arc::new(PostgresRing::new(Database::clone(database), DATA_ATTEST)),
+        std::sync::Arc::new(FileKeyProvider::over(std::sync::Arc::new(
+            PostgresSlots::new(Database::clone(database), DATA_ATTEST),
+        ))),
+        DATA_ATTEST,
+        Suite::Ed25519Sha256V1,
+        Policy {
+            publish_ahead: std::time::Duration::from_secs(300),
+            rotate_every: std::time::Duration::from_secs(3_600),
+            retain: std::time::Duration::from_secs(86_400),
+        },
+        std::sync::Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
+    )
+    .expect("opens");
+    ring.maintain().expect("published");
+    ring.maintain().expect("activated");
+    let before = ring.epoch();
+    let rotate_then = |expected: u64, refused: bool| {
+        run_checked_on::<_, String>(
+            &engine,
+            Begin {
+                domain: permguard_host::keys::ring::DOMAIN,
+                operation: permguard_host::keys::ring::ROTATE,
+                action: permguard_host::keys::ring::AUDIT_ROTATED,
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: Some(format!("{DATA_ATTEST}:epoch:{}", expected + 1)),
+            },
+            || {
+                if ring.epoch() == expected {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "expected {expected}, the ring is at {}",
+                        ring.epoch()
+                    ))
+                }
+            },
+            |applying| {
+                let rotated = ring
+                    .rotate(applying, expected)
+                    .map_err(|error| Failure::Refused(error.to_string()))?;
+                if refused {
+                    return Err(Failure::Refused(
+                        "refused after the ring rotated".to_owned(),
+                    ));
+                }
+                Ok(Applied {
+                    revision: rotated.epoch,
+                    target: None,
+                    value: rotated.epoch,
+                })
+            },
+        )
+    };
+    let rotate = |expected: u64| rotate_then(expected, false);
+    rotate_then(before, true).expect_err("refused, and undone");
+    assert_eq!(
+        ring.epoch(),
+        before,
+        "the undone rotation is not in the view"
+    );
+    let rotated = rotate(before).expect("rotated");
+    assert!(
+        matches!(rotated, Outcome::Applied(epoch) if epoch == before + 1),
+        "{rotated:?}"
+    );
+    assert_eq!(ring.epoch(), before + 1);
+    ring.refresh().expect("read again");
+    assert_eq!(ring.epoch(), before + 1, "as the database holds it");
+    let again = rotate(before + 1).expect_err("a successor waits");
+    assert!(format!("{again:?}").contains("prepublished"), "{again:?}");
+}

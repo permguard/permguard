@@ -2899,6 +2899,11 @@ impl Composition {
         let _storage = host_quota.map(|quota| {
             crate::storage_quota::watch(quota, context.health().clone(), context.metrics().clone())
         });
+        // On a shared backend, readiness held while the database or the bucket does not answer
+        // (E28): no change is made then, and the work goes to an instance that can make it.
+        let _backend = shared.as_ref().map(|shared| {
+            crate::backend_ready::watch(Arc::clone(&shared.ready), context.health().clone())
+        });
         // The streams' garbage collection, at start and every hour, off the request path (WP-5.6b).
         let _pruning = crate::stream_gc::drive(
             prunables,

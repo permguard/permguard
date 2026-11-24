@@ -2174,11 +2174,7 @@ fn provision_shared(
         ));
     };
     trace.say(format!("backend: {}", shared.backend));
-    if if_missing
-        && identity::provisioned_in(shared.identity.as_ref(), &shared.home)
-            .map_err(|error| Failure::unavailable(format!("the identity: {error}")))?
-            .is_some()
-    {
+    let held_already = || -> Result<ExitCode, Failure> {
         render_json(
             &serde_json::json!({
                 "provisioned": false,
@@ -2187,7 +2183,14 @@ fn provision_shared(
             globals,
             trace,
         )?;
-        return Ok(ExitCode::SUCCESS);
+        Ok(ExitCode::SUCCESS)
+    };
+    if if_missing
+        && identity::provisioned_in(shared.identity.as_ref(), &shared.home)
+            .map_err(|error| Failure::unavailable(format!("the identity: {error}")))?
+            .is_some()
+    {
+        return held_already();
     }
     let secrets = permguard_offline::factories::secret_store_for(&config)
         .map_err(|error| Failure::usage(format!("the secret store: {error:#}")))?;
@@ -2198,7 +2201,7 @@ fn provision_shared(
     )
     .map_err(|error| Failure::usage(format!("the custody of the keys: {error:#}")))?;
     let now = permguard_core::time::unix_now();
-    let opened = Identity::provision_in(
+    let provisioned = Identity::provision_in(
         std::sync::Arc::clone(&shared.identity),
         Home {
             id: shared.home,
@@ -2219,11 +2222,15 @@ fn provision_shared(
         suite,
         now,
         now.saturating_mul(1000),
-    )
-    .map_err(|error| match error {
-        identity::IdentityError::Provisioned => Failure::usage(error),
-        other => Failure::unavailable(other),
-    })?;
+    );
+    let opened = match provisioned {
+        Ok(opened) => opened,
+        // Another instance provisioned it between the read above and the hold this one waited
+        // for: as if it had been there, the instances starting together (WP-29.1).
+        Err(identity::IdentityError::Provisioned) if if_missing => return held_already(),
+        Err(error @ identity::IdentityError::Provisioned) => return Err(Failure::usage(error)),
+        Err(other) => return Err(Failure::unavailable(other)),
+    };
     shared
         .offline_engine(permguard_core::build::VERSION)
         .map_err(Failure::unavailable)?
