@@ -25,7 +25,10 @@
 # stopped, answering nothing and restarted, S3 stopped, an instance killed while it rotates keys
 # and revokes tokens, rotations and revocations at once on both, and a load. BACKEND=import runs it with its Control Plane on
 # files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
-# S3 with `permguard migrate import`, serves it from there and proves the profile again.
+# S3 with `permguard migrate import`, serves it from there and proves the profile again. The
+# all-in-one and the multi-data-plane measure the evidence freshness, from a decision's answer to its
+# durable acknowledgement by the Control Plane (iteration 04): LAB_FRESHNESS_SAMPLES samples, six by
+# default; LAB_FRESHNESS_P99_MS, when given, fails the profile on a worse sample.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -109,6 +112,14 @@ run_profile() {
         done
         code="$(docker inspect -f '{{.State.ExitCode}}' "${container}")"
         [ "${code}" = 0 ]
+    }
+
+    # Evidence freshness (iteration 04, WP-30.1): measured on every run, its samples logged; held to
+    # LAB_FRESHNESS_P99_MS only when it is given, which WP-32.2 makes the release gate.
+    freshness() {
+        dc run --rm -e "LAB_FRESHNESS_P99_MS=${LAB_FRESHNESS_P99_MS:-}" \
+            -e "LAB_FRESHNESS_SAMPLES=${LAB_FRESHNESS_SAMPLES:-6}" \
+            -e "LAB_FRESHNESS_TIMEOUT=${LAB_FRESHNESS_TIMEOUT:-120}" lab assert "$1" freshness
     }
 
     # The resilience drills (WP-29.1): the servers stopped, paused and killed from here, what each
@@ -214,6 +225,8 @@ run_profile() {
     if [ "${profile}" = all-in-one ]; then
         step "${profile}: service accounts, keys and tokens of the Authority Plane"
         dc run --rm lab assert "${profile}" authority || failed "an Authority Plane assertion failed"
+        step "${profile}: evidence freshness to its own Control Plane (iteration 04)"
+        freshness "${profile}" || failed "the evidence freshness passed its objective"
     fi
     if [ "${profile}" = multi-data-plane ]; then
         step "${profile}: decisions by the Authority Plane's tokens"
@@ -225,6 +238,8 @@ run_profile() {
         objective="$(jq -r --arg scale "${LAB_P99_OBJECTIVE_SCALE:-1}" '.p99_ms.required * ($scale | tonumber)' bench/slo.json)"
         dc run --rm -e "LAB_P99_OBJECTIVE_MS=${objective}" lab assert "${profile}" latency ||
             failed "the evaluation latency passed its objective"
+        step "${profile}: evidence freshness from a member to its coordinator (iteration 04)"
+        freshness "${profile}" || failed "the evidence freshness passed its objective"
         step "${profile}: the Authority Plane rotates its token key, the members follow (WP-12.6)"
         dc run --rm lab assert "${profile}" rotation || failed "a member did not follow the token key's rotation"
         step "${profile}: the Control Plane stopped, the members decide on what they hold"

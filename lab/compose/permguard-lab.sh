@@ -16,8 +16,9 @@
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
 #   permguard-lab assert <profile> [phase]  what the profile must prove; the all-in-one's phases
-#                                           are `rotation` and `authority`, the multi-data-plane's
-#                                           `tokens`, `latency`, `rotation` and `offline`
+#                                           are `rotation`, `authority` and `freshness`, the
+#                                           multi-data-plane's `tokens`, `latency`, `freshness`,
+#                                           `rotation` and `offline`
 #
 # A lab is an isolated test authority, and only a lab does what this script does: it issues every
 # certificate, bootstraps its operator's certificate on every volume before the Host starts, acts as
@@ -738,6 +739,7 @@ cmd_assert() {
         "") assert_all_in_one ;;
         rotation) assert_all_in_one_rotation ;;
         authority) assert_all_in_one_authority ;;
+        freshness) assert_freshness all-in-one all-in-one acme main "$(own_resource all-in-one acme main)" ;;
         *) fail "no all-in-one phase ${phase}" ;;
         esac
         ;;
@@ -764,6 +766,7 @@ cmd_assert() {
         "") assert_multi_data_plane ;;
         tokens) assert_tokens ;;
         latency) assert_latency ;;
+        freshness) assert_freshness data-plane-a control-plane acme main "$(decisions_resource acme main)" ;;
         rotation) assert_tokens_rotation ;;
         offline) assert_tokens_offline ;;
         *) fail "no multi-data-plane phase ${phase}" ;;
@@ -947,8 +950,60 @@ wait_shipped() {
 
 # What the coordinator holds of `producer`'s runs on `resource`: the records it acknowledged.
 held_from() { # resource, producer
-    frontier control-plane "$1" |
-        jq --arg producer "$2" '[.consumer[] | select(.producer == $producer) | .acked] | add // 0'
+    acked_on control-plane "$1" "$2"
+}
+
+# What `host`, as a consumer, acknowledged of `producer`'s runs on `resource`.
+acked_on() { # host, resource, producer
+    frontier "$1" "$2" |
+        jq --arg producer "$3" '[.consumer[] | select(.producer == $producer) | .acked] | add // 0'
+}
+
+# The records `host` produced on `resource`, every run of it.
+recorded_on() { # host, resource
+    frontier "$1" "$2" | jq '[.producer[].last_seq] | add // 0'
+}
+
+now_ms() { date +%s%3N; }
+
+# Evidence freshness (iteration 04, WP-30.1): how long a decision recorded on `producer_host` waits
+# before `consumer_host` acknowledges it durably, from the decision's answer, when its record is
+# already durable, to the acknowledgement. The samples are spaced at random, so they fall anywhere
+# in a shipping cycle. Prints p50, p95 and the worst; with LAB_FRESHNESS_P99_MS the worst sample is
+# held to it, the gate of WP-32.2. A sample waits at most LAB_FRESHNESS_TIMEOUT seconds, 120 by
+# default, two member passes.
+assert_freshness() { # producer host, consumer host, zone, ledger, resource
+    local producer_host="$1" consumer_host="$2" zone="$3" ledger="$4" resource="$5"
+    local samples="${LAB_FRESHNESS_SAMPLES:-6}" timeout_ms=$((${LAB_FRESHNESS_TIMEOUT:-120} * 1000))
+    local objective="${LAB_FRESHNESS_P99_MS:-}" out="${state}/freshness-${producer_host}.txt"
+    local producer n target started waited count p50 p95 worst
+    step "freshness: decisions on ${producer_host}, acknowledged by ${consumer_host}, ${samples} samples"
+    wait_serving "${producer_host}" "${zone}" "${ledger}"
+    producer="$(producer_of "${producer_host}")"
+    : >"${out}"
+    for n in $(seq 1 "${samples}"); do
+        sleep "$((RANDOM % 7)).$((RANDOM % 10))"
+        expect_decision "${producer_host}" "${zone}" "${ledger}" deny.json false >/dev/null
+        started="$(now_ms)"
+        target="$(recorded_on "${producer_host}" "${resource}")"
+        while [ "$(acked_on "${consumer_host}" "${resource}" "${producer}")" -lt "${target}" ]; do
+            waited=$(($(now_ms) - started))
+            [ "${waited}" -lt "${timeout_ms}" ] ||
+                fail "${consumer_host} did not acknowledge ${producer_host}'s record ${target} within ${waited} ms"
+            sleep 0.1
+        done
+        waited=$(($(now_ms) - started))
+        echo "${waited}" >>"${out}"
+        log "sample ${n}: acknowledged ${waited} ms after the decision"
+    done
+    count="$(wc -l <"${out}" | tr -d ' ')"
+    sort -n "${out}" >"${out}.sorted"
+    p50="$(awk -v n="${count}" 'NR == int(n * 0.50) + 1' "${out}.sorted")"
+    p95="$(awk -v n="${count}" 'NR == int(n * 0.95) + 1' "${out}.sorted")"
+    worst="$(tail -n 1 "${out}.sorted")"
+    log "evidence freshness ${producer_host} → ${consumer_host}: p50 ${p50} ms, p95 ${p95} ms, worst ${worst} ms over ${count} samples${objective:+; objective ${objective} ms}"
+    [ -z "${objective}" ] || [ "${worst}" -le "${objective}" ] ||
+        fail "the worst sample, ${worst} ms, passes the ${objective} ms objective"
 }
 
 # Both ends of every membership of `member` name the exact fingerprints the enrollment approved and
