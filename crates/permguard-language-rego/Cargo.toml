@@ -30,7 +30,7 @@ regorus.workspace = true
 # workspace's graph — regorus carries it — so it is a direct dependency of the
 # crate that actually validates with it rather than a transitive accident. Part of the runtime,
 # so the build script digests it with the engine.
-jsonschema = { version = "0.59", default-features = false }
+jsonschema = { version = "0.61", default-features = false }
 serde_json.workspace = true
 serde_norway.workspace = true
 
