@@ -1952,7 +1952,7 @@ async fn a_reset_under_way_neither_opens_nor_accepts_a_task_session() {
         .await
         .expect("a lease before any reset");
 
-    coordinator.members.fence();
+    coordinator.members.fence().expect("fenced");
     match acting.open_task_now(&membership_id).await {
         // The member is told the code; the coordinator's reason stays in its own log.
         Err(MembershipError::Remote { code, reason }) => {
@@ -1967,7 +1967,7 @@ async fn a_reset_under_way_neither_opens_nor_accepts_a_task_session() {
         .await
         .expect("a lease once the coordinator's fence is lifted");
 
-    member.members.fence();
+    member.members.fence().expect("fenced");
     match acting.open_task_now(&membership_id).await {
         Err(MembershipError::Invalid(reason)) => {
             assert!(reason.contains("identity reset"), "{reason}");
@@ -2657,7 +2657,7 @@ async fn a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume() {
 
     // It does not: the drain is incomplete, the stream marked, nothing past 1 000 truncated.
     append(&producer, 1_001);
-    coordinator.members.fence();
+    coordinator.members.fence().expect("fenced");
     let drained = permguard_server::shipping::drain(
         &member.api,
         std::time::Instant::now() + Duration::from_secs(2),
@@ -3106,7 +3106,7 @@ async fn a_members_checkpoints_leave_its_volume_for_its_coordinator() {
         .await
         .expect("an invitation, a security record more");
     member.audit.checkpoint_all().expect("checkpointed");
-    coordinator.members.fence();
+    coordinator.members.fence().expect("fenced");
     assert_eq!(member.api.export_checkpoints_due().await, 0);
     assert!(
         !member

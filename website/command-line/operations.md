@@ -124,6 +124,9 @@ A Control Plane, with the Authority Plane beside it, can keep its state in a Pos
 Several instances then serve behind one address, and any of them answers any request.
 A Data Plane keeps its own volume, as always.
 
+Before the first start the operator creates the database, a user that may create tables in it, or in the schema `storage.postgresql.schema` names, which must exist, and the bucket.
+Permguard creates and upgrades its own tables at start, one instance at a time; a database whose tables are newer than the server refuses the start and is not changed.
+
 An instance is ready only while the database and the bucket answer.
 While either does not, it makes no change and issues no token, and a Data Plane goes on deciding with what it holds.
 

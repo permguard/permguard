@@ -673,6 +673,29 @@ impl Hold {
     ) -> Result<Option<Row>, SqlError> {
         self.with(|client| client.query_opt(statement, parameters))
     }
+
+    fn query_one_value<T: for<'a> postgres::types::FromSql<'a> + Send>(
+        &self,
+        statement: &str,
+        parameters: &[&(dyn ToSql + Sync)],
+    ) -> Result<T, SqlError> {
+        self.with(|client| {
+            client
+                .query_one(statement, parameters)
+                .map(|row| row.get(0))
+        })
+    }
+
+    /// Whether the scope is still held: its connection answers, and the server still grants it
+    /// the advisory lock it took. A connection the network or the server dropped let it go.
+    pub fn held(&self) -> bool {
+        self.query_one_value::<i64>(
+            "SELECT count(*) FROM pg_locks
+             WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted",
+            &[],
+        )
+        .is_ok_and(|held| held > 0)
+    }
 }
 
 impl Drop for Hold {
@@ -994,9 +1017,40 @@ impl Database {
         };
         hold.execute(
             "SELECT pg_advisory_lock(hashtextextended($1, 0))",
-            &[&scope],
+            &[&self.scope_key(scope)],
         )?;
         Ok(hold)
+    }
+
+    /// [`Database::hold`] taken alone and waited for `wait` at most: `None` when another holder,
+    /// alone or shared, still has the scope then. Its connection asks the server to tell a
+    /// holder that is gone within half a minute, so a holder whose host died lets the scope go
+    /// rather than holding it until the server's own keepalives notice (iteration 03, X171).
+    pub fn try_hold(&self, scope: &str, wait: Duration) -> Result<Option<Hold>, DbError> {
+        let hold = Hold {
+            held: Mutex::new(self.take()?),
+        };
+        hold.with(|client| {
+            client.batch_execute(
+                "SET tcp_keepalives_idle = 10; SET tcp_keepalives_interval = 5; \
+                 SET tcp_keepalives_count = 3",
+            )
+        })?;
+        let deadline = Instant::now() + wait;
+        let key = self.scope_key(scope);
+        loop {
+            let taken: bool = hold.query_one_value(
+                "SELECT pg_try_advisory_lock(hashtextextended($1, 0))",
+                &[&key],
+            )?;
+            if taken {
+                return Ok(Some(hold));
+            }
+            if Instant::now() >= deadline {
+                return Ok(None);
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
 
     /// [`Database::hold`], taken in this pool's queue: of the work of this pool that waits for a
@@ -1012,6 +1066,16 @@ impl Database {
             _hold: self.hold(scope)?,
             _turn: turn,
         })
+    }
+
+    /// The key the database holds `scope` under: the scope within the schema the tables live
+    /// in, so two deployments in one database, each its own schema, never hold each other's
+    /// scopes; an advisory lock is the database's, whatever schema asks for it (WP-29.2).
+    pub fn scope_key(&self, scope: &str) -> String {
+        match &self.pool.config.schema {
+            Some(schema) => format!("{schema}/{scope}"),
+            None => scope.to_owned(),
+        }
     }
 
     /// Whether this thread is inside a unit of work on this database.
@@ -1116,7 +1180,7 @@ impl Database {
                     if let Some(scope) = scope {
                         unit.execute(
                             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                            &[&scope],
+                            &[&self.scope_key(scope)],
                         )?;
                     }
                     // Under a lease, the unit is written only while the lease is this holding.

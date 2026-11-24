@@ -18,6 +18,13 @@ use permguard_objects::cbor::Value;
 
 use super::MembershipError;
 
+/// What holds the fence of an identity reset on a store instances share (X171).
+pub trait Fence: Send + Sync {
+    /// Whether the fence still holds: the connection it is held on may have been dropped, which
+    /// lets every instance take changes again.
+    fn held(&self) -> bool;
+}
+
 /// A document a membership keeps beside its entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doc<'a> {
@@ -115,6 +122,23 @@ pub type Change<'a> = &'a mut dyn FnMut(Option<&[u8]>) -> Result<Option<Vec<u8>>
 pub trait MemberStore: Send + Sync {
     /// Every entry, oldest first, each as the CBOR item it was added as.
     fn entries(&self) -> Result<Vec<Value>, MembershipError>;
+
+    /// Fences the memberships every instance of the store keeps, for an identity reset: answers
+    /// what holds the fence, which lifts it when dropped, once every change another instance had
+    /// under way has ended, and refuses when that does not happen within the store's bound (an
+    /// earlier reset still fencing, a change holding on) (iteration 03, X171). `None` on a store
+    /// one process keeps, whose fence is that process's.
+    fn fence_all(&self) -> Result<Option<Box<dyn Fence>>, MembershipError> {
+        Ok(None)
+    }
+
+    /// Whether another instance fenced the memberships for an identity reset. Asked inside the
+    /// unit of work of a change that would create authority under the identity, it also holds the
+    /// fence off until that unit ends; asked outside one, it says so of this instant alone.
+    /// `false` on a store one process keeps.
+    fn fenced_elsewhere(&self) -> Result<bool, MembershipError> {
+        Ok(false)
+    }
 
     /// The entries after the entry `seq`, oldest first: what was added since a reader read up to
     /// it (iteration 03, WP-28.4).

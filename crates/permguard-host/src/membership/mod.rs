@@ -442,6 +442,8 @@ pub struct Store {
     /// Set by an identity reset once it starts settling: no invitation, enrollment, approval or
     /// join is taken from then on in this process.
     fenced: std::sync::atomic::AtomicBool,
+    /// What holds the fence every instance sees, on a store they share (X171).
+    fence_held: Mutex<Option<Box<dyn store::Fence>>>,
     /// The replay windows read so far, by membership and task (WP-4.4).
     windows: Mutex<BTreeMap<([u8; 16], String), replay::Window>>,
     /// The version of the coordinator root this Host delivers zone keys at, `0` without a root:
@@ -1184,6 +1186,7 @@ impl Store {
             pending: Arc::new(Mutex::new(BTreeMap::new())),
             writing: Mutex::new(()),
             fenced: std::sync::atomic::AtomicBool::new(false),
+            fence_held: Mutex::new(None),
             windows: Mutex::new(BTreeMap::new()),
             root_version: std::sync::atomic::AtomicU64::new(0),
             restored,
@@ -1271,6 +1274,24 @@ impl Store {
     /// most (WP-29.1): a store slow to answer, or not answering, holds no reader of the state;
     /// a write lock not had in time leaves what was read for the next read.
     fn follow(&self) {
+        if let Err(error) = self.follow_or_say() {
+            tracing::warn!(
+                event.name = "host.membership.state_unread",
+                component = "host",
+                error = %error,
+                "the memberships other instances changed could not be read: the next read asks again"
+            );
+        }
+    }
+
+    /// [`Store::follow`], saying why the state was left as it was: the store did not answer, an
+    /// entry does not read or does not follow, or the state's readers held it past the wait.
+    fn follow_or_say(&self) -> Result<(), MembershipError> {
+        let busy = || {
+            MembershipError::Storage(
+                "the memberships were held by their readers past the wait".to_owned(),
+            )
+        };
         let deadline = std::time::Instant::now() + FOLLOW_WAIT;
         let seq = loop {
             match self.state.try_read() {
@@ -1278,38 +1299,14 @@ impl Store {
                 Err(_) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
-                Err(_) => return,
+                Err(_) => return Err(busy()),
             }
         };
-        let added = match self.store.entries_after(seq) {
-            Ok(added) => added,
-            Err(error) => {
-                tracing::warn!(
-                    event.name = "host.membership.state_unread",
-                    component = "host",
-                    error = %error,
-                    "the memberships other instances changed could not be read: the next read asks again"
-                );
-                return;
-            }
-        };
-        let mut entries = Vec::with_capacity(added.len());
-        for item in added {
-            let decoded = cbor::encode(&item)
-                .map_err(|error| MembershipError::Storage(error.to_string()))
-                .and_then(|bytes| Ok((Entry::decode(&bytes)?, bytes)));
-            match decoded {
-                Ok(entry) => entries.push(entry),
-                Err(error) => {
-                    tracing::error!(
-                        event.name = "host.membership.state_unread",
-                        component = "host",
-                        error = %error,
-                        "an entry another instance added does not read: the memberships stay as read"
-                    );
-                    return;
-                }
-            }
+        let mut entries = Vec::new();
+        for item in self.store.entries_after(seq)? {
+            let bytes =
+                cbor::encode(&item).map_err(|error| MembershipError::Storage(error.to_string()))?;
+            entries.push((Entry::decode(&bytes)?, bytes));
         }
         let deadline = std::time::Instant::now() + FOLLOW_WAIT;
         let mut state = loop {
@@ -1318,7 +1315,7 @@ impl Store {
                 Err(_) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
-                Err(_) => return,
+                Err(_) => return Err(busy()),
             }
         };
         // What another thread applied meanwhile, from the store or from its own change, is not
@@ -1328,18 +1325,15 @@ impl Store {
             if entry.seq <= next.seq {
                 continue;
             }
-            if let Err(error) = apply(&mut next, entry, bytes) {
-                tracing::error!(
-                    event.name = "host.membership.state_unread",
-                    component = "host",
-                    error = %error,
-                    "an entry another instance added does not follow the memberships read: they stay as read"
-                );
-                return;
-            }
+            apply(&mut next, entry, bytes).map_err(|error| {
+                MembershipError::Storage(format!(
+                    "an entry another instance added does not follow the memberships read: {error}"
+                ))
+            })?;
         }
         *state = next;
         *self.read_at.lock().unwrap_or_else(PoisonError::into_inner) = std::time::Instant::now();
+        Ok(())
     }
 
     /// Appends `entry` (its `seq` and `previous` filled here), then applies it: the journal is
@@ -1351,18 +1345,92 @@ impl Store {
     }
 
     /// Fences the store for an identity reset: what would create authority under the identity
-    /// being retired, a task session included, is refused from now on in this process.
-    pub fn fence(&self) {
-        let _writing = self.begin();
-        self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+    /// being retired, a task session included, is refused from now on, in this process and, on a
+    /// store other instances share, in every instance, once the changes they had under way ended;
+    /// the memberships are then read as the store holds them (X171). A fence every instance cannot
+    /// be told of refuses the reset.
+    pub fn fence(&self) -> Result<(), MembershipError> {
+        // Every instance's fence first, with no lock of this process held while it waits for the
+        // changes under way, this process's included.
+        let held = self
+            .fence_held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some();
+        let taken = if held { None } else { self.store.fence_all()? };
+        {
+            let _writing = self.begin();
+            if let Some(taken) = taken {
+                *self
+                    .fence_held
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = Some(taken);
+            }
+            self.fenced.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        // What the reset reads is every change made before the fence, or the reset is refused.
+        if self.store.shared()
+            && let Err(error) = self.follow_or_say()
+        {
+            self.unfence();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Whether the fence of a reset still holds in every instance, before a step that cannot be
+    /// undone (X171): on a store instances share the fence held on the database's connection
+    /// may have been dropped with it, and every instance then takes changes again.
+    pub fn fence_holds(&self) -> Result<(), MembershipError> {
+        if !self.store.shared() {
+            return Ok(());
+        }
+        let holds = self
+            .fence_held
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|fence| fence.held());
+        if holds {
+            Ok(())
+        } else {
+            Err(MembershipError::Storage(
+                "the fence of the identity reset was lost with its connection to the database: \
+                 nothing irreversible is done; run the reset again"
+                    .to_owned(),
+            ))
+        }
+    }
+
+    /// Lets the other instances go once the reset is done: the identity is retired, its
+    /// memberships ended, and this process, fenced still, serves nothing more until it restarts.
+    pub fn release_shared_fence(&self) {
+        drop(
+            self.fence_held
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take(),
+        );
+    }
+
+    /// Whether a reset fenced the memberships, in this process or another instance (X171).
+    pub fn fenced_anywhere(&self) -> Result<bool, MembershipError> {
+        Ok(self.fenced.load(std::sync::atomic::Ordering::SeqCst)
+            || self.store.fenced_elsewhere()?)
     }
 
     /// Lifts the fence of a reset refused before anything irreversible (WP-4.9): the identity is
-    /// unchanged, and serves as before.
+    /// unchanged, and serves as before, here and in every instance.
     pub fn unfence(&self) {
         let _writing = self.begin();
         self.fenced
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        drop(
+            self.fence_held
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take(),
+        );
     }
 
     /// Whether an identity reset fenced the store.
@@ -1371,7 +1439,7 @@ impl Store {
     }
 
     fn unfenced(&self) -> Result<(), MembershipError> {
-        if self.fenced.load(std::sync::atomic::Ordering::SeqCst) {
+        if self.fenced.load(std::sync::atomic::Ordering::SeqCst) || self.store.fenced_elsewhere()? {
             return Err(MembershipError::Invalid(
                 "an identity reset is under way: nothing new is taken under this identity"
                     .to_owned(),

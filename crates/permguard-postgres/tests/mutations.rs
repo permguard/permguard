@@ -1123,3 +1123,184 @@ fn a_ring_rotates_through_the_engine_on_postgresql() {
     let again = rotate(before + 1).expect_err("a successor waits");
     assert!(format!("{again:?}").contains("prepublished"), "{again:?}");
 }
+
+/// X171: an identity reset fences the memberships of every instance. A change another instance
+/// has under way is waited for, and is in what the reset reads once the fence is taken; while the
+/// fence is held no instance takes a change that creates authority or opens a task session, and
+/// no second reset fences past its bound; a fence lost with its connection is told before anything
+/// irreversible; once the reset is done or lifted the other instances take changes again, and the
+/// process that reset stays fenced.
+#[test]
+fn a_reset_fences_the_memberships_of_every_instance_on_postgresql() {
+    use permguard_host::membership::record::{Limits, Task, TaskType};
+    use permguard_host::membership::{NewInvite, Store};
+
+    let Some(server) = server("a_reset_fences_the_memberships_of_every_instance_on_postgresql")
+    else {
+        return;
+    };
+    let scratch = scratch(&server);
+    let database = &scratch.database;
+    let engine = std::sync::Arc::new(permguard_postgres::testing::engine(Database::clone(
+        database,
+    )));
+    let instance = || {
+        Store::open_in(
+            std::sync::Arc::new(
+                permguard_postgres::members::PostgresMembers::new(Database::clone(database))
+                    .with_fence_wait(std::time::Duration::from_millis(500)),
+            ),
+            None,
+        )
+        .expect("opens")
+    };
+    let (resetting, other) = (instance(), instance());
+    let entries = || {
+        database
+            .write(|unit| {
+                Ok(unit
+                    .query_one("SELECT count(*) FROM permguard_member_entries", &[])?
+                    .get::<_, i64>(0))
+            })
+            .expect("counted")
+    };
+    let new = || NewInvite {
+        selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![Task {
+            version: 1,
+            task_id: "decisions".to_owned(),
+            task_type: TaskType::DecisionsShip,
+            selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+            resource_types: vec!["decision".to_owned()],
+            required: true,
+            limits: Limits {
+                max_body_bytes: 1 << 20,
+                max_concurrency: 4,
+                max_rate_per_minute: 600,
+                max_batch_records: 1000,
+                retention_seconds: 30 * 86_400,
+            },
+            assurance_requirements: Vec::new(),
+        }],
+        expires: None,
+        expected_fingerprint: None,
+        min_assurance: None,
+        groups: None,
+        name: None,
+    };
+    let invite = |store: &Store, before_commit: &dyn Fn()| {
+        run_checked_on::<(), String>(
+            &*engine,
+            Begin {
+                domain: permguard_host::membership::DOMAIN,
+                operation: permguard_host::membership::INVITE,
+                action: permguard_host::membership::AUDIT_INVITED,
+                initiator: Initiator::System("test".to_owned()),
+                request: None,
+                target: None,
+            },
+            || Ok(()),
+            |applying| {
+                store
+                    .invite(
+                        applying,
+                        new(),
+                        "operator",
+                        permguard_core::time::unix_now(),
+                    )
+                    .map_err(|error| Failure::Refused(error.to_string()))?;
+                before_commit();
+                Ok(Applied {
+                    revision: 1,
+                    target: None,
+                    value: (),
+                })
+            },
+        )
+    };
+    let now = permguard_core::time::unix_now();
+
+    // A change under way on the other instance when the reset fences: the fence waits for it,
+    // and the reset reads it.
+    let (started, go) = (Barrier::new(2), Barrier::new(2));
+    let fenced_at = std::thread::scope(|scope| {
+        let changing = scope.spawn(|| {
+            invite(&other, &|| {
+                started.wait();
+                go.wait();
+            })
+            .expect("the change under way is kept")
+        });
+        started.wait();
+        let fencing = scope.spawn(|| {
+            resetting.fence().expect("fenced");
+            std::time::Instant::now()
+        });
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let waited = !fencing.is_finished();
+        let released = std::time::Instant::now();
+        // Let go before anything is asserted: a failed assertion must not leave a thread waiting.
+        go.wait();
+        changing.join().expect("the change");
+        let fenced_at = fencing.join().expect("the fence");
+        (waited, fenced_at >= released)
+    });
+    assert_eq!(
+        fenced_at,
+        (true, true),
+        "the fence waits for the change under way"
+    );
+    assert_eq!(
+        resetting.invitations(now).len(),
+        1,
+        "the reset reads the change it waited for"
+    );
+
+    // While the fence is held, no instance takes a change that creates authority, and keeps
+    // nothing of the one it refused; a task session is not opened either.
+    let before = entries();
+    let refused = invite(&other, &|| {}).expect_err("fenced");
+    assert!(
+        format!("{refused:?}").contains("an identity reset is under way"),
+        "{refused:?}"
+    );
+    assert_eq!(entries(), before, "nothing of the refused change is kept");
+    assert!(
+        other.fenced_anywhere().expect("asked"),
+        "no task session either"
+    );
+    // A second reset, on the other instance, is refused within its bound.
+    let started = std::time::Instant::now();
+    other.fence().expect_err("a reset fences already");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert!(!other.is_fenced(), "the refused reset left no fence");
+    resetting.fence_holds().expect("the fence holds");
+
+    // Lifted, the other instance takes it again.
+    resetting.unfence();
+    invite(&other, &|| {}).expect("taken once the fence is lifted");
+
+    // A fence lost with its connection is told before anything irreversible, and lets the
+    // other instances go.
+    resetting.fence().expect("fenced again");
+    database
+        .write(|unit| {
+            // This test's fence alone: the server's other locks are other tests'.
+            unit.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_locks
+                 WHERE locktype = 'advisory' AND mode = 'ExclusiveLock' AND granted
+                   AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0)",
+                &[&database.scope_key(permguard_postgres::members::FENCE)],
+            )
+        })
+        .expect("the fence's connection dropped");
+    resetting.fence_holds().expect_err("the fence was lost");
+    invite(&other, &|| {}).expect("the other instance goes on");
+    resetting.unfence();
+
+    // A reset done lets the other instances go; the process that reset stays fenced.
+    resetting.fence().expect("fenced for a reset");
+    resetting.release_shared_fence();
+    invite(&other, &|| {}).expect("the other instance goes on under the next identity");
+    invite(&resetting, &|| {}).expect_err("the process that reset stays fenced");
+}

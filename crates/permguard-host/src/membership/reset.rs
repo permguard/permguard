@@ -315,15 +315,20 @@ pub fn emergency(
     // Nothing irreversible before every step is known to be possible.
     preflight(store, &coordinator, now).map_err(EmergencyError::Membership)?;
     // From here nothing new is taken under this identity; what was offered goes first.
-    store.fence();
+    store.fence().map_err(EmergencyError::Membership)?;
+    // Nothing irreversible once the fence every instance sees is lost (X171).
+    store.fence_holds().map_err(EmergencyError::Membership)?;
     revoke_invites(store, mutations, initiator, now).map_err(EmergencyError::Membership)?;
     let ended = end_coordinated(store, mutations, &coordinator, initiator, now)
         .map_err(EmergencyError::Membership)?;
     let orphaned =
         orphan(store, mutations, &members, initiator, now).map_err(EmergencyError::Membership)?;
     evidence().map_err(EmergencyError::Evidence)?;
+    store.fence_holds().map_err(EmergencyError::Membership)?;
     let reset = crate::identity::reset::run(mutations, identity, rings, initiator.clone(), now)
         .map_err(EmergencyError::Identity)?;
+    // The identity retired: the other instances take changes again, under the next one.
+    store.release_shared_fence();
     Ok(Emergency {
         ended,
         orphaned,

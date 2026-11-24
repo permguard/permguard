@@ -35,6 +35,8 @@ type Step<T> = Result<T, Failure<MembershipError>>;
 #[derive(Debug, Clone)]
 pub struct PostgresMembers {
     database: Database,
+    /// How long an identity reset waits to fence the memberships: [`FENCE_WAIT`].
+    fence_wait: std::time::Duration,
 }
 
 /// What names a document: its kind, the membership or the operation it is of, and up to two
@@ -132,7 +134,18 @@ fn kept(unit: &Unit, key: &Key<'_>, bytes: &[u8]) -> Step<()> {
 impl PostgresMembers {
     /// The memberships in `database`, whose schema is this build's.
     pub fn new(database: Database) -> Self {
-        Self { database }
+        Self {
+            database,
+            fence_wait: FENCE_WAIT,
+        }
+    }
+
+    /// These memberships, an identity reset waiting `wait` at most to fence them: what a test
+    /// that waits on a fence held elsewhere bounds.
+    #[must_use]
+    pub fn with_fence_wait(mut self, wait: std::time::Duration) -> Self {
+        self.fence_wait = wait;
+        self
     }
 
     fn unit<T>(&self, work: impl Fn(&Unit) -> Step<T>) -> Result<T, MembershipError> {
@@ -155,9 +168,56 @@ fn hex(bytes: &[u8; 16]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// The scope every instance's change of the memberships takes shared, and an identity reset takes
+/// alone (iteration 03, X171).
+pub const FENCE: &str = "permguard/membership/fence";
+/// How long a reset waits for the changes under way, and for a reset before it, by default.
+pub const FENCE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The fence of an identity reset, held on a connection of its own.
+struct Fenced(crate::database::Hold);
+
+impl permguard_host::membership::store::Fence for Fenced {
+    fn held(&self) -> bool {
+        self.0.held()
+    }
+}
+
 impl MemberStore for PostgresMembers {
     fn shared(&self) -> bool {
         true
+    }
+
+    fn fence_all(
+        &self,
+    ) -> Result<Option<Box<dyn permguard_host::membership::store::Fence>>, MembershipError> {
+        // Taken alone: it waits for every change under way that took it shared, and keeps every
+        // change after it out until it is let go; a holder still there past the bound refuses.
+        let hold = self
+            .database
+            .try_hold(FENCE, self.fence_wait)
+            .map_err(|error| MembershipError::Storage(format!("fencing the memberships: {error}")))?
+            .ok_or_else(|| {
+                MembershipError::Storage(format!(
+                    "the memberships could not be fenced within {:?}: another identity reset \
+                     fences them, or a change holds on; try again",
+                    self.fence_wait
+                ))
+            })?;
+        Ok(Some(Box::new(Fenced(hold))))
+    }
+
+    fn fenced_elsewhere(&self) -> Result<bool, MembershipError> {
+        // Taken shared for the unit of work the change runs in, and kept until it ends.
+        self.unit(|unit| {
+            let taken: bool = unit
+                .query_one(
+                    "SELECT pg_try_advisory_xact_lock_shared(hashtextextended($1, 0))",
+                    &[&self.database.scope_key(FENCE)],
+                )?
+                .get(0);
+            Ok(!taken)
+        })
     }
 
     fn entries_after(&self, seq: u64) -> Result<Vec<Value>, MembershipError> {
