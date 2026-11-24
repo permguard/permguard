@@ -279,6 +279,10 @@
   ],
   "configured": [
     {
+      "source": "crates/permguard-authority-plane/src/admin.rs",
+      "reason": "writes the administrator's first key, once, to `planes/authority/admin.key` below the working directory the configuration names, on any backend: the key is handed over as a file (`2-security/8`, decision X159); `authority admin-key` writes where `--secret-out` names"
+    },
+    {
       "source": "crates/permguard-offline/src/custody/transit.rs",
       "reason": "reads the certificate authority file the configuration names for the KMS (`PERMGUARD_KEYS_KMS_CA`), to verify the KMS it calls"
     },
@@ -299,10 +303,5 @@
       "reason": "writes the material a development start was not given and `autogenerate` allows, at the paths the configuration names"
     }
   ],
-  "direct": [
-    {
-      "source": "crates/permguard-authority-plane/src/admin.rs",
-      "until": "WP-28.1"
-    }
-  ]
+  "direct": []
 }

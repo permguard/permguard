@@ -20,9 +20,21 @@ is cut.
 ### Added
 
 - **`storage.backend` names where a process keeps its state.**
-  `files` is the default and the one backend of this build; the setting is also read from `PERMGUARD_STORAGE_BACKEND`.
-  A configuration that names `postgresql-s3` is refused at start, before anything is opened.
-  Where a process keeps no volume, a backup, a restore, `volume claim`, `volume verify` and `migrate` answer `storage_backend_unsupported` and change nothing.
+  `files`, the default, keeps it on the volume, as before; the setting is also read from `PERMGUARD_STORAGE_BACKEND`.
+  `postgresql-s3` keeps a Control Plane's state, and its Authority Plane's, in a PostgreSQL database and an S3 bucket, named under `storage.postgresql` and `storage.s3` (`PERMGUARD_STORAGE_POSTGRESQL_*`, `PERMGUARD_STORAGE_S3_*`), with no volume; a Data Plane keeps its volume and is refused on it.
+  Where a process keeps no volume, a backup, a restore, `volume claim`, `volume verify` and `migrate plan` answer `storage_backend_unsupported` and change nothing.
+- **Several Control Plane instances behind one address.**
+  On `postgresql-s3` the instances serve one catalog, one Host identity and one set of memberships, and any of them answers any request; the work that must run once runs under a lease.
+  The chart runs several replicas, `controlPlane.replicaCount` or `autoscaling`, on that backend only, and refuses `autogenerate` with them: the instances share the Host's own secrets from one Secret.
+- **Readiness follows the backend.**
+  An instance on `postgresql-s3` asks the database and the bucket every 5 seconds whether they answer, and holds readiness, `degraded: storage_backend`, while either does not: it then makes no change and issues no token.
+- **Offline commands on `postgresql-s3`.**
+  `permguard migrate import` moves a stopped server's volume into the backend, and the server starts there as the same Host.
+  `permguard host audit copy --out <DIRECTORY>` copies the trails out of the database and the bucket for `audit verify`, and `permguard evidence rotate-cursor-root` rotates an evidence store's cursor root.
+  `host identity provision --if-missing` and `host grants bootstrap` take the server's configuration, `--server-config`, in place of `--volume`.
+- **A Data Plane names the endpoints of its Control Plane's instances.**
+  `host.coordinator_endpoints`, or `PERMGUARD_HOST_COORDINATOR_ENDPOINTS`, one `<host_id> <endpoint> ...` line per coordinator.
+  A session opens on the endpoint that answered last, and on the next when its connection cannot be opened; the pinned identity is proven on whichever answers.
 
 ### Changed
 
