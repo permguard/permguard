@@ -120,7 +120,7 @@
         "language_version": "1.0.0",
         "engine_name": "regorus",
         "engine_version": "0.12.0",
-        "engine_build": "sha256:787a9205d7cb31a3c71b9c2c7535c567b0a76373089d6c0955be46191b69a753",
+        "engine_build": "sha256:661a13b86aeb9dbce5e325626e175d3235f8b6d1de2f75318df4e283263612fa",
         "experimental": false,
         "evaluation_interfaces": [
           {
@@ -184,7 +184,7 @@
           "reason": "one decreasing deadline bounds each partition's work; memory is not bounded in-process (LANG-04), so from production upward every partition compiles and evaluates in the supervised worker, or is refused"
         }
       },
-      "digest": "sha256:f0825a9b8c14d9d50fe858158f366f7ee19aadadf102e14a2476b69fd1d0b407"
+      "digest": "sha256:ed371ed5c77b61b8510cd3d209106b4e151f8e2aa55347f77634a852b0e87804"
     }
   ]
 }
