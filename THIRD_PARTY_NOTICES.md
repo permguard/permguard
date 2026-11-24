@@ -141,7 +141,7 @@ says so and its repository is the authority.
 | `fnv` | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | `foldhash` | 0.1.5 | Zlib | https://github.com/orlp/foldhash |
 | `foldhash` | 0.2.0 | Zlib | https://github.com/orlp/foldhash |
-| `form_urlencoded` | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| `form_urlencoded` | 1.2.3 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | `fraction` | 0.15.4 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
 | `fraction` | 0.17.0 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
 | `fs-err` | 3.3.1 | MIT OR Apache-2.0 | https://github.com/andrewhickman/fs-err |
@@ -449,7 +449,7 @@ says so and its repository is the authority.
 | `unicode-xid` | 0.2.6 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-xid |
 | `unsafe-libyaml-norway` | 0.2.15 | MIT | https://github.com/cafkafk/unsafe-libyaml-norway |
 | `untrusted` | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
-| `url` | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| `url` | 2.5.9 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | `utf8_iter` | 1.0.4 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf8_iter |
 | `utf8parse` | 0.2.2 | Apache-2.0 OR MIT | https://github.com/alacritty/vte |
 | `uuid` | 1.26.1 | Apache-2.0 OR MIT | https://github.com/uuid-rs/uuid |

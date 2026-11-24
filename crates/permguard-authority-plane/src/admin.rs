@@ -282,7 +282,7 @@ mod tests {
     #[derive(Debug)]
     struct ReadBefore {
         store: std::sync::Arc<dyn AccountStore>,
-        misses: std::sync::atomic::AtomicUsize,
+        misses: std::sync::Mutex<usize>,
     }
 
     impl AccountStore for ReadBefore {
@@ -290,17 +290,12 @@ mod tests {
             self.store.revision()
         }
         fn get(&self, name: &str) -> Result<Option<Account>, AccountsError> {
-            let missed = self
-                .misses
-                .fetch_update(
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                    |left| left.checked_sub(1),
-                )
-                .is_ok();
-            if missed {
+            let mut left = self.misses.lock().expect("held");
+            if *left > 0 {
+                *left -= 1;
                 return Ok(None);
             }
+            drop(left);
             self.store.get(name)
         }
         fn list(&self) -> Result<Vec<Account>, AccountsError> {
@@ -376,7 +371,7 @@ mod tests {
         for misses in [1, 2] {
             let late = ReadBefore {
                 store: accounts.clone(),
-                misses: std::sync::atomic::AtomicUsize::new(misses),
+                misses: std::sync::Mutex::new(misses),
             };
             assert_eq!(ensure(&late, &second, 10).expect("starts"), None);
             assert!(
