@@ -76,3 +76,41 @@ impl MarkStore for FileMarks {
         write_marks(&self.dir, marks)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    fn scratch(tag: &str) -> Dir {
+        let root =
+            std::env::temp_dir().join(format!("pg-authority-marks-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("scratch");
+        Dir::open(&root).expect("a directory")
+    }
+
+    /// The file backend keeps the contract's suite (E30).
+    #[test]
+    fn the_file_backend_keeps_the_contract() {
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        super::super::suite::run(&|| {
+            let case = made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            std::sync::Arc::new(FileMarks::new(scratch(&format!("suite-{case}"))))
+        });
+    }
+
+    /// The marks are a file of the plane's directory: a store opened again holds them.
+    #[test]
+    fn the_marks_survive_a_restart() {
+        let root = scratch("restart").path().to_path_buf();
+        FileMarks::new(Dir::open(&root).expect("a directory"))
+            .keep(&BTreeMap::from([([3; 16], 300)]))
+            .expect("kept");
+        assert_eq!(
+            FileMarks::new(Dir::open(&root).expect("opened again")).held(),
+            BTreeMap::from([([3; 16], 300)])
+        );
+    }
+}

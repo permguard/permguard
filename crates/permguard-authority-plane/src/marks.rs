@@ -11,6 +11,8 @@
 use std::collections::BTreeMap;
 
 pub mod files;
+#[cfg(any(test, feature = "test-support"))]
+pub mod suite;
 
 /// Where the marks are kept.
 pub trait MarkStore: Send + Sync + std::fmt::Debug {

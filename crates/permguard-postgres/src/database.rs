@@ -375,6 +375,9 @@ struct Pool {
     /// The queue of the work of this pool that waits for a scope held across units of work:
     /// one waits on the database at a time, so waiting holds no more than one connection.
     queued: Mutex<()>,
+    /// The connection readiness asks the database on, apart from the work's: a pool every
+    /// connection of which is busy is a database that answers (WP-29.1).
+    health: Mutex<Option<Client>>,
 }
 
 impl std::fmt::Debug for Database {
@@ -724,6 +727,7 @@ impl Database {
                 returned: Condvar::new(),
                 metrics: Mutex::new(Metrics::none()),
                 queued: Mutex::new(()),
+                health: Mutex::new(None),
             }),
         };
         database.ready()?;
@@ -905,16 +909,33 @@ impl Database {
         }
     }
 
-    /// Whether the database answers now: what readiness asks.
+    /// Whether the database answers now: what readiness asks, on a connection of its own, never
+    /// one of the work's, so a pool whose every connection is busy is not a database down. A
+    /// connection that failed is closed, and the next ask opens another.
     pub fn ready(&self) -> Result<(), DbError> {
-        let mut held = self.take()?;
-        match held.client.as_mut() {
-            Some(client) => {
-                apart(|| client.simple_query("SELECT 1")).ok_or_else(no_thread)??;
-                Ok(())
-            }
-            None => Err(DbError::Unavailable("no connection".to_owned())),
+        let mut health = self
+            .pool
+            .health
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if health.is_none() {
+            *health = Some(self.open()?);
         }
+        let answered = match health.as_mut() {
+            Some(client) => apart(|| client.simple_query("SELECT 1").map(|_| ()))
+                .ok_or_else(no_thread)
+                .and_then(|answered| {
+                    answered.map_err(|error| DbError::Unavailable(error.to_string()))
+                }),
+            None => Err(DbError::Unavailable("no connection".to_owned())),
+        };
+        if answered.is_err()
+            && let Some(client) = health.take()
+        {
+            // Closed apart: a client blocks on its runtime as it closes.
+            let _ = apart(move || drop(client));
+        }
+        answered
     }
 
     /// Opens one `SERIALIZABLE` unit of work for a caller that ends it itself: the mutation

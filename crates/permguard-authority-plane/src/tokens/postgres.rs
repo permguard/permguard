@@ -764,6 +764,16 @@ mod tests {
         }
     }
 
+    /// The PostgreSQL backend keeps the contract's suite of the marks (E30).
+    #[test]
+    fn the_postgresql_backend_keeps_the_marks_contract() {
+        let Some(server) = server("the_postgresql_backend_keeps_the_marks_contract") else {
+            return;
+        };
+        let cases = Cases::new(server);
+        crate::marks::suite::run(&|| std::sync::Arc::new(PostgresMarks::new(cases.next())));
+    }
+
     /// The marks are every instance's and only rise: one of a list the tokens still hold stays
     /// whoever keeps the marks, one of a list that is gone is forgotten, and a list another
     /// instance signed past the mark being kept is not signed.

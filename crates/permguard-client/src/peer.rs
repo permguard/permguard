@@ -417,10 +417,10 @@ pub struct PeerConnector {
 }
 
 /// The endpoints of one coordinator, and the one a connection opened on last: where the next
-/// session starts.
+/// session starts, whichever address its membership names.
 struct Endpoints {
     named: Vec<String>,
-    last: std::sync::atomic::AtomicUsize,
+    last: Mutex<Option<String>>,
 }
 
 impl PeerConnector {
@@ -449,7 +449,7 @@ impl PeerConnector {
                     coordinator.host_id(),
                     Endpoints {
                         named: coordinator.endpoints().to_vec(),
-                        last: std::sync::atomic::AtomicUsize::new(0),
+                        last: Mutex::new(None),
                     },
                 )
             })
@@ -469,7 +469,14 @@ impl PeerConnector {
         if !candidates.contains(&named) {
             candidates.push(target.address.clone());
         }
-        let start = endpoints.last.load(std::sync::atomic::Ordering::Relaxed) % candidates.len();
+        let last = endpoints
+            .last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let start = last
+            .and_then(|last| candidates.iter().position(|candidate| *candidate == last))
+            .unwrap_or(0);
         (candidates, start)
     }
 
@@ -494,10 +501,22 @@ impl PeerConnector {
                 let (addresses, name) = endpoint(address).await?;
                 let tls = self.tls.connection_config().await?;
                 let mut refused = None;
+                // Each address bounded on its own: one whose packets are dropped does not take
+                // the endpoint's whole bound from the next.
                 for resolved in addresses {
-                    match Connection::open(resolved, name.clone(), &tls).await {
-                        Ok(connection) => return Ok(connection),
-                        Err(error) => refused = Some(refusal_of(error)),
+                    match tokio::time::timeout(
+                        ADDRESS_BOUND,
+                        Connection::open(resolved, name.clone(), &tls),
+                    )
+                    .await
+                    {
+                        Ok(Ok(connection)) => return Ok(connection),
+                        Ok(Err(error)) => refused = Some(refusal_of(error)),
+                        Err(_) => {
+                            refused = Some(unreachable_peer(format!(
+                                "{resolved} did not open a connection within {ADDRESS_BOUND:?}"
+                            )));
+                        }
                     }
                 }
                 Err(refused.unwrap_or_else(|| unreachable_peer(late)))
@@ -508,9 +527,10 @@ impl PeerConnector {
             match opened {
                 Ok(connection) => {
                     if let Some(endpoints) = self.endpoints.get(&target.host_id) {
-                        endpoints
+                        *endpoints
                             .last
-                            .store(at, std::sync::atomic::Ordering::Relaxed);
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner) = Some(address.clone());
                     }
                     return Ok(connection);
                 }
@@ -784,6 +804,8 @@ fn refusal_of(error: PeerError) -> Refusal {
 
 /// The most addresses one name is tried at: a Service or a round-robin name of a few instances.
 const ADDRESSES_TRIED: usize = 8;
+/// How long one address may take to open a connection, TCP and TLS, before the next is tried.
+const ADDRESS_BOUND: Duration = Duration::from_secs(5);
 
 /// The socket addresses, as the name resolves, and server name of `https://<host>:<port>`.
 async fn endpoint(address: &str) -> Result<(Vec<SocketAddr>, ServerName<'static>), Refusal> {

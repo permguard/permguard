@@ -74,9 +74,10 @@ fn watch_every(
             running.store(true, Ordering::SeqCst);
             let (asking, done) = (Arc::clone(&ready), Arc::clone(&running));
             let check = tokio::task::spawn_blocking(move || {
-                let answer = asking();
-                done.store(false, Ordering::SeqCst);
-                answer
+                // Cleared however the check ends, a panic included: a check that cannot answer
+                // is retried at the next pass, never held running for ever.
+                let _done = Done(done);
+                asking()
             });
             let answer = match tokio::time::timeout(bound, check).await {
                 Ok(Ok(answer)) => answer,
@@ -86,6 +87,15 @@ fn watch_every(
             judge(&health, &mut held, answer);
         }
     }))
+}
+
+/// Clears the flag of a running check when the check ends.
+struct Done(Arc<AtomicBool>);
+
+impl Drop for Done {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Holds or releases readiness on what a check answered, saying a change once.
@@ -196,5 +206,26 @@ mod tests {
             until_held(lifecycle, false).await,
             "answered at last: released"
         );
+    }
+
+    /// A check that panics holds readiness once, and the next one is asked all the same: the
+    /// readiness is released when it answers.
+    #[tokio::test]
+    async fn a_check_that_panics_is_asked_again() {
+        let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counting = Arc::clone(&asked);
+        let ready: Ready = Arc::new(move || {
+            assert!(
+                counting.fetch_add(1, Ordering::SeqCst) != 0,
+                "the first check panics"
+            );
+            Ok(())
+        });
+        let health = permguard_core::Health::new();
+        let lifecycle = health.lifecycle();
+        let _watching = watch_every(ready, health.clone(), TEST_PASS, TEST_BOUND);
+        assert!(until_held(lifecycle, true).await, "the panic: held");
+        assert!(until_held(lifecycle, false).await, "asked again: released");
+        assert!(asked.load(Ordering::SeqCst) >= 2);
     }
 }

@@ -452,7 +452,21 @@ pub struct Store {
     restored: Option<record::RestoreAnchor>,
     /// When the entries were last read from a store other instances share (WP-28.4).
     read_at: Mutex<std::time::Instant>,
+    /// Set while a thread reads the store's new entries for the bound: the others read the state
+    /// as it is meanwhile, rather than all asking the store at once.
+    following: std::sync::atomic::AtomicBool,
+    /// When a missing membership or invitation was last asked of the store, by what was missing:
+    /// a peer naming ids nobody holds is not a query each.
+    asked: Mutex<BTreeMap<Vec<u8>, std::time::Instant>>,
 }
+
+/// How long a reader waits for the state's other readers before it leaves what it read of the
+/// store for the next read (WP-29.1): never long, as one of those readers may be its own thread.
+const FOLLOW_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+/// How often one missing id is asked of the store.
+const ASK_MISSING_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+/// The most missing ids remembered; past it they are forgotten together.
+const MAX_ASKED: usize = 1024;
 
 /// How old the reading of the memberships may be while they are read, on a store other instances
 /// share (iteration 03, WP-28.4): a change made through one instance is seen by every instance
@@ -1174,6 +1188,8 @@ impl Store {
             root_version: std::sync::atomic::AtomicU64::new(0),
             restored,
             read_at: Mutex::new(std::time::Instant::now()),
+            following: std::sync::atomic::AtomicBool::new(false),
+            asked: Mutex::new(BTreeMap::new()),
         }))
     }
 
@@ -1194,9 +1210,9 @@ impl Store {
     }
 
     /// Adds to the state the entries another instance added since it was read, on a store other
-    /// instances share (WP-28.4): when the reading is older than [`FRESH_FOR`], or `now`. A state
-    /// held by a reader of this thread or another is not waited for: it is caught up at the next
-    /// read. A store that does not answer leaves the state as it was, and the next read asks it.
+    /// instances share (WP-28.4): when the reading is older than [`FRESH_FOR`], or `now`. One
+    /// thread at a time asks the store; the others read the state as it is meanwhile. A store
+    /// that does not answer leaves the state as it was, and the next read asks it.
     fn current(&self, now: bool) {
         if !self.store.shared() {
             return;
@@ -1205,29 +1221,67 @@ impl Store {
         if !now && read_at.elapsed() < FRESH_FOR {
             return;
         }
-        let Ok(mut state) = self.state.try_write() else {
+        if self
+            .following
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
             return;
-        };
-        self.follow(&mut state);
+        }
+        self.follow();
+        self.following
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Adds to the state, now, the entries another instance added since it was read, on a store
-    /// other instances share, waiting for the readers of the state to finish: what an operator's
-    /// request reads before it answers or changes anything (WP-28.6), so a membership another
-    /// instance made a moment ago is found and its revision is the one the store holds. Called with
-    /// no reading of the state held by this thread. A store that does not answer leaves the state
-    /// as it was.
+    /// other instances share: what an operator's request reads before it answers or changes
+    /// anything (WP-28.6), so a membership another instance made a moment ago is found and its
+    /// revision is the one the store holds. A store that does not answer leaves the state as it
+    /// was.
     pub fn catch_up(&self) {
+        if self.store.shared() {
+            self.follow();
+        }
+    }
+
+    /// [`Store::catch_up`] for what a lookup did not find, `missing`, at most once every
+    /// [`ASK_MISSING_EVERY`] for the same: a membership or an invitation another instance made a
+    /// moment ago is found at once, and ids nobody holds are not a query each.
+    fn catch_up_missing(&self, missing: &[u8]) {
         if !self.store.shared() {
             return;
         }
-        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
-        self.follow(&mut state);
+        {
+            let mut asked = self.asked.lock().unwrap_or_else(PoisonError::into_inner);
+            if asked
+                .get(missing)
+                .is_some_and(|at| at.elapsed() < ASK_MISSING_EVERY)
+            {
+                return;
+            }
+            if asked.len() >= MAX_ASKED {
+                asked.clear();
+            }
+            asked.insert(missing.to_vec(), std::time::Instant::now());
+        }
+        self.follow();
     }
 
-    /// Applies to `state` the entries the store holds after it.
-    fn follow(&self, state: &mut State) {
-        let added = match self.store.entries_after(state.seq) {
+    /// Reads the entries the store holds after the state's, with no lock of the state held, then
+    /// applies the ones the state still lacks under its write lock, waited for [`FOLLOW_WAIT`] at
+    /// most (WP-29.1): a store slow to answer, or not answering, holds no reader of the state;
+    /// a write lock not had in time leaves what was read for the next read.
+    fn follow(&self) {
+        let deadline = std::time::Instant::now() + FOLLOW_WAIT;
+        let seq = loop {
+            match self.state.try_read() {
+                Ok(state) => break state.seq,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(_) => return,
+            }
+        };
+        let added = match self.store.entries_after(seq) {
             Ok(added) => added,
             Err(error) => {
                 tracing::warn!(
@@ -1239,15 +1293,42 @@ impl Store {
                 return;
             }
         };
-        let mut next = state.clone();
+        let mut entries = Vec::with_capacity(added.len());
         for item in added {
-            let applied = cbor::encode(&item)
+            let decoded = cbor::encode(&item)
                 .map_err(|error| MembershipError::Storage(error.to_string()))
-                .and_then(|bytes| {
-                    let entry = Entry::decode(&bytes)?;
-                    apply(&mut next, &entry, &bytes)
-                });
-            if let Err(error) = applied {
+                .and_then(|bytes| Ok((Entry::decode(&bytes)?, bytes)));
+            match decoded {
+                Ok(entry) => entries.push(entry),
+                Err(error) => {
+                    tracing::error!(
+                        event.name = "host.membership.state_unread",
+                        component = "host",
+                        error = %error,
+                        "an entry another instance added does not read: the memberships stay as read"
+                    );
+                    return;
+                }
+            }
+        }
+        let deadline = std::time::Instant::now() + FOLLOW_WAIT;
+        let mut state = loop {
+            match self.state.try_write() {
+                Ok(state) => break state,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(_) => return,
+            }
+        };
+        // What another thread applied meanwhile, from the store or from its own change, is not
+        // applied again.
+        let mut next = state.clone();
+        for (entry, bytes) in &entries {
+            if entry.seq <= next.seq {
+                continue;
+            }
+            if let Err(error) = apply(&mut next, entry, bytes) {
                 tracing::error!(
                     event.name = "host.membership.state_unread",
                     component = "host",
@@ -1349,7 +1430,9 @@ impl Store {
             Some(pending) => pending,
             None => {
                 // A change follows every entry the store holds, another instance's included.
-                self.current(true);
+                if self.store.shared() {
+                    self.follow();
+                }
                 self.state
                     .read()
                     .unwrap_or_else(PoisonError::into_inner)
@@ -1544,7 +1627,7 @@ impl Store {
             return found;
         }
         // One another instance made a moment ago is read at once, not within the bound (WP-28.6).
-        self.current(true);
+        self.catch_up_missing(id);
         self.read().memberships.get(id).cloned()
     }
 
@@ -1898,13 +1981,16 @@ impl Store {
         now: u64,
     ) -> Result<Pending, MembershipError> {
         let refused = |detail: &str| MembershipError::Enrollment(detail.to_owned());
-        self.catch_up();
-        let (invitation, state) = self
-            .read()
-            .invites
-            .get(&request.invite_id)
-            .cloned()
-            .ok_or_else(|| refused("no invitation of that id"))?;
+        let held = self.read().invites.get(&request.invite_id).cloned();
+        let held = match held {
+            Some(held) => Some(held),
+            None => {
+                // One another instance issued a moment ago is read at once (WP-28.6).
+                self.catch_up_missing(&request.invite_id);
+                self.read().invites.get(&request.invite_id).cloned()
+            }
+        };
+        let (invitation, state) = held.ok_or_else(|| refused("no invitation of that id"))?;
         if state != InviteState::Issued {
             return Err(refused("the invitation was used or revoked"));
         }
@@ -2764,7 +2850,7 @@ impl Store {
         // A membership another instance made a moment ago is read at once (WP-28.6).
         let known = self.read().memberships.contains_key(id);
         if !known {
-            self.current(true);
+            self.catch_up_missing(id);
         }
         // One reading of the state: the status, the manifests and their statements agree.
         let state = self.read();
@@ -3269,6 +3355,20 @@ impl crate::session::peers::PinSource for Store {
     /// for a `membership` session, on which the coordinator answers the manifest that ended it:
     /// the member's receipt. An orphaned membership pins nobody.
     fn pin(&self, host_id: &[u8; 16], operation: Option<SessionOperation>) -> Option<String> {
+        let pinned = self.pinned(host_id, operation);
+        if pinned.is_some() {
+            return pinned;
+        }
+        // A membership another instance made or approved a moment ago pins its peer at once:
+        // asked of the store at most once a second for the same peer (WP-29.1).
+        self.catch_up_missing(host_id);
+        self.pinned(host_id, operation)
+    }
+}
+
+impl Store {
+    /// The pin of `host_id` the memberships held give for `operation`.
+    fn pinned(&self, host_id: &[u8; 16], operation: Option<SessionOperation>) -> Option<String> {
         self.read().memberships.values().find_map(|held| {
             let peer = match held.role {
                 Role::Coordinator => &held.request.member,

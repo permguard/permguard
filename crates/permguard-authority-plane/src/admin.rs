@@ -277,12 +277,12 @@ mod tests {
         assert_eq!(secret_of("  pgsk_x  "), None);
     }
 
-    /// A store whose first read of `admin` is the one an instance made before another instance
-    /// on the same store made it: nothing held.
+    /// A store whose first `misses` reads of `admin` are the ones an instance made before another
+    /// instance on the same store made it: nothing held.
     #[derive(Debug)]
     struct ReadBefore {
         store: std::sync::Arc<dyn AccountStore>,
-        read: std::sync::atomic::AtomicBool,
+        misses: std::sync::atomic::AtomicUsize,
     }
 
     impl AccountStore for ReadBefore {
@@ -290,7 +290,15 @@ mod tests {
             self.store.revision()
         }
         fn get(&self, name: &str) -> Result<Option<Account>, AccountsError> {
-            if !self.read.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let missed = self
+                .misses
+                .fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |left| left.checked_sub(1),
+                )
+                .is_ok();
+            if missed {
                 return Ok(None);
             }
             self.store.get(name)
@@ -362,17 +370,22 @@ mod tests {
         let key = ensure(&*accounts, &first, 10)
             .expect("made")
             .expect("a key");
-        let late = ReadBefore {
-            store: accounts.clone(),
-            read: std::sync::atomic::AtomicBool::new(false),
-        };
-        assert_eq!(ensure(&late, &second, 10).expect("starts"), None);
-        assert!(
-            !second.join(KEY_FILE).exists(),
-            "no key file on the late instance"
-        );
-        let admin = accounts.get(accounts::ADMIN).expect("read").expect("admin");
-        assert_eq!(admin.keys.len(), 1, "the first key alone");
-        assert!(admin.key(&key).is_some());
+        // Read before the other made it at the check, then at the write: one read missed, the
+        // other instance's account is found before the write; two missed, the write itself is
+        // refused as a conflict and the account found after it.
+        for misses in [1, 2] {
+            let late = ReadBefore {
+                store: accounts.clone(),
+                misses: std::sync::atomic::AtomicUsize::new(misses),
+            };
+            assert_eq!(ensure(&late, &second, 10).expect("starts"), None);
+            assert!(
+                !second.join(KEY_FILE).exists(),
+                "no key file on the late instance"
+            );
+            let admin = accounts.get(accounts::ADMIN).expect("read").expect("admin");
+            assert_eq!(admin.keys.len(), 1, "the first key alone");
+            assert!(admin.key(&key).is_some());
+        }
     }
 }

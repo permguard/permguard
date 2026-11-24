@@ -230,7 +230,9 @@ impl HostApi {
         {
             return Err(invalid("`reason` is printable text of 1 to 256 bytes"));
         }
-        let memberships = self.memberships()?;
+        // The memberships as the store holds them: on a store other instances share, every one
+        // they made (WP-29.1).
+        let memberships = self.memberships_now()?;
         let now = self.time.now_secs();
         let mutation = Mutation {
             request_id: plan.request_id.clone(),
@@ -323,7 +325,9 @@ impl HostApi {
         if !identity.can_reset() {
             return Err(unprovisioned());
         }
-        let memberships = self.memberships()?;
+        // The memberships as the store holds them: on a store other instances share, every one
+        // they made (WP-29.1).
+        let memberships = self.memberships_now()?;
         // The checkpoint the reset requires must be possible before anything is taken or changed.
         self.sealing_audit()?;
         // From here nothing new is taken under this identity, a task session included, before the

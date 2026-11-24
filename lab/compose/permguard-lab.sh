@@ -1361,24 +1361,32 @@ drill_concurrent() {
     while read -r jti; do
         n=$((n + 1))
         instance="${drill_instances[$((n % 2))]}"
-        (pg --authority-endpoint "https://${instance}:8443" authority tokens revoke "${jti}" \
-            >"${drill_dir}/revoke-${jti}" 2>&1 && echo made >>"${drill_dir}/revoke-${jti}") &
+        (
+            # `slow_down` is the bound of hashing work: asked again a second on, as a client is.
+            while :; do
+                if pg --authority-endpoint "https://${instance}:8443" authority tokens revoke "${jti}" \
+                    >"${drill_dir}/revoke-${jti}" 2>&1; then
+                    echo made >>"${drill_dir}/revoke-${jti}"
+                    break
+                fi
+                grep -q '"slow_down"' "${drill_dir}/revoke-${jti}" || break
+                echo slowed >>"${drill_dir}/revoke-slowed"
+                sleep 1
+            done
+        ) &
     done <"${drill_dir}/concurrent"
     wait
-    local invalid answered=0
+    local invalid slowed
     invalid="$(pg --authority-endpoint "https://control-plane-2:8443" authority tokens list --status invalid |
         jq -r '.[].jti')"
     while read -r jti; do
-        if grep -qx made "${drill_dir}/revoke-${jti}"; then
-            answered=$((answered + 1))
-            grep -qx "${jti}" <<<"${invalid}" ||
-                fail "the revocation of ${jti}, answered with nine others at once, is lost"
-        else
-            log "the revocation of ${jti} was refused: $(tr -d '\n' <"${drill_dir}/revoke-${jti}" | cut -c1-200)"
-        fi
+        grep -qx made "${drill_dir}/revoke-${jti}" ||
+            fail "the revocation of ${jti}, made with nine others at once, was refused: $(tr -d '\n' <"${drill_dir}/revoke-${jti}" | cut -c1-200)"
+        grep -qx "${jti}" <<<"${invalid}" ||
+            fail "the revocation of ${jti}, answered with nine others at once, is lost"
     done <"${drill_dir}/concurrent"
-    [ "${answered}" -ge 1 ] || fail "none of ten revocations at once was answered"
-    log "ten revocations at once through both instances: ${answered} answered, every one answered kept"
+    slowed="$(wc -l <"${drill_dir}/revoke-slowed" 2>/dev/null | tr -d ' ' || echo 0)"
+    log "ten revocations at once through both instances: all ten answered and kept; ${slowed:-0} asked again after slow_down"
 }
 
 # A short load through the one address: tokens issued and decisions answered by several clients
