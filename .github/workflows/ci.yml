@@ -98,7 +98,7 @@ jobs:
           cargo check -p permguard-std --all-targets --locked
       # nextest runs the test binaries side by side, a process per test; `cargo test` runs the
       # binaries one after another. The doctests are not nextest's, so they run after it.
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
           tool: nextest
       - name: tests
@@ -237,7 +237,7 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
           tool: nextest
       - name: the client of the object store, against an S3 server with TLS on

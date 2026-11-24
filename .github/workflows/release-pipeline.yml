@@ -83,7 +83,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # The chart's conformance tests render it with helm.
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2
         with:
           tool: nextest
       - name: tests
