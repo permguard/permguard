@@ -770,6 +770,10 @@ cmd_assert() {
         freshness) assert_freshness data-plane-a control-plane acme main "$(decisions_resource acme main)" ;;
         rotation) assert_tokens_rotation ;;
         offline) assert_tokens_offline ;;
+        ship-before) ship_before ;;
+        ship-decide) ship_decide ;;
+        ship-drained) ship_drained ;;
+        ship-report) ship_report ;;
         *) fail "no multi-data-plane phase ${phase}" ;;
         esac
         ;;
@@ -1052,6 +1056,100 @@ assert_freshness() { # producer host, consumer host, zone, ledger, resource
     log "evidence freshness ${producer_host} → ${consumer_host}: p50 ${p50} ms, p95 ${p95} ms, worst ${worst} ms over ${count} samples${objective:+; objective ${objective} ms}"
     [ -z "${objective}" ] || [ "${worst}" -le "${objective}" ] ||
         fail "the worst sample, ${worst} ms, passes the ${objective} ms objective"
+}
+
+# The shipping drills (iteration 04, WP-35.1): the coordinator stopped, cut from the network,
+# frozen, killed in the middle of a burst and restored from a snapshot; a member killed in the
+# middle of a burst; a burst from both members at once. The runner, scripts/compose-lab.sh, does to
+# the servers what each drill names; these phases decide, and prove that every decision a member
+# answered is recorded and held by the coordinator, measuring how long after the fault ended.
+ship_dir="${state}/ship"
+ship_members=(data-plane-a data-plane-b)
+
+# before: the stream's resource, each member's producer and what it recorded so far, a token kept
+# for the decisions the drills make while the Authority Plane does not answer.
+ship_before() {
+    local host resource
+    rm -rf "${ship_dir}"
+    mkdir -p "${ship_dir}"
+    token_for >/dev/null
+    resource="$(decisions_resource acme main)"
+    echo "${resource}" >"${ship_dir}/resource"
+    for host in "${ship_members[@]}"; do
+        wait_serving "${host}" acme main
+        producer_of "${host}" >"${ship_dir}/producer-${host}"
+        recorded_on "${host}" "${resource}" >"${ship_dir}/base-${host}"
+        echo 0 >"${ship_dir}/answered-${host}"
+    done
+    log "before the drills: $(for host in "${ship_members[@]}"; do printf '%s recorded %s; ' "${host}" "$(cat "${ship_dir}/base-${host}")"; done)"
+}
+
+# SHIP_COUNT decisions on each of SHIP_HOSTS, all at once, SHIP_WORKERS per host; a decision not
+# answered, its member killed, ends its worker. What was answered is added to the member's count.
+ship_decide() {
+    local hosts="${SHIP_HOSTS:?the members}" count="${SHIP_COUNT:-20}" workers="${SHIP_WORKERS:-1}"
+    local token="${state}/tokens/lab-client.jwt" host worker answered started took
+    [ -f "${token}" ] || fail "no token of lab-client was kept for the drills"
+    started="$(now_ms)"
+    for host in ${hosts}; do
+        for worker in $(seq 1 "${workers}"); do
+            (
+                made=0
+                for _ in $(seq 1 "$((count / workers))"); do
+                    decide "${host}" acme main deny.json "${token}" |
+                        jq -e '.evaluated == true' >/dev/null 2>&1 || break
+                    made=$((made + 1))
+                done
+                echo "${made}" >"${ship_dir}/made-${host}-${worker}"
+            ) &
+        done
+    done
+    wait
+    took=$(($(now_ms) - started))
+    for host in ${hosts}; do
+        answered=0
+        for worker in $(seq 1 "${workers}"); do
+            answered=$((answered + $(cat "${ship_dir}/made-${host}-${worker}")))
+            rm -f "${ship_dir}/made-${host}-${worker}"
+        done
+        echo $(($(cat "${ship_dir}/answered-${host}") + answered)) >"${ship_dir}/answered-${host}"
+        log "${host}: ${answered} of ${count} decisions answered in ${took} ms"
+    done
+}
+
+# Every decision each member answered since `before` is recorded on it and held by the
+# coordinator, within SHIP_BOUND seconds: the time it took is recorded under SHIP_LABEL.
+ship_drained() {
+    local label="${SHIP_LABEL:?the drill}" bound_ms=$((${SHIP_BOUND:-120} * 1000))
+    local resource host producer target recorded held started waited
+    resource="$(cat "${ship_dir}/resource")"
+    started="$(now_ms)"
+    for host in "${ship_members[@]}"; do
+        producer="$(cat "${ship_dir}/producer-${host}")"
+        target=$(($(cat "${ship_dir}/base-${host}") + $(cat "${ship_dir}/answered-${host}")))
+        while :; do
+            recorded="$(recorded_on "${host}" "${resource}" 2>/dev/null)" || recorded=-1
+            held="$(acked_on control-plane "${resource}" "${producer}" 2>/dev/null)" || held=-1
+            [ "${recorded}" -ge "${target}" ] && [ "${held}" = "${recorded}" ] && break
+            waited=$(($(now_ms) - started))
+            [ "${waited}" -lt "${bound_ms}" ] ||
+                fail "${label}: ${host} answered ${target}, recorded ${recorded}, the coordinator holds ${held}, ${waited} ms on"
+            sleep 0.2
+        done
+    done
+    waited=$(($(now_ms) - started))
+    printf '%s|%s|%s\n' "${label}" "${waited}" \
+        "$(for host in "${ship_members[@]}"; do printf '%s %s ' "${host}" "$(cat "${ship_dir}/answered-${host}")"; done)" \
+        >>"${ship_dir}/results"
+    log "${label}: every decision answered is recorded and held by the coordinator ${waited} ms after the fault ended"
+}
+
+ship_report() {
+    step "shipping drills: what each recorded"
+    local label waited answered
+    while IFS='|' read -r label waited answered; do
+        log "${label}: held ${waited} ms after the fault ended (answered since the start: ${answered})"
+    done <"${ship_dir}/results"
 }
 
 # Both ends of every membership of `member` name the exact fingerprints the enrollment approved and
