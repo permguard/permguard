@@ -215,7 +215,10 @@ mod tests {
             })
         };
         assert!(answers(&page(vec![1], false)));
-        assert!(answers(&page(Vec::new(), true)), "a filtered scan at its bound");
+        assert!(
+            answers(&page(Vec::new(), true)),
+            "a filtered scan at its bound"
+        );
         assert!(!answers(&page(Vec::new(), false)), "caught up: it waits");
         assert!(answers::<u64, ()>(&Err(())), "a refusal answers at once");
     }

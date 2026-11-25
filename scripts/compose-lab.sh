@@ -183,14 +183,17 @@ run_profile() {
     # done from here, the decisions and the proof that every one answered is held by the
     # coordinator from the lab's tools; the time each took is reported at the end.
     run_ship_drills() {
-        local container volume snapshot burst
+        local container volume snapshot burst ended
         ship() {
             local phase="$1"
             shift
             dc run --rm "$@" lab assert "${profile}" "ship-${phase}" || failed "the shipping drill ${phase} failed"
         }
-        decide() { ship decide -e "SHIP_HOSTS=$1" -e "SHIP_COUNT=$2" -e "SHIP_WORKERS=${3:-1}"; }
-        drained() { ship drained -e "SHIP_LABEL=$1" -e "SHIP_BOUND=${2:-120}"; }
+        decide() { ship decide -e "SHIP_HOSTS=$1" -e "SHIP_COUNT=$2" -e "SHIP_WORKERS=${3:-1}" -e "SHIP_CUT=${4:-0}"; }
+        # The fault lifted, on the host's clock, which the engine's virtual machine keeps in step:
+        # a drill's recovery is measured from here, the restart included.
+        lifted() { ended="$(python3 -c 'import time; print(int(time.time() * 1000))')"; }
+        drained() { ship drained -e "SHIP_LABEL=$1" -e "SHIP_BOUND=${2:-120}" -e "SHIP_SINCE_MS=${ended}"; }
         coordinator_up() { dc up -d --no-deps --wait control-plane 2>/dev/null || failed "the coordinator did not serve again"; }
         container="$(dc ps -q control-plane)"
         volume="${project}_control-plane-state"
@@ -202,6 +205,7 @@ run_profile() {
         step "${profile}: drill: the coordinator stopped, the members decide"
         dc stop control-plane >/dev/null 2>&1 || failed "the coordinator did not stop"
         decide "data-plane-a data-plane-b" 20
+        lifted
         coordinator_up
         drained "coordinator stopped, then started"
 
@@ -209,6 +213,7 @@ run_profile() {
         docker network disconnect "${project}_default" "${container}" || failed "the coordinator was not cut"
         decide "data-plane-a data-plane-b" 20
         sleep 20
+        lifted
         docker network connect --alias control-plane "${project}_default" "${container}" ||
             failed "the coordinator was not reconnected"
         drained "coordinator cut from the network for 20 s"
@@ -219,44 +224,54 @@ run_profile() {
         docker pause "${container}" >/dev/null || failed "the coordinator was not frozen"
         decide "data-plane-a data-plane-b" 20
         sleep 20
+        lifted
         docker unpause "${container}" >/dev/null || failed "the coordinator was not thawed"
         drained "coordinator frozen for 20 s"
 
         step "${profile}: drill: a member killed in the middle of a burst"
-        decide data-plane-a 400 4 &
+        # Several seconds of decisions, the member killed a second and a half in: the phase fails
+        # unless the kill cut the burst short, so the drill is the one it says.
+        decide data-plane-a 4000 4 1 &
         burst=$!
-        sleep 3
+        sleep 1.5
         docker kill -s KILL "$(dc ps -q data-plane-a)" >/dev/null || failed "data-plane-a was not killed"
         wait "${burst}" || failed "the burst on data-plane-a failed"
+        lifted
         dc up -d --no-deps --wait data-plane-a 2>/dev/null || failed "data-plane-a did not serve again"
         drained "member killed in the middle of a burst, then started"
 
         step "${profile}: drill: the coordinator killed in the middle of a burst"
-        decide "data-plane-a data-plane-b" 200 4 &
+        # The members go on deciding: the kill falls while their batches are being ingested.
+        decide "data-plane-a data-plane-b" 3000 4 &
         burst=$!
-        sleep 3
+        sleep 1.5
         docker kill -s KILL "${container}" >/dev/null || failed "the coordinator was not killed"
         wait "${burst}" || failed "the burst failed"
+        lifted
         coordinator_up
         drained "coordinator killed in the middle of a burst, then started"
 
         step "${profile}: drill: a burst from both members at once"
         decide "data-plane-a data-plane-b" 600 8
+        lifted
         drained "burst of 1200 decisions from two members, 16 at once" 300
 
         step "${profile}: drill: the coordinator restored from a snapshot"
         dc stop control-plane >/dev/null 2>&1 || failed "the coordinator did not stop"
         docker volume create "${snapshot}" >/dev/null
-        docker run --rm --entrypoint sh -v "${volume}:/from:ro" -v "${snapshot}:/to" \
+        # As root: the server's own user cannot write a volume the engine just made.
+        docker run --rm --user 0 --entrypoint sh -v "${volume}:/from:ro" -v "${snapshot}:/to" \
             "${PERMGUARD_LAB_IMAGE}" -c 'cp -a /from/. /to/' || failed "no snapshot of the coordinator"
         coordinator_up
         decide "data-plane-a data-plane-b" 20
+        lifted
         drained "decisions after the snapshot"
         dc stop control-plane >/dev/null 2>&1 || failed "the coordinator did not stop"
-        docker run --rm --entrypoint sh -v "${snapshot}:/from:ro" -v "${volume}:/to" \
+        docker run --rm --user 0 --entrypoint sh -v "${snapshot}:/from:ro" -v "${volume}:/to" \
             "${PERMGUARD_LAB_IMAGE}" -c 'find /to -mindepth 1 -delete && cp -a /from/. /to/' ||
             failed "the coordinator was not restored"
         docker volume rm "${snapshot}" >/dev/null || true
+        lifted
         coordinator_up
         decide "data-plane-a data-plane-b" 10
         drained "coordinator restored from a snapshot behind its members" 180

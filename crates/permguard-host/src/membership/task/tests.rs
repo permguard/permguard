@@ -2176,8 +2176,9 @@ async fn a_tasks_signed_rate_paces_its_batches() {
         ..member(&m, &connector)
     };
     let kept = crate::membership::shipping::ShipSessions::default();
-    // 600 a minute: ten at once, and one more every 100 ms the round takes.
-    engine.add(25);
+    // 600 a minute: ten at once, and one more every 100 ms the round takes. More are queued than a
+    // round could take in any time a loaded machine gives it, so the bound is the rate's alone.
+    engine.add(200);
     let started = std::time::Instant::now();
     let round = acting.ship_round(who(), &kept, false).await;
     let refilled = usize::try_from(started.elapsed().as_millis() / 100).expect("small") + 1;
@@ -2187,7 +2188,7 @@ async fn a_tasks_signed_rate_paces_its_batches() {
         round.shipped,
         started.elapsed()
     );
-    assert!(round.shipped < 25, "the rate held some back");
+    assert!(round.shipped < 200, "the rate held some back");
     assert!(round.behind);
     let wait = round.retry_after.expect("a token to wait for");
     assert!(
@@ -2196,7 +2197,7 @@ async fn a_tasks_signed_rate_paces_its_batches() {
     );
     assert_eq!(
         *engine.due.lock().expect("lock"),
-        25 - u64::try_from(round.shipped).expect("small"),
+        200 - u64::try_from(round.shipped).expect("small"),
         "what was held back is kept for the next round, none sealed for nothing"
     );
 }

@@ -1086,6 +1086,7 @@ ship_before() {
 
 # SHIP_COUNT decisions on each of SHIP_HOSTS, all at once, SHIP_WORKERS per host; a decision not
 # answered, its member killed, ends its worker. What was answered is added to the member's count.
+# SHIP_CUT=1 says the burst is meant to be cut by a kill: one that ran whole proves nothing.
 ship_decide() {
     local hosts="${SHIP_HOSTS:?the members}" count="${SHIP_COUNT:-20}" workers="${SHIP_WORKERS:-1}"
     local token="${state}/tokens/lab-client.jwt" host worker answered started took
@@ -1114,14 +1115,17 @@ ship_decide() {
         done
         echo $(($(cat "${ship_dir}/answered-${host}") + answered)) >"${ship_dir}/answered-${host}"
         log "${host}: ${answered} of ${count} decisions answered in ${took} ms"
+        [ "${SHIP_CUT:-0}" != 1 ] || [ "${answered}" -lt "${count}" ] ||
+            fail "${host} answered the whole burst: the kill came after it"
     done
 }
 
 # Every decision each member answered since `before` is recorded on it and held by the
-# coordinator, within SHIP_BOUND seconds: the time it took is recorded under SHIP_LABEL.
+# coordinator, within SHIP_BOUND seconds: the time it took since the fault was lifted,
+# SHIP_SINCE_MS on the runner's clock, restart included, is recorded under SHIP_LABEL.
 ship_drained() {
     local label="${SHIP_LABEL:?the drill}" bound_ms=$((${SHIP_BOUND:-120} * 1000))
-    local resource host producer target recorded held started waited
+    local resource host producer target recorded held started waited since
     resource="$(cat "${ship_dir}/resource")"
     started="$(now_ms)"
     for host in "${ship_members[@]}"; do
@@ -1138,17 +1142,18 @@ ship_drained() {
         done
     done
     waited=$(($(now_ms) - started))
-    printf '%s|%s|%s\n' "${label}" "${waited}" \
+    since=$(($(now_ms) - ${SHIP_SINCE_MS:-${started}}))
+    printf '%s|%s|%s\n' "${label}" "${since}" \
         "$(for host in "${ship_members[@]}"; do printf '%s %s ' "${host}" "$(cat "${ship_dir}/answered-${host}")"; done)" \
         >>"${ship_dir}/results"
-    log "${label}: every decision answered is recorded and held by the coordinator ${waited} ms after the fault ended"
+    log "${label}: every decision answered is recorded and held by the coordinator ${since} ms after the fault was lifted (the check itself ${waited} ms)"
 }
 
 ship_report() {
     step "shipping drills: what each recorded"
     local label waited answered
     while IFS='|' read -r label waited answered; do
-        log "${label}: held ${waited} ms after the fault ended (answered since the start: ${answered})"
+        log "${label}: held ${waited} ms after the fault was lifted (answered since the start: ${answered})"
     done <"${ship_dir}/results"
 }
 

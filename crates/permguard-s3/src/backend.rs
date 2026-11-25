@@ -756,4 +756,70 @@ mod tests {
         assert_eq!(hint_of(&payload, "one"), None);
         assert_eq!(hint_of("not json", "other"), None);
     }
+
+    /// An arrival one instance acknowledged reaches the others, sent by the relay's thread and not
+    /// by the ingest that queued it; the instance that sent it hears nothing back (iteration 04,
+    /// WP-33.2).
+    #[test]
+    fn an_arrival_reaches_the_other_instances_and_not_its_own_on_postgresql() {
+        use permguard_host::composition::ArrivalRelay as _;
+
+        let Some(server) = permguard_postgres::testing::server(
+            "an_arrival_reaches_the_other_instances_and_not_its_own_on_postgresql",
+        ) else {
+            return;
+        };
+        let connect = || {
+            Database::connect(permguard_postgres::testing::config(&server, None, 2))
+                .expect("connects")
+        };
+        let one = PostgresArrivals::new(connect(), "one".to_owned());
+        let other = PostgresArrivals::new(connect(), "other".to_owned());
+        let hearing = |who: &PostgresArrivals| {
+            let (sender, heard) = std::sync::mpsc::channel::<String>();
+            let sender = std::sync::Mutex::new(sender);
+            let listening = who.listen(Box::new(move |stream| {
+                let _ = sender.lock().expect("held").send(stream.to_owned());
+            }));
+            (listening, heard)
+        };
+        let (_one_listening, one_heard) = hearing(&one);
+        let (_other_listening, other_heard) = hearing(&other);
+        // The listeners need a moment to be listening.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let started = std::time::Instant::now();
+            one.send("data/decisions/ready");
+            assert!(
+                started.elapsed() < Duration::from_millis(50),
+                "the send only queues: {:?}",
+                started.elapsed()
+            );
+            if let Ok(stream) = other_heard.recv_timeout(Duration::from_millis(200)) {
+                assert_eq!(stream, "data/decisions/ready");
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "never heard");
+        }
+        while other_heard.try_recv().is_ok() {}
+        for stream in ["s1", "s2", "s1", "s3"] {
+            one.send(stream);
+        }
+        let mut heard = std::collections::BTreeSet::new();
+        while heard.len() < 3 {
+            heard.insert(
+                other_heard
+                    .recv_timeout(Duration::from_secs(10))
+                    .expect("every stream heard"),
+            );
+        }
+        assert_eq!(
+            heard,
+            ["s1", "s2", "s3"].map(str::to_owned).into_iter().collect()
+        );
+        assert!(
+            one_heard.recv_timeout(Duration::from_millis(300)).is_err(),
+            "an instance does not hear itself"
+        );
+    }
 }
