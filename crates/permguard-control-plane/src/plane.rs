@@ -458,7 +458,7 @@ fn build_event_facade(
 
     // A tail waiting for its next event reads again once the consumer acknowledges a batch
     // (iteration 04, WP-33.1).
-    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::default());
+    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::of(context.health()));
     let host = crate::handles::event_consumer(context);
     if let Some(host) = &host {
         host.on_ingest(arrivals.wake());
@@ -541,7 +541,7 @@ fn build_decision_facade(
 
     // A tail waiting for its next decision reads again once the consumer acknowledges a batch
     // (iteration 04, WP-33.1).
-    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::default());
+    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::of(context.health()));
     let host = crate::handles::decision_consumer(context);
     if let Some(host) = &host {
         host.on_ingest(arrivals.wake());

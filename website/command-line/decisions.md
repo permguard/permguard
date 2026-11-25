@@ -87,6 +87,7 @@ The reading commands share these flags:
 | `--from-seq`, `--until-seq` | `signers`: the range of offsets to name keys for, inclusive; to the head by default |
 
 Paginate on `more`, not on `next`: every page carries a `next`, even when nothing follows it.
+With `--follow`, a Control Plane that supports it holds the read open until the next decision arrives, so a followed tail shows each decision moments after its answer; an older Control Plane is asked again every second.
 
 ```sh
 permguard decisions list --zone delivery --ledger release-pipeline

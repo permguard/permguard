@@ -12,6 +12,7 @@
 //! | a lost wake       | costs a read its wait at most: it then answers what it holds                            |
 //! | coalesced         | a waiting read reads again at most every [`REREAD`], however many batches arrive        |
 //! | authorization     | the read itself is authorized at every reading, so a wait reveals nothing new           |
+//! | draining          | once the Host drains, every waiting read answers within [`DRAIN_CHECK`], none waits     |
 //!
 //! The counter says only that something arrived somewhere: a woken read reads its own scope again,
 //! and goes on waiting when nothing of it came.
@@ -29,11 +30,16 @@ pub const MAX_WAITERS: usize = 256;
 /// The least time between two readings of one waiting read: the arrivals meanwhile are read once.
 pub const REREAD: Duration = Duration::from_millis(100);
 
+/// How often a waiting read looks whether its Plane still serves.
+pub const DRAIN_CHECK: Duration = Duration::from_millis(250);
+
 /// The arrivals one consumer announces, and the reads waiting for them.
 #[derive(Debug)]
 pub struct Arrivals {
     arrived: tokio::sync::watch::Sender<u64>,
     waiting: Arc<tokio::sync::Semaphore>,
+    /// The Plane's health: a Plane that no longer serves, its Host draining, holds no read.
+    health: Option<permguard_core::plane::PlaneHealth>,
 }
 
 impl Default for Arrivals {
@@ -41,11 +47,26 @@ impl Default for Arrivals {
         Self {
             arrived: tokio::sync::watch::channel(0).0,
             waiting: Arc::new(tokio::sync::Semaphore::new(MAX_WAITERS)),
+            health: None,
         }
     }
 }
 
 impl Arrivals {
+    /// The arrivals of a Plane whose waiting reads answer once it stops serving.
+    pub fn of(health: permguard_core::plane::PlaneHealth) -> Self {
+        Self {
+            health: Some(health),
+            ..Self::default()
+        }
+    }
+
+    fn serving(&self) -> bool {
+        self.health
+            .as_ref()
+            .is_none_or(permguard_core::plane::PlaneHealth::serving)
+    }
+
     /// What the consumer calls once an ingest acknowledged a batch.
     pub fn wake(self: &Arc<Self>) -> permguard_host::composition::Wake {
         let arrivals = Arc::downgrade(self);
@@ -71,7 +92,7 @@ impl Arrivals {
         F: Fn(&T) -> bool,
     {
         let wait = wait.min(MAX_WAIT);
-        let permit = if wait.is_zero() {
+        let permit = if wait.is_zero() || !self.serving() {
             None
         } else {
             Arc::clone(&self.waiting).try_acquire_owned().ok()
@@ -88,7 +109,14 @@ impl Arrivals {
             if holds(&answer) {
                 return answer;
             }
-            match tokio::time::timeout_at(deadline, arrived.changed()).await {
+            let look = (tokio::time::Instant::now() + DRAIN_CHECK).min(deadline);
+            match tokio::time::timeout_at(look, arrived.changed()).await {
+                // Nothing arrived yet: a Plane draining answers what it holds.
+                Err(_) if tokio::time::Instant::now() < deadline => {
+                    if !self.serving() {
+                        return answer;
+                    }
+                }
                 Ok(Ok(())) => {
                     // A burst of batches is one reading, not one per batch.
                     tokio::time::sleep_until((read_at + REREAD).min(deadline)).await;
@@ -160,6 +188,76 @@ mod tests {
             .await;
         assert_eq!(answer, 0);
         assert!(started.elapsed() >= Duration::from_millis(300));
+    }
+
+    /// A Host that starts draining answers every read waiting on its Plane, without waiting for
+    /// their deadlines, and lets no new read wait.
+    #[tokio::test]
+    async fn a_draining_host_answers_its_waiting_reads() {
+        use permguard_core::lifecycle::{HOST, Kind, Phase};
+
+        let health = permguard_core::server::Health::default();
+        health
+            .lifecycle()
+            .enter(HOST, Kind::Host, true, Phase::Serving);
+        health
+            .lifecycle()
+            .enter("control", Kind::Plane, true, Phase::Serving);
+        let arrivals = Arc::new(Arrivals::of(permguard_core::plane::PlaneHealth::new(
+            health.clone(),
+            "control",
+        )));
+        let held = Arc::new(AtomicU64::new(0));
+        let draining = health.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            draining.lifecycle().advance(HOST, Phase::Draining);
+        });
+        let started = std::time::Instant::now();
+        let answer = arrivals
+            .read_waiting(Duration::from_secs(10), reader(&held), |count| *count > 0)
+            .await;
+        assert_eq!(answer, 0);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        let started = std::time::Instant::now();
+        arrivals
+            .read_waiting(Duration::from_secs(10), reader(&held), |count| *count > 0)
+            .await;
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "no new wait"
+        );
+    }
+
+    /// Many batches arriving while a read waits are read once per [`REREAD`], not once each.
+    #[tokio::test]
+    async fn a_burst_of_arrivals_is_read_a_few_times_not_once_per_batch() {
+        let arrivals = Arc::new(Arrivals::default());
+        let reads = Arc::new(AtomicU64::new(0));
+        let wake = arrivals.wake();
+        tokio::spawn(async move {
+            for _ in 0..200 {
+                wake();
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        });
+        let counted = Arc::clone(&reads);
+        arrivals
+            .read_waiting(
+                Duration::from_millis(600),
+                move || {
+                    let counted = Arc::clone(&counted);
+                    Box::pin(async move { counted.fetch_add(1, Ordering::SeqCst) })
+                },
+                |_| false,
+            )
+            .await;
+        let read = reads.load(Ordering::SeqCst);
+        assert!((2..=8).contains(&read), "{read} reads");
     }
 
     /// No wait asked, or none past the bound: one read, at once.

@@ -198,6 +198,28 @@ mod tests {
         error.code().to_owned()
     }
 
+    /// A waiting tail is answered by records, or by a page that says more is to be read past what
+    /// it examined; an empty page at the end of the stream, alone, goes on waiting.
+    #[test]
+    fn a_tail_is_answered_by_records_or_by_more_to_read() {
+        let page = |records: Vec<u64>, more: bool| -> Result<permguard_stream::Block<u64>, ()> {
+            Ok(permguard_stream::Block {
+                records,
+                next: "n".to_owned(),
+                oldest_available: String::new(),
+                high_watermark: String::new(),
+                more,
+                proof: Vec::new(),
+                inclusion: Vec::new(),
+                coverage: permguard_stream::Coverage::default(),
+            })
+        };
+        assert!(answers(&page(vec![1], false)));
+        assert!(answers(&page(Vec::new(), true)), "a filtered scan at its bound");
+        assert!(!answers(&page(Vec::new(), false)), "caught up: it waits");
+        assert!(answers::<u64, ()>(&Err(())), "a refusal answers at once");
+    }
+
     /// BUG-0170: an unknown parameter is refused naming the request, never calling a delete a
     /// read; what it takes is listed.
     #[test]

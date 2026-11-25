@@ -38,7 +38,9 @@ is cut.
 - **A tail read waits for its next record.**
   `wait_ms` on a decision or event read with no `until` (REST, and `wait_ms` on gRPC's `Read` and `ListRecords`) holds the read until a record of its scope is acknowledged or the wait ends, at most `max_wait_ms`, 25 s; beside `until` it is refused with `invalid_argument`.
   The discovery documents announce it: `tail-wait` among the capabilities, `wait_ms` among the read parameters, `max_wait_ms` among the limits.
-  On `postgresql-s3` an instance tells the others over a database notification, so a read waiting on one is woken by a batch another acknowledged.
+  On `postgresql-s3` an instance tells the others over a database notification, sent by a thread of its own so a member's acknowledgement never waits on it, and a read waiting on one is woken by a batch another acknowledged.
+  A waiting read is authorized again at every reading, reads again at most every 100 ms however many batches arrive, and answers at once when a filtered scan reaches its bound (`more` true); once the Host drains, every waiting read answers within 250 ms.
+  A tail answered at once with nothing, by a control plane with no room for one more waiting read, waits a second before it asks again.
 - **`operations.streams.ship_linger`** (`PERMGUARD_STREAM_SHIP_LINGER`, default `200ms`, at most `5s`): how long the shipper waits after an append before it ships, so what is appended meanwhile leaves in the same batch; `0s` ships at once.
   A coordinator that wants fewer, larger batches signs a lower `max_rate_per_minute` instead.
 

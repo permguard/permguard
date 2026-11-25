@@ -409,9 +409,9 @@ async fn serve(
                     })
                     .await
                     .unwrap_or_else(|error| {
-                        Err(crate::evidence::Gated::Refused(read::ReadError::Unavailable(
-                            error.to_string(),
-                        )))
+                        Err(crate::evidence::Gated::Refused(
+                            read::ReadError::Unavailable(error.to_string()),
+                        ))
                     })
                 })
             },
