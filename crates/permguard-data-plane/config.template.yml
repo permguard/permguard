@@ -65,7 +65,7 @@ working_dir: /var/lib/permguard/data-plane
 #   max_volume_size: 100G
 #   membership_offline_grace: 24h
 #   mirror_staleness: 1h
-#   evidence_shipping_lag: 1d    # at least 94s: a member ships once a minute, below it is measured as 75s
+#   evidence_shipping_lag: 1d    # at least 38s: below it is measured as 30s, a reconnection and a watch pass
 #   spool_headroom: 20%
 #   checkpoint_export_lag: 1d
 #   backup_interval: 1d

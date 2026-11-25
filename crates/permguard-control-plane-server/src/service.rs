@@ -1054,6 +1054,7 @@ mod tests {
                         membership_offline_grace: Some(std::time::Duration::from_secs(86_400)),
                         mirror_staleness: Some(std::time::Duration::from_secs(300)),
                         evidence_shipping_lag: Some(std::time::Duration::from_secs(900)),
+                        evidence_freshness: Some(std::time::Duration::from_secs(2)),
                         spool_headroom: Some(20),
                         checkpoint_export_lag: Some(std::time::Duration::from_secs(3_600)),
                         backup_interval: Some(std::time::Duration::from_secs(86_400)),

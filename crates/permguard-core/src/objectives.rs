@@ -12,15 +12,22 @@
 //! | `objectives.membership_offline_grace` | duration | 1s to 365d        | — (declared and published; the coordinator's lease policy grants it) |
 //! | `objectives.mirror_staleness`         | duration | 1s to 365d        | `dataPlane.mirrors.stale_after`, declared and within the margin       |
 //! | `objectives.evidence_shipping_lag`    | duration | 1s to 365d        | the decision spool's `age`, within the margin                         |
+//! | `objectives.evidence_freshness`       | duration | 100ms to 1h       | `operations.streams.ship_linger`, at most half of it; never required  |
 //! | `objectives.spool_headroom`           | percent  | 1% to 90%         | —                                                                     |
 //! | `objectives.checkpoint_export_lag`    | duration | 1s to 365d        | `operations.audit.checkpoints.max_lag`, within the margin             |
 //! | `objectives.backup_interval`          | duration | 1m to 365d        | `operations.backup.retention`, longer than it                         |
 //! | `objectives.restore_test_interval`    | duration | 1h to 365d        | `operations.backup.retention`, at most it                             |
 //! | `objectives.key_recovery_owner`       | label    | 1 to 128 bytes    | —                                                                     |
 //!
-//! `evidence_shipping_lag` is useful from 94s: a member ships once every 60s membership pass and
-//! the watch reads once every 15s, so the shipping watch never counts a stream stalled before 75s,
-//! four fifths of 94s, and a shorter objective is measured against that floor (BUG-0250).
+//! `evidence_shipping_lag` is useful from 38s: shipping is continuous (iteration 04), a reconnection
+//! and a resend take up to 15s and the watch reads once every 15s, so the shipping watch never
+//! counts a stream stalled before 30s, four fifths of 38s, and a shorter objective is measured
+//! against that floor (BUG-0250).
+//!
+//! `evidence_freshness` is the p99 a deployment holds its evidence to, from an append to its
+//! acknowledgement (iteration 04, G1): a deployment may leave it out at any profile, the product's
+//! own target being gated in the lab (`bench/slo.json`); declared, the Host is `degraded:
+//! freshness` while the last five minutes pass it, and readiness is never held for it.
 //!
 //! Every value is bounded whatever the profile; from `production` every one is required, and an
 //! inconsistent one stops Bootstrap. The margin is a fifth of the objective: a subsystem bound that
@@ -50,6 +57,8 @@ pub struct Objectives {
     pub membership_offline_grace: Option<Duration>,
     pub mirror_staleness: Option<Duration>,
     pub evidence_shipping_lag: Option<Duration>,
+    /// The p99 an append waits for its acknowledgement (iteration 04); never required.
+    pub evidence_freshness: Option<Duration>,
     /// The share of the decision spool kept free, in percent.
     pub spool_headroom: Option<u8>,
     pub checkpoint_export_lag: Option<Duration>,
@@ -74,6 +83,8 @@ pub struct ObjectivesSection {
     pub mirror_staleness: Option<String>,
     #[serde(default)]
     pub evidence_shipping_lag: Option<String>,
+    #[serde(default)]
+    pub evidence_freshness: Option<String>,
     #[serde(default)]
     pub spool_headroom: Option<String>,
     #[serde(default)]
@@ -181,6 +192,12 @@ impl ObjectivesSection {
                 seconds(1),
                 seconds(365 * DAY),
             )?,
+            evidence_freshness: bounded(
+                "evidence_freshness",
+                &self.evidence_freshness,
+                Duration::from_millis(100),
+                seconds(3_600),
+            )?,
             spool_headroom,
             checkpoint_export_lag: bounded(
                 "checkpoint_export_lag",
@@ -216,6 +233,8 @@ pub struct Limits {
     pub audit_checkpoints_max_lag: Duration,
     pub backup_retention: Option<Duration>,
     pub host_quota_bytes: Option<u64>,
+    /// `Some` when this process ships streams: `operations.streams.ship_linger`.
+    pub ship_linger: Option<Duration>,
 }
 
 impl Objectives {
@@ -286,6 +305,17 @@ impl Objectives {
                 secs(within_margin(objective))
             ));
         }
+        if let (Some(objective), Some(linger)) = (self.evidence_freshness, limits.ship_linger)
+            && objective < linger * 2
+        {
+            found.push(format!(
+                "objectives.evidence_freshness ({}ms) is under twice operations.streams.ship_linger \
+                 ({}ms): at least {}ms",
+                objective.as_millis(),
+                linger.as_millis(),
+                (linger * 2).as_millis()
+            ));
+        }
         if let Some(objective) = self.checkpoint_export_lag
             && limits.audit_checkpoints_max_lag > within_margin(objective)
         {
@@ -347,6 +377,9 @@ impl Objectives {
             membership_offline_grace_seconds: secs(self.membership_offline_grace),
             mirror_staleness_seconds: secs(self.mirror_staleness),
             evidence_shipping_lag_seconds: secs(self.evidence_shipping_lag),
+            evidence_freshness_ms: self
+                .evidence_freshness
+                .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
             spool_headroom_percent: self.spool_headroom,
             checkpoint_export_lag_seconds: secs(self.checkpoint_export_lag),
             backup_interval_seconds: secs(self.backup_interval),
@@ -374,6 +407,9 @@ pub struct ObjectivesReport {
     pub mirror_staleness_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_shipping_lag_seconds: Option<u64>,
+    /// Never required: published only when declared (iteration 04).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_freshness_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spool_headroom_percent: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -401,6 +437,7 @@ mod tests {
             membership_offline_grace: text("24h"),
             mirror_staleness: text("5m"),
             evidence_shipping_lag: text("15m"),
+            evidence_freshness: None,
             spool_headroom: text("20%"),
             checkpoint_export_lag: text("1h"),
             backup_interval: text("24h"),
@@ -416,7 +453,34 @@ mod tests {
             audit_checkpoints_max_lag: Duration::from_secs(1800),
             backup_retention: Some(Duration::from_secs(90 * DAY)),
             host_quota_bytes: Some(80 << 30),
+            ship_linger: Some(Duration::from_millis(200)),
         }
+    }
+
+    /// Iteration 04, G1: `evidence_freshness` is read and bounded, published in milliseconds, never
+    /// required, and inconsistent under twice the linger.
+    #[test]
+    fn evidence_freshness_is_optional_bounded_and_at_least_twice_the_linger() {
+        let declared = |value: &str| ObjectivesSection {
+            evidence_freshness: Some(value.to_owned()),
+            ..complete()
+        };
+        let read = declared("2s").read().expect("read");
+        assert_eq!(read.evidence_freshness, Some(Duration::from_secs(2)));
+        assert!(read.inconsistencies(&limits()).is_empty());
+        assert_eq!(read.report("validated").evidence_freshness_ms, Some(2_000));
+        assert!(complete().read().expect("read").missing().is_empty(), "never required");
+        assert!(declared("50ms").read().is_err(), "under 100ms");
+        assert!(declared("2h").read().is_err(), "over 1h");
+        let tight = declared("300ms").read().expect("read");
+        assert_eq!(
+            tight.inconsistencies(&limits()),
+            vec![
+                "objectives.evidence_freshness (300ms) is under twice \
+                 operations.streams.ship_linger (200ms): at least 400ms"
+                    .to_owned()
+            ]
+        );
     }
 
     #[test]

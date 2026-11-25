@@ -94,6 +94,17 @@
               "type": "boolean"
             },
             "x-grpc-field": "proof"
+          },
+          {
+            "name": "wait_ms",
+            "in": "query",
+            "required": false,
+            "description": "A tail's wait for its next record, in milliseconds (iteration 04): `0`, the default, answers at once; clamped to the server's `max_wait_ms`; refused with `400` beside `until`, since an export never waits.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "wait_ms"
           }
         ],
         "responses": {
@@ -278,6 +289,17 @@
               "type": "boolean"
             },
             "x-grpc-field": "proof"
+          },
+          {
+            "name": "wait_ms",
+            "in": "query",
+            "required": false,
+            "description": "A tail's wait for its next record, in milliseconds (iteration 04): `0`, the default, answers at once; clamped to the server's `max_wait_ms`; refused with `400` beside `until`, since an export never waits.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "wait_ms"
           }
         ],
         "responses": {
@@ -1533,7 +1555,8 @@
                 "attributed-records",
                 "authenticated-offsets",
                 "read-coverage",
-                "tenant-scoped-reads"
+                "tenant-scoped-reads",
+                "tail-wait"
               ]
             }
           },
@@ -1549,7 +1572,8 @@
                 "until",
                 "limit_records",
                 "limit_bytes",
-                "proof"
+                "proof",
+                "wait_ms"
               ]
             }
           },
@@ -1637,6 +1661,11 @@
           "max_bytes": {
             "type": "integer",
             "minimum": 0
+          },
+          "max_wait_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The longest a tail waits for its next record, in milliseconds; present once the wait is served."
           }
         },
         "required": [

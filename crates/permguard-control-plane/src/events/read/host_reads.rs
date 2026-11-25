@@ -540,6 +540,7 @@ fn facade(fixture: &Fixture) -> crate::events::facade::EventFacade {
         base_url: String::new(),
         describer: permguard_core::stages::Describer::detached("control-plane"),
         authorization: crate::evidence::permissive(),
+        arrivals: std::sync::Arc::default(),
     }
 }
 

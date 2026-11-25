@@ -186,6 +186,10 @@ message ListRecordsRequest {
   string until_time = 17;
   // One Dogwood history key, by its digest.
   string history = 18;
+  // A tail's wait for its next event, in milliseconds (iteration 04): 0, the
+  // default, answers at once; clamped to the server's `max_wait_ms`; refused
+  // beside `until`, since an export never waits.
+  uint64 wait_ms = 19;
 }
 
 // What a block proves about what it covers.

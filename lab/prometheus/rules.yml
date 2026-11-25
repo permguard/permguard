@@ -109,6 +109,18 @@ groups:
             Records are durable locally but have not been acknowledged by the control plane. Check
             control-plane reachability and the decision-log shipper.
 
+      - alert: PermguardEvidenceLate
+        expr: histogram_quantile(0.99, sum by (component, le) (rate(permguard_stream_ship_freshness_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.component }} evidence reaches its Control Plane late"
+          description: >-
+            The p99 of the wait from an append to its acknowledgement has been past two seconds,
+            the product's target, for ten minutes: decisions and events still arrive, later than
+            they should. Check the coordinator's load and the task's signed rate.
+
       - alert: PermguardEvidenceShippingStalled
         expr: max by (component) (permguard_stream_shipping_stalled_seconds) > 300
         for: 1m

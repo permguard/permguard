@@ -26,9 +26,9 @@
 # and revokes tokens, rotations and revocations at once on both, and a load. BACKEND=import runs it with its Control Plane on
 # files first (`docker-compose.lab.import.yml`), stops it, imports its volume into PostgreSQL and
 # S3 with `permguard migrate import`, serves it from there and proves the profile again. The
-# all-in-one and the multi-data-plane measure the evidence freshness, from a decision's answer to its
+# all-in-one and the multi-data-plane prove the evidence freshness, from a decision's answer to its
 # durable acknowledgement by the Control Plane (iteration 04): LAB_FRESHNESS_SAMPLES samples, six by
-# default; LAB_FRESHNESS_P99_MS, when given, fails the profile on a worse sample.
+# default, the worst held to bench/slo.json's `freshness_ms`; LAB_FRESHNESS_P99_MS=0 only measures.
 set -euo pipefail
 
 # Written for the bash macOS ships, 3.2: no negative indexes, no empty array expanded under `-u`.
@@ -114,10 +114,18 @@ run_profile() {
         [ "${code}" = 0 ]
     }
 
-    # Evidence freshness (iteration 04, WP-30.1): measured on every run, its samples logged; held to
-    # LAB_FRESHNESS_P99_MS only when it is given, which WP-32.2 makes the release gate.
+    # Evidence freshness (iteration 04, WP-32.2): the worst sample held to the product's target
+    # (bench/slo.json), `local_p99` for a Host to itself and `member_p99` for a member to its
+    # coordinator, scaled as the latency is on an engine nested in a virtual machine.
+    # LAB_FRESHNESS_P99_MS overrides it; `0` measures without gating.
     freshness() {
-        dc run --rm -e "LAB_FRESHNESS_P99_MS=${LAB_FRESHNESS_P99_MS:-}" \
+        local key objective
+        key=member_p99
+        [ "$1" != all-in-one ] || key=local_p99
+        objective="${LAB_FRESHNESS_P99_MS:-$(jq -r --arg key "${key}" --arg scale "${LAB_P99_OBJECTIVE_SCALE:-1}" \
+            '.freshness_ms[$key] * ($scale | tonumber) | floor' bench/slo.json)}"
+        [ "${objective}" != 0 ] || objective=""
+        dc run --rm -e "LAB_FRESHNESS_P99_MS=${objective}" \
             -e "LAB_FRESHNESS_SAMPLES=${LAB_FRESHNESS_SAMPLES:-6}" \
             -e "LAB_FRESHNESS_TIMEOUT=${LAB_FRESHNESS_TIMEOUT:-120}" lab assert "$1" freshness
     }

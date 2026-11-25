@@ -710,6 +710,11 @@
             "minimum": 0,
             "description": "The evidence shipping lag objective."
           },
+          "evidence_freshness_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The evidence freshness objective, the p99 from an append to its acknowledgement; published only when declared."
+          },
           "spool_headroom_percent": {
             "type": "integer",
             "minimum": 0,

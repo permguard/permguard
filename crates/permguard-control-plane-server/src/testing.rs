@@ -670,6 +670,7 @@ pub mod events {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
+            arrivals: std::sync::Arc::default(),
         }
     }
 }

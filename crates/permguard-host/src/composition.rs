@@ -2540,6 +2540,13 @@ pub trait StreamImport: Send + Sync {
 /// What a Plane reads of a stream the Host consumes (WP-6.1, owner decision of 2026-10-18): the
 /// public reads answer from the consumer in-process, one copy.
 pub trait StreamConsumerReads: Send + Sync {
+    /// Registers `wake`, called once an ingest acknowledged a batch here, or another instance
+    /// said it did one (iteration 04, `3-control-plane/3` Reads): a tail waiting for a record reads
+    /// again. A consumer that ingests nothing calls it never.
+    fn on_ingest(&self, wake: Wake) {
+        let _ = wake;
+    }
+
     /// The runs held over `resource`, by producer and then the order they opened.
     fn runs(&self, resource: &Resource) -> Result<Vec<ConsumedRun>, String>;
 
@@ -2654,6 +2661,11 @@ impl StreamConsumer {
 
     pub fn runs(&self, resource: &Resource) -> Result<Vec<ConsumedRun>, String> {
         self.reads.runs(resource)
+    }
+
+    /// Registers `wake` with the consumer: called once an ingest acknowledged a batch.
+    pub fn on_ingest(&self, wake: Wake) {
+        self.reads.on_ingest(wake);
     }
 
     /// The signers of each run over `resource` (WP-6.2b).

@@ -95,6 +95,15 @@ impl Query {
             .transpose()
     }
 
+    /// `wait_ms`, a tail's wait for its next record (iteration 04, `7-contracts/5` Request): zero
+    /// when absent; beside `until` it is refused, since an export never waits.
+    pub fn wait(&self) -> Result<std::time::Duration, ApiError> {
+        wait_of(
+            self.number::<u64>("wait_ms")?.unwrap_or(0),
+            self.value("until").is_some(),
+        )
+    }
+
     /// `limit_records`, or its older spelling `limit`.
     pub fn limit_records(&self) -> Result<Option<usize>, ApiError> {
         match self.number("limit_records")? {
@@ -127,14 +136,26 @@ impl Query {
     }
 }
 
+/// A tail's wait of `wait_ms` milliseconds, on every transport: refused beside `until`, since an
+/// export never waits (iteration 04, `7-contracts/5` Request).
+pub fn wait_of(wait_ms: u64, until: bool) -> Result<std::time::Duration, ApiError> {
+    if wait_ms > 0 && until {
+        return Err(invalid(
+            "`wait_ms` waits on a tail: an export, with `until`, never waits".to_owned(),
+        ));
+    }
+    Ok(std::time::Duration::from_millis(wait_ms))
+}
+
 /// The parameters every bounded read takes.
-pub const WINDOW: [&str; 6] = [
+pub const WINDOW: [&str; 7] = [
     "from",
     "until",
     "limit",
     "limit_records",
     "limit_bytes",
     "proof",
+    "wait_ms",
 ];
 
 pub fn percent_decode(value: &str) -> String {

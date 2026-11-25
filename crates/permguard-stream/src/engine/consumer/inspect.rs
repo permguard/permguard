@@ -178,6 +178,10 @@ fn wrap(error: StreamError) -> String {
 }
 
 impl<C: RecordCodec> permguard_host::composition::StreamConsumerReads for Consumer<C> {
+    fn on_ingest(&self, wake: permguard_host::composition::Wake) {
+        self.add_reader(wake);
+    }
+
     fn runs(
         &self,
         resource: &Resource,

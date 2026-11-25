@@ -52,6 +52,8 @@ impl EventLog for crate::served::Served<EventFacade> {
         };
         let filters =
             filters_of(&asked).map_err(|refused| status_of(&refused, self.0.disclosure))?;
+        let wait = crate::query::wait_of(asked.wait_ms, !asked.until.is_empty())
+            .map_err(|refused| status_of(&refused, self.0.disclosure))?;
         let window = permguard_stream::Window {
             from: (!asked.from.is_empty()).then(|| asked.from.clone()),
             until: (!asked.until.is_empty())
@@ -62,11 +64,29 @@ impl EventLog for crate::served::Served<EventFacade> {
             proof: asked.proof,
         };
 
-        let facade = self.0.clone();
-        let page =
-            tokio::task::spawn_blocking(move || facade.read(&scope, &filters, &window, kind))
-                .await
-                .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())));
+        // Waiting for the next event, exactly as on HTTP (iteration 04, WP-33.1).
+        let arrivals = std::sync::Arc::clone(&self.0.arrivals);
+        let page = arrivals
+            .read_waiting(
+                wait,
+                || {
+                    let (facade, scope, filters, window) = (
+                        self.0.clone(),
+                        scope.clone(),
+                        filters.clone(),
+                        window.clone(),
+                    );
+                    Box::pin(async move {
+                        tokio::task::spawn_blocking(move || {
+                            facade.read(&scope, &filters, &window, kind)
+                        })
+                        .await
+                        .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                    })
+                },
+                |page| !matches!(page, Ok(page) if page.records.is_empty()),
+            )
+            .await;
 
         match page {
             Ok(page) => Ok(Response::new(ListRecordsResponse {

@@ -266,6 +266,7 @@ mod tests {
             headroom,
             refusal_p99_ms: 20.0,
             representative_concurrency: representative,
+            freshness_ms: None,
         }
     }
 

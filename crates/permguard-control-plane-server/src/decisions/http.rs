@@ -69,6 +69,8 @@ struct Asked {
     limit_records: Option<usize>,
     limit_bytes: Option<u64>,
     proof: bool,
+    /// A tail's wait for its next record (iteration 04, WP-33.1).
+    wait: std::time::Duration,
 }
 
 impl Asked {
@@ -100,6 +102,7 @@ fn window_of(
         limit_records: query.limit_records()?,
         limit_bytes: query.number("limit_bytes")?,
         proof: query.flag("proof")?,
+        wait: query.wait()?,
     };
     Ok((asked, query))
 }
@@ -194,17 +197,32 @@ async fn serve(
 ) -> Response {
     let window = asked.window();
     // Off the runtime's threads: a page is segment files read back, and a bulk
-    // export must not stall the reactor the shippers are landing batches on.
-    let page = {
-        let reader = facade.clone();
-        tokio::task::spawn_blocking(move || reader.read_as(&actor, scope, &window))
-            .await
-            .unwrap_or_else(|error| {
-                Err(crate::evidence::Gated::Refused(
-                    read::ReadError::Unavailable(error.to_string()),
-                ))
-            })
-    };
+    // export must not stall the reactor the shippers are landing batches on. A tail asking to
+    // wait reads again each time a batch is acknowledged, until it holds a record (WP-33.1).
+    let arrivals = std::sync::Arc::clone(&facade.arrivals);
+    let page = arrivals
+        .read_waiting(
+            asked.wait,
+            || {
+                let (reader, actor, scope, window) = (
+                    facade.clone(),
+                    std::sync::Arc::clone(&actor),
+                    scope.clone(),
+                    window.clone(),
+                );
+                Box::pin(async move {
+                    tokio::task::spawn_blocking(move || reader.read_as(&actor, scope, &window))
+                        .await
+                        .unwrap_or_else(|error| {
+                            Err(crate::evidence::Gated::Refused(
+                                read::ReadError::Unavailable(error.to_string()),
+                            ))
+                        })
+                })
+            },
+            |page| !matches!(page, Ok(page) if page.records.is_empty()),
+        )
+        .await;
     let page = match page {
         Ok(page) => Ok(page),
         // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).
@@ -1056,6 +1074,57 @@ mod strict {
         assert_eq!(later["spans"].as_array().map(Vec::len), Some(1));
     }
 
+    /// Iteration 04, WP-33.1 (`7-contracts/5` Request): a tail asking to wait holds the read until
+    /// a record comes or its wait ends, then answers what it holds; without `wait_ms` it answers at
+    /// once; beside `until` the wait is refused, since an export never waits, on REST and gRPC
+    /// alike.
+    #[tokio::test]
+    async fn a_tail_waits_for_its_next_record_and_an_export_never_waits() {
+        let facade = signing("tail-wait");
+        let router = anonymous(routes(facade.clone()));
+        let (pdp, instance) = (
+            permguard_core::encoding::hex(&[0xa1; 16]),
+            permguard_core::encoding::hex(&[0x01; 16]),
+        );
+        let path = format!("/decisions/v1/streams/{pdp}/{instance}/records");
+        let started = std::time::Instant::now();
+        let (status, body) = get(&router, &path).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(started.elapsed() < std::time::Duration::from_millis(250));
+        let until = body["high_watermark"].as_str().expect("a frontier").to_owned();
+
+        let started = std::time::Instant::now();
+        let (status, waited) = get(&router, &format!("{path}?wait_ms=300")).await;
+        assert_eq!(status, StatusCode::OK, "{waited}");
+        assert!(waited["records"].as_array().is_some_and(Vec::is_empty));
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(300),
+            "it waited: {:?}",
+            started.elapsed()
+        );
+
+        let encoded: String = url::form_urlencoded::byte_serialize(until.as_bytes()).collect();
+        let (status, refused) = get(&router, &format!("{path}?wait_ms=300&until={encoded}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert_eq!(refused["code"], "invalid_argument");
+        let (status, body) = get(&router, &format!("{path}?wait_ms=0&until={encoded}")).await;
+        assert_eq!(status, StatusCode::OK, "no wait asked beside an export: {body}");
+
+        let refused = DecisionLog::read(
+            &crate::served::Served(facade),
+            tonic::Request::new(ReadRequest {
+                pdp,
+                instance,
+                until,
+                wait_ms: 300,
+                ..ReadRequest::default()
+            }),
+        )
+        .await
+        .expect_err("an export never waits");
+        assert_eq!(refused.code(), tonic::Code::InvalidArgument);
+    }
+
     /// WP-6.3b: the decision log's discovery document is served beside its routes, on the base
     /// the plane is reached at.
     #[tokio::test]
@@ -1190,6 +1259,7 @@ mod strict {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
+            arrivals: Arc::default(),
         }
     }
 

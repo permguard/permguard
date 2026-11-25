@@ -319,6 +319,11 @@ pub struct Consumer<C> {
     /// What the Plane accepts of a record beyond its type: `None` accepts every record the codec
     /// reads. A record it refuses refuses its batch, `unverifiable`, before anything is written.
     admission: Option<std::sync::Arc<Admission>>,
+    /// The readers' wakes, called once an ingest acknowledged a batch here or another instance
+    /// said one did (iteration 04, WP-33.1).
+    readers: std::sync::RwLock<Vec<permguard_host::composition::Wake>>,
+    /// The relays' wakes, called only for an ingest here: what tells the other instances.
+    relays: std::sync::RwLock<Vec<permguard_host::composition::Wake>>,
 }
 
 /// A Plane's own rule over the records it keeps: `Err` names why one is refused.
@@ -366,6 +371,37 @@ impl<C: RecordCodec> Consumer<C> {
             lease: super::retention::Lease::default(),
             held: Mutex::new(BTreeMap::new()),
             admission: None,
+            readers: std::sync::RwLock::new(Vec::new()),
+            relays: std::sync::RwLock::new(Vec::new()),
+        }
+    }
+
+    /// Registers a reader's wake (iteration 04, WP-33.1).
+    pub fn add_reader(&self, wake: permguard_host::composition::Wake) {
+        self.readers
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(wake);
+    }
+
+    /// Registers a relay's wake: told of an ingest here, never of one another instance did, so a
+    /// notification never comes back (WP-33.2).
+    pub fn add_relay(&self, wake: permguard_host::composition::Wake) {
+        self.relays
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(wake);
+    }
+
+    /// Another instance ingested a batch: the readers here read again (WP-33.2).
+    pub fn heard(&self) {
+        Self::call(&self.readers);
+    }
+
+    fn call(wakes: &std::sync::RwLock<Vec<permguard_host::composition::Wake>>) {
+        let wakes = wakes.read().unwrap_or_else(PoisonError::into_inner).clone();
+        for wake in wakes {
+            wake();
         }
     }
 
@@ -667,6 +703,20 @@ impl<C: RecordCodec> Consumer<C> {
     /// Ingests one shipped batch of the task `shipping` names (WP-5.3): answers the outcome, and
     /// the fork found when it is one. An error is a store that cannot answer now: `deferred`.
     pub fn ingest(
+        &self,
+        shipping: &Shipping<'_>,
+        body: &[u8],
+    ) -> Result<(Answer, Option<Forked>), StreamError> {
+        let ingested = self.ingest_batch(shipping, body);
+        // Acknowledged: what a waiting tail reads is here, and the other instances are told.
+        if matches!(&ingested, Ok((answer, _)) if answer.outcome == super::ingest::Outcome::Ok) {
+            Self::call(&self.readers);
+            Self::call(&self.relays);
+        }
+        ingested
+    }
+
+    fn ingest_batch(
         &self,
         shipping: &Shipping<'_>,
         body: &[u8],

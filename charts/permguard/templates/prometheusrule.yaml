@@ -99,6 +99,14 @@ spec:
           annotations:
             summary: "{{`{{ $labels.component }}`}} evidence is not reaching its consumers"
             runbook_url: "https://docs.permguard.com/how-it-works/evidence"
+        - alert: PermguardEvidenceLate
+          expr: histogram_quantile(0.99, sum by (component, le) (rate(permguard_stream_ship_freshness_seconds_bucket[5m]))) > {{ $rules.shipping.freshnessP99Seconds }}
+          for: {{ $rules.shipping.freshnessFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} evidence reaches its Control Plane late"
+            runbook_url: "https://docs.permguard.com/how-it-works/evidence"
         - alert: PermguardDecisionLogDroppedRecords
           expr: increase(permguard_decisions_dropped_total[5m]) > 0
           labels:

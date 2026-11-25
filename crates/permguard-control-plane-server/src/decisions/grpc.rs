@@ -142,6 +142,8 @@ impl DecisionLog for crate::served::Served<DecisionFacade> {
             Scope::Stream { .. } => "stream",
             Scope::Tenant { .. } => "tenant",
         };
+        let wait = crate::query::wait_of(asked.wait_ms, !asked.until.is_empty())
+            .map_err(|error| api_status(&error, self.0.disclosure))?;
         // The same window the HTTP binding builds, from the same fields: `limit_records` where a
         // caller states it, and the older `limit` where it does not.
         let window = permguard_stream::Window {
@@ -159,18 +161,31 @@ impl DecisionLog for crate::served::Served<DecisionFacade> {
             proof: asked.proof,
         };
 
-        // Off the runtime's threads, exactly as on HTTP.
-        let page = {
-            let facade = self.0.clone();
-            let scope = scope.clone();
-            tokio::task::spawn_blocking(move || facade.read_as(&actor, scope, &window))
-                .await
-                .unwrap_or_else(|error| {
-                    Err(crate::evidence::Gated::Refused(
-                        read::ReadError::Unavailable(error.to_string()),
-                    ))
-                })
-        };
+        // Off the runtime's threads, and waiting for the next record, exactly as on HTTP.
+        let arrivals = std::sync::Arc::clone(&self.0.arrivals);
+        let page = arrivals
+            .read_waiting(
+                wait,
+                || {
+                    let (facade, actor, scope, window) = (
+                        self.0.clone(),
+                        std::sync::Arc::clone(&actor),
+                        scope.clone(),
+                        window.clone(),
+                    );
+                    Box::pin(async move {
+                        tokio::task::spawn_blocking(move || facade.read_as(&actor, scope, &window))
+                            .await
+                            .unwrap_or_else(|error| {
+                                Err(crate::evidence::Gated::Refused(
+                                    read::ReadError::Unavailable(error.to_string()),
+                                ))
+                            })
+                    })
+                },
+                |page| !matches!(page, Ok(page) if page.records.is_empty()),
+            )
+            .await;
         // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).
         let page = match page {
             Ok(page) => Ok(page),

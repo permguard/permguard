@@ -379,14 +379,34 @@ async fn serve(
         }
         Err(crate::evidence::Gated::Refused(error)) => return read_refusal(&facade, error),
     };
+    let wait = match asked.query.wait() {
+        Ok(wait) => wait,
+        Err(error) => return refuse(&facade, error),
+    };
     let window = asked.window();
     let filters = asked.filters.clone();
-    let page = {
-        let (facade, scope) = (facade.clone(), scope.clone());
-        tokio::task::spawn_blocking(move || facade.read(&scope, &filters, &window, kind))
-            .await
-            .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
-    };
+    // A tail asking to wait reads again each time a batch is acknowledged, until it holds an
+    // event (iteration 04, WP-33.1).
+    let arrivals = std::sync::Arc::clone(&facade.arrivals);
+    let page = arrivals
+        .read_waiting(
+            wait,
+            || {
+                let (facade, scope, filters, window) = (
+                    facade.clone(),
+                    scope.clone(),
+                    filters.clone(),
+                    window.clone(),
+                );
+                Box::pin(async move {
+                    tokio::task::spawn_blocking(move || facade.read(&scope, &filters, &window, kind))
+                        .await
+                        .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                })
+            },
+            |page| !matches!(page, Ok(page) if page.records.is_empty()),
+        )
+        .await;
 
     match page {
         Ok(page) => {
@@ -876,6 +896,7 @@ mod openapi {
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
+            arrivals: std::sync::Arc::default(),
         };
         for (error, code) in [
             (CursorError::Forged, "forged"),
@@ -950,6 +971,7 @@ mod gate {
                     permguard_core::authz::Selector::parse(selector).expect("a selector"),
                 ),
             ])),
+            arrivals: Arc::default(),
         }
     }
 

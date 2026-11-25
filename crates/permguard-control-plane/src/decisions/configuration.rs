@@ -17,7 +17,7 @@ pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-decisions-native-v1
 
 /// What this plane implements of `permguard.api.decisions.native.v1`, each implemented and
 /// tested here: the event log's names, all of which hold for decisions too.
-pub const CAPABILITIES: [&str; 6] = [
+pub const CAPABILITIES: [&str; 7] = [
     // A batch is stored whole or not at all; a retry of one already stored is recognised.
     "atomic-batches",
     "idempotent-ingest",
@@ -29,11 +29,20 @@ pub const CAPABILITIES: [&str; 6] = [
     "read-coverage",
     // One tenant's records, by its ledger's concrete ids.
     "tenant-scoped-reads",
+    // A tail waits, `wait_ms`, for its next record (iteration 04, WP-33.1).
+    "tail-wait",
 ];
 
 /// The query parameters a read takes, as the contract's read table names them: the stream or the
 /// tenant it reads is named by its path (WP-13.1).
-pub const READ_PARAMETERS: [&str; 5] = ["from", "until", "limit_records", "limit_bytes", "proof"];
+pub const READ_PARAMETERS: [&str; 6] = [
+    "from",
+    "until",
+    "limit_records",
+    "limit_bytes",
+    "proof",
+    "wait_ms",
+];
 
 /// What this plane publishes about `permguard.api.decisions.native.v1`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +92,8 @@ pub struct Limits {
     pub max_records: u64,
     /// The most bytes one page carries; one record larger than this is still returned alone.
     pub max_bytes: u64,
+    /// The longest a tail waits for its next record, in milliseconds (iteration 04).
+    pub max_wait_ms: u64,
 }
 
 /// The document for a plane reached at `base`.
@@ -112,6 +123,7 @@ pub fn document(base: &str, store: &str, header: permguard_core::stages::Header)
         limits: Limits {
             max_records: permguard_stream::window::MAX_RECORDS as u64,
             max_bytes: permguard_stream::window::MAX_BYTES,
+            max_wait_ms: crate::arrivals::Arrivals::max_wait_ms(),
         },
     }
 }

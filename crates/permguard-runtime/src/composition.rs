@@ -3020,9 +3020,17 @@ impl Composition {
         // One shipper for the memberships' ship tasks and the local ones, woken by every durable
         // append (iteration 04, WP-31.3): what is decided reaches its Control Plane within the
         // linger, not at a pass.
-        let _shipping = serving
-            .as_ref()
-            .and_then(|api| crate::shipping::drive(Arc::clone(api), config.ship_linger()));
+        let _shipping = serving.as_ref().and_then(|api| {
+            crate::shipping::drive_observed(
+                Arc::clone(api),
+                config.ship_linger(),
+                Some(crate::shipping::Observing {
+                    health: context.health().clone(),
+                    metrics: context.metrics().clone(),
+                    objective: objectives.evidence_freshness,
+                }),
+            )
+        });
         drop(local_shipper);
         // A `shared-bounded` member imports on a pass its bound can meet, every half of it, and
         // the re-pin pass leaves the import to it (BUG-0130).
@@ -3304,6 +3312,7 @@ fn objectives_checked(
         audit_checkpoints_max_lag: config.audit_checkpoints_max_lag(),
         backup_retention: config.backup_retention(),
         host_quota_bytes: storage.quotas.host.bytes,
+        ship_linger: Some(config.ship_linger()),
     };
     let missing = objectives.missing();
     let inconsistent = objectives.inconsistencies(&limits);

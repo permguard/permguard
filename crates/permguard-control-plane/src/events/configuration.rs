@@ -27,7 +27,7 @@ pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-events-native-v1alp
 /// What this plane implements of `permguard.api.events.native.v1alpha1`.
 ///
 /// Every entry is implemented and tested here. A capability is a promise.
-pub const CAPABILITIES: [&str; 6] = [
+pub const CAPABILITIES: [&str; 7] = [
     // A batch is accepted whole or not at all, and a producer's retry of one already stored is
     // recognised rather than duplicated.
     "atomic-batches",
@@ -42,6 +42,8 @@ pub const CAPABILITIES: [&str; 6] = [
     "read-coverage",
     // One tenant's records, readable by that tenant, without a view of anybody else's.
     "tenant-scoped-reads",
+    // A tail waits, `wait_ms`, for its next event (iteration 04, WP-33.1).
+    "tail-wait",
 ];
 
 /// The filter names a read accepts, in the order [`super::read::Filters`] declares them: the very
@@ -114,6 +116,8 @@ pub struct Limits {
     /// What keeps a sparse filter from turning one page into a full scan: a page may come back
     /// empty having examined this many, and say so through its coverage.
     pub max_examined: u64,
+    /// The longest a tail waits for its next event, in milliseconds (iteration 04).
+    pub max_wait_ms: u64,
 }
 
 /// Where records are read.
@@ -171,6 +175,7 @@ pub fn document(
             max_records: permguard_stream::window::MAX_RECORDS as u64,
             max_bytes: permguard_stream::window::MAX_BYTES,
             max_examined: permguard_stream::window::MAX_EXAMINED as u64,
+            max_wait_ms: crate::arrivals::Arrivals::max_wait_ms(),
         },
     }
 }

@@ -64,7 +64,8 @@ fn the_decision_document_names_its_interface_and_capabilities() {
             "attributed-records",
             "authenticated-offsets",
             "read-coverage",
-            "tenant-scoped-reads"
+            "tenant-scoped-reads",
+            "tail-wait"
         ])
     );
     assert_eq!(document["offsets"]["api"], document["interface"]);
@@ -74,12 +75,15 @@ fn the_decision_document_names_its_interface_and_capabilities() {
         document["read_parameters"]
             .as_array()
             .map(|held| held.len()),
-        Some(5)
+        Some(6)
     );
     assert_eq!(
         document["limits"]["max_records"],
         permguard_stream::window::MAX_RECORDS as u64
     );
+    // Iteration 04, WP-33.1: the tail's wait, announced with its bound.
+    assert_eq!(document["read_parameters"][5], "wait_ms");
+    assert_eq!(document["limits"]["max_wait_ms"], 25_000);
     permguard_conformance::schema::Document::load("evidence-decisions.json")
         .check_json("ConfigurationDocument", &document);
 }

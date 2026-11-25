@@ -7,6 +7,7 @@
 //! nothing and listens nowhere; its routes over HTTP and gRPC, its module for the composition and
 //! its binary are `permguard-control-plane-server`'s (the crate boundaries refactoring, RD-3).
 
+pub mod arrivals;
 pub mod catalog;
 pub mod decisions;
 pub mod engine;

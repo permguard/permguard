@@ -39,6 +39,75 @@ const BEHIND_LONGEST: Duration = Duration::from_secs(5);
 /// sign it.
 const FULL_BATCH: u64 = 1000;
 
+/// The window the freshness objective is judged over, and the most samples it keeps.
+const FRESHNESS_WINDOW: Duration = Duration::from_secs(300);
+const FRESHNESS_SAMPLES: usize = 10_000;
+
+/// The capability a freshness past its objective degrades the Host on: `degraded: freshness`.
+pub const FRESHNESS: &str = "freshness";
+
+/// From the wake of an append to the acknowledgement of everything due then (iteration 04,
+/// `1-architecture/6` Freshness).
+pub const SHIP_FRESHNESS: permguard_core::metrics::Metric = permguard_core::metrics::Metric::histogram(
+    "permguard_stream_ship_freshness_seconds",
+    "Seconds from an append waking the shipper to the acknowledgement of everything due then.",
+    &[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0],
+);
+
+/// The ship sessions kept open.
+pub const SHIP_SESSIONS: permguard_core::metrics::Metric = permguard_core::metrics::Metric::gauge(
+    "permguard_stream_ship_sessions",
+    "Ship sessions the member keeps open across batches.",
+);
+
+/// The shipper's rounds, by how they ended: `ok` caught up, `partial` shipped and still behind,
+/// `deferred` behind with nothing shipped, `empty` nothing due.
+pub const SHIP_ROUNDS: permguard_core::metrics::Metric = permguard_core::metrics::Metric::counter(
+    "permguard_stream_ship_rounds_total",
+    "Shipping rounds, by outcome.",
+);
+
+/// What the shipper reports to, beside the Host it ships for.
+#[derive(Clone)]
+pub struct Observing {
+    pub health: permguard_core::Health,
+    pub metrics: permguard_core::Metrics,
+    /// `objectives.evidence_freshness`, when declared.
+    pub objective: Option<Duration>,
+}
+
+/// The freshness samples of the window, oldest first, and whether the objective is passed now.
+#[derive(Debug, Default)]
+pub struct Freshness {
+    samples: std::collections::VecDeque<(Duration, Duration)>,
+}
+
+impl Freshness {
+    /// Keeps `sample`, taken at `now` on the monotonic clock, and forgets what left the window.
+    pub fn observe(&mut self, now: Duration, sample: Duration) {
+        self.samples.push_back((now, sample));
+        while self
+            .samples
+            .front()
+            .is_some_and(|(at, _)| now.saturating_sub(*at) > FRESHNESS_WINDOW)
+            || self.samples.len() > FRESHNESS_SAMPLES
+        {
+            self.samples.pop_front();
+        }
+    }
+
+    /// The p99 of the window, `None` without a sample.
+    pub fn p99(&self) -> Option<Duration> {
+        let mut sorted: Vec<Duration> = self.samples.iter().map(|(_, sample)| *sample).collect();
+        if sorted.is_empty() {
+            return None;
+        }
+        sorted.sort();
+        let index = (sorted.len() * 99).div_ceil(100).saturating_sub(1);
+        sorted.get(index).copied()
+    }
+}
+
 /// The component the drain and the recovery log as.
 const COMPONENT: &str = "host";
 
@@ -241,6 +310,16 @@ impl Drop for Shipping {
 /// left something behind goes again after a wait from 250 ms doubling to 5 s, or as soon as a
 /// task's bucket has a token. `None` when the Host ships nothing.
 pub fn drive(api: Arc<HostApi>, linger: Duration) -> Option<Shipping> {
+    drive_observed(api, linger, None)
+}
+
+/// [`drive`], reporting to `observing`: the freshness histogram, the sessions held, the rounds, and
+/// `degraded: freshness` while the p99 of the last five minutes passes `evidence_freshness`.
+pub fn drive_observed(
+    api: Arc<HostApi>,
+    linger: Duration,
+    observing: Option<Observing>,
+) -> Option<Shipping> {
     if !api.ships_anything() {
         return None;
     }
@@ -269,15 +348,26 @@ pub fn drive(api: Arc<HostApi>, linger: Duration) -> Option<Shipping> {
     Some(Shipping(tokio::spawn(async move {
         let mut again = Some(Duration::ZERO);
         let mut behind_wait = BEHIND_FIRST;
+        let started = std::time::Instant::now();
+        let mut freshness = Freshness::default();
+        let mut exceeded = false;
+        // When the oldest append not yet acknowledged woke the shipper.
+        let mut pending: Option<std::time::Instant> = None;
         loop {
-            match again {
+            let woken = match again {
                 Some(wait) => {
                     tokio::select! {
-                        () = wake.notified() => {}
-                        () = tokio::time::sleep(wait) => {}
+                        () = wake.notified() => true,
+                        () = tokio::time::sleep(wait) => false,
                     }
                 }
-                None => wake.notified().await,
+                None => {
+                    wake.notified().await;
+                    true
+                }
+            };
+            if woken && pending.is_none() {
+                pending = Some(std::time::Instant::now());
             }
             // The linger: what is appended meanwhile leaves in the same round, unless a batch's
             // worth is there first.
@@ -302,6 +392,34 @@ pub fn drive(api: Arc<HostApi>, linger: Duration) -> Option<Shipping> {
             // Behind: a bucket empty, a deferral, a session lost. The round goes again when the
             // bucket refills, or after a wait that grows while nothing moves.
             let behind = round.behind || api.shipping_behind().unwrap_or(false);
+            if let Some(observing) = &observing {
+                let outcome = match (round.shipped > 0, behind) {
+                    (true, false) => "ok",
+                    (true, true) => "partial",
+                    (false, true) => "deferred",
+                    (false, false) => "empty",
+                };
+                observing.metrics.count(
+                    &SHIP_ROUNDS,
+                    &[(permguard_core::metrics::labels::OUTCOME, outcome)],
+                );
+                #[allow(clippy::cast_precision_loss)]
+                observing
+                    .metrics
+                    .set(&SHIP_SESSIONS, &[], api.ship_sessions_open() as f64);
+            }
+            // Caught up: everything due when the oldest pending append woke the shipper is
+            // acknowledged, and that wait is one freshness sample.
+            if !behind && let Some(since) = pending.take() {
+                let sample = since.elapsed();
+                if let Some(observing) = &observing {
+                    observing
+                        .metrics
+                        .observe(&SHIP_FRESHNESS, &[], sample.as_secs_f64());
+                    freshness.observe(started.elapsed(), sample);
+                    exceeded = judge_freshness(observing, &freshness, exceeded);
+                }
+            }
             again = if let Some(token) = round.retry_after {
                 Some(token)
             } else if behind {
@@ -318,6 +436,42 @@ pub fn drive(api: Arc<HostApi>, linger: Duration) -> Option<Shipping> {
             };
         }
     })))
+}
+
+/// `degraded: freshness` while the window's p99 passes the declared objective, logged once when it
+/// starts and once when it clears. Answers whether it is passed now.
+fn judge_freshness(observing: &Observing, freshness: &Freshness, before: bool) -> bool {
+    let (Some(objective), Some(p99)) = (observing.objective, freshness.p99()) else {
+        return before;
+    };
+    let lifecycle = observing.health.lifecycle();
+    if p99 > objective {
+        let reason = format!(
+            "the p99 of the last five minutes is {}ms, past the {}ms evidence_freshness objective",
+            p99.as_millis(),
+            objective.as_millis()
+        );
+        if !before {
+            tracing::warn!(
+                event.name = "host.freshness_exceeded",
+                component = COMPONENT,
+                reason = %reason,
+                "evidence reaches its consumers later than its objective"
+            );
+        }
+        lifecycle.degrade(permguard_core::lifecycle::HOST, FRESHNESS, reason);
+        true
+    } else {
+        if before {
+            tracing::info!(
+                event.name = "host.freshness_restored",
+                component = COMPONENT,
+                "evidence reaches its consumers within its objective again"
+            );
+            lifecycle.restore(permguard_core::lifecycle::HOST, FRESHNESS);
+        }
+        false
+    }
 }
 
 /// The evidence drained at shutdown for a Host with no listener: the producers ship to their
@@ -355,5 +509,56 @@ impl permguard_core::Service for EvidenceDrain {
                 Some(api) => drain(&api, deadline).await,
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    /// Iteration 04, `1-architecture/8` (evidence freshness): the p99 is the window's, five
+    /// minutes, and a sample older than it no longer counts.
+    #[test]
+    fn the_freshness_p99_is_the_last_five_minutes() {
+        let mut freshness = Freshness::default();
+        assert_eq!(freshness.p99(), None);
+        for n in 0..99 {
+            freshness.observe(Duration::from_secs(n), ms(300));
+        }
+        freshness.observe(Duration::from_secs(99), ms(9_000));
+        assert_eq!(freshness.p99(), Some(ms(300)), "one slow sample in a hundred");
+        freshness.observe(Duration::from_secs(100), ms(9_000));
+        assert_eq!(freshness.p99(), Some(ms(9_000)), "two in a hundred and one");
+        // Six minutes on, only what came since counts.
+        freshness.observe(Duration::from_secs(460), ms(200));
+        assert_eq!(freshness.p99(), Some(ms(200)));
+    }
+
+    /// Past the declared objective the Host is `degraded: freshness`, said once; back within it,
+    /// restored; never a readiness hold. Undeclared, nothing is judged.
+    #[test]
+    fn a_freshness_past_its_objective_degrades_the_host_and_clears_by_itself() {
+        let health = permguard_core::Health::new();
+        let observing = Observing {
+            health: health.clone(),
+            metrics: permguard_core::Metrics::none(),
+            objective: Some(Duration::from_secs(2)),
+        };
+        let mut freshness = Freshness::default();
+        freshness.observe(ms(0), ms(3_000));
+        assert!(judge_freshness(&observing, &freshness, false));
+        assert!(health.lifecycle().holds().is_empty(), "never a readiness hold");
+        let mut within = Freshness::default();
+        within.observe(ms(0), ms(500));
+        assert!(!judge_freshness(&observing, &within, true));
+        let undeclared = Observing {
+            objective: None,
+            ..observing
+        };
+        assert!(!judge_freshness(&undeclared, &freshness, false));
     }
 }

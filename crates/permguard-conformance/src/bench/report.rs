@@ -194,6 +194,10 @@ pub struct Slo {
     /// The concurrency the serving gate holds a release candidate to the objective at (TS-4), and,
     /// divided by one less the headroom, the concurrency it must also meet it at.
     pub representative_concurrency: usize,
+    /// The evidence freshness the lab gates, from a decision's answer to its acknowledgement by its
+    /// Control Plane, in milliseconds (iteration 04): `member_p50`, `member_p99`, `local_p99`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness_ms: Option<BTreeMap<String, f64>>,
 }
 
 impl Slo {

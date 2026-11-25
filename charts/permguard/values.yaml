@@ -645,6 +645,11 @@ metrics:
     shipping:
       stalledSeconds: 300
       stalledFor: 1m
+      # The p99, over five minutes, of the wait from an append to its acknowledgement
+      # (`permguard_stream_ship_freshness_seconds`), past which evidence is late: the product's
+      # target for a member (`bench/slo.json`).
+      freshnessP99Seconds: 2
+      freshnessFor: 10m
     tls:
       certificateExpiryDays: 30
       crlExpiryDays: 7
@@ -736,7 +741,7 @@ hostControls:
   #   max_volume_size: 100G
   #   membership_offline_grace: 24h
   #   mirror_staleness: 1h
-  #   evidence_shipping_lag: 1d    # at least 94s: a member ships once a minute, below it is measured as 75s
+  #   evidence_shipping_lag: 1d    # at least 38s: below it is measured as 30s, a reconnection and a watch pass
   #   spool_headroom: 20%
   #   checkpoint_export_lag: 1d
   #   backup_interval: 1d

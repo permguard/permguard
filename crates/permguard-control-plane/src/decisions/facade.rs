@@ -50,6 +50,8 @@ pub struct DecisionFacade {
     /// Who names the member a record's Host id belongs to, for the page's `members` (owner
     /// decision of 2026-11-15); `None` names nobody.
     pub members: Option<Arc<dyn crate::members::NamesMembers>>,
+    /// What a tail waiting for its next record waits on (iteration 04, WP-33.1).
+    pub arrivals: Arc<crate::arrivals::Arrivals>,
 }
 
 /// One producer stream's signer history, with the receiver's durable frontier.

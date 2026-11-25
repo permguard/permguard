@@ -243,6 +243,17 @@
             "x-grpc-field": "proof"
           },
           {
+            "name": "wait_ms",
+            "in": "query",
+            "required": false,
+            "description": "A tail's wait for its next event, in milliseconds (iteration 04): `0`, the default, answers at once; clamped to the server's `max_wait_ms`; refused with `400` beside `until`, since an export never waits.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "wait_ms"
+          },
+          {
             "name": "event_type",
             "in": "query",
             "required": false,
@@ -1099,6 +1110,11 @@
             "type": "integer",
             "minimum": 0,
             "description": "The most positions one page examines while looking for matches."
+          },
+          "max_wait_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The longest a tail waits for its next event, in milliseconds; present once the wait is served."
           }
         },
         "required": [

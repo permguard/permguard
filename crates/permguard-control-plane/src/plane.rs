@@ -456,10 +456,17 @@ fn build_event_facade(
         }
     };
 
+    // A tail waiting for its next event reads again once the consumer acknowledges a batch
+    // (iteration 04, WP-33.1).
+    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::default());
+    let host = crate::handles::event_consumer(context);
+    if let Some(host) = &host {
+        host.on_ingest(arrivals.wake());
+    }
     let facade = crate::events::facade::EventFacade {
         catalog: context.catalog().map(std::sync::Arc::clone),
         store,
-        host: crate::handles::event_consumer(context),
+        host,
         cursor_key,
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
@@ -474,6 +481,7 @@ fn build_event_facade(
             context,
             permguard_host::membership::record::TaskType::EventsShip,
         ),
+        arrivals,
     };
     if let Ok(mut held) = shared.lock() {
         held.clone_from(&facade.store);
@@ -531,13 +539,20 @@ fn build_decision_facade(
         }
     };
 
+    // A tail waiting for its next decision reads again once the consumer acknowledges a batch
+    // (iteration 04, WP-33.1).
+    let arrivals = std::sync::Arc::new(crate::arrivals::Arrivals::default());
+    let host = crate::handles::decision_consumer(context);
+    if let Some(host) = &host {
+        host.on_ingest(arrivals.wake());
+    }
     let facade = crate::decisions::facade::DecisionFacade {
         store,
         ceiling: config.decision_ceiling(),
         cursor_key,
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
-        host: crate::handles::decision_consumer(context),
+        host,
         catalog: context.catalog().map(std::sync::Arc::clone),
         base_url: permguard_core::planes::discovery::plane_http_base(
             config,
@@ -550,6 +565,7 @@ fn build_decision_facade(
             context,
             permguard_host::membership::record::TaskType::DecisionsShip,
         ),
+        arrivals,
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(facade.clone());

@@ -48,6 +48,8 @@ pub struct EventFacade {
     /// The Host's authorization, every evidence read decides with before it looks anything up
     /// (WP-6.3c).
     pub authorization: Arc<permguard_host::composition::Authorization>,
+    /// What a tail waiting for its next event waits on (iteration 04, WP-33.1).
+    pub arrivals: Arc<crate::arrivals::Arrivals>,
 }
 
 impl EventFacade {

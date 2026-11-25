@@ -1105,12 +1105,19 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_host_ships_its_own_streams_to_itself_under_its_own_ring
   "1-architecture/6-architecture-server-host-streams.md#freshness":
     paths:
+      - crates/permguard-runtime/src/shipping.rs
       - crates/permguard-runtime/src/objectives.rs
+      - crates/permguard-core/src/objectives.rs
       - lab/compose/permguard-lab.sh
+      - scripts/compose-lab.sh
+      - bench/slo.json
     tests:
-      - crates/permguard-runtime/src/objectives.rs::a_stall_is_how_long_a_stream_behind_has_not_moved
+      - crates/permguard-runtime/src/shipping.rs::the_freshness_p99_is_the_last_five_minutes
+      - crates/permguard-runtime/src/shipping.rs::a_freshness_past_its_objective_degrades_the_host_and_clears_by_itself
+      - crates/permguard-core/src/objectives.rs::evidence_freshness_is_optional_bounded_and_at_least_twice_the_linger
+      - crates/permguard-runtime/src/objectives.rs::a_record_waiting_for_a_reconnection_is_not_a_stall
     gaps:
-      - "open (code): no freshness histogram, no evidence_freshness objective (iteration 04, WP-32.1); the lab measures it, ungated (WP-32.2)"
+      - "open (test): the freshness gate is the Compose lab's (scripts/compose-lab.sh, all-in-one and multi-data-plane), not a Rust test"
   "1-architecture/6-architecture-server-host-streams.md#signer-observations":
     paths:
       - crates/permguard-stream/src/signers.rs

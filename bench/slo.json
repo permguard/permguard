@@ -5,5 +5,10 @@
   },
   "headroom": 0.3,
   "refusal_p99_ms": 50.0,
-  "representative_concurrency": 8
+  "representative_concurrency": 8,
+  "freshness_ms": {
+    "member_p50": 500.0,
+    "member_p99": 2000.0,
+    "local_p99": 1000.0
+  }
 }
