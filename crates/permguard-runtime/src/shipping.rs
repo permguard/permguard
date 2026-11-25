@@ -14,8 +14,10 @@
 //! The engine never truncates past an acknowledgement, so a stream left behind keeps every record
 //! the next process ships.
 //!
-//! A Host running both Planes also ships to itself (`permguard_host::membership::local`): a short
-//! pass, [`drive_local`], so its Control Plane reads its decisions and events within seconds.
+//! Shipping itself is continuous (iteration 04, `1-architecture/6` Shipping): [`drive`] runs one
+//! shipper per Host, woken by every durable append, which ships after a short linger what the
+//! memberships' ship tasks and the local ones have due. The membership pass only asks it to
+//! reconcile.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -28,8 +30,14 @@ use permguard_host::api::HostApi;
 /// How long a drain waits before asking a coordinator again that took nothing.
 const RETRY: Duration = Duration::from_millis(250);
 
-/// How often the local ship tasks run.
-pub const LOCAL_PASS: Duration = Duration::from_secs(2);
+/// The first wait before a round goes again over streams still behind, and the longest: a
+/// deferral's backoff or a coordinator that does not answer keeps them so.
+const BEHIND_FIRST: Duration = Duration::from_millis(250);
+const BEHIND_LONGEST: Duration = Duration::from_secs(5);
+
+/// Appends that end a linger early: a batch's worth, `max_batch_records` as the chart and the lab
+/// sign it.
+const FULL_BATCH: u64 = 1000;
 
 /// The component the drain and the recovery log as.
 const COMPONENT: &str = "host";
@@ -219,42 +227,99 @@ pub async fn resume(api: &HostApi, budget: Duration) {
     }
 }
 
-/// The running local ship pass; dropping it stops it.
-pub struct LocalShipping(tokio::task::JoinHandle<()>);
+/// The running shipper; dropping it stops it.
+pub struct Shipping(tokio::task::JoinHandle<()>);
 
-impl Drop for LocalShipping {
+impl Drop for Shipping {
     fn drop(&mut self) {
         self.0.abort();
     }
 }
 
-/// Runs the local ship tasks now and every [`LOCAL_PASS`] until the handle is dropped, each pass
-/// on the blocking pool: the ingest writes the consumer's files.
-pub fn drive_local(local: Arc<permguard_host::membership::local::LocalShipping>) -> LocalShipping {
-    LocalShipping(tokio::spawn(async move {
-        let mut interval = tokio::time::interval(LOCAL_PASS);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            let passing = Arc::clone(&local);
-            match tokio::task::spawn_blocking(move || passing.ship_due()).await {
-                Ok(0) => {}
-                Ok(shipped) => tracing::debug!(
-                    event.name = "host.local_shipped",
-                    component = COMPONENT,
-                    batches = shipped,
-                    "this Host's Control Plane took its Data Plane's batches"
-                ),
-                Err(error) => tracing::error!(
-                    event.name = "host.local_ship_failed",
-                    component = COMPONENT,
-                    error = %error,
-                    "the local ship pass stopped; the next pass tries again"
-                ),
+/// Runs this Host's shipper until the handle is dropped (iteration 04, WP-31.3): a round at once,
+/// then one after each wake and `linger`, cut short when a batch's worth was appended; a round that
+/// left something behind goes again after a wait from 250 ms doubling to 5 s, or as soon as a
+/// task's bucket has a token. `None` when the Host ships nothing.
+pub fn drive(api: Arc<HostApi>, linger: Duration) -> Option<Shipping> {
+    if !api.ships_anything() {
+        return None;
+    }
+    let wake = Arc::new(tokio::sync::Notify::new());
+    let full = Arc::new(tokio::sync::Notify::new());
+    let appended = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let reconcile = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let (wake, full, appended) = (Arc::clone(&wake), Arc::clone(&full), Arc::clone(&appended));
+        api.on_append(Arc::new(move || {
+            if appended.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1 >= FULL_BATCH {
+                full.notify_one();
             }
+            wake.notify_one();
+        }));
+    }
+    {
+        let (wake, reconcile) = (Arc::clone(&wake), Arc::clone(&reconcile));
+        api.set_shipper(Arc::new(move |asked| {
+            if asked {
+                reconcile.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            wake.notify_one();
+        }));
+    }
+    Some(Shipping(tokio::spawn(async move {
+        let mut again = Some(Duration::ZERO);
+        let mut behind_wait = BEHIND_FIRST;
+        loop {
+            match again {
+                Some(wait) => {
+                    tokio::select! {
+                        () = wake.notified() => {}
+                        () = tokio::time::sleep(wait) => {}
+                    }
+                }
+                None => wake.notified().await,
+            }
+            // The linger: what is appended meanwhile leaves in the same round, unless a batch's
+            // worth is there first.
+            if !linger.is_zero() && appended.load(std::sync::atomic::Ordering::Relaxed) < FULL_BATCH
+            {
+                tokio::select! {
+                    () = full.notified() => {}
+                    () = tokio::time::sleep(linger) => {}
+                }
+            }
+            appended.store(0, std::sync::atomic::Ordering::Relaxed);
+            let reconciling = reconcile.swap(false, std::sync::atomic::Ordering::SeqCst);
+            let round = api.ship_round(reconciling).await;
+            if round.shipped > 0 {
+                tracing::debug!(
+                    event.name = "host.shipped",
+                    component = COMPONENT,
+                    batches = round.shipped,
+                    "the shipper delivered batches"
+                );
+            }
+            // Behind: a bucket empty, a deferral, a session lost. The round goes again when the
+            // bucket refills, or after a wait that grows while nothing moves.
+            let behind = round.behind || api.shipping_behind().unwrap_or(false);
+            again = if let Some(token) = round.retry_after {
+                Some(token)
+            } else if behind {
+                let wait = behind_wait;
+                behind_wait = if round.shipped > 0 {
+                    BEHIND_FIRST
+                } else {
+                    (behind_wait * 2).min(BEHIND_LONGEST)
+                };
+                Some(wait)
+            } else {
+                behind_wait = BEHIND_FIRST;
+                None
+            };
         }
-    }))
+    })))
 }
+
 /// The evidence drained at shutdown for a Host with no listener: the producers ship to their
 /// required subscriptions before the deadline, and a stream left behind makes the drain
 /// incomplete, marked `unshipped` and resumed at the next start.

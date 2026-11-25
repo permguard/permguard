@@ -110,7 +110,8 @@ pub struct Producer<C> {
     streams: Mutex<BTreeMap<String, Arc<Physical>>>,
     /// The descriptor's ring, once the Host handed it: what batches are sealed under.
     signer: Option<Arc<Ring>>,
-    /// Each subscription backing off: its attempts and the second it waits until (WP-5.4).
+    /// Each subscription backing off: its attempts and the monotonic millisecond it waits until
+    /// (WP-5.4; iteration 04, G4).
     backoff: Mutex<BTreeMap<String, (u32, u64)>>,
     /// The `history` floor the Plane registered (WP-5.6b), replaced when the Plane registers its
     /// own through the composition (WP-6.2a).
@@ -138,6 +139,8 @@ pub struct Producer<C> {
     /// How the Plane rewrites its records for another place: what carries a run no membership
     /// fenced into the one the first fences (BUG-0115).
     pub(crate) carrier: std::sync::RwLock<Option<permguard_host::composition::Rebase>>,
+    /// The shippers' wakes, called once an append is durable (iteration 04, WP-31.1).
+    wakes: std::sync::RwLock<Vec<permguard_host::composition::Wake>>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -168,7 +171,32 @@ impl<C: RecordCodec> Producer<C> {
             closed: std::sync::atomic::AtomicBool::new(false),
             acknowledged_retention: None,
             carrier: std::sync::RwLock::new(None),
+            wakes: std::sync::RwLock::new(Vec::new()),
         }
+    }
+
+    /// Registers a shipper's wake (iteration 04, WP-31.1).
+    pub(crate) fn add_wake(&self, wake: permguard_host::composition::Wake) {
+        self.wakes
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(wake);
+    }
+
+    /// Wakes every shipper: an append is durable. The wakes only signal, so none is called under
+    /// a lock the append path takes.
+    fn woken<T>(&self, appended: Result<T, StreamError>) -> Result<T, StreamError> {
+        if appended.is_ok() {
+            let wakes = self
+                .wakes
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            for wake in wakes {
+                wake();
+            }
+        }
+        appended
     }
 
     /// This producer keeping each batch `retention` after every required subscription
@@ -394,12 +422,12 @@ impl<C: RecordCodec> Producer<C> {
         self.check(&bytes)?;
         let physical = self.physical(resource)?;
         let mut bytes = Some(bytes);
-        physical.append(
+        self.woken(physical.append(
             &self.context,
             self.genesis_fence(resource),
             self.descriptor.record_domain,
             &mut |_| Ok(bytes.take().into_iter().collect()),
-        )
+        ))
     }
 
     /// Appends the records `build` makes from the stream's next position, under the lock that
@@ -414,7 +442,7 @@ impl<C: RecordCodec> Producer<C> {
         self.open_to_appends()?;
         let physical = self.physical(resource)?;
         let mut build = Some(build);
-        physical.append(
+        self.woken(physical.append(
             &self.context,
             self.genesis_fence(resource),
             self.descriptor.record_domain,
@@ -428,7 +456,7 @@ impl<C: RecordCodec> Producer<C> {
                 }
                 Ok(records)
             },
-        )
+        ))
     }
 
     /// The fence a stream of `resource` opens its genesis run under: the first subscription seen

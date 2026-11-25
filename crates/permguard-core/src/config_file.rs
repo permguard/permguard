@@ -61,10 +61,10 @@ use crate::config::{
     SETTING_SECRETS_COORDINATOR_ROOT_REF, SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX,
     SETTING_SECRETS_PROVIDER, SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DEREGISTER_DELAY,
     SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_RECOVER_DRAIN, SETTING_SHUTDOWN_TIMEOUT,
-    SETTING_STREAM_ACKNOWLEDGED_RETENTION, SETTING_STREAM_CURSOR_TTL, SETTING_TELEMETRY_ADDR,
-    SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY,
-    SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD,
-    SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
+    SETTING_STREAM_ACKNOWLEDGED_RETENTION, SETTING_STREAM_CURSOR_TTL, SETTING_STREAM_SHIP_LINGER,
+    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW,
+    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -826,6 +826,9 @@ struct StreamsSection {
     /// (WP-7.9b).
     #[serde(default)]
     acknowledged_retention: Option<String>,
+    /// How long the shipper lingers after an append before it ships (iteration 04).
+    #[serde(default)]
+    ship_linger: Option<String>,
 }
 
 /// The keys this deployment signs with and publishes.
@@ -1587,6 +1590,10 @@ impl ConfigFile {
             (
                 SETTING_STREAM_ACKNOWLEDGED_RETENTION,
                 self.operations.streams.acknowledged_retention.as_ref(),
+            ),
+            (
+                SETTING_STREAM_SHIP_LINGER,
+                self.operations.streams.ship_linger.as_ref(),
             ),
             (
                 SETTING_BACKUP_RECOVERY_KEY_ID,

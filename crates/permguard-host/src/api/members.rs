@@ -2874,31 +2874,85 @@ impl HostApi {
         Ok(late)
     }
 
-    /// Ships what this Host's ship tasks have due (WP-5.4): the server's periodic pass.
+    /// Ships what this Host's ship tasks have due, reconciling (WP-5.4): what a drain, the resume
+    /// at start and a test ask.
     pub async fn ship_due(&self) -> usize {
-        let shipped = match self.member_side() {
+        self.ship_round(true).await.shipped
+    }
+
+    /// One shipping round (iteration 04, `1-architecture/6` Shipping): every membership's ship
+    /// tasks on the sessions kept across rounds, then the local ship tasks. `reconcile` also
+    /// probes an idle task's coordinator (BUG-0186), which the membership pass asks and a wake
+    /// does not.
+    pub async fn ship_round(&self, reconcile: bool) -> crate::membership::member::ShipRound {
+        let mut round = match self.member_side() {
             Ok((memberships, connector)) => match self.acting_member(memberships, connector) {
                 Ok(member) => {
                     member
-                        .ship_due(crate::operations::journal::Initiator::System(
-                            "host".to_owned(),
-                        ))
+                        .ship_round(
+                            crate::operations::journal::Initiator::System("host".to_owned()),
+                            &self.ship_sessions,
+                            reconcile,
+                        )
                         .await
                 }
-                Err(_) => 0,
+                Err(_) => crate::membership::member::ShipRound::default(),
             },
-            Err(_) => 0,
+            Err(_) => crate::membership::member::ShipRound::default(),
         };
         // The local ship tasks beside the memberships': no session, no coordinator to reach.
-        let shipped = shipped
-            + self
-                .local_shipping
-                .as_ref()
-                .map_or(0, |local| local.ship_due());
-        // Whether or not this pass could reach a coordinator: what it refused earlier still
+        round.shipped += self
+            .local_shipping
+            .as_ref()
+            .map_or(0, |local| local.ship_due());
+        // Whether or not this round could reach a coordinator: what it refused earlier still
         // keeps those streams from shipping.
         self.report_refused();
-        shipped
+        round
+    }
+
+    /// Registers `wake` with the engine this Host ships from, once: called when an append is
+    /// durable (iteration 04, WP-31.1). Answers whether there is an engine to wake it.
+    pub fn on_append(&self, wake: crate::composition::Wake) -> bool {
+        let engine = self.shipping().cloned().or_else(|| {
+            self.local_shipping
+                .as_ref()
+                .map(|local| Arc::clone(local.engine()))
+        });
+        match engine {
+            Some(engine) => {
+                engine.on_append(wake);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Registers the shipper the runtime drives, once: what [`HostApi::wake_shipping`] wakes.
+    pub fn set_shipper(&self, wake: Arc<dyn Fn(bool) + Send + Sync>) {
+        let _ = self.shipper.set(wake);
+    }
+
+    /// Wakes the shipper, asking it to reconcile when `reconcile` is set (iteration 04,
+    /// `1-architecture/6` Reconciliation): answers whether one runs to be woken.
+    pub fn wake_shipping(&self, reconcile: bool) -> bool {
+        match self.shipper.get() {
+            Some(wake) => {
+                wake(reconcile);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whether this Host ships anything: to a coordinator, or to its own Control Plane.
+    pub fn ships_anything(&self) -> bool {
+        self.ships_streams() || self.local_shipping.is_some()
+    }
+
+    /// The ship sessions kept open now: a measure (iteration 04, WP-32.1).
+    pub fn ship_sessions_open(&self) -> usize {
+        self.ship_sessions.held()
     }
 
     /// Names the subscriptions the coordinator refused on the Host's health, `degraded:

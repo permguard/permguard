@@ -312,6 +312,35 @@ pub struct Join {
 }
 
 /// The member's memberships, and what reaching their coordinators takes.
+/// The answers that end a session for the membership's state, after which the member syncs the
+/// membership before it opens another (`1-architecture/3`, Sessions, leases and fencing).
+const SESSION_ENDED_BY_STATE: [&str; 5] = [
+    permguard_core::codes::host::MEMBERSHIP_TRANSITION_REFUSED,
+    permguard_core::codes::host::MEMBERSHIP_HELD,
+    permguard_core::codes::host::MEMBERSHIP_UNKNOWN,
+    permguard_core::codes::host::EPOCH_STALE,
+    permguard_core::codes::host::EPOCH_UNKNOWN,
+];
+
+/// What one shipping round did (iteration 04, `1-architecture/6` Shipping).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShipRound {
+    /// The batches the coordinators answered.
+    pub shipped: usize,
+    /// Something due was left: a bucket empty, a deferral, a session that failed, a stream in
+    /// another round's hands. The shipper comes back soon rather than at the next wake.
+    pub behind: bool,
+    /// The shortest wait until a task's bucket has a token, when one is empty.
+    pub retry_after: Option<std::time::Duration>,
+}
+
+/// What one stream's turn in a round did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct StreamRound {
+    shipped: usize,
+    behind: bool,
+}
+
 pub struct Member<'a> {
     pub store: &'a Store,
     pub mutations: &'a dyn crate::operations::mutation::Engine,
@@ -1039,11 +1068,30 @@ impl Member<'_> {
         Ok(())
     }
 
+    /// Ships what this Host's ship tasks have due on sessions opened for the pass and closed after
+    /// it, reconciling as the membership pass does: what a test or a one-off pass asks.
     pub async fn ship_due(&self, initiator: Initiator) -> usize {
+        self.ship_round(initiator, &super::shipping::ShipSessions::default(), true)
+            .await
+            .shipped
+    }
+
+    /// One shipping round (iteration 04, `1-architecture/6` Shipping): every active membership's
+    /// ship tasks, every stream with something due, in turn, on the sessions `kept` holds open
+    /// across rounds, within each task's signed rate and window. `reconcile` also probes an idle
+    /// task's coordinator for a restored incarnation (BUG-0186), which only the membership pass
+    /// asks, since it opens a session for a task with nothing to ship.
+    pub async fn ship_round(
+        &self,
+        initiator: Initiator,
+        kept: &super::shipping::ShipSessions,
+        reconcile: bool,
+    ) -> ShipRound {
+        let mut round = ShipRound::default();
         let Some(engine) = self.shipping else {
-            return 0;
+            return round;
         };
-        let mut shipped = 0;
+        let mut live = std::collections::BTreeSet::new();
         for (id, held) in self.store.memberships() {
             if held.role != Role::Member {
                 continue;
@@ -1093,6 +1141,8 @@ impl Member<'_> {
                 );
             }
             for task in tasks {
+                let task_key = (id, task.task_id.clone());
+                live.insert(task_key.clone());
                 let subscription = crate::composition::Subscribed {
                     membership_id: id,
                     task_type: task.task_type,
@@ -1111,38 +1161,50 @@ impl Member<'_> {
                             membership_id = %uuid_text(&id),
                             task = %task.task_id,
                             error = %error,
-                            "a ship task's streams could not be read: the next pass tries again"
+                            "a ship task's streams could not be read: the next round tries again"
                         );
+                        round.behind = true;
                         continue;
                     }
                 };
                 // An idle task still learns of a coordinator restored from a snapshot
                 // (BUG-0186): one session's lease names its incarnation, and every stream
                 // acknowledged under another is shipped, probed with its last retained batch.
-                let resources = if resources.is_empty() {
+                let resources = if resources.is_empty() && reconcile {
                     self.restored_since(&initiator, &subscription, engine).await
                 } else {
                     resources
                 };
-                for resource in resources {
+                for resource in kept.in_turn(&task_key, resources) {
                     match self
-                        .ship_stream(&initiator, &subscription, &resource, engine)
+                        .ship_stream(&initiator, &subscription, task, &resource, engine, kept)
                         .await
                     {
-                        Ok(count) => shipped += count,
-                        Err(error) => tracing::warn!(
-                            event.name = "host.membership.ship_failed",
-                            component = "host",
-                            membership_id = %uuid_text(&id),
-                            task = %task.task_id,
-                            error = %error,
-                            "a stream could not be shipped: the next pass tries again"
-                        ),
+                        Ok(stream) => {
+                            round.shipped += stream.shipped;
+                            round.behind |= stream.behind;
+                        }
+                        Err(error) => {
+                            round.behind = true;
+                            tracing::warn!(
+                                event.name = "host.membership.ship_failed",
+                                component = "host",
+                                membership_id = %uuid_text(&id),
+                                task = %task.task_id,
+                                error = %error,
+                                "a stream could not be shipped: the next round tries again"
+                            );
+                        }
                     }
+                }
+                let wait = kept.token_wait(&task_key, self.time.elapsed());
+                if !wait.is_zero() {
+                    round.retry_after = Some(round.retry_after.map_or(wait, |held| held.min(wait)));
                 }
             }
         }
-        shipped
+        kept.sweep(self.time.elapsed(), &live);
+        round
     }
 
     /// The streams of `subscription`'s task a coordinator incarnation other than the one now
@@ -1194,29 +1256,113 @@ impl Member<'_> {
         elsewhere
     }
 
-    /// Ships `resource`'s stream on one session of `subscription`'s task.
+    /// Ships `resource`'s stream on the session `kept` holds for it, or a new one within the
+    /// task's window, while its bucket has tokens (iteration 04, WP-31.2).
     async fn ship_stream(
         &self,
         initiator: &Initiator,
         subscription: &crate::composition::Subscribed<'_>,
+        task: &super::record::Task,
         resource: &str,
         engine: &dyn crate::composition::StreamShipping,
-    ) -> Result<usize, MembershipError> {
+        kept: &super::shipping::ShipSessions,
+    ) -> Result<StreamRound, MembershipError> {
+        let key = (
+            subscription.membership_id,
+            subscription.task_id.to_owned(),
+            resource.to_owned(),
+        );
+        let held = match kept.take(&key, self.time.now_secs()) {
+            // Another round ships it now: it goes on there.
+            super::shipping::Taken::Busy => return Ok(StreamRound::default()),
+            super::shipping::Taken::Free(held) => held,
+        };
+        match self
+            .ship_on(initiator, subscription, task, resource, engine, kept, held)
+            .await
+        {
+            Ok((stream, held)) => {
+                kept.put(&key, held);
+                Ok(stream)
+            }
+            Err(error) => {
+                // A session that failed is closed: the next round opens another.
+                kept.put(&key, None);
+                // Ended by the membership's state: adopted at once, never shipped under a
+                // membership its coordinator suspended or revoked (`1-architecture/3`).
+                if let MembershipError::Remote { code, .. } = &error
+                    && SESSION_ENDED_BY_STATE.contains(&code.as_str())
+                    && let Err(sync) = self
+                        .sync(initiator.clone(), &subscription.membership_id)
+                        .await
+                {
+                    tracing::warn!(
+                        event.name = "host.membership.sync_failed",
+                        component = "host",
+                        membership_id = %uuid_text(&subscription.membership_id),
+                        error = %sync,
+                        "the membership a ship session was ended for could not be synced: the \
+                         next pass does"
+                    );
+                }
+                Err(error)
+            }
+        }
+    }
+
+    /// Sends what `resource` has due on `held`, opened when it is `None`; answers what it shipped
+    /// and the session to keep.
+    #[allow(clippy::too_many_arguments)]
+    async fn ship_on(
+        &self,
+        initiator: &Initiator,
+        subscription: &crate::composition::Subscribed<'_>,
+        task: &super::record::Task,
+        resource: &str,
+        engine: &dyn crate::composition::StreamShipping,
+        kept: &super::shipping::ShipSessions,
+        held: Option<Box<super::shipping::Held>>,
+    ) -> Result<(StreamRound, Option<Box<super::shipping::Held>>), MembershipError> {
         let storage = MembershipError::Storage;
-        let mut session = self
-            .open_task(
-                initiator.clone(),
-                &subscription.membership_id,
-                subscription.task_id,
-                resource,
-                Vec::new(),
+        let task_key = (subscription.membership_id, subscription.task_id.to_owned());
+        let mut stream = StreamRound::default();
+        // Nothing sent yet and no token: the stream waits for the bucket, its session kept.
+        if held.is_none()
+            && !kept.token(
+                &task_key,
+                task.limits.max_rate_per_minute,
+                self.time.elapsed(),
             )
-            .await?;
+        {
+            stream.behind = true;
+            return Ok((stream, held));
+        }
+        let mut first_token = held.is_none();
+        let mut held = match held {
+            Some(held) => held,
+            None => {
+                if !kept.make_room(&task_key, task.limits.max_concurrency) {
+                    stream.behind = true;
+                    return Ok((stream, None));
+                }
+                let session = self
+                    .open_task(
+                        initiator.clone(),
+                        &subscription.membership_id,
+                        subscription.task_id,
+                        resource,
+                        Vec::new(),
+                    )
+                    .await?;
+                Box::new(super::shipping::Held::new(session, self.time.elapsed()))
+            }
+        };
         // The task's limit is a ceiling the manifest signs; a shipment is also one task message,
         // and a message travels in one peer frame. A batch is sealed to this budget and never
         // again, so a budget past the frame would seal a batch no session could ever carry: the
         // coordinator drops the frame and the stream stops behind it.
-        let max_bytes = session
+        let max_bytes = held
+            .task
             .lease
             .limits
             .max_body_bytes
@@ -1224,26 +1370,50 @@ impl Member<'_> {
         // The lease's epoch: a revision the session took is the one a pause is set at (after the
         // review); its coordinator boot id tells a restored coordinator (WP-7.9b).
         let subscription = &crate::composition::Subscribed {
-            epoch: session.lease.epoch,
-            coordinator_boot_id: Some(session.lease.coordinator_boot_id),
+            epoch: held.task.lease.epoch,
+            coordinator_boot_id: Some(held.task.lease.coordinator_boot_id),
             ..*subscription
         };
         // A stream an incomplete drain left behind is reported to the coordinator (WP-5.8).
         let marked = engine
             .unshipped_on(subscription, resource)
             .map_err(storage)?;
-        let mut count = 0;
         let shipped = async {
-            while let Some(shipment) = engine
-                .next(subscription, resource, max_bytes)
-                .map_err(storage)?
-            {
-                match session
+            loop {
+                // A token first, so no batch is sealed that the rate would not let leave; the one
+                // the round took for a new session is the first shipment's.
+                if !first_token
+                    && !kept.token_ready(
+                        &task_key,
+                        task.limits.max_rate_per_minute,
+                        self.time.elapsed(),
+                    )
+                {
+                    stream.behind = true;
+                    break;
+                }
+                let Some(shipment) = engine
+                    .next(subscription, resource, max_bytes)
+                    .map_err(storage)?
+                else {
+                    break;
+                };
+                if !first_token {
+                    kept.token(
+                        &task_key,
+                        task.limits.max_rate_per_minute,
+                        self.time.elapsed(),
+                    );
+                }
+                first_token = false;
+                match held
+                    .task
                     .send(&shipment.request_id, shipment.body.clone())
                     .await
                 {
                     Ok(answer) => {
-                        count += 1;
+                        stream.shipped += 1;
+                        held.used = self.time.elapsed();
                         if !engine
                             .answered(subscription, resource, &shipment, &answer)
                             .map_err(storage)?
@@ -1255,6 +1425,14 @@ impl Member<'_> {
                         if code == permguard_core::codes::stream::STORE_UNAVAILABLE =>
                     {
                         engine.deferred(subscription, resource).map_err(storage)?;
+                        stream.behind = true;
+                        break;
+                    }
+                    Err(MembershipError::Remote { code, .. })
+                        if code == permguard_core::codes::host::RATE_LIMITED =>
+                    {
+                        kept.rate_limited(&task_key, self.time.elapsed());
+                        stream.behind = true;
                         break;
                     }
                     Err(error) => return Err(error),
@@ -1263,16 +1441,16 @@ impl Member<'_> {
             Ok(())
         }
         .await;
-        // Reported whatever ended the loop: a pass that shipped the tail and then lost its
+        // Reported whatever ended the loop: a round that shipped the tail and then lost its
         // session still tries to say so before the mark goes (after the review).
         if let Some(marked) = marked {
             let remaining = engine
                 .unshipped_on(subscription, resource)
                 .map_err(storage)?;
-            self.report_unshipped(&mut session, subscription, &marked, remaining.as_ref())
+            self.report_unshipped(&mut held.task, subscription, &marked, remaining.as_ref())
                 .await;
         }
-        shipped.map(|()| count)
+        shipped.map(|()| (stream, Some(held)))
     }
 
     /// Reports a marked stream on its ship task's session (WP-5.8, interpretation of

@@ -384,6 +384,14 @@ pub const SETTING_DUAL_CONTROL_APPROVAL_TTL: &str = "PERMGUARD_DUAL_CONTROL_APPR
 /// acknowledged it (WP-7.9b): the coordinators' snapshot interval plus their recovery time, so a
 /// coordinator restored from a snapshot is resent what it lost. `0s` deletes at once.
 pub const SETTING_STREAM_ACKNOWLEDGED_RETENTION: &str = "PERMGUARD_STREAM_ACKNOWLEDGED_RETENTION";
+
+/// How long the shipper lingers after an append before it ships, so what is appended meanwhile
+/// leaves in the same batch (iteration 04, `1-architecture/6` Shipping): 200 ms by default, from 0
+/// to 5 s.
+pub const SETTING_STREAM_SHIP_LINGER: &str = "PERMGUARD_STREAM_SHIP_LINGER";
+/// The default linger, and the longest a configuration may state.
+pub const DEFAULT_SHIP_LINGER: Duration = Duration::from_millis(200);
+pub const MAX_SHIP_LINGER: Duration = Duration::from_secs(5);
 /// The non-secret id of the recovery key the deployment encrypts its backups under, bound in every
 /// snapshot manifest (WP-7.8, `8-architecture-storage-operations.md` permissions and encryption).
 /// Unset: the manifest names none.
@@ -1557,6 +1565,7 @@ pub struct Config {
     shutdown_drain_timeout: Duration,
     shutdown_deregister_delay: Duration,
     shutdown_recover_drain: bool,
+    ship_linger: Duration,
     time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
     assurance_added: Vec<crate::assurance::Control>,
@@ -1792,6 +1801,7 @@ impl Default for Config {
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
             shutdown_deregister_delay: DEFAULT_SHUTDOWN_DEREGISTER_DELAY,
             shutdown_recover_drain: false,
+            ship_linger: DEFAULT_SHIP_LINGER,
             time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
             assurance_added: Vec::new(),
@@ -3824,6 +3834,11 @@ produce: use `EdDSA` or `ES256`"
         self.shutdown_drain_timeout
     }
 
+    /// Returns how long the shipper lingers after an append before it ships (iteration 04).
+    pub fn ship_linger(&self) -> Duration {
+        self.ship_linger
+    }
+
     /// Returns how long the listeners keep serving after readiness goes false, before intake
     /// stops: inside [`Config::shutdown_drain_timeout`], and zero unless a deployment sets it.
     pub fn shutdown_deregister_delay(&self) -> Duration {
@@ -5119,6 +5134,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_INFLIGHT_BODY_BYTES => n(self.limits.inflight_body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_STREAM_SHIP_LINGER => d(self.ship_linger),
             SETTING_SHUTDOWN_DEREGISTER_DELAY => d(self.shutdown_deregister_delay),
             SETTING_SHUTDOWN_RECOVER_DRAIN => Some(self.shutdown_recover_drain.to_string()),
             SETTING_TIME_MAX_CLOCK_SKEW => d(self.time_max_clock_skew),
@@ -5869,6 +5885,18 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_STREAM_SHIP_LINGER) {
+            self.ship_linger = parse_duration_allow_zero(value)
+                .with_context(|| format!("reading {SETTING_STREAM_SHIP_LINGER}"))?;
+            if self.ship_linger > MAX_SHIP_LINGER {
+                bail!(
+                    "reading {SETTING_STREAM_SHIP_LINGER}: a linger of {:?} holds every \
+                     record back longer than the freshness it serves; at most 5s",
+                    self.ship_linger
+                );
+            }
         }
 
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DEREGISTER_DELAY) {
@@ -7316,6 +7344,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_JOIN_NAME,
     SETTING_HOST_JOIN_GROUPS,
+    SETTING_STREAM_SHIP_LINGER,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
     SETTING_HOST_IDENTITY_WITNESS_FILE,
@@ -7550,6 +7579,7 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_HOST_JOIN_PIN_FINGERPRINT,
     SETTING_HOST_JOIN_NAME,
     SETTING_HOST_JOIN_GROUPS,
+    SETTING_STREAM_SHIP_LINGER,
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
     SETTING_HOST_IDENTITY_WITNESS_FILE,

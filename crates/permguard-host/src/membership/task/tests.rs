@@ -1980,6 +1980,227 @@ async fn a_synced_manifest_registers_its_ship_tasks_before_the_next_pass() {
     );
 }
 
+/// The stream engine of a member's kept sessions: a queue of batches on one stream, refilled by
+/// the test, and the answers they were given.
+#[derive(Default)]
+struct Queue {
+    due: std::sync::Mutex<u64>,
+    sent: std::sync::Mutex<u64>,
+    answers: std::sync::Mutex<Vec<Vec<u8>>>,
+}
+
+impl Queue {
+    fn add(&self, n: u64) {
+        *self.due.lock().expect("lock") += n;
+    }
+}
+
+impl crate::composition::StreamShipping for Queue {
+    fn due(&self, _: &crate::composition::Subscribed<'_>) -> Result<Vec<String>, String> {
+        Ok(if *self.due.lock().expect("lock") > 0 {
+            vec![RESOURCE.to_owned()]
+        } else {
+            Vec::new()
+        })
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        let mut due = self.due.lock().expect("lock");
+        if *due == 0 {
+            return Ok(None);
+        }
+        *due -= 1;
+        let mut sent = self.sent.lock().expect("lock");
+        *sent += 1;
+        Ok(Some(crate::composition::Shipment {
+            request_id: format!("ship-{sent}"),
+            body: format!("batch-{sent}").into_bytes(),
+            run: [1; 16],
+            first_seq: *sent,
+            last_seq: *sent,
+        }))
+    }
+
+    fn answered(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        _: &crate::composition::Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String> {
+        self.answers.lock().expect("lock").push(answer.to_vec());
+        Ok(true)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], _: &[String]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn refused(&self) -> Result<Vec<crate::composition::RefusedShipping>, String> {
+        Ok(Vec::new())
+    }
+}
+
+/// How many leases `side`, the coordinator, issued: one per session opened.
+fn leases_issued(side: &Side) -> usize {
+    side.trail
+        .facts
+        .lock()
+        .expect("lock")
+        .iter()
+        .filter(|(action, _)| action == AUDIT_LEASE_ISSUED)
+        .count()
+}
+
+/// Iteration 04, `1-architecture/6` Sessions: a ship session is kept across rounds, so batches
+/// shipped round after round open one session, not one each; the task's window counts it.
+#[tokio::test]
+async fn a_ship_session_is_kept_across_rounds() {
+    let (c, m) = (Side::new("kept-c", true), Side::new("kept-m", false));
+    active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Queue::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let kept = crate::membership::shipping::ShipSessions::default();
+    let before = leases_issued(&c);
+    for round in 1..=5 {
+        engine.add(1);
+        let shipped = acting.ship_round(who(), &kept, false).await;
+        assert_eq!(shipped.shipped, 1, "round {round}");
+        assert!(!shipped.behind, "round {round}");
+    }
+    assert_eq!(leases_issued(&c) - before, 1, "one session for five rounds");
+    assert_eq!(kept.held(), 1);
+    assert_eq!(
+        engine.answers.lock().expect("lock").clone(),
+        (1..=5)
+            .map(|n| format!("echo:batch-{n}").into_bytes())
+            .collect::<Vec<_>>()
+    );
+    // The one-off pass a test or a drain runs closes its sessions after it.
+    engine.add(1);
+    assert_eq!(acting.ship_due(who()).await, 1);
+    assert_eq!(leases_issued(&c) - before, 2);
+}
+
+/// Iteration 04, `1-architecture/3` Sessions: a kept session is admitted per message, so a
+/// membership its coordinator suspended ends the session at the next batch, and the member syncs
+/// the membership at once rather than at its next pass.
+#[tokio::test]
+async fn a_suspension_ends_a_kept_session_and_the_member_syncs_at_once() {
+    let (c, m) = (
+        Side::new("kept-sus-c", true),
+        Side::new("kept-sus-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Queue::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let kept = crate::membership::shipping::ShipSessions::default();
+    engine.add(1);
+    assert_eq!(acting.ship_round(who(), &kept, false).await.shipped, 1);
+    move_to(&c, &id, Status::Suspended, 71);
+    engine.add(1);
+    let round = acting.ship_round(who(), &kept, false).await;
+    assert_eq!(
+        round.shipped, 0,
+        "nothing accepted under a suspended membership"
+    );
+    assert!(round.behind);
+    assert_eq!(kept.held(), 0, "the ended session is not kept");
+    let held = m.host.store.membership(&id).expect("held");
+    assert_eq!(held.status, Status::Suspended, "synced at once");
+    // Suspended: the next round ships nothing and opens nothing.
+    let before = leases_issued(&c);
+    assert_eq!(acting.ship_round(who(), &kept, false).await.shipped, 0);
+    assert_eq!(leases_issued(&c), before);
+}
+
+/// Iteration 04, security: a session kept open is admitted per message, so an identity reset
+/// fencing the coordinator ends it at its next batch, as it refuses a new one; nothing is taken
+/// under an identity being retired, however long ago the session opened.
+#[tokio::test]
+async fn a_reset_fence_ends_a_kept_session_at_its_next_message() {
+    let (c, m) = (
+        Side::new("kept-fence-c", true),
+        Side::new("kept-fence-m", false),
+    );
+    active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Queue::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let kept = crate::membership::shipping::ShipSessions::default();
+    engine.add(1);
+    assert_eq!(acting.ship_round(who(), &kept, false).await.shipped, 1);
+    assert_eq!(kept.held(), 1);
+    c.host.store.fence().expect("fenced");
+    engine.add(1);
+    let round = acting.ship_round(who(), &kept, false).await;
+    assert_eq!(round.shipped, 0, "nothing taken under a fenced identity");
+    assert!(round.behind);
+    assert_eq!(kept.held(), 0, "the refused session is not kept");
+    assert_eq!(engine.answers.lock().expect("lock").len(), 1);
+}
+
+/// Iteration 04, `1-architecture/6` The lease's limits: a task's bucket holds a second's worth of
+/// its signed rate; past it the stream waits, behind, with the time until the next token.
+#[tokio::test]
+async fn a_tasks_signed_rate_paces_its_batches() {
+    let (c, m) = (
+        Side::new("kept-rate-c", true),
+        Side::new("kept-rate-m", false),
+    );
+    active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Queue::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let kept = crate::membership::shipping::ShipSessions::default();
+    // 600 a minute: ten at once, and one more every 100 ms the round takes.
+    engine.add(25);
+    let started = std::time::Instant::now();
+    let round = acting.ship_round(who(), &kept, false).await;
+    let refilled = usize::try_from(started.elapsed().as_millis() / 100).expect("small") + 1;
+    assert!(
+        round.shipped >= 10 && round.shipped <= 10 + refilled,
+        "{} shipped in {:?}",
+        round.shipped,
+        started.elapsed()
+    );
+    assert!(round.shipped < 25, "the rate held some back");
+    assert!(round.behind);
+    let wait = round.retry_after.expect("a token to wait for");
+    assert!(
+        wait > Duration::ZERO && wait <= Duration::from_millis(100),
+        "{wait:?}"
+    );
+    assert_eq!(
+        *engine.due.lock().expect("lock"),
+        25 - u64::try_from(round.shipped).expect("small"),
+        "what was held back is kept for the next round, none sealed for nothing"
+    );
+}
+
 /// WP-5.4, after the mutants: a store the coordinator cannot reach now backs the subscription off;
 /// a membership the member revoked drops its subscriptions.
 #[tokio::test]

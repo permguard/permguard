@@ -2256,9 +2256,20 @@ pub struct Shipment {
     pub last_seq: u64,
 }
 
+/// What an engine calls once an append is durable (iteration 04, WP-31.1): the shipper's wake.
+/// It must return at once, holding no lock the append path takes: it only signals.
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
+
 /// What shipping a stream's batches to a coordinator needs of the engine (WP-5.4, owner
-/// decision): the member's pass drives the task sessions, the engine keeps the subscriptions.
+/// decision): the shippers drive the task sessions, the engine keeps the subscriptions.
 pub trait StreamShipping: Send + Sync {
+    /// Registers `wake`, called once every append is durable, so a shipper ships what an append
+    /// made due without waiting for a pass (iteration 04, `1-architecture/6` Shipping). An engine
+    /// that produces nothing calls it never.
+    fn on_append(&self, wake: Wake) {
+        let _ = wake;
+    }
+
     /// The resources of the streams `subscription` ships now: a paused subscription whose epoch
     /// moved resumes; one backing off or stopped is not due.
     fn due(&self, subscription: &Subscribed<'_>) -> Result<Vec<String>, String>;

@@ -3017,9 +3017,13 @@ impl Composition {
         if let Some(api) = serving.as_ref() {
             crate::shipping::resume(api, config.shutdown_drain_timeout()).await;
         }
-        // The local ship tasks run on their own short pass: the Control Plane reads what this
-        // Host decided within seconds, not at the next re-pin pass.
-        let _local_shipping = local_shipper.map(crate::shipping::drive_local);
+        // One shipper for the memberships' ship tasks and the local ones, woken by every durable
+        // append (iteration 04, WP-31.3): what is decided reaches its Control Plane within the
+        // linger, not at a pass.
+        let _shipping = serving
+            .as_ref()
+            .and_then(|api| crate::shipping::drive(Arc::clone(api), config.ship_linger()));
+        drop(local_shipper);
         // A `shared-bounded` member imports on a pass its bound can meet, every half of it, and
         // the re-pin pass leaves the import to it (BUG-0130).
         let shared_bounded =

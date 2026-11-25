@@ -1449,6 +1449,15 @@ impl TaskSession for CoordinatorTask {
                 "the message names another membership or task than its session",
             ));
         }
+        // A reset under way, here or on another instance, or done: no message is taken under the
+        // identity it retires, however long its session has been open (iteration 04: ship
+        // sessions are kept across batches, so the check at the session's start is not enough).
+        if parts.identity.is_retired() || parts.store.fenced_anywhere().unwrap_or(true) {
+            return Err(ended(
+                codes::common::UNAVAILABLE,
+                "an identity reset is under way on this Host",
+            ));
+        }
         let held = parts
             .store
             .membership(&self.lease.membership_id)

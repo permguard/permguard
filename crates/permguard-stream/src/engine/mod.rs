@@ -677,6 +677,12 @@ impl permguard_host::composition::StreamCutovers for Served {
 }
 
 impl permguard_host::composition::StreamShipping for Served {
+    fn on_append(&self, wake: permguard_host::composition::Wake) {
+        for producer in &self.shipping {
+            producer.on_append(Arc::clone(&wake));
+        }
+    }
+
     fn due(
         &self,
         subscription: &permguard_host::composition::Subscribed<'_>,

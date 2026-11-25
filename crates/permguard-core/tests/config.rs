@@ -2592,6 +2592,43 @@ fn test_acknowledged_batches_are_kept_only_as_long_as_declared() {
     );
 }
 
+/// Iteration 04, `1-architecture/6` Shipping: the shipper lingers 200 ms after an append unless
+/// the deployment says otherwise, from the environment or `operations.streams.ship_linger`; zero
+/// ships at once; past five seconds, or malformed, it is refused.
+#[test]
+fn test_the_shipper_lingers_as_declared_within_five_seconds() {
+    assert_eq!(
+        config(&[], &[], &[]).ship_linger(),
+        Duration::from_millis(200)
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_SHIP_LINGER, "0s")], &[]).ship_linger(),
+        Duration::ZERO
+    );
+    assert_eq!(
+        config(&[], &[(SETTING_STREAM_SHIP_LINGER, "5s")], &[]).ship_linger(),
+        Duration::from_secs(5)
+    );
+    let file =
+        permguard_core::ConfigFile::parse("operations:\n  streams:\n    ship_linger: 50ms\n")
+            .expect("parses");
+    assert!(
+        file.settings()
+            .contains(&(SETTING_STREAM_SHIP_LINGER.to_owned(), "50ms".to_owned()))
+    );
+    for refused in ["6s", "soon"] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_environment(pairs(&[(SETTING_STREAM_SHIP_LINGER, refused)])),
+            )
+            .is_err(),
+            "{refused}"
+        );
+    }
+}
+
 /// WP-7.11: a sweep removes at most ten thousand objects unless the deployment says otherwise,
 /// from the environment or `controlPlane.storage.gc.max_removals`; zero is refused.
 #[test]

@@ -279,6 +279,11 @@ pub struct HostApi {
     volume: Option<([u8; 16], u64)>,
     /// The local ship tasks of a Host that runs both Planes, given once the server composed them.
     local_shipping: Option<Arc<crate::membership::local::LocalShipping>>,
+    /// The ship sessions and buckets kept across rounds (iteration 04, WP-31.2).
+    ship_sessions: Arc<crate::membership::shipping::ShipSessions>,
+    /// The shipper's wake, `true` asking it to reconcile, once the runtime drives one
+    /// (iteration 04, WP-31.3).
+    shipper: std::sync::OnceLock<Arc<dyn Fn(bool) + Send + Sync>>,
     /// Called when an operator's revocation committed (BUG-0223).
     rings_moved: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// How long an approval of a plan stands (BUG-0099).
@@ -329,6 +334,8 @@ impl HostApi {
             gc: Arc::default(),
             volume: None,
             local_shipping: None,
+            ship_sessions: Arc::default(),
+            shipper: std::sync::OnceLock::new(),
             rings_moved: std::sync::OnceLock::new(),
             approval_ttl: plans::DEFAULT_APPROVAL_TTL,
             token_standing: None,

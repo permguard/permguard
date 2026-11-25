@@ -19,7 +19,8 @@
 //! answers move a subscription as the contract says: `ok` moves its ack, `out_of_order` resends
 //! from `expected_seq`, `unverifiable` pauses it until the membership's epoch moves, `fork` and
 //! `gone` stop it, an ack beyond what the producer holds stops it as `ack_ahead`; a deferral backs
-//! it off, from one second to five minutes with full jitter, in memory.
+//! it off, from 100 ms doubled to 30 s with full jitter, in memory, on the monotonic clock
+//! (iteration 04, G4).
 //!
 //! A coordinator restored from a snapshot (WP-7.9b) answers under a new boot id with what it held
 //! then. Each run's acknowledgement keeps the boot id of the incarnation that answered it: the
@@ -52,9 +53,10 @@ const SUBSCRIPTIONS: &str = "subscriptions";
 const BATCHES: &str = "batches";
 /// The most bytes a subscription's file takes.
 pub const MAX_SUBSCRIPTION_BYTES: usize = 64 * 1024;
-/// The first wait of a subscription backing off, and the longest.
-const BACKOFF_BASE_SECS: u64 = 1;
-const BACKOFF_CAP_SECS: u64 = 300;
+/// The first wait of a subscription backing off, and the longest, in milliseconds (iteration 04,
+/// G4): five minutes after a coordinator recovers is not seconds of freshness.
+const BACKOFF_BASE_MS: u64 = 100;
+const BACKOFF_CAP_MS: u64 = 30_000;
 /// What a ship message carries beside its batch's records: the envelope, the signature, the
 /// framing; the statement is counted on its own.
 const SHIP_OVERHEAD_BYTES: usize = 4096;
@@ -565,13 +567,13 @@ fn unacknowledged_bytes(
     Ok(bytes)
 }
 
-/// The longest hold-off after `deferrals` earlier deferrals in a row: one second, doubled each
-/// time, capped at five minutes. The hold-off itself is drawn in `[0, ceiling]` (full jitter).
+/// The longest hold-off after `deferrals` earlier deferrals in a row, in milliseconds: 100 ms,
+/// doubled each time, capped at 30 s. The hold-off itself is drawn in `[0, ceiling]` (full
+/// jitter).
 fn backoff_ceiling(deferrals: u32) -> u64 {
-    BACKOFF_BASE_SECS
-        .checked_shl(deferrals)
-        .unwrap_or(BACKOFF_CAP_SECS)
-        .min(BACKOFF_CAP_SECS)
+    BACKOFF_BASE_MS
+        .saturating_mul(1u64.checked_shl(deferrals).unwrap_or(u64::MAX))
+        .min(BACKOFF_CAP_MS)
 }
 
 /// Uniform in `[0, n]`, from the OS random source; 0 when it refuses.
@@ -913,10 +915,19 @@ impl<C: RecordCodec> Producer<C> {
         )
     }
 
-    /// Holds `subscribed` off `resource` until `until`, as a deferral would: what a test sets
-    /// without the jitter.
+    /// The monotonic clock a backoff is measured on, in milliseconds.
+    fn monotonic_ms(&self) -> u64 {
+        u64::try_from(self.context.time.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    /// Holds `subscribed` off `resource` until the wall-clock second `until`, as a deferral would:
+    /// what a test sets without the jitter.
     #[cfg(test)]
     pub(crate) fn hold_off(&self, resource: &str, subscribed: &Subscribed<'_>, until: u64) {
+        let wait = until
+            .saturating_sub(self.context.time.now_secs())
+            .saturating_mul(1000);
+        let until = self.monotonic_ms().saturating_add(wait);
         self.backoff
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -1244,6 +1255,10 @@ impl<C: RecordCodec> Producer<C> {
 }
 
 impl<C: RecordCodec> StreamShipping for Producer<C> {
+    fn on_append(&self, wake: composition::Wake) {
+        self.add_wake(wake);
+    }
+
     fn held(&self, subscribed: &Subscribed<'_>) -> Result<Vec<String>, String> {
         let wrap = |error: StreamError| error.to_string();
         if !self.ships(subscribed) {
@@ -1475,7 +1490,7 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
             return Ok(Vec::new());
         }
         let signer = self.signer_ring().map_err(wrap)?;
-        let now = self.context.time.now_secs();
+        let now = self.monotonic_ms();
         self.remember_fence(subscribed.selector, fence_of(subscribed));
         let mut due = Vec::new();
         for physical in self.every().map_err(wrap)? {
@@ -1830,14 +1845,14 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
         if !self.ships(subscribed) {
             return Ok(());
         }
-        let now = self.context.time.now_secs();
+        let now = self.monotonic_ms();
         let mut backoff = self.backoff.lock().unwrap_or_else(PoisonError::into_inner);
         let held = backoff
             .entry(Self::backoff_key(resource, subscribed))
             .or_insert((0, now));
         let ceiling = backoff_ceiling(held.0);
         held.0 = held.0.saturating_add(1);
-        held.1 = now + jitter(ceiling);
+        held.1 = now.saturating_add(jitter(ceiling));
         Ok(())
     }
 
@@ -1935,18 +1950,20 @@ impl<C: RecordCodec> StreamShipping for Producer<C> {
 mod tests {
     use super::{backoff_ceiling, jitter};
 
-    /// `5-contract-stream-common.md` (acknowledgement vocabulary): a deferral backs off with
-    /// bounded exponential backoff, one second doubled per deferral up to five minutes, and
-    /// never beyond it however long the deferrals go on.
+    /// `4-data-plane-decision-log.md` (Shipping): a deferral backs off with full-jitter
+    /// exponential backoff, 100 ms doubled per deferral up to 30 s, and never beyond it however
+    /// long the deferrals go on (iteration 04, G4).
     #[test]
     fn a_deferral_backs_off_exponentially_up_to_its_cap() {
         let ceilings: Vec<u64> = (0..12).map(backoff_ceiling).collect();
         assert_eq!(
             ceilings,
-            vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 300, 300, 300]
+            vec![
+                100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 30_000, 30_000, 30_000
+            ]
         );
-        for deferrals in [63, 64, 65, 1_000, u32::MAX] {
-            assert_eq!(backoff_ceiling(deferrals), 300, "{deferrals} deferrals");
+        for deferrals in [57, 58, 63, 64, 65, 1_000, u32::MAX] {
+            assert_eq!(backoff_ceiling(deferrals), 30_000, "{deferrals} deferrals");
         }
     }
 

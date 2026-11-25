@@ -17,7 +17,19 @@ is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **Decisions and events ship as soon as they are recorded.**
+  A member Data Plane used to send its decision and event batches to its coordinator at its membership pass, once a minute, so a decision reached the Control Plane, and Permguard Admin, 0 to 60 seconds after it was answered; a Host running both Planes sent them to itself every 2 seconds.
+  Now every durable append wakes one shipper per Host, which sends after a linger of 200 ms what is due, on ship sessions it keeps open across batches within the lease's signed `max_concurrency`, and within each task's signed `max_rate_per_minute` (a token bucket shared by the task's streams, in turn).
+  The membership pass ships nothing any more: it asks the shipper to reconcile.
+  The wire, the batches and their acknowledgements are unchanged: a member of this release ships to an older coordinator, and an older member still ships at its pass.
+- **A deferral backs off from 100 ms to 30 s**, with full jitter, instead of 1 s to 5 minutes, and a session ended by the membership's state syncs the membership at once.
+
 ### Added
+
+- **`operations.streams.ship_linger`** (`PERMGUARD_STREAM_SHIP_LINGER`, default `200ms`, at most `5s`): how long the shipper waits after an append before it ships, so what is appended meanwhile leaves in the same batch; `0s` ships at once.
+  A coordinator that wants fewer, larger batches signs a lower `max_rate_per_minute` instead.
 
 - **`storage.backend` names where a process keeps its state.**
   `files`, the default, keeps it on the volume, as before; the setting is also read from `PERMGUARD_STORAGE_BACKEND`.

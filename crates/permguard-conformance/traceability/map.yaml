@@ -1046,40 +1046,49 @@ sections:
       - crates/permguard-stream/src/engine/tests.rs::a_silent_required_subscription_still_blocks_until_its_task_leaves_the_manifest
   "1-architecture/6-architecture-server-host-streams.md#shipping":
     paths:
-      - crates/permguard-stream/src/engine/producer/ship.rs
-      - crates/permguard-host/src/membership/member.rs
-      - crates/permguard-host/src/membership/local.rs
-      - crates/permguard-runtime/src/repin.rs
       - crates/permguard-runtime/src/shipping.rs
+      - crates/permguard-host/src/membership/member.rs
+      - crates/permguard-host/src/membership/shipping.rs
+      - crates/permguard-host/src/membership/local.rs
+      - crates/permguard-stream/src/engine/producer/ship.rs
     tests:
+      - crates/permguard-server/tests/peer_session.rs::a_members_append_reaches_its_coordinator_within_the_linger_not_at_a_pass
+      - crates/permguard-stream/src/engine/producer/ship.rs::a_deferral_backs_off_exponentially_up_to_its_cap
       - crates/permguard-stream/src/engine/tests.rs::a_store_failure_is_deferred
       - crates/permguard-stream/src/engine/tests.rs::the_handler_reports_a_fork_and_defers_a_store_failure
-      - crates/permguard-server/tests/peer_session.rs::records_past_one_frame_ship_in_batches_a_frame_carries
-    gaps:
-      - "open (code): shipping still happens at the membership pass, every 60 s, and the local task every 2 s (iteration 04, WP-31.1 to WP-31.3)"
   "1-architecture/6-architecture-server-host-streams.md#the-shipper":
     paths:
-      - crates/permguard-stream/src/engine/producer/ship.rs
+      - crates/permguard-runtime/src/shipping.rs
+      - crates/permguard-stream/src/engine/producer.rs
+      - crates/permguard-host/src/composition.rs
+      - crates/permguard-core/src/config.rs
     tests:
-      - crates/permguard-stream/src/engine/tests.rs::the_bounds_of_what_is_due_and_deleted_are_exact
-    gaps:
-      - "open (code): no shipper per subscription, no wake on append, no linger (iteration 04, WP-31.1)"
+      - crates/permguard-server/tests/peer_session.rs::a_members_append_reaches_its_coordinator_within_the_linger_not_at_a_pass
+      - crates/permguard-core/tests/config.rs::test_the_shipper_lingers_as_declared_within_five_seconds
   "1-architecture/6-architecture-server-host-streams.md#the-leases-limits":
     paths:
+      - crates/permguard-host/src/membership/shipping.rs
       - crates/permguard-host/src/membership/task.rs
       - crates/permguard-stream/src/engine/producer/seal.rs
     tests:
+      - crates/permguard-host/src/membership/task/tests.rs::a_tasks_signed_rate_paces_its_batches
+      - crates/permguard-host/src/membership/shipping.rs::a_tasks_bucket_holds_a_seconds_worth_and_refills_at_its_rate
+      - crates/permguard-host/src/membership/shipping.rs::a_slow_rate_keeps_one_token_and_waits_for_the_next
+      - crates/permguard-host/src/membership/shipping.rs::a_rate_limited_answer_empties_the_bucket_for_a_second
+      - crates/permguard-host/src/membership/shipping.rs::a_new_rate_applies_from_its_revision
+      - crates/permguard-host/src/membership/shipping.rs::the_streams_of_a_task_take_turns
       - crates/permguard-stream/src/engine/tests.rs::a_batch_over_a_subscriptions_bound_stops_it_as_unshippable
-    gaps:
-      - "open (code): the member keeps no token bucket and no window of sessions per task (iteration 04, WP-31.1, WP-31.2)"
   "1-architecture/6-architecture-server-host-streams.md#sessions":
     paths:
+      - crates/permguard-host/src/membership/shipping.rs
       - crates/permguard-host/src/membership/member.rs
       - crates/permguard-host/src/membership/task.rs
     tests:
+      - crates/permguard-host/src/membership/task/tests.rs::a_ship_session_is_kept_across_rounds
+      - crates/permguard-host/src/membership/task/tests.rs::a_suspension_ends_a_kept_session_and_the_member_syncs_at_once
+      - crates/permguard-host/src/membership/task/tests.rs::a_reset_fence_ends_a_kept_session_at_its_next_message
+      - crates/permguard-host/src/membership/shipping.rs::a_stream_in_use_is_left_to_the_round_holding_it
       - crates/permguard-stream/src/engine/tests.rs::a_run_ships_on_after_a_repin_under_both_pins
-    gaps:
-      - "open (code): a ship session is opened per stream at every pass and closed after it (iteration 04, WP-31.2)"
   "1-architecture/6-architecture-server-host-streams.md#reconciliation":
     paths:
       - crates/permguard-runtime/src/repin.rs
@@ -1087,16 +1096,13 @@ sections:
     tests:
       - crates/permguard-server/tests/peer_session.rs::a_drain_ships_every_record_or_leaves_a_marked_recoverable_volume
       - crates/permguard-stream/src/engine/tests.rs::an_incomplete_drain_marks_the_streams_behind_and_shipping_settles_them
-    gaps:
-      - "open (code): the pass ships rather than reconciles (iteration 04, WP-31.3)"
+      - crates/permguard-host/src/membership/task/tests.rs::the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers
   "1-architecture/6-architecture-server-host-streams.md#the-local-task":
     paths:
       - crates/permguard-host/src/membership/local.rs
       - crates/permguard-runtime/src/shipping.rs
     tests:
       - crates/permguard-stream/src/engine/tests.rs::a_host_ships_its_own_streams_to_itself_under_its_own_ring
-    gaps:
-      - "open (code): the local task ships on its own pass every 2 s, not through a shipper (iteration 04, WP-31.3)"
   "1-architecture/6-architecture-server-host-streams.md#freshness":
     paths:
       - crates/permguard-runtime/src/objectives.rs

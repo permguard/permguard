@@ -35,6 +35,7 @@ pub mod repin;
 pub mod replay;
 pub mod reset;
 pub mod service;
+pub mod shipping;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod suite;

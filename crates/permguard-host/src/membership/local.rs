@@ -288,6 +288,11 @@ pub struct LocalShipping {
 }
 
 impl LocalShipping {
+    /// The engine its tasks ship from: the Host's, the member side's too.
+    pub fn engine(&self) -> &Arc<dyn StreamShipping> {
+        &self.engine
+    }
+
     /// The local ship tasks of the Host `host_id`: `engine`'s streams shipped to `decisions` and
     /// `events` (the Control Plane's ingest handlers), the subscription's epoch `data_attest`'s.
     pub fn new(

@@ -2559,6 +2559,96 @@ fn evidence_degraded(side: &Side) -> bool {
         .any(|degraded| degraded.capability == "evidence")
 }
 
+/// Iteration 04, `1-architecture/6` Shipping: with the shipper running, a record appended on a
+/// member reaches its coordinator within the linger and a round trip, never at a pass; records
+/// appended later ride the session kept open, and nothing is left behind.
+#[tokio::test]
+async fn a_members_append_reaches_its_coordinator_within_the_linger_not_at_a_pass() {
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("continuous");
+    let pki = Pki::new(&root);
+    let coordinator = streaming_side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = streaming_side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let id = approved_pair(&coordinator, &member).await;
+    let membership_id = only_membership(&coordinator);
+    let epoch = member.api.member(&admin(), &id).expect("read").epoch;
+    let resource = permguard_core::authz::Resource::ledger("data", "zone-a", "ledger-1");
+    let producer = member.producer.clone().expect("a producer");
+    let run = producer
+        .open_run(
+            &resource,
+            Some(permguard_stream::engine::Fence {
+                membership_id,
+                task_id: "decisions".to_owned(),
+                epoch,
+            }),
+        )
+        .expect("the run opens")
+        .run_id;
+    member
+        .api
+        .register_subscriptions()
+        .expect("the subscriptions are kept");
+    let _shipping =
+        permguard_server::shipping::drive(Arc::clone(&member.api), Duration::from_millis(50))
+            .expect("the member ships");
+    for (n, through) in [(1_u64, 1_u64), (5, 6), (1, 7)] {
+        for seq in through - n + 1..=through {
+            producer
+                .append(&resource, &decision_record(seq))
+                .expect("appended");
+        }
+        let started = std::time::Instant::now();
+        while producer_acked(&producer, &resource, &run) < through {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "record {through} not acknowledged after {:?}",
+                started.elapsed()
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let took = started.elapsed();
+        assert!(
+            took < Duration::from_secs(3),
+            "records through {through} took {took:?}: a pass, not the linger"
+        );
+    }
+    assert!(!member.api.shipping_behind().expect("read"));
+    assert_eq!(
+        member.api.ship_sessions_open(),
+        1,
+        "one session kept for the stream"
+    );
+}
+
+/// What `producer` holds acknowledged of `run` on `resource`.
+fn producer_acked(
+    producer: &DecisionProducer,
+    resource: &permguard_core::authz::Resource,
+    run: &[u8; 16],
+) -> u64 {
+    producer
+        .truncate_safe(resource, run)
+        .expect("safe")
+        .unwrap_or(0)
+}
+
 /// WP-5.8, F-28: a drain with 1 000 records the coordinator has not acknowledged ships them all
 /// while it answers, and is complete; while it does not, the drain is incomplete, the stream is
 /// marked `unshipped`, nothing past the acknowledgement is truncated and the Host stays

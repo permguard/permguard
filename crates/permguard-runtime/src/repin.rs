@@ -5,8 +5,9 @@
 //! when its own rings moved, and its rings that its memberships as a member pin at an older epoch
 //! are re-pinned on a task session. The rings' activation gate waits for both.
 //!
-//! The same pass ships what this Host's ship tasks have due (WP-5.4, owner decision): a batch
-//! waits at most one pass, and a deferred one its subscription's backoff.
+//! The same pass asks the shipper to reconcile (iteration 04, `1-architecture/6` Reconciliation):
+//! shipping itself is continuous, woken by every append, and the pass only makes sure a wake lost
+//! leaves nothing behind for longer than one pass.
 //!
 //! A revocation does not wait for the pass (BUG-0223): it replaces an active key at once, without
 //! the publish-ahead window, so the memberships are revised as soon as it commits, and a member
@@ -116,7 +117,13 @@ pub fn drive(
             // shipped under a membership they may have suspended or revoked (BUG-0152).
             let _ = api.sync_due().await;
             let repinned = api.repin_due().await + api.cutover_due().await;
-            let shipped = api.ship_due().await;
+            // Reconciled, never shipped here: without a shipper (an embedded test composition),
+            // the pass ships as it did.
+            let shipped = if api.wake_shipping(true) {
+                0
+            } else {
+                api.ship_due().await
+            };
             // The origins' history this Host imports, after what it ships (WP-6.2c2a), unless a
             // `shared-bounded` member's own pass imports it (BUG-0130).
             let imported = if imports { api.import_due().await } else { 0 };
