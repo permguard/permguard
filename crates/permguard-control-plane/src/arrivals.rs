@@ -47,7 +47,9 @@ impl Arrivals {
         let arrivals = Arc::downgrade(self);
         Arc::new(move || {
             if let Some(arrivals) = arrivals.upgrade() {
-                arrivals.arrived.send_modify(|count| *count = count.wrapping_add(1));
+                arrivals
+                    .arrived
+                    .send_modify(|count| *count = count.wrapping_add(1));
             }
         })
     }
@@ -98,7 +100,9 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    fn reader(held: &Arc<AtomicU64>) -> impl FnMut() -> std::pin::Pin<Box<dyn Future<Output = u64> + Send>> {
+    fn reader(
+        held: &Arc<AtomicU64>,
+    ) -> impl FnMut() -> std::pin::Pin<Box<dyn Future<Output = u64> + Send>> {
         let held = Arc::clone(held);
         move || {
             let held = Arc::clone(&held);
@@ -123,7 +127,11 @@ mod tests {
             .read_waiting(Duration::from_secs(10), reader(&held), |count| *count > 0)
             .await;
         assert_eq!(answer, 3);
-        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// An arrival of nothing this read keeps it waiting; its deadline answers what it holds.
@@ -138,7 +146,9 @@ mod tests {
         });
         let started = std::time::Instant::now();
         let answer = arrivals
-            .read_waiting(Duration::from_millis(300), reader(&held), |count| *count > 0)
+            .read_waiting(Duration::from_millis(300), reader(&held), |count| {
+                *count > 0
+            })
             .await;
         assert_eq!(answer, 0);
         assert!(started.elapsed() >= Duration::from_millis(300));

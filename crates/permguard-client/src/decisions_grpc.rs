@@ -59,6 +59,20 @@ impl GrpcSink {
 }
 
 impl DecisionReader for GrpcSink {
+    fn waits(&self) -> bool {
+        self.endpoint
+            .run(
+                "DecisionLog/GetConfiguration",
+                self.client()
+                    .get_configuration(Request::new(crate::v1::GetDecisionConfigurationRequest {})),
+            )
+            .ok()
+            .and_then(|answer| serde_json::from_str::<Value>(&answer.document_json).ok())
+            .is_some_and(|document| {
+                crate::decisions::announces_tail_wait(&document["capabilities"])
+            })
+    }
+
     fn signers(
         &self,
         pdp_id: &str,
@@ -127,6 +141,7 @@ impl DecisionReader for GrpcSink {
             limit_records: u32::try_from(window.limit_records).unwrap_or_default(),
             limit_bytes: window.limit_bytes,
             proof: window.proof,
+            wait_ms: window.wait_ms,
             ..ReadRequest::default()
         };
         match scope {

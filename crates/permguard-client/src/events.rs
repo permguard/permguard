@@ -93,6 +93,10 @@ pub struct ReadWindow {
     pub proof: bool,
     /// What to narrow to.
     pub filters: ReadFilters,
+    /// On a tail, how long the server may hold the read for an event past `from`, in
+    /// milliseconds (iteration 04): `0` answers at once. Sent only to a server that announces
+    /// `tail-wait`.
+    pub wait_ms: u64,
 }
 
 /// The declared filters. Each narrows; none widens what the scope may return.
@@ -190,6 +194,13 @@ pub trait EventReader {
     /// Reads one bounded, filtered block of `scope`.
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError>;
 
+    /// Whether the control plane announces `tail-wait` (iteration 04, `7-contracts/5` Request):
+    /// only then is a window's `wait_ms` sent. Asked of its discovery document; a server that
+    /// cannot say answers `false`, and is polled.
+    fn waits(&self) -> bool {
+        false
+    }
+
     /// Reads one occurrence, by the identifier its caller stated.
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError>;
 
@@ -225,6 +236,22 @@ impl<T: EventReader + Send + Sync> EventLog for T {}
 
 #[cfg(feature = "http")]
 impl EventReader for HttpEventSink {
+    fn waits(&self) -> bool {
+        self.client
+            .request(
+                &self.endpoint,
+                "GET",
+                "/.well-known/permguard-events-native-v1alpha1-configuration",
+                None,
+            )
+            .ok()
+            .filter(|response| (200..300).contains(&response.status))
+            .and_then(|response| serde_json::from_str::<Value>(&response.body).ok())
+            .is_some_and(|document| {
+                crate::decisions::announces_tail_wait(&document["capabilities"])
+            })
+    }
+
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
         // Every caller-supplied value is escaped on the way in. A zone, a ledger and a producer
         // are names somebody chose, and a name carrying `/` or `&` would otherwise address a
@@ -269,6 +296,9 @@ impl EventReader for HttpEventSink {
         }
         if let Some(until) = &window.until {
             path.push_str(&format!("&until={}", encode::value(until)));
+        }
+        if window.wait_ms > 0 {
+            path.push_str(&format!("&wait_ms={}", window.wait_ms));
         }
         for event_type in &window.filters.event_types {
             path.push_str(&format!("&event_type={}", encode::value(event_type)));

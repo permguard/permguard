@@ -351,6 +351,77 @@ fn hint_of(
     ))
 }
 
+/// The channel a consumer's acknowledged batches are announced on between instances.
+const ARRIVALS: &str = "permguard_arrivals";
+
+/// A consumer's acknowledged batches, told by one instance to the others over the database's
+/// notifications (iteration 04, WP-33.2): a tail waiting on another instance reads again.
+struct PostgresArrivals {
+    database: Database,
+    /// This instance: what it sent itself is not heard back.
+    origin: String,
+}
+
+impl permguard_host::composition::ArrivalRelay for PostgresArrivals {
+    fn send(&self, stream: &str) {
+        let payload = serde_json::json!({"origin": self.origin, "stream": stream}).to_string();
+        let sent = self.database.write(|unit| {
+            unit.execute("SELECT pg_notify($1, $2)", &[&ARRIVALS, &payload])
+                .map(|_| ())
+        });
+        if let Err(error) = sent {
+            tracing::warn!(
+                event.name = "host.stream.arrival_unrelayed",
+                component = "host",
+                error = %error,
+                "an acknowledged batch was not announced to the other instances: their waiting \
+                 reads answer at their deadline"
+            );
+        }
+    }
+
+    fn listen(
+        &self,
+        heard: Box<dyn Fn(&str) + Send + Sync>,
+    ) -> Box<dyn std::any::Any + Send + Sync> {
+        let origin = self.origin.clone();
+        let hear = move |payload: &str| {
+            let Ok(arrival) = serde_json::from_str::<serde_json::Value>(payload) else {
+                return;
+            };
+            if arrival["origin"].as_str() != Some(origin.as_str())
+                && let Some(stream) = arrival["stream"].as_str()
+            {
+                heard(stream);
+            }
+        };
+        let lost = |error: &permguard_postgres::DbError| {
+            tracing::warn!(
+                event.name = "host.stream.arrivals_unheard",
+                component = "host",
+                error = %error,
+                "the other instances' arrivals are not heard: listening again"
+            );
+        };
+        match self
+            .database
+            .listen(ARRIVALS, Box::new(hear), Box::new(lost))
+        {
+            Ok(listening) => Box::new(listening),
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "host.stream.arrivals_unheard",
+                    component = "host",
+                    error = %error,
+                    "the other instances' arrivals are not heard: waiting reads answer at their \
+                     deadline"
+                );
+                Box::new(())
+            }
+        }
+    }
+}
+
 /// This instance, as the leases it holds name it: drawn once a process.
 fn holder() -> Result<String> {
     let mut drawn = [0_u8; 16];
@@ -452,6 +523,14 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
             // The hints this instance publishes reach the watches the others hold (WP-28.4).
             Arc::new(permguard_host::membership::watch::Relayed(Arc::new(
                 PostgresRelay {
+                    database: database.clone(),
+                    origin: holder()?,
+                },
+            ))),
+            // A consumer's acknowledged batches reach the tails waiting on the others (iteration 04,
+            // WP-33.2).
+            Arc::new(permguard_host::composition::ArrivalsRelayed(Arc::new(
+                PostgresArrivals {
                     database: database.clone(),
                     origin: holder()?,
                 },

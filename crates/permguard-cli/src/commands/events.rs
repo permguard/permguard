@@ -157,6 +157,9 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
     // No `until`: a tail is deliberately unbounded, which is what makes it a tail.
     let mut window = window_of(query);
     let checked = checked_scope(globals, query, &scope, &trace);
+    // A control plane announcing `tail-wait` holds a caught-up read until the next event; another
+    // is polled (iteration 04).
+    let waits = follow && reader.waits();
 
     loop {
         let page = reader.read(&scope, &window).map_err(read_failure)?;
@@ -174,10 +177,15 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
         if !follow {
             break;
         }
+        window.wait_ms = 0;
         if !more {
-            // Idle rather than busy: a tail that spins costs the control plane more than the
-            // events do.
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            if waits {
+                window.wait_ms = crate::commands::decisions::TAIL_WAIT_MS;
+            } else {
+                // Idle rather than busy: a tail that spins costs the control plane more than the
+                // events do.
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
         }
     }
 
@@ -409,6 +417,7 @@ fn window_of(query: &EventsQuery) -> ReadWindow {
         limit_records: query.limit,
         limit_bytes: query.limit_bytes.unwrap_or_default(),
         proof: query.verify,
+        wait_ms: 0,
         filters: ReadFilters {
             event_types: query.event_types.clone(),
             producer: None,

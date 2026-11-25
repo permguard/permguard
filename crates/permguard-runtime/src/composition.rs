@@ -2465,6 +2465,25 @@ impl Composition {
                 watch_hub.relay_to(Arc::clone(&relayed.0));
                 relayed.0.listen(Arc::downgrade(&watch_hub))
             });
+        // On a backend other instances share, a batch a consumer here acknowledges wakes the tails
+        // waiting on them, and theirs the ones waiting here (iteration 04, WP-33.2).
+        let _arrivals = match (&shared, &ingests) {
+            (Some(shared), Some((decisions, events))) => shared
+                .handle::<permguard_host::composition::ArrivalsRelayed>()
+                .map(|relayed| {
+                    let relay = Arc::clone(&relayed.0);
+                    decisions.add_relay(Arc::new(move || relay.send("decisions")));
+                    let relay = Arc::clone(&relayed.0);
+                    events.add_relay(Arc::new(move || relay.send("events")));
+                    let (decisions, events) = (Arc::clone(decisions), Arc::clone(events));
+                    relayed.0.listen(Box::new(move |stream| match stream {
+                        "decisions" => decisions.heard(),
+                        "events" => events.heard(),
+                        _ => {}
+                    }))
+                }),
+            _ => None,
+        };
         // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
         let mut local_shipper: Option<Arc<permguard_host::membership::local::LocalShipping>> = None;
         let mut repinning_coordinator: Option<

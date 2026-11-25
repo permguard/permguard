@@ -104,6 +104,9 @@ pub struct ReadWindow {
     pub limit_bytes: u64,
     /// Whether to ask for the signed envelopes and inclusion paths.
     pub proof: bool,
+    /// On a tail, how long the server may hold the read for a record past `from`, in milliseconds
+    /// (iteration 04): `0` answers at once. Sent only to a server that announces `tail-wait`.
+    pub wait_ms: u64,
 }
 
 impl ReadWindow {
@@ -254,6 +257,13 @@ pub trait DecisionReader {
     /// Reads one bounded block of `scope`.
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError>;
 
+    /// Whether the control plane announces `tail-wait` (iteration 04, `7-contracts/5` Request):
+    /// only then is a window's `wait_ms` sent. Asked of its discovery document; a server that
+    /// cannot say answers `false`, and is polled.
+    fn waits(&self) -> bool {
+        false
+    }
+
     /// Which key signed which stretch of one producer stream, public keys included.
     ///
     /// The shape is the signers document both transports serve: the receiver's `acked` frontier
@@ -294,6 +304,20 @@ impl HttpSink {
 
 #[cfg(feature = "http")]
 impl DecisionReader for HttpSink {
+    fn waits(&self) -> bool {
+        self.client
+            .request(
+                &self.endpoint,
+                "GET",
+                "/.well-known/permguard-decisions-native-v1-configuration",
+                None,
+            )
+            .ok()
+            .filter(|response| (200..300).contains(&response.status))
+            .and_then(|response| serde_json::from_str::<Value>(&response.body).ok())
+            .is_some_and(|document| announces_tail_wait(&document["capabilities"]))
+    }
+
     fn signers(
         &self,
         pdp_id: &str,
@@ -385,6 +409,9 @@ impl DecisionReader for HttpSink {
         if let Some(until) = &window.until {
             path.push_str(&format!("&until={}", crate::encode::value(until)));
         }
+        if window.wait_ms > 0 {
+            path.push_str(&format!("&wait_ms={}", window.wait_ms));
+        }
 
         let response = self
             .client
@@ -441,4 +468,11 @@ fn first_line(body: &str) -> String {
         .chars()
         .take(200)
         .collect()
+}
+
+/// Whether a discovery document's `capabilities` name `tail-wait` (iteration 04).
+pub fn announces_tail_wait(capabilities: &Value) -> bool {
+    capabilities
+        .as_array()
+        .is_some_and(|held| held.iter().any(|capability| capability == "tail-wait"))
 }

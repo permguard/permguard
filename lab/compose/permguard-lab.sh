@@ -16,9 +16,9 @@
 #   permguard-lab enroll <profile>          every data plane of a profile, enrolled with exact
 #                                           fingerprints over one-time invitations
 #   permguard-lab assert <profile> [phase]  what the profile must prove; the all-in-one's phases
-#                                           are `rotation`, `authority` and `freshness`, the
-#                                           multi-data-plane's `tokens`, `latency`, `freshness`,
-#                                           `rotation` and `offline`
+#                                           are `rotation`, `authority`, `freshness` and
+#                                           `tail-wait`, the multi-data-plane's `tokens`, `latency`,
+#                                           `freshness`, `rotation` and `offline`
 #
 # A lab is an isolated test authority, and only a lab does what this script does: it issues every
 # certificate, bootstraps its operator's certificate on every volume before the Host starts, acts as
@@ -740,6 +740,7 @@ cmd_assert() {
         rotation) assert_all_in_one_rotation ;;
         authority) assert_all_in_one_authority ;;
         freshness) assert_freshness all-in-one all-in-one acme main "$(own_resource all-in-one acme main)" ;;
+        tail-wait) assert_tail_wait all-in-one ;;
         *) fail "no all-in-one phase ${phase}" ;;
         esac
         ;;
@@ -965,6 +966,53 @@ recorded_on() { # host, resource
 }
 
 now_ms() { date +%s%3N; }
+
+# The tail's wait (iteration 04, WP-33.1): a read of `host`'s decisions, from the end of what its
+# Control Plane holds and asking to wait, answers with a decision made meanwhile as soon as its
+# batch is acknowledged, not at the end of its wait. On the all-in-one, whose Control Plane serves
+# the decision reads; the ingest that wakes the read is the one a coordinator runs for a member.
+assert_tail_wait() { # host
+    local host="$1"
+    step "tail wait: a read waiting on ${host} answers with a decision made meanwhile"
+    local held key token header base next answer decided took reading out="${state}/tail-wait.json"
+    mkdir -p "${state}/tokens"
+    chmod 0700 "${state}/tokens"
+    held="$(admin_key)" || fail "no coordinator wrote admin's key"
+    key="${held#* }"
+    token="${state}/tokens/admin-tail.jwt"
+    rm -f "${token}"
+    pg_cert --authority-endpoint "$(authority_endpoint)" --access-key "$(access_key_of "${key}")" \
+        --secret-key-file "${key}" authority token --out "${token}" >/dev/null ||
+        fail "the Authority Plane issued admin no token"
+    header="${state}/tokens/tail.header"
+    (umask 077 && printf 'authorization: Bearer %s\n' "$(cat "${token}")" >"${header}")
+    base="$(control_endpoint "${host}")/decisions/v1/zones/acme/ledgers/main/records"
+    tail_read() {
+        curl -sS --cacert "${pki}/ca.crt" --cert "${pki}/operator.crt" --key "${pki}/operator.key" \
+            -H "@${header}" "$1"
+    }
+    wait_serving "${host}" acme main
+    # The end of what the Control Plane holds now.
+    next=""
+    while :; do
+        answer="$(tail_read "${base}?limit_records=1000${next:+&from=${next}}")"
+        next="$(jq -er '.next' <<<"${answer}")" || fail "${host}'s decisions did not read: ${answer}"
+        [ "$(jq -r '.more' <<<"${answer}")" = true ] || break
+    done
+    tail_read "${base}?from=${next}&wait_ms=20000" >"${out}" &
+    reading=$!
+    sleep 1
+    expect_decision "${host}" acme main deny.json false >/dev/null
+    decided="$(now_ms)"
+    wait "${reading}" || fail "the waiting read failed"
+    took=$(($(now_ms) - decided))
+    rm -f "${header}"
+    jq -e '.records | length > 0' "${out}" >/dev/null ||
+        fail "the waiting read answered no record: $(cat "${out}")"
+    log "the waiting read answered $(jq '.records | length' "${out}") record(s) ${took} ms after the decision"
+    [ "${took}" -lt 5000 ] ||
+        fail "the waiting read answered ${took} ms after the decision: the ingest did not wake it"
+}
 
 # Evidence freshness (iteration 04, WP-30.1): how long a decision recorded on `producer_host` waits
 # before `consumer_host` acknowledges it durably, from the decision's answer, when its record is

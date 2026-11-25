@@ -48,11 +48,12 @@ pub const FRESHNESS: &str = "freshness";
 
 /// From the wake of an append to the acknowledgement of everything due then (iteration 04,
 /// `1-architecture/6` Freshness).
-pub const SHIP_FRESHNESS: permguard_core::metrics::Metric = permguard_core::metrics::Metric::histogram(
-    "permguard_stream_ship_freshness_seconds",
-    "Seconds from an append waking the shipper to the acknowledgement of everything due then.",
-    &[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0],
-);
+pub const SHIP_FRESHNESS: permguard_core::metrics::Metric =
+    permguard_core::metrics::Metric::histogram(
+        "permguard_stream_ship_freshness_seconds",
+        "Seconds from an append waking the shipper to the acknowledgement of everything due then.",
+        &[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0],
+    );
 
 /// The ship sessions kept open.
 pub const SHIP_SESSIONS: permguard_core::metrics::Metric = permguard_core::metrics::Metric::gauge(
@@ -530,7 +531,11 @@ mod tests {
             freshness.observe(Duration::from_secs(n), ms(300));
         }
         freshness.observe(Duration::from_secs(99), ms(9_000));
-        assert_eq!(freshness.p99(), Some(ms(300)), "one slow sample in a hundred");
+        assert_eq!(
+            freshness.p99(),
+            Some(ms(300)),
+            "one slow sample in a hundred"
+        );
         freshness.observe(Duration::from_secs(100), ms(9_000));
         assert_eq!(freshness.p99(), Some(ms(9_000)), "two in a hundred and one");
         // Six minutes on, only what came since counts.
@@ -551,7 +556,10 @@ mod tests {
         let mut freshness = Freshness::default();
         freshness.observe(ms(0), ms(3_000));
         assert!(judge_freshness(&observing, &freshness, false));
-        assert!(health.lifecycle().holds().is_empty(), "never a readiness hold");
+        assert!(
+            health.lifecycle().holds().is_empty(),
+            "never a readiness hold"
+        );
         let mut within = Freshness::default();
         within.observe(ms(0), ms(500));
         assert!(!judge_freshness(&observing, &within, true));

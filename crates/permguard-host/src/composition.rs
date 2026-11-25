@@ -2260,6 +2260,31 @@ pub struct Shipment {
 /// It must return at once, holding no lock the append path takes: it only signals.
 pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
+/// Tells the other instances of a backend they share that a consumer here acknowledged a batch of
+/// `stream`, `decisions` or `events`, and hears theirs (iteration 04, WP-33.2,
+/// `3-control-plane/3` Reads): a tail waiting on another instance reads again. A notification lost
+/// costs a waiting read its wait at most.
+pub trait ArrivalRelay: Send + Sync {
+    /// Tells the other instances.
+    fn send(&self, stream: &str);
+
+    /// Hands `heard` each stream another instance announces, until the answer is dropped.
+    fn listen(
+        &self,
+        heard: Box<dyn Fn(&str) + Send + Sync>,
+    ) -> Box<dyn std::any::Any + Send + Sync>;
+}
+
+/// The arrivals relay a backend hands the composition, as one of its handles.
+#[derive(Clone)]
+pub struct ArrivalsRelayed(pub Arc<dyn ArrivalRelay>);
+
+impl std::fmt::Debug for ArrivalsRelayed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArrivalsRelayed").finish_non_exhaustive()
+    }
+}
+
 /// What shipping a stream's batches to a coordinator needs of the engine (WP-5.4, owner
 /// decision): the shippers drive the task sessions, the engine keeps the subscriptions.
 pub trait StreamShipping: Send + Sync {

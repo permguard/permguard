@@ -650,6 +650,10 @@ fn unverified(report: &crate::decision_out::DecisionsReport) -> Result<(), Failu
 }
 
 /// The stream, as it arrives.
+/// How long a followed tail asks a control plane announcing `tail-wait` to hold a caught-up read:
+/// under the server's own bound and the client's timeout (iteration 04).
+pub(crate) const TAIL_WAIT_MS: u64 = 20_000;
+
 fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
@@ -662,6 +666,9 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
         proof: query.verify,
         ..ReadWindow::default()
     };
+    // A control plane announcing `tail-wait` holds a caught-up read until the next decision;
+    // another is polled (iteration 04).
+    let waits = follow && reader.waits();
 
     loop {
         let page = reader.read(&scope, &window).map_err(read_failure)?;
@@ -689,10 +696,15 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
         if !follow {
             break;
         }
+        window.wait_ms = 0;
         if !more {
-            // Idle rather than busy: a tail that spins is a tail that costs
-            // the control plane more than the decisions do.
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            if waits {
+                window.wait_ms = TAIL_WAIT_MS;
+            } else {
+                // Idle rather than busy: a tail that spins is a tail that costs
+                // the control plane more than the decisions do.
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
         }
     }
 

@@ -2353,7 +2353,14 @@ sections:
       - crates/permguard-control-plane/src/events/read/host_reads.rs
       - crates/permguard-control-plane/src/events/import.rs
       - crates/permguard-control-plane-server/src/decisions/http.rs
+      - crates/permguard-control-plane/src/arrivals.rs
+      - crates/permguard-stream/src/engine/consumer.rs
+      - crates/permguard-s3/src/backend.rs
     tests:
+      - crates/permguard-control-plane/src/arrivals.rs::a_waiting_read_answers_when_a_record_arrives
+      - crates/permguard-control-plane/src/arrivals.rs::a_read_woken_for_another_scope_goes_on_waiting_until_its_deadline
+      - crates/permguard-control-plane/src/arrivals.rs::without_a_wait_a_read_answers_at_once_and_a_wait_is_bounded
+      - crates/permguard-stream/src/engine/tests.rs::an_append_wakes_the_shippers_and_an_ingest_its_readers_and_relays
       - crates/permguard-control-plane/src/evidence.rs::nothing_granted_under_the_plane_is_refused_before_any_lookup
       - crates/permguard-control-plane/src/decisions/read.rs::a_stream_read_names_a_host_run
       - crates/permguard-control-plane/src/decisions/read.rs::a_host_position_behind_retention_is_answered
@@ -4360,7 +4367,9 @@ sections:
       - crates/permguard-stream/src/window.rs
       - crates/permguard-stream/src/cursor.rs
       - crates/permguard-control-plane/src/query.rs
+      - crates/permguard-control-plane/src/arrivals.rs
     tests:
+      - crates/permguard-control-plane-server/src/decisions/http.rs::a_tail_waits_for_its_next_record_and_an_export_never_waits
       - crates/permguard-stream/src/window.rs::both_bounds_are_clamped_and_neither_can_be_zero
       - crates/permguard-control-plane/src/query.rs::a_query_takes_its_parameters_once_and_refuses_the_rest
       - crates/permguard-stream/src/cursor.rs::a_cursor_presented_under_other_filters_is_refused

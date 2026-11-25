@@ -399,9 +399,11 @@ async fn serve(
                     window.clone(),
                 );
                 Box::pin(async move {
-                    tokio::task::spawn_blocking(move || facade.read(&scope, &filters, &window, kind))
-                        .await
-                        .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                    tokio::task::spawn_blocking(move || {
+                        facade.read(&scope, &filters, &window, kind)
+                    })
+                    .await
+                    .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
                 })
             },
             |page| !matches!(page, Ok(page) if page.records.is_empty()),
@@ -1046,7 +1048,7 @@ mod gate {
             ),
             ("", "control-plane", "bootstrap", "v1alpha1", None)
         );
-        for name in ["max_records", "max_bytes", "max_examined"] {
+        for name in ["max_records", "max_bytes", "max_examined", "max_wait_ms"] {
             assert_eq!(
                 serde_json::json!(over_grpc.limits[name]),
                 document["limits"][name],

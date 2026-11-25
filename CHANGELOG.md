@@ -26,8 +26,19 @@ is cut.
   The wire, the batches and their acknowledgements are unchanged: a member of this release ships to an older coordinator, and an older member still ships at its pass.
 - **A deferral backs off from 100 ms to 30 s**, with full jitter, instead of 1 s to 5 minutes, and a session ended by the membership's state syncs the membership at once.
 
+- **A shipping stall is judged from 30 seconds**, a reconnection and a watch pass, instead of 75: a record no longer waits for a pass, so `objectives.evidence_shipping_lag` is useful from 38s.
+- **`decisions tail --follow` and `events tail --follow` wait on the control plane** when it announces `tail-wait`, instead of asking again every second: a decision is printed as soon as its batch is acknowledged.
+
 ### Added
 
+- **Evidence freshness, measured and optionally an objective.**
+  `permguard_stream_ship_freshness_seconds` measures the wait from an append to its acknowledgement, beside `permguard_stream_ship_sessions` and `permguard_stream_ship_rounds_total{outcome}`.
+  `objectives.evidence_freshness` (100ms to 1h) declares a p99: while the last five minutes pass it the Host is `degraded: freshness`, never non-ready; it is never required, and under twice `operations.streams.ship_linger` it is inconsistent, refused from `production`.
+  The alert `PermguardEvidenceLate` fires when the p99 passes `metrics.prometheusRule.shipping.freshnessP99Seconds`, 2 by default, for ten minutes.
+- **A tail read waits for its next record.**
+  `wait_ms` on a decision or event read with no `until` (REST, and `wait_ms` on gRPC's `Read` and `ListRecords`) holds the read until a record of its scope is acknowledged or the wait ends, at most `max_wait_ms`, 25 s; beside `until` it is refused with `invalid_argument`.
+  The discovery documents announce it: `tail-wait` among the capabilities, `wait_ms` among the read parameters, `max_wait_ms` among the limits.
+  On `postgresql-s3` an instance tells the others over a database notification, so a read waiting on one is woken by a batch another acknowledged.
 - **`operations.streams.ship_linger`** (`PERMGUARD_STREAM_SHIP_LINGER`, default `200ms`, at most `5s`): how long the shipper waits after an append before it ships, so what is appended meanwhile leaves in the same batch; `0s` ships at once.
   A coordinator that wants fewer, larger batches signs a lower `max_rate_per_minute` instead.
 

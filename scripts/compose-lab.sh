@@ -235,6 +235,8 @@ run_profile() {
         dc run --rm lab assert "${profile}" authority || failed "an Authority Plane assertion failed"
         step "${profile}: evidence freshness to its own Control Plane (iteration 04)"
         freshness "${profile}" || failed "the evidence freshness passed its objective"
+        step "${profile}: a tail waiting on the Control Plane answers with the next decision (iteration 04)"
+        dc run --rm lab assert "${profile}" tail-wait || failed "the waiting read was not woken"
     fi
     if [ "${profile}" = multi-data-plane ]; then
         step "${profile}: decisions by the Authority Plane's tokens"

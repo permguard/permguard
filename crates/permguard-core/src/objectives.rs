@@ -469,7 +469,10 @@ mod tests {
         assert_eq!(read.evidence_freshness, Some(Duration::from_secs(2)));
         assert!(read.inconsistencies(&limits()).is_empty());
         assert_eq!(read.report("validated").evidence_freshness_ms, Some(2_000));
-        assert!(complete().read().expect("read").missing().is_empty(), "never required");
+        assert!(
+            complete().read().expect("read").missing().is_empty(),
+            "never required"
+        );
         assert!(declared("50ms").read().is_err(), "under 100ms");
         assert!(declared("2h").read().is_err(), "over 1h");
         let tight = declared("300ms").read().expect("read");

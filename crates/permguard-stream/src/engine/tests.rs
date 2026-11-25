@@ -8894,3 +8894,59 @@ fn the_consumer_tests_pass_with_runs_opened_for_each_hold() {
     what_an_ended_membership_never_acknowledged_is_carried_to_the_next_one();
     an_ended_run_of_an_ended_membership_is_carried_too();
 }
+
+/// Iteration 04, WP-31.1 and WP-33.1/33.2: an append wakes the shippers; an ingest that
+/// acknowledges a batch wakes the consumer's readers and its relays; what another instance
+/// announces wakes the readers only, so an announcement never comes back.
+#[test]
+fn an_append_wakes_the_shippers_and_an_ingest_its_readers_and_relays() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let host = Host::new("wakes");
+    let consumer = consumer_on(&host);
+    let (producer, _) = streaming(&host, 0);
+    let count = |counter: &Arc<AtomicUsize>| counter.load(Ordering::SeqCst);
+    let counter = || Arc::new(AtomicUsize::new(0));
+    let (appended, read, relayed) = (counter(), counter(), counter());
+    {
+        let appended = Arc::clone(&appended);
+        permguard_host::composition::StreamShipping::on_append(
+            &producer,
+            Arc::new(move || {
+                appended.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+    }
+    {
+        let read = Arc::clone(&read);
+        consumer.add_reader(Arc::new(move || {
+            read.fetch_add(1, Ordering::SeqCst);
+        }));
+        let relayed = Arc::clone(&relayed);
+        consumer.add_relay(Arc::new(move || {
+            relayed.fetch_add(1, Ordering::SeqCst);
+        }));
+    }
+    for n in 1..=3 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    assert_eq!(count(&appended), 3, "one wake per durable append");
+    let first = subscribed("decisions", true, 1);
+    assert!(
+        pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1)
+            .iter()
+            .all(|outcome| *outcome == Outcome::Ok)
+    );
+    assert!(count(&read) >= 1, "the readers are woken by the ingest");
+    assert_eq!(count(&read), count(&relayed), "and so are the relays");
+    let relayed_before = count(&relayed);
+    consumer.heard();
+    assert_eq!(
+        count(&relayed),
+        relayed_before,
+        "heard from elsewhere: not relayed again"
+    );
+    assert_eq!(count(&read), relayed_before + 1, "but read again");
+}

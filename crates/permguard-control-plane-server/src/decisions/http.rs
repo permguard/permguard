@@ -1080,6 +1080,8 @@ mod strict {
     /// alike.
     #[tokio::test]
     async fn a_tail_waits_for_its_next_record_and_an_export_never_waits() {
+        use crate::v1::ReadRequest;
+        use crate::v1::decision_log_server::DecisionLog;
         let facade = signing("tail-wait");
         let router = anonymous(routes(facade.clone()));
         let (pdp, instance) = (
@@ -1091,7 +1093,10 @@ mod strict {
         let (status, body) = get(&router, &path).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert!(started.elapsed() < std::time::Duration::from_millis(250));
-        let until = body["high_watermark"].as_str().expect("a frontier").to_owned();
+        let until = body["high_watermark"]
+            .as_str()
+            .expect("a frontier")
+            .to_owned();
 
         let started = std::time::Instant::now();
         let (status, waited) = get(&router, &format!("{path}?wait_ms=300")).await;
@@ -1103,12 +1108,25 @@ mod strict {
             started.elapsed()
         );
 
-        let encoded: String = url::form_urlencoded::byte_serialize(until.as_bytes()).collect();
+        let encoded: String = until
+            .bytes()
+            .map(|byte| {
+                if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
+                    char::from(byte).to_string()
+                } else {
+                    format!("%{byte:02X}")
+                }
+            })
+            .collect();
         let (status, refused) = get(&router, &format!("{path}?wait_ms=300&until={encoded}")).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
         assert_eq!(refused["code"], "invalid_argument");
         let (status, body) = get(&router, &format!("{path}?wait_ms=0&until={encoded}")).await;
-        assert_eq!(status, StatusCode::OK, "no wait asked beside an export: {body}");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "no wait asked beside an export: {body}"
+        );
 
         let refused = DecisionLog::read(
             &crate::served::Served(facade),

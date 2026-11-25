@@ -69,15 +69,28 @@ pub fn read(
     limit: usize,
     proof: bool,
     everything: bool,
-    mut snapshot: impl FnMut(&str),
+    snapshot: impl FnMut(&str),
 ) -> Result<Read, ReadError> {
-    let mut read = Page::default();
-    let mut window = ReadWindow {
+    let window = ReadWindow {
         from,
         limit_records: limit,
         proof,
         ..ReadWindow::default()
     };
+    read_window(reader, scope, window, everything, snapshot)
+}
+
+/// [`read`] from a whole `window`: its `wait_ms` held on a tail that caught up, to a control plane
+/// announcing `tail-wait` (iteration 04).
+pub fn read_window(
+    reader: &dyn DecisionLog,
+    scope: &ReadScope,
+    mut window: ReadWindow,
+    everything: bool,
+    mut snapshot: impl FnMut(&str),
+) -> Result<Read, ReadError> {
+    let limit = window.limit_records;
+    let mut read = Page::default();
     let mut decisions_read = 0usize;
     let mut walked = 0usize;
     for page_number in 0..MAX_PAGES {

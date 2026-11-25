@@ -57,6 +57,22 @@ impl GrpcEventSink {
 }
 
 impl EventReader for GrpcEventSink {
+    fn waits(&self) -> bool {
+        self.endpoint
+            .run(
+                "EventLog/GetEventConfiguration",
+                self.client().get_event_configuration(Request::new(
+                    crate::v1::GetEventConfigurationRequest {},
+                )),
+            )
+            .is_ok_and(|answer| {
+                answer
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "tail-wait")
+            })
+    }
+
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
         let mut request = ListRecordsRequest {
             from: window.from.clone().unwrap_or_default(),
@@ -64,6 +80,7 @@ impl EventReader for GrpcEventSink {
             limit_records: u32::try_from(window.limit_records).unwrap_or_default(),
             limit_bytes: window.limit_bytes,
             proof: window.proof,
+            wait_ms: window.wait_ms,
             event_types: window.filters.event_types.clone(),
             profile: window.filters.profile.clone().unwrap_or_default(),
             policy_partition: window.filters.policy_partition.clone().unwrap_or_default(),

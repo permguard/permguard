@@ -81,7 +81,9 @@ impl EventLog for crate::served::Served<EventFacade> {
                             facade.read(&scope, &filters, &window, kind)
                         })
                         .await
-                        .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                        .unwrap_or_else(|error| {
+                            Err(read::ReadError::Unavailable(error.to_string()))
+                        })
                     })
                 },
                 |page| !matches!(page, Ok(page) if page.records.is_empty()),
@@ -332,6 +334,7 @@ impl EventLog for crate::served::Served<EventFacade> {
                 ("max_records".to_owned(), document.limits.max_records),
                 ("max_bytes".to_owned(), document.limits.max_bytes),
                 ("max_examined".to_owned(), document.limits.max_examined),
+                ("max_wait_ms".to_owned(), document.limits.max_wait_ms),
             ]
             .into_iter()
             .collect(),
