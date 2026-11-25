@@ -40,8 +40,9 @@ impl EventLog for crate::served::Served<EventFacade> {
             scope_of(&asked).map_err(|refused| status_of(&refused, self.0.disclosure))?;
         // Same gate and resolution as the HTTP list, so the two transports narrow to the same
         // records (WP-6.3c).
-        let scope = match self.0.gate(&actor, scope) {
-            Ok(scope) => scope,
+        // A tail that waits is authorized again at every reading below.
+        match self.0.gate(&actor, scope.clone()) {
+            Ok(_) => {}
             Err(crate::evidence::Gated::Denied(denial)) => {
                 self.0.denied(kind);
                 return Err(crate::wire::grpc_denial(&denial));
@@ -49,7 +50,7 @@ impl EventLog for crate::served::Served<EventFacade> {
             Err(crate::evidence::Gated::Refused(error)) => {
                 return Err(read_status(error, self.0.disclosure));
             }
-        };
+        }
         let filters =
             filters_of(&asked).map_err(|refused| status_of(&refused, self.0.disclosure))?;
         let wait = crate::query::wait_of(asked.wait_ms, !asked.until.is_empty())
@@ -70,25 +71,39 @@ impl EventLog for crate::served::Served<EventFacade> {
             .read_waiting(
                 wait,
                 || {
-                    let (facade, scope, filters, window) = (
+                    let (facade, actor, scope, filters, window) = (
                         self.0.clone(),
+                        std::sync::Arc::clone(&actor),
                         scope.clone(),
                         filters.clone(),
                         window.clone(),
                     );
                     Box::pin(async move {
                         tokio::task::spawn_blocking(move || {
-                            facade.read(&scope, &filters, &window, kind)
+                            let scope = facade.gate(&actor, scope)?;
+                            facade
+                                .read(&scope, &filters, &window, kind)
+                                .map_err(crate::evidence::Gated::Refused)
                         })
                         .await
                         .unwrap_or_else(|error| {
-                            Err(read::ReadError::Unavailable(error.to_string()))
+                            Err(crate::evidence::Gated::Refused(
+                                read::ReadError::Unavailable(error.to_string()),
+                            ))
                         })
                     })
                 },
-                |page| !matches!(page, Ok(page) if page.records.is_empty()),
+                crate::query::answers,
             )
             .await;
+        let page = match page {
+            Ok(page) => Ok(page),
+            Err(crate::evidence::Gated::Denied(denial)) => {
+                self.0.denied(kind);
+                return Err(crate::wire::grpc_denial(&denial));
+            }
+            Err(crate::evidence::Gated::Refused(error)) => Err(error),
+        };
 
         match page {
             Ok(page) => Ok(Response::new(ListRecordsResponse {

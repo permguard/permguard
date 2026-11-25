@@ -649,11 +649,22 @@ fn unverified(report: &crate::decision_out::DecisionsReport) -> Result<(), Failu
     }
 }
 
-/// The stream, as it arrives.
 /// How long a followed tail asks a control plane announcing `tail-wait` to hold a caught-up read:
 /// under the server's own bound and the client's timeout (iteration 04).
 pub(crate) const TAIL_WAIT_MS: u64 = 20_000;
 
+/// A waited read that came back empty well before its wait was answered at once, by a control
+/// plane with no room left for one more waiting read: the tail then idles as a poll does, rather
+/// than asking again at once and adding to the load that refused it.
+pub(crate) fn idle_after_an_early_answer(wait_ms: u64, asked: std::time::Instant, empty: bool) {
+    const IDLE: std::time::Duration = std::time::Duration::from_secs(1);
+    let elapsed = asked.elapsed();
+    if wait_ms > 0 && empty && elapsed < IDLE {
+        std::thread::sleep(IDLE - elapsed);
+    }
+}
+
+/// The stream, as it arrives.
 fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
@@ -671,8 +682,10 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
     let waits = follow && reader.waits();
 
     loop {
+        let asked = std::time::Instant::now();
         let page = reader.read(&scope, &window).map_err(read_failure)?;
         let more = page.more;
+        idle_after_an_early_answer(window.wait_ms, asked, page.records.is_empty() && !more);
         window.from = Some(page.next.clone());
         if !page.records.is_empty() {
             let report = report(

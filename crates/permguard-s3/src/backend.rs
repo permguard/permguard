@@ -356,28 +356,76 @@ const ARRIVALS: &str = "permguard_arrivals";
 
 /// A consumer's acknowledged batches, told by one instance to the others over the database's
 /// notifications (iteration 04, WP-33.2): a tail waiting on another instance reads again.
+///
+/// The ingest that acknowledged a batch only queues its stream: a thread of the relay sends the
+/// notifications, the streams queued while one is in flight sent once each after it, so the
+/// acknowledgement of a member never waits on the database.
 struct PostgresArrivals {
     database: Database,
     /// This instance: what it sent itself is not heard back.
     origin: String,
+    /// The relay's thread, started with it, ended when the relay is dropped.
+    queued: std::sync::mpsc::Sender<String>,
 }
 
-impl permguard_host::composition::ArrivalRelay for PostgresArrivals {
-    fn send(&self, stream: &str) {
-        let payload = serde_json::json!({"origin": self.origin, "stream": stream}).to_string();
-        let sent = self.database.write(|unit| {
-            unit.execute("SELECT pg_notify($1, $2)", &[&ARRIVALS, &payload])
-                .map(|_| ())
-        });
-        if let Err(error) = sent {
+impl PostgresArrivals {
+    fn new(database: Database, origin: String) -> Self {
+        let (queue, queued) = std::sync::mpsc::channel::<String>();
+        let (sending, from) = (database.clone(), origin.clone());
+        let started = std::thread::Builder::new()
+            .name("permguard-arrivals".to_owned())
+            .spawn(move || {
+                while let Ok(first) = queued.recv() {
+                    let mut streams = std::collections::BTreeSet::from([first]);
+                    while let Ok(next) = queued.try_recv() {
+                        streams.insert(next);
+                    }
+                    for stream in streams {
+                        notify(&sending, &from, &stream);
+                    }
+                }
+            });
+        if let Err(error) = started {
             tracing::warn!(
                 event.name = "host.stream.arrival_unrelayed",
                 component = "host",
                 error = %error,
-                "an acknowledged batch was not announced to the other instances: their waiting \
-                 reads answer at their deadline"
+                "the arrivals relay did not start: waiting reads on the other instances answer at \
+                 their deadline"
             );
         }
+        Self {
+            database,
+            origin,
+            queued: queue,
+        }
+    }
+}
+
+/// One stream's arrival announced on [`ARRIVALS`].
+fn notify(database: &Database, origin: &str, stream: &str) {
+    let payload = serde_json::json!({"origin": origin, "stream": stream}).to_string();
+    let sent = database.write(|unit| {
+        unit.execute("SELECT pg_notify($1, $2)", &[&ARRIVALS, &payload])
+            .map(|_| ())
+    });
+    if let Err(error) = sent {
+        tracing::warn!(
+            event.name = "host.stream.arrival_unrelayed",
+            component = "host",
+            error = %error,
+            "an acknowledged batch was not announced to the other instances: their waiting \
+             reads answer at their deadline"
+        );
+    }
+}
+
+impl permguard_host::composition::ArrivalRelay for PostgresArrivals {
+    /// Queues the stream and returns: the relay's thread sends it.
+    fn send(&self, stream: &str) {
+        // A relay whose thread did not start announces nothing; its waiting reads end at their
+        // deadline, as the warning said.
+        let _ = self.queued.send(stream.to_owned());
     }
 
     fn listen(
@@ -530,10 +578,7 @@ pub fn shared(connected: &Connected) -> Result<Shared> {
             // A consumer's acknowledged batches reach the tails waiting on the others (iteration 04,
             // WP-33.2).
             Arc::new(permguard_host::composition::ArrivalsRelayed(Arc::new(
-                PostgresArrivals {
-                    database: database.clone(),
-                    origin: holder()?,
-                },
+                PostgresArrivals::new(database.clone(), holder()?),
             ))),
             // The single jobs of this instance, each run by the holder of its lease (WP-28.2).
             Arc::new(permguard_host::jobs::Jobs(Arc::new(

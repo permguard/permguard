@@ -10,6 +10,7 @@
 //! | wake              | an ingest that acknowledged a batch moves the counter; every waiting read reads again   |
 //! | bounded waiters   | at most [`MAX_WAITERS`] reads wait at once; past them a read is answered at once        |
 //! | a lost wake       | costs a read its wait at most: it then answers what it holds                            |
+//! | coalesced         | a waiting read reads again at most every [`REREAD`], however many batches arrive        |
 //! | authorization     | the read itself is authorized at every reading, so a wait reveals nothing new           |
 //!
 //! The counter says only that something arrived somewhere: a woken read reads its own scope again,
@@ -24,6 +25,9 @@ pub const MAX_WAIT: Duration = Duration::from_secs(25);
 
 /// The most reads waiting at once on one plane.
 pub const MAX_WAITERS: usize = 256;
+
+/// The least time between two readings of one waiting read: the arrivals meanwhile are read once.
+pub const REREAD: Duration = Duration::from_millis(100);
 
 /// The arrivals one consumer announces, and the reads waiting for them.
 #[derive(Debug)]
@@ -79,14 +83,18 @@ impl Arrivals {
         };
         let deadline = tokio::time::Instant::now() + wait;
         let mut answer = answer;
+        let mut read_at = tokio::time::Instant::now();
         loop {
             if holds(&answer) {
                 return answer;
             }
             match tokio::time::timeout_at(deadline, arrived.changed()).await {
                 Ok(Ok(())) => {
+                    // A burst of batches is one reading, not one per batch.
+                    tokio::time::sleep_until((read_at + REREAD).min(deadline)).await;
                     arrived.borrow_and_update();
                     answer = read().await;
+                    read_at = tokio::time::Instant::now();
                 }
                 // The wait is over, or the consumer is gone: what is held is the answer.
                 Ok(Err(_)) | Err(_) => return answer,

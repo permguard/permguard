@@ -220,7 +220,7 @@ async fn serve(
                         })
                 })
             },
-            |page| !matches!(page, Ok(page) if page.records.is_empty()),
+            crate::query::answers,
         )
         .await;
     let page = match page {

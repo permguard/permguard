@@ -370,15 +370,16 @@ async fn serve(
     asked: Asked,
     kind: &'static str,
 ) -> Response {
-    // Authorization before any lookup that could say whether the ledger exists (WP-6.3c).
-    let scope = match facade.gate(&actor, scope) {
-        Ok(scope) => scope,
+    // Authorization before any lookup that could say whether the ledger exists (WP-6.3c); a tail
+    // that waits is authorized again at every reading below.
+    match facade.gate(&actor, scope.clone()) {
+        Ok(_) => {}
         Err(crate::evidence::Gated::Denied(denial)) => {
             facade.denied(kind);
             return wire::http_denial(&denial);
         }
         Err(crate::evidence::Gated::Refused(error)) => return read_refusal(&facade, error),
-    };
+    }
     let wait = match asked.query.wait() {
         Ok(wait) => wait,
         Err(error) => return refuse(&facade, error),
@@ -392,23 +393,39 @@ async fn serve(
         .read_waiting(
             wait,
             || {
-                let (facade, scope, filters, window) = (
+                let (facade, actor, scope, filters, window) = (
                     facade.clone(),
+                    Arc::clone(&actor),
                     scope.clone(),
                     filters.clone(),
                     window.clone(),
                 );
                 Box::pin(async move {
                     tokio::task::spawn_blocking(move || {
-                        facade.read(&scope, &filters, &window, kind)
+                        let scope = facade.gate(&actor, scope)?;
+                        facade
+                            .read(&scope, &filters, &window, kind)
+                            .map_err(crate::evidence::Gated::Refused)
                     })
                     .await
-                    .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+                    .unwrap_or_else(|error| {
+                        Err(crate::evidence::Gated::Refused(read::ReadError::Unavailable(
+                            error.to_string(),
+                        )))
+                    })
                 })
             },
-            |page| !matches!(page, Ok(page) if page.records.is_empty()),
+            crate::query::answers,
         )
         .await;
+    let page = match page {
+        Ok(page) => Ok(page),
+        Err(crate::evidence::Gated::Denied(denial)) => {
+            facade.denied(kind);
+            return wire::http_denial(&denial);
+        }
+        Err(crate::evidence::Gated::Refused(error)) => Err(error),
+    };
 
     match page {
         Ok(page) => {

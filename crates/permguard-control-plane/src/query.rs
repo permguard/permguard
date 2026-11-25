@@ -147,6 +147,16 @@ pub fn wait_of(wait_ms: u64, until: bool) -> Result<std::time::Duration, ApiErro
     Ok(std::time::Duration::from_millis(wait_ms))
 }
 
+/// Whether a page answers a tail that waits: it holds records, or says more is to be read past
+/// what it examined, as a filtered read that scanned its bound without a match does; a refusal
+/// answers at once. Only an empty page at the end of what the stream holds goes on waiting.
+pub fn answers<T, E>(page: &Result<permguard_stream::Block<T>, E>) -> bool {
+    match page {
+        Ok(page) => !page.records.is_empty() || page.more,
+        Err(_) => true,
+    }
+}
+
 /// The parameters every bounded read takes.
 pub const WINDOW: [&str; 7] = [
     "from",

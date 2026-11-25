@@ -183,7 +183,7 @@ impl DecisionLog for crate::served::Served<DecisionFacade> {
                             })
                     })
                 },
-                |page| !matches!(page, Ok(page) if page.records.is_empty()),
+                crate::query::answers,
             )
             .await;
         // Before anything else: a denial says nothing the caller may not learn (WP-6.3c).

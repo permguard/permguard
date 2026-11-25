@@ -162,8 +162,14 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
     let waits = follow && reader.waits();
 
     loop {
+        let asked = std::time::Instant::now();
         let page = reader.read(&scope, &window).map_err(read_failure)?;
         let more = page.more;
+        crate::commands::decisions::idle_after_an_early_answer(
+            window.wait_ms,
+            asked,
+            page.records.is_empty() && !more,
+        );
         window.from = Some(page.next.clone());
         if !page.records.is_empty() {
             let mut read = Read::default();
